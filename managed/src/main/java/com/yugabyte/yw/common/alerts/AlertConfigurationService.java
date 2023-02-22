@@ -45,6 +45,7 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.paging.AlertConfigurationPagedQuery;
 import com.yugabyte.yw.models.paging.AlertConfigurationPagedResponse;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
+import io.ebean.DB;
 import io.ebean.Query;
 import io.ebean.annotation.Transactional;
 import java.util.ArrayList;
@@ -145,10 +146,10 @@ public class AlertConfigurationService {
     try {
       configUuidLock.acquireLocks(toUpdateUuids);
       if (!CollectionUtils.isEmpty(toCreate)) {
-        AlertConfiguration.db().saveAll(toCreate);
+        DB.getDefault().saveAll(toCreate);
       }
       if (!CollectionUtils.isEmpty(toUpdate)) {
-        AlertConfiguration.db().updateAll(toUpdate);
+        DB.getDefault().updateAll(toUpdate);
       }
 
       manageDefinitions(configurations, beforeConfigurations);

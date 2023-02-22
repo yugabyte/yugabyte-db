@@ -1,15 +1,15 @@
 // Copyright (c) YugaByte, Inc.
 
-package db.migration.default.common
+package db.migration.default_.common
 
-import java.sql.Connection
+import org.flywaydb.core.api.migration.{BaseJavaMigration, Context}
 
-import org.flywaydb.core.api.migration.jdbc.JdbcMigration
 import play.api.libs.json._
 
-class V52__Update_Access_Key_Create_Extra_Migrations extends JdbcMigration {
+class V52__Update_Access_Key_Create_Extra_Migrations extends BaseJavaMigration {
 
-  override def migrate(connection: Connection): Unit = {
+  override def migrate(context: Context): Unit = {
+    val connection = context.getConnection
     val selectStmt = "SELECT * FROM access_key"
     val resultSet = connection.createStatement().executeQuery(selectStmt)
 

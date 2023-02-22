@@ -75,12 +75,14 @@ public class StorageUtilTest extends FakeDBApplication {
     when(mockNfsUtil.createRestoreCloudStoreSpec(anyString(), anyString(), any(), anyBoolean()))
         .thenCallRealMethod();
     doCallRealMethod().when(mockAZUtil).checkStoragePrefixValidity(anyString(), anyString());
-    s3ConfigWithSlash = CustomerConfig.createWithFormData(testCustomer.uuid, s3FormDataWithSlash);
+    s3ConfigWithSlash =
+        CustomerConfig.createWithFormData(testCustomer.getUuid(), s3FormDataWithSlash);
     s3ConfigWithoutSlash =
-        CustomerConfig.createWithFormData(testCustomer.uuid, s3FormDataWithoutSlash);
+        CustomerConfig.createWithFormData(testCustomer.getUuid(), s3FormDataWithoutSlash);
     nfsConfigWithoutSlash =
-        CustomerConfig.createWithFormData(testCustomer.uuid, nfsFormDataNoSlash);
-    nfsConfigWithSlash = CustomerConfig.createWithFormData(testCustomer.uuid, nfsFormDataWithSlash);
+        CustomerConfig.createWithFormData(testCustomer.getUuid(), nfsFormDataNoSlash);
+    nfsConfigWithSlash =
+        CustomerConfig.createWithFormData(testCustomer.getUuid(), nfsFormDataWithSlash);
   }
 
   @Test(expected = Test.None.class)

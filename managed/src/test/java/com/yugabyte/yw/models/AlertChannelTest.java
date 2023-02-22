@@ -55,7 +55,7 @@ public class AlertChannelTest extends FakeDBApplication {
   public void testNameUniquenessCheck() {
     Customer secondCustomer = ModelFactory.testCustomer();
     ModelFactory.createSlackChannel(defaultCustomerUuid, CHANNEL_NAME);
-    ModelFactory.createSlackChannel(secondCustomer.uuid, CHANNEL_NAME);
+    ModelFactory.createSlackChannel(secondCustomer.getUuid(), CHANNEL_NAME);
     try {
       ModelFactory.createSlackChannel(defaultCustomerUuid, CHANNEL_NAME);
       fail("Missed expected exception.");

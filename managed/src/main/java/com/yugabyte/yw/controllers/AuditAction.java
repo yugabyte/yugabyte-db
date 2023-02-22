@@ -6,13 +6,12 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Action;
-import play.mvc.Http.Context;
+import play.mvc.Http.Request;
 import play.mvc.Result;
 import play.routing.Router;
 
@@ -27,23 +26,23 @@ public class AuditAction extends Action.Simple {
   }
 
   @Override
-  public CompletionStage<Result> call(Context ctx) {
+  public CompletionStage<Result> call(Request request) {
 
     if (!confGetter.getGlobalConf(GlobalConfKeys.auditVerifyLogging)) {
-      return delegate.call(ctx);
+      return delegate.call(request);
     } else {
       return delegate
-          .call(ctx)
+          .call(request)
           .thenApply(
               result -> {
                 if (result.status() == 200) {
-                  boolean isAudited = (boolean) ctx.args.getOrDefault("isAudited", false);
+                  boolean isAudited = RequestContext.getOrDefault("isAudited", false);
 
                   // modifiers are to be added in v1.routes file
                   List<String> modifiers =
-                      ctx.request().attrs().get(Router.Attrs.HANDLER_DEF).getModifiers();
+                      request.attrs().get(Router.Attrs.HANDLER_DEF).getModifiers();
 
-                  boolean shouldBeAudited = !ctx.request().method().equals("GET");
+                  boolean shouldBeAudited = request.method().equals("GET");
                   boolean hasForceNoAuditModifier = modifiers.contains("forceNoAudit");
                   boolean hasForceAuditModifier = modifiers.contains("forceAudit");
 
@@ -60,7 +59,7 @@ public class AuditAction extends Action.Simple {
                   if (isAudited != shouldBeAudited) {
                     throw new PlatformServiceException(
                         INTERNAL_SERVER_ERROR,
-                        " Mismatch in Audit Logging intent for " + ctx.request().path());
+                        " Mismatch in Audit Logging intent for " + request.path());
                   }
                 }
                 return result;

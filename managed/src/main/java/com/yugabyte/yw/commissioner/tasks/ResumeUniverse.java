@@ -81,8 +81,8 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
         CertificateInfo rootCert = CertificateInfo.get(universeDetails.rootCA);
 
         if (rootCert == null) {
-          log.error("Root certificate not found for {}", universe.universeUUID);
-        } else if (rootCert.certType == CertConfigType.SelfSigned) {
+          log.error("Root certificate not found for {}", universe.getUniverseUUID());
+        } else if (rootCert.getCertType() == CertConfigType.SelfSigned) {
           SubTaskGroupType certRotate = RotatingCert;
           taskParams().rootCA = universeDetails.rootCA;
           taskParams().setClientRootCA(universeDetails.getClientRootCA());
@@ -98,7 +98,7 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
 
       createStartMasterProcessTasks(masterNodeList);
 
-      if (EncryptionAtRestUtil.getNumKeyRotations(universe.universeUUID) > 0) {
+      if (EncryptionAtRestUtil.getNumKeyRotations(universe.getUniverseUUID()) > 0) {
         createSetActiveUniverseKeysTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 

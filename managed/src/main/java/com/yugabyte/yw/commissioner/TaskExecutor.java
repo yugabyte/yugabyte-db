@@ -1019,7 +1019,7 @@ public class TaskExecutor {
         // In case, it is a scheduled task, update state of the task.
         ScheduleTask scheduleTask = ScheduleTask.fetchByTaskUUID(taskUUID);
         if (scheduleTask != null) {
-          scheduleTask.setCompletedTime();
+          scheduleTask.setCompleted();
         }
         // Run a one-off Platform HA sync every time a task finishes.
         replicationManager.oneOffSync();

@@ -151,7 +151,7 @@ public class AssertHelper {
 
   /** If using @Transactional you will have to use assertPlatformExceptionInTransaction */
   public static Result assertPlatformException(ThrowingRunnable runnable) {
-    return assertThrows(PlatformServiceException.class, runnable).buildResult();
+    return assertThrows(PlatformServiceException.class, runnable).buildResult("SOME", "/path");
   }
 
   public static Metric assertMetricValue(

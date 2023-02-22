@@ -33,6 +33,8 @@ import io.swagger.annotations.Authorization;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
+import play.mvc.Http;
+import play.mvc.Http.Request;
 import play.mvc.Result;
 
 @Slf4j
@@ -66,8 +68,9 @@ public class UpgradeUniverseController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.RestartTaskParams",
           required = true,
           paramType = "body"))
-  public Result restartUniverse(UUID customerUuid, UUID universeUuid) {
+  public Result restartUniverse(UUID customerUuid, UUID universeUuid, Http.Request request) {
     return requestHandler(
+        request,
         upgradeUniverseHandler::restartUniverse,
         RestartTaskParams.class,
         Audit.ActionType.Restart,
@@ -95,8 +98,9 @@ public class UpgradeUniverseController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.SoftwareUpgradeParams",
           required = true,
           paramType = "body"))
-  public Result upgradeSoftware(UUID customerUuid, UUID universeUuid) {
+  public Result upgradeSoftware(UUID customerUuid, UUID universeUuid, Http.Request request) {
     return requestHandler(
+        request,
         upgradeUniverseHandler::upgradeSoftware,
         SoftwareUpgradeParams.class,
         Audit.ActionType.UpgradeSoftware,
@@ -124,8 +128,9 @@ public class UpgradeUniverseController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.GFlagsUpgradeParams",
           required = true,
           paramType = "body"))
-  public Result upgradeGFlags(UUID customerUuid, UUID universeUuid) {
+  public Result upgradeGFlags(UUID customerUuid, UUID universeUuid, Http.Request request) {
     return requestHandler(
+        request,
         upgradeUniverseHandler::upgradeGFlags,
         GFlagsUpgradeParams.class,
         Audit.ActionType.UpgradeGFlags,
@@ -152,8 +157,10 @@ public class UpgradeUniverseController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams",
           required = true,
           paramType = "body"))
-  public Result upgradeKubernetesOverrides(UUID customerUuid, UUID universeUuid) {
+  public Result upgradeKubernetesOverrides(
+      UUID customerUuid, UUID universeUuid, Http.Request request) {
     return requestHandler(
+        request,
         upgradeUniverseHandler::upgradeKubernetesOverrides,
         KubernetesOverridesUpgradeParams.class,
         Audit.ActionType.UpgradeKubernetesOverrides,
@@ -181,8 +188,9 @@ public class UpgradeUniverseController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.CertsRotateParams",
           required = true,
           paramType = "body"))
-  public Result upgradeCerts(UUID customerUuid, UUID universeUuid) {
+  public Result upgradeCerts(UUID customerUuid, UUID universeUuid, Http.Request request) {
     return requestHandler(
+        request,
         upgradeUniverseHandler::rotateCerts,
         CertsRotateParams.class,
         Audit.ActionType.UpgradeCerts,
@@ -210,8 +218,9 @@ public class UpgradeUniverseController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.TlsToggleParams",
           required = true,
           paramType = "body"))
-  public Result upgradeTls(UUID customerUuid, UUID universeUuid) {
+  public Result upgradeTls(UUID customerUuid, UUID universeUuid, Http.Request request) {
     return requestHandler(
+        request,
         upgradeUniverseHandler::toggleTls,
         TlsToggleParams.class,
         Audit.ActionType.ToggleTls,
@@ -238,8 +247,9 @@ public class UpgradeUniverseController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.ResizeNodeParams",
           required = true,
           paramType = "body"))
-  public Result resizeNode(UUID customerUuid, UUID universeUuid) {
+  public Result resizeNode(UUID customerUuid, UUID universeUuid, Http.Request request) {
     return requestHandler(
+        request,
         upgradeUniverseHandler::resizeNode,
         ResizeNodeParams.class,
         Audit.ActionType.ResizeNode,
@@ -266,8 +276,10 @@ public class UpgradeUniverseController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams",
           required = true,
           paramType = "body"))
-  public Result upgradeThirdpartySoftware(UUID customerUuid, UUID universeUuid) {
+  public Result upgradeThirdpartySoftware(
+      UUID customerUuid, UUID universeUuid, Http.Request request) {
     return requestHandler(
+        request,
         upgradeUniverseHandler::thirdpartySoftwareUpgrade,
         ThirdpartySoftwareUpgradeParams.class,
         Audit.ActionType.ThirdpartySoftwareUpgrade,
@@ -295,7 +307,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.VMImageUpgradeParams",
           required = true,
           paramType = "body"))
-  public Result upgradeVMImage(UUID customerUuid, UUID universeUuid) {
+  public Result upgradeVMImage(UUID customerUuid, UUID universeUuid, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUuid);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUuid, customer);
 
@@ -307,6 +319,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
     }
 
     return requestHandler(
+        request,
         upgradeUniverseHandler::upgradeVMImage,
         VMImageUpgradeParams.class,
         Audit.ActionType.UpgradeVmImage,
@@ -334,8 +347,9 @@ public class UpgradeUniverseController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.SystemdUpgradeParams",
           required = true,
           paramType = "body"))
-  public Result upgradeSystemd(UUID customerUUID, UUID universeUUID) {
+  public Result upgradeSystemd(UUID customerUUID, UUID universeUUID, Http.Request request) {
     return requestHandler(
+        request,
         upgradeUniverseHandler::upgradeSystemd,
         SystemdUpgradeParams.class,
         Audit.ActionType.UpgradeSystemd,
@@ -362,8 +376,9 @@ public class UpgradeUniverseController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.UpgradeTaskParams",
           required = true,
           paramType = "body"))
-  public Result rebootUniverse(UUID customerUUID, UUID universeUUID) {
+  public Result rebootUniverse(UUID customerUUID, UUID universeUUID, Http.Request request) {
     return requestHandler(
+        request,
         upgradeUniverseHandler::rebootUniverse,
         UpgradeTaskParams.class,
         Audit.ActionType.RebootUniverse,
@@ -372,6 +387,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
   }
 
   private <T extends UpgradeTaskParams> Result requestHandler(
+      Request request,
       IUpgradeUniverseHandlerMethod<T> serviceMethod,
       Class<T> type,
       Audit.ActionType auditActionType,
@@ -380,14 +396,13 @@ public class UpgradeUniverseController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUuid);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUuid, customer);
     T requestParams =
-        UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
-            ctx(), request(), type, universe);
+        UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(request, type, universe);
 
     log.info(
         "Upgrade for universe {} [ {} ] customer {}.",
-        universe.name,
-        universe.universeUUID,
-        customer.uuid);
+        universe.getName(),
+        universe.getUniverseUUID(),
+        customer.getUuid());
 
     // prevent race condition in the case userIntent updates before we createAuditEntry
     UserIntent userIntent =
@@ -403,13 +418,13 @@ public class UpgradeUniverseController extends AuthenticatedController {
     }
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUuid.toString(),
             auditActionType,
-            request().body().asJson(),
+            request.body().asJson(),
             taskUuid,
             additionalDetails);
-    return new YBPTask(taskUuid, universe.universeUUID).asResult();
+    return new YBPTask(taskUuid, universe.getUniverseUUID()).asResult();
   }
 }

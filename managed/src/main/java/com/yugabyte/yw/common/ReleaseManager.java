@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.AddGFlagMetadata;
@@ -33,7 +34,6 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.nio.file.Paths;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -41,10 +41,10 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -54,7 +54,6 @@ import javax.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
-import play.Configuration;
 import play.data.validation.Constraints;
 import play.libs.Json;
 import play.mvc.Http.Status;
@@ -71,7 +70,7 @@ public class ReleaseManager {
       "yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz";
 
   private final ConfigHelper configHelper;
-  private final Configuration appConfig;
+  private final Config config;
   private final GFlagsValidation gFlagsValidation;
   private final Commissioner commissioner;
   private final AWSUtil awsUtil;
@@ -80,13 +79,13 @@ public class ReleaseManager {
   @Inject
   public ReleaseManager(
       ConfigHelper configHelper,
-      Configuration appConfig,
+      Config config,
       GFlagsValidation gFlagsValidation,
       Commissioner commissioner,
       AWSUtil awsUtil,
       GCPUtil gcpUtil) {
     this.configHelper = configHelper;
-    this.appConfig = appConfig;
+    this.config = config;
     this.gFlagsValidation = gFlagsValidation;
     this.commissioner = commissioner;
     this.awsUtil = awsUtil;
@@ -513,7 +512,7 @@ public class ReleaseManager {
     try {
       Path chartPath =
           Paths.get(
-              appConfig.getString("yb.releases.path"),
+              config.getString("yb.releases.path"),
               version,
               String.format("yugabyte-%s-helm.tar.gz", version));
       String checksum = null;
@@ -531,7 +530,9 @@ public class ReleaseManager {
         checksum = metadata.gcs.paths.helmChartChecksum;
       } else if (metadata.http != null && metadata.http.paths.helmChart != null) {
         int timeoutMs =
-            this.appConfig.getMilliseconds(DOWNLOAD_HEML_CHART_HTTP_TIMEOUT_PATH).intValue();
+            (int)
+                this.config.getDuration(
+                    DOWNLOAD_HEML_CHART_HTTP_TIMEOUT_PATH, TimeUnit.MILLISECONDS);
         org.apache.commons.io.FileUtils.copyURLToFile(
             new URL(metadata.http.paths.helmChart), chartPath.toFile(), timeoutMs, timeoutMs);
         checksum = metadata.http.paths.helmChartChecksum;
@@ -584,7 +585,7 @@ public class ReleaseManager {
 
   public synchronized void removeRelease(String version) {
     Map<String, Object> currentReleases = getReleaseMetadata();
-    String ybReleasesPath = appConfig.getString("yb.releases.path");
+    String ybReleasesPath = config.getString("yb.releases.path");
     if (currentReleases.containsKey(version)) {
       log.info("Removing release version {}", version);
       currentReleases.remove(version);
@@ -597,9 +598,9 @@ public class ReleaseManager {
   }
 
   public synchronized void importLocalReleases() {
-    String ybReleasesPath = appConfig.getString("yb.releases.path");
-    String ybReleasePath = appConfig.getString("yb.docker.release");
-    String ybHelmChartPath = appConfig.getString("yb.helm.packagePath");
+    String ybReleasesPath = config.getString("yb.releases.path");
+    String ybReleasePath = config.getString("yb.docker.release");
+    String ybHelmChartPath = config.getString("yb.helm.packagePath");
     if (ybReleasesPath != null && !ybReleasesPath.isEmpty()) {
       Map<String, Object> currentReleases = getReleaseMetadata();
 
@@ -734,8 +735,8 @@ public class ReleaseManager {
     }
 
     log.info("Starting ybc local releases");
-    String ybcReleasesPath = appConfig.getString("ybc.releases.path");
-    String ybcReleasePath = appConfig.getString("ybc.docker.release");
+    String ybcReleasesPath = config.getString("ybc.releases.path");
+    String ybcReleasePath = config.getString("ybc.docker.release");
     log.info("ybcReleasesPath: " + ybcReleasesPath);
     log.info("ybcReleasePath: " + ybcReleasePath);
     if (ybcReleasesPath != null && !ybcReleasesPath.isEmpty()) {
@@ -884,7 +885,7 @@ public class ReleaseManager {
     try {
       List<String> missingGFlagsFilesList = gFlagsValidation.getMissingGFlagFileList(version);
       if (missingGFlagsFilesList.size() != 0) {
-        String releasesPath = appConfig.getString(Util.YB_RELEASES_PATH);
+        String releasesPath = config.getString(Util.YB_RELEASES_PATH);
         if (isLocalRelease(releaseMetadata)) {
           try (InputStream inputStream = getTarGZipDBPackageInputStream(version, releaseMetadata)) {
             gFlagsValidation.fetchGFlagFilesFromTarGZipInputStream(

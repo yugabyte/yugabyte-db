@@ -13,9 +13,8 @@ import com.yugabyte.yw.models.Customer;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnitRunner;
 import org.mockito.Mockito;
-import play.api.Play;
+import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class SetUniverseKeyTest extends FakeDBApplication {
@@ -30,15 +29,15 @@ public class SetUniverseKeyTest extends FakeDBApplication {
 
   @Test
   public void testCustomerError() {
-    SetUniverseKey task = Play.current().injector().instanceOf(SetUniverseKey.class);
+    SetUniverseKey task = app.injector().instanceOf(SetUniverseKey.class);
     Exception customerTaskException = new RuntimeException();
     Mockito.doThrow(customerTaskException).when(task).setCustomerUniverseKeys(any());
     Mockito.doCallRealMethod().when(task).scheduleRunner();
     task.scheduleRunner();
     // Ensure that the task runs for each customer even though they both error out
     verify(task, times(2)).setCustomerUniverseKeys(any());
-    verify(task, times(1)).handleCustomerError(eq(customer1.uuid), eq(customerTaskException));
-    verify(task, times(1)).handleCustomerError(eq(customer2.uuid), eq(customerTaskException));
+    verify(task, times(1)).handleCustomerError(eq(customer1.getUuid()), eq(customerTaskException));
+    verify(task, times(1)).handleCustomerError(eq(customer2.getUuid()), eq(customerTaskException));
     verify(task, times(0)).setUniverseKey(any());
   }
 }

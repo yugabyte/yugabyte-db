@@ -33,19 +33,20 @@ public class DeleteCustomerStorageConfigTest extends FakeDBApplication {
     UUID universeUUID = UUID.randomUUID();
     CustomerConfig s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST1");
     Backup backup =
-        ModelFactory.createBackup(defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), universeUUID, s3StorageConfig.configUUID);
     backup.transitionState(BackupState.Completed);
     DeleteCustomerStorageConfig deleteCustomerStorageConfigTask =
         AbstractTaskBase.createTask(DeleteCustomerStorageConfig.class);
     DeleteCustomerStorageConfig.Params params = new DeleteCustomerStorageConfig.Params();
-    params.customerUUID = defaultCustomer.uuid;
+    params.customerUUID = defaultCustomer.getUuid();
     params.configUUID = s3StorageConfig.configUUID;
     params.isDeleteBackups = true;
     deleteCustomerStorageConfigTask.initialize(params);
     deleteCustomerStorageConfigTask.run();
     backup.refresh();
     s3StorageConfig.refresh();
-    assertEquals(BackupState.QueuedForDeletion, backup.state);
+    assertEquals(BackupState.QueuedForDeletion, backup.getState());
     assertEquals(ConfigState.QueuedForDeletion, s3StorageConfig.getState());
   }
 
@@ -54,11 +55,12 @@ public class DeleteCustomerStorageConfigTest extends FakeDBApplication {
     UUID universeUUID = UUID.randomUUID();
     CustomerConfig s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST2");
     Backup backup =
-        ModelFactory.createBackup(defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), universeUUID, s3StorageConfig.configUUID);
     DeleteCustomerStorageConfig deleteCustomerStorageConfigTask =
         AbstractTaskBase.createTask(DeleteCustomerStorageConfig.class);
     DeleteCustomerStorageConfig.Params params = new DeleteCustomerStorageConfig.Params();
-    params.customerUUID = defaultCustomer.uuid;
+    params.customerUUID = defaultCustomer.getUuid();
     params.configUUID = s3StorageConfig.configUUID;
     params.isDeleteBackups = false;
     deleteCustomerStorageConfigTask.initialize(params);
@@ -72,19 +74,20 @@ public class DeleteCustomerStorageConfigTest extends FakeDBApplication {
     UUID universeUUID = UUID.randomUUID();
     CustomerConfig s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST2");
     Backup backup =
-        ModelFactory.createBackup(defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), universeUUID, s3StorageConfig.configUUID);
     backup.transitionState(BackupState.Completed);
     DeleteCustomerStorageConfig deleteCustomerStorageConfigTask =
         AbstractTaskBase.createTask(DeleteCustomerStorageConfig.class);
     DeleteCustomerStorageConfig.Params params = new DeleteCustomerStorageConfig.Params();
-    params.customerUUID = defaultCustomer.uuid;
+    params.customerUUID = defaultCustomer.getUuid();
     params.configUUID = s3StorageConfig.configUUID;
     params.isDeleteBackups = true;
     deleteCustomerStorageConfigTask.initialize(params);
     deleteCustomerStorageConfigTask.run();
     backup.refresh();
     s3StorageConfig.refresh();
-    assertEquals(BackupState.QueuedForDeletion, backup.state);
+    assertEquals(BackupState.QueuedForDeletion, backup.getState());
     assertEquals(ConfigState.QueuedForDeletion, s3StorageConfig.getState());
   }
 
@@ -94,14 +97,15 @@ public class DeleteCustomerStorageConfigTest extends FakeDBApplication {
     CustomerConfig s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST3");
     Schedule schedule =
         ModelFactory.createScheduleBackup(
-            defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(), universeUUID, s3StorageConfig.configUUID);
     Backup backup =
-        ModelFactory.createBackup(defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), universeUUID, s3StorageConfig.configUUID);
     backup.transitionState(BackupState.Completed);
     DeleteCustomerStorageConfig deleteCustomerStorageConfigTask =
         AbstractTaskBase.createTask(DeleteCustomerStorageConfig.class);
     DeleteCustomerStorageConfig.Params params = new DeleteCustomerStorageConfig.Params();
-    params.customerUUID = defaultCustomer.uuid;
+    params.customerUUID = defaultCustomer.getUuid();
     params.configUUID = s3StorageConfig.configUUID;
     params.isDeleteBackups = true;
     deleteCustomerStorageConfigTask.initialize(params);
@@ -109,7 +113,7 @@ public class DeleteCustomerStorageConfigTest extends FakeDBApplication {
     backup.refresh();
     s3StorageConfig.refresh();
     schedule.refresh();
-    assertEquals(BackupState.QueuedForDeletion, backup.state);
+    assertEquals(BackupState.QueuedForDeletion, backup.getState());
     assertEquals(ConfigState.QueuedForDeletion, s3StorageConfig.getState());
     assertEquals(Schedule.State.Stopped, schedule.getStatus());
   }
@@ -120,7 +124,7 @@ public class DeleteCustomerStorageConfigTest extends FakeDBApplication {
     DeleteCustomerStorageConfig deleteCustomerStorageConfigTask =
         AbstractTaskBase.createTask(DeleteCustomerStorageConfig.class);
     DeleteCustomerStorageConfig.Params params = new DeleteCustomerStorageConfig.Params();
-    params.customerUUID = defaultCustomer.uuid;
+    params.customerUUID = defaultCustomer.getUuid();
     params.configUUID = invalidStorageConfigUUID;
     params.isDeleteBackups = true;
     deleteCustomerStorageConfigTask.initialize(params);
@@ -134,11 +138,12 @@ public class DeleteCustomerStorageConfigTest extends FakeDBApplication {
     UUID universeUUID = UUID.randomUUID();
     CustomerConfig s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST2");
     Backup backup =
-        ModelFactory.createBackup(defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), universeUUID, s3StorageConfig.configUUID);
     DeleteCustomerStorageConfig deleteCustomerStorageConfigTask =
         AbstractTaskBase.createTask(DeleteCustomerStorageConfig.class);
     DeleteCustomerStorageConfig.Params params = new DeleteCustomerStorageConfig.Params();
-    params.customerUUID = defaultCustomer.uuid;
+    params.customerUUID = defaultCustomer.getUuid();
     params.configUUID = s3StorageConfig.configUUID;
     params.isDeleteBackups = true;
     deleteCustomerStorageConfigTask.initialize(params);

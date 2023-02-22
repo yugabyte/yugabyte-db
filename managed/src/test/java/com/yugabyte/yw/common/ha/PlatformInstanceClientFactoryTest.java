@@ -149,7 +149,7 @@ public class PlatformInstanceClientFactoryTest extends FakeDBApplication {
 
   private void setConfigKey(String k, String v) {
     Http.RequestBuilder request =
-        fakeRequest("PUT", String.format(KEY, customer.uuid, GLOBAL_SCOPE_UUID, k))
+        fakeRequest("PUT", String.format(KEY, customer.getUuid(), GLOBAL_SCOPE_UUID, k))
             .header("X-AUTH-TOKEN", authToken)
             .header("content-type", "text/plain")
             .bodyText(v);

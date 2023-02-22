@@ -86,9 +86,13 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     keyInfo.vaultFile = "/path/to/vault_file";
     keyInfo.vaultPasswordFile = "/path/to/vault_password";
     keyInfo.sshPort = 22;
-    AccessKey.create(provider.uuid, "access-code1", keyInfo);
+    AccessKey.create(provider.getUuid(), "access-code1", keyInfo);
     InstanceType.upsert(
-        provider.uuid, "c5.xlarge", 1 /* cores */, 2.0 /* mem in GB */, new InstanceTypeDetails());
+        provider.getUuid(),
+        "c5.xlarge",
+        1 /* cores */,
+        2.0 /* mem in GB */,
+        new InstanceTypeDetails());
     ShellResponse response = ShellResponse.create(0, "{}");
     when(mockShellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
         .thenReturn(response);
@@ -97,23 +101,24 @@ public class NodeAgentControllerTest extends FakeDBApplication {
   private Result registerNodeAgent(NodeAgentForm formData) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody(
         "POST",
-        "/api/customers/" + customer.uuid + "/node_agents",
+        "/api/customers/" + customer.getUuid() + "/node_agents",
         user.createAuthToken(),
         Json.toJson(formData));
   }
 
   private Result getNodeAgent(UUID nodeAgentUuid, String jwt) {
     return FakeApiHelper.doRequestWithJWT(
-        "GET", "/api/customers/" + customer.uuid + "/node_agents/" + nodeAgentUuid, jwt);
+        "GET", "/api/customers/" + customer.getUuid() + "/node_agents/" + nodeAgentUuid, jwt);
   }
 
   private Result updateNodeState(UUID nodeAgentUuid, NodeAgentForm formData, String jwt) {
-    String uri = "/api/customers/" + customer.uuid + "/node_agents/" + nodeAgentUuid + "/state";
+    String uri =
+        "/api/customers/" + customer.getUuid() + "/node_agents/" + nodeAgentUuid + "/state";
     return FakeApiHelper.doRequestWithJWTAndBody("PUT", uri, jwt, Json.toJson(formData));
   }
 
   private Result createNode(UUID zoneUuid, NodeInstanceData details, String jwt) {
-    String uri = "/api/customers/" + customer.uuid + "/zones/" + zoneUuid + "/nodes";
+    String uri = "/api/customers/" + customer.getUuid() + "/zones/" + zoneUuid + "/nodes";
     NodeInstanceFormData formData = new NodeInstanceFormData();
     formData.nodes = Lists.newArrayList(details);
     return FakeApiHelper.doRequestWithJWTAndBody("POST", uri, jwt, Json.toJson(formData));
@@ -121,7 +126,7 @@ public class NodeAgentControllerTest extends FakeDBApplication {
 
   private Result unregisterNodeAgent(UUID nodeAgentUuid, String jwt) {
     return FakeApiHelper.doRequestWithJWT(
-        "DELETE", "/api/customers/" + customer.uuid + "/node_agents/" + nodeAgentUuid, jwt);
+        "DELETE", "/api/customers/" + customer.getUuid() + "/node_agents/" + nodeAgentUuid, jwt);
   }
 
   @Test
@@ -137,11 +142,11 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     Result result = registerNodeAgent(formData);
     assertOk(result);
     NodeAgent nodeAgent = Json.fromJson(Json.parse(contentAsString(result)), NodeAgent.class);
-    assertNotNull(nodeAgent.uuid);
-    UUID nodeAgentUuid = nodeAgent.uuid;
-    nodeAgent = NodeAgent.getOrBadRequest(customer.uuid, nodeAgentUuid);
-    assertEquals(State.REGISTERING, nodeAgent.state);
-    String jwt = nodeAgentManager.getClientToken(nodeAgentUuid, user.uuid);
+    assertNotNull(nodeAgent.getUuid());
+    UUID nodeAgentUuid = nodeAgent.getUuid();
+    nodeAgent = NodeAgent.getOrBadRequest(customer.getUuid(), nodeAgentUuid);
+    assertEquals(State.REGISTERING, nodeAgent.getState());
+    String jwt = nodeAgentManager.getClientToken(nodeAgentUuid, user.getUuid());
     result = assertPlatformException(() -> registerNodeAgent(formData));
     assertBadRequest(result, "Node agent is already registered");
     result = getNodeAgent(nodeAgentUuid, jwt);
@@ -150,17 +155,17 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     formData.state = State.READY.name();
     result = updateNodeState(nodeAgentUuid, formData, jwt);
     assertOk(result);
-    nodeAgent = NodeAgent.getOrBadRequest(customer.uuid, nodeAgentUuid);
-    assertEquals(State.READY, nodeAgent.state);
+    nodeAgent = NodeAgent.getOrBadRequest(customer.getUuid(), nodeAgentUuid);
+    assertEquals(State.READY, nodeAgent.getState());
     NodeInstanceData testNode = new NodeInstanceData();
     testNode.ip = "10.20.30.40";
-    testNode.region = region.code;
-    testNode.zone = zone.code;
+    testNode.region = region.getCode();
+    testNode.zone = zone.getCode();
     testNode.instanceType = "c5.xlarge";
     testNode.sshUser = "ssh-user";
     // Accepted value for NTP_SERVICE_STATUS is "running".
     testNode.nodeConfigs = getTestNodeConfigsSet();
-    result = createNode(zone.uuid, testNode, jwt);
+    result = createNode(zone.getUuid(), testNode, jwt);
     assertOk(result);
 
     NodeConfig pamNode =
@@ -174,7 +179,7 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     testNode.nodeConfigs.remove(pamNode);
     testNode.nodeConfigs.add(errCheck);
     // Set an unaccepted value.
-    result = assertPlatformException(() -> createNode(zone.uuid, testNode, jwt));
+    result = assertPlatformException(() -> createNode(zone.getUuid(), testNode, jwt));
     // Missing preflight checks should return an error
     assertEquals(result.status(), BAD_REQUEST);
     result = unregisterNodeAgent(nodeAgentUuid, jwt);

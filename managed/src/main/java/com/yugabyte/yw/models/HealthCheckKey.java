@@ -7,38 +7,19 @@ import java.util.Date;
 import java.util.UUID;
 import javax.persistence.Embeddable;
 import javax.persistence.Entity;
+import lombok.Data;
 
 @Entity
 @Embeddable
+@Data
 public class HealthCheckKey implements Serializable {
-  public UUID universeUUID;
-  public Date checkTime;
-
-  @Override
-  public boolean equals(Object object) {
-    if (object instanceof HealthCheckKey) {
-      HealthCheckKey key = (HealthCheckKey) object;
-      if (this.universeUUID.equals(key.universeUUID) && this.checkTime.equals(key.checkTime)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  @Override
-  public int hashCode() {
-    return universeUUID.hashCode() + checkTime.hashCode();
-  }
+  private UUID universeUUID;
+  private Date checkTime;
 
   public static HealthCheckKey create(UUID universeUUID) {
     HealthCheckKey key = new HealthCheckKey();
-    key.universeUUID = universeUUID;
-    key.checkTime = new Date();
+    key.setUniverseUUID(universeUUID);
+    key.setCheckTime(new Date());
     return key;
-  }
-
-  @Override
-  public String toString() {
-    return universeUUID + ":" + checkTime;
   }
 }

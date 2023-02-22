@@ -3,8 +3,6 @@
 package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.models.CustomerTask.TargetType;
-import com.yugabyte.yw.models.Restore;
-import com.yugabyte.yw.models.RestoreKeyspace;
 import static io.ebean.Ebean.beginTransaction;
 import static io.ebean.Ebean.commitTransaction;
 import static io.ebean.Ebean.endTransaction;
@@ -12,17 +10,16 @@ import static io.ebean.Ebean.endTransaction;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
-import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.common.BackupUtil;
-import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Restore;
+import com.yugabyte.yw.models.RestoreKeyspace;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -37,14 +34,12 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import java.time.Duration;
-import javax.inject.Singleton;
 import javax.inject.Inject;
+import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ChangeLoadBalancerStateResponse;
 import org.yb.client.YBClient;
-import play.api.Play;
 import play.libs.Json;
 
 @Singleton
@@ -109,7 +104,7 @@ public class CustomerTaskManager {
       UUID taskUUID = taskInfo.getTaskUUID();
       ScheduleTask scheduleTask = ScheduleTask.fetchByTaskUUID(taskUUID);
       if (scheduleTask != null) {
-        scheduleTask.setCompletedTime();
+        scheduleTask.setCompleted();
       }
 
       // Use isUniverseTarget() instead of directly comparing with Universe type because some
@@ -129,8 +124,8 @@ public class CustomerTaskManager {
                   .stream()
                   .filter(
                       backup ->
-                          backup.state.equals(Backup.BackupState.InProgress)
-                              || backup.state.equals(Backup.BackupState.Stopped))
+                          backup.getState().equals(Backup.BackupState.InProgress)
+                              || backup.getState().equals(Backup.BackupState.Stopped))
                   .collect(Collectors.groupingBy(Backup::getBackupCategory));
 
           backupCategoryMap
@@ -248,7 +243,7 @@ public class CustomerTaskManager {
           UUID newTaskUUID = commissioner.submit(taskType, taskParams);
           beginTransaction();
           try {
-            customerTask.setTaskUUID(newTaskUUID);
+            customerTask.assignTaskUUID(newTaskUUID);
             customerTask.resetCompletionTime();
             TaskInfo task = TaskInfo.get(taskUUID);
             if (task != null) {

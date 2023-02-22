@@ -19,14 +19,12 @@ import com.yugabyte.yw.models.common.YBADeprecated;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
-
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Encrypted;
 import io.swagger.annotations.ApiModelProperty;
-
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +32,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import javax.persistence.CascadeType;
-import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.OneToMany;
@@ -42,12 +39,16 @@ import javax.persistence.Table;
 import javax.persistence.Transient;
 import javax.persistence.UniqueConstraint;
 import javax.persistence.Version;
+import lombok.Getter;
+import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 
 @Table(uniqueConstraints = @UniqueConstraint(columnNames = {"customer_uuid", "name", "code"}))
 @Entity
+@Getter
+@Setter
 public class Provider extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Provider.class);
   private static final String TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST =
@@ -55,31 +56,27 @@ public class Provider extends Model {
 
   @ApiModelProperty(value = "Provider uuid", accessMode = READ_ONLY)
   @Id
-  public UUID uuid;
+  private UUID uuid;
 
   // TODO: Use Enum
-  @Column(nullable = false)
   @ApiModelProperty(value = "Provider cloud code", accessMode = READ_WRITE)
   @Constraints.Required()
-  public String code;
+  private String code;
 
   @JsonIgnore
   public CloudType getCloudCode() {
     return CloudType.valueOf(this.code);
   }
 
-  @Column(nullable = false)
   @ApiModelProperty(value = "Provider name", accessMode = READ_WRITE)
   @Constraints.Required()
-  public String name;
+  private String name;
 
-  @Column(nullable = false, columnDefinition = "boolean default true")
   @ApiModelProperty(value = "Provider active status", accessMode = READ_ONLY)
-  public Boolean active = true;
+  private Boolean active = true;
 
-  @Column(name = "customer_uuid", nullable = false)
   @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
-  public UUID customerUUID;
+  private UUID customerUUID;
 
   public static final Set<Common.CloudType> InstanceTagsEnabledProviders =
       ImmutableSet.of(Common.CloudType.aws, Common.CloudType.azu, Common.CloudType.gcp);
@@ -96,19 +93,16 @@ public class Provider extends Model {
       value =
           "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
               + "Use details.metadata instead")
-  @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   @Encrypted
-  public Map<String, String> config;
+  @Deprecated
+  private Map<String, String> config;
 
-  @Column(nullable = false, columnDefinition = "TEXT")
-  @DbJson
-  @Encrypted
-  public ProviderDetails details = new ProviderDetails();
+  @DbJson @Encrypted private ProviderDetails details = new ProviderDetails();
 
   @OneToMany(cascade = CascadeType.ALL)
   @JsonManagedReference(value = "provider-regions")
-  public List<Region> regions;
+  private List<Region> regions;
 
   @ApiModelProperty(required = false)
   @OneToMany(cascade = CascadeType.ALL)
@@ -117,11 +111,11 @@ public class Provider extends Model {
 
   @JsonIgnore
   @OneToMany(mappedBy = "provider", cascade = CascadeType.ALL)
-  public Set<InstanceType> instanceTypes;
+  private Set<InstanceType> instanceTypes;
 
   @JsonIgnore
   @OneToMany(mappedBy = "provider", cascade = CascadeType.ALL)
-  public Set<PriceComponent> priceComponents;
+  private Set<PriceComponent> priceComponents;
 
   // Start Transient Properties
   // TODO: These are all transient fields for now. At present these are stored
@@ -136,7 +130,7 @@ public class Provider extends Model {
       value =
           "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
               + "Use allAccessKeys[0].keyInfo.keyPairName instead")
-  public String keyPairName = null;
+  private String keyPairName = null;
 
   // Custom SSH private key component.
   // Default: created and managed by YB.
@@ -146,7 +140,7 @@ public class Provider extends Model {
       value =
           "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
               + "Use allAccessKeys[0].keyInfo.sshPrivateKeyContent instead")
-  public String sshPrivateKeyContent = null;
+  private String sshPrivateKeyContent = null;
 
   @Deprecated
   @JsonProperty("keyPairName")
@@ -184,7 +178,7 @@ public class Provider extends Model {
       value =
           "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
               + "Use details.SshUser instead")
-  public String sshUser = null;
+  private String sshUser = null;
 
   // Custom SSH user to login to machines.
   // Default: created and managed by YB.
@@ -199,7 +193,7 @@ public class Provider extends Model {
       value =
           "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
               + "Use details.SshPort instead")
-  public Integer sshPort = 22;
+  private Integer sshPort = 22;
 
   public void setSshPort(Integer sshPort) {
     this.details.sshPort = sshPort;
@@ -213,7 +207,7 @@ public class Provider extends Model {
       value =
           "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
               + "Use details.airGapInstall")
-  public boolean airGapInstall = false;
+  private boolean airGapInstall = false;
 
   // Whether provider should use airgapped install. Default: false.
   public void setAirGapInstall(boolean v) {
@@ -262,22 +256,12 @@ public class Provider extends Model {
   @Deprecated
   @Transient
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
-  public String hostedZoneId = null;
+  private String hostedZoneId = null;
 
   // End Transient Properties
-
-  @Column(nullable = false)
   @Version
   @ApiModelProperty(value = "Provider version", accessMode = READ_ONLY)
   private long version;
-
-  public long getVersion() {
-    return version;
-  }
-
-  public void setVersion(long version) {
-    this.version = version;
-  }
 
   @Deprecated
   @JsonProperty("config")
@@ -539,14 +523,14 @@ public class Provider extends Model {
     }
 
     for (Region r : regions) {
-      List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(r.uuid);
+      List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(r.getUuid());
       if (zones.isEmpty()) {
         continue;
       }
       PerRegionMetadata regionData = new PerRegionMetadata();
       // For GCP, a subnet is assigned to each region, so we only need the first zone's subnet.
-      regionData.subnetId = zones.get(0).subnet;
-      newParams.perRegionMetadata.put(r.code, regionData);
+      regionData.subnetId = zones.get(0).getSubnet();
+      newParams.perRegionMetadata.put(r.getCode(), regionData);
     }
     return newParams;
   }

@@ -8,13 +8,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Matchers.anyList;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.eq;
+
 import com.google.common.collect.ImmutableList;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -29,7 +28,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.runners.MockitoJUnitRunner;
@@ -43,7 +41,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
 
   ShellKubernetesManager kubernetesManager;
 
-  @Mock play.Configuration mockAppConfig;
+  @Mock Config mockAppConfig;
 
   Provider defaultProvider;
   Customer defaultCustomer;
@@ -93,17 +91,17 @@ public class KubernetesManagerTest extends FakeDBApplication {
     switch (commandType) {
       case HELM_INSTALL:
         kubernetesManager.helmInstall(
-            universe.universeUUID,
+            universe.getUniverseUUID(),
             ybSoftwareVersion,
             configProvider,
-            defaultProvider.uuid,
+            defaultProvider.getUuid(),
             "demo-universe",
             "demo-namespace",
             "/tmp/override.yml");
         break;
       case HELM_UPGRADE:
         kubernetesManager.helmUpgrade(
-            universe.universeUUID,
+            universe.getUniverseUUID(),
             ybSoftwareVersion,
             configProvider,
             "demo-universe",

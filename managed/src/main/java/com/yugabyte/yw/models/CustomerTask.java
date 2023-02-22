@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.models;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.google.api.client.util.Strings;
 import com.google.common.annotations.VisibleForTesting;
@@ -15,34 +18,31 @@ import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.slf4j.MDC;
-
-import javax.annotation.Nullable;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
 import java.lang.reflect.Field;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import lombok.Getter;
+import lombok.Setter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import play.data.validation.Constraints;
-import play.mvc.Http.Context;
-
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 @ApiModel(
     description = "Customer task information. A customer task has a _target_ and a _task type_.")
+@Getter
+@Setter
 public class CustomerTask extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTask.class);
 
@@ -457,72 +457,41 @@ public class CustomerTask extends Model {
   @ApiModelProperty(value = "Customer task UUID", accessMode = READ_ONLY)
   private Long id;
 
-  public Long getId() {
-    return id;
-  }
-
   @Constraints.Required
-  @Column(nullable = false)
   @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY, required = true)
   private UUID customerUUID;
 
-  public UUID getCustomerUUID() {
-    return customerUUID;
-  }
-
   @Constraints.Required
-  @Column(nullable = false)
   @ApiModelProperty(value = "Task UUID", accessMode = READ_ONLY, required = true)
   private UUID taskUUID;
 
-  public UUID getTaskUUID() {
-    return taskUUID;
-  }
-
-  public CustomerTask setTaskUUID(UUID newTaskUUID) {
+  public CustomerTask assignTaskUUID(UUID newTaskUUID) {
     this.taskUUID = newTaskUUID;
     save();
     return this;
   }
 
   @Constraints.Required
-  @Column(nullable = false)
   @ApiModelProperty(value = "Task type", accessMode = READ_ONLY, required = true)
   private TaskType type;
 
-  public TaskType getType() {
-    return type;
-  }
-
   @Constraints.Required
-  @Column(nullable = false)
   @ApiModelProperty(value = "Task target type", accessMode = READ_ONLY, required = true)
   private TargetType targetType;
 
   public TargetType getTarget() {
-    return targetType;
+    return getTargetType();
   }
 
   @Constraints.Required
-  @Column(nullable = false)
   @ApiModelProperty(value = "Task target name", accessMode = READ_ONLY, required = true)
   private String targetName;
 
-  public String getTargetName() {
-    return targetName;
-  }
-
   @Constraints.Required
-  @Column(nullable = false)
   @ApiModelProperty(value = "Task target UUID", accessMode = READ_ONLY, required = true)
   private UUID targetUUID;
 
-  public UUID getTargetUUID() {
-    return targetUUID;
-  }
-
   @Constraints.Required
-  @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   @ApiModelProperty(
       value = "Creation time",
@@ -531,11 +500,6 @@ public class CustomerTask extends Model {
       required = true)
   private Date createTime;
 
-  public Date getCreateTime() {
-    return createTime;
-  }
-
-  @Column
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   @ApiModelProperty(
       value = "Completion time (present only if a task has completed)",
@@ -543,44 +507,25 @@ public class CustomerTask extends Model {
       example = "2021-06-17T15:00:05-0400")
   private Date completionTime;
 
-  public Date getCompletionTime() {
-    return completionTime;
-  }
-
   public void resetCompletionTime() {
-    this.completionTime = null;
+    this.setCompletionTime(null);
     this.save();
   }
 
-  @Column
   @ApiModelProperty(value = "Custom type name", accessMode = READ_ONLY, example = "TLS Toggle ON")
   private String customTypeName;
 
-  public String getCustomTypeName() {
-    return customTypeName;
-  }
-
-  @Column
   @ApiModelProperty(
       value = "Correlation id",
       accessMode = READ_ONLY,
       example = "3e6ac43a-15d9-46c0-831c-460775ce87ad")
   private String correlationId;
 
-  public String getCorrelationId() {
-    return correlationId;
-  }
-
-  @Column
   @ApiModelProperty(
       value = "User triggering task",
       accessMode = READ_ONLY,
       example = "shagarwal@yugabyte.com")
   private String userEmail;
-
-  public String getUserEmail() {
-    return userEmail;
-  }
 
   public void markAsCompleted() {
     markAsCompleted(new Date());
@@ -588,8 +533,8 @@ public class CustomerTask extends Model {
 
   @VisibleForTesting
   void markAsCompleted(Date completionTime) {
-    if (this.completionTime == null) {
-      this.completionTime = completionTime;
+    if (this.getCompletionTime() == null) {
+      this.setCompletionTime(completionTime);
       this.save();
     }
   }
@@ -606,23 +551,23 @@ public class CustomerTask extends Model {
       String targetName,
       @Nullable String customTypeName) {
     CustomerTask th = new CustomerTask();
-    th.customerUUID = customer.uuid;
-    th.targetUUID = targetUUID;
-    th.taskUUID = taskUUID;
-    th.targetType = targetType;
-    th.type = type;
-    th.targetName = targetName;
-    th.createTime = new Date();
-    th.customTypeName = customTypeName;
-    String emailFromContext = Util.maybeGetEmailFromContext(Context.current.get());
+    th.setCustomerUUID(customer.getUuid());
+    th.setTargetUUID(targetUUID);
+    th.setTaskUUID(taskUUID);
+    th.setTargetType(targetType);
+    th.setType(type);
+    th.setTargetName(targetName);
+    th.setCreateTime(new Date());
+    th.setCustomTypeName(customTypeName);
+    String emailFromContext = Util.maybeGetEmailFromContext();
     if (emailFromContext.equals("Unknown")) {
       // When task is not created as a part of user action get email of the scheduler.
-      th.userEmail = maybeGetEmailFromSchedule();
+      th.setUserEmail(maybeGetEmailFromSchedule());
     } else {
-      th.userEmail = emailFromContext;
+      th.setUserEmail(emailFromContext);
     }
     String correlationId = (String) MDC.get(LogUtil.CORRELATION_ID);
-    if (!Strings.isNullOrEmpty(correlationId)) th.correlationId = correlationId;
+    if (!Strings.isNullOrEmpty(correlationId)) th.setCorrelationId(correlationId);
     th.save();
     return th;
   }
@@ -661,9 +606,9 @@ public class CustomerTask extends Model {
 
   public String getFriendlyDescription() {
     StringBuilder sb = new StringBuilder();
-    sb.append(type.toString(completionTime != null));
-    sb.append(targetType.name());
-    sb.append(" : ").append(targetName);
+    sb.append(getType().toString(getCompletionTime() != null));
+    sb.append(getTargetType().name());
+    sb.append(" : ").append(getTargetName());
     return sb.toString();
   }
 
@@ -679,13 +624,13 @@ public class CustomerTask extends Model {
   @Transactional
   public int cascadeDeleteCompleted() {
     Preconditions.checkNotNull(
-        completionTime, String.format("CustomerTask %s has not completed", id));
-    TaskInfo rootTaskInfo = TaskInfo.get(taskUUID);
+        getCompletionTime(), String.format("CustomerTask %s has not completed", getId()));
+    TaskInfo rootTaskInfo = TaskInfo.get(getTaskUUID());
     if (!rootTaskInfo.hasCompleted()) {
       LOG.warn(
           "Completed CustomerTask(id:{}, type:{}) has incomplete task_info {}",
-          id,
-          type,
+          getId(),
+          getType(),
           rootTaskInfo);
       return 0;
     }
@@ -695,7 +640,7 @@ public class CustomerTask extends Model {
     if (rootTaskInfo.getTaskState() == TaskInfo.State.Success && !incompleteSubTasks.isEmpty()) {
       LOG.warn(
           "For a customer_task.id: {}, Successful task_info.uuid ({}) has {} incomplete subtasks {}",
-          id,
+          getId(),
           rootTaskInfo.getTaskUUID(),
           incompleteSubTasks.size(),
           incompleteSubTasks);
@@ -716,7 +661,7 @@ public class CustomerTask extends Model {
     Date cutoffDate = new Date(Instant.now().minus(duration).toEpochMilli());
     return find.query()
         .where()
-        .eq("customerUUID", customer.uuid)
+        .eq("customerUUID", customer.getUuid())
         .le("completion_time", cutoffDate)
         .findList();
   }
@@ -743,7 +688,7 @@ public class CustomerTask extends Model {
 
   public String getNotificationTargetName() {
     if (getType().equals(TaskType.Create) && getTarget().equals(TargetType.Backup)) {
-      return Universe.getOrBadRequest(getTargetUUID()).name;
+      return Universe.getOrBadRequest(getTargetUUID()).getName();
     } else {
       return getTargetName();
     }
@@ -752,7 +697,7 @@ public class CustomerTask extends Model {
   private static String maybeGetEmailFromSchedule() {
     return Schedule.getAllActive()
         .stream()
-        .filter(Schedule::getRunningState)
+        .filter(Schedule::isRunningState)
         .findAny()
         .map(Schedule::getUserEmail)
         .orElse("Unknown");

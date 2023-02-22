@@ -37,7 +37,7 @@ public class ScopedRuntimeConfigTest extends FakeDBApplication {
   @Test
   public void testEnsureGetCascadeDelete_customerConfig() {
     ScopedRuntimeConfig.ensure(defaultCustomer);
-    UUID uuid = defaultCustomer.uuid;
+    UUID uuid = defaultCustomer.getUuid();
     ScopedRuntimeConfig config = ScopedRuntimeConfig.get(uuid);
     assertEquals(uuid, config.uuid);
     assertEquals(uuid, config.customerUUID);
@@ -51,7 +51,7 @@ public class ScopedRuntimeConfigTest extends FakeDBApplication {
   @Test
   public void testEnsureGetCascadeDelete_universeConfig() {
     ScopedRuntimeConfig.ensure(defaultUniverse);
-    UUID uuid = defaultUniverse.universeUUID;
+    UUID uuid = defaultUniverse.getUniverseUUID();
     ScopedRuntimeConfig config = ScopedRuntimeConfig.get(uuid);
     assertEquals(uuid, config.uuid);
     assertEquals(uuid, config.universeUUID);
@@ -65,7 +65,7 @@ public class ScopedRuntimeConfigTest extends FakeDBApplication {
   @Test
   public void testEnsureGetCascadeDelete_providerConfig() {
     ScopedRuntimeConfig.ensure(defaultProvider);
-    UUID uuid = defaultProvider.uuid;
+    UUID uuid = defaultProvider.getUuid();
     ScopedRuntimeConfig config = ScopedRuntimeConfig.get(uuid);
     assertEquals(uuid, config.uuid);
     assertEquals(uuid, config.providerUUID);

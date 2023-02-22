@@ -61,7 +61,7 @@ public class AlertChannelTemplateServiceTest extends FakeDBApplication {
     templateService.save(templates2);
 
     // Second customer with one channel.
-    UUID newCustomerUUID = ModelFactory.testCustomer().uuid;
+    UUID newCustomerUUID = ModelFactory.testCustomer().getUuid();
     AlertChannelTemplates otherCustomerTemplate =
         new AlertChannelTemplates()
             .setType(ChannelType.Email)

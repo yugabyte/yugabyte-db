@@ -74,7 +74,7 @@ public abstract class AbstractPlatformController extends Controller {
   @Inject private AuditService auditService;
 
   protected AuditService auditService() {
-    UserWithFeatures user = (UserWithFeatures) Http.Context.current().args.get("user");
+    UserWithFeatures user = (UserWithFeatures) RequestContext.get("user");
     if (user == null) {
       throw new IllegalStateException("Shouldn't audit unauthenticated requests!");
     }
@@ -91,13 +91,13 @@ public abstract class AbstractPlatformController extends Controller {
     this.formFactory = formFactory;
   }
 
-  protected <T> T parseJsonAndValidate(Class<T> expectedClass) {
-    return formFactory.getFormDataOrBadRequest(request().body().asJson(), expectedClass);
+  protected <T> T parseJsonAndValidate(Http.Request request, Class<T> expectedClass) {
+    return formFactory.getFormDataOrBadRequest(request.body().asJson(), expectedClass);
   }
 
-  protected <T> T parseJson(Class<T> expectedClass) {
+  protected <T> T parseJson(Http.Request request, Class<T> expectedClass) {
     try {
-      return Json.fromJson(request().body().asJson(), expectedClass);
+      return Json.fromJson(request.body().asJson(), expectedClass);
     } catch (Exception e) {
       throw new PlatformServiceException(
           BAD_REQUEST,

@@ -15,6 +15,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
@@ -32,8 +33,8 @@ import java.util.Optional;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.mvc.Controller;
 import play.mvc.Http;
+import play.mvc.Http.Request;
 
 public class UniverseYbDbAdminHandler {
   @VisibleForTesting
@@ -44,7 +45,7 @@ public class UniverseYbDbAdminHandler {
 
   @VisibleForTesting public static final String LEARN_DOMAIN_NAME = "learn.yugabyte.com";
 
-  @Inject play.Configuration appConfig;
+  @Inject Config config;
   @Inject ConfigHelper configHelper;
   @Inject RuntimeConfigFactory runtimeConfigFactory;
   @Inject YsqlQueryExecutor ysqlQueryExecutor;
@@ -52,9 +53,9 @@ public class UniverseYbDbAdminHandler {
 
   public UniverseYbDbAdminHandler() {}
 
-  private static boolean isCorrectOrigin() {
+  private static boolean isCorrectOrigin(Request request) {
     boolean correctOrigin = false;
-    Optional<String> origin = Controller.request().header(Http.HeaderNames.ORIGIN);
+    Optional<String> origin = request.header(Http.HeaderNames.ORIGIN);
     if (origin.isPresent()) {
       try {
         URI uri = new URI(origin.get());
@@ -116,15 +117,15 @@ public class UniverseYbDbAdminHandler {
   }
 
   public JsonNode validateRequestAndExecuteQuery(
-      Universe universe, RunQueryFormData runQueryFormData) {
-    String mode = appConfig.getString("yb.mode", "PLATFORM");
+      Universe universe, RunQueryFormData runQueryFormData, Request request) {
+    String mode = config.getString("yb.mode");
     if (!mode.equals("OSS")) {
       throw new PlatformServiceException(BAD_REQUEST, RUN_QUERY_ISNT_ALLOWED);
     }
 
     String securityLevel =
         (String) configHelper.getConfig(ConfigHelper.ConfigType.Security).get("level");
-    if (!isCorrectOrigin() || securityLevel == null || !securityLevel.equals("insecure")) {
+    if (!isCorrectOrigin(request) || securityLevel == null || !securityLevel.equals("insecure")) {
       throw new PlatformServiceException(BAD_REQUEST, RUN_QUERY_ISNT_ALLOWED);
     }
 

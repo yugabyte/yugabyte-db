@@ -13,7 +13,6 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
@@ -83,18 +82,18 @@ public abstract class DevopsBase {
 
     Provider provider = null;
     if (region != null) {
-      commandList.add(region.provider.code);
+      commandList.add(region.getProvider().getCode());
       commandList.add("--region");
-      commandList.add(region.code);
+      commandList.add(region.getCode());
       try {
-        Map<String, String> envConfig = CloudInfoInterface.fetchEnvVars(region.provider);
+        Map<String, String> envConfig = CloudInfoInterface.fetchEnvVars(region.getProvider());
         extraVars.putAll(envConfig);
       } catch (Exception e) {
         throw new RuntimeException("Failed to retrieve env variables for the provider!", e);
       }
     } else if (devopsCommand.providerUUID != null) {
       provider = Provider.get(devopsCommand.providerUUID);
-      commandList.add(provider.code);
+      commandList.add(provider.getCode());
       try {
         Map<String, String> envConfig = CloudInfoInterface.fetchEnvVars(provider);
         extraVars.putAll(envConfig);

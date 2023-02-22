@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import static org.mockito.Mockito.mock;
 import static play.inject.Bindings.bind;
+import static play.test.Helpers.fakeRequest;
 
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
@@ -13,6 +14,7 @@ import org.junit.After;
 import org.junit.BeforeClass;
 import org.mockito.Mockito;
 import play.inject.guice.GuiceApplicationBuilder;
+import play.mvc.Http.Request;
 import play.test.WithApplication;
 
 public abstract class PlatformGuiceApplicationBaseTest extends WithApplication {
@@ -20,6 +22,8 @@ public abstract class PlatformGuiceApplicationBaseTest extends WithApplication {
   protected QueryAlerts mockQueryAlerts;
   protected AlertsGarbageCollector mockAlertsGarbageCollector;
   protected AlertConfigurationWriter mockAlertConfigurationWriter;
+
+  protected Request fakeRequest = fakeRequest().build();
 
   protected GuiceApplicationBuilder configureApplication(GuiceApplicationBuilder builder) {
     mockHealthChecker = mock(HealthChecker.class);

@@ -147,7 +147,7 @@ public class MetaMasterController extends Controller {
 
       for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
         UUID azUUID = entry.getKey();
-        String azName = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
+        String azName = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
 
         Map<String, String> config = entry.getValue();
 
@@ -164,7 +164,7 @@ public class MetaMasterController extends Controller {
             KubernetesUtil.getHelmReleaseName(
                 isMultiAz,
                 universeDetails.nodePrefix,
-                universe.name,
+                universe.getName(),
                 azName,
                 false,
                 universeDetails.useNewHelmNamingStyle);

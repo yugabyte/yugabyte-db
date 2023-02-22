@@ -90,7 +90,7 @@ public class NetworkManagerTest extends FakeDBApplication {
     List<String> commandTypes = Arrays.asList("query", "cleanup");
     commandTypes.forEach(
         commandType -> {
-          JsonNode json = runCommand(defaultRegion.uuid, commandType, false);
+          JsonNode json = runCommand(defaultRegion.getUuid(), commandType, false);
           assertValue(json, "foo", "bar");
         });
   }
@@ -101,7 +101,7 @@ public class NetworkManagerTest extends FakeDBApplication {
     commandTypes.forEach(
         commandType -> {
           try {
-            runCommand(defaultRegion.uuid, commandType, true);
+            runCommand(defaultRegion.getUuid(), commandType, true);
           } catch (RuntimeException re) {
             assertEquals(
                 re.getMessage(),
@@ -114,7 +114,7 @@ public class NetworkManagerTest extends FakeDBApplication {
 
   @Test
   public void testBootstrapCommandWithProvider() {
-    JsonNode json = runBootstrap(null, defaultRegion.provider.uuid, "{}", false);
+    JsonNode json = runBootstrap(null, defaultRegion.getProvider().getUuid(), "{}", false);
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), cloudCredentials.capture(), anyString());
     assertEquals(
@@ -127,7 +127,7 @@ public class NetworkManagerTest extends FakeDBApplication {
   public void testGcpBootstrapCommandWithProvider() {
     Provider gcpProvider = ModelFactory.gcpProvider(ModelFactory.testCustomer());
     Region gcpRegion = Region.create(gcpProvider, "us-west1", "US West1", "yb-image");
-    JsonNode json = runBootstrap(null, gcpRegion.provider.uuid, "{}", false);
+    JsonNode json = runBootstrap(null, gcpRegion.getProvider().getUuid(), "{}", false);
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), cloudCredentials.capture(), anyString());
     assertEquals(
@@ -141,7 +141,7 @@ public class NetworkManagerTest extends FakeDBApplication {
     Provider gcpProvider = ModelFactory.gcpProvider(ModelFactory.testCustomer());
     Region gcpRegion = Region.create(gcpProvider, "us-west1", "US West1", "yb-image");
     String payload = "{\"region\": \"gcptest\"}";
-    JsonNode json = runBootstrap(null, gcpRegion.provider.uuid, payload, false);
+    JsonNode json = runBootstrap(null, gcpRegion.getProvider().getUuid(), payload, false);
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), cloudCredentials.capture(), anyString());
     assertEquals(
@@ -152,7 +152,7 @@ public class NetworkManagerTest extends FakeDBApplication {
 
   @Test
   public void testBootstrapCommandWithRegion() {
-    JsonNode json = runBootstrap(defaultRegion.uuid, null, "{}", false);
+    JsonNode json = runBootstrap(defaultRegion.getUuid(), null, "{}", false);
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), cloudCredentials.capture(), anyString());
     assertEquals(
@@ -164,7 +164,8 @@ public class NetworkManagerTest extends FakeDBApplication {
   @Test
   public void testBootstrapCommandWithRegionAndProvider() {
     // If both are provided, we first check for region and use --region if available.
-    JsonNode json = runBootstrap(defaultRegion.uuid, defaultRegion.provider.uuid, "{}", false);
+    JsonNode json =
+        runBootstrap(defaultRegion.getUuid(), defaultRegion.getProvider().getUuid(), "{}", false);
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), cloudCredentials.capture(), anyString());
     assertEquals(

@@ -3,16 +3,14 @@
 package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
-import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.file.Path;
 import java.util.List;
 import org.apache.commons.io.FileUtils;
-import play.api.Play;
+import play.inject.Injector;
 
 public interface CloudUtil extends StorageUtil {
 
@@ -38,13 +36,14 @@ public interface CloudUtil extends StorageUtil {
   }
 
   public static <T extends CloudUtil> T getCloudUtil(String configType) {
+    Injector injector = StaticInjectorHolder.injector();
     switch (configType) {
       case Util.S3:
-        return (T) Play.current().injector().instanceOf(AWSUtil.class);
+        return (T) injector.instanceOf(AWSUtil.class);
       case Util.GCS:
-        return (T) Play.current().injector().instanceOf(GCPUtil.class);
+        return (T) injector.instanceOf(GCPUtil.class);
       case Util.AZ:
-        return (T) Play.current().injector().instanceOf(AZUtil.class);
+        return (T) injector.instanceOf(AZUtil.class);
       default:
         throw new PlatformServiceException(BAD_REQUEST, "Unsupported cloud type");
     }

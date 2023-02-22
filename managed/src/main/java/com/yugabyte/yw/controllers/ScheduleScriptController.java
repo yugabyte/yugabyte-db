@@ -20,10 +20,11 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.ExternalScriptHelper;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.ExternalScriptHelper.ExternalScriptConfObject;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
 import java.io.File;
 import java.io.IOException;
@@ -41,11 +42,11 @@ public class ScheduleScriptController extends AuthenticatedController {
   @Inject SettableRuntimeConfigFactory sConfigFactory;
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
-  public Result externalScriptSchedule(UUID customerUUID, UUID universeUUID) {
+  public Result externalScriptSchedule(UUID customerUUID, UUID universeUUID, Http.Request request) {
     // Validate Access
     canAccess();
     // Extract script file, parameters and cronExpression.
-    MultipartFormData<File> body = request().body().asMultipartFormData();
+    MultipartFormData<File> body = request.body().asMultipartFormData();
     String scriptContent = extractScriptString(body);
     String scriptParam = extractScriptParam(body);
     String cronExpression = extractCronExpression(body);
@@ -55,10 +56,10 @@ public class ScheduleScriptController extends AuthenticatedController {
     RunExternalScript.Params taskParams = new RunExternalScript.Params();
     taskParams.customerUUID = customerUUID;
     taskParams.timeLimitMins = Long.toString(timeLimitMins);
-    taskParams.platformUrl = request().host();
+    taskParams.platformUrl = request.host();
     taskParams.universeUUID = universeUUID;
-    UserWithFeatures user = (UserWithFeatures) Http.Context.current().args.get("user");
-    taskParams.userUUID = user.getUser().uuid;
+    Users user = CommonUtils.getUserFromContext();
+    taskParams.userUUID = user.getUuid();
 
     // Using RuntimeConfig to save the script params because this isn't intended to be that commonly
     // used. If we start using it more commonly, we should migrate to a separate db table for these
@@ -86,7 +87,7 @@ public class ScheduleScriptController extends AuthenticatedController {
     try {
       ExternalScriptConfObject runtimeConfigObject =
           new ExternalScriptConfObject(
-              scriptContent, scriptParam, schedule.scheduleUUID.toString());
+              scriptContent, scriptParam, schedule.getScheduleUUID().toString());
       String json = mapper.writeValueAsString(runtimeConfigObject);
       config.setValue(ExternalScriptHelper.EXT_SCRIPT_RUNTIME_CONFIG_PATH, json);
     } catch (Exception e) {
@@ -95,15 +96,15 @@ public class ScheduleScriptController extends AuthenticatedController {
     }
 
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.ScheduledScript,
-            Objects.toString(schedule.scheduleUUID, null),
+            Objects.toString(schedule.getScheduleUUID(), null),
             Audit.ActionType.ExternalScriptSchedule);
     return PlatformResults.withData(schedule);
   }
 
-  public Result stopScheduledScript(UUID customerUUID, UUID universeUUID) {
+  public Result stopScheduledScript(UUID customerUUID, UUID universeUUID, Http.Request request) {
     // Validate Access
     canAccess();
     // Validate Customer
@@ -132,19 +133,19 @@ public class ScheduleScriptController extends AuthenticatedController {
     schedule.stopSchedule();
 
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.ScheduledScript,
-            Objects.toString(schedule.scheduleUUID, null),
+            Objects.toString(schedule.getScheduleUUID(), null),
             Audit.ActionType.StopScheduledScript);
     return PlatformResults.withData(schedule);
   }
 
-  public Result updateScheduledScript(UUID customerUUID, UUID universeUUID) {
+  public Result updateScheduledScript(UUID customerUUID, UUID universeUUID, Http.Request request) {
     // Validate Access
     canAccess();
     // Extract script file, parameters and cronExpression.
-    MultipartFormData<File> body = request().body().asMultipartFormData();
+    MultipartFormData<File> body = request.body().asMultipartFormData();
     String scriptContent = extractScriptString(body);
     String scriptParam = extractScriptParam(body);
     String cronExpression = extractCronExpression(body);
@@ -154,10 +155,10 @@ public class ScheduleScriptController extends AuthenticatedController {
     RunExternalScript.Params taskParams = new RunExternalScript.Params();
     taskParams.customerUUID = customerUUID;
     taskParams.timeLimitMins = Long.toString(timeLimitMins);
-    taskParams.platformUrl = request().host();
+    taskParams.platformUrl = request.host();
     taskParams.universeUUID = universeUUID;
-    UserWithFeatures user = (UserWithFeatures) Http.Context.current().args.get("user");
-    taskParams.userUUID = user.getUser().uuid;
+    Users user = CommonUtils.getUserFromContext();
+    taskParams.userUUID = user.getUuid();
 
     Universe universe = Universe.getOrBadRequest(universeUUID);
     RuntimeConfig<Universe> config = sConfigFactory.forUniverse(universe);
@@ -177,13 +178,13 @@ public class ScheduleScriptController extends AuthenticatedController {
     }
 
     // updating existing schedule task params and cronExpression.
-    schedule.setCronExpressionAndTaskParams(cronExpression, taskParams);
+    schedule.updateCronExpressionAndTaskParams(cronExpression, taskParams);
 
     final ObjectMapper mapper = new ObjectMapper();
     try {
       ExternalScriptConfObject runtimeConfigObject =
           new ExternalScriptConfObject(
-              scriptContent, scriptParam, schedule.scheduleUUID.toString());
+              scriptContent, scriptParam, schedule.getScheduleUUID().toString());
       String json = mapper.writeValueAsString(runtimeConfigObject);
       config.setValue(ExternalScriptHelper.EXT_SCRIPT_RUNTIME_CONFIG_PATH, json);
     } catch (Exception e) {
@@ -191,10 +192,10 @@ public class ScheduleScriptController extends AuthenticatedController {
           INTERNAL_SERVER_ERROR, "Runtime config for script errored out with: " + e.getMessage());
     }
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.ScheduledScript,
-            Objects.toString(schedule.scheduleUUID, null),
+            Objects.toString(schedule.getScheduleUUID(), null),
             Audit.ActionType.UpdateScheduledScript);
     return PlatformResults.withData(schedule);
   }
@@ -205,7 +206,7 @@ public class ScheduleScriptController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "Script file not found");
     }
     try {
-      return new String(Files.readAllBytes(file.getFile().toPath()));
+      return new String(Files.readAllBytes(file.getRef().toPath()));
     } catch (IOException e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }

@@ -113,7 +113,7 @@ public class VaultPKI extends CertificateProviderBase {
 
   public static VaultPKI getVaultPKIInstance(CertificateInfo caCertConfigInfo) throws Exception {
     HashicorpVaultConfigParams hcConfigInfo = caCertConfigInfo.getCustomHCPKICertInfoInternal();
-    return getVaultPKIInstance(caCertConfigInfo.uuid, hcConfigInfo);
+    return getVaultPKIInstance(caCertConfigInfo.getUuid(), hcConfigInfo);
   }
 
   public static VaultPKI getVaultPKIInstance(UUID uuid, HashicorpVaultConfigParams configInfo)

@@ -47,7 +47,6 @@ import io.prometheus.client.hotspot.DefaultExports;
 import java.util.List;
 import java.util.Map;
 import play.Application;
-import play.Configuration;
 import play.Environment;
 import play.Logger;
 
@@ -96,20 +95,18 @@ public class AppInit {
       throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
 
-    Configuration appConfig = application.configuration();
-    String mode = appConfig.getString("yb.mode", "PLATFORM");
+    String mode = config.getString("yb.mode");
 
     if (!environment.isTest()) {
       // Check if we have provider data, if not, we need to seed the database
-      if (Customer.find.query().where().findCount() == 0
-          && appConfig.getBoolean("yb.seedData", false)) {
+      if (Customer.find.query().where().findCount() == 0 && config.getBoolean("yb.seedData")) {
         Logger.debug("Seed the Yugaware DB");
 
         List<?> all =
             yaml.load(environment.resourceAsStream("db_seed.yml"), application.classloader());
         Ebean.saveAll(all);
         Customer customer = Customer.getAll().get(0);
-        alertDestinationService.createDefaultDestination(customer.uuid);
+        alertDestinationService.createDefaultDestination(customer.getUuid());
         alertConfigurationService.createDefaultConfigs(customer);
       }
 
@@ -119,11 +116,11 @@ public class AppInit {
                   .getConfig(ConfigHelper.ConfigType.FileDataSync)
                   .getOrDefault("synced", "false")
                   .toString());
-      String storagePath = appConfig.getString("yb.storage.path");
+      String storagePath = config.getString("yb.storage.path");
       configHelper.syncFileData(storagePath, ywFileDataSynced);
 
       if (mode.equals("PLATFORM")) {
-        String devopsHome = appConfig.getString("yb.devops.home");
+        String devopsHome = config.getString("yb.devops.home");
         if (devopsHome == null || devopsHome.length() == 0) {
           throw new RuntimeException("yb.devops.home is not set in application.conf");
         }
@@ -140,12 +137,12 @@ public class AppInit {
       // Initialize AWS if any of its instance types have an empty volumeDetailsList
       List<Provider> providerList = Provider.find.query().where().findList();
       for (Provider provider : providerList) {
-        if (provider.code.equals("aws")) {
+        if (provider.getCode().equals("aws")) {
           for (InstanceType instanceType :
               InstanceType.findByProvider(provider, application.config(), configHelper)) {
-            if (instanceType.instanceTypeDetails != null
-                && (instanceType.instanceTypeDetails.volumeDetailsList == null)) {
-              awsInitializer.initialize(provider.customerUUID, provider.uuid);
+            if (instanceType.getInstanceTypeDetails() != null
+                && (instanceType.getInstanceTypeDetails().volumeDetailsList == null)) {
+              awsInitializer.initialize(provider.getCustomerUUID(), provider.getUuid());
               break;
             }
           }
@@ -160,8 +157,8 @@ public class AppInit {
 
       // Enter all the configuration data. This is the first thing that should be
       // done as the other init steps may depend on this data.
-      configHelper.loadConfigsToDB(application);
-      configHelper.loadSoftwareVersiontoDB(application);
+      configHelper.loadConfigsToDB(environment);
+      configHelper.loadSoftwareVersiontoDB(environment);
 
       // Run and delete any extra migrations.
       for (ExtraMigration m : ExtraMigration.getAll()) {
@@ -177,7 +174,7 @@ public class AppInit {
               () -> {
                 try {
                   Logger.info("Attempting to query latest ARM release link.");
-                  releaseManager.findLatestArmRelease(configHelper.getCurrentVersion(application));
+                  releaseManager.findLatestArmRelease(configHelper.getCurrentVersion(environment));
                   Logger.info("Imported ARM release download link.");
                 } catch (Exception e) {
                   Logger.warn("Error importing ARM release download link", e);

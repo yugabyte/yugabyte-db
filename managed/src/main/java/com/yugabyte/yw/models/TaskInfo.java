@@ -20,7 +20,6 @@ import io.ebean.ExpressionList;
 import io.ebean.FetchGroup;
 import io.ebean.Finder;
 import io.ebean.Model;
-import io.ebean.Query;
 import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
@@ -36,7 +35,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
@@ -107,20 +105,17 @@ public class TaskInfo extends Model {
   private UUID parentUuid;
 
   // The position within the parent task's taskQueue (-1 for a CustomerTask)
-  @Column(columnDefinition = "integer default -1")
   @ApiModelProperty(
       value = "The task's position with its parent task's queue",
       accessMode = READ_ONLY)
   private Integer position = -1;
 
   // The task type.
-  @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Task type", accessMode = READ_ONLY)
   private final TaskType taskType;
 
   // The task state.
-  @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Task state", accessMode = READ_ONLY)
   private State taskState = State.Created;
@@ -141,21 +136,18 @@ public class TaskInfo extends Model {
   private Date updateTime;
 
   // The percentage completeness of the task, which is a number from 0 to 100.
-  @Column(columnDefinition = "integer default 0")
   @ApiModelProperty(value = "Percentage complete", accessMode = READ_ONLY)
   private Integer percentDone = 0;
 
   // Details of the task, usually a JSON representation of the incoming task. This is used to
   // describe the details of the task that is being executed.
   @Constraints.Required
-  @Column(columnDefinition = "TEXT default '{}'", nullable = false)
   @DbJson
   @ApiModelProperty(value = "Task details", accessMode = READ_ONLY, required = true)
   private JsonNode details;
 
   // Identifier of the process owning the task.
   @Constraints.Required
-  @Column(nullable = false)
   @ApiModelProperty(
       value = "ID of the process that owns this task",
       accessMode = READ_ONLY,
@@ -283,7 +275,7 @@ public class TaskInfo extends Model {
 
   // Returns  partial object
   public List<TaskInfo> getSubTasks() {
-    Query<TaskInfo> subTaskQuery =
+    ExpressionList<TaskInfo> subTaskQuery =
         TaskInfo.find
             .query()
             .select(GET_SUBTASKS_FG)

@@ -61,9 +61,13 @@ public class NodeConfigTest extends FakeDBApplication {
     keyInfo.installNodeExporter = false;
     keyInfo.skipProvisioning = false;
     keyInfo.sshPort = 22;
-    accessKey = AccessKey.create(provider.uuid, "access-code1", keyInfo);
+    accessKey = AccessKey.create(provider.getUuid(), "access-code1", keyInfo);
     InstanceType.upsert(
-        provider.uuid, "c5.xlarge", 4 /* cores */, 10.0 /* mem in GB */, new InstanceTypeDetails());
+        provider.getUuid(),
+        "c5.xlarge",
+        4 /* cores */,
+        10.0 /* mem in GB */,
+        new InstanceTypeDetails());
     setProviderRuntimeConfig("min_python_version", "2.7");
     setProviderRuntimeConfig("min_tmp_dir_space_mb", "100");
     setProviderRuntimeConfig("user", "dummyUser");

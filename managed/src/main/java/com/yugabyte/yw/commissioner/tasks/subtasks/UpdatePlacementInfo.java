@@ -110,8 +110,8 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
             // Create the cloud info object.
             CloudInfoPB.Builder ccb = CloudInfoPB.newBuilder();
             ccb.setPlacementCloud(placementCloud.code)
-                .setPlacementRegion(region.code)
-                .setPlacementZone(az.code);
+                .setPlacementRegion(region.getCode())
+                .setPlacementZone(az.getCode());
 
             CatalogEntityInfo.PlacementBlockPB.Builder pbb =
                 CatalogEntityInfo.PlacementBlockPB.newBuilder();
@@ -140,8 +140,8 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
             // Create the cloud info object.
             CloudInfoPB.Builder ccb = CloudInfoPB.newBuilder();
             ccb.setPlacementCloud(placementCloud.code)
-                .setPlacementRegion(region.code)
-                .setPlacementZone(az.code);
+                .setPlacementRegion(region.getCode())
+                .setPlacementZone(az.getCode());
             if (placementAz.isAffinitized) {
               replicationInfoPB.addAffinitizedLeaders(ccb);
             }

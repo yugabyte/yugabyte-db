@@ -22,7 +22,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.UUID;
-import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import lombok.AccessLevel;
@@ -46,29 +45,23 @@ public class NodeInstance extends Model {
   @ApiModelProperty(value = "The node's UUID", accessMode = READ_ONLY)
   private UUID nodeUuid;
 
-  @Column
   @ApiModelProperty(value = "The node's type code", example = "c5large")
   private String instanceTypeCode;
 
-  @Column(nullable = false)
   @ApiModelProperty(value = "The node's name", example = "India node")
   private String nodeName;
 
-  @Column(nullable = false)
   @ApiModelProperty(value = "The node instance's name", example = "Mumbai instance")
   private String instanceName;
 
-  @Column(nullable = false)
   @ApiModelProperty(value = "The availability zone's UUID")
   private UUID zoneUuid;
 
-  @Column(nullable = false)
   @ApiModelProperty(value = "True if the node is in use")
   private boolean inUse;
 
   @Getter(AccessLevel.NONE)
   @Setter(AccessLevel.NONE)
-  @Column(nullable = false)
   @ApiModelProperty(value = "Node details (as a JSON object)")
   private String nodeDetailsJson;
 

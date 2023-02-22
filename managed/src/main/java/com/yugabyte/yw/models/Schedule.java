@@ -23,7 +23,6 @@ import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.ScheduleResp.BackupInfo;
 import com.yugabyte.yw.models.ScheduleResp.ScheduleRespBuilder;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.filters.ScheduleFilter;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList.KeyspaceTablesListBuilder;
@@ -58,26 +57,28 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DateUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
-import play.mvc.Http.Context;
 
 @Entity
 @Table(
     uniqueConstraints =
         @UniqueConstraint(columnNames = {"schedule_name", "customer_uuid", "owner_uuid"}))
 @ApiModel(description = "Backup schedule")
+@Getter
+@Setter
 public class Schedule extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Schedule.class);
   SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
@@ -118,197 +119,111 @@ public class Schedule extends Model {
 
   @Id
   @ApiModelProperty(value = "Schedule UUID", accessMode = READ_ONLY)
-  public UUID scheduleUUID;
-
-  public UUID getScheduleUUID() {
-    return scheduleUUID;
-  }
+  private UUID scheduleUUID;
 
   @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
-  @Column(nullable = false)
   private UUID customerUUID;
 
-  public UUID getCustomerUUID() {
-    return customerUUID;
-  }
-
   @ApiModelProperty(value = "Number of failed backup attempts", accessMode = READ_ONLY)
-  @Column(nullable = false, columnDefinition = "integer default 0")
   private int failureCount;
 
-  public int getFailureCount() {
-    return failureCount;
-  }
-
   @ApiModelProperty(value = "Frequency of the schedule, in milli seconds", accessMode = READ_WRITE)
-  @Column(nullable = false)
   private long frequency;
 
-  public long getFrequency() {
-    return frequency;
-  }
-
-  public void setFrequency(long frequency) {
-    this.frequency = frequency;
-  }
-
-  @Column(nullable = false, columnDefinition = "TEXT")
-  @DbJson
-  private JsonNode taskParams;
-
-  public JsonNode getTaskParams() {
-    return taskParams;
-  }
+  @DbJson private JsonNode taskParams;
 
   @ApiModelProperty(value = "Type of task to be scheduled.", accessMode = READ_WRITE)
-  @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   private TaskType taskType;
-
-  public TaskType getTaskType() {
-    return taskType;
-  }
 
   @ApiModelProperty(
       value = "Status of the task. Possible values are _Active_, _Paused_, or _Stopped_.",
       accessMode = READ_ONLY)
-  @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   private State status = State.Active;
 
-  public State getStatus() {
-    return status;
-  }
-
-  @Column
   @ApiModelProperty(value = "Cron expression for the schedule")
   private String cronExpression;
 
   @ApiModelProperty(value = "Name of the schedule", accessMode = READ_ONLY)
-  @Column(nullable = false)
   private String scheduleName;
 
-  public String getScheduleName() {
-    return scheduleName;
-  }
-
   @ApiModelProperty(value = "Owner UUID for the schedule", accessMode = READ_ONLY)
-  @Column(nullable = false)
   private UUID ownerUUID;
-
-  public UUID getOwnerUUID() {
-    return this.ownerUUID;
-  }
 
   @ApiModelProperty(value = "Time unit of frequency", accessMode = READ_WRITE)
   private TimeUnit frequencyTimeUnit;
 
-  public TimeUnit getFrequencyTimeUnit() {
-    return this.frequencyTimeUnit;
-  }
-
-  public void setFrequencyTimeunit(TimeUnit frequencyTimeUnit) {
-    this.frequencyTimeUnit = frequencyTimeUnit;
-  }
-
-  @Column
   @ApiModelProperty(value = "Time on which schedule is expected to run", accessMode = READ_ONLY)
   private Date nextScheduleTaskTime;
 
-  public Date getNextScheduleTaskTime() {
-    return nextScheduleTaskTime;
-  }
-
   public void updateNextScheduleTaskTime(Date nextScheduleTime) {
-    this.nextScheduleTaskTime = nextScheduleTime;
+    this.setNextScheduleTaskTime(nextScheduleTime);
     save();
   }
 
   @ApiModelProperty(
       value = "Backlog status of schedule arose due to conflicts",
       accessMode = READ_ONLY)
-  @Column(nullable = false)
   private boolean backlogStatus;
 
-  @Column
   @ApiModelProperty(value = "User who created the schedule policy", accessMode = READ_ONLY)
   private String userEmail;
 
-  public String getUserEmail() {
-    return userEmail;
-  }
-
-  public boolean getBacklogStatus() {
-    return this.backlogStatus;
-  }
-
   public void updateBacklogStatus(boolean backlogStatus) {
-    this.backlogStatus = backlogStatus;
+    this.setBacklogStatus(backlogStatus);
     save();
   }
 
-  public String getCronExpression() {
-    return cronExpression;
-  }
-
-  public void setCronExpression(String cronExpression) {
-    this.cronExpression = cronExpression;
-  }
-
-  public void setCronExpressionAndTaskParams(String cronExpression, ITaskParams params) {
-    this.cronExpression = cronExpression;
-    this.taskParams = Json.toJson(params);
+  public void updateCronExpressionAndTaskParams(String cronExpression, ITaskParams params) {
+    this.setCronExpression(cronExpression);
+    this.setTaskParams(Json.toJson(params));
     save();
   }
 
-  public void setFailureCount(int count) {
+  public void updateFailureCount(int count) {
     this.failureCount = count;
     if (count >= MAX_FAIL_COUNT) {
-      this.status = State.Paused;
+      this.setStatus(State.Paused);
     }
     save();
   }
 
   public void resetSchedule() {
-    this.status = State.Active;
+    this.setStatus(State.Active);
     // Update old next Expected Task time if it expired due to non-active state.
-    if (Util.isTimeExpired(this.nextScheduleTaskTime)) {
-      updateNextScheduleTaskTime(nextExpectedTaskTime(null, this));
+    if (Util.isTimeExpired(this.getNextScheduleTaskTime())) {
+      setNextScheduleTaskTime(nextExpectedTaskTime(null, this));
     }
     save();
   }
 
   public void stopSchedule() {
-    this.status = State.Stopped;
+    this.setStatus(State.Stopped);
     save();
   }
 
   public void updateFrequency(long frequency) {
-    this.frequency = frequency;
-    this.cronExpression = null;
+    this.setFrequency(frequency);
+    this.setCronExpression(null);
     resetSchedule();
   }
 
   public void updateCronExpression(String cronExpression) {
-    this.cronExpression = cronExpression;
-    this.frequency = 0L;
+    this.setCronExpression(cronExpression);
+    this.setFrequency(0L);
     resetSchedule();
   }
 
   public void updateFrequencyTimeUnit(TimeUnit frequencyTimeUnit) {
-    setFrequencyTimeunit(frequencyTimeUnit);
+    setFrequencyTimeUnit(frequencyTimeUnit);
     save();
   }
 
-  @Column(nullable = false)
   @ApiModelProperty(value = "Running state of the schedule")
   private boolean runningState = false;
 
-  public boolean getRunningState() {
-    return this.runningState;
-  }
-
-  public void setRunningState(boolean state) {
+  public void updateRunningState(boolean state) {
     this.runningState = state;
     save();
   }
@@ -319,7 +234,7 @@ public class Schedule extends Model {
     BackupRequestParams params = mapper.convertValue(getTaskParams(), BackupRequestParams.class);
     params.incrementalBackupFrequency = incrementalBackupFrequency;
     params.incrementalBackupFrequencyTimeUnit = incrementalBackupFrequencyTimeUnit;
-    this.taskParams = Json.toJson(params);
+    this.setTaskParams(Json.toJson(params));
     save();
   }
 
@@ -335,20 +250,20 @@ public class Schedule extends Model {
       TimeUnit frequencyTimeUnit,
       String scheduleName) {
     Schedule schedule = new Schedule();
-    schedule.scheduleUUID = UUID.randomUUID();
-    schedule.customerUUID = customerUUID;
-    schedule.failureCount = 0;
-    schedule.taskType = taskType;
-    schedule.taskParams = Json.toJson(params);
-    schedule.frequency = frequency;
-    schedule.status = State.Active;
-    schedule.cronExpression = cronExpression;
-    schedule.ownerUUID = ownerUUID;
-    schedule.frequencyTimeUnit = frequencyTimeUnit;
-    schedule.userEmail = Util.maybeGetEmailFromContext(Context.current.get());
-    schedule.scheduleName =
-        scheduleName != null ? scheduleName : "schedule-" + schedule.scheduleUUID;
-    schedule.nextScheduleTaskTime = nextExpectedTaskTime(null, schedule);
+    schedule.setScheduleUUID(UUID.randomUUID());
+    schedule.setCustomerUUID(customerUUID);
+    schedule.setFailureCount(0);
+    schedule.setTaskType(taskType);
+    schedule.setTaskParams(Json.toJson(params));
+    schedule.setFrequency(frequency);
+    schedule.setStatus(State.Active);
+    schedule.setCronExpression(cronExpression);
+    schedule.setOwnerUUID(ownerUUID);
+    schedule.setFrequencyTimeUnit(frequencyTimeUnit);
+    schedule.setUserEmail(Util.maybeGetEmailFromContext());
+    schedule.setScheduleName(
+        scheduleName != null ? scheduleName : "schedule-" + schedule.getScheduleUUID());
+    schedule.setNextScheduleTaskTime(nextExpectedTaskTime(null, schedule));
     schedule.save();
     return schedule;
   }
@@ -385,7 +300,7 @@ public class Schedule extends Model {
     return create(customerUUID, params, taskType, frequency, cronExpression, TimeUnit.MINUTES);
   }
 
-  /** DEPRECATED: use {@link #getOrBadRequest()} */
+  /** DEPRECATED: use {@link #getOrBadRequest(UUID)} */
   @Deprecated
   public static Schedule get(UUID scheduleUUID) {
     return find.query().where().idEq(scheduleUUID).findOne();
@@ -526,10 +441,10 @@ public class Schedule extends Model {
   }
 
   private static ScheduleResp toScheduleResp(Schedule schedule) {
-    Date nextScheduleTaskTime = schedule.nextScheduleTaskTime;
+    Date nextScheduleTaskTime = schedule.getNextScheduleTaskTime();
     // In case of a schedule with a backlog, the next task can be executed in the next scheduler
     // run.
-    if (schedule.backlogStatus) {
+    if (schedule.isBacklogStatus()) {
       nextScheduleTaskTime = DateUtils.addMinutes(new Date(), Util.YB_SCHEDULER_INTERVAL);
     }
     // No need to show the next expected task time as it won't be able to execute due to non-active
@@ -539,18 +454,18 @@ public class Schedule extends Model {
     }
     ScheduleRespBuilder builder =
         ScheduleResp.builder()
-            .scheduleName(schedule.scheduleName)
-            .scheduleUUID(schedule.scheduleUUID)
-            .customerUUID(schedule.customerUUID)
-            .failureCount(schedule.failureCount)
-            .frequency(schedule.frequency)
-            .frequencyTimeUnit(schedule.frequencyTimeUnit)
-            .taskType(schedule.taskType)
-            .status(schedule.status)
-            .cronExpression(schedule.cronExpression)
-            .runningState(schedule.runningState)
-            .failureCount(schedule.failureCount)
-            .backlogStatus(schedule.backlogStatus);
+            .scheduleName(schedule.getScheduleName())
+            .scheduleUUID(schedule.getScheduleUUID())
+            .customerUUID(schedule.getCustomerUUID())
+            .failureCount(schedule.getFailureCount())
+            .frequency(schedule.getFrequency())
+            .frequencyTimeUnit(schedule.getFrequencyTimeUnit())
+            .taskType(schedule.getTaskType())
+            .status(schedule.getStatus())
+            .cronExpression(schedule.getCronExpression())
+            .runningState(schedule.isRunningState())
+            .failureCount(schedule.getFailureCount())
+            .backlogStatus(schedule.isBacklogStatus());
 
     ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
     Date lastScheduledTime = null;
@@ -559,8 +474,8 @@ public class Schedule extends Model {
       builder.prevCompletedTask(lastScheduledTime);
     }
 
-    JsonNode scheduleTaskParams = schedule.taskParams;
-    if (!schedule.taskType.equals(TaskType.ExternalScript)) {
+    JsonNode scheduleTaskParams = schedule.getTaskParams();
+    if (!schedule.getTaskType().equals(TaskType.ExternalScript)) {
       ObjectMapper mapper = new ObjectMapper();
       if (Util.canConvertJsonNode(scheduleTaskParams, BackupRequestParams.class)) {
         BackupRequestParams params =
@@ -568,10 +483,10 @@ public class Schedule extends Model {
         builder.backupInfo(getV2ScheduleBackupInfo(params));
         builder.incrementalBackupFrequency(params.incrementalBackupFrequency);
         builder.incrementalBackupFrequencyTimeUnit(params.incrementalBackupFrequencyTimeUnit);
-        if (ScheduleUtil.isIncrementalBackupSchedule(schedule.scheduleUUID)) {
+        if (ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID())) {
           Backup latestSuccessfulIncrementalBackup =
               ScheduleUtil.fetchLatestSuccessfulBackupForSchedule(
-                  schedule.customerUUID, schedule.scheduleUUID);
+                  schedule.getCustomerUUID(), schedule.getScheduleUUID());
           if (latestSuccessfulIncrementalBackup != null) {
             Date incrementalBackupExpectedTaskTime =
                 new Date(
@@ -591,7 +506,7 @@ public class Schedule extends Model {
         LOG.error(
             "Could not parse backup taskParams {} for schedule {}",
             scheduleTaskParams,
-            schedule.scheduleUUID);
+            schedule.getScheduleUUID());
       }
     } else {
       builder.taskParams(scheduleTaskParams);
@@ -602,9 +517,9 @@ public class Schedule extends Model {
 
   public static Date nextExpectedTaskTime(Date lastScheduledTime, Schedule schedule) {
     long nextScheduleTime;
-    if (schedule.cronExpression == null) {
+    if (schedule.getCronExpression() == null) {
       if (lastScheduledTime != null) {
-        nextScheduleTime = lastScheduledTime.getTime() + schedule.frequency;
+        nextScheduleTime = lastScheduledTime.getTime() + schedule.getFrequency();
       } else {
         // The task will be definitely executed under 2 minutes (scheduler frequency).
         return new Date();
@@ -613,7 +528,7 @@ public class Schedule extends Model {
       lastScheduledTime = new Date();
       CronParser unixCronParser = new CronParser(CronDefinitionBuilder.instanceDefinitionFor(UNIX));
       ExecutionTime executionTime =
-          ExecutionTime.forCron(unixCronParser.parse(schedule.cronExpression));
+          ExecutionTime.forCron(unixCronParser.parse(schedule.getCronExpression()));
       ZoneId defaultZoneId = ZoneId.systemDefault();
       Instant instant = lastScheduledTime.toInstant();
       ZonedDateTime zonedDateTime = instant.atZone(defaultZoneId);

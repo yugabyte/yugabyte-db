@@ -248,19 +248,19 @@ public class BackupUtil {
     return backupSize;
   }
 
-  public static BackupResp toBackupResp(
-      Backup backup, CustomerConfigService customerConfigService) {
+  public static BackupResp toBackupResp(Backup backup) {
 
     Boolean isStorageConfigPresent = checkIfStorageConfigExists(backup);
     Boolean isUniversePresent = checkIfUniverseExists(backup);
     List<Backup> backupChain =
-        Backup.fetchAllBackupsByBaseBackupUUID(backup.customerUUID, backup.baseBackupUUID);
+        Backup.fetchAllBackupsByBaseBackupUUID(
+            backup.getCustomerUUID(), backup.getBaseBackupUUID());
     Date lastIncrementDate = null;
     boolean hasIncrements = false;
     BackupState lastBackupState = BackupState.Completed;
     if (CollectionUtils.isNotEmpty(backupChain)) {
       lastIncrementDate = backupChain.get(0).getCreateTime();
-      lastBackupState = backupChain.get(0).state;
+      lastBackupState = backupChain.get(0).getState();
       hasIncrements = backupChain.size() > 1;
     }
     Boolean onDemand = (backup.getScheduleUUID() == null);
@@ -269,11 +269,11 @@ public class BackupUtil {
             .expiryTime(backup.getExpiry())
             .onDemand(onDemand)
             .isFullBackup(backup.getBackupInfo().isFullBackup)
-            .universeName(backup.universeName)
+            .universeName(backup.getUniverseName())
             .scheduleUUID(backup.getScheduleUUID())
-            .customerUUID(backup.customerUUID)
-            .universeUUID(backup.universeUUID)
-            .category(backup.category)
+            .customerUUID(backup.getCustomerUUID())
+            .universeUUID(backup.getUniverseUUID())
+            .category(backup.getCategory())
             .isStorageConfigPresent(isStorageConfigPresent)
             .isUniversePresent(isUniversePresent)
             .backupType(backup.getBackupInfo().backupType)
@@ -292,13 +292,13 @@ public class BackupUtil {
         .createTime(backup.getCreateTime())
         .updateTime(backup.getUpdateTime())
         .completionTime(backup.getCompletionTime())
-        .backupUUID(backup.backupUUID)
-        .baseBackupUUID(backup.baseBackupUUID)
+        .backupUUID(backup.getBackupUUID())
+        .baseBackupUUID(backup.getBaseBackupUUID())
         .totalBackupSizeInBytes(Long.valueOf(backup.getBackupInfo().backupSizeInBytes))
-        .state(backup.state)
+        .state(backup.getState())
         .kmsConfigUUID(backup.getBackupInfo().kmsConfigUUID)
-        .storageConfigUUID(backup.storageConfigUUID)
-        .taskUUID(backup.taskUUID)
+        .storageConfigUUID(backup.getStorageConfigUUID())
+        .taskUUID(backup.getTaskUUID())
         .sse(backup.getBackupInfo().sse);
     if (backup.getBackupInfo().backupList == null) {
       KeyspaceTablesList kTList =
@@ -434,7 +434,8 @@ public class BackupUtil {
 
   public void validateBackupStorageConfig(Backup backup) {
     CustomerConfig config =
-        customerConfigService.getOrBadRequest(backup.customerUUID, backup.storageConfigUUID);
+        customerConfigService.getOrBadRequest(
+            backup.getCustomerUUID(), backup.getStorageConfigUUID());
     validateStorageConfigOnBackup(config, backup);
   }
 
@@ -595,7 +596,7 @@ public class BackupUtil {
         throw new PlatformServiceException(
             BAD_REQUEST,
             "No tables to backup inside specified Universe "
-                + universe.universeUUID.toString()
+                + universe.getUniverseUUID().toString()
                 + " and Table Type "
                 + tableType.name());
       }
@@ -708,17 +709,17 @@ public class BackupUtil {
   }
 
   public static boolean checkInProgressIncrementalBackup(Backup backup) {
-    return Backup.fetchAllBackupsByBaseBackupUUID(backup.customerUUID, backup.backupUUID)
+    return Backup.fetchAllBackupsByBaseBackupUUID(backup.getCustomerUUID(), backup.getBackupUUID())
         .stream()
-        .anyMatch((b) -> (b.state.equals(BackupState.InProgress)));
+        .anyMatch((b) -> (b.getState().equals(BackupState.InProgress)));
   }
 
   public static boolean checkIfStorageConfigExists(Backup backup) {
-    return CustomerConfig.get(backup.customerUUID, backup.storageConfigUUID) != null;
+    return CustomerConfig.get(backup.getCustomerUUID(), backup.getStorageConfigUUID()) != null;
   }
 
   public static boolean checkIfUniverseExists(Backup backup) {
-    return Universe.maybeGet(backup.universeUUID).isPresent();
+    return Universe.maybeGet(backup.getUniverseUUID()).isPresent();
   }
 
   public static boolean checkIfUniverseExists(UUID universeUUID) {

@@ -20,10 +20,10 @@ import lombok.Data;
 public class FileDataId implements Serializable {
 
   @Column(name = "file_path")
-  public String filePath;
+  private String filePath;
 
   @Column(name = "extension")
-  public String fileExtension;
+  private String fileExtension;
 
   public FileDataId(String filePath, String fileExtension) {
     this.filePath = filePath;

@@ -23,6 +23,8 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.Table;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -43,17 +45,19 @@ public class V230_5 {
 
   @Entity
   @Table(name = "provider")
+  @Data
+  @EqualsAndHashCode(callSuper = false)
   public static class TmpProvider extends Model {
 
-    @Id public UUID uuid;
+    @Id private UUID uuid;
 
     @Column(name = "customer_uuid", nullable = false)
-    public UUID customerUUID;
+    private UUID customerUUID;
 
     @Column(nullable = false, columnDefinition = "TEXT")
     @Encrypted
     @DbJson
-    public TmpProviderDetails details = new TmpProviderDetails();
+    private TmpProviderDetails details = new TmpProviderDetails();
 
     public static final Finder<UUID, TmpProvider> find =
         new Finder<UUID, TmpProvider>(TmpProvider.class) {};

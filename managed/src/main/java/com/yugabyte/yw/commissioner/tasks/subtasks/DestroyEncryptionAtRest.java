@@ -45,9 +45,9 @@ public class DestroyEncryptionAtRest extends AbstractTaskBase {
   public void run() {
     try {
       Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
-      Customer c = Customer.get(u.customerId);
+      Customer c = Customer.get(u.getCustomerId());
       if (EncryptionAtRestUtil.getNumKeyRotations(taskParams().universeUUID) > 0) {
-        keyManager.cleanupEncryptionAtRest(c.uuid, taskParams().universeUUID);
+        keyManager.cleanupEncryptionAtRest(c.getUuid(), taskParams().universeUUID);
       }
     } catch (Exception e) {
       final String errMsg =

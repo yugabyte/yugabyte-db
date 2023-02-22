@@ -70,8 +70,8 @@ public class AlertDefinitionTest extends FakeDBApplication {
     List<AlertDefinition> queriedDefinitions =
         alertDefinitionService.list(
             AlertDefinitionFilter.builder()
-                .customerUuid(customer.uuid)
-                .label(KnownAlertLabels.UNIVERSE_UUID, universe.universeUUID.toString())
+                .customerUuid(customer.getUuid())
+                .label(KnownAlertLabels.UNIVERSE_UUID, universe.getUniverseUUID().toString())
                 .build());
 
     assertThat(queriedDefinitions, hasSize(1));
@@ -86,7 +86,7 @@ public class AlertDefinitionTest extends FakeDBApplication {
     AlertDefinitionLabel label1 = new AlertDefinitionLabel(TEST_LABEL, TEST_LABEL_VALUE);
     List<AlertDefinition> queriedDefinitions =
         alertDefinitionService.list(
-            AlertDefinitionFilter.builder().customerUuid(customer.uuid).label(label1).build());
+            AlertDefinitionFilter.builder().customerUuid(customer.getUuid()).label(label1).build());
 
     assertThat(queriedDefinitions, hasSize(1));
     assertTestDefinition1(queriedDefinitions.get(0));
@@ -106,17 +106,17 @@ public class AlertDefinitionTest extends FakeDBApplication {
     AlertDefinitionLabel label1 = new AlertDefinitionLabel(TEST_LABEL, TEST_LABEL_VALUE);
     List<AlertDefinition> queriedDefinitions =
         alertDefinitionService.list(
-            AlertDefinitionFilter.builder().customerUuid(customer.uuid).label(label2).build());
+            AlertDefinitionFilter.builder().customerUuid(customer.getUuid()).label(label2).build());
 
     List<AlertDefinition> queriedByOldLabelDefinitions =
         alertDefinitionService.list(
-            AlertDefinitionFilter.builder().customerUuid(customer.uuid).label(label1).build());
+            AlertDefinitionFilter.builder().customerUuid(customer.getUuid()).label(label1).build());
 
     assertThat(queriedDefinitions, hasSize(1));
     assertThat(queriedByOldLabelDefinitions, empty());
 
     AlertDefinition queriedDefinition = queriedDefinitions.get(0);
-    assertThat(queriedDefinition.getCustomerUUID(), equalTo(customer.uuid));
+    assertThat(queriedDefinition.getCustomerUUID(), equalTo(customer.getUuid()));
     assertThat(queriedDefinition.getQuery(), equalTo(newQuery));
 
     assertThat(queriedDefinition.getLabelValue(TEST_LABEL_2), equalTo(TEST_LABEL_VALUE_2));
@@ -151,10 +151,11 @@ public class AlertDefinitionTest extends FakeDBApplication {
   private AlertDefinition createTestDefinition1() {
     AlertDefinitionLabel label1 = new AlertDefinitionLabel(TEST_LABEL, TEST_LABEL_VALUE);
     AlertDefinitionLabel knownLabel =
-        new AlertDefinitionLabel(KnownAlertLabels.UNIVERSE_UUID, universe.universeUUID.toString());
+        new AlertDefinitionLabel(
+            KnownAlertLabels.UNIVERSE_UUID, universe.getUniverseUUID().toString());
     AlertDefinition definition =
         new AlertDefinition()
-            .setCustomerUUID(customer.uuid)
+            .setCustomerUUID(customer.getUuid())
             .setConfigurationUUID(configuration.getUuid())
             .setQuery(TEST_DEFINITION_QUERY)
             .setLabels(Arrays.asList(label1, knownLabel));
@@ -165,7 +166,7 @@ public class AlertDefinitionTest extends FakeDBApplication {
     AlertDefinitionLabel label2 = new AlertDefinitionLabel(TEST_LABEL_2, TEST_LABEL_VALUE_2);
     AlertDefinition definition =
         new AlertDefinition()
-            .setCustomerUUID(customer.uuid)
+            .setCustomerUUID(customer.getUuid())
             .setConfigurationUUID(configuration.getUuid())
             .setQuery(TEST_DEFINITION_QUERY)
             .setLabels(Collections.singletonList(label2));
@@ -178,8 +179,8 @@ public class AlertDefinitionTest extends FakeDBApplication {
     label1.setDefinition(definition);
     AlertDefinitionLabel knownLabel =
         new AlertDefinitionLabel(
-            definition, KnownAlertLabels.UNIVERSE_UUID, universe.universeUUID.toString());
-    assertThat(definition.getCustomerUUID(), equalTo(customer.uuid));
+            definition, KnownAlertLabels.UNIVERSE_UUID, universe.getUniverseUUID().toString());
+    assertThat(definition.getCustomerUUID(), equalTo(customer.getUuid()));
     assertThat(definition.getQuery(), equalTo(TEST_DEFINITION_QUERY));
     assertFalse(definition.isConfigWritten());
     assertThat(definition.getLabels(), containsInAnyOrder(label1, knownLabel));

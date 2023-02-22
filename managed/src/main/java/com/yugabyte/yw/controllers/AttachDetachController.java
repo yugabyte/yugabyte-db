@@ -66,7 +66,7 @@ public class AttachDetachController extends AbstractPlatformController {
           "Detach universe currently does not support universes with xcluster replication set up.");
     }
 
-    List<AccessKey> accessKeys = AccessKey.getAll(provider.uuid);
+    List<AccessKey> accessKeys = AccessKey.getAll(provider.getUuid());
 
     List<PriceComponent> priceComponents = PriceComponent.findByProvider(provider);
 
@@ -85,13 +85,15 @@ public class AttachDetachController extends AbstractPlatformController {
 
     InputStream is = universeSpec.exportSpec();
 
-    response().setHeader("Content-Disposition", "attachment; filename=universeSpec.tar.gz");
-    return ok(is).as("application/gzip");
+    return ok(is)
+        .withHeader("Content-Disposition", "attachment; filename=universeSpec.tar.gz")
+        .as("application/gzip");
   }
 
-  public Result importUniverse(UUID customerUUID, UUID universeUUID) throws IOException {
+  public Result importUniverse(UUID customerUUID, UUID universeUUID, Http.Request request)
+      throws IOException {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Http.MultipartFormData<TemporaryFile> body = request().body().asMultipartFormData();
+    Http.MultipartFormData<TemporaryFile> body = request.body().asMultipartFormData();
     Http.MultipartFormData.FilePart<TemporaryFile> tempSpecFile = body.getFile("spec");
 
     if (tempSpecFile == null) {
@@ -99,7 +101,7 @@ public class AttachDetachController extends AbstractPlatformController {
     }
 
     String storagePath = confGetter.getStaticConf().getString("yb.storage.path");
-    File tempFile = (File) tempSpecFile.getFile();
+    File tempFile = tempSpecFile.getRef().path().toFile();
     UniverseSpec universeSpec = UniverseSpec.importSpec(tempFile, storagePath, customer);
     universeSpec.save(storagePath);
     return PlatformResults.withData(universeSpec);

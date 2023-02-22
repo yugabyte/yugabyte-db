@@ -1,18 +1,16 @@
 // Copyright (c) YugaByte, Inc.
-package db.migration.default.common
-
-import java.sql.Connection
+package db.migration.default_.common
 
 import com.yugabyte.yw.common.audit.AuditService
 import org.apache.commons.lang3.StringUtils
-import org.flywaydb.core.api.migration.MigrationChecksumProvider
-import org.flywaydb.core.api.migration.jdbc.JdbcMigration
+import org.flywaydb.core.api.migration.{BaseJavaMigration, Context}
 
 import scala.util.hashing.MurmurHash3
 
-class R__Redact_Secrets_From_Audit extends JdbcMigration with MigrationChecksumProvider {
+class R__Redact_Secrets_From_Audit extends BaseJavaMigration {
 
-  override def migrate(connection: Connection): Unit = {
+  override def migrate(context: Context): Unit = {
+    val connection = context.getConnection
     val selectStmt = "SELECT id, payload FROM audit"
     val resultSet = connection.createStatement().executeQuery(selectStmt)
 

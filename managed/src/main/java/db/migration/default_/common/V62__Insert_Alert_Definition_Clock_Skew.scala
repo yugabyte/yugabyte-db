@@ -1,18 +1,18 @@
 // Copyright (c) YugaByte, Inc.
 
-package db.migration.default.common
+package db.migration.default_.common
 
-import java.sql.Connection
+import org.flywaydb.core.api.migration.{BaseJavaMigration, Context}
+
 import java.util.UUID
-
-import org.flywaydb.core.api.migration.jdbc.JdbcMigration
 import play.api.libs.json._
 
 import scala.util.control.Breaks._
 
-class V62__Insert_Alert_Definition_Clock_Skew extends JdbcMigration {
+class V62__Insert_Alert_Definition_Clock_Skew extends BaseJavaMigration {
 
-  override def migrate(connection: Connection): Unit = {
+  override def migrate(context: Context): Unit = {
+    val connection = context.getConnection
     val selectStmt = "SELECT u.universe_uuid, customer_id, universe_details_json FROM universe u " +
       "LEFT JOIN alert_definition a ON u.universe_uuid=a.universe_uuid AND " +
       "a.name='Clock Skew Alert' WHERE a.universe_uuid IS NULL"
@@ -24,11 +24,11 @@ class V62__Insert_Alert_Definition_Clock_Skew extends JdbcMigration {
         val customerId = resultSet.getString("customer_id")
         val univDetails = Json.parse(resultSet.getString("universe_details_json"))
         val nodePrefix = univDetails \ "nodePrefix"
-        if (!nodePrefix.isInstanceOf[JsDefined]) break
+        if (!nodePrefix.isInstanceOf[JsDefined]) break()
 
         val customerSet = connection.createStatement().executeQuery(s"SELECT uuid from customer " +
           s"WHERE id = '$customerId' LIMIT 1")
-        if (!customerSet.next()) break
+        if (!customerSet.next()) break()
 
         val customerUuid = customerSet.getString("uuid")
         val definitionUuid = UUID.randomUUID()

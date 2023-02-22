@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.common;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.JsonParser.Feature;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,6 +9,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.SupportBundleUtil.KubernetesResourceType;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import io.fabric8.kubernetes.api.model.Node;
@@ -24,28 +24,24 @@ import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.ServiceList;
 import io.fabric8.kubernetes.api.model.events.v1.Event;
 import io.fabric8.kubernetes.api.model.events.v1.EventList;
-import lombok.extern.slf4j.Slf4j;
-import play.libs.Json;
 import java.io.BufferedWriter;
-import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import javax.inject.Singleton;
-import org.apache.commons.io.FileUtils;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
+import play.libs.Json;
 
 @Singleton
 @Slf4j
@@ -57,7 +53,7 @@ public class ShellKubernetesManager extends KubernetesManager {
 
   private final RuntimeConfGetter confGetter;
 
-  private final play.Configuration appConfig;
+  private final Config config;
 
   public static final Logger LOG = LoggerFactory.getLogger(ShellKubernetesManager.class);
 
@@ -66,11 +62,11 @@ public class ShellKubernetesManager extends KubernetesManager {
       ReleaseManager releaseManager,
       ShellProcessHandler shellProcessHandler,
       RuntimeConfGetter confGetter,
-      play.Configuration appConfig) {
+      Config config) {
     this.releaseManager = releaseManager;
     this.shellProcessHandler = shellProcessHandler;
     this.confGetter = confGetter;
-    this.appConfig = appConfig;
+    this.config = config;
   }
 
   private ShellResponse execCommand(Map<String, String> config, List<String> command) {

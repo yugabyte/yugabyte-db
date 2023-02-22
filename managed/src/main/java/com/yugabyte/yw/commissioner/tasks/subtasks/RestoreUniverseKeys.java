@@ -55,7 +55,9 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
   // Should we use RPC to get the activeKeyId and then try and see if it matches this key?
   private byte[] getActiveUniverseKey() {
     KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(taskParams().universeUUID);
-    if (activeKey == null || activeKey.uuid.keyRef == null || activeKey.uuid.keyRef.length() == 0) {
+    if (activeKey == null
+        || activeKey.getUuid().getKeyRef() == null
+        || activeKey.getUuid().getKeyRef().length() == 0) {
       final String errMsg =
           String.format(
               "Skipping universe %s, No active keyRef found.",
@@ -64,7 +66,7 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
       return null;
     }
 
-    return Base64.getDecoder().decode(activeKey.uuid.keyRef);
+    return Base64.getDecoder().decode(activeKey.getUuid().getKeyRef());
   }
 
   private void sendKeyToMasters(byte[] keyRef, UUID kmsConfigUUID) {

@@ -32,7 +32,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.persistence.CascadeType;
-import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.OneToMany;
@@ -53,35 +52,19 @@ public class AlertDefinition extends Model {
   private static final String QUERY_CONDITION_PLACEHOLDER = "{{ query_condition }}";
   private static final DecimalFormat THRESHOLD_FORMAT = new DecimalFormat("0.#");
 
-  @Id
-  @Column(nullable = false, unique = true)
-  private UUID uuid;
+  @Id private UUID uuid;
 
-  @NotNull
-  @Column(columnDefinition = "Text", nullable = false)
-  private String query;
+  @NotNull private String query;
 
-  @NotNull
-  @Column(nullable = false)
-  private UUID customerUUID;
+  @NotNull private UUID customerUUID;
 
-  @NotNull
-  @Column(nullable = false)
-  private UUID configurationUUID;
+  @NotNull private UUID configurationUUID;
 
-  @NotNull
-  @Column(nullable = false)
-  @JsonIgnore
-  private boolean configWritten = false;
+  @NotNull @JsonIgnore private boolean configWritten = false;
 
-  @NotNull
-  @Column(nullable = false)
-  @JsonIgnore
-  private boolean active = true;
+  @NotNull @JsonIgnore private boolean active = true;
 
-  @Version
-  @Column(nullable = false)
-  private int version;
+  @Version private int version;
 
   @OneToMany(mappedBy = "definition", cascade = CascadeType.ALL, orphanRemoval = true)
   @Valid

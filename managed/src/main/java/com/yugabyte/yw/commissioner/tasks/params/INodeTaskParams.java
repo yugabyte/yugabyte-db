@@ -18,14 +18,20 @@ public interface INodeTaskParams {
   default AvailabilityZone getAZ() {
     UUID azUuid = getAzUuid();
     if (azUuid != null) {
-      return AvailabilityZone.find.query().fetch("region").where().idEq(azUuid).findOne();
+      return AvailabilityZone.find
+          .query()
+          .fetch("region")
+          .fetch("region.provider")
+          .where()
+          .idEq(azUuid)
+          .findOne();
     }
     return null;
   }
 
   @JsonIgnore
   default Region getRegion() {
-    return getAZ() == null ? null : getAZ().region;
+    return getAZ() == null ? null : getAZ().getRegion();
   }
 
   @JsonIgnore

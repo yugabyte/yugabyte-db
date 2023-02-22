@@ -15,15 +15,13 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.user.UserService;
-import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.play.PlayWebContext;
-import org.pac4j.play.store.PlaySessionStore;
 import play.Environment;
-import play.mvc.Http.Context;
-import play.mvc.Http.Cookie;
+import play.mvc.Http.Request;
 import play.mvc.Http.Status;
 import play.mvc.Result;
 import play.mvc.Results;
@@ -32,18 +30,18 @@ import play.mvc.Results;
 public class ThirdPartyLoginHandler {
 
   private final Environment environment;
-  private final PlaySessionStore playSessionStore;
+  private final SessionStore sessionStore;
   private final RuntimeConfigFactory runtimeConfigFactory;
   private final UserService userService;
 
   @Inject
   public ThirdPartyLoginHandler(
       Environment environment,
-      PlaySessionStore playSessionStore,
+      SessionStore sessionStore,
       RuntimeConfigFactory runtimeConfigFactory,
       UserService userService) {
     this.environment = environment;
-    this.playSessionStore = playSessionStore;
+    this.sessionStore = sessionStore;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.userService = userService;
   }
@@ -58,17 +56,17 @@ public class ThirdPartyLoginHandler {
     }
   }
 
-  public Users findUserByEmailOrUnauthorizedErr(Context ctx, String email) {
+  public Users findUserByEmailOrUnauthorizedErr(Request request, String email) {
     Users user = Users.getByEmail(email);
     if (user == null) {
-      invalidateSession(ctx);
+      invalidateSession(request);
       throw new PlatformServiceException(Status.UNAUTHORIZED, "User not found: " + email);
     }
     return user;
   }
 
-  public String getEmailFromCtx(Context ctx) {
-    CommonProfile profile = this.getProfile(ctx);
+  public String getEmailFromCtx(Request request) {
+    CommonProfile profile = this.getProfile(request);
     String emailAttr =
         runtimeConfigFactory.globalRuntimeConf().getString("yb.security.oidcEmailAttribute");
     String email;
@@ -80,37 +78,21 @@ public class ThirdPartyLoginHandler {
     return email.toLowerCase();
   }
 
-  void invalidateSession(Context ctx) {
-    final PlayWebContext context = new PlayWebContext(ctx, playSessionStore);
-    final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
-    profileManager.logout();
-    playSessionStore.destroySession(context);
+  void invalidateSession(Request request) {
+    final PlayWebContext context = new PlayWebContext(request);
+    final ProfileManager profileManager = new ProfileManager(context, sessionStore);
+    profileManager.removeProfiles();
+    sessionStore.destroySession(context);
   }
 
-  CommonProfile getProfile(Context ctx) {
-    final PlayWebContext context = new PlayWebContext(ctx, playSessionStore);
-    final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
+  CommonProfile getProfile(Request request) {
+    final PlayWebContext context = new PlayWebContext(request);
+    final ProfileManager profileManager = new ProfileManager(context, sessionStore);
     return profileManager
-        .get(true)
+        .getProfile(CommonProfile.class)
         .orElseThrow(
             () ->
                 new PlatformServiceException(
                     Status.INTERNAL_SERVER_ERROR, "Unable to get profile"));
-  }
-
-  public void onLoginSuccess(Context ctx, Users user) {
-    Customer cust = Customer.get(user.customerUUID);
-    ctx.args.put("customer", cust);
-    ctx.args.put("user", userService.getUserWithFeatures(cust, user));
-    ctx.response()
-        .setCookie(
-            Cookie.builder("customerId", cust.uuid.toString())
-                .withSecure(ctx.request().secure())
-                .build());
-    ctx.response()
-        .setCookie(
-            Cookie.builder("userId", user.uuid.toString())
-                .withSecure(ctx.request().secure())
-                .build());
   }
 }

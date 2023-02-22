@@ -162,7 +162,8 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
     validateProviderValues(providerConfig);
 
     // modifying provider level should not mod customer config.
-    validateCustomerValues(configFactory.forCustomer(Customer.get(defaultProvider.customerUUID)));
+    validateCustomerValues(
+        configFactory.forCustomer(Customer.get(defaultProvider.getCustomerUUID())));
 
     // modifying provider level should not mod global config.
     validateGlobalValues(configFactory.globalRuntimeConf());
@@ -198,7 +199,8 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
     validateUniverseValues(universeConfig);
 
     // modifying universe level should not mod customer config.
-    validateCustomerValues(configFactory.forCustomer(Customer.get(defaultUniverse.customerId)));
+    validateCustomerValues(
+        configFactory.forCustomer(Customer.get(defaultUniverse.getCustomerId())));
 
     // modifying universe level should not mod global config.
     validateGlobalValues(configFactory.globalRuntimeConf());

@@ -15,7 +15,6 @@ import com.yugabyte.yw.common.LdapUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
@@ -44,7 +43,7 @@ public class LoginHandler {
     Users existingUser =
         Users.find.query().where().eq("email", data.getEmail().toLowerCase()).findOne();
     if (existingUser != null) {
-      if (existingUser.userType == null || !existingUser.userType.equals(UserType.ldap)) {
+      if (existingUser.getUserType() == null || !existingUser.getUserType().equals(UserType.ldap)) {
         user = Users.authWithPassword(data.getEmail().toLowerCase(), data.getPassword());
         if (user == null) {
           throw new PlatformServiceException(Status.UNAUTHORIZED, "Invalid User Credentials.");

@@ -1,5 +1,8 @@
 package com.yugabyte.yw.common;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.UNAUTHORIZED;
+
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.SessionController;
@@ -7,6 +10,11 @@ import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import io.ebean.DuplicateKeyException;
+import java.nio.charset.Charset;
+import java.util.Date;
+import java.util.List;
+import java.util.Random;
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
@@ -26,14 +34,6 @@ import org.apache.directory.ldap.client.api.LdapNetworkConnection;
 import org.apache.directory.ldap.client.api.NoVerificationTrustManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.nio.charset.Charset;
-import java.util.Date;
-import java.util.List;
-import java.util.Random;
-import java.util.UUID;
-
-import static play.mvc.Http.Status.*;
 
 @Slf4j
 public class LdapUtil {
@@ -116,7 +116,7 @@ public class LdapUtil {
       return user;
     }
 
-    if (user.customerUUID == null) {
+    if (user.getCustomerUUID() == null) {
       Customer cust = null;
       if (!ldapCustomerUUID.equals("")) {
         try {
@@ -135,7 +135,7 @@ public class LdapUtil {
         }
         cust = allCustomers.get(0);
       }
-      user.setCustomerUuid(cust.uuid);
+      user.setCustomerUUID(cust.getUuid());
     }
     try {
       user.save();
@@ -336,20 +336,20 @@ public class LdapUtil {
       }
       Users oldUser = Users.find.query().where().eq("email", email).findOne();
       if (oldUser != null
-          && (oldUser.getRole() == roleToAssign || !oldUser.getLdapSpecifiedRole())) {
+          && (oldUser.getRole() == roleToAssign || !oldUser.isLdapSpecifiedRole())) {
         return oldUser;
       } else if (oldUser != null && (oldUser.getRole() != roleToAssign)) {
         oldUser.setRole(roleToAssign);
         return oldUser;
       } else {
-        users.email = email.toLowerCase();
+        users.setEmail(email.toLowerCase());
         byte[] passwordLdap = new byte[16];
         new Random().nextBytes(passwordLdap);
         String generatedPassword = new String(passwordLdap, Charset.forName("UTF-8"));
         users.setPassword(generatedPassword); // Password is not used.
         users.setUserType(Users.UserType.ldap);
-        users.creationDate = new Date();
-        users.setIsPrimary(false);
+        users.setCreationDate(new Date());
+        users.setPrimary(false);
         users.setRole(roleToAssign);
       }
     } catch (LdapException e) {

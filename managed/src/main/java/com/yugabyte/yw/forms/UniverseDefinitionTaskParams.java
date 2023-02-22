@@ -1013,7 +1013,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       return XClusterConfig.getByTargetUniverseUUID(universeUuid)
           .stream()
-          .map(xClusterConfig -> xClusterConfig.uuid)
+          .map(xClusterConfig -> xClusterConfig.getUuid())
           .collect(Collectors.toList());
     }
 
@@ -1025,7 +1025,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       return XClusterConfig.getBySourceUniverseUUID(universeUuid)
           .stream()
-          .map(xClusterConfig -> xClusterConfig.uuid)
+          .map(xClusterConfig -> xClusterConfig.getUuid())
           .collect(Collectors.toList());
     }
   }

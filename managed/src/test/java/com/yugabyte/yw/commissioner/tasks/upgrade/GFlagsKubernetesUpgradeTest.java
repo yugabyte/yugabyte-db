@@ -162,7 +162,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
 
-    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
 
     GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
     taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
@@ -210,7 +210,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
 
-    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
 
     GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
     taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");

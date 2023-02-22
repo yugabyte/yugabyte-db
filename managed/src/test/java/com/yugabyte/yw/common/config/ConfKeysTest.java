@@ -10,7 +10,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
-import static play.test.Helpers.route;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
@@ -54,10 +53,10 @@ public class ConfKeysTest extends FakeDBApplication {
 
   private Result setKey(String path, String newVal, UUID scopeUUID) {
     Http.RequestBuilder request =
-        fakeRequest("PUT", String.format(KEY, defaultCustomer.uuid, scopeUUID, path))
+        fakeRequest("PUT", String.format(KEY, defaultCustomer.getUuid(), scopeUUID, path))
             .header("X-AUTH-TOKEN", authToken)
             .bodyText(newVal);
-    return route(app, request);
+    return route(request);
   }
 
   private String getConfVal(ConfKeyInfo<?> keyInfo) {
@@ -99,9 +98,9 @@ public class ConfKeysTest extends FakeDBApplication {
 
     Map<Class<? extends RuntimeConfigKeysModule>, UUID> scopes = new HashMap<>();
     scopes.put(GlobalConfKeys.class, GLOBAL_SCOPE_UUID);
-    scopes.put(CustomerConfKeys.class, defaultCustomer.uuid);
-    scopes.put(UniverseConfKeys.class, defaultUniverse.universeUUID);
-    scopes.put(ProviderConfKeys.class, defaultProvider.uuid);
+    scopes.put(CustomerConfKeys.class, defaultCustomer.getUuid());
+    scopes.put(UniverseConfKeys.class, defaultUniverse.getUniverseUUID());
+    scopes.put(ProviderConfKeys.class, defaultProvider.getUuid());
 
     Map<ConfDataType<?>, String> validVals = new HashMap<>();
 

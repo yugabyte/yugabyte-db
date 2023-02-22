@@ -253,7 +253,7 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
         .thenReturn(new ShellResponse());
     JsonNode haConfigJson = createHAConfig();
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
-    UUID configUUID = config.getUUID();
+    UUID configUUID = config.getUuid();
     Result createResult = createPlatformInstance(configUUID, "http://abc.com/", true, false);
     assertOk(createResult);
     JsonNode instanceJson = Json.parse(contentAsString(createResult));
@@ -279,7 +279,7 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
         .thenReturn(new ShellResponse());
     JsonNode haConfigJson = createHAConfig();
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
-    UUID configUUID = config.getUUID();
+    UUID configUUID = config.getUuid();
     Result createResult = createPlatformInstance(configUUID, "http://abc.com/", true, false);
     assertOk(createResult);
     JsonNode instanceJson = Json.parse(contentAsString(createResult));
@@ -311,7 +311,7 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
 
     JsonNode haConfigJson = createHAConfig();
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
-    UUID configUUID = config.getUUID();
+    UUID configUUID = config.getUuid();
     Result createResult = createPlatformInstance(configUUID, "http://abc.com/", true, true);
     assertOk(createResult);
     createResult = createPlatformInstance(configUUID, "http://def.com/", false, false);

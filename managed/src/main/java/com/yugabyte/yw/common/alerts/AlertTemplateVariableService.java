@@ -23,6 +23,7 @@ import com.yugabyte.yw.models.AlertTemplateVariable;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.helpers.EntityOperation;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import io.ebean.DB;
 import io.ebean.annotation.Transactional;
 import java.util.Arrays;
 import java.util.Collection;
@@ -124,11 +125,11 @@ public class AlertTemplateVariableService {
         toCreateAndUpdate.getOrDefault(UPDATE, Collections.emptyList());
 
     if (!CollectionUtils.isEmpty(toCreate)) {
-      AlertConfiguration.db().saveAll(toCreate);
+      DB.getDefault().saveAll(toCreate);
     }
     if (!CollectionUtils.isEmpty(toUpdate)) {
       Map<String, Set<String>> removedValues = new HashMap<>();
-      AlertConfiguration.db().updateAll(toUpdate);
+      DB.getDefault().updateAll(toUpdate);
 
       toUpdate.forEach(
           updated -> {

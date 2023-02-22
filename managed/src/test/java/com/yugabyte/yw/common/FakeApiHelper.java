@@ -3,12 +3,12 @@
 package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.models.Users.Role;
-import static play.test.Helpers.route;
 
 import akka.stream.Materializer;
 import akka.stream.javadsl.Source;
 import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.controllers.HAAuthenticator;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.Customer;
@@ -24,7 +24,9 @@ import java.util.function.BiFunction;
 import play.Application;
 import play.libs.Files;
 import play.mvc.Http;
+import play.mvc.Http.RequestBuilder;
 import play.mvc.Result;
+import play.server.ApplicationProvider;
 import play.test.Helpers;
 
 public class FakeApiHelper {
@@ -33,9 +35,9 @@ public class FakeApiHelper {
     Users user;
     if (customer == null) {
       customer = Customer.create("vc", "Valid Customer");
-      user = Users.create("foo@bar.com", "password", Role.Admin, customer.uuid, false);
+      user = Users.create("foo@bar.com", "password", Role.Admin, customer.getUuid(), false);
     }
-    user = Users.find.query().where().eq("customer_uuid", customer.uuid).findOne();
+    user = Users.find.query().where().eq("customer_uuid", customer.getUuid()).findOne();
     return user.createAuthToken();
   }
 
@@ -134,6 +136,12 @@ public class FakeApiHelper {
     return route(request);
   }
 
+  public static Result route(RequestBuilder request) {
+    ApplicationProvider applicationProvider =
+        StaticInjectorHolder.injector().instanceOf(ApplicationProvider.class);
+    return Helpers.route(applicationProvider.get().get(), request);
+  }
+
   /**
    * If you want to quickly fix existing test that returns YWError json when exception gets thrown
    * then use this function instead of Helpers.route(). Alternatively change the test to expect that
@@ -143,7 +151,7 @@ public class FakeApiHelper {
       throws InterruptedException, ExecutionException, TimeoutException {
     YWErrorHandler YWErrorHandler = app.injector().instanceOf(YWErrorHandler.class);
     CompletableFuture<Result> future =
-        CompletableFuture.supplyAsync(() -> route(app, requestBuilder));
+        CompletableFuture.supplyAsync(() -> Helpers.route(app, requestBuilder));
     BiFunction<Result, Throwable, CompletionStage<Result>> f =
         (result, throwable) -> {
           if (throwable == null) return CompletableFuture.supplyAsync(() -> result);

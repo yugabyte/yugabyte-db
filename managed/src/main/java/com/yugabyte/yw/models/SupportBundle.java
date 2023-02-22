@@ -10,8 +10,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
-import com.yugabyte.yw.models.helpers.BundleDetails;
 import com.yugabyte.yw.forms.SupportBundleFormData;
+import com.yugabyte.yw.models.helpers.BundleDetails;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbEnumValue;
@@ -25,7 +25,6 @@ import java.text.ParseException;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
-import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.Transient;
@@ -39,36 +38,23 @@ public class SupportBundle extends Model {
 
   private static final Logger LOG = LoggerFactory.getLogger(SupportBundle.class);
 
-  @Id
-  @Column(nullable = false, unique = true)
-  @Getter
-  private UUID bundleUUID;
+  @Id @Getter private UUID bundleUUID;
 
-  @Column @Getter @Setter private String path;
+  @Getter @Setter private String path;
 
-  @Column(nullable = false)
-  @Getter
-  private UUID scopeUUID;
+  @Getter private UUID scopeUUID;
 
-  @Column
   @Getter
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
   private Date startDate;
 
-  @Column
   @Getter
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
   private Date endDate;
 
-  @Column(nullable = true)
-  @Getter
-  @DbJson
-  private BundleDetails bundleDetails;
+  @Getter @DbJson private BundleDetails bundleDetails;
 
-  @Column(name = "status", nullable = false)
-  @Getter
-  @Setter
-  private SupportBundleStatusType status;
+  @Getter @Setter private SupportBundleStatusType status;
 
   @JsonIgnore @Setter @Getter private static int retentionDays;
 
@@ -125,7 +111,7 @@ public class SupportBundle extends Model {
   public static SupportBundle create(SupportBundleFormData bundleData, Universe universe) {
     SupportBundle supportBundle = new SupportBundle();
     supportBundle.bundleUUID = UUID.randomUUID();
-    supportBundle.scopeUUID = universe.universeUUID;
+    supportBundle.scopeUUID = universe.getUniverseUUID();
     supportBundle.path = null;
     if (bundleData != null) {
       supportBundle.startDate = bundleData.startDate;

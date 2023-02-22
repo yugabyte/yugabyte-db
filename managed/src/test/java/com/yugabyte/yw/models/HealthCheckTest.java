@@ -71,7 +71,7 @@ public class HealthCheckTest extends FakeDBApplication {
     addChecks(universeUUID, HealthCheck.RECORD_LIMIT);
     List<HealthCheck> after = HealthCheck.getAll(universeUUID);
     for (HealthCheck check : after) {
-      assertTrue(now.compareTo(check.idKey.checkTime) < 0);
+      assertTrue(now.compareTo(check.getIdKey().getCheckTime()) < 0);
     }
   }
 
@@ -82,7 +82,7 @@ public class HealthCheckTest extends FakeDBApplication {
     HealthCheck check2 = addCheck(universeUUID);
     HealthCheck latest = HealthCheck.getLatest(universeUUID);
     assertNotNull(latest);
-    assertEquals(latest.idKey.checkTime, check2.idKey.checkTime);
+    assertEquals(latest.getIdKey().getCheckTime(), check2.getIdKey().getCheckTime());
   }
 
   @Test

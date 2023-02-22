@@ -159,7 +159,7 @@ public class BackupUniverse extends UniverseTaskBase {
         createTableBackupTask(taskParams()).setSubTaskGroupType(groupType);
 
         Backup backup = Backup.create(taskParams().customerUuid, taskParams());
-        backup.setTaskUUID(userTaskUUID);
+        backup.assignTaskUuid(userTaskUUID);
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.
         if (taskParams().alterLoadBalancer) {
@@ -222,7 +222,7 @@ public class BackupUniverse extends UniverseTaskBase {
     Customer customer = Customer.get(customerUUID);
     JsonNode params = schedule.getTaskParams();
     BackupTableParams taskParams = Json.fromJson(params, BackupTableParams.class);
-    taskParams.scheduleUUID = schedule.scheduleUUID;
+    taskParams.scheduleUUID = schedule.getScheduleUUID();
     taskParams.customerUuid = customerUUID;
     Universe universe = Universe.maybeGet(taskParams.universeUUID).orElse(null);
     if (universe == null) {
@@ -236,7 +236,7 @@ public class BackupUniverse extends UniverseTaskBase {
         || universe.getUniverseDetails().universePaused) {
       if (!universe.getUniverseDetails().universePaused) {
         schedule.updateBacklogStatus(true);
-        log.debug("Schedule {} backlog status is set to true", schedule.scheduleUUID);
+        log.debug("Schedule {} backlog status is set to true", schedule.getScheduleUUID());
         SCHEDULED_BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
@@ -251,9 +251,9 @@ public class BackupUniverse extends UniverseTaskBase {
     }
     UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
-    if (schedule.getBacklogStatus()) {
+    if (schedule.isBacklogStatus()) {
       schedule.updateBacklogStatus(false);
-      log.debug("Schedule {} backlog status is set to false", schedule.scheduleUUID);
+      log.debug("Schedule {} backlog status is set to false", schedule.getScheduleUUID());
     }
     log.info(
         "Submitted task to backup table {}:{}, task uuid = {}.",

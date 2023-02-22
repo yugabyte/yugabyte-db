@@ -168,7 +168,7 @@ public class AWSCloudImpl implements CloudAPI {
                 regionAZListEntry -> {
                   Filter locationFilter =
                       new Filter().withName("location").withValues(regionAZListEntry.getValue());
-                  return getEC2Client(provider, regionAZListEntry.getKey().code)
+                  return getEC2Client(provider, regionAZListEntry.getKey().getCode())
                       .describeInstanceTypeOfferings(
                           new DescribeInstanceTypeOfferingsRequest()
                               .withLocationType(LocationType.AvailabilityZone)
@@ -730,7 +730,7 @@ public class AWSCloudImpl implements CloudAPI {
 
   public Image describeImageOrBadRequest(Provider provider, Region region, String imageId) {
     try {
-      AmazonEC2 ec2Client = getEC2Client(provider, region.code);
+      AmazonEC2 ec2Client = getEC2Client(provider, region.getCode());
       DescribeImagesRequest request = new DescribeImagesRequest().withImageIds(imageId);
       DescribeImagesResult result = ec2Client.describeImages(request);
       return result.getImages().get(0);
@@ -743,7 +743,7 @@ public class AWSCloudImpl implements CloudAPI {
 
   public SecurityGroup describeSecurityGroupsOrBadRequest(Provider provider, Region region) {
     try {
-      AmazonEC2 ec2Client = getEC2Client(provider, region.code);
+      AmazonEC2 ec2Client = getEC2Client(provider, region.getCode());
       DescribeSecurityGroupsRequest request =
           new DescribeSecurityGroupsRequest().withGroupIds(region.getSecurityGroupId());
       DescribeSecurityGroupsResult result = ec2Client.describeSecurityGroups(request);
@@ -757,7 +757,7 @@ public class AWSCloudImpl implements CloudAPI {
 
   public Vpc describeVpcOrBadRequest(Provider provider, Region region) {
     try {
-      AmazonEC2 ec2Client = getEC2Client(provider, region.code);
+      AmazonEC2 ec2Client = getEC2Client(provider, region.getCode());
       DescribeVpcsRequest request = new DescribeVpcsRequest().withVpcIds(region.getVnetName());
       DescribeVpcsResult result = ec2Client.describeVpcs(request);
       return result.getVpcs().get(0);
@@ -770,11 +770,15 @@ public class AWSCloudImpl implements CloudAPI {
 
   public List<Subnet> describeSubnetsOrBadRequest(Provider provider, Region region) {
     try {
-      AmazonEC2 ec2Client = getEC2Client(provider, region.code);
+      AmazonEC2 ec2Client = getEC2Client(provider, region.getCode());
       DescribeSubnetsRequest request =
           new DescribeSubnetsRequest()
               .withSubnetIds(
-                  region.zones.stream().map(zone -> zone.subnet).collect(Collectors.toList()));
+                  region
+                      .getZones()
+                      .stream()
+                      .map(zone -> zone.getSubnet())
+                      .collect(Collectors.toList()));
       DescribeSubnetsResult result = ec2Client.describeSubnets(request);
       return result.getSubnets();
     } catch (AmazonServiceException e) {

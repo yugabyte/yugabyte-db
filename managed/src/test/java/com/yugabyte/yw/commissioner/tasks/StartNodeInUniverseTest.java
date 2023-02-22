@@ -85,13 +85,13 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
-    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
-    userIntent.regionList = ImmutableList.of(region.uuid);
+    userIntent.regionList = ImmutableList.of(region.getUuid());
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
 
     Map<String, String> gflags = new HashMap<>();
@@ -141,7 +141,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   private void setMasters(Universe universe, String... nodeNames) {
     Universe.saveDetails(
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         univ -> {
           Arrays.stream(nodeNames)
               .map(name -> univ.getNode(name))
@@ -246,7 +246,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
   @Test
   public void testAddNodeSuccess() {
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
     // Set one master atleast for master addresses to be populated.
     setMasters(defaultUniverse, "host-n2");
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
@@ -263,11 +263,11 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     Universe universe = createUniverse("Demo");
     universe =
         Universe.saveDetails(
-            universe.universeUUID, ApiUtils.mockUniverseUpdaterWithInactiveNodes());
+            universe.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithInactiveNodes());
     // Set one master atleast for master addresses to be populated.
     setMasters(universe, "host-n2");
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = universe.universeUUID;
+    taskParams.universeUUID = universe.getUniverseUUID();
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     verify(mockNodeManager, times(13)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -280,7 +280,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
   @Test
   public void testStartUnknownNode() {
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
     TaskInfo taskInfo = submitTask(taskParams, "host-n9");
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
@@ -291,12 +291,12 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     Universe universe = createUniverse("Demo");
     universe =
         Universe.saveDetails(
-            universe.universeUUID,
+            universe.getUniverseUUID(),
             ApiUtils.mockUniverseUpdaterWithInactiveAndReadReplicaNodes(false, 3));
     // Set one master atleast for master addresses to be populated.
     setMasters(universe, "host-n2");
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = universe.universeUUID;
+    taskParams.universeUUID = universe.getUniverseUUID();
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     verify(mockNodeManager, times(16)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -311,12 +311,12 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     Universe universe = createUniverse("Demo");
     universe =
         Universe.saveDetails(
-            universe.universeUUID,
+            universe.getUniverseUUID(),
             ApiUtils.mockUniverseUpdaterWithInactiveAndReadReplicaNodes(false, 3));
     // Set one master atleast for master addresses to be populated.
     setMasters(universe, "host-n2");
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = universe.universeUUID;
+    taskParams.universeUUID = universe.getUniverseUUID();
     TaskInfo taskInfo = submitTask(taskParams, "yb-tserver-0");
     verify(mockNodeManager, times(3)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -340,27 +340,28 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     // This adds nodes in test-region.
     universe =
         Universe.saveDetails(
-            universe.universeUUID, ApiUtils.mockUniverseUpdaterWithInactiveNodes(false));
+            universe.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithInactiveNodes(false));
 
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = universe.universeUUID;
+    taskParams.universeUUID = universe.getUniverseUUID();
 
     universe =
         Universe.saveDetails(
-            universe.universeUUID,
+            universe.getUniverseUUID(),
             univ -> {
               univ.getNode("host-n1").cloudInfo.region = nodeRegionCode;
               Cluster cluster = univ.getUniverseDetails().clusters.get(0);
-              cluster.userIntent.regionList = ImmutableList.of(region.uuid, testRegion.uuid);
+              cluster.userIntent.regionList =
+                  ImmutableList.of(region.getUuid(), testRegion.getUuid());
               cluster.placementInfo =
                   PlacementInfoUtil.getPlacementInfo(
                       ClusterType.PRIMARY,
                       cluster.userIntent,
                       cluster.userIntent.replicationFactor,
-                      region.uuid,
+                      region.getUuid(),
                       Collections.emptyList());
               if (isDefaultRegion) {
-                cluster.placementInfo.cloudList.get(0).defaultRegion = region.uuid;
+                cluster.placementInfo.cloudList.get(0).defaultRegion = region.getUuid();
               }
             });
     // Set one master atleast for master addresses to be populated.

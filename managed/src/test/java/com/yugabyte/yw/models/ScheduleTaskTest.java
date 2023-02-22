@@ -42,7 +42,7 @@ public class ScheduleTaskTest extends FakeDBApplication {
   @Test
   public void testCompletedTime() {
     ScheduleTask task = createScheduleTask(UUID.randomUUID());
-    task.setCompletedTime();
+    task.setCompleted();
     Date time = task.getCompletedTime();
     assertNotNull(time);
   }

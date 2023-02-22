@@ -17,37 +17,40 @@ import javax.persistence.Column;
 import javax.persistence.Embeddable;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
+import lombok.Data;
 import play.libs.Json;
 
 @Embeddable
+@Data
 public class KmsHistoryId implements Serializable {
+
   public enum TargetType {
     @EnumValue("UNIVERSE_KEY")
     UNIVERSE_KEY;
   }
 
   @Column(name = "key_ref")
-  public String keyRef;
+  private String keyRef;
 
   @Column(name = "target_uuid")
-  public UUID targetUuid;
+  private UUID targetUuid;
 
   @Enumerated(EnumType.STRING)
   @Column(name = "type")
-  public TargetType type;
+  private TargetType type;
 
   public KmsHistoryId(String keyRef, UUID targetUuid, TargetType type) {
-    this.keyRef = keyRef;
-    this.targetUuid = targetUuid;
-    this.type = type;
+    this.setKeyRef(keyRef);
+    this.setTargetUuid(targetUuid);
+    this.setType(type);
   }
 
   @Override
   public String toString() {
     return Json.newObject()
-        .put("key_ref", keyRef)
-        .put("target_uuid", targetUuid.toString())
-        .put("type", type.name())
+        .put("key_ref", getKeyRef())
+        .put("target_uuid", getTargetUuid().toString())
+        .put("type", getType().name())
         .toString();
   }
 
@@ -55,17 +58,17 @@ public class KmsHistoryId implements Serializable {
   public boolean equals(Object o) {
     if (!(o instanceof KmsHistoryId)) return false;
     KmsHistoryId oCast = (KmsHistoryId) o;
-    return oCast.keyRef.equals(this.keyRef)
-        && oCast.targetUuid.equals(this.targetUuid)
-        && oCast.type.equals(this.type);
+    return oCast.getKeyRef().equals(this.getKeyRef())
+        && oCast.getTargetUuid().equals(this.getTargetUuid())
+        && oCast.getType().equals(this.getType());
   }
 
   @Override
   public int hashCode() {
     int result = 11;
-    result = 31 * result + keyRef.hashCode();
-    result = 31 * result + targetUuid.hashCode();
-    result = 31 * result + type.hashCode();
+    result = 31 * result + getKeyRef().hashCode();
+    result = 31 * result + getTargetUuid().hashCode();
+    result = 31 * result + getType().hashCode();
     return result;
   }
 }

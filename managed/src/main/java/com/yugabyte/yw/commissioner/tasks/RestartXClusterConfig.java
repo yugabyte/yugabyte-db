@@ -25,14 +25,14 @@ public class RestartXClusterConfig extends EditXClusterConfig {
     log.info("Running {}", getName());
 
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
-    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.sourceUniverseUUID);
-    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     try {
       // Lock the source universe.
-      lockUniverseForUpdate(sourceUniverse.universeUUID, sourceUniverse.version);
+      lockUniverseForUpdate(sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion());
       try {
         // Lock the target universe.
-        lockUniverseForUpdate(targetUniverse.universeUUID, targetUniverse.version);
+        lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
 
         createXClusterConfigSetStatusTask(XClusterConfig.XClusterConfigStatusType.Updating)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
@@ -76,16 +76,16 @@ public class RestartXClusterConfig extends EditXClusterConfig {
         createXClusterConfigSetStatusTask(XClusterConfig.XClusterConfigStatusType.Running)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
-        createMarkUniverseUpdateSuccessTasks(targetUniverse.universeUUID)
+        createMarkUniverseUpdateSuccessTasks(targetUniverse.getUniverseUUID())
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
-        createMarkUniverseUpdateSuccessTasks(sourceUniverse.universeUUID)
+        createMarkUniverseUpdateSuccessTasks(sourceUniverse.getUniverseUUID())
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
         getRunnableTask().runSubTasks();
       } finally {
         // Unlock the target universe.
-        unlockUniverseForUpdate(targetUniverse.universeUUID);
+        unlockUniverseForUpdate(targetUniverse.getUniverseUUID());
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
@@ -93,7 +93,7 @@ public class RestartXClusterConfig extends EditXClusterConfig {
       // Set XClusterConfig status to Running if at least one table is running.
       Set<String> tablesInRunningStatus =
           xClusterConfig.getTableIdsInStatus(
-              xClusterConfig.getTables(), XClusterTableConfig.Status.Running);
+              xClusterConfig.getTableIds(), XClusterTableConfig.Status.Running);
       if (tablesInRunningStatus.isEmpty()) {
         setXClusterConfigStatus(XClusterConfigStatusType.Failed);
       } else {
@@ -107,7 +107,7 @@ public class RestartXClusterConfig extends EditXClusterConfig {
       throw new RuntimeException(e);
     } finally {
       // Unlock the source universe.
-      unlockUniverseForUpdate(sourceUniverse.universeUUID);
+      unlockUniverseForUpdate(sourceUniverse.getUniverseUUID());
     }
 
     log.info("Completed {}", getName());

@@ -31,11 +31,10 @@ public class MetricConfig extends Model {
 
   @ApiModelProperty(value = "Metrics configuration key", accessMode = READ_ONLY)
   @Id
-  @Column(name = "config_key", length = 100)
+  @Column(name = "config_key")
   private String key;
 
   @ApiModelProperty(value = "Metrics configuration value", accessMode = READ_WRITE)
-  @Column(nullable = false)
   @DbJson
   private MetricConfigDefinition config;
 

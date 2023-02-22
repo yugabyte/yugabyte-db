@@ -101,7 +101,7 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
       }
 
       universe.incrementVersion();
-      log.info("Incremented universe version to {} ", universe.version);
+      log.info("Incremented universe version to {} ", universe.getVersion());
 
       EncryptionAtRestUtil.activateKeyRef(
           taskParams().universeUUID,

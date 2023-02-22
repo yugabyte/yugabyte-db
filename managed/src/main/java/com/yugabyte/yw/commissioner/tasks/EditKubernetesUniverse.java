@@ -108,7 +108,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               primaryPI,
               primaryPlacement.masters,
               taskParams().nodePrefix,
-              universe.name,
+              universe.getName(),
               provider,
               universeDetails.communicationPorts.masterRpcPort,
               newNamingStyle);
@@ -251,7 +251,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // If starting new masters, we want them to come up in shell-mode.
       restartAllPods = true;
       startNewPods(
-          universe.name,
+          universe.getName(),
           mastersToAdd,
           ServerType.MASTER,
           activeZones,
@@ -267,7 +267,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // Bring up new tservers.
     if (!tserversToAdd.isEmpty()) {
       startNewPods(
-          universe.name,
+          universe.getName(),
           tserversToAdd,
           ServerType.TSERVER,
           activeZones,
@@ -301,7 +301,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // This will update the master addresses as well as the instance type changes.
     if (restartAllPods) {
       upgradePodsTask(
-          universe.name,
+          universe.getName(),
           newPlacement,
           masterAddresses,
           curPlacement,
@@ -317,7 +317,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
     if (instanceTypeChanged || restartAllPods) {
       upgradePodsTask(
-          universe.name,
+          universe.getName(),
           newPlacement,
           masterAddresses,
           curPlacement,
@@ -339,7 +339,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // Using currPlacement, newPlacement we figure out what pods need to be removed. So no need to
       // pass tserversRemoved.
       deletePodsTask(
-          universe.name,
+          universe.getName(),
           curPlacement,
           masterAddresses,
           newPlacement,
@@ -362,7 +362,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           curIntent.deviceInfo.volumeSize,
           newIntent.deviceInfo.volumeSize);
       createResizeDiskTask(
-          universe.name,
+          universe.getName(),
           newPlacement,
           masterAddresses,
           newIntent,
@@ -372,7 +372,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
     // Update the universe to the new state.
     createSingleKubernetesExecutorTask(
-        universe.name, KubernetesCommandExecutor.CommandType.POD_INFO, newPI, isReadOnlyCluster);
+        universe.getName(),
+        KubernetesCommandExecutor.CommandType.POD_INFO,
+        newPI,
+        isReadOnlyCluster);
 
     if (!mastersToAdd.isEmpty()) {
       // Update the master addresses on the target universes whose source universe belongs to
@@ -493,7 +496,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       UUID azUUID = entry.getKey();
       String azName =
           PlacementInfoUtil.isMultiAZ(provider)
-              ? AvailabilityZone.getOrBadRequest(azUUID).code
+              ? AvailabilityZone.getOrBadRequest(azUUID).getCode()
               : null;
       Map<String, String> azConfig = entry.getValue();
       // Validate that the StorageClass has allowVolumeExpansion=true

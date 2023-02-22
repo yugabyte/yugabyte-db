@@ -49,11 +49,11 @@ public class AlertChannelEmail extends AlertChannelBase {
 
     SmtpData smtpData =
         params.isDefaultSmtpSettings()
-            ? emailHelper.getSmtpData(customer.uuid)
+            ? emailHelper.getSmtpData(customer.getUuid())
             : params.getSmtpData();
     List<String> recipients =
         params.isDefaultRecipients()
-            ? emailHelper.getDestinations(customer.uuid)
+            ? emailHelper.getDestinations(customer.getUuid())
             : params.getRecipients();
 
     if (CollectionUtils.isEmpty(recipients)) {

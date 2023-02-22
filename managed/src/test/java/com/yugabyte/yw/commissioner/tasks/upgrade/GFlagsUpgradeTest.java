@@ -442,7 +442,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
-    assertEquals(2, defaultUniverse.version);
+    assertEquals(2, defaultUniverse.getVersion());
     assertTrue(taskInfo.getSubTasks().isEmpty());
   }
 
@@ -459,7 +459,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
           userIntent.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
           universe.setUniverseDetails(universeDetails);
         };
-    Universe.saveDetails(defaultUniverse.universeUUID, updater);
+    Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
 
     // Upgrade with same master flags but different tserver flags should not run master tasks.
     GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
@@ -498,7 +498,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
           userIntent.tserverGFlags = tserverFlags;
           universe.setUniverseDetails(universeDetails);
         };
-    Universe.saveDetails(defaultUniverse.universeUUID, updater);
+    Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
 
     // Upgrade with same master flags but different tserver flags should not run master tasks.
     GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
@@ -534,7 +534,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
             userIntent.tserverGFlags = tserverFlags;
             universe.setUniverseDetails(universeDetails);
           };
-      Universe.saveDetails(defaultUniverse.universeUUID, updater);
+      Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
 
       GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
       // This is a delete operation on the master flags.
@@ -579,7 +579,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testGflagChangingIntent() {
-    Universe universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     // Verify enabled by default.
     assertEquals(universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL, true);
     GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
@@ -611,14 +611,14 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
             Collections.emptyMap());
     position = assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
 
-    universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     // Verify changed to false.
     assertEquals(universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL, false);
   }
 
   @Test
   public void testGflagsConflictingWithDefault() {
-    Universe universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
 
     GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
     Map<String, String> gflags = ImmutableMap.of(GFlagsUtil.MASTER_ADDRESSES, "1.1.33.666:74350");

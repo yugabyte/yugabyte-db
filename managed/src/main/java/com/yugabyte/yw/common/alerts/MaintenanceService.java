@@ -25,6 +25,7 @@ import com.yugabyte.yw.models.helpers.EntityOperation;
 import com.yugabyte.yw.models.paging.MaintenanceWindowPagedQuery;
 import com.yugabyte.yw.models.paging.MaintenanceWindowPagedResponse;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
+import io.ebean.DB;
 import io.ebean.Query;
 import io.ebean.annotation.Transactional;
 import java.util.Collections;
@@ -84,13 +85,13 @@ public class MaintenanceService {
         toCreateAndUpdate.getOrDefault(CREATE, Collections.emptyList());
     if (!toCreate.isEmpty()) {
       toCreate.forEach(MaintenanceWindow::generateUUID);
-      MaintenanceWindow.db().saveAll(toCreate);
+      DB.getDefault().saveAll(toCreate);
     }
 
     List<MaintenanceWindow> toUpdate =
         toCreateAndUpdate.getOrDefault(UPDATE, Collections.emptyList());
     if (!toUpdate.isEmpty()) {
-      MaintenanceWindow.db().updateAll(toUpdate);
+      DB.getDefault().updateAll(toUpdate);
     }
 
     log.trace("{} maintenance windows saved", toCreate.size() + toUpdate.size());

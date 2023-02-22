@@ -157,7 +157,7 @@ public class AlertTemplateSettingsServiceTest extends FakeDBApplication {
   }
 
   private void assertTestSettings(AlertTemplateSettings settings) {
-    assertThat(settings.getCustomerUUID(), equalTo(customer.uuid));
+    assertThat(settings.getCustomerUUID(), equalTo(customer.getUuid()));
     assertThat(settings.getTemplate(), equalTo(MEMORY_CONSUMPTION.name()));
     assertThat(
         settings.getLabels().entrySet(),

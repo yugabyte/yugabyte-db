@@ -29,16 +29,16 @@ public class ExtraMigrationManager extends DevopsBase {
   private void recreateProvisionScripts() {
     for (AccessKey accessKey : AccessKey.getAll()) {
       Provider p = Provider.get(accessKey.getProviderUUID());
-      if (p != null && p.code.equals(onprem.name())) {
+      if (p != null && p.getCode().equals(onprem.name())) {
         templateManager.createProvisionTemplate(
             accessKey,
-            p.details.airGapInstall,
-            p.details.passwordlessSudoAccess,
-            p.details.installNodeExporter,
-            p.details.nodeExporterPort,
-            p.details.nodeExporterUser,
-            p.details.setUpChrony,
-            p.details.ntpServers);
+            p.getDetails().airGapInstall,
+            p.getDetails().passwordlessSudoAccess,
+            p.getDetails().installNodeExporter,
+            p.getDetails().nodeExporterPort,
+            p.getDetails().nodeExporterUser,
+            p.getDetails().setUpChrony,
+            p.getDetails().ntpServers);
       }
     }
   }

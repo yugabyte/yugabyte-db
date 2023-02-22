@@ -56,13 +56,15 @@ public class DeleteCustomerConfigTest extends CommissionerBaseTest {
     nfsStorageConfig = ModelFactory.createNfsStorageConfig(defaultCustomer, "TEST0");
     schedule =
         ModelFactory.createScheduleBackup(
-            defaultCustomer.uuid, defaultUniverse.universeUUID, nfsStorageConfig.configUUID);
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            nfsStorageConfig.configUUID);
   }
 
   @Test
   public void testDeleteCustomerConfigWithoutBackups() throws InterruptedException {
     DeleteCustomerConfig.Params params = new DeleteCustomerConfig.Params();
-    params.customerUUID = defaultCustomer.uuid;
+    params.customerUUID = defaultCustomer.getUuid();
     params.configUUID = nfsStorageConfig.configUUID;
     submitTask(TaskType.DeleteCustomerConfig, params, true);
     verify(mockTableManager, times(0)).deleteBackup(any());
@@ -71,10 +73,10 @@ public class DeleteCustomerConfigTest extends CommissionerBaseTest {
   @Test
   public void testDeleteCustomerConfigWithSchedules() {
     DeleteCustomerConfig.Params params = new DeleteCustomerConfig.Params();
-    params.customerUUID = defaultCustomer.uuid;
+    params.customerUUID = defaultCustomer.getUuid();
     params.configUUID = nfsStorageConfig.configUUID;
     submitTask(TaskType.DeleteCustomerConfig, params, true);
-    schedule = Schedule.getOrBadRequest(schedule.scheduleUUID);
+    schedule = Schedule.getOrBadRequest(schedule.getScheduleUUID());
     assertEquals(Schedule.State.Stopped, schedule.getStatus());
     verify(mockTableManager, times(0)).deleteBackup(any());
   }

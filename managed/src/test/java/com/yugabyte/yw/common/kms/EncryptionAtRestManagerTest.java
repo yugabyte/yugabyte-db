@@ -32,7 +32,7 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
     testUniverse = ModelFactory.createUniverse();
     EncryptionAtRestService keyService = testManager.getServiceInstance(keyProvider);
     keyService.createAuthConfig(
-        testCustomer.uuid,
+        testCustomer.getUuid(),
         "some_config_name",
         Json.newObject().put("api_key", "some_api_key").put("base_url", "some_base_url"));
     keyConfig = new EncryptionAtRestConfig();
@@ -55,7 +55,8 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
   public void testGenerateUniverseKey() {
     // TODO: (Daniel) - Fix params
     byte[] universeKeyData =
-        testManager.generateUniverseKey(testCustomer.uuid, testUniverse.universeUUID, keyConfig);
+        testManager.generateUniverseKey(
+            testCustomer.getUuid(), testUniverse.getUniverseUUID(), keyConfig);
     assertNotNull(universeKeyData);
   }
 }

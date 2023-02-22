@@ -53,7 +53,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
         "%s (targetUniverse=%s, xClusterUuid=%s, tableIds=%s)",
         super.getName(),
         taskParams().universeUUID,
-        taskParams().getXClusterConfig().uuid,
+        taskParams().getXClusterConfig().getUuid(),
         taskParams().tableIds);
   }
 
@@ -79,17 +79,17 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
         String errMsg =
             String.format(
                 "Table with id (%s) does not belong to the task params xCluster config (%s)",
-                tableId, xClusterConfig.uuid);
+                tableId, xClusterConfig.getUuid());
         throw new IllegalArgumentException(errMsg);
       }
-      if (tableConfig.get().replicationSetupDone) {
+      if (tableConfig.get().isReplicationSetupDone()) {
         String errMsg =
             String.format(
                 "Replication is already set up for table with id (%s) in xCluster config (%s)",
-                tableId, xClusterConfig.uuid);
+                tableId, xClusterConfig.getUuid());
         throw new IllegalArgumentException(errMsg);
       }
-      tableIdsBootstrapIdsMap.put(tableId, tableConfig.get().streamId);
+      tableIdsBootstrapIdsMap.put(tableId, tableConfig.get().getStreamId());
     }
     // Either all tables should need bootstrap, or none should.
     if (tableIdsBootstrapIdsMap.values().stream().anyMatch(Objects::isNull)
@@ -98,11 +98,11 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
           String.format(
               "Failed to create XClusterConfig(%s) because some tables went through bootstrap and "
                   + "some did not, You must create XClusterConfigSetup subtask separately for them",
-              xClusterConfig.uuid));
+              xClusterConfig.getUuid()));
     }
 
-    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.sourceUniverseUUID);
-    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     YBClient client = ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate);
@@ -110,7 +110,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
     try {
       log.info(
           "Setting up replication for XClusterConfig({}): tableIdsBootstrapIdsMap {}",
-          xClusterConfig.uuid,
+          xClusterConfig.getUuid(),
           tableIdsBootstrapIdsMap);
       SetupUniverseReplicationResponse resp =
           client.setupUniverseReplication(
@@ -126,7 +126,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
         throw new RuntimeException(
             String.format(
                 "Failed to set up replication for XClusterConfig(%s): %s",
-                xClusterConfig.uuid, resp.errorMessage()));
+                xClusterConfig.getUuid(), resp.errorMessage()));
       }
       waitForXClusterOperation(client::isSetupUniverseReplicationDone);
 
@@ -142,7 +142,9 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
             String.format(
                 "Failed to getMasterClusterConfig from target universe (%s) for xCluster config "
                     + "(%s): %s",
-                targetUniverse.universeUUID, xClusterConfig.uuid, clusterConfigResp.errorMessage());
+                targetUniverse.getUniverseUUID(),
+                xClusterConfig.getUuid(),
+                clusterConfigResp.errorMessage());
         throw new RuntimeException(errMsg);
       }
       updateStreamIdsFromTargetUniverseClusterConfig(

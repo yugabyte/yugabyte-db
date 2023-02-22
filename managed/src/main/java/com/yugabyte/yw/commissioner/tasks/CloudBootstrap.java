@@ -49,7 +49,7 @@ public class CloudBootstrap extends CloudTaskBase {
   @ApiModel(value = "CloudBootstrapParams", description = "Cloud bootstrap parameters")
   public static class Params extends CloudTaskParams {
     public static Params fromProvider(Provider provider) {
-      return CloudBootstrap.Params.fromProvider(provider, provider.regions);
+      return CloudBootstrap.Params.fromProvider(provider, provider.getRegions());
     }
 
     public static Params fromProvider(Provider provider, List<Region> regions) {
@@ -74,7 +74,7 @@ public class CloudBootstrap extends CloudTaskBase {
         hostVpcId = gcpCloudInfo.getHostVpcId();
         destVpcId = gcpCloudInfo.getDestVpcId();
       }
-      taskParams.airGapInstall = provider.details.airGapInstall;
+      taskParams.airGapInstall = provider.getDetails().airGapInstall;
       taskParams.destVpcId = destVpcId;
       taskParams.hostVpcId = hostVpcId;
       if (provider.getCloudCode().equals(CloudType.gcp)) {
@@ -86,16 +86,16 @@ public class CloudBootstrap extends CloudTaskBase {
         }
       }
       taskParams.hostVpcRegion = hostVpcRegion;
-      taskParams.providerUUID = provider.uuid;
-      taskParams.sshPort = provider.details.sshPort;
-      taskParams.sshUser = provider.details.sshUser;
-      taskParams.setUpChrony = provider.details.setUpChrony;
-      taskParams.ntpServers = provider.details.ntpServers;
-      taskParams.showSetUpChrony = provider.details.showSetUpChrony;
+      taskParams.providerUUID = provider.getUuid();
+      taskParams.sshPort = provider.getDetails().sshPort;
+      taskParams.sshUser = provider.getDetails().sshUser;
+      taskParams.setUpChrony = provider.getDetails().setUpChrony;
+      taskParams.ntpServers = provider.getDetails().ntpServers;
+      taskParams.showSetUpChrony = provider.getDetails().showSetUpChrony;
       taskParams.perRegionMetadata =
           regions
               .stream()
-              .collect(Collectors.toMap(region -> region.code, PerRegionMetadata::fromRegion));
+              .collect(Collectors.toMap(region -> region.getCode(), PerRegionMetadata::fromRegion));
       return taskParams;
     }
 
@@ -167,38 +167,39 @@ public class CloudBootstrap extends CloudTaskBase {
         perRegionMetadata.architecture =
             region.getArchitecture() != null ? region.getArchitecture() : Architecture.x86_64;
         // Instance templates are currently only implemented for GCP.
-        if (Common.CloudType.valueOf(region.provider.code).equals(Common.CloudType.gcp)) {
+        if (Common.CloudType.valueOf(region.getProvider().getCode()).equals(Common.CloudType.gcp)) {
           GCPRegionCloudInfo g = CloudInfoInterface.get(region);
           perRegionMetadata.instanceTemplate = g.instanceTemplate;
         }
         //    perRegionMetadata.vpcCidr = never used
-        if (region.zones == null || region.zones.size() == 0) {
+        if (region.getZones() == null || region.getZones().size() == 0) {
           perRegionMetadata.azToSubnetIds = new HashMap<>();
         } else {
           perRegionMetadata.azToSubnetIds =
               region
-                  .zones
+                  .getZones()
                   .stream()
-                  .filter(zone -> zone.name != null && zone.subnet != null)
-                  .collect(Collectors.toMap(zone -> zone.name, zone -> zone.subnet));
+                  .filter(zone -> zone.getName() != null && zone.getSubnet() != null)
+                  .collect(Collectors.toMap(zone -> zone.getName(), zone -> zone.getSubnet()));
           // Check if the zones have a secondary subnet
           perRegionMetadata.azToSecondarySubnetIds =
               region
-                  .zones
+                  .getZones()
                   .stream()
-                  .filter(zone -> zone.name != null && zone.secondarySubnet != null)
-                  .collect(Collectors.toMap(zone -> zone.name, zone -> zone.secondarySubnet));
+                  .filter(zone -> zone.getName() != null && zone.getSecondarySubnet() != null)
+                  .collect(
+                      Collectors.toMap(zone -> zone.getName(), zone -> zone.getSecondarySubnet()));
           // In case of GCP, we want to use the secondary subnet, which will be the same across
           // zones. Will be ignored in all other cases.
-          perRegionMetadata.secondarySubnetId = region.zones.get(0).secondarySubnet;
-          perRegionMetadata.subnetId = region.zones.get(0).subnet;
+          perRegionMetadata.secondarySubnetId = region.getZones().get(0).getSecondarySubnet();
+          perRegionMetadata.subnetId = region.getZones().get(0).getSubnet();
 
-          if (region.provider.getCloudCode().equals(Common.CloudType.onprem)) {
+          if (region.getProvider().getCloudCode().equals(Common.CloudType.onprem)) {
             // OnPrem provider specific fields.
-            perRegionMetadata.latitude = region.latitude;
-            perRegionMetadata.longitude = region.longitude;
-            perRegionMetadata.azList = region.zones;
-            perRegionMetadata.regionName = region.name;
+            perRegionMetadata.latitude = region.getLatitude();
+            perRegionMetadata.longitude = region.getLongitude();
+            perRegionMetadata.azList = region.getZones();
+            perRegionMetadata.regionName = region.getName();
           }
         }
         return perRegionMetadata;
@@ -262,7 +263,7 @@ public class CloudBootstrap extends CloudTaskBase {
   @Override
   public void run() {
     Provider p = Provider.get(taskParams().providerUUID);
-    Common.CloudType cloudType = Common.CloudType.valueOf(p.code);
+    Common.CloudType cloudType = Common.CloudType.valueOf(p.getCode());
     if (cloudType.isRequiresBootstrap()
         && cloudType != Common.CloudType.onprem
         && !taskParams().skipBootstrapRegion) {

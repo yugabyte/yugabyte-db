@@ -135,7 +135,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
             Status.BAD_REQUEST, "Certificate not present: " + rootCA);
       }
 
-      switch (rootCert.certType) {
+      switch (rootCert.getCertType()) {
         case SelfSigned:
           rootCARotationType = CertRotationType.RootCert;
           break;
@@ -149,7 +149,8 @@ public class CertsRotateParams extends UpgradeTaskParams {
             throw new PlatformServiceException(
                 Status.BAD_REQUEST,
                 String.format(
-                    "The certificate %s needs info. Update the cert and retry.", rootCert.label));
+                    "The certificate %s needs info. Update the cert and retry.",
+                    rootCert.getLabel()));
           }
           if (currentRootCA != null && !CertificateHelper.areCertsDiff(currentRootCA, rootCA)) {
             rootCARotationType = CertRotationType.ServerCert;
@@ -177,7 +178,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
       if (isRootCARequired) {
         rootCA = currentRootCA;
         CertificateInfo rootCert = CertificateInfo.get(rootCA);
-        if (selfSignedServerCertRotate && rootCert.certType == CertConfigType.SelfSigned) {
+        if (selfSignedServerCertRotate && rootCert.getCertType() == CertConfigType.SelfSigned) {
           rootCARotationType = CertRotationType.ServerCert;
         }
       }
@@ -192,7 +193,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
             Status.BAD_REQUEST, "Certificate not present: " + rootCA);
       }
 
-      switch (clientRootCert.certType) {
+      switch (clientRootCert.getCertType()) {
         case SelfSigned:
           clientRootCARotationType = CertRotationType.RootCert;
           break;
@@ -207,7 +208,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
                 Status.BAD_REQUEST,
                 String.format(
                     "The certificate %s needs info. Update the cert and retry.",
-                    clientRootCert.label));
+                    clientRootCert.getLabel()));
           }
           if (currentClientRootCA != null
               && !CertificateHelper.areCertsDiff(currentClientRootCA, clientRootCA)) {
@@ -222,7 +223,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
                 Status.BAD_REQUEST,
                 String.format(
                     "The certificate %s needs info. Update the cert and retry.",
-                    clientRootCert.label));
+                    clientRootCert.getLabel()));
           }
           if (currentClientRootCA != null
               && !CertificateHelper.areCertsDiff(currentClientRootCA, clientRootCA)) {
@@ -248,7 +249,8 @@ public class CertsRotateParams extends UpgradeTaskParams {
       if (isClientRootCARequired) {
         clientRootCA = currentClientRootCA;
         CertificateInfo clientRootCert = CertificateInfo.get(clientRootCA);
-        if (selfSignedClientCertRotate && clientRootCert.certType == CertConfigType.SelfSigned) {
+        if (selfSignedClientCertRotate
+            && clientRootCert.getCertType() == CertConfigType.SelfSigned) {
           clientRootCARotationType = CertRotationType.ServerCert;
         }
       }
@@ -311,8 +313,8 @@ public class CertsRotateParams extends UpgradeTaskParams {
       throw new PlatformServiceException(Status.BAD_REQUEST, "Certificate not present: " + rootCA);
     }
 
-    if (!(rootCert.certType == CertConfigType.SelfSigned
-        || rootCert.certType == CertConfigType.HashicorpVault)) {
+    if (!(rootCert.getCertType() == CertConfigType.SelfSigned
+        || rootCert.getCertType() == CertConfigType.HashicorpVault)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
           "Kubernetes universes supports only SelfSigned or HashicorpVault certificates.");

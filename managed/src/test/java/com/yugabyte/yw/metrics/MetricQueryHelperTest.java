@@ -21,7 +21,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -51,7 +50,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
-import play.mvc.Result;
 
 @RunWith(MockitoJUnitRunner.class)
 public class MetricQueryHelperTest extends FakeDBApplication {
@@ -87,7 +85,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     try {
       metricQueryHelper.query(Collections.emptyList(), Collections.emptyMap());
     } catch (PlatformServiceException re) {
-      AssertHelper.assertBadRequest(re.buildResult(), "Empty metricsWithSettings data provided.");
+      assertThat(re.getMessage(), equalTo("Empty metricsWithSettings data provided."));
     }
   }
 
@@ -100,8 +98,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     try {
       metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
     } catch (PlatformServiceException re) {
-      AssertHelper.assertBadRequest(
-          re.buildResult(), "Invalid filter params provided, it should be a hash.");
+      assertThat(re.getMessage(), equalTo("Invalid filter params provided, it should be a hash."));
     }
   }
 
@@ -115,9 +112,9 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     try {
       metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
     } catch (PlatformServiceException re) {
-      AssertHelper.assertBadRequest(
-          re.buildResult(),
-          "Should be at least " + STEP_SIZE + " seconds between start and end time");
+      assertThat(
+          re.getMessage(),
+          equalTo("Should be at least " + STEP_SIZE + " seconds between start and end time"));
     }
   }
 
@@ -132,8 +129,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     try {
       metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
     } catch (PlatformServiceException re) {
-      final Result result = re.buildResult();
-      AssertHelper.assertBadRequest(result, "Step should be a valid integer");
+      assertThat(re.getMessage(), equalTo("Step should be a valid integer"));
     }
   }
 
@@ -148,8 +144,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     try {
       metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
     } catch (PlatformServiceException re) {
-      String expectedErr = "Step should not be less than 1 second";
-      AssertHelper.assertBadRequest(re.buildResult(), expectedErr);
+      assertThat(re.getMessage(), equalTo("Step should not be less than 1 second"));
     }
   }
 

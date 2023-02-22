@@ -14,7 +14,6 @@ import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static junit.framework.TestCase.fail;
 import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.route;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -29,7 +28,6 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.swagger.PlatformModelConverter;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileWriter;
@@ -52,12 +50,7 @@ import play.modules.swagger.SwaggerModule;
 import play.mvc.Result;
 import play.test.Helpers;
 
-/**
- * Unittest can be run like this: [yugaware] $ testOnly com.yugabyte.yw.controllers.SwaggerGenTest
- * This test will fail if swagger test has not been generated.
- *
- * <p>Run following command to update the spec so that the test passes: [yugaware] swaggerGen
- */
+
 public class SwaggerGenTest extends FakeDBApplication {
 
   @Override

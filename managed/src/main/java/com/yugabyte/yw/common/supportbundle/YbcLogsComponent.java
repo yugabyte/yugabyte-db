@@ -49,7 +49,7 @@ class YbcLogsComponent implements SupportBundleComponent {
         String.format(
             "downloadComponent() method not applicable "
                 + "for 'YbcLogsComponent' without start and end date, on universe = '%s'",
-            universe.name);
+            universe.getName());
     throw new RuntimeException(errMsg);
   }
 
@@ -125,7 +125,7 @@ class YbcLogsComponent implements SupportBundleComponent {
           log.debug(
               String.format(
                   "No ybc files downloaded from the source path '%s' for universe '%s'.",
-                  nodeHomeDir, universe.name));
+                  nodeHomeDir, universe.getName()));
         }
       } catch (Exception e) {
         log.error(

@@ -86,7 +86,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       if (nodeAgentManager.isServerToBeInstalled(provider)) {
         if (provider.getCloudCode() == CloudType.onprem) {
           AccessKey accessKey =
-              AccessKey.getOrBadRequest(provider.uuid, cluster.userIntent.accessKeyCode);
+              AccessKey.getOrBadRequest(provider.getUuid(), cluster.userIntent.accessKeyCode);
           if (accessKey.getKeyInfo().skipProvisioning) {
             return;
           }

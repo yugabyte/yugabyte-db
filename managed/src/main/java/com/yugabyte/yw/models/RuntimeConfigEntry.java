@@ -18,10 +18,16 @@ import java.util.Set;
 import java.util.UUID;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @Entity
+@Getter
+@Setter
 public class RuntimeConfigEntry extends Model {
 
   private static final Finder<UUID, RuntimeConfigEntry> find =
@@ -135,18 +141,20 @@ public class RuntimeConfigEntry extends Model {
 
   @Transactional
   public static RuntimeConfigEntry upsert(Customer customer, String path, String value) {
-    return upsertInternal(customer.uuid, path, value, () -> ScopedRuntimeConfig.ensure(customer));
+    return upsertInternal(
+        customer.getUuid(), path, value, () -> ScopedRuntimeConfig.ensure(customer));
   }
 
   @Transactional
   public static RuntimeConfigEntry upsert(Universe universe, String path, String value) {
     return upsertInternal(
-        universe.universeUUID, path, value, () -> ScopedRuntimeConfig.ensure(universe));
+        universe.getUniverseUUID(), path, value, () -> ScopedRuntimeConfig.ensure(universe));
   }
 
   @Transactional
   public static RuntimeConfigEntry upsert(Provider provider, String path, String value) {
-    return upsertInternal(provider.uuid, path, value, () -> ScopedRuntimeConfig.ensure(provider));
+    return upsertInternal(
+        provider.getUuid(), path, value, () -> ScopedRuntimeConfig.ensure(provider));
   }
 
   @Override

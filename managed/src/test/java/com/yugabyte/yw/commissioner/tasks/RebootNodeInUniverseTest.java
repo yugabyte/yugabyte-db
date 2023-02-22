@@ -55,16 +55,16 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = numNodes;
-    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = replicationFactor;
-    userIntent.regionList = ImmutableList.of(region.uuid);
+    userIntent.regionList = ImmutableList.of(region.getUuid());
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(userIntent, withMaster /* setMasters */));
-    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
 
     when(mockNodeManager.nodeCommand(any(), any()))
         .then(
@@ -213,7 +213,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
   public void testRebootNodeWithNoMaster(boolean isHardReboot) {
     setUp(true, 6, 3);
     RebootNodeInUniverse.Params taskParams = new RebootNodeInUniverse.Params();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
     taskParams.expectedUniverseVersion = 2;
     taskParams.isHardReboot = isHardReboot;
 
@@ -231,7 +231,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
   public void testRebootNodeWithMaster(boolean isHardReboot) {
     setUp(true, 4, 3);
     RebootNodeInUniverse.Params taskParams = new RebootNodeInUniverse.Params();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
     taskParams.expectedUniverseVersion = 2;
     taskParams.isHardReboot = isHardReboot;
 

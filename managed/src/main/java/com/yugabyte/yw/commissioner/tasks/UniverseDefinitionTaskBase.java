@@ -76,7 +76,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
-import play.Configuration;
 import play.libs.Json;
 
 /**
@@ -102,8 +101,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     HTTP,
     RPC
   }
-
-  private Configuration appConfig;
 
   // Constants needed for parsing a templated node name tag (for AWS).
   public static final String NODE_NAME_KEY = "Name";
@@ -386,7 +383,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       if (primaryCluster == null) {
         throw new IllegalStateException(
             String.format(
-                "Primary cluster not found in task for universe %s", universe.universeUUID));
+                "Primary cluster not found in task for universe %s", universe.getUniverseUUID()));
       }
     }
 
@@ -440,7 +437,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   public void updateOnPremNodeUuids(Universe universe) {
     log.info(
-        "Selecting onprem nodes for universe {} ({}).", universe.name, taskParams().universeUUID);
+        "Selecting onprem nodes for universe {} ({}).",
+        universe.getName(),
+        taskParams().universeUUID);
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
@@ -475,7 +474,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         .filter(c -> !c.userIntent.providerType.equals(CloudType.onprem))
         .flatMap(c -> taskParams().getNodesInCluster(c.uuid).stream())
         .filter(n -> n.state == NodeDetails.NodeState.ToBeAdded)
-        .forEach(n -> n.nodeUuid = Util.generateNodeUUID(universe.universeUUID, n.nodeName));
+        .forEach(n -> n.nodeUuid = Util.generateNodeUUID(universe.getUniverseUUID(), n.nodeName));
   }
 
   // This reserves NodeInstances in the DB.
@@ -695,7 +694,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Development testing variable.
       params.itestS3PackagePath = taskParams().itestS3PackagePath;
 
-      UUID custUUID = Customer.get(universe.customerId).uuid;
+      UUID custUUID = Customer.get(universe.getCustomerId()).getUuid();
       params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
 
       // Add task type
@@ -1085,7 +1084,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.itestS3PackagePath = taskParams().itestS3PackagePath;
 
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-      UUID custUUID = Customer.get(universe.customerId).uuid;
+      UUID custUUID = Customer.get(universe.getCustomerId()).getUuid();
 
       params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
       // Set if updating master addresses only.
@@ -2214,7 +2213,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.allowInsecure = taskParams().allowInsecure;
     params.setTxnTableWaitCountFlag = taskParams().setTxnTableWaitCountFlag;
 
-    UUID custUUID = Customer.get(universe.customerId).uuid;
+    UUID custUUID = Customer.get(universe.getCustomerId()).getUuid();
     params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
     params.rootCA = universe.getUniverseDetails().rootCA;
     params.setClientRootCA(universe.getUniverseDetails().getClientRootCA());

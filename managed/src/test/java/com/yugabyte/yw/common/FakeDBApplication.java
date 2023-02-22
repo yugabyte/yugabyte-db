@@ -31,13 +31,15 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeoutException;
 import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
+import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
-import org.pac4j.play.store.PlaySessionStore;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.mvc.Http;
+import play.mvc.Http.RequestBuilder;
 import play.mvc.Result;
+import play.test.Helpers;
 
 public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public Commissioner mockCommissioner = mock(Commissioner.class);
@@ -104,7 +106,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
                 .overrides(bind(ShellKubernetesManager.class).toInstance(mockKubernetesManager))
                 .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
-                .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+                .overrides(bind(SessionStore.class).toInstance(mockSessionStore))
                 .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
                 .overrides(
                     bind(CustomerLicenseManager.class).toInstance(mockCustomerLicenseManager))
@@ -160,5 +162,9 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public Result routeWithYWErrHandler(Http.RequestBuilder requestBuilder)
       throws InterruptedException, ExecutionException, TimeoutException {
     return FakeApiHelper.routeWithYWErrHandler(requestBuilder, getApp());
+  }
+
+  protected Result route(RequestBuilder requestBuilder) {
+    return Helpers.route(app, requestBuilder);
   }
 }

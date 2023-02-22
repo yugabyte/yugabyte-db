@@ -63,7 +63,7 @@ public class TabletMetaComponentTest extends FakeDBApplication {
     node.nodeName = "u-n1";
     this.universe =
         Universe.saveDetails(
-            universe.universeUUID,
+            universe.getUniverseUUID(),
             (universe) -> {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
               universeDetails.nodeDetailsSet = new HashSet<>(Arrays.asList(node));

@@ -78,17 +78,17 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
               pi,
               placement.masters,
               taskParams().nodePrefix,
-              universe.name,
+              universe.getName(),
               provider,
               taskParams().communicationPorts.masterRpcPort,
               newNamingStyle);
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
-      createPodsTask(universe.name, placement, masterAddresses, /*isReadOnlyCluster*/ false);
+      createPodsTask(universe.getName(), placement, masterAddresses, /*isReadOnlyCluster*/ false);
 
       createSingleKubernetesExecutorTask(
-          universe.name,
+          universe.getName(),
           KubernetesCommandExecutor.CommandType.POD_INFO,
           pi, /*isReadOnlyCluster*/
           false);
@@ -121,9 +121,12 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
             new KubernetesPlacement(readClusterPI, /*isReadOnlyCluster*/ true);
         // Skip choosing masters from read cluster.
         boolean isReadClusterMultiAz = PlacementInfoUtil.isMultiAZ(readClusterProvider);
-        createPodsTask(universe.name, readClusterPlacement, masterAddresses, true);
+        createPodsTask(universe.getName(), readClusterPlacement, masterAddresses, true);
         createSingleKubernetesExecutorTask(
-            universe.name, KubernetesCommandExecutor.CommandType.POD_INFO, readClusterPI, true);
+            universe.getName(),
+            KubernetesCommandExecutor.CommandType.POD_INFO,
+            readClusterPI,
+            true);
         tserversAdded.addAll(
             getPodsToAdd(
                 readClusterPlacement.tservers,

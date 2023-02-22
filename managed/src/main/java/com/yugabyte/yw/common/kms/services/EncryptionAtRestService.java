@@ -150,7 +150,10 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
     if (activeKey != null) {
       key =
           retrieveKey(
-              universeUUID, configUUID, Base64.getDecoder().decode(activeKey.uuid.keyRef), config);
+              universeUUID,
+              configUUID,
+              Base64.getDecoder().decode(activeKey.getUuid().getKeyRef()),
+              config);
     }
 
     return key;
@@ -240,7 +243,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
   public KmsConfig createAuthConfig(UUID customerUUID, String configName, ObjectNode config) {
     KmsConfig result =
         KmsConfig.createKMSConfig(customerUUID, this.keyProvider, config, configName);
-    UUID configUUID = result.configUUID;
+    UUID configUUID = result.getConfigUUID();
     ObjectNode existingConfig = getAuthConfig(configUUID);
     ObjectNode updatedConfig = createAuthConfigWithService(configUUID, existingConfig);
     if (updatedConfig != null) {
@@ -311,7 +314,8 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
   }
 
   public BackupEntry getBackupEntry(KmsHistory history) {
-    return new BackupEntry(Base64.getDecoder().decode(history.uuid.keyRef), this.keyProvider);
+    return new BackupEntry(
+        Base64.getDecoder().decode(history.getUuid().getKeyRef()), this.keyProvider);
   }
 
   // Add backed up keyRefs to the kms_history table for universeUUID and configUUID

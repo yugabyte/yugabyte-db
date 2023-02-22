@@ -65,16 +65,16 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     // create default universe
     UserIntent userIntent = new UserIntent();
     userIntent.numNodes = numNodes;
-    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = replicationFactor;
-    userIntent.regionList = ImmutableList.of(region.uuid);
+    userIntent.regionList = ImmutableList.of(region.getUuid());
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(userIntent, withMaster /* setMasters */));
-    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
 
     Universe.UniverseUpdater updater =
         universe -> {
@@ -92,8 +92,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           universeDetails.nodeDetailsSet = nodes;
           universe.setUniverseDetails(universeDetails);
         };
-    Universe.saveDetails(defaultUniverse.universeUUID, updater);
-    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
 
     YBClient mockClient = mock(YBClient.class);
     when(mockNodeManager.nodeCommand(any(), any()))
@@ -279,7 +279,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   public void testRemoveNodeSuccess() {
     setUp(false, 4, 3, false);
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
     taskParams.expectedUniverseVersion = 3;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
@@ -295,7 +295,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   public void testRemoveNodeWithMaster() {
     setUp(true, 4, 3, false);
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
     taskParams.expectedUniverseVersion = 3;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
@@ -311,7 +311,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   public void testRemoveUnknownNode() {
     setUp(false, 4, 3, false);
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
     taskParams.expectedUniverseVersion = 3;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n9");
@@ -322,7 +322,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   public void testRemoveNonExistentNode() {
     setUp(false, 4, 3, false);
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
     taskParams.expectedUniverseVersion = 3;
     ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = null;
@@ -341,7 +341,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   public void testRemoveNodeWithNoDataMove() {
     setUp(true, 3, 3, false);
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
     taskParams.expectedUniverseVersion = 3;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
@@ -357,7 +357,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   public void testRemoveNodeWithNoDataMoveRF5() {
     setUp(true, 5, 5, true);
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
     taskParams.expectedUniverseVersion = 3;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
@@ -373,7 +373,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   public void testRemoveNodeRF5() {
     setUp(true, 6, 5, true);
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
     taskParams.expectedUniverseVersion = 3;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");

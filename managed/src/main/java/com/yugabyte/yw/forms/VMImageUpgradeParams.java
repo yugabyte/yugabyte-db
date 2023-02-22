@@ -105,19 +105,19 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
       if (node.isMaster || node.isTserver) {
         Region region =
             AvailabilityZone.maybeGet(node.azUuid)
-                .map(az -> az.region)
+                .map(az -> az.getRegion())
                 .orElseThrow(
                     () ->
                         new PlatformServiceException(
                             Status.BAD_REQUEST,
                             "Could not find region for AZ " + node.cloudInfo.az));
 
-        if (!machineImages.containsKey(region.uuid)) {
+        if (!machineImages.containsKey(region.getUuid())) {
           throw new PlatformServiceException(
               Status.BAD_REQUEST, "No VM image was specified for region " + node.cloudInfo.region);
         }
 
-        nodeToRegion.putIfAbsent(node.nodeUuid, region.uuid);
+        nodeToRegion.putIfAbsent(node.nodeUuid, region.getUuid());
       }
     }
   }

@@ -63,7 +63,6 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.utils.IOUtils;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.time.DateUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.joda.time.DateTime;
@@ -184,7 +183,8 @@ public class SupportBundleUtil {
         String providerUUID = userIntent.provider;
         InstanceType instanceType =
             InstanceType.getOrBadRequest(UUID.fromString(providerUUID), nodeInstanceType);
-        List<VolumeDetails> volumeDetailsList = instanceType.instanceTypeDetails.volumeDetailsList;
+        List<VolumeDetails> volumeDetailsList =
+            instanceType.getInstanceTypeDetails().volumeDetailsList;
         if (CollectionUtils.isNotEmpty(volumeDetailsList)) {
           dataDirPath = volumeDetailsList.get(0).mountPath;
         } else {
@@ -683,7 +683,7 @@ public class SupportBundleUtil {
           String.format(
               "Wrongly called downloadNodeLevelComponent() "
                   + "from '%s' with node = null, on universe = '%s'.",
-              componentName, universe.name);
+              componentName, universe.getName());
       throw new RuntimeException(errMsg);
     }
 
@@ -712,7 +712,7 @@ public class SupportBundleUtil {
         log.debug(
             String.format(
                 "No files exist at the source path '%s' for universe '%s' for component '%s'.",
-                nodeHomeDir, universe.name, componentName));
+                nodeHomeDir, universe.getName(), componentName));
       }
     } catch (Exception e) {
       log.error(

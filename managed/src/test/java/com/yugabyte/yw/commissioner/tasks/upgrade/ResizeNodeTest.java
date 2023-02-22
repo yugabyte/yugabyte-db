@@ -109,7 +109,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     resizeNode.setUserTaskUUID(UUID.randomUUID());
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             universe -> {
               UniverseDefinitionTaskParams.UserIntent userIntent =
                   universe.getUniverseDetails().getPrimaryCluster().userIntent;
@@ -118,7 +118,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
               userIntent.deviceInfo.volumeSize = DEFAULT_VOLUME_SIZE;
               userIntent.deviceInfo.storageType = PublicCloudConstants.StorageType.GP3;
               userIntent.instanceType = DEFAULT_INSTANCE_TYPE;
-              userIntent.provider = defaultProvider.uuid.toString();
+              userIntent.provider = defaultProvider.getUuid().toString();
               universe
                   .getNodes()
                   .forEach(node -> node.cloudInfo.instance_type = DEFAULT_INSTANCE_TYPE);
@@ -133,17 +133,17 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     } catch (Exception ignored) {
     }
 
-    createInstanceType(defaultProvider.uuid, DEFAULT_INSTANCE_TYPE);
-    createInstanceType(defaultProvider.uuid, NEW_INSTANCE_TYPE);
-    createInstanceType(defaultProvider.uuid, NEW_READ_ONLY_INSTANCE_TYPE);
+    createInstanceType(defaultProvider.getUuid(), DEFAULT_INSTANCE_TYPE);
+    createInstanceType(defaultProvider.getUuid(), NEW_INSTANCE_TYPE);
+    createInstanceType(defaultProvider.getUuid(), NEW_READ_ONLY_INSTANCE_TYPE);
   }
 
   @Override
   protected PlacementInfo createPlacementInfo() {
     PlacementInfo placementInfo = new PlacementInfo();
-    PlacementInfoUtil.addPlacementZone(az1.uuid, placementInfo, 1, 1, false);
-    PlacementInfoUtil.addPlacementZone(az2.uuid, placementInfo, 1, 1, true);
-    PlacementInfoUtil.addPlacementZone(az3.uuid, placementInfo, 1, 2, false);
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), placementInfo, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), placementInfo, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az3.getUuid(), placementInfo, 1, 2, false);
     return placementInfo;
   }
 
@@ -300,7 +300,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     currentIntent.deviceInfo.numVolumes = 1;
     currentIntent.deviceInfo.storageType = storageType;
     currentIntent.providerType = cloudType;
-    currentIntent.provider = defaultProvider.uuid.toString();
+    currentIntent.provider = defaultProvider.getUuid().toString();
     currentIntent.instanceType = instanceTypeCode;
     return currentIntent;
   }
@@ -425,7 +425,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   public void testNoWaitForMasterLeaderForRF1() {
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             univ -> {
               univ.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor = 1;
             });
@@ -449,7 +449,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = curIntent.ybSoftwareVersion;
     userIntent.accessKeyCode = curIntent.accessKeyCode;
-    userIntent.regionList = ImmutableList.of(region.uuid);
+    userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.deviceInfo = new DeviceInfo();
     userIntent.deviceInfo.numVolumes = 1;
     userIntent.deviceInfo.volumeSize = DEFAULT_VOLUME_SIZE;
@@ -457,18 +457,18 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     userIntent.providerType = curIntent.providerType;
     userIntent.provider = curIntent.provider;
     PlacementInfo pi = new PlacementInfo();
-    PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 1, false);
-    PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, false);
-    PlacementInfoUtil.addPlacementZone(az3.uuid, pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi, 1, 1, true);
 
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
 
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             universe ->
                 universe
                     .getNodes()
@@ -496,7 +496,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = curIntent.ybSoftwareVersion;
     userIntent.accessKeyCode = curIntent.accessKeyCode;
-    userIntent.regionList = ImmutableList.of(region.uuid);
+    userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.deviceInfo = new DeviceInfo();
     userIntent.deviceInfo.numVolumes = 1;
     userIntent.deviceInfo.volumeSize = DEFAULT_VOLUME_SIZE;
@@ -504,18 +504,18 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     userIntent.providerType = curIntent.providerType;
     userIntent.provider = curIntent.provider;
     PlacementInfo pi = new PlacementInfo();
-    PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 1, false);
-    PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, false);
-    PlacementInfoUtil.addPlacementZone(az3.uuid, pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi, 1, 1, true);
 
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
 
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             universe ->
                 universe
                     .getNodes()
@@ -551,7 +551,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = curIntent.ybSoftwareVersion;
     userIntent.accessKeyCode = curIntent.accessKeyCode;
-    userIntent.regionList = ImmutableList.of(region.uuid);
+    userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.deviceInfo = new DeviceInfo();
     userIntent.deviceInfo.numVolumes = 1;
     userIntent.deviceInfo.volumeSize = DEFAULT_VOLUME_SIZE;
@@ -559,17 +559,17 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     userIntent.providerType = curIntent.providerType;
     userIntent.provider = curIntent.provider;
     PlacementInfo pi = new PlacementInfo();
-    PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 1, false);
-    PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, false);
-    PlacementInfoUtil.addPlacementZone(az3.uuid, pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi, 1, 1, true);
 
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             universe ->
                 universe
                     .getNodes()
@@ -711,7 +711,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   }
 
   private void assertGflags(boolean updateMasterGflags, boolean updateTserverGflags) {
-    Universe universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent newIntent = primaryCluster.userIntent;
@@ -728,7 +728,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       int newVolumeSize,
       String newMasterInstanceType,
       int newMasterVolumeSize) {
-    Universe universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     UniverseDefinitionTaskParams.UserIntent userIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
     assertEquals(newInstanceType, userIntent.instanceType);
@@ -771,7 +771,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     int currentNodeCount = defaultUniverse.getUniverseDetails().nodeDetailsSet.size();
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             universe -> {
               UniverseDefinitionTaskParams.UserIntent userIntent =
                   universe.getUniverseDetails().getPrimaryCluster().userIntent;
@@ -824,7 +824,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     AtomicReference<String> nodeName = new AtomicReference<>();
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             univ -> {
               NodeDetails node = univ.getUniverseDetails().nodeDetailsSet.iterator().next();
               node.disksAreMountedByUUID = false;
@@ -861,7 +861,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       boolean readonlyChanged) {
     int volumeSize = increaseVolume ? NEW_VOLUME_SIZE : DEFAULT_VOLUME_SIZE;
     String instanceType = changeInstance ? NEW_INSTANCE_TYPE : DEFAULT_INSTANCE_TYPE;
-    Universe universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent newIntent = primaryCluster.userIntent;
@@ -901,7 +901,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       String readReplicaInstanceType) {
     int volumeSize = increaseVolume ? NEW_VOLUME_SIZE : DEFAULT_VOLUME_SIZE;
     String instanceType = changeInstance ? NEW_INSTANCE_TYPE : DEFAULT_INSTANCE_TYPE;
-    Universe universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     UniverseDefinitionTaskParams.UserIntent newIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
     if (primaryChanged) {
@@ -1135,14 +1135,14 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   private ResizeNodeParams createResizeParams() {
     ResizeNodeParams taskParams = new ResizeNodeParams();
     RuntimeConfigEntry.upsertGlobal("yb.internal.allow_unsupported_instances", "true");
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
     return taskParams;
   }
 
   private ResizeNodeParams createResizeParamsForCloud() {
     ResizeNodeParams taskParams = new ResizeNodeParams();
     RuntimeConfigEntry.upsertGlobal("yb.cloud.enabled", "true");
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
     return taskParams;
   }
 

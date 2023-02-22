@@ -122,7 +122,7 @@ public class UniverseSpec {
     ObjectNode providerObj = (ObjectNode) universeSpecObj.get("provider");
     providerObj.set("config", providerUnmaskedConfig);
 
-    List<Region> regions = this.provider.regions;
+    List<Region> regions = this.provider.getRegions();
     ArrayNode regionsObj = (ArrayNode) providerObj.get("regions");
 
     if (regionsObj.isArray()) {
@@ -133,7 +133,7 @@ public class UniverseSpec {
         JsonNode regionUnmaskedConfig = Json.toJson(envVars);
         regionObj.set("config", regionUnmaskedConfig);
 
-        List<AvailabilityZone> zones = region.zones;
+        List<AvailabilityZone> zones = region.getZones();
         ArrayNode zonesObj = (ArrayNode) regionObj.get("zones");
 
         if (zonesObj.isArray()) {
@@ -179,7 +179,7 @@ public class UniverseSpec {
   }
 
   private void importAccessKeys(String specFolderPath, String storagePath) throws IOException {
-    if (!Provider.maybeGet(provider.uuid).isPresent()) {
+    if (!Provider.maybeGet(provider.getUuid()).isPresent()) {
       File srcKeyMasterDir = new File(specFolderPath + "/keys");
       File[] keyDirs = srcKeyMasterDir.listFiles();
       if (keyDirs != null) {
@@ -208,13 +208,13 @@ public class UniverseSpec {
 
   public void updateUniverseCustomerDetails(Customer customer) {
     Long customerId = customer.getCustomerId();
-    universe.customerId = customerId;
+    universe.setCustomerId(customerId);
   }
 
   @Transactional
   public void save(String storagePath) {
     // Check if provider exists, if not, save all entities related to provider.
-    if (!Provider.maybeGet(this.provider.uuid).isPresent()) {
+    if (!Provider.maybeGet(this.provider.getUuid()).isPresent()) {
       this.provider.save();
 
       for (InstanceType instanceType : this.instanceTypes) {

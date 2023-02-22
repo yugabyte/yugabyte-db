@@ -10,7 +10,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
-
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
@@ -22,76 +21,65 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.ManyToOne;
 import javax.persistence.Transient;
+import lombok.Getter;
+import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 
 @Entity
 @ApiModel(description = "Availability zone (AZ) for a region")
+@Getter
+@Setter
 public class AvailabilityZone extends Model {
 
   @Id
   @ApiModelProperty(value = "AZ UUID", accessMode = READ_ONLY)
-  public UUID uuid;
+  private UUID uuid;
 
-  @Column(length = 25, nullable = false)
   @ApiModelProperty(value = "AZ code", example = "us-west1-a")
-  public String code;
+  private String code;
 
-  @Column(length = 100, nullable = false)
   @Constraints.Required
   @ApiModelProperty(value = "AZ name", example = "us-west1-a", required = true)
-  public String name;
+  private String name;
 
   @Constraints.Required
-  @Column(nullable = false)
   @ManyToOne
   @JsonBackReference("region-zones")
   @ApiModelProperty(value = "AZ region", example = "South east 1", required = true)
-  public Region region;
+  private Region region;
 
-  @Column(nullable = false, columnDefinition = "boolean default true")
   @ApiModelProperty(
       value = "AZ status. This value is `true` for an active AZ.",
       accessMode = READ_ONLY)
-  public Boolean active = true;
+  private Boolean active = true;
 
   public Boolean isActive() {
-    return active;
+    return getActive();
   }
 
-  public void setActiveFlag(Boolean active) {
-    this.active = active;
-  }
-
-  @Column(length = 80)
   @ApiModelProperty(value = "AZ subnet", example = "subnet id")
-  public String subnet;
+  private String subnet;
 
-  @Column(length = 80)
   @ApiModelProperty(value = "AZ secondary subnet", example = "secondary subnet id")
-  public String secondarySubnet;
+  private String secondarySubnet;
 
   @Transient
   @ApiModelProperty(hidden = true)
-  public String providerCode;
+  private String providerCode;
 
   @Deprecated
   @DbJson
-  @Column(columnDefinition = "TEXT")
   @ApiModelProperty(value = "AZ configuration values")
-  public Map<String, String> config;
+  private Map<String, String> config;
 
-  @Encrypted
-  @DbJson
-  @Column(columnDefinition = "TEXT")
-  @ApiModelProperty
-  public AvailabilityZoneDetails details = new AvailabilityZoneDetails();
+  @Encrypted @DbJson @ApiModelProperty
+  private AvailabilityZoneDetails details = new AvailabilityZoneDetails();
 
   @ApiModelProperty(value = "Path to Kubernetes configuration file", accessMode = READ_ONLY)
   public String getKubeconfigPath() {
@@ -116,7 +104,7 @@ public class AvailabilityZone extends Model {
 
   @JsonProperty("details")
   public void setAvailabilityZoneDetails(AvailabilityZoneDetails azDetails) {
-    this.details = azDetails;
+    this.setDetails(azDetails);
   }
 
   @JsonProperty("details")
@@ -126,10 +114,10 @@ public class AvailabilityZone extends Model {
 
   @JsonIgnore
   public AvailabilityZoneDetails getAvailabilityZoneDetails() {
-    if (details == null) {
-      details = new AvailabilityZoneDetails();
+    if (getDetails() == null) {
+      setDetails(new AvailabilityZoneDetails());
     }
-    return details;
+    return getDetails();
   }
 
   /** Query Helper for Availability Zone with primary key */
@@ -140,11 +128,11 @@ public class AvailabilityZone extends Model {
 
   @JsonIgnore
   public long getNodeCount() {
-    return Customer.get(region.provider.customerUUID)
-        .getUniversesForProvider(region.provider.uuid)
+    return Customer.get(getRegion().getProvider().getCustomerUUID())
+        .getUniversesForProvider(getRegion().getProvider().getUuid())
         .stream()
         .flatMap(u -> u.getUniverseDetails().nodeDetailsSet.stream())
-        .filter(nd -> nd.azUuid.equals(uuid))
+        .filter(nd -> nd.azUuid.equals(getUuid()))
         .count();
   }
 
@@ -168,12 +156,12 @@ public class AvailabilityZone extends Model {
       AvailabilityZoneDetails details) {
     try {
       AvailabilityZone az = new AvailabilityZone();
-      az.region = region;
-      az.code = code;
-      az.name = name;
-      az.subnet = subnet;
+      az.setRegion(region);
+      az.setCode(code);
+      az.setName(name);
+      az.setSubnet(subnet);
       az.setAvailabilityZoneDetails(details);
-      az.secondarySubnet = secondarySubnet;
+      az.setSecondarySubnet(secondarySubnet);
       az.save();
       return az;
     } catch (Exception e) {
@@ -192,12 +180,12 @@ public class AvailabilityZone extends Model {
       Map<String, String> config) {
     try {
       AvailabilityZone az = new AvailabilityZone();
-      az.region = region;
-      az.code = code;
-      az.name = name;
-      az.subnet = subnet;
+      az.setRegion(region);
+      az.setCode(code);
+      az.setName(name);
+      az.setSubnet(subnet);
       az.setConfig(config);
-      az.secondarySubnet = secondarySubnet;
+      az.setSecondarySubnet(secondarySubnet);
       az.save();
       return az;
     } catch (Exception e) {
@@ -228,13 +216,13 @@ public class AvailabilityZone extends Model {
         .orElseThrow(
             () ->
                 new RuntimeException(
-                    "AZ by code " + code + " and provider " + provider.code + " NOT FOUND "));
+                    "AZ by code " + code + " and provider " + provider.getCode() + " NOT FOUND "));
   }
 
   public static Optional<AvailabilityZone> maybeGetByCode(Provider provider, String code) {
     return getAllByCode(code)
         .stream()
-        .filter(az -> az.getProvider().uuid.equals(provider.uuid))
+        .filter(az -> az.getProvider().getUuid().equals(provider.getUuid()))
         .findFirst();
   }
 
@@ -268,7 +256,7 @@ public class AvailabilityZone extends Model {
         .query()
         .fetchLazy("regions")
         .where()
-        .eq("uuid", region.provider.uuid)
+        .eq("uuid", getRegion().getProvider().getUuid())
         .findOne();
   }
 
@@ -276,22 +264,22 @@ public class AvailabilityZone extends Model {
   public String toString() {
     return "AvailabilityZone{"
         + "uuid="
-        + uuid
+        + getUuid()
         + ", code='"
-        + code
+        + getCode()
         + '\''
         + ", name='"
-        + name
+        + getName()
         + '\''
         + ", region="
-        + region
+        + getRegion()
         + ", active="
-        + active
+        + getActive()
         + ", subnet='"
-        + subnet
+        + getSubnet()
         + '\''
         + ", config="
-        + config
+        + getConfig()
         + '}';
   }
 }

@@ -11,10 +11,6 @@ import static org.junit.Assert.fail;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.tasks.params.RotateAccessKeyParams;
 import com.yugabyte.yw.common.AccessKeyRotationUtilTest;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.TaskInfo;
@@ -104,7 +100,10 @@ public class RotateAccessKeyTest extends UniverseModifyBaseTest {
       Universe universe, AccessKey newAccessKey) {
     RotateAccessKeyParams taskParams =
         new RotateAccessKeyParams(
-            defaultCustomer.uuid, defaultProvider.uuid, universe.universeUUID, newAccessKey);
+            defaultCustomer.getUuid(),
+            defaultProvider.getUuid(),
+            universe.getUniverseUUID(),
+            newAccessKey);
     return taskParams;
   }
 
@@ -159,7 +158,7 @@ public class RotateAccessKeyTest extends UniverseModifyBaseTest {
             .get(0)
             .nodeName;
     Universe.saveDetails(
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         u -> {
           NodeDetails node = u.getNode(nodeName);
           if (setNonLive) {

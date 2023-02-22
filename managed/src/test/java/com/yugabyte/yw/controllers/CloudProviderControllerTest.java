@@ -10,7 +10,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValueAtPath;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
-import static com.yugabyte.yw.common.AssertHelper.assertYBPSuccess;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static junit.framework.TestCase.assertNull;
@@ -52,7 +51,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
@@ -60,9 +58,9 @@ import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
-import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.Secret;
@@ -80,7 +78,6 @@ import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
@@ -96,8 +93,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
   @Mock Config mockConfig;
   @Mock ConfigHelper mockConfigHelper;
-
-  @Mock private play.Configuration appConfig;
 
   Customer customer;
   Users user;
@@ -117,13 +112,13 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
   private Result listProviders() {
     return FakeApiHelper.doRequestWithAuthToken(
-        "GET", "/api/customers/" + customer.uuid + "/providers", user.createAuthToken());
+        "GET", "/api/customers/" + customer.getUuid() + "/providers", user.createAuthToken());
   }
 
   private Result createProvider(JsonNode bodyJson) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody(
         "POST",
-        "/api/customers/" + customer.uuid + "/providers/ui",
+        "/api/customers/" + customer.getUuid() + "/providers/ui",
         user.createAuthToken(),
         bodyJson);
   }
@@ -131,7 +126,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   private Result createKubernetesProvider(JsonNode bodyJson) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody(
         "POST",
-        "/api/customers/" + customer.uuid + "/providers/kubernetes",
+        "/api/customers/" + customer.getUuid() + "/providers/kubernetes",
         user.createAuthToken(),
         bodyJson);
   }
@@ -139,21 +134,21 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   private Result getKubernetesSuggestedConfig() {
     return FakeApiHelper.doRequestWithAuthToken(
         "GET",
-        "/api/customers/" + customer.uuid + "/providers/suggested_kubernetes_config",
+        "/api/customers/" + customer.getUuid() + "/providers/suggested_kubernetes_config",
         user.createAuthToken());
   }
 
   private Result deleteProvider(UUID providerUUID) {
     return FakeApiHelper.doRequestWithAuthToken(
         "DELETE",
-        "/api/customers/" + customer.uuid + "/providers/" + providerUUID,
+        "/api/customers/" + customer.getUuid() + "/providers/" + providerUUID,
         user.createAuthToken());
   }
 
   private Result editProvider(JsonNode bodyJson, UUID providerUUID) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody(
         "PUT",
-        "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/edit",
+        "/api/customers/" + customer.getUuid() + "/providers/" + providerUUID + "/edit",
         user.createAuthToken(),
         bodyJson);
   }
@@ -161,7 +156,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   private Result bootstrapProvider(JsonNode bodyJson, Provider provider) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody(
         "POST",
-        "/api/customers/" + customer.uuid + "/providers/" + provider.uuid + "/bootstrap",
+        "/api/customers/" + customer.getUuid() + "/providers/" + provider.getUuid() + "/bootstrap",
         user.createAuthToken(),
         bodyJson);
   }
@@ -169,7 +164,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   private Result getProvider(UUID providerUUID) {
     return FakeApiHelper.doRequestWithAuthToken(
         "GET",
-        "/api/customers/" + customer.uuid + "/providers/" + providerUUID,
+        "/api/customers/" + customer.getUuid() + "/providers/" + providerUUID,
         user.createAuthToken());
   }
 
@@ -181,7 +176,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertOk(result);
     assertTrue(json.isArray());
     assertEquals(0, json.size());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -200,14 +195,14 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     System.out.println(json);
 
     assertOk(result);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
     assertEquals(2, json.size());
-    assertValues(json, "uuid", ImmutableList.of(p1.uuid.toString(), p2.uuid.toString()));
-    assertValues(json, "name", ImmutableList.of(p1.name, p2.name));
+    assertValues(json, "uuid", ImmutableList.of(p1.getUuid().toString(), p2.getUuid().toString()));
+    assertValues(json, "name", ImmutableList.of(p1.getName(), p2.getName()));
     json.forEach(
         (providerJson) -> {
           JsonNode config = providerJson.get("config");
-          if (UUID.fromString(providerJson.get("uuid").asText()).equals(p1.uuid)) {
+          if (UUID.fromString(providerJson.get("uuid").asText()).equals(p1.getUuid())) {
             assertValue(config, "AWS_ACCESS_KEY_ID", "SE**********TA");
             assertValue(config, "AWS_SECRET_ACCESS_KEY", "SE**********TA");
           } else {
@@ -225,9 +220,9 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
     assertOk(result);
     assertEquals(1, json.size());
-    assertValues(json, "uuid", ImmutableList.of(p.uuid.toString()));
-    assertValues(json, "name", ImmutableList.of(p.name));
-    assertAuditEntry(0, customer.uuid);
+    assertValues(json, "uuid", ImmutableList.of(p.getUuid().toString()));
+    assertValues(json, "name", ImmutableList.of(p.getName()));
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -237,11 +232,11 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     "Test Provider, null, 2",
   })
   public void testProviderFindByName(String name, String code, int expected) {
-    Provider.create(customer.uuid, Common.CloudType.aws, "Test Provider");
-    Provider.create(customer.uuid, Common.CloudType.gcp, "Test Provider");
-    Provider.create(customer.uuid, Common.CloudType.aws, "Another Test Provider");
+    Provider.create(customer.getUuid(), Common.CloudType.aws, "Test Provider");
+    Provider.create(customer.getUuid(), Common.CloudType.gcp, "Test Provider");
+    Provider.create(customer.getUuid(), Common.CloudType.aws, "Another Test Provider");
     String findUrl =
-        "/api/customers/" + customer.uuid + "/providers?name=" + URLEncoder.encode(name);
+        "/api/customers/" + customer.getUuid() + "/providers?name=" + URLEncoder.encode(name);
     if (!code.equals("null")) {
       findUrl += "&providerCode=" + URLEncoder.encode(code);
     }
@@ -250,7 +245,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.isArray());
     assertEquals(expected, json.size());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -263,8 +258,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertValue(json, "name", "Microsoft");
-    assertValue(json, "customerUUID", customer.uuid.toString());
-    assertAuditEntry(1, customer.uuid);
+    assertValue(json, "customerUUID", customer.getUuid().toString());
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -277,7 +272,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "name", "Amazon1");
     assertOk(result);
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -300,7 +295,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "name", "Amazon");
     assertOk(result);
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -313,7 +308,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertValue(json, "name", "Amazon");
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -322,7 +317,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     bodyJson.put("code", "aws");
     Result result = assertPlatformException(() -> createProvider(bodyJson));
     assertBadRequest(result, "\"name\":[\"error.required\"]}");
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -351,12 +346,13 @@ public class CloudProviderControllerTest extends FakeDBApplication {
       JsonNode json = Json.parse(contentAsString(result));
       assertOk(result);
       assertValue(json, "name", providerName);
-      Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
+      Provider provider =
+          Provider.get(customer.getUuid(), UUID.fromString(json.path("uuid").asText()));
       Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
       assertFalse(config.isEmpty());
       assertEquals(configJson.size(), config.size());
     }
-    assertAuditEntry(2, customer.uuid);
+    assertAuditEntry(2, customer.getUuid());
   }
 
   @Test
@@ -372,10 +368,11 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertValue(json, "name", providerName);
-    Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
+    Provider provider =
+        Provider.get(customer.getUuid(), UUID.fromString(json.path("uuid").asText()));
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
     assertTrue(config.isEmpty());
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -396,10 +393,11 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertValue(json, "name", providerName);
-    Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
+    Provider provider =
+        Provider.get(customer.getUuid(), UUID.fromString(json.path("uuid").asText()));
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
     assertTrue(!config.isEmpty());
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -433,15 +431,16 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertValue(json, "name", providerName);
-    Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
+    Provider provider =
+        Provider.get(customer.getUuid(), UUID.fromString(json.path("uuid").asText()));
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
     assertFalse(config.isEmpty());
-    List<Region> createdRegions = Region.getByProvider(provider.uuid);
+    List<Region> createdRegions = Region.getByProvider(provider.getUuid());
     assertEquals(1, createdRegions.size());
     List<AvailabilityZone> createdZones =
-        AvailabilityZone.getAZsForRegion(createdRegions.get(0).uuid);
+        AvailabilityZone.getAZsForRegion(createdRegions.get(0).getUuid());
     assertEquals(1, createdZones.size());
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -475,7 +474,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Result result = assertPlatformException(() -> createKubernetesProvider(bodyJson));
     JsonNode json = Json.parse(contentAsString(result));
     assertBadRequest(result, "Kubeconfig can't be at two levels");
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -581,9 +580,9 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteProviderWithAccessKey() {
     Provider p = ModelFactory.awsProvider(customer);
-    AccessKey ak = AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
+    AccessKey ak = AccessKey.create(p.getUuid(), "access-key-code", new AccessKey.KeyInfo());
     CloudProviderDelete.Params params = new CloudProviderDelete.Params();
-    params.providerUUID = p.uuid;
+    params.providerUUID = p.getUuid();
     params.customer = customer;
 
     try {
@@ -597,8 +596,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
       assertNull(e.getMessage());
     }
 
-    assertEquals(0, AccessKey.getAll(p.uuid).size());
-    assertNull(Provider.get(p.uuid));
+    assertEquals(0, AccessKey.getAll(p.getUuid()).size());
+    assertNull(Provider.get(p.getUuid()));
     verify(mockAccessManager, times(1))
         .deleteKeyByProvider(p, ak.getKeyCode(), ak.getKeyInfo().deleteRemote);
   }
@@ -620,10 +619,10 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     metaData.put("ybImage", "yb-image-1");
     metaData.set("instanceTypeDetails", Json.toJson(instanceTypeDetails));
 
-    InstanceType.createWithMetadata(p.uuid, "region-1", metaData);
-    AccessKey ak = AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
+    InstanceType.createWithMetadata(p.getUuid(), "region-1", metaData);
+    AccessKey ak = AccessKey.create(p.getUuid(), "access-key-code", new AccessKey.KeyInfo());
     CloudProviderDelete.Params params = new CloudProviderDelete.Params();
-    params.providerUUID = p.uuid;
+    params.providerUUID = p.getUuid();
     params.customer = customer;
 
     try {
@@ -638,15 +637,15 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     }
 
     assertEquals(0, InstanceType.findByProvider(p, mockConfig, mockConfigHelper).size());
-    assertNull(Provider.get(p.uuid));
+    assertNull(Provider.get(p.getUuid()));
   }
 
   @Test
   public void testDeleteProviderWithMultiRegionAccessKey() {
     Provider p = ModelFactory.awsProvider(customer);
-    AccessKey ak = AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
+    AccessKey ak = AccessKey.create(p.getUuid(), "access-key-code", new AccessKey.KeyInfo());
     CloudProviderDelete.Params params = new CloudProviderDelete.Params();
-    params.providerUUID = p.uuid;
+    params.providerUUID = p.getUuid();
     params.customer = customer;
 
     try {
@@ -660,8 +659,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
       assertNull(e.getMessage());
     }
 
-    assertEquals(0, AccessKey.getAll(p.uuid).size());
-    assertNull(Provider.get(p.uuid));
+    assertEquals(0, AccessKey.getAll(p.getUuid()).size());
+    assertNull(Provider.get(p.getUuid()));
     verify(mockAccessManager, times(1))
         .deleteKeyByProvider(p, ak.getKeyCode(), ak.getKeyInfo().deleteRemote);
   }
@@ -685,16 +684,16 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Universe universe = createUniverse(customer.getCustomerId());
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.provider = p.uuid.toString();
+    userIntent.provider = p.getUuid().toString();
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
     userIntent.regionList = new ArrayList<>();
-    userIntent.regionList.add(r.uuid);
+    userIntent.regionList.add(r.getUuid());
     universe =
-        Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
+        Universe.saveDetails(universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent));
     CloudProviderDelete.Params params = new CloudProviderDelete.Params();
-    params.providerUUID = p.uuid;
+    params.providerUUID = p.getUuid();
     params.customer = customer;
 
     CloudProviderDelete deleteProviderTask = AbstractTaskBase.createTask(CloudProviderDelete.class);
@@ -706,7 +705,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   public void testDeleteProviderWithoutAccessKey() {
     Provider p = ModelFactory.awsProvider(customer);
     CloudProviderDelete.Params params = new CloudProviderDelete.Params();
-    params.providerUUID = p.uuid;
+    params.providerUUID = p.getUuid();
     params.customer = customer;
 
     CloudProviderDelete deleteProviderTask = AbstractTaskBase.createTask(CloudProviderDelete.class);
@@ -719,11 +718,11 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
     String scriptFile = createTempFile("provision_instance.py", "some script");
     assertTrue(new File(scriptFile).exists());
-    p.details.provisionInstanceScript = scriptFile;
+    p.getDetails().provisionInstanceScript = scriptFile;
     p.save();
-    AccessKey.create(p.uuid, "access-key-code", new KeyInfo());
+    AccessKey.create(p.getUuid(), "access-key-code", new KeyInfo());
     CloudProviderDelete.Params params = new CloudProviderDelete.Params();
-    params.providerUUID = p.uuid;
+    params.providerUUID = p.getUuid();
     params.customer = customer;
 
     try {
@@ -749,19 +748,19 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     config.put("KUBECONFIG", "test.conf");
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.kubernetes, config);
 
-    Result providerRes = getProvider(p.uuid);
+    Result providerRes = getProvider(p.getUuid());
     JsonNode bodyJson = Json.parse(contentAsString(providerRes));
     Provider provider = Json.fromJson(bodyJson, Provider.class);
-    provider.details.cloudInfo.kubernetes.kubernetesStorageClass = "slow";
+    provider.getDetails().cloudInfo.kubernetes.kubernetesStorageClass = "slow";
 
-    Result result = editProvider(Json.toJson(provider), p.uuid);
+    Result result = editProvider(Json.toJson(provider), p.getUuid());
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(p.uuid, UUID.fromString(json.get("resourceUUID").asText()));
+    assertEquals(p.getUuid(), UUID.fromString(json.get("resourceUUID").asText()));
     p.refresh();
     config = CloudInfoInterface.fetchEnvVars(p);
     assertEquals("slow", config.get("STORAGE_CLASS"));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -773,17 +772,17 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     config.put("KUBECONFIG", "test.conf");
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.kubernetes, config);
 
-    Result providerRes = getProvider(p.uuid);
+    Result providerRes = getProvider(p.getUuid());
     JsonNode bodyJson = Json.parse(contentAsString(providerRes));
     Provider provider = Json.fromJson(bodyJson, Provider.class);
-    provider.details.cloudInfo.kubernetes.kubeConfigName = "test2.conf";
-    provider.details.cloudInfo.kubernetes.kubeConfigContent = "test5678";
+    provider.getDetails().cloudInfo.kubernetes.kubeConfigName = "test2.conf";
+    provider.getDetails().cloudInfo.kubernetes.kubeConfigContent = "test5678";
 
-    Result result = editProvider(Json.toJson(provider), p.uuid);
+    Result result = editProvider(Json.toJson(provider), p.getUuid());
     assertOk(result);
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
     JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(p.uuid, UUID.fromString(json.get("resourceUUID").asText()));
+    assertEquals(p.getUuid(), UUID.fromString(json.get("resourceUUID").asText()));
     p.refresh();
     config = CloudInfoInterface.fetchEnvVars(p);
     assertTrue(config.get("KUBECONFIG").contains("test2.conf"));
@@ -799,47 +798,47 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   @Test
   public void testEditProviderWithAWSProviderType() {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
-    Result providerRes = getProvider(p.uuid);
+    Result providerRes = getProvider(p.getUuid());
     JsonNode bodyJson = Json.parse(contentAsString(providerRes));
     Provider provider = Json.fromJson(bodyJson, Provider.class);
-    provider.details.cloudInfo.aws.awsHostedZoneId = "1234";
+    provider.getDetails().cloudInfo.aws.awsHostedZoneId = "1234";
     mockDnsManagerListSuccess();
-    Result result = editProvider(Json.toJson(provider), p.uuid);
+    Result result = editProvider(Json.toJson(provider), p.getUuid());
     verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(p.uuid, UUID.fromString(json.get("resourceUUID").asText()));
+    assertEquals(p.getUuid(), UUID.fromString(json.get("resourceUUID").asText()));
     p.refresh();
-    assertEquals("1234", p.details.cloudInfo.aws.getAwsHostedZoneId());
-    assertAuditEntry(1, customer.uuid);
+    assertEquals("1234", p.getDetails().cloudInfo.aws.getAwsHostedZoneId());
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
   public void testEditProviderWithInvalidProviderType() {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
-    Result providerRes = getProvider(p.uuid);
+    Result providerRes = getProvider(p.getUuid());
     ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
     bodyJson.put("hostedZoneId", "1234");
     bodyJson.put("name", "aws");
     bodyJson.put("code", "aws");
-    Result result = assertPlatformException(() -> editProvider(bodyJson, p.uuid));
+    Result result = assertPlatformException(() -> editProvider(bodyJson, p.getUuid()));
     verify(mockDnsManager, times(0)).listDnsRecord(any(), any());
     assertBadRequest(result, "Changing provider type is not supported!");
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testEditProviderWithEmptyHostedZoneId() {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
-    Result providerRes = getProvider(p.uuid);
+    Result providerRes = getProvider(p.getUuid());
     ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
     bodyJson.put("hostedZoneId", "");
     bodyJson.put("name", "aws");
     bodyJson.put("code", "aws");
-    Result result = assertPlatformException(() -> editProvider(bodyJson, p.uuid));
+    Result result = assertPlatformException(() -> editProvider(bodyJson, p.getUuid()));
     verify(mockDnsManager, times(0)).listDnsRecord(any(), any());
     assertBadRequest(result, "No changes to be made for provider type: aws");
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -857,12 +856,13 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
 
-    Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
+    Provider provider =
+        Provider.get(customer.getUuid(), UUID.fromString(json.path("uuid").asText()));
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
     assertNotNull(provider);
     assertEquals("1234", config.get("HOSTED_ZONE_ID"));
     assertEquals("test", config.get("HOSTED_ZONE_NAME"));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -880,7 +880,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
     Result result = assertPlatformException(() -> createProvider(bodyJson));
     assertBadRequest(result, "Invalid AWS Credentials.");
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -896,7 +896,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Result result = assertPlatformException(() -> createProvider(bodyJson));
     verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
     assertInternalServerError(result, "Invalid devops API response: ");
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -912,7 +912,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Result result = assertPlatformException(() -> createProvider(bodyJson));
     verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
     assertInternalServerError(result, "Invalid devops API response: ");
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -920,7 +920,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Provider provider = ModelFactory.gcpProvider(customer);
     ObjectNode bodyJson = Json.newObject();
     prepareBootstrap(bodyJson, provider, true);
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -931,7 +931,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     perRegionMetadata.put("region1", Json.newObject());
     bodyJson.put("perRegionMetadata", perRegionMetadata);
     prepareBootstrap(bodyJson, provider, false);
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -948,7 +948,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertNotNull(json);
     assertNotNull(json.get("taskUUID"));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -961,20 +961,20 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     details.cloudInfo.aws.awsAccessKeySecret = "Test AWS Access Key Secret";
     Provider provider = ModelFactory.newProvider(customer, Common.CloudType.aws, details);
     JsonNode providerJson = Json.toJson(provider);
-    Result result = assertPlatformException(() -> editProvider(providerJson, provider.uuid));
+    Result result = assertPlatformException(() -> editProvider(providerJson, provider.getUuid()));
     assertBadRequest(result, "No changes to be made for provider type: aws");
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
     ObjectNode detailsJson = (ObjectNode) providerJson.get("details");
     detailsJson.put("sshUser", "modified-ssh-user");
     ((ObjectNode) providerJson).set("details", detailsJson);
-    result = editProvider(providerJson, provider.uuid);
+    result = editProvider(providerJson, provider.getUuid());
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(provider.uuid, UUID.fromString(json.get("resourceUUID").asText()));
+    assertEquals(provider.getUuid(), UUID.fromString(json.get("resourceUUID").asText()));
     provider.refresh();
-    assertEquals("modified-ssh-user", provider.details.sshUser);
-    assertEquals("Test AWS Access Key ID", provider.details.cloudInfo.aws.awsAccessKeyID);
-    assertAuditEntry(1, customer.uuid);
+    assertEquals("modified-ssh-user", provider.getDetails().sshUser);
+    assertEquals("Test AWS Access Key ID", provider.getDetails().cloudInfo.aws.awsAccessKeyID);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -987,9 +987,9 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     details.cloudInfo.aws.awsAccessKeySecret = "Test AWS Access Key Secret";
     Provider provider = ModelFactory.newProvider(customer, Common.CloudType.aws, details);
     JsonNode providerJson = Json.toJson(provider);
-    Result result = assertPlatformException(() -> editProvider(providerJson, provider.uuid));
+    Result result = assertPlatformException(() -> editProvider(providerJson, provider.getUuid()));
     assertBadRequest(result, "No changes to be made for provider type: aws");
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
     ObjectNode detailsJson = (ObjectNode) providerJson.get("details");
     ObjectNode cloudInfo = (ObjectNode) detailsJson.get("cloudInfo");
     ObjectNode aws = (ObjectNode) cloudInfo.get("aws");
@@ -997,13 +997,13 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     detailsJson.set("cloudInfo", cloudInfo);
     aws.put("awsAccessKeyID", "Updated AWS Access Key ID");
     ((ObjectNode) providerJson).set("details", detailsJson);
-    result = editProvider(providerJson, provider.uuid);
+    result = editProvider(providerJson, provider.getUuid());
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(provider.uuid, UUID.fromString(json.get("resourceUUID").asText()));
+    assertEquals(provider.getUuid(), UUID.fromString(json.get("resourceUUID").asText()));
     provider.refresh();
-    assertEquals("Updated AWS Access Key ID", provider.details.cloudInfo.aws.awsAccessKeyID);
-    assertAuditEntry(1, customer.uuid);
+    assertEquals("Updated AWS Access Key ID", provider.getDetails().cloudInfo.aws.awsAccessKeyID);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   private void prepareBootstrap(

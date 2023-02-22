@@ -50,7 +50,9 @@ public abstract class RestoreUniverseKeysTaskBase extends AbstractTaskBase {
   // Should we use RPC to get the activeKeyId and then try and see if it matches this key?
   protected byte[] getActiveUniverseKey() {
     KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(taskParams().universeUUID);
-    if (activeKey == null || activeKey.uuid.keyRef == null || activeKey.uuid.keyRef.length() == 0) {
+    if (activeKey == null
+        || activeKey.getUuid().getKeyRef() == null
+        || activeKey.getUuid().getKeyRef().length() == 0) {
       final String errMsg =
           String.format(
               "Skipping universe %s, No active keyRef found.",
@@ -59,7 +61,7 @@ public abstract class RestoreUniverseKeysTaskBase extends AbstractTaskBase {
       return null;
     }
 
-    return Base64.getDecoder().decode(activeKey.uuid.keyRef);
+    return Base64.getDecoder().decode(activeKey.getUuid().getKeyRef());
   }
 
   protected Consumer<JsonNode> getUniverseKeysConsumer() {
@@ -69,7 +71,7 @@ public abstract class RestoreUniverseKeysTaskBase extends AbstractTaskBase {
       if (universeKeyRef != null) {
         // Get the service account object to verify. 2 cases ahead.
         String keyProviderString =
-            KmsConfig.getOrBadRequest(taskParams().kmsConfigUUID).keyProvider.name();
+            KmsConfig.getOrBadRequest(taskParams().kmsConfigUUID).getKeyProvider().name();
         EncryptionAtRestService<? extends SupportedAlgorithmInterface> keyService =
             keyManager.getServiceInstance(keyProviderString);
         if (keyService.verifyKmsConfigAndKeyRef(taskParams().kmsConfigUUID, universeKeyRef)) {

@@ -14,6 +14,7 @@ import io.swagger.annotations.Authorization;
 import java.io.IOException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -44,11 +45,10 @@ public class GFlagsValidationUiOnlyController extends AuthenticatedController {
    * @return JSON response of errors in input gflags
    */
   @ApiOperation(value = "UI_ONLY", hidden = true)
-  public Result validateGFlags(String version) throws IOException {
-    GFlagsValidationFormData gflags = parseJsonAndValidate(GFlagsValidationFormData.class);
+  public Result validateGFlags(String version, Http.Request request) throws IOException {
+    GFlagsValidationFormData gflags = parseJsonAndValidate(request, GFlagsValidationFormData.class);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.GFlags, version, Audit.ActionType.Validate);
+        .createAuditEntry(request, Audit.TargetType.GFlags, version, Audit.ActionType.Validate);
     return PlatformResults.withData(gflagsValidationHandler.validateGFlags(version, gflags));
   }
 

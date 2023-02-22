@@ -92,9 +92,9 @@ public class QueryAlertsTest extends FakeDBApplication {
 
     SmtpData smtpData = new SmtpData();
     when(channelsManager.get(ChannelType.Email.name())).thenReturn(emailReceiver);
-    when(emailHelper.getDestinations(customer.uuid))
+    when(emailHelper.getDestinations(customer.getUuid()))
         .thenReturn(Collections.singletonList("to@to.com"));
-    when(emailHelper.getSmtpData(customer.uuid)).thenReturn(smtpData);
+    when(emailHelper.getSmtpData(customer.getUuid())).thenReturn(smtpData);
 
     alertChannelService = app.injector().instanceOf(AlertChannelService.class);
     alertDestinationService = app.injector().instanceOf(AlertDestinationService.class);

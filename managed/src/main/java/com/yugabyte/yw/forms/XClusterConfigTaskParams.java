@@ -30,7 +30,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
       XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList,
       Map<String, List<String>> mainTableIndexTablesMap) {
-    this.universeUUID = xClusterConfig.targetUniverseUUID;
+    this.universeUUID = xClusterConfig.getTargetUniverseUUID();
     this.xClusterConfig = xClusterConfig;
     this.bootstrapParams = bootstrapParams;
     this.tableInfoList = tableInfoList;
@@ -44,7 +44,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
       Map<String, List<String>> mainTableIndexTablesMap,
       Set<String> tableIdsToAdd,
       Set<String> tableIdsToRemove) {
-    this.universeUUID = xClusterConfig.targetUniverseUUID;
+    this.universeUUID = xClusterConfig.getTargetUniverseUUID();
     this.xClusterConfig = xClusterConfig;
     this.editFormData = editFormData;
     this.bootstrapParams = editFormData.bootstrapParams;
@@ -60,7 +60,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList,
       Map<String, List<String>> mainTableIndexTablesMap,
       boolean isForced) {
-    this.universeUUID = xClusterConfig.targetUniverseUUID;
+    this.universeUUID = xClusterConfig.getTargetUniverseUUID();
     this.xClusterConfig = xClusterConfig;
     this.bootstrapParams = bootstrapParams;
     this.tableInfoList = tableInfoList;
@@ -70,12 +70,12 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   }
 
   public XClusterConfigTaskParams(XClusterConfig xClusterConfig) {
-    this.universeUUID = xClusterConfig.targetUniverseUUID;
+    this.universeUUID = xClusterConfig.getTargetUniverseUUID();
     this.xClusterConfig = xClusterConfig;
   }
 
   public XClusterConfigTaskParams(XClusterConfig xClusterConfig, boolean isForced) {
-    this.universeUUID = xClusterConfig.targetUniverseUUID;
+    this.universeUUID = xClusterConfig.getTargetUniverseUUID();
     this.xClusterConfig = xClusterConfig;
     this.isForced = isForced;
   }

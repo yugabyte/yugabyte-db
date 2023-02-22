@@ -73,7 +73,7 @@ public class XClusterConfigUpdateMasterAddresses extends XClusterConfigTaskBase 
             String.format(
                 "Failed to update master addresses of XClusterConfigs for Universe(%s): "
                     + "Failed to get cluster config: %s",
-                targetUniverse.universeUUID, getMasterClusterConfigResp.errorMessage());
+                targetUniverse.getUniverseUUID(), getMasterClusterConfigResp.errorMessage());
         throw new RuntimeException(errMsg);
       }
       Map<String, CdcConsumer.ProducerEntryPB> replicationGroups =

@@ -90,10 +90,10 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
                       customerConfig.getDataObject(), backupLocations.get(0));
                   cloudUtil.deleteStorage(customerConfig.getDataObject(), backupLocations);
                 } catch (Exception e) {
-                  log.error(" Error in deleting backup " + backup.backupUUID.toString(), e);
+                  log.error(" Error in deleting backup " + backup.getBackupUUID().toString(), e);
                   backup.transitionState(Backup.BackupState.FailedToDelete);
                 } finally {
-                  if (backup.state != Backup.BackupState.FailedToDelete) {
+                  if (backup.getState() != Backup.BackupState.FailedToDelete) {
                     backup.delete();
                   }
                 }

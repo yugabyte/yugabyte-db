@@ -23,15 +23,15 @@ public class NodeAgentForm {
   // Helper method to create NodeAgent.
   public NodeAgent toNodeAgent(UUID customerUuid) {
     NodeAgent nodeAgent = new NodeAgent();
-    nodeAgent.customerUuid = customerUuid;
-    nodeAgent.name = name;
-    nodeAgent.ip = ip;
-    nodeAgent.port = port;
-    nodeAgent.version = version;
-    nodeAgent.home = home;
-    nodeAgent.archType = ArchType.parse(archType);
-    nodeAgent.osType = OSType.parse(osType);
-    nodeAgent.config = new HashMap<>();
+    nodeAgent.setCustomerUuid(customerUuid);
+    nodeAgent.setName(name);
+    nodeAgent.setIp(ip);
+    nodeAgent.setPort(port);
+    nodeAgent.setVersion(version);
+    nodeAgent.setHome(home);
+    nodeAgent.setArchType(ArchType.parse(archType));
+    nodeAgent.setOsType(OSType.parse(osType));
+    nodeAgent.setConfig(new HashMap<>());
     return nodeAgent;
   }
 }

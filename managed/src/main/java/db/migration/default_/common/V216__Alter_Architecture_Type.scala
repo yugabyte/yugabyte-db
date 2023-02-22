@@ -1,14 +1,12 @@
 // Copyright (c) YugaByte, Inc.
 
-package db.migration.default.common
+package db.migration.default_.common
 
-import com.yugabyte.yw.commissioner.Common
-import java.sql.{Connection, PreparedStatement}
-import org.flywaydb.core.api.migration.jdbc.JdbcMigration
+import org.flywaydb.core.api.migration.{BaseJavaMigration, Context}
+
 import play.api.libs.json._
-import scala.compat.java8.FunctionConverters.asJavaPredicate
 
-class V216__Alter_Architecture_Type extends JdbcMigration {
+class V216__Alter_Architecture_Type extends BaseJavaMigration {
 
   /**
      * Utility method to recursively apply a modification function to a json value and all its
@@ -45,7 +43,8 @@ class V216__Alter_Architecture_Type extends JdbcMigration {
     }
   }
 
-  override def migrate(connection: Connection): Unit = {
+  override def migrate(context: Context): Unit = {
+    val connection = context.getConnection
 
     // Update architecture of old provider's region
     val selectRegionStmt = "SELECT uuid, details FROM region"

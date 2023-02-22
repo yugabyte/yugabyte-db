@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -20,7 +21,7 @@ public class TemplateManager extends DevopsBase {
   private static final String COMMAND_TYPE = "instance";
   public static final String PROVISION_SCRIPT = "provision_instance.py";
 
-  @Inject play.Configuration appConfig;
+  @Inject Config config;
 
   @Override
   protected String getCommandType() {
@@ -28,7 +29,7 @@ public class TemplateManager extends DevopsBase {
   }
 
   private String getOrCreateProvisionFilePath(UUID providerUUID) {
-    File provisionBasePathName = new File(appConfig.getString("yb.storage.path"), "/provision");
+    File provisionBasePathName = new File(config.getString("yb.storage.path"), "/provision");
     if (!provisionBasePathName.exists() && !provisionBasePathName.mkdirs()) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
@@ -64,7 +65,7 @@ public class TemplateManager extends DevopsBase {
     commandArgs.add(path);
 
     Provider provider = Provider.getOrBadRequest(accessKey.getProviderUUID());
-    ProviderDetails details = provider.details;
+    ProviderDetails details = provider.getDetails();
     commandArgs.add("--ssh_user");
     commandArgs.add(details.sshUser);
 
@@ -75,7 +76,7 @@ public class TemplateManager extends DevopsBase {
     commandArgs.add("--private_key_file");
     commandArgs.add(keyInfo.privateKey);
     commandArgs.add("--local_package_path");
-    commandArgs.add(appConfig.getString("yb.thirdparty.packagePath"));
+    commandArgs.add(config.getString("yb.thirdparty.packagePath"));
 
     commandArgs.add("--custom_ssh_port");
     commandArgs.add(details.sshPort.toString());

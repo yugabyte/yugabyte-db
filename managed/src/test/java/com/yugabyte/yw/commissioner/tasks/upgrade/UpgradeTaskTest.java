@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
-import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -11,9 +10,9 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.lenient;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -55,9 +54,9 @@ import org.junit.Before;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.master.CatalogEntityInfo;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo;
 
 public abstract class UpgradeTaskTest extends CommissionerBaseTest {
 
@@ -141,7 +140,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     try {
       CertificateInfo.create(
           certUUID,
-          defaultCustomer.uuid,
+          defaultCustomer.getUuid(),
           "test",
           date,
           date,
@@ -155,9 +154,9 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.ybSoftwareVersion = "old-version";
     userIntent.accessKeyCode = "demo-access";
-    userIntent.regionList = ImmutableList.of(region.uuid);
-    userIntent.providerType = Common.CloudType.valueOf(defaultProvider.code);
-    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.providerType = Common.CloudType.valueOf(defaultProvider.getCode());
+    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.deviceInfo = new DeviceInfo();
     userIntent.deviceInfo.volumeSize = 100;
     userIntent.deviceInfo.numVolumes = 2;
@@ -178,7 +177,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
 
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(userIntent, placementInfo, true));
 
     CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
@@ -220,7 +219,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     // Create hooks
     preNodeHook =
         Hook.create(
-            defaultCustomer.uuid,
+            defaultCustomer.getUuid(),
             "preNodeHook",
             Hook.ExecutionLang.Python,
             "HOOK\nTEXT\n",
@@ -228,7 +227,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
             null);
     postNodeHook =
         Hook.create(
-            defaultCustomer.uuid,
+            defaultCustomer.getUuid(),
             "postNodeHook",
             Hook.ExecutionLang.Python,
             "HOOK\nTEXT\n",
@@ -236,7 +235,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
             null);
     preUpgradeHook =
         Hook.create(
-            defaultCustomer.uuid,
+            defaultCustomer.getUuid(),
             "preUpgradeHook",
             Hook.ExecutionLang.Python,
             "HOOK\nTEXT\n",
@@ -244,7 +243,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
             null);
     postUpgradeHook =
         Hook.create(
-            defaultCustomer.uuid,
+            defaultCustomer.getUuid(),
             "postUpgradeHook",
             Hook.ExecutionLang.Python,
             "HOOK\nTEXT\n",
@@ -254,9 +253,9 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
 
   protected PlacementInfo createPlacementInfo() {
     PlacementInfo placementInfo = new PlacementInfo();
-    PlacementInfoUtil.addPlacementZone(az1.uuid, placementInfo, 1, 1, false);
-    PlacementInfoUtil.addPlacementZone(az2.uuid, placementInfo, 1, 1, true);
-    PlacementInfoUtil.addPlacementZone(az3.uuid, placementInfo, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), placementInfo, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), placementInfo, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az3.getUuid(), placementInfo, 1, 1, false);
     return placementInfo;
   }
 
@@ -270,7 +269,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       TaskType taskType,
       Commissioner commissioner,
       int expectedVersion) {
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
     taskParams.expectedUniverseVersion = expectedVersion;
     // Need not sleep for default 3min in tests.
     taskParams.sleepAfterMasterRestartMillis = 5;
@@ -369,15 +368,15 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
   protected void attachHooks(String className) {
     // Create scopes
     preUpgradeScope =
-        HookScope.create(defaultCustomer.uuid, TriggerType.valueOf("Pre" + className));
+        HookScope.create(defaultCustomer.getUuid(), TriggerType.valueOf("Pre" + className));
     postUpgradeScope =
-        HookScope.create(defaultCustomer.uuid, TriggerType.valueOf("Post" + className));
+        HookScope.create(defaultCustomer.getUuid(), TriggerType.valueOf("Post" + className));
     preNodeScope =
         HookScope.create(
-            defaultCustomer.uuid, TriggerType.valueOf("Pre" + className + "NodeUpgrade"));
+            defaultCustomer.getUuid(), TriggerType.valueOf("Pre" + className + "NodeUpgrade"));
     postNodeScope =
         HookScope.create(
-            defaultCustomer.uuid, TriggerType.valueOf("Post" + className + "NodeUpgrade"));
+            defaultCustomer.getUuid(), TriggerType.valueOf("Post" + className + "NodeUpgrade"));
 
     // attack hooks
     preNodeScope.addHook(preNodeHook);

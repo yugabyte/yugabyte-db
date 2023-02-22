@@ -110,7 +110,7 @@ public class CreateBackup extends UniverseTaskBase {
                 UserTaskDetails.SubTaskGroupType.CreatingTableBackup,
                 tablesToBackup,
                 ybcBackup);
-        log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
+        log.info("Task id {} for the backup {}", backup.getTaskUUID(), backup.getBackupUUID());
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.
         createMarkUniverseUpdateSuccessTasks()
@@ -122,11 +122,12 @@ public class CreateBackup extends UniverseTaskBase {
         unlockUniverseForUpdate();
         isUniverseLocked = false;
 
-        Backup currentBackup = Backup.getOrBadRequest(params().customerUUID, backup.backupUUID);
+        Backup currentBackup =
+            Backup.getOrBadRequest(params().customerUUID, backup.getBackupUUID());
         if (ybcBackup) {
-          if (!currentBackup.baseBackupUUID.equals(currentBackup.backupUUID)) {
+          if (!currentBackup.getBaseBackupUUID().equals(currentBackup.getBackupUUID())) {
             Backup baseBackup =
-                Backup.getOrBadRequest(params().customerUUID, currentBackup.baseBackupUUID);
+                Backup.getOrBadRequest(params().customerUUID, currentBackup.getBaseBackupUUID());
             currentBackup.onCompletion();
             baseBackup.onIncrementCompletion(currentBackup.getCreateTime());
           } else {
@@ -168,7 +169,7 @@ public class CreateBackup extends UniverseTaskBase {
         Backup.fetchAllBackupsByTaskUUID(userTaskUUID)
             .forEach(
                 backup -> {
-                  if (backup.state.equals(BackupState.InProgress)) {
+                  if (backup.getState().equals(BackupState.InProgress)) {
                     backup.transitionState(BackupState.Failed);
                     backup.setCompletionTime(new Date());
                     backup.save();
@@ -195,7 +196,7 @@ public class CreateBackup extends UniverseTaskBase {
     Customer customer = Customer.get(customerUUID);
     JsonNode params = schedule.getTaskParams();
     BackupRequestParams taskParams = Json.fromJson(params, BackupRequestParams.class);
-    taskParams.scheduleUUID = schedule.scheduleUUID;
+    taskParams.scheduleUUID = schedule.getScheduleUUID();
     taskParams.baseBackupUUID = baseBackupUUID;
     Universe universe;
     try {
@@ -221,7 +222,7 @@ public class CreateBackup extends UniverseTaskBase {
           // for incremental backups and check its requirement in every 2 minutes.
           schedule.updateBacklogStatus(true);
         }
-        log.debug("Schedule {} backlog status is set to true", schedule.scheduleUUID);
+        log.debug("Schedule {} backlog status is set to true", schedule.getScheduleUUID());
         SCHEDULED_BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
@@ -235,9 +236,9 @@ public class CreateBackup extends UniverseTaskBase {
     }
     UUID taskUUID = commissioner.submit(TaskType.CreateBackup, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
-    if (schedule.getBacklogStatus()) {
+    if (schedule.isBacklogStatus()) {
       schedule.updateBacklogStatus(false);
-      log.debug("Schedule {} backlog status is set to false", schedule.scheduleUUID);
+      log.debug("Schedule {} backlog status is set to false", schedule.getScheduleUUID());
     }
     log.info(
         "Submitted backup for universe: {}, task uuid = {}.", taskParams.universeUUID, taskUUID);
@@ -247,12 +248,12 @@ public class CreateBackup extends UniverseTaskBase {
         taskUUID,
         CustomerTask.TargetType.Backup,
         CustomerTask.TaskType.Create,
-        universe.name);
+        universe.getName());
     log.info(
         "Saved task uuid {} in customer tasks table for universe {}:{}",
         taskUUID,
         taskParams.universeUUID,
-        universe.name);
+        universe.getName());
     SCHEDULED_BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     metricService.setOkStatusMetric(
         buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));

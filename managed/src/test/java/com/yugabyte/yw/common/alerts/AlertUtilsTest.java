@@ -38,13 +38,13 @@ public class AlertUtilsTest extends FakeDBApplication {
     params.setTextTemplate(TEXT_TEMPLATE);
     params.setTitleTemplate(TITLE_TEMPLATE);
     params.setSmtpData(EmailFixtures.createSmtpData());
-    return ModelFactory.createAlertChannel(defaultCustomer.uuid, ALERT_CHANNEL_NAME, params);
+    return ModelFactory.createAlertChannel(defaultCustomer.getUuid(), ALERT_CHANNEL_NAME, params);
   }
 
   @Test
   public void testFromDB_Email() {
     AlertChannel channel = createEmailChannel();
-    AlertChannel fromDb = AlertChannel.get(defaultCustomer.uuid, channel.getUuid());
+    AlertChannel fromDb = AlertChannel.get(defaultCustomer.getUuid(), channel.getUuid());
     assertNotNull(fromDb);
     assertEquals(channel, fromDb);
   }
@@ -60,8 +60,8 @@ public class AlertUtilsTest extends FakeDBApplication {
     params.setIconUrl("icon-url");
 
     AlertChannel channel =
-        ModelFactory.createAlertChannel(defaultCustomer.uuid, ALERT_CHANNEL_NAME, params);
-    AlertChannel fromDb = AlertChannel.get(defaultCustomer.uuid, channel.getUuid());
+        ModelFactory.createAlertChannel(defaultCustomer.getUuid(), ALERT_CHANNEL_NAME, params);
+    AlertChannel fromDb = AlertChannel.get(defaultCustomer.getUuid(), channel.getUuid());
     assertNotNull(fromDb);
     assertEquals(channel, fromDb);
   }

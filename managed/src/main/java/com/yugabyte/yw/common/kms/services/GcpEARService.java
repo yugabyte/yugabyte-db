@@ -73,7 +73,7 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
       gcpEARServiceUtil.checkOrCreateCryptoKey(config);
 
       // Sets the correct protection level for key that already exists in GCP KMS.
-      UUID customerUUID = KmsConfig.get(configUUID).customerUUID;
+      UUID customerUUID = KmsConfig.get(configUUID).getCustomerUUID();
       UpdateAuthConfigProperties(customerUUID, configUUID, config);
     } catch (Exception e) {
       final String errMsg =

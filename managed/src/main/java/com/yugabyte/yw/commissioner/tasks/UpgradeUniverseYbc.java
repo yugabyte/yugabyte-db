@@ -40,7 +40,8 @@ public class UpgradeUniverseYbc extends UniverseTaskBase {
 
       if (!universeDetails.enableYbc || !universeDetails.ybcInstalled) {
         throw new RuntimeException(
-            "Ybc is either not installed or enabled on the universe: " + universe.universeUUID);
+            "Ybc is either not installed or enabled on the universe: "
+                + universe.getUniverseUUID());
       }
 
       // Check whether the target ybc version is present in YB-Anywhere for each node.

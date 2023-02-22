@@ -27,12 +27,11 @@ import com.amazonaws.services.kms.model.CreateKeyRequest;
 import com.amazonaws.services.kms.model.CreateKeyResult;
 import com.amazonaws.services.kms.model.DecryptRequest;
 import com.amazonaws.services.kms.model.DeleteAliasRequest;
-import com.amazonaws.services.kms.model.EncryptRequest;
-import com.amazonaws.services.kms.model.EncryptResult;
 import com.amazonaws.services.kms.model.DescribeKeyRequest;
 import com.amazonaws.services.kms.model.DescribeKeyResult;
+import com.amazonaws.services.kms.model.EncryptRequest;
+import com.amazonaws.services.kms.model.EncryptResult;
 import com.amazonaws.services.kms.model.GenerateDataKeyWithoutPlaintextRequest;
-import com.amazonaws.services.kms.model.GenerateRandomRequest;
 import com.amazonaws.services.kms.model.KeyListEntry;
 import com.amazonaws.services.kms.model.ListAliasesRequest;
 import com.amazonaws.services.kms.model.ListAliasesResult;
@@ -47,6 +46,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
@@ -55,8 +55,7 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.Application;
-import play.api.Play;
+import play.Environment;
 
 public class AwsEARServiceUtil {
   private static final String CMK_POLICY = "default_cmk_policy.json";
@@ -192,8 +191,8 @@ public class AwsEARServiceUtil {
     ObjectNode policy = null;
     try {
       ObjectMapper mapper = new ObjectMapper();
-      Application application = Play.current().injector().instanceOf(Application.class);
-      policy = (ObjectNode) mapper.readTree(application.resourceAsStream(CMK_POLICY));
+      Environment environment = StaticInjectorHolder.injector().instanceOf(Environment.class);
+      policy = (ObjectNode) mapper.readTree(environment.resourceAsStream(CMK_POLICY));
     } catch (Exception e) {
       String errMsg = "Error occurred retrieving default cmk policy base";
       LOG.error(errMsg, e);

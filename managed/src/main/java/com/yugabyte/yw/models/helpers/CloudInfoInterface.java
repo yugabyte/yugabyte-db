@@ -82,10 +82,10 @@ public interface CloudInfoInterface {
       regionDetails = new RegionDetails();
     }
     CloudType cloudType = null;
-    if (region.provider != null) {
-      cloudType = CloudType.valueOf(region.provider.code);
-    } else if (!Strings.isNullOrEmpty(region.providerCode)) {
-      cloudType = CloudType.valueOf(region.providerCode);
+    if (region.getProvider() != null) {
+      cloudType = CloudType.valueOf(region.getProvider().getCode());
+    } else if (!Strings.isNullOrEmpty(region.getProviderCode())) {
+      cloudType = CloudType.valueOf(region.getProviderCode());
     }
     return get(regionDetails, maskSensitiveData, cloudType);
   }
@@ -107,10 +107,10 @@ public interface CloudInfoInterface {
       azDetails = new AvailabilityZoneDetails();
     }
     CloudType cloudType = null;
-    if (zone.region != null) {
-      cloudType = CloudType.valueOf(zone.region.provider.code);
-    } else if (!Strings.isNullOrEmpty(zone.providerCode)) {
-      cloudType = CloudType.valueOf(zone.providerCode);
+    if (zone.getRegion() != null) {
+      cloudType = CloudType.valueOf(zone.getRegion().getProvider().getCode());
+    } else if (!Strings.isNullOrEmpty(zone.getProviderCode())) {
+      cloudType = CloudType.valueOf(zone.getProviderCode());
     }
     return get(azDetails, maskSensitiveData, cloudType);
   }
@@ -120,7 +120,7 @@ public interface CloudInfoInterface {
     AvailabilityZoneDetails.AZCloudInfo cloudInfo = azDetails.getCloudInfo();
     if (cloudInfo == null) {
       cloudInfo = new AvailabilityZoneDetails.AZCloudInfo();
-      azDetails.cloudInfo = cloudInfo;
+      azDetails.setCloudInfo(cloudInfo);
     }
     return getCloudInfo(cloudInfo, cloudType, maskSensitiveData);
   }
@@ -254,38 +254,38 @@ public interface CloudInfoInterface {
   }
 
   public static ProviderDetails maskProviderDetails(Provider provider) {
-    if (Objects.isNull(provider.details)) {
+    if (Objects.isNull(provider.getDetails())) {
       return null;
     }
-    JsonNode detailsJson = Json.toJson(provider.details);
+    JsonNode detailsJson = Json.toJson(provider.getDetails());
     ProviderDetails details = Json.fromJson(detailsJson, ProviderDetails.class);
     get(details, true, provider.getCloudCode());
     return details;
   }
 
   public static RegionDetails maskRegionDetails(Region region) {
-    if (Objects.isNull(region.details)) {
+    if (Objects.isNull(region.getDetails())) {
       return null;
     }
-    JsonNode detailsJson = Json.toJson(region.details);
+    JsonNode detailsJson = Json.toJson(region.getDetails());
     if (detailsJson.size() == 0) {
       return null;
     }
     RegionDetails details = Json.fromJson(detailsJson, RegionDetails.class);
-    get(details, true, region.provider.getCloudCode());
+    get(details, true, region.getProvider().getCloudCode());
     return details;
   }
 
   public static AvailabilityZoneDetails maskAvailabilityZoneDetails(AvailabilityZone zone) {
-    if (Objects.isNull(zone.details)) {
+    if (Objects.isNull(zone.getDetails())) {
       return null;
     }
-    JsonNode detailsJson = Json.toJson(zone.details);
+    JsonNode detailsJson = Json.toJson(zone.getDetails());
     if (detailsJson.size() == 0) {
       return null;
     }
     AvailabilityZoneDetails details = Json.fromJson(detailsJson, AvailabilityZoneDetails.class);
-    get(details, true, zone.region.provider.getCloudCode());
+    get(details, true, zone.getRegion().getProvider().getCloudCode());
     return details;
   }
 
@@ -302,10 +302,10 @@ public interface CloudInfoInterface {
 
   public static void setCloudProviderInfoFromConfig(Region region, Map<String, String> config) {
     CloudType cloudType = null;
-    if (region.provider != null) {
-      cloudType = CloudType.valueOf(region.provider.code);
-    } else if (!Strings.isNullOrEmpty(region.providerCode)) {
-      cloudType = CloudType.valueOf(region.providerCode);
+    if (region.getProvider() != null) {
+      cloudType = CloudType.valueOf(region.getProvider().getCode());
+    } else if (!Strings.isNullOrEmpty(region.getProviderCode())) {
+      cloudType = CloudType.valueOf(region.getProviderCode());
     } else {
       return;
     }
@@ -321,10 +321,10 @@ public interface CloudInfoInterface {
   public static void setCloudProviderInfoFromConfig(
       AvailabilityZone az, Map<String, String> config) {
     CloudType cloudType = null;
-    if (az.region != null) {
-      cloudType = CloudType.valueOf(az.region.provider.code);
-    } else if (!Strings.isNullOrEmpty(az.providerCode)) {
-      cloudType = CloudType.valueOf(az.providerCode);
+    if (az.getRegion() != null) {
+      cloudType = CloudType.valueOf(az.getRegion().getProvider().getCode());
+    } else if (!Strings.isNullOrEmpty(az.getProviderCode())) {
+      cloudType = CloudType.valueOf(az.getProviderCode());
     } else {
       return;
     }
@@ -583,22 +583,22 @@ public interface CloudInfoInterface {
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(p);
     ProviderDetails providerDetails = p.getProviderDetails();
     ProviderDetails.CloudInfo cloudInfo = providerDetails.getCloudInfo();
-    CloudType cloudType = CloudType.valueOf(p.code);
-    p.config = populateConfigMap(cloudInfo, cloudType, config);
+    CloudType cloudType = CloudType.valueOf(p.getCode());
+    p.setConfig(populateConfigMap(cloudInfo, cloudType, config));
 
-    if (p.regions == null) {
+    if (p.getRegions() == null) {
       return;
     }
 
-    for (Region region : p.regions) {
-      if (region.zones == null) {
+    for (Region region : p.getRegions()) {
+      if (region.getZones() == null) {
         return;
       }
-      for (AvailabilityZone az : region.zones) {
+      for (AvailabilityZone az : region.getZones()) {
         config = CloudInfoInterface.fetchEnvVars(az);
         AvailabilityZoneDetails azDetails = az.getAvailabilityZoneDetails();
         AvailabilityZoneDetails.AZCloudInfo azCloudInfo = azDetails.getCloudInfo();
-        az.config = populateConfigMap(azCloudInfo, cloudType, config);
+        az.setConfig(populateConfigMap(azCloudInfo, cloudType, config));
       }
     }
   }

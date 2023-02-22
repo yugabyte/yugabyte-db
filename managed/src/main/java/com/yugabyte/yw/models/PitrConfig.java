@@ -16,7 +16,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
@@ -24,8 +23,8 @@ import javax.persistence.Id;
 import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
 import javax.persistence.Transient;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes.TableType;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
@@ -33,8 +32,8 @@ import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 @ApiModel(description = "PITR config created on the universe")
 @Entity
 @Slf4j
-@Data
-@EqualsAndHashCode(callSuper = false)
+@Getter
+@Setter
 public class PitrConfig extends Model {
 
   private static final Finder<UUID, PitrConfig> find =
@@ -42,53 +41,45 @@ public class PitrConfig extends Model {
 
   @Id
   @ApiModelProperty(value = "PITR config UUID")
-  public UUID uuid;
+  private UUID uuid;
 
-  @Column
   @ApiModelProperty(value = "PITR config name")
-  public String name;
+  private String name;
 
   @ApiModelProperty(value = "Customer UUID of this config", accessMode = READ_WRITE)
-  @Column(nullable = false)
-  public UUID customerUUID;
+  private UUID customerUUID;
 
   @ApiModelProperty(value = "Universe UUID of this config", accessMode = READ_WRITE)
   @ManyToOne
   @JoinColumn(name = "universe_uuid", referencedColumnName = "universe_uuid")
   @JsonBackReference
-  public Universe universe;
+  private Universe universe;
 
-  @Transient State state;
+  @Transient private State state;
 
-  @Transient long minRecoverTimeInMillis;
+  @Transient private long minRecoverTimeInMillis;
 
-  @Transient long maxRecoverTimeInMillis;
+  @Transient private long maxRecoverTimeInMillis;
 
   @ApiModelProperty(value = "Table Type", accessMode = READ_WRITE)
-  @Column(nullable = false)
   @Enumerated(EnumType.STRING)
-  public TableType tableType;
+  private TableType tableType;
 
   @ApiModelProperty(value = "DB Name", accessMode = READ_WRITE)
-  @Column(nullable = false)
-  public String dbName;
+  private String dbName;
 
   @ApiModelProperty(value = "Interval between snasphots in seconds", accessMode = READ_WRITE)
-  @Column(nullable = false)
-  public long scheduleInterval = 86400L;
+  private long scheduleInterval = 86400L;
 
   @ApiModelProperty(value = "Retention Period in seconds", accessMode = READ_WRITE)
-  @Column(nullable = false)
-  public long retentionPeriod = 86400L * 7L;
+  private long retentionPeriod = 86400L * 7L;
 
   @ApiModelProperty(value = "Create time of the PITR config", accessMode = READ_ONLY)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
-  @Column
   private Date createTime;
 
   @ApiModelProperty(value = "Update time of the PITR con", accessMode = READ_WRITE)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
-  @Column
   private Date updateTime;
 
   public UUID getUuid() {

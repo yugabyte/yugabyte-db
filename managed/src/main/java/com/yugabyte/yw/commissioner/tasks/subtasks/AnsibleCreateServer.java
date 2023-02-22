@@ -68,8 +68,8 @@ public class AnsibleCreateServer extends NodeTaskBase {
     Provider p = taskParams().getProvider();
     boolean skipProvision = false;
 
-    if (p.code.equals(Common.CloudType.onprem.name())) {
-      skipProvision = p.details.skipProvisioning;
+    if (p.getCode().equals(Common.CloudType.onprem.name())) {
+      skipProvision = p.getDetails().skipProvisioning;
     }
 
     if (skipProvision) {
@@ -88,7 +88,7 @@ public class AnsibleCreateServer extends NodeTaskBase {
               .nodeCommand(NodeManager.NodeCommandType.Create, taskParams())
               .processErrors();
       setNodeStatus(NodeStatus.builder().nodeState(NodeState.InstanceCreated).build());
-      if (p.code.equals(CloudType.azu.name())) {
+      if (p.getCode().equals(CloudType.azu.name())) {
         // Parse into a json object.
         JsonNode jsonNodeTmp = Json.parse(response.message);
         if (jsonNodeTmp.isArray()) {
@@ -133,7 +133,7 @@ public class AnsibleCreateServer extends NodeTaskBase {
         super.onFailure(taskInfo, cause);
       } else {
         // TODO: retry in a different AZ?
-        log.warn("Instance creation in {} failed", params.getAZ().name);
+        log.warn("Instance creation in {} failed", params.getAZ().getName());
 
         AnsibleDestroyServer.Params destroyParams = new AnsibleDestroyServer.Params();
         destroyParams.deviceInfo = params.deviceInfo;

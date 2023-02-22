@@ -1,5 +1,6 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.typesafe.config.Config;
 import java.io.File;
 import java.util.Arrays;
 import java.util.List;
@@ -27,16 +28,16 @@ public class InstallThirdPartySoftwareK8s extends AbstractTaskBase {
   private final long UPLOAD_XXSUM_PACKAGE_TIMEOUT_SEC = 60;
   private final String PACKAGE_PERMISSIONS = "755";
   private NodeUniverseManager nodeUniverseManager;
-  private play.Configuration appConfig;
+  private Config config;
 
   @Inject
   public InstallThirdPartySoftwareK8s(
       BaseTaskDependencies baseTaskDependencies,
       NodeUniverseManager nodeUniverseManager,
-      play.Configuration appConfig) {
+      Config config) {
     super(baseTaskDependencies);
     this.nodeUniverseManager = nodeUniverseManager;
-    this.appConfig = appConfig;
+    this.config = config;
   }
 
   public static class Params extends AbstractTaskParams {
@@ -61,7 +62,7 @@ public class InstallThirdPartySoftwareK8s extends AbstractTaskBase {
   }
 
   private Optional<String> getThirdpartyPackagePath() {
-    String packagePath = appConfig.getString("yb.thirdparty.packagePath");
+    String packagePath = config.getString("yb.thirdparty.packagePath");
     if (packagePath != null && !packagePath.isEmpty()) {
       File thirdpartyPackagePath = new File(packagePath);
       if (thirdpartyPackagePath.exists() && thirdpartyPackagePath.isDirectory()) {

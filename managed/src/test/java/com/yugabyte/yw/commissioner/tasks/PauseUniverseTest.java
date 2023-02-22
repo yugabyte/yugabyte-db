@@ -77,7 +77,11 @@ public class PauseUniverseTest extends CommissionerBaseTest {
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     InstanceType i =
         InstanceType.upsert(
-            defaultProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+            defaultProvider.getUuid(),
+            "c3.xlarge",
+            10,
+            5.5,
+            new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent =
         getTestUserIntent(r, defaultProvider, i, 1);
     userIntent.replicationFactor = 1;
@@ -88,7 +92,7 @@ public class PauseUniverseTest extends CommissionerBaseTest {
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
     String nodePrefix = "demo-universe";
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(
             userIntent, nodePrefix, true /* setMasters */, updateInProgress));
   }
@@ -129,7 +133,7 @@ public class PauseUniverseTest extends CommissionerBaseTest {
   }
 
   private TaskInfo submitTask(PauseUniverse.Params taskParams) {
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
     taskParams.expectedUniverseVersion = 2;
     try {
       UUID taskUUID = commissioner.submit(TaskType.PauseUniverse, taskParams);
@@ -144,23 +148,23 @@ public class PauseUniverseTest extends CommissionerBaseTest {
   public void testPauseUniverseSuccess() {
     setupUniverse(false);
     PauseUniverse.Params taskParams = new PauseUniverse.Params();
-    taskParams.customerUUID = defaultCustomer.uuid;
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
     TaskInfo taskInfo = submitTask(taskParams);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(subTasksByPosition);
     assertEquals(Success, taskInfo.getTaskState());
-    assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.universeUUID));
+    assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
   }
 
   @Test
   public void testPauseUniverseWithUpdateInProgress() {
     setupUniverse(true);
     PauseUniverse.Params taskParams = new PauseUniverse.Params();
-    taskParams.customerUUID = defaultCustomer.uuid;
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Failure, taskInfo.getTaskState());
   }
@@ -169,8 +173,8 @@ public class PauseUniverseTest extends CommissionerBaseTest {
   public void testPauseUniverseSuccessWithNodesAlreadyStopped() {
     setupUniverse(false);
     PauseUniverse.Params taskParams = new PauseUniverse.Params();
-    taskParams.customerUUID = defaultCustomer.uuid;
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
     for (NodeDetails node : defaultUniverse.getNodes()) {
       node.state = NodeDetails.NodeState.Stopped;
       defaultUniverse.save();
@@ -181,6 +185,6 @@ public class PauseUniverseTest extends CommissionerBaseTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(subTasksByPosition);
     assertEquals(Success, taskInfo.getTaskState());
-    assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.universeUUID));
+    assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
   }
 }

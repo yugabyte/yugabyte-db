@@ -65,7 +65,7 @@ public class SchedulerTest extends FakeDBApplication {
     Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Schedule s =
         ModelFactory.createScheduleBackup(
-            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(), universe.getUniverseUUID(), s3StorageConfig.configUUID);
     s.updateNextScheduleTaskTime(DateUtils.addHours(new Date(), 2));
     scheduler.scheduleRunner();
     verify(mockCommissioner, times(0)).submit(any(), any());
@@ -78,12 +78,12 @@ public class SchedulerTest extends FakeDBApplication {
     Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Schedule s =
         ModelFactory.createScheduleBackup(
-            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(), universe.getUniverseUUID(), s3StorageConfig.configUUID);
     s.updateBacklogStatus(true);
     scheduler.scheduleRunner();
     verify(mockCommissioner, times(1)).submit(any(), any());
     s.refresh();
-    assertEquals(false, s.getBacklogStatus());
+    assertEquals(false, s.isBacklogStatus());
   }
 
   @Test
@@ -91,12 +91,12 @@ public class SchedulerTest extends FakeDBApplication {
     Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Schedule s =
         ModelFactory.createScheduleBackup(
-            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(), universe.getUniverseUUID(), s3StorageConfig.configUUID);
     setUniverseBackupInProgress(true, universe);
     scheduler.scheduleRunner();
     verify(mockCommissioner, times(0)).submit(any(), any());
     s.refresh();
-    assertEquals(true, s.getBacklogStatus());
+    assertEquals(true, s.isBacklogStatus());
   }
 
   @Test
@@ -104,7 +104,7 @@ public class SchedulerTest extends FakeDBApplication {
     Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Schedule s =
         ModelFactory.createScheduleBackup(
-            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(), universe.getUniverseUUID(), s3StorageConfig.configUUID);
     ScheduleTask.create(UUID.randomUUID(), s.getScheduleUUID());
     scheduler.scheduleRunner();
     verify(mockCommissioner, times(0)).submit(any(), any());
@@ -115,7 +115,7 @@ public class SchedulerTest extends FakeDBApplication {
     Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Schedule s =
         ModelFactory.createScheduleBackup(
-            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(), universe.getUniverseUUID(), s3StorageConfig.configUUID);
     Date dt = new Date();
     s.updateNextScheduleTaskTime(dt);
     s.setCronExpression("0 0 * * *");
@@ -124,7 +124,7 @@ public class SchedulerTest extends FakeDBApplication {
         .when(mockCommissioner)
         .submit(any(), any());
     scheduler.scheduleRunner();
-    s = Schedule.getOrBadRequest(s.scheduleUUID);
+    s = Schedule.getOrBadRequest(s.getScheduleUUID());
     Date next = s.getNextScheduleTaskTime();
     assertTrue(next.before(DateUtils.addHours(new Date(), 1)));
   }
@@ -139,6 +139,6 @@ public class SchedulerTest extends FakeDBApplication {
             universe.setUniverseDetails(universeDetails);
           }
         };
-    Universe.saveDetails(universe.universeUUID, updater);
+    Universe.saveDetails(universe.getUniverseUUID(), updater);
   }
 }

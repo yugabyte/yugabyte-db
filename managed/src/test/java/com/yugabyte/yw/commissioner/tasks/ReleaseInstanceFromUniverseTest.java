@@ -65,7 +65,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
           }
           universe.setUniverseDetails(universeDetails);
         };
-    Universe.saveDetails(defaultUniverse.universeUUID, updater);
+    Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
   }
 
   @Override
@@ -79,14 +79,14 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     // create default universe
     userIntent = new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
-    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = 3;
-    userIntent.regionList = ImmutableList.of(region.uuid);
+    userIntent.regionList = ImmutableList.of(region.getUuid());
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(userIntent, false /* setMasters */));
 
     setDefaultNodeState(NodeState.Removed);
@@ -191,7 +191,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
 
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
 
     TaskInfo taskInfo = submitTask(taskParams, DEFAULT_NODE_NAME, 3);
     assertEquals(Success, taskInfo.getTaskState());
@@ -207,7 +207,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
   public void testReleaseStoppedInstanceSuccess() {
     setDefaultNodeState(NodeState.Removed);
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
 
     TaskInfo taskInfo = submitTask(taskParams, DEFAULT_NODE_NAME, 4);
     assertEquals(Success, taskInfo.getTaskState());
@@ -222,7 +222,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
   @Test
   public void testReleaseUnknownNode() {
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.universeUUID = defaultUniverse.getUniverseUUID();
     TaskInfo taskInfo = submitTask(taskParams, "host-n9", 3);
     assertEquals(Failure, taskInfo.getTaskState());
   }

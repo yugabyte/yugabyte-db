@@ -2,13 +2,10 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
-
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 
 @Data
-@EqualsAndHashCode(callSuper = false)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class AvailabilityZoneDetails {
 
@@ -18,5 +15,5 @@ public class AvailabilityZoneDetails {
     @ApiModelProperty public KubernetesRegionInfo kubernetes;
   }
 
-  @ApiModelProperty public AZCloudInfo cloudInfo;
+  @ApiModelProperty private AZCloudInfo cloudInfo;
 }

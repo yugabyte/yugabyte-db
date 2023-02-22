@@ -18,6 +18,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -48,7 +49,7 @@ public class ShellProcessHandler {
 
   private static final Duration DESTROY_GRACE_TIMEOUT = Duration.ofMinutes(5);
 
-  private final play.Configuration appConfig;
+  private final Config config;
   private final boolean cloudLoggingEnabled;
   private final ShellLogsManager shellLogsManager;
 
@@ -64,9 +65,9 @@ public class ShellProcessHandler {
   static final String YB_LOGS_MAX_MSG_SIZE = "yb.logs.max_msg_size";
 
   @Inject
-  public ShellProcessHandler(play.Configuration appConfig, ShellLogsManager shellLogsManager) {
-    this.appConfig = appConfig;
-    this.cloudLoggingEnabled = appConfig.getBoolean("yb.cloud.enabled");
+  public ShellProcessHandler(Config config, ShellLogsManager shellLogsManager) {
+    this.config = config;
+    this.cloudLoggingEnabled = config.getBoolean("yb.cloud.enabled");
     this.shellLogsManager = shellLogsManager;
   }
 
@@ -127,7 +128,7 @@ public class ShellProcessHandler {
     if (MapUtils.isNotEmpty(extraEnvVars)) {
       envVars.putAll(context.getExtraEnvVars());
     }
-    String devopsHome = appConfig.getString("yb.devops.home");
+    String devopsHome = config.getString("yb.devops.home");
     if (devopsHome != null) {
       pb.directory(new File(devopsHome));
     }
@@ -159,7 +160,7 @@ public class ShellProcessHandler {
         log.info(logMsg);
       }
       String fullCommand = "'" + String.join("' '", redactedCommand) + "'";
-      if (appConfig.getBoolean("yb.log.logEnvVars", false) && extraEnvVars != null) {
+      if (config.getBoolean("yb.log.logEnvVars") && extraEnvVars != null) {
         fullCommand = Joiner.on(" ").withKeyValueSeparator("=").join(extraEnvVars) + fullCommand;
       }
       logMsg =
@@ -274,7 +275,7 @@ public class ShellProcessHandler {
   }
 
   private long getMaxLogMsgSize() {
-    return appConfig.getBytes(YB_LOGS_MAX_MSG_SIZE);
+    return config.getBytes(YB_LOGS_MAX_MSG_SIZE);
   }
 
   /** For a given file return a bufferred reader that reads only last N bytes. */

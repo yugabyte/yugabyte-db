@@ -64,11 +64,11 @@ public class CreateAlertDefinitionsTest extends FakeDBApplication {
   public void testRunFunctionality() {
     CreateAlertDefinitions alertDefinitionTask = new CreateAlertDefinitions(baseTaskDependencies);
     UniverseTaskParams taskParams = new UniverseTaskParams();
-    taskParams.universeUUID = u.universeUUID;
+    taskParams.universeUUID = u.getUniverseUUID();
     alertDefinitionTask.initialize(taskParams);
 
     AlertDefinitionFilter definitionFilter =
-        AlertDefinitionFilter.builder().customerUuid(customer.uuid).build();
+        AlertDefinitionFilter.builder().customerUuid(customer.getUuid()).build();
     assertEquals(0, alertDefinitionService.list(definitionFilter).size());
 
     alertDefinitionTask.run();

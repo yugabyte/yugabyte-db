@@ -117,7 +117,8 @@ public class AlertTest extends FakeDBApplication {
             alert,
             KnownAlertLabels.UNIVERSE_NAME.labelName(),
             definition.getLabelValue(KnownAlertLabels.UNIVERSE_NAME));
-    AlertFilter filter = AlertFilter.builder().customerUuid(cust1.uuid).label(oldLabel1).build();
+    AlertFilter filter =
+        AlertFilter.builder().customerUuid(cust1.getUuid()).label(oldLabel1).build();
     List<Alert> queriedAlerts = alertService.list(filter);
 
     assertThat(queriedAlerts, hasSize(1));
@@ -410,7 +411,7 @@ public class AlertTest extends FakeDBApplication {
     AlertLabel definitionNameLabel =
         new AlertLabel(
             alert, KnownAlertLabels.DEFINITION_NAME.labelName(), configuration.getName());
-    assertThat(alert.getCustomerUUID(), is(cust1.uuid));
+    assertThat(alert.getCustomerUUID(), is(cust1.getUuid()));
     assertThat(alert.getSeverity(), is(AlertConfiguration.Severity.SEVERE));
     assertThat(alert.getName(), is("Alert 1"));
     assertThat(alert.getSourceName(), is("Source 1"));

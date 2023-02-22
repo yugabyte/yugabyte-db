@@ -123,11 +123,12 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
                 Util.redactString(ysqlPassword);
           }
           log.debug("Storing passwords in memory");
-          passwordStore.put(universe.universeUUID, new AuthPasswords(ycqlPassword, ysqlPassword));
+          passwordStore.put(
+              universe.getUniverseUUID(), new AuthPasswords(ycqlPassword, ysqlPassword));
         } else {
-          log.debug("Reading password for {}", universe.universeUUID);
+          log.debug("Reading password for {}", universe.getUniverseUUID());
           // Read from the in-memory store on retry.
-          AuthPasswords passwords = passwordStore.getIfPresent(universe.universeUUID);
+          AuthPasswords passwords = passwordStore.getIfPresent(universe.getUniverseUUID());
           if (passwords == null) {
             throw new RuntimeException(
                 "Auth passwords are not found. Platform might have restarted"
@@ -138,7 +139,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
         }
       }
 
-      createInstanceExistsCheckTasks(universe.universeUUID, universe.getNodes());
+      createInstanceExistsCheckTasks(universe.getUniverseUUID(), universe.getNodes());
 
       // Create preflight node check tasks for on-prem nodes.
       createPreflightNodeCheckTasks(universe, taskParams().clusters);
@@ -196,8 +197,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // universe to happen.
       Universe universe = unlockUniverseForUpdate();
       if (universe != null && universe.getUniverseDetails().updateSucceeded) {
-        log.debug("Removing passwords for {}", universe.universeUUID);
-        passwordStore.invalidate(universe.universeUUID);
+        log.debug("Removing passwords for {}", universe.getUniverseUUID());
+        passwordStore.invalidate(universe.getUniverseUUID());
         if (universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")
             && taskParams().overridePrebuiltAmiDBVersion) {
           universe.updateConfig(

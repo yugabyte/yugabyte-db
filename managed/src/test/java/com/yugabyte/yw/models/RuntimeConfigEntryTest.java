@@ -56,7 +56,7 @@ public class RuntimeConfigEntryTest extends FakeDBApplication {
 
   @Test
   public void testCreateLookupGetAllValidScopeCascadeDelete_customer() {
-    UUID scopeUuid = defaultCustomer.uuid;
+    UUID scopeUuid = defaultCustomer.getUuid();
     RuntimeConfigEntry.upsert(defaultCustomer, YB_SB_START_YEAR_KEY, "1857");
     checkStartYear(scopeUuid, "1857");
     // Make sure that the config with same scope and path is unique and later update overwrites
@@ -79,7 +79,7 @@ public class RuntimeConfigEntryTest extends FakeDBApplication {
 
   @Test
   public void testCreateLookupGetAllValidScopeCascadeDelete_universe() {
-    UUID scopeUuid = defaultUniverse.universeUUID;
+    UUID scopeUuid = defaultUniverse.getUniverseUUID();
     RuntimeConfigEntry.upsert(defaultUniverse, YB_SB_START_YEAR_KEY, "2021");
     checkStartYear(scopeUuid, "2021");
     // Make sure that the config with same scope and path is unique and later update overwrites
@@ -102,7 +102,7 @@ public class RuntimeConfigEntryTest extends FakeDBApplication {
 
   @Test
   public void testCreateLookupGetAllValidScopeCascadeDelete_provider() {
-    UUID scopeUuid = defaultProvider.uuid;
+    UUID scopeUuid = defaultProvider.getUuid();
     RuntimeConfigEntry.upsert(defaultProvider, YB_SB_START_YEAR_KEY, "1984");
     checkStartYear(scopeUuid, "1984");
     // Make sure that the config with same scope and path is unique and later update overwrites
@@ -125,7 +125,7 @@ public class RuntimeConfigEntryTest extends FakeDBApplication {
 
   @Test
   public void testCreateEntryWithHugeValues() {
-    UUID scopeUuid = defaultCustomer.uuid;
+    UUID scopeUuid = defaultCustomer.getUuid();
     String longString =
         Stream.generate(() -> "\u4F60\u597D")
             .limit(1024 * 64 / 2 + 1)

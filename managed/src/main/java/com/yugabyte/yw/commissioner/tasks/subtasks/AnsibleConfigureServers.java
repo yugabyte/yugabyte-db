@@ -35,7 +35,6 @@ import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.yb.client.YBClient;
 
 @Slf4j
 public class AnsibleConfigureServers extends NodeTaskBase {
@@ -121,7 +120,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     log.debug(
         "Reset master state is now {} for universe {}. It was {}",
         resetMasterState,
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         taskParams().resetMasterState);
     taskParams().resetMasterState = resetMasterState;
     // Execute the ansible command.

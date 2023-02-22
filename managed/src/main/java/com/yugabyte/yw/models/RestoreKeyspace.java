@@ -23,17 +23,19 @@ import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
+import lombok.Getter;
+import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.libs.Json;
 
 @ApiModel(description = "Keyspace level restores")
 @Entity
+@Getter
+@Setter
 public class RestoreKeyspace extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(RestoreKeyspace.class);
   SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
@@ -69,67 +71,30 @@ public class RestoreKeyspace extends Model {
 
   @ApiModelProperty(value = "Restore keyspace UUID", accessMode = READ_ONLY)
   @Id
-  public UUID uuid;
+  private UUID uuid;
 
   @ApiModelProperty(value = "Universe-level Restore UUID", accessMode = READ_ONLY)
-  @Column(nullable = false)
-  public UUID restoreUUID;
+  private UUID restoreUUID;
 
   @ApiModelProperty(value = "Restore Keyspace task UUID", accessMode = READ_ONLY)
-  @Column(nullable = false)
-  public UUID taskUUID;
-
-  public UUID getTaskUUID() {
-    return taskUUID;
-  }
-
-  public void setTaskUUID(UUID uuid) {
-    this.taskUUID = uuid;
-  }
+  private UUID taskUUID;
 
   @ApiModelProperty(value = "Source keyspace name", accessMode = READ_ONLY)
-  @Column
-  public String sourceKeyspace;
+  private String sourceKeyspace;
 
   @ApiModelProperty(value = "Storage location name", accessMode = READ_ONLY)
-  @Column
-  public String storageLocation;
+  private String storageLocation;
 
   @ApiModelProperty(value = "Target keyspace name", accessMode = READ_ONLY)
-  @Column
-  public String targetKeyspace;
+  private String targetKeyspace;
 
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "State of the keyspace restore", accessMode = READ_ONLY)
   private State state;
 
-  public State getState() {
-    return state;
-  }
-
-  public void setState(State state) {
-    this.state = state;
-  }
-
   @CreatedTimestamp private Date createTime;
 
-  public Date getCreateTime() {
-    return createTime;
-  }
-
-  public void setCreateTime(Date createTime) {
-    this.createTime = createTime;
-  }
-
   @UpdatedTimestamp private Date completeTime;
-
-  public Date getCompleteTime() {
-    return completeTime;
-  }
-
-  public void setCompleteTime(Date completeTime) {
-    this.completeTime = completeTime;
-  }
 
   private static final Multimap<State, State> ALLOWED_TRANSITIONS =
       ImmutableMultimap.<State, State>builder()
@@ -160,23 +125,23 @@ public class RestoreKeyspace extends Model {
 
   public static RestoreKeyspace create(UUID taskUUID, RestoreBackupParams taskDetails) {
     RestoreKeyspace restoreKeyspace = new RestoreKeyspace();
-    restoreKeyspace.uuid = UUID.randomUUID();
+    restoreKeyspace.setUuid(UUID.randomUUID());
 
-    restoreKeyspace.restoreUUID = taskDetails.prefixUUID;
-    restoreKeyspace.taskUUID = taskUUID;
+    restoreKeyspace.setRestoreUUID(taskDetails.prefixUUID);
+    restoreKeyspace.setTaskUUID(taskUUID);
 
     RestoreBackupParams.BackupStorageInfo storageInfo = taskDetails.backupStorageInfoList.get(0);
-    restoreKeyspace.storageLocation = storageInfo.storageLocation;
-    restoreKeyspace.targetKeyspace = storageInfo.keyspace;
-    restoreKeyspace.sourceKeyspace =
-        BackupUtil.getKeyspaceFromStorageLocation(restoreKeyspace.storageLocation);
-    restoreKeyspace.state = RestoreKeyspace.State.InProgress;
+    restoreKeyspace.setStorageLocation(storageInfo.storageLocation);
+    restoreKeyspace.setTargetKeyspace(storageInfo.keyspace);
+    restoreKeyspace.setSourceKeyspace(
+        BackupUtil.getKeyspaceFromStorageLocation(restoreKeyspace.getStorageLocation()));
+    restoreKeyspace.setState(State.InProgress);
     restoreKeyspace.save();
     return restoreKeyspace;
   }
 
   public long getBackupSizeFromStorageLocation() {
-    long backupSize = getBackupSizeFromStorageLocation(storageLocation);
+    long backupSize = getBackupSizeFromStorageLocation(getStorageLocation());
     return backupSize;
   }
 
@@ -191,10 +156,10 @@ public class RestoreKeyspace extends Model {
 
   public static void update(Restore restore, TaskInfo.State parentState) {
     List<RestoreKeyspace> restoreKeyspaceList =
-        fetchRestoreKeyspaceFromRestoreUUID(restore.restoreUUID);
+        fetchRestoreKeyspaceFromRestoreUUID(restore.getRestoreUUID());
     State restoreKeyspaceState = fetchStateFromTaskInfoState(parentState);
     for (RestoreKeyspace restoreKeyspace : restoreKeyspaceList) {
-      restoreKeyspace.update(restoreKeyspace.taskUUID, restoreKeyspaceState);
+      restoreKeyspace.update(restoreKeyspace.getTaskUUID(), restoreKeyspaceState);
     }
   }
 

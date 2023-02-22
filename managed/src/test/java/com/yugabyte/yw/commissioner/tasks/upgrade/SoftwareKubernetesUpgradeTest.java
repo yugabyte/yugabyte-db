@@ -199,7 +199,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
 
-    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = "new-version";
@@ -245,7 +245,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     ArgumentCaptor<String> expectedPodName = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
-    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
@@ -284,7 +284,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
     setupUniverseSingleAZ(false, true);
 
-    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = "new-version";

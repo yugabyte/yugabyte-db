@@ -19,8 +19,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -159,7 +157,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
     for (Entry<UUID, Map<String, String>> entry : newPlacement.configs.entrySet()) {
       UUID azUUID = entry.getKey();
-      String azCode = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
+      String azCode = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
 
       if (!newPlacement.masters.containsKey(azUUID) && serverType == ServerType.MASTER) {
         continue;
@@ -393,7 +391,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     Map<String, Object> universeOverrides = HelmUtils.convertYamlToMap(universeOverridesStr);
     for (Entry<UUID, Integer> entry : serversToUpdate.entrySet()) {
       UUID azUUID = entry.getKey();
-      String azCode = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
+      String azCode = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
 
       PlacementInfo tempPI = new PlacementInfo();
       PlacementInfoUtil.addPlacementZone(azUUID, tempPI);
@@ -570,7 +568,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
     for (Entry<UUID, Map<String, String>> entry : currPlacement.configs.entrySet()) {
       UUID azUUID = entry.getKey();
-      String azCode = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
+      String azCode = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
       Map<String, String> config = entry.getValue();
 
       // If the new placement also has the AZ, we need to scale down. But if there
@@ -707,7 +705,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     Set<NodeDetails> podsToAdd = new HashSet<NodeDetails>();
     for (Entry<UUID, Integer> entry : newPlacement.entrySet()) {
       UUID azUUID = entry.getKey();
-      String azCode = AvailabilityZone.get(azUUID).code;
+      String azCode = AvailabilityZone.get(azUUID).getCode();
       int numNewReplicas = entry.getValue();
       int numCurrReplicas = 0;
       if (currPlacement != null) {
@@ -734,7 +732,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     Set<NodeDetails> podsToRemove = new HashSet<NodeDetails>();
     for (Entry<UUID, Integer> entry : currPlacement.entrySet()) {
       UUID azUUID = entry.getKey();
-      String azCode = AvailabilityZone.get(azUUID).code;
+      String azCode = AvailabilityZone.get(azUUID).getCode();
       int numCurrReplicas = entry.getValue();
       int numNewReplicas = newPlacement.getOrDefault(azUUID, 0);
       for (int i = numCurrReplicas - 1; i >= numNewReplicas; i--) {

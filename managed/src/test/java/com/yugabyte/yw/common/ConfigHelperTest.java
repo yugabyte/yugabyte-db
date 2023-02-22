@@ -39,7 +39,7 @@ import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.error.YAMLException;
-import play.Application;
+import play.Environment;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -50,7 +50,7 @@ public class ConfigHelperTest extends FakeDBApplication {
 
   @Mock Util util;
 
-  @Mock Application application;
+  @Mock Environment environment;
 
   @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
   @Mock Config mockAppConfig;
@@ -98,8 +98,8 @@ public class ConfigHelperTest extends FakeDBApplication {
     Map<String, Object> jsonMap = new HashMap();
     jsonMap.put("version_number", "1.1.1.1");
     jsonMap.put("build_number", "12345");
-    when(application.resourceAsStream(configFile)).thenReturn(asJsonStream(jsonMap));
-    configHelper.loadSoftwareVersiontoDB(application);
+    when(environment.resourceAsStream(configFile)).thenReturn(asJsonStream(jsonMap));
+    configHelper.loadSoftwareVersiontoDB(environment);
     assertEquals(
         ImmutableMap.of("version", "1.1.1.1-b12345"),
         configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion));
@@ -112,10 +112,9 @@ public class ConfigHelperTest extends FakeDBApplication {
     map.put("config-2", "bar");
 
     for (ConfigHelper.ConfigType configType : ConfigHelper.ConfigType.values()) {
-      when(application.classloader()).thenReturn(ClassLoader.getSystemClassLoader());
-      when(application.resourceAsStream(configType.getConfigFile())).thenReturn(asYamlStream(map));
+      when(environment.resourceAsStream(configType.getConfigFile())).thenReturn(asYamlStream(map));
     }
-    configHelper.loadConfigsToDB(application);
+    configHelper.loadConfigsToDB(environment);
 
     for (ConfigHelper.ConfigType configType : ConfigHelper.ConfigType.values()) {
       if (configType.getConfigFile() != null) {
@@ -128,8 +127,7 @@ public class ConfigHelperTest extends FakeDBApplication {
 
   @Test(expected = YAMLException.class)
   public void testLoadConfigsToDBWithoutFile() {
-    when(application.classloader()).thenReturn(ClassLoader.getSystemClassLoader());
-    configHelper.loadConfigsToDB(application);
+    configHelper.loadConfigsToDB(environment);
   }
 
   @Test
@@ -204,11 +202,11 @@ public class ConfigHelperTest extends FakeDBApplication {
     Provider p = ModelFactory.awsProvider(customer);
     String[] diskFileNames = {"testFile1.txt", "testFile2", "testFile3.root.crt"};
     for (String diskFileName : diskFileNames) {
-      String filePath = "/keys/" + p.uuid + "/";
+      String filePath = "/keys/" + p.getUuid() + "/";
       createTempFile(TMP_STORAGE_PATH + filePath, diskFileName, UUID.randomUUID().toString());
     }
     for (String diskFileName : diskFileNames) {
-      String filePath = "/node-agent/" + customer.uuid + "/" + UUID.randomUUID() + "/0/";
+      String filePath = "/node-agent/" + customer.getUuid() + "/" + UUID.randomUUID() + "/0/";
       createTempFile(TMP_STORAGE_PATH + filePath, diskFileName, UUID.randomUUID().toString());
     }
     configHelper.syncFileData(TMP_STORAGE_PATH, false);
@@ -222,7 +220,7 @@ public class ConfigHelperTest extends FakeDBApplication {
     }
     for (String dbFileName : dbFileNames) {
       UUID parentUUID = UUID.randomUUID();
-      String filePath = "/node-agent/" + customer.uuid + "/" + parentUUID + "/0/" + dbFileName;
+      String filePath = "/node-agent/" + customer.getUuid() + "/" + parentUUID + "/0/" + dbFileName;
       String content = Base64.getEncoder().encodeToString(UUID.randomUUID().toString().getBytes());
       FileData.create(parentUUID, filePath, dbFileName, content);
     }
@@ -241,7 +239,7 @@ public class ConfigHelperTest extends FakeDBApplication {
     Provider p = ModelFactory.awsProvider(customer);
     String[] diskFileNames = {"testFile1.txt", "testFile2", "testFile3.root.crt"};
     for (String diskFileName : diskFileNames) {
-      String filePath = "/keys/" + p.uuid + "/";
+      String filePath = "/keys/" + p.getUuid() + "/";
       createTempFile(TMP_STORAGE_PATH + filePath, diskFileName, UUID.randomUUID().toString());
     }
     configHelper.syncFileData(TMP_STORAGE_PATH, false);
@@ -263,7 +261,7 @@ public class ConfigHelperTest extends FakeDBApplication {
     Provider p = ModelFactory.awsProvider(customer);
     String[] diskFileNames = {"testFile1.txt", "testFile2", "testFile3.root.crt"};
     for (String diskFileName : diskFileNames) {
-      String filePath = "/keys/" + p.uuid + "/";
+      String filePath = "/keys/" + p.getUuid() + "/";
       createTempFile(TMP_STORAGE_PATH + filePath, diskFileName, UUID.randomUUID().toString());
     }
     configHelper.syncFileData(TMP_STORAGE_PATH, false);

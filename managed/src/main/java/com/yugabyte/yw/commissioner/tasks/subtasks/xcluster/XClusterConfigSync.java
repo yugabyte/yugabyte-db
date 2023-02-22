@@ -40,8 +40,8 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
     try (YBClient client =
         ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate)) {
       CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
-          getClusterConfig(client, targetUniverse.universeUUID);
-      syncXClusterConfigs(clusterConfig, targetUniverse.universeUUID);
+          getClusterConfig(client, targetUniverse.getUniverseUUID());
+      syncXClusterConfigs(clusterConfig, targetUniverse.getUniverseUUID());
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
@@ -96,13 +96,13 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
           if (xClusterConfig == null) {
             xClusterConfig =
                 XClusterConfig.create(xClusterConfigName, sourceUniverseUUID, targetUniverseUUID);
-            log.info("Creating new XClusterConfig({})", xClusterConfig.uuid);
+            log.info("Creating new XClusterConfig({})", xClusterConfig.getUuid());
           } else {
-            log.info("Updating existing XClusterConfig({})", xClusterConfig.uuid);
+            log.info("Updating existing XClusterConfig({})", xClusterConfig.getUuid());
           }
-          xClusterConfig.setStatus(XClusterConfigStatusType.Running);
-          xClusterConfig.setPaused(value.getDisableStream());
-          xClusterConfig.setTables(xClusterConfigTables);
+          xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
+          xClusterConfig.updatePaused(value.getDisableStream());
+          xClusterConfig.setTablesByIds(xClusterConfigTables);
           xClusterConfig.setReplicationSetupDone(xClusterConfigTables);
           xClusterConfig.setStatusForTables(
               xClusterConfigTables, XClusterTableConfig.Status.Running);
@@ -114,9 +114,9 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
         XClusterConfig.getByTargetUniverseUUID(targetUniverseUUID);
     for (XClusterConfig xClusterConfig : currentXClusterConfigsForTarget) {
       if (!foundXClusterConfigs.contains(
-          new Pair<>(xClusterConfig.sourceUniverseUUID, xClusterConfig.name))) {
+          new Pair<>(xClusterConfig.getSourceUniverseUUID(), xClusterConfig.getName()))) {
         xClusterConfig.delete();
-        log.info("Deleted unknown XClusterConfig({})", xClusterConfig.uuid);
+        log.info("Deleted unknown XClusterConfig({})", xClusterConfig.getUuid());
       }
     }
   }

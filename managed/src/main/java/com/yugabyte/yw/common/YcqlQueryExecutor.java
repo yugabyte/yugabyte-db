@@ -61,7 +61,7 @@ public class YcqlQueryExecutor {
     try {
       cc =
           createCassandraConnection(
-              universe.universeUUID, true, data.ycqlAdminUsername, data.ycqlAdminPassword);
+              universe.getUniverseUUID(), true, data.ycqlAdminUsername, data.ycqlAdminPassword);
     } catch (AuthenticationException e) {
       LOG.warn(e.getMessage());
       throw new PlatformServiceException(Http.Status.UNAUTHORIZED, e.getMessage());
@@ -174,7 +174,7 @@ public class YcqlQueryExecutor {
     ObjectNode response = newObject();
     CassandraConnection cc = null;
     try {
-      cc = createCassandraConnection(universe.universeUUID, authEnabled, username, password);
+      cc = createCassandraConnection(universe.getUniverseUUID(), authEnabled, username, password);
     } catch (AuthenticationException e) {
       response.put("error", AUTH_ERR_MSG);
       return response;

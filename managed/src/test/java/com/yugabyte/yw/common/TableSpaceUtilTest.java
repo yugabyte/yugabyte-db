@@ -41,7 +41,7 @@ public class TableSpaceUtilTest extends FakeDBApplication {
     // Invalid zone.
     CreateTablespaceParams params1 =
         generateTablespaceParams(
-            universe.universeUUID, provider.code, 3, "r1-az1-1;r1-az2-1;r1-az4-1");
+            universe.getUniverseUUID(), provider.getCode(), 3, "r1-az1-1;r1-az2-1;r1-az4-1");
     RuntimeException re =
         assertThrows(
             PlatformServiceException.class,
@@ -52,7 +52,7 @@ public class TableSpaceUtilTest extends FakeDBApplication {
     // Not enough zones.
     CreateTablespaceParams params2 =
         generateTablespaceParams(
-            universe.universeUUID, provider.code, 3, "r1-az1-1;r1-az2-4;r1-az3-1");
+            universe.getUniverseUUID(), provider.getCode(), 3, "r1-az1-1;r1-az2-4;r1-az3-1");
     re =
         assertThrows(
             PlatformServiceException.class,
@@ -64,7 +64,7 @@ public class TableSpaceUtilTest extends FakeDBApplication {
     // Inconsistent number of replicas.
     CreateTablespaceParams params3 =
         generateTablespaceParams(
-            universe.universeUUID, provider.code, 4, "r1-az1-1;r1-az2-1;r1-az3-1");
+            universe.getUniverseUUID(), provider.getCode(), 4, "r1-az1-1;r1-az2-1;r1-az3-1");
     re =
         assertThrows(
             PlatformServiceException.class,
@@ -74,7 +74,7 @@ public class TableSpaceUtilTest extends FakeDBApplication {
     // Duplicate placement.
     CreateTablespaceParams params4 =
         generateTablespaceParams(
-            universe.universeUUID, provider.code, 4, "r1-az1-1;r1-az2-1;r1-az2-2");
+            universe.getUniverseUUID(), provider.getCode(), 4, "r1-az1-1;r1-az2-1;r1-az2-2");
     re =
         assertThrows(
             PlatformServiceException.class,
@@ -111,7 +111,7 @@ public class TableSpaceUtilTest extends FakeDBApplication {
 
     CreateTablespaceParams params =
         generateTablespaceParams(
-            universe.universeUUID, provider.code, 3, "r1-az1-1;r1-az2-1;r1-az3-1");
+            universe.getUniverseUUID(), provider.getCode(), 3, "r1-az1-1;r1-az2-1;r1-az3-1");
     TableSpaceUtil.validateTablespaces(params, universe);
   }
 
@@ -123,19 +123,19 @@ public class TableSpaceUtilTest extends FakeDBApplication {
     // One leader_preference missed, two others set by order. (null - 1 - 2)
     CreateTablespaceParams params =
         generateTablespaceParams(
-            universe.universeUUID, provider.code, 3, "r1-az1-1;r1-az2-1-1;r1-az3-1-2");
+            universe.getUniverseUUID(), provider.getCode(), 3, "r1-az1-1;r1-az2-1-1;r1-az3-1-2");
     TableSpaceUtil.validateTablespaces(params, universe);
 
     // Repeated values 2 - 1 - 1
     params =
         generateTablespaceParams(
-            universe.universeUUID, provider.code, 3, "r1-az1-1-2;r1-az2-1-1;r1-az3-1-1");
+            universe.getUniverseUUID(), provider.getCode(), 3, "r1-az1-1-2;r1-az2-1-1;r1-az3-1-1");
     TableSpaceUtil.validateTablespaces(params, universe);
 
     // 2 - 1 - 3
     params =
         generateTablespaceParams(
-            universe.universeUUID, provider.code, 3, "r1-az1-1-2;r1-az2-1-1;r1-az3-1-3");
+            universe.getUniverseUUID(), provider.getCode(), 3, "r1-az1-1-2;r1-az2-1-1;r1-az3-1-3");
     TableSpaceUtil.validateTablespaces(params, universe);
   }
 
@@ -149,7 +149,7 @@ public class TableSpaceUtilTest extends FakeDBApplication {
     // layer by validators)
     CreateTablespaceParams params =
         generateTablespaceParams(
-            universe.universeUUID, provider.code, 3, "r1-az1-1;r1-az2-1-2;r1-az3-1-2");
+            universe.getUniverseUUID(), provider.getCode(), 3, "r1-az1-1;r1-az2-1-2;r1-az3-1-2");
     RuntimeException re =
         assertThrows(
             PlatformServiceException.class,
@@ -159,7 +159,7 @@ public class TableSpaceUtilTest extends FakeDBApplication {
     // Wrong leader_preference order.
     CreateTablespaceParams params2 =
         generateTablespaceParams(
-            universe.universeUUID, provider.code, 3, "r1-az1-1-1;r1-az2-1-1;r1-az3-1-3");
+            universe.getUniverseUUID(), provider.getCode(), 3, "r1-az1-1-1;r1-az2-1-1;r1-az3-1-3");
     re =
         assertThrows(
             PlatformServiceException.class,

@@ -12,18 +12,26 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.Util;
-import play.Application;
+import com.yugabyte.yw.common.ybflyway.YBFlywayInit;
+import play.Environment;
 
 /** Play lifecycle does not give onStartup event */
 public class YBALifeCycle {
 
   private final ConfigHelper configHelper;
-  private final Application application;
+  private final Environment environment;
+
+  private final Config config;
 
   @Inject
-  public YBALifeCycle(Config config, ConfigHelper configHelper, Application application) {
+  public YBALifeCycle(
+      Config config,
+      ConfigHelper configHelper,
+      Environment environment,
+      YBFlywayInit ybFlywayInit) {
+    this.config = config;
     this.configHelper = configHelper;
-    this.application = application;
+    this.environment = environment;
     onStart();
   }
 
@@ -37,7 +45,7 @@ public class YBALifeCycle {
    * `yb.is_platform_downgrade_allowed`
    */
   private void checkIfDowngrade() {
-    String version = ConfigHelper.getCurrentVersion(application);
+    String version = ConfigHelper.getCurrentVersion(environment);
 
     String previousSoftwareVersion =
         configHelper
@@ -45,8 +53,7 @@ public class YBALifeCycle {
             .getOrDefault("version", "")
             .toString();
 
-    boolean isPlatformDowngradeAllowed =
-        application.config().getBoolean("yb.is_platform_downgrade_allowed");
+    boolean isPlatformDowngradeAllowed = config.getBoolean("yb.is_platform_downgrade_allowed");
 
     if (Util.compareYbVersions(previousSoftwareVersion, version, true) > 0
         && !isPlatformDowngradeAllowed) {

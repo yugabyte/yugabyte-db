@@ -39,7 +39,7 @@ public abstract class CloudTaskBase extends AbstractTaskBase {
     // Create the threadpool for the subtasks to use.
     createThreadpool();
     provider = Provider.get(taskParams().providerUUID);
-    regionMetadata = configHelper.getRegionMetadata(Common.CloudType.valueOf(provider.code));
+    regionMetadata = configHelper.getRegionMetadata(Common.CloudType.valueOf(provider.getCode()));
   }
 
   public Provider getProvider() {

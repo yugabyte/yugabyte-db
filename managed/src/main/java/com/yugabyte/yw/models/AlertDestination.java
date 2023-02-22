@@ -18,7 +18,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.FetchType;
 import javax.persistence.Id;
@@ -44,18 +43,15 @@ import lombok.experimental.Accessors;
 public class AlertDestination extends Model {
 
   @Id
-  @Column(nullable = false, unique = true)
   @ApiModelProperty(value = "Destination UUID", accessMode = READ_ONLY)
   private UUID uuid;
 
   @NotNull
-  @Column(nullable = false)
   @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   private UUID customerUUID;
 
   @NotNull
   @Size(min = 1, max = 63)
-  @Column(columnDefinition = "Text", nullable = false)
   @ApiModelProperty(value = "Name", accessMode = READ_WRITE)
   private String name;
 
@@ -85,7 +81,6 @@ public class AlertDestination extends Model {
   private Set<AlertChannel> channels;
 
   @NotNull
-  @Column(nullable = false)
   @ApiModelProperty(value = "Default alert notification destination", accessMode = READ_WRITE)
   private boolean defaultDestination = false;
 

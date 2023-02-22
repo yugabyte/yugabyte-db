@@ -44,8 +44,8 @@ public class DeleteBackup extends AbstractTaskBase {
   @Override
   public void run() {
     Backup backup = Backup.get(params().customerUUID, params().backupUUID);
-    if ((backup.state != Backup.BackupState.Completed)
-        && (backup.state != Backup.BackupState.Failed)) {
+    if ((backup.getState() != Backup.BackupState.Completed)
+        && (backup.getState() != Backup.BackupState.Failed)) {
       // TODO: Allow deletion of InProgress backups. But not sure if backend supports it
       //  and may not be worth the effort.
       log.error("Cannot delete backup in any other state other than completed or failed");

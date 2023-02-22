@@ -101,7 +101,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
     }
     String url =
         "/api/v1/customers/"
-            + defaultCustomer.uuid
+            + defaultCustomer.getUuid()
             + "/universes/"
             + universeUUID
             + "/schedule_script";
@@ -114,7 +114,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 createScriptSchedule(
-                    defaultUniverse.universeUUID, null, validScriptParam, "5", true));
+                    defaultUniverse.getUniverseUUID(), null, validScriptParam, "5", true));
     assertBadRequest(result, "No cronExpression found");
   }
 
@@ -124,7 +124,11 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 createScriptSchedule(
-                    defaultUniverse.universeUUID, "* * * * ? * *", validScriptParam, "5", true));
+                    defaultUniverse.getUniverseUUID(),
+                    "* * * * ? * *",
+                    validScriptParam,
+                    "5",
+                    true));
     assertBadRequest(result, "Please provide a valid cronExpression");
   }
 
@@ -134,7 +138,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 createScriptSchedule(
-                    defaultUniverse.universeUUID, "5 * * * *", validScriptParam, null, true));
+                    defaultUniverse.getUniverseUUID(), "5 * * * *", validScriptParam, null, true));
     assertBadRequest(result, "Please provide valid timeLimitMins for script execution.");
   }
 
@@ -144,7 +148,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 createScriptSchedule(
-                    defaultUniverse.universeUUID,
+                    defaultUniverse.getUniverseUUID(),
                     "5 * * * *",
                     validScriptParam,
                     "dummyValue",
@@ -158,7 +162,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 createScriptSchedule(
-                    defaultUniverse.universeUUID, "5 * * * *", validScriptParam, "5", false));
+                    defaultUniverse.getUniverseUUID(), "5 * * * *", validScriptParam, "5", false));
     assertBadRequest(result, "Script file not found");
   }
 
@@ -177,7 +181,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
   public void testCreateScriptSchedule() {
     Result result =
         createScriptSchedule(
-            defaultUniverse.universeUUID, "5 * * * *", validScriptParam, "5", true);
+            defaultUniverse.getUniverseUUID(), "5 * * * *", validScriptParam, "5", true);
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "status", "Active");
@@ -190,24 +194,26 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 createScriptSchedule(
-                    defaultUniverse.universeUUID, "5 * * * *", validScriptParam, "5", true));
+                    defaultUniverse.getUniverseUUID(), "5 * * * *", validScriptParam, "5", true));
     assertBadRequest(result, "External Script APIs are disabled. Please contact support team");
   }
 
   @Test
   public void testCreateMultipleScriptSchedule() {
-    createScriptSchedule(defaultUniverse.universeUUID, "5 * * * *", validScriptParam, "5", true);
+    createScriptSchedule(
+        defaultUniverse.getUniverseUUID(), "5 * * * *", validScriptParam, "5", true);
     Result result =
         assertPlatformException(
             () ->
                 createScriptSchedule(
-                    defaultUniverse.universeUUID, "5 * * * *", validScriptParam, "5", true));
+                    defaultUniverse.getUniverseUUID(), "5 * * * *", validScriptParam, "5", true));
     assertBadRequest(result, "A External Script is already scheduled for this universe.");
   }
 
   @Test
   public void testModifyScriptSchedule() {
-    createScriptSchedule(defaultUniverse.universeUUID, "5 * * * *", validScriptParam, "1", true);
+    createScriptSchedule(
+        defaultUniverse.getUniverseUUID(), "5 * * * *", validScriptParam, "1", true);
     List<Http.MultipartFormData.Part<Source<ByteString, ?>>> bodyData = new ArrayList<>();
     bodyData.add(new Http.MultipartFormData.DataPart("cronExpression", "2 * * * *"));
     bodyData.add(new Http.MultipartFormData.DataPart("timeLimitMins", "5"));
@@ -218,9 +224,9 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
             "script", "test.py", "application/octet-stream", scriptFile));
     String url =
         "/api/v1/customers/"
-            + defaultCustomer.uuid
+            + defaultCustomer.getUuid()
             + "/universes/"
-            + defaultUniverse.universeUUID
+            + defaultUniverse.getUniverseUUID()
             + "/update_scheduled_script";
     Result result = FakeApiHelper.doRequestWithMultipartData("PUT", url, bodyData, mat);
     assertEquals(OK, result.status());
@@ -230,12 +236,13 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
 
   @Test
   public void testStopScriptSchedule() {
-    createScriptSchedule(defaultUniverse.universeUUID, "5 * * * *", validScriptParam, "5", true);
+    createScriptSchedule(
+        defaultUniverse.getUniverseUUID(), "5 * * * *", validScriptParam, "5", true);
     String url =
         "/api/v1/customers/"
-            + defaultCustomer.uuid
+            + defaultCustomer.getUuid()
             + "/universes/"
-            + defaultUniverse.universeUUID
+            + defaultUniverse.getUniverseUUID()
             + "/stop_scheduled_script";
     Result result = FakeApiHelper.doRequest("PUT", url);
     assertEquals(OK, result.status());

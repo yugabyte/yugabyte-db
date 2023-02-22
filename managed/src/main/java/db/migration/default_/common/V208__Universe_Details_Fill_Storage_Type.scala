@@ -1,20 +1,20 @@
 // Copyright (c) YugaByte, Inc.
 
-package db.migration.default.common
+package db.migration.default_.common
 
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType
 import com.yugabyte.yw.commissioner.Common
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams
+import org.flywaydb.core.api.migration.{BaseJavaMigration, Context}
 
-import java.sql.{Connection, PreparedStatement}
-import org.flywaydb.core.api.migration.jdbc.JdbcMigration
 import play.libs.Json
 
 import scala.compat.java8.FunctionConverters.asJavaPredicate
 
-class V208__Universe_Details_Fill_Storage_Type extends JdbcMigration {
+class V208__Universe_Details_Fill_Storage_Type extends BaseJavaMigration {
 
-  override def migrate(connection: Connection): Unit = {
+  override def migrate(context: Context): Unit = {
+    val connection = context.getConnection
     val selectStmt = "SELECT universe_uuid, universe_details_json FROM universe"
     val resultSet = connection.createStatement().executeQuery(selectStmt)
 

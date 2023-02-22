@@ -10,35 +10,6 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.certmgmt.CertificateHelper;
-import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.forms.UpgradeParams;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.TaskType;
-import junitparams.JUnitParamsRunner;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.ArgumentCaptor;
-import play.libs.Json;
-import play.mvc.Result;
-
-import java.util.UUID;
-
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
@@ -63,6 +34,34 @@ import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.UpgradeParams;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.UUID;
+import junitparams.JUnitParamsRunner;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import play.libs.Json;
+import play.mvc.Result;
+
 @RunWith(JUnitParamsRunner.class)
 public class UniverseActionsControllerTest extends UniverseControllerTestBase {
   @Test
@@ -70,37 +69,45 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     Universe u = createUniverse(customer.getCustomerId());
     String url =
         "/api/customers/"
-            + customer.uuid
+            + customer.getUuid()
             + "/universes/"
-            + u.universeUUID
+            + u.getUniverseUUID()
             + "/update_backup_state?markActive=true";
     Result result = doRequestWithAuthToken("PUT", url, authToken);
     assertOk(result);
     assertThat(
-        Universe.getOrBadRequest(u.universeUUID).getConfig().get(Universe.TAKE_BACKUPS),
+        Universe.getOrBadRequest(u.getUniverseUUID()).getConfig().get(Universe.TAKE_BACKUPS),
         allOf(notNullValue(), equalTo("true")));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
   public void testUniverseBackupFlagFailure() {
     Universe u = createUniverse(customer.getCustomerId());
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/update_backup_state";
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + u.getUniverseUUID()
+            + "/update_backup_state";
     Result result = doRequestWithAuthToken("PUT", url, authToken);
     assertEquals(BAD_REQUEST, result.status());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testResetVersionUniverse() {
     Universe u = createUniverse("TestUniverse", customer.getCustomerId());
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/setup_universe_2dc";
-    assertNotEquals(Universe.getOrBadRequest(u.universeUUID).version, -1);
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + u.getUniverseUUID()
+            + "/setup_universe_2dc";
+    assertNotEquals(Universe.getOrBadRequest(u.getUniverseUUID()).getVersion(), -1);
     Result result = doRequestWithAuthToken("PUT", url, authToken);
     assertOk(result);
-    assertEquals(Universe.getOrBadRequest(u.universeUUID).version, -1);
+    assertEquals(Universe.getOrBadRequest(u.getUniverseUUID()).getVersion(), -1);
   }
 
   @Test
@@ -111,13 +118,14 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     // Create the universe with encryption enabled through SMARTKEY KMS provider
     Provider p = ModelFactory.awsProvider(customer);
     String accessKeyCode = "someKeyCode";
-    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
+    AccessKey.create(p.getUuid(), accessKeyCode, new AccessKey.KeyInfo());
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
     InstanceType i =
-        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+        InstanceType.upsert(
+            p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
 
     UniverseDefinitionTaskParams createTaskParams = new UniverseDefinitionTaskParams();
     ObjectNode createBodyJson = (ObjectNode) Json.toJson(createTaskParams);
@@ -130,13 +138,13 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
             .put("enableClientToNodeEncrypt", true)
             .put("replicationFactor", 3)
             .put("numNodes", 3)
-            .put("provider", p.uuid.toString())
+            .put("provider", p.getUuid().toString())
             .put("ycqlPassword", "@123Byte")
             .put("enableYSQL", "false")
             .put("accessKeyCode", accessKeyCode)
             .put("ybSoftwareVersion", "0.0.0.1-b1");
 
-    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
     userIntentJson.set("regionList", regionList);
     userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
     UUID clusterUUID = UUID.randomUUID();
@@ -154,7 +162,7 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     createBodyJson.set("nodeDetailsSet", nodeDetailsSet);
     createBodyJson.put("nodePrefix", "demo-node");
 
-    String createUrl = "/api/customers/" + customer.uuid + "/universes";
+    String createUrl = "/api/customers/" + customer.getUuid() + "/universes";
 
     final ArrayNode keyOps = Json.newArray().add("EXPORT").add("APPMANAGEABLE");
     ObjectNode createPayload =
@@ -173,17 +181,17 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     // Rotate the universe key
     EncryptionAtRestKeyParams taskParams = new EncryptionAtRestKeyParams();
     ObjectNode bodyJson = (ObjectNode) Json.toJson(taskParams);
-    bodyJson.put("configUUID", kmsConfig.configUUID.toString());
+    bodyJson.put("configUUID", kmsConfig.getConfigUUID().toString());
     bodyJson.put("algorithm", "AES");
     bodyJson.put("key_size", "256");
     bodyJson.put("key_op", "ENABLE");
-    String url = "/api/customers/" + customer.uuid + "/universes/" + testUniUUID + "/set_key";
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + testUniUUID + "/set_key";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertOk(result);
     ArgumentCaptor<UniverseTaskParams> argCaptor =
         ArgumentCaptor.forClass(UniverseTaskParams.class);
     verify(mockCommissioner).submit(eq(TaskType.SetUniverseKey), argCaptor.capture());
-    assertAuditEntry(2, customer.uuid);
+    assertAuditEntry(2, customer.getUuid());
   }
 
   @Test
@@ -203,9 +211,10 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
           universe.setUniverseDetails(universeDetails);
         };
     // Save the updates to the universe.
-    Universe.saveDetails(u.universeUUID, updater);
+    Universe.saveDetails(u.getUniverseUUID(), updater);
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/pause";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID() + "/pause";
     Result result = doRequestWithAuthToken("POST", url, authToken);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
@@ -213,10 +222,10 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
 
     CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(th);
-    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Pause)));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -236,9 +245,10 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
           universe.setUniverseDetails(universeDetails);
         };
     // Save the updates to the universe.
-    Universe.saveDetails(u.universeUUID, updater);
+    Universe.saveDetails(u.getUniverseUUID(), updater);
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/resume";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID() + "/resume";
     Result result = doRequestWithAuthToken("POST", url, authToken);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
@@ -246,10 +256,10 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
 
     CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(th);
-    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Resume)));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -258,7 +268,8 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = prepareUniverseForToggleTls(false, false, null);
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/toggle_tls";
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
@@ -268,7 +279,7 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     verify(mockCommissioner, times(0)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -277,7 +288,8 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = prepareUniverseForToggleTls(false, false, null);
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/toggle_tls";
     ObjectNode bodyJson = prepareRequestBodyForToggleTls(true, true, null);
     bodyJson.put("upgradeOption", "ROLLING");
     Result result =
@@ -289,7 +301,7 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     verify(mockCommissioner, times(0)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -298,7 +310,8 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = prepareUniverseForToggleTls(false, false, null);
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/toggle_tls";
     ObjectNode bodyJson = prepareRequestBodyForToggleTls(false, false, null);
     Result result =
         assertPlatformException(
@@ -309,7 +322,7 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     verify(mockCommissioner, times(0)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -318,7 +331,8 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = prepareUniverseForToggleTls(false, false, null);
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/toggle_tls";
     ObjectNode bodyJson = prepareRequestBodyForToggleTls(true, false, UUID.randomUUID());
     Result result =
         assertPlatformException(
@@ -329,7 +343,7 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     verify(mockCommissioner, times(0)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -338,12 +352,13 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     when(mockRuntimeConfig.getString("yb.storage.path")).thenReturn("/tmp/certs");
     UUID certUUID1 =
-        CertificateHelper.createRootCA(mockRuntimeConfig, "test cert 1", customer.uuid);
+        CertificateHelper.createRootCA(mockRuntimeConfig, "test cert 1", customer.getUuid());
     UUID certUUID2 =
-        CertificateHelper.createRootCA(mockRuntimeConfig, "test cert 2", customer.uuid);
+        CertificateHelper.createRootCA(mockRuntimeConfig, "test cert 2", customer.getUuid());
     UUID universeUUID = prepareUniverseForToggleTls(true, true, certUUID1);
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/toggle_tls";
     ObjectNode bodyJson = prepareRequestBodyForToggleTls(false, true, certUUID2);
     Result result =
         assertPlatformException(
@@ -354,7 +369,7 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     verify(mockCommissioner, times(0)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -364,7 +379,8 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     UUID universeUUID = prepareUniverseForToggleTls(false, false, null);
     setInTransitNode(universeUUID);
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/toggle_tls";
     ObjectNode bodyJson = prepareRequestBodyForToggleTls(true, true, null);
     Result result =
         assertPlatformException(
@@ -375,7 +391,7 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     verify(mockCommissioner, times(0)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -384,7 +400,8 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = prepareUniverseForToggleTls(false, false, null);
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/toggle_tls";
     ObjectNode bodyJson = prepareRequestBodyForToggleTls(true, true, null);
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertOk(result);
@@ -395,12 +412,12 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
 
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
     assertNotNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   private UUID prepareUniverseForToggleTls(
       boolean enableNodeToNodeEncrypt, boolean enableClientToNodeEncrypt, UUID rootCA) {
-    UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    UUID universeUUID = createUniverse(customer.getCustomerId()).getUniverseUUID();
     Universe.saveDetails(universeUUID, ApiUtils.mockUniverseUpdater());
     // Update current TLS params
     Universe.saveDetails(

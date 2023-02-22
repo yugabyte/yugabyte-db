@@ -310,8 +310,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
       UUID azUUID = entry.getKey();
-      String azName = AvailabilityZone.get(azUUID).code;
-      String regionName = AvailabilityZone.get(azUUID).region.code;
+      String azName = AvailabilityZone.get(azUUID).getCode();
+      String regionName = AvailabilityZone.get(azUUID).getRegion().getCode();
       Map<String, String> config = entry.getValue();
 
       // TODO(bhavin192): we seem to be iterating over all the AZs
@@ -348,8 +348,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     String nodePrefix = u.getUniverseDetails().nodePrefix;
     for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
       UUID azUUID = entry.getKey();
-      String azName = AvailabilityZone.get(azUUID).code;
-      String regionName = AvailabilityZone.get(azUUID).region.code;
+      String azName = AvailabilityZone.get(azUUID).getCode();
+      String regionName = AvailabilityZone.get(azUUID).getRegion().getCode();
       Map<String, String> config = entry.getValue();
 
       String helmReleaseName =
@@ -524,7 +524,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Yaml yaml = new Yaml();
 
     // TODO: decide if the user wants to expose all the services or just master.
-    overrides = yaml.load(application.resourceAsStream("k8s-expose-all.yml"));
+    overrides = yaml.load(environment.resourceAsStream("k8s-expose-all.yml"));
 
     Provider provider = Provider.get(taskParams().providerUUID);
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
@@ -595,7 +595,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           if (region.azList.size() != 0) {
             PlacementInfo.PlacementAZ zone = region.azList.get(0);
             // TODO: wtf, why do we have AZ name but not code at this level??
-            placementZone = AvailabilityZone.get(zone.uuid).code;
+            placementZone = AvailabilityZone.get(zone.uuid).getCode();
             numNodes = zone.numNodesInAZ;
             replicationFactorZone = zone.replicationFactor;
             replicationFactor = userIntent.replicationFactor;
@@ -682,10 +682,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Map<String, Object> masterResource = new HashMap<>();
     Map<String, Object> masterLimit = new HashMap<>();
 
-    tserverResource.put("cpu", instanceType.numCores);
-    tserverResource.put("memory", String.format("%.2fGi", instanceType.memSizeGB));
-    tserverLimit.put("cpu", instanceType.numCores * burstVal);
-    tserverLimit.put("memory", String.format("%.2fGi", instanceType.memSizeGB));
+    tserverResource.put("cpu", instanceType.getNumCores());
+    tserverResource.put("memory", String.format("%.2fGi", instanceType.getMemSizeGB()));
+    tserverLimit.put("cpu", instanceType.getNumCores() * burstVal);
+    tserverLimit.put("memory", String.format("%.2fGi", instanceType.getMemSizeGB()));
 
     // If the instance type is not xsmall or dev, we would bump the master resource.
     if (!instanceTypeCode.equals("xsmall") && !instanceTypeCode.equals("dev")) {
@@ -705,7 +705,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // Memory should not be burstable as memory consumption above requests can lead to pods being
     // killed if the nodes is running out of resources.
     if (instanceTypeCode.equals("cloud")) {
-      tserverLimit.put("cpu", instanceType.numCores * 2);
+      tserverLimit.put("cpu", instanceType.getNumCores() * 2);
       masterResource.put("cpu", 0.3);
       masterResource.put("memory", "1Gi");
       masterLimit.put("cpu", 0.6);
@@ -774,7 +774,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         rootCA.put("key", "");
         tlsInfo.put("rootCA", rootCA);
 
-        if (certInfo.certType == CertConfigType.K8SCertManager
+        if (certInfo.getCertType() == CertConfigType.K8SCertManager
             && (azConfig.containsKey("CERT-MANAGER-ISSUER")
                 || azConfig.containsKey("CERT-MANAGER-CLUSTERISSUER"))) {
           // User configuring a K8SCertManager type of certificate on a Universe and setting
@@ -1077,7 +1077,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       return;
     }
     CertificateInfo certInfo = CertificateInfo.get(u.getUniverseDetails().rootCA);
-    boolean isK8SCertManager = certInfo.certType == CertConfigType.K8SCertManager;
+    boolean isK8SCertManager = certInfo.getCertType() == CertConfigType.K8SCertManager;
     boolean hasCertManagerOverride = hasCertManagerOverride(values);
     if (isK8SCertManager != hasCertManagerOverride) {
       throw new RuntimeException(

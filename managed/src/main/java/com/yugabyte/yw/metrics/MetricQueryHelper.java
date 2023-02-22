@@ -266,15 +266,15 @@ public class MetricQueryHelper {
             for (Cluster cluster : universe.getUniverseDetails().clusters) {
               Provider provider =
                   Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-              for (Region r : provider.regions) {
-                for (AvailabilityZone az : r.zones) {
+              for (Region r : provider.getRegions()) {
+                for (AvailabilityZone az : r.getZones()) {
                   boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
                   String helmRelease =
                       KubernetesUtil.getHelmReleaseName(
                           isMultiAZ,
                           nodePrefix,
-                          universe.name,
-                          az.name,
+                          universe.getName(),
+                          az.getName(),
                           cluster.clusterType == ClusterType.ASYNC,
                           newNamingStyle);
                   nodePrefixes.add(helmRelease + "-yb-tserver-(.*)");
@@ -305,7 +305,7 @@ public class MetricQueryHelper {
     if (metricQueryParams.getXClusterConfigUuid() != null) {
       XClusterConfig xClusterConfig =
           XClusterConfig.getOrBadRequest(metricQueryParams.getXClusterConfigUuid());
-      String tableIdRegex = String.join("|", xClusterConfig.getTables());
+      String tableIdRegex = String.join("|", xClusterConfig.getTableIds());
       filterJson.put("table_id", tableIdRegex);
     }
     params.put("filters", Json.stringify(filterJson));
@@ -523,15 +523,15 @@ public class MetricQueryHelper {
 
     for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-      for (Region r : Region.getByProvider(provider.uuid)) {
-        for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.uuid)) {
+      for (Region r : Region.getByProvider(provider.getUuid())) {
+        for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.getUuid())) {
           boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
           Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(az);
           namespaces.add(
               KubernetesUtil.getKubernetesNamespace(
                   isMultiAZ,
                   nodePrefix,
-                  az.code,
+                  az.getCode(),
                   zoneConfig,
                   newNamingStyle,
                   cluster.clusterType == ClusterType.ASYNC));

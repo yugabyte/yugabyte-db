@@ -19,11 +19,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.common.ModelFactory;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -68,7 +66,11 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     mainUniverseUUID = UUID.randomUUID();
     mainUniverse = createUniverse(mainUniverseName, mainUniverseUUID);
     detachEndpoint =
-        "/api/customers/" + customer.uuid + "/universes/" + mainUniverseUUID.toString() + "/export";
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + mainUniverseUUID.toString()
+            + "/export";
   }
 
   @Test
@@ -127,7 +129,7 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     } catch (Exception ignored) {
     }
 
-    String xClusterApiEndpoint = "/api/customers/" + customer.uuid + "/xcluster_configs";
+    String xClusterApiEndpoint = "/api/customers/" + customer.getUuid() + "/xcluster_configs";
 
     ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList = new ArrayList<>();

@@ -51,7 +51,8 @@ public class PauseUniverse extends UniverseTaskBase {
       // 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
       if (universe.getUniverseDetails().universePaused) {
-        String msg = "Unable to pause universe \"" + universe.name + "\" as it is already paused.";
+        String msg =
+            "Unable to pause universe \"" + universe.getName() + "\" as it is already paused.";
         log.error(msg);
         throw new RuntimeException(msg);
       }

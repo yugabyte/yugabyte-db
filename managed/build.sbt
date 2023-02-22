@@ -1,6 +1,7 @@
 import jline.console.ConsoleReader
 import play.sbt.PlayImport.PlayKeys.{playInteractionMode, playMonitoredFiles}
 import play.sbt.PlayInteractionMode
+import sbt.Keys.dependencyOverrides
 import sbt.Tests._
 
 import scala.sys.process.Process
@@ -118,7 +119,8 @@ lazy val root = (project in file("."))
     "testOnly " + args.mkString(" ") :: "deflakeOne " + args.mkString(" "):: state
   })
 
-scalaVersion := "2.12.10"
+ThisBuild / scalaVersion := "2.13.10"
+ThisBuild / crossScalaVersions := Seq("2.13.10")
 version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
@@ -130,13 +132,14 @@ libraryDependencies ++= Seq(
   guice,
   "com.google.inject.extensions" % "guice-multibindings" % "4.2.3",
   "org.postgresql" % "postgresql" % "42.3.3",
+  "ch.qos.logback" % "logback-classic" % "1.4.4",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "org.codehaus.janino" % "janino" % "3.1.6",
   "org.apache.commons" % "commons-compress" % "1.21",
   "org.apache.commons" % "commons-csv" % "1.9.0",
   "org.apache.httpcomponents" % "httpcore" % "4.4.5",
   "org.apache.httpcomponents" % "httpclient" % "4.5.13",
-  "org.flywaydb" %% "flyway-play" % "4.0.0",
+  "org.flywaydb" %% "flyway-play" % "7.37.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
   "org.yaml" % "snakeyaml" % "1.33",
@@ -162,10 +165,10 @@ libraryDependencies ++= Seq(
   "io.prometheus" % "simpleclient_hotspot" % "0.11.0",
   "io.prometheus" % "simpleclient_servlet" % "0.11.0",
   "org.glassfish.jaxb" % "jaxb-runtime" % "2.3.2",
-  "org.pac4j" %% "play-pac4j" % "7.0.1",
-  "org.pac4j" % "pac4j-oauth" % "3.7.0" exclude("commons-io" , "commons-io"),
-  "org.pac4j" % "pac4j-oidc" % "3.7.0" exclude("commons-io" , "commons-io"),
-  "com.typesafe.play" %% "play-json" % "2.6.14",
+  "org.pac4j" %% "play-pac4j" % "11.1.0-PLAY2.8",
+  "org.pac4j" % "pac4j-oauth" % "5.7.0" exclude("commons-io" , "commons-io"),
+  "org.pac4j" % "pac4j-oidc" % "5.7.0" exclude("commons-io" , "commons-io"),
+  "com.typesafe.play" %% "play-json" % "2.9.4",
   "commons-validator" % "commons-validator" % "1.7",
   "org.apache.velocity" % "velocity-engine-core" % "2.3",
   "com.fasterxml.jackson.core" % "jackson-core" % "2.10.5",
@@ -182,8 +185,8 @@ libraryDependencies ++= Seq(
   "com.google.oauth-client" % "google-oauth-client" % "1.34.1",
   "org.projectlombok" % "lombok" % "1.18.20",
   "com.squareup.okhttp3" % "okhttp" % "4.9.2",
-  "io.kamon" %% "kamon-bundle" % "2.2.2",
-  "io.kamon" %% "kamon-prometheus" % "2.2.2",
+  "io.kamon" %% "kamon-bundle" % "2.5.9",
+  "io.kamon" %% "kamon-prometheus" % "2.5.9",
   "org.unix4j" % "unix4j-command" % "0.6",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.0",
@@ -210,10 +213,6 @@ libraryDependencies ++= Seq(
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
   "io.grpc" % "grpc-testing" % "1.48.0" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
-)
-
-excludeDependencies ++= Seq(
-  ExclusionRule("org.hibernate.validator", "hibernate-validator")
 )
 // Clear default resolvers.
 appResolvers := None
@@ -417,7 +416,7 @@ lazy val gogen = project.in(file("client/go"))
     openApiConfigFile := "client/go/openapi-go-config.json"
   )
 
-packageZipTarball.in(Universal) := packageZipTarball.in(Universal).dependsOn(versionGenerate, buildDependentArtifacts).value
+Universal / packageZipTarball := (Universal / packageZipTarball).dependsOn(versionGenerate, buildDependentArtifacts).value
 
 runPlatformTask := {
   (Compile / run).toTask("").value
@@ -437,7 +436,7 @@ runPlatform := {
 
 libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b16"
 libraryDependencies += "org.yb" % "yb-client" % "0.8.40-SNAPSHOT"
-libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b20"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b20" exclude("org.flywaydb" , "flyway-play_2.12")
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
@@ -447,12 +446,36 @@ libraryDependencies ++= Seq(
   "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
 )
 
+val jacksonVersion         = "2.13.4"
+val jacksonDatabindVersion = "2.13.4.2"
+
+val jacksonOverrides = Seq(
+  "com.fasterxml.jackson.core"     % "jackson-core",
+  "com.fasterxml.jackson.core"     % "jackson-annotations",
+  "com.fasterxml.jackson.datatype" % "jackson-datatype-jdk8",
+  "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310"
+).map(_ % jacksonVersion)
+
+val jacksonDatabindOverrides = Seq(
+  "com.fasterxml.jackson.core" % "jackson-databind" % jacksonDatabindVersion
+)
+
+val akkaSerializationJacksonOverrides = Seq(
+  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor",
+  "com.fasterxml.jackson.module"     % "jackson-module-parameter-names",
+  "com.fasterxml.jackson.module"     %% "jackson-module-scala",
+).map(_ % jacksonVersion)
+
+dependencyOverrides ++= jacksonDatabindOverrides ++ jacksonOverrides ++ akkaSerializationJacksonOverrides
+
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.19.4"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
 // SSO functionality only works on the older version of nimbusds.
 // Azure library upgrade tries to upgrade nimbusds to latest version.
 dependencyOverrides += "com.nimbusds" % "oauth2-oidc-sdk" % "7.1.1"
-dependencyOverrides +=  "com.fasterxml.jackson.core" % "jackson-databind" % "2.13.4.2"
+dependencyOverrides += "org.reflections" % "reflections" % "0.9.12"
+dependencyOverrides += "org.scala-lang.modules" %% "scala-java8-compat" % "1.0.2"
+dependencyOverrides += "org.scala-lang.modules" %% "scala-xml" % "2.1.0"
 
 excludeDependencies += "org.eclipse.jetty" % "jetty-io"
 excludeDependencies += "org.eclipse.jetty" % "jetty-server"
@@ -482,12 +505,13 @@ Test / parallelExecution := true
 Test / fork := true
 Test / testGrouping := partitionTests( (Test / definedTests).value, testShardSize.value )
 
-javaOptions in Test += "-Dconfig.resource=application.test.conf"
+javaOptions += "-Dkanela.modules.logback.enabled=false"
+Test / javaOptions += "-Dconfig.resource=application.test.conf"
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
 
 // Skip packaging javadoc for now
-sources in (Compile, doc) := Seq()
-publishArtifact in (Compile, packageDoc) := false
+Compile / doc / sources := Seq()
+Compile / packageDoc / publishArtifact := false
 
 topLevelDirectory := None
 
@@ -544,22 +568,22 @@ val swaggerGen: TaskKey[Unit] = taskKey[Unit](
 lazy val swagger = project
   .dependsOn(root % "compile->compile;test->test")
   .settings(
+    scalaVersion := "2.13.10",
     Test / fork := true,
-    javaOptions in Test += "-Dconfig.resource=application.test.conf",
+    Test / javaOptions += "-Dconfig.resource=application.test.conf",
     testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a"),
     libraryDependencies ++= Seq(
-      "io.swagger" %% "swagger-play2" % "1.6.1" % Test,
-      "io.swagger" %% "swagger-scala-module" % "1.0.5" % Test,
+      "com.github.dwickern" %% "swagger-play2.8" % "3.1.0" % Test,
+      "com.github.swagger-akka-http" %% "swagger-scala-module" % "2.8.2" % Test
     ),
-    dependencyOverrides += "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.10",
-    dependencyOverrides += "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10",
-    dependencyOverrides += "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10",
-    dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.9.10.8",
+
+    dependencyOverrides += "org.scala-lang.modules" %% "scala-xml" % "2.1.0",
+    dependencyOverrides ++= jacksonDatabindOverrides ++ jacksonOverrides ++ akkaSerializationJacksonOverrides,
 
     swaggerGen := Def.taskDyn {
       // Consider generating this only in managedResources
-      val swaggerJson = (resourceDirectory in Compile in root).value / "swagger.json"
-      val swaggerStrictJson = (resourceDirectory in Compile in root).value / "swagger-strict.json"
+      val swaggerJson = (root / Compile / resourceDirectory).value / "swagger.json"
+      val swaggerStrictJson = (root / Compile / resourceDirectory).value / "swagger-strict.json"
       Def.sequential(
         (Test / runMain )
           .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerJson"),
@@ -574,7 +598,7 @@ lazy val swagger = project
     }.value
   )
 
-test in Test := (test in Test).dependsOn(swagger / Test / test).value
+//test in Test := (test in Test).dependsOn(swagger / Test / test).value
 
 swaggerGen := Def.taskDyn {
   Def.sequential(
@@ -591,9 +615,9 @@ val grafanaGen: TaskKey[Unit] = taskKey[Unit](
 )
 
 grafanaGen := Def.taskDyn {
-  val file = (resourceDirectory in Compile).value / "metric" / "Dashboard.json"
+  val file = (Compile / resourceDirectory).value / "metric" / "Dashboard.json"
   Def.sequential(
-    (runMain in Test)
+    (Test / runMain)
       .toTask(s" com.yugabyte.yw.controllers.GrafanaGenTest $file")
   )
 }.value

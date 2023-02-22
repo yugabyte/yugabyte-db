@@ -23,11 +23,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 import javax.persistence.Temporal;
 import javax.persistence.TemporalType;
+import lombok.Getter;
+import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -36,6 +37,8 @@ import play.libs.Json;
 @Entity
 // @IdClass(KmsHistoryId.class)
 @ApiModel(description = "KMS history")
+@Getter
+@Setter
 public class KmsHistory extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(KmsHistory.class);
 
@@ -43,28 +46,24 @@ public class KmsHistory extends Model {
 
   @EmbeddedId
   @ApiModelProperty(value = "KMS history UUID", accessMode = READ_ONLY)
-  public KmsHistoryId uuid;
+  private KmsHistoryId uuid;
 
   @Constraints.Required
   @Temporal(TemporalType.TIMESTAMP)
-  @Column(nullable = false)
   @ApiModelProperty(value = "Timestamp of KMS history", accessMode = READ_ONLY)
-  public Date timestamp;
+  private Date timestamp;
 
   @Constraints.Required
-  @Column(nullable = false)
   @ApiModelProperty(value = "Version of KMS history", accessMode = READ_ONLY)
-  public int version;
+  private int version;
 
   @Constraints.Required
-  @Column(nullable = false)
   @ApiModelProperty(value = "KMS configuration UUID", accessMode = READ_ONLY)
-  public UUID configUuid;
+  private UUID configUuid;
 
   @Constraints.Required
-  @Column(nullable = false)
   @ApiModelProperty(value = "True if the KMS is active", accessMode = READ_ONLY)
-  public boolean active;
+  private boolean active;
 
   public static final Finder<KmsHistoryId, KmsHistory> find =
       new Finder<KmsHistoryId, KmsHistory>(KmsHistory.class) {};
@@ -72,11 +71,11 @@ public class KmsHistory extends Model {
   public static KmsHistory createKmsHistory(
       UUID configUUID, UUID targetUUID, KmsHistoryId.TargetType targetType, String keyRef) {
     KmsHistory keyHistory = new KmsHistory();
-    keyHistory.uuid = new KmsHistoryId(keyRef, targetUUID, targetType);
-    keyHistory.timestamp = new Date();
-    keyHistory.version = SCHEMA_VERSION;
-    keyHistory.active = false;
-    keyHistory.configUuid = configUUID;
+    keyHistory.setUuid(new KmsHistoryId(keyRef, targetUUID, targetType));
+    keyHistory.setTimestamp(new Date());
+    keyHistory.setVersion(SCHEMA_VERSION);
+    keyHistory.setActive(false);
+    keyHistory.setConfigUuid(configUUID);
     keyHistory.save();
     return keyHistory;
   }
@@ -114,15 +113,15 @@ public class KmsHistory extends Model {
       if (currentlyActiveKeyRef != null) {
         setKeyRefStatus(
             targetUUID,
-            currentlyActiveKeyRef.configUuid,
+            currentlyActiveKeyRef.getConfigUuid(),
             targetType,
-            currentlyActiveKeyRef.uuid.keyRef,
+            currentlyActiveKeyRef.getUuid().getKeyRef(),
             false);
       }
       KmsHistory toBeActiveKeyRef =
           KmsHistory.getKeyRefConfig(targetUUID, configUUID, keyRef, targetType);
       if (toBeActiveKeyRef != null) {
-        setKeyRefStatus(targetUUID, toBeActiveKeyRef.configUuid, targetType, keyRef, true);
+        setKeyRefStatus(targetUUID, toBeActiveKeyRef.getConfigUuid(), targetType, keyRef, true);
       }
       Ebean.commitTransaction();
     } finally {
@@ -234,7 +233,7 @@ public class KmsHistory extends Model {
         .eq("config_uuid", configUUID)
         .eq("type", type)
         .findList()
-        .forEach(n -> universeUUIDs.add(n.uuid.targetUuid));
+        .forEach(n -> universeUUIDs.add(n.getUuid().getTargetUuid()));
     return Universe.getAllPresent(universeUUIDs);
   }
 
@@ -253,11 +252,11 @@ public class KmsHistory extends Model {
   @Override
   public String toString() {
     return Json.newObject()
-        .put("uuid", uuid.toString())
-        .put("config_uuid", configUuid.toString())
-        .put("timestamp", timestamp.toString())
-        .put("version", version)
-        .put("active", active)
+        .put("uuid", getUuid().toString())
+        .put("config_uuid", getConfigUuid().toString())
+        .put("timestamp", getTimestamp().toString())
+        .put("version", getVersion())
+        .put("active", isActive())
         .toString();
   }
 }

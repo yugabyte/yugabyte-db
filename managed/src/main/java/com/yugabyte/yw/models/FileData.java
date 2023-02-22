@@ -2,48 +2,43 @@
 
 package com.yugabyte.yw.models;
 
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.CreatedTimestamp;
-
-import org.apache.commons.io.FileUtils;
-
-import java.util.Base64;
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
-import java.util.HashSet;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.Set;
-
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.io.FilenameUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.File;
-import java.nio.file.attribute.PosixFilePermission;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-
-import javax.persistence.Entity;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.util.Base64;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.persistence.EmbeddedId;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import play.api.Play;
+import javax.persistence.Entity;
+import lombok.Getter;
+import lombok.Setter;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.FilenameUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 
 @Entity
-@Data
-@EqualsAndHashCode(callSuper = false)
+@Getter
+@Setter
 public class FileData extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(FileData.class);
@@ -57,15 +52,11 @@ public class FileData extends Model {
 
   @Constraints.Required private UUID parentUUID;
 
-  public UUID getParentUUID() {
-    return this.parentUUID;
-  }
-
   // The task creation time.
   @CreatedTimestamp private Date timestamp;
 
   public String getRelativePath() {
-    return this.file.filePath;
+    return this.file.getFilePath();
   }
 
   @Constraints.Required private String fileContent;
@@ -115,13 +106,13 @@ public class FileData extends Model {
   }
 
   public static String getStoragePath() {
-    play.Configuration appConfig = Play.current().injector().instanceOf(play.Configuration.class);
-    return appConfig.getString(YB_STORAGE_PATH);
+    Config config = StaticInjectorHolder.injector().instanceOf(Config.class);
+    return config.getString(YB_STORAGE_PATH);
   }
 
   public static void writeFileToDB(String file) {
     RuntimeConfigFactory runtimeConfigFactory =
-        Play.current().injector().instanceOf(RuntimeConfigFactory.class);
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfigFactory.class);
     writeFileToDB(file, getStoragePath(), runtimeConfigFactory);
   }
 
@@ -196,7 +187,7 @@ public class FileData extends Model {
       Files.write(absoluteFilePath, fileContent);
       Set<PosixFilePermission> permissions =
           PosixFilePermissions.fromString(AccessManager.PEM_PERMISSIONS);
-      if (fileData.file.fileExtension.equals(PUBLIC_KEY_EXTENSION)) {
+      if (fileData.file.getFileExtension().equals(PUBLIC_KEY_EXTENSION)) {
         permissions = PosixFilePermissions.fromString(AccessManager.PUB_PERMISSIONS);
       }
       Files.setPosixFilePermissions(absoluteFilePath, permissions);

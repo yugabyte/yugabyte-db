@@ -32,7 +32,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.persistence.CascadeType;
-import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
@@ -107,17 +106,14 @@ public class Alert extends Model implements AlertLabelsProvider {
   }
 
   @Id
-  @Column(nullable = false, unique = true)
   @ApiModelProperty(value = "Alert UUID", accessMode = READ_ONLY)
   private UUID uuid;
 
   @NotNull
-  @Column(nullable = false)
   @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   private UUID customerUUID;
 
   @NotNull
-  @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   @ApiModelProperty(value = "Alert creation timestamp", accessMode = READ_ONLY)
   private Date createTime = nowWithoutMillis();
@@ -151,7 +147,6 @@ public class Alert extends Model implements AlertLabelsProvider {
 
   @NotNull
   @Size(min = 1)
-  @Column(columnDefinition = "Text", nullable = false)
   @ApiModelProperty(value = "The alert's message text", accessMode = READ_ONLY)
   private String message;
 
@@ -203,7 +198,6 @@ public class Alert extends Model implements AlertLabelsProvider {
   private Date nextNotificationTime = nowWithoutMillis();
 
   @ApiModelProperty(value = "Count of failures to send a notification", accessMode = READ_ONLY)
-  @Column(nullable = false)
   private int notificationsFailed = 0;
 
   @Enumerated(EnumType.STRING)

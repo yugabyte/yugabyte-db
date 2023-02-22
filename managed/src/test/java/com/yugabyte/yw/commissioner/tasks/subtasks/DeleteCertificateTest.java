@@ -46,14 +46,14 @@ public class DeleteCertificateTest extends FakeDBApplication {
         ModelFactory.createCertificateInfo(
             defaultCustomer.getUuid(), certificate, CertConfigType.SelfSigned);
     universe =
-        ModelFactory.createUniverse(defaultCustomer.getCustomerId(), usedCertificateInfo.uuid);
+        ModelFactory.createUniverse(defaultCustomer.getCustomerId(), usedCertificateInfo.getUuid());
 
     unusedCertificateInfo =
         ModelFactory.createCertificateInfo(
             defaultCustomer.getUuid(), certificate, CertConfigType.SelfSigned);
 
     params = new DeleteCertificate.Params();
-    params.customerUUID = defaultCustomer.uuid;
+    params.customerUUID = defaultCustomer.getUuid();
     task = AbstractTaskBase.createTask(DeleteCertificate.class);
   }
 
@@ -67,7 +67,7 @@ public class DeleteCertificateTest extends FakeDBApplication {
 
   @Test
   public void testDeleteCertificateInUse() {
-    params.certUUID = usedCertificateInfo.uuid;
+    params.certUUID = usedCertificateInfo.getUuid();
     task.initialize(params);
     task.run();
     assertTrue(certFolder.exists());
@@ -75,7 +75,7 @@ public class DeleteCertificateTest extends FakeDBApplication {
 
   @Test
   public void testDeleteCertificateNotInUse() {
-    params.certUUID = unusedCertificateInfo.uuid;
+    params.certUUID = unusedCertificateInfo.getUuid();
     task.initialize(params);
     task.run();
     assertTrue(!certFolder.exists());

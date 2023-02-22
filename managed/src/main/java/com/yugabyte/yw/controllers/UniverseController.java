@@ -17,6 +17,7 @@ import io.swagger.annotations.Authorization;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -59,7 +60,8 @@ public class UniverseController extends AuthenticatedController {
       UUID universeUUID,
       boolean isForceDelete,
       boolean isDeleteBackups,
-      boolean isDeleteAssociatedCerts) {
+      boolean isDeleteAssociatedCerts,
+      Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
@@ -67,12 +69,12 @@ public class UniverseController extends AuthenticatedController {
         universeCRUDHandler.destroy(
             customer, universe, isForceDelete, isDeleteBackups, isDeleteAssociatedCerts);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.Delete,
             taskUUID);
-    return new YBPTask(taskUUID, universe.universeUUID).asResult();
+    return new YBPTask(taskUUID, universe.getUniverseUUID()).asResult();
   }
 }

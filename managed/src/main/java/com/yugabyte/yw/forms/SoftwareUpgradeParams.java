@@ -9,8 +9,8 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Universe;
-import play.api.Play;
 import play.mvc.Http.Status;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -54,7 +54,7 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
           Status.BAD_REQUEST, "Software version is already: " + ybSoftwareVersion);
     }
     RuntimeConfigFactory runtimeConfigFactory =
-        Play.current().injector().instanceOf(RuntimeConfigFactory.class);
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfigFactory.class);
 
     // Defaults to false, but we need to extract the variable in case the user wishes to perform
     // a downgrade with a runtime configuration override. We perform this check before verifying the

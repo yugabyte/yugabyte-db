@@ -67,7 +67,7 @@ public class UpdateLoadBalancerConfig extends UniverseDefinitionTaskBase {
       log.error("Task Errored out with: " + e);
       throw new RuntimeException(e);
     } finally {
-      unlockUniverseForUpdate(universe.universeUUID);
+      unlockUniverseForUpdate(universe.getUniverseUUID());
     }
   }
 
@@ -84,7 +84,7 @@ public class UpdateLoadBalancerConfig extends UniverseDefinitionTaskBase {
       AvailabilityZone az = clusterAZ.getAz();
 
       LoadBalancerPlacement lbPlacement =
-          new LoadBalancerPlacement(providerUUID, az.region.code, lbName);
+          new LoadBalancerPlacement(providerUUID, az.getRegion().getCode(), lbName);
       newLbMap.computeIfAbsent(lbPlacement, v -> new LoadBalancerConfig(lbName));
     }
   }

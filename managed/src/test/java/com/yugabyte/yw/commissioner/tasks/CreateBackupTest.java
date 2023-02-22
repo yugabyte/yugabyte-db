@@ -46,7 +46,6 @@ import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes;
-import play.mvc.Http;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CreateBackupTest extends CommissionerBaseTest {
@@ -158,7 +157,7 @@ public class CreateBackupTest extends CommissionerBaseTest {
       TestUtils.setFakeHttpContext(defaultUser);
       CustomerTask.create(
           defaultCustomer,
-          defaultUniverse.universeUUID,
+          defaultUniverse.getUniverseUUID(),
           taskUUID,
           CustomerTask.TargetType.Universe,
           CustomerTask.TaskType.Backup,
@@ -172,8 +171,8 @@ public class CreateBackupTest extends CommissionerBaseTest {
 
   private TaskInfo submitTask(String keyspace, List<UUID> tableUUIDs, TableType backupType) {
     BackupRequestParams backupTableParams = new BackupRequestParams();
-    backupTableParams.universeUUID = defaultUniverse.universeUUID;
-    backupTableParams.customerUUID = defaultCustomer.uuid;
+    backupTableParams.universeUUID = defaultUniverse.getUniverseUUID();
+    backupTableParams.customerUUID = defaultCustomer.getUuid();
     BackupRequestParams.KeyspaceTable keyspaceTable = new BackupRequestParams.KeyspaceTable();
     keyspaceTable.keyspace = keyspace;
     keyspaceTable.tableUUIDList = tableUUIDs;
@@ -185,8 +184,8 @@ public class CreateBackupTest extends CommissionerBaseTest {
 
   private TaskInfo submitTask(TableType backupType) {
     BackupRequestParams backupTableParams = new BackupRequestParams();
-    backupTableParams.universeUUID = defaultUniverse.universeUUID;
-    backupTableParams.customerUUID = defaultCustomer.uuid;
+    backupTableParams.universeUUID = defaultUniverse.getUniverseUUID();
+    backupTableParams.customerUUID = defaultCustomer.getUuid();
     backupTableParams.backupType = backupType;
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
     return submitTask(backupTableParams);
@@ -220,8 +219,8 @@ public class CreateBackupTest extends CommissionerBaseTest {
     shellResponse.code = 0;
     when(mockTableManagerYb.createBackup(any())).thenReturn(shellResponse);
     BackupRequestParams backupTableParams = new BackupRequestParams();
-    backupTableParams.universeUUID = defaultUniverse.universeUUID;
-    backupTableParams.customerUUID = defaultCustomer.uuid;
+    backupTableParams.universeUUID = defaultUniverse.getUniverseUUID();
+    backupTableParams.customerUUID = defaultCustomer.getUuid();
     BackupRequestParams.KeyspaceTable keyspaceTable1 = new BackupRequestParams.KeyspaceTable();
     BackupRequestParams.KeyspaceTable keyspaceTable2 = new BackupRequestParams.KeyspaceTable();
     keyspaceTable1.keyspace = "$$$Default2";
@@ -326,6 +325,6 @@ public class CreateBackupTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(TableType.YQL_TABLE_TYPE);
     List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID());
     assertNotEquals(0, backupList.size());
-    backupList.forEach((backup -> assertEquals(BackupState.Stopped, backup.state)));
+    backupList.forEach((backup -> assertEquals(BackupState.Stopped, backup.getState())));
   }
 }

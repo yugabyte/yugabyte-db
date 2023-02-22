@@ -32,6 +32,7 @@ import io.swagger.annotations.Authorization;
 import java.util.Map;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -87,8 +88,8 @@ public class RuntimeConfController extends AuthenticatedController {
               + "List includes the Global scope that spans multiple customers, scope for customer "
               + "specific overrides for current customer and one scope each for each universe and "
               + "provider.")
-  public Result listScopes(UUID customerUUID) {
-    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(ctx());
+  public Result listScopes(UUID customerUUID, Http.Request request) {
+    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);
     return PlatformResults.withData(
         runtimeConfService.listScopes(Customer.getOrBadRequest(customerUUID), isSuperAdmin));
   }
@@ -97,8 +98,9 @@ public class RuntimeConfController extends AuthenticatedController {
       value = "List configuration entries for a scope",
       response = ScopedConfig.class,
       notes = "Lists all runtime config entries for a given scope for current customer.")
-  public Result getConfig(UUID customerUUID, UUID scopeUUID, boolean includeInherited) {
-    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(ctx());
+  public Result getConfig(
+      UUID customerUUID, UUID scopeUUID, boolean includeInherited, Http.Request request) {
+    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);
     return PlatformResults.withData(
         runtimeConfService.getConfig(customerUUID, scopeUUID, includeInherited, isSuperAdmin));
   }
@@ -108,8 +110,8 @@ public class RuntimeConfController extends AuthenticatedController {
       nickname = "getConfigurationKey",
       response = String.class,
       produces = "text/plain")
-  public Result getKey(UUID customerUUID, UUID scopeUUID, String path) {
-    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(ctx());
+  public Result getKey(UUID customerUUID, UUID scopeUUID, String path, Http.Request request) {
+    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);
     return ok(runtimeConfService.getKeyOrBadRequest(customerUUID, scopeUUID, path, isSuperAdmin));
   }
 
@@ -125,47 +127,46 @@ public class RuntimeConfController extends AuthenticatedController {
           dataType = "java.lang.String",
           required = true))
   @Transactional
-  public Result setKey(UUID customerUUID, UUID scopeUUID, String path) {
-    String contentType = request().contentType().orElse("UNKNOWN");
+  public Result setKey(UUID customerUUID, UUID scopeUUID, String path, Http.Request request) {
+    String contentType = request.contentType().orElse("UNKNOWN");
     if (!contentType.equals("text/plain")) {
       throw new PlatformServiceException(
           UNSUPPORTED_MEDIA_TYPE, "Accepts: text/plain but content-type: " + contentType);
     }
-    String newValue = request().body().asText();
+    String newValue = request.body().asText();
     if (newValue == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot set null value");
     }
-    verifyGlobalScope(scopeUUID);
-    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(ctx());
+    verifyGlobalScope(scopeUUID, request);
+    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);
     runtimeConfService.setKey(customerUUID, scopeUUID, path, newValue, isSuperAdmin);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.RuntimeConfigKey,
             scopeUUID.toString() + ":" + path,
-            Audit.ActionType.Update,
-            request().body().asJson());
+            Audit.ActionType.Update);
     return YBPSuccess.empty();
   }
 
   @ApiOperation(value = "Delete a configuration key", response = YBPSuccess.class)
   @Transactional
-  public Result deleteKey(UUID customerUUID, UUID scopeUUID, String path) {
-    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(ctx());
-    verifyGlobalScope(scopeUUID);
+  public Result deleteKey(UUID customerUUID, UUID scopeUUID, String path, Http.Request request) {
+    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);
+    verifyGlobalScope(scopeUUID, request);
     runtimeConfService.deleteKey(customerUUID, scopeUUID, path, isSuperAdmin);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.RuntimeConfigKey,
             scopeUUID.toString() + ":" + path,
             Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 
-  private void verifyGlobalScope(UUID scopeUUID) {
+  private void verifyGlobalScope(UUID scopeUUID, Http.Request request) {
     if (scopeUUID == GLOBAL_SCOPE_UUID) {
-      boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(ctx());
+      boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);
       if (!isSuperAdmin) {
         throw new PlatformServiceException(FORBIDDEN, "Only superadmin can modify global scope");
       }

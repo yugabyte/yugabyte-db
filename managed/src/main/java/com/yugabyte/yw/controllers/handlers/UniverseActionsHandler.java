@@ -70,12 +70,12 @@ public class UniverseActionsHandler {
       Customer customer, Universe universe, EncryptionAtRestKeyParams taskParams) {
     try {
       TaskType taskType = TaskType.SetUniverseKey;
-      taskParams.expectedUniverseVersion = universe.version;
+      taskParams.expectedUniverseVersion = universe.getVersion();
       UUID taskUUID = commissioner.submit(taskType, taskParams);
       LOG.info(
           "Submitted set universe key for {}:{}, task uuid = {}.",
-          universe.universeUUID,
-          universe.name,
+          universe.getUniverseUUID(),
+          universe.getName(),
           taskUUID);
 
       CustomerTask.TaskType customerTaskType = null;
@@ -98,18 +98,18 @@ public class UniverseActionsHandler {
       // Add this task uuid to the user universe.
       CustomerTask.create(
           customer,
-          universe.universeUUID,
+          universe.getUniverseUUID(),
           taskUUID,
           CustomerTask.TargetType.Universe,
           customerTaskType,
-          universe.name);
+          universe.getName());
       LOG.info(
           "Saved task uuid "
               + taskUUID
               + " in customer tasks table for universe "
-              + universe.universeUUID
+              + universe.getUniverseUUID()
               + ":"
-              + universe.name);
+              + universe.getName());
       return taskUUID;
     } catch (RuntimeException e) {
       String errMsg =
@@ -128,21 +128,22 @@ public class UniverseActionsHandler {
 
     LOG.info(
         "Toggle TLS for universe {} [ {} ] customer {}.",
-        universe.name,
-        universe.universeUUID,
-        customer.uuid);
+        universe.getName(),
+        universe.getUniverseUUID(),
+        customer.getUuid());
 
     requestParams.verifyParams(universeDetails);
     if (!universeDetails.isUniverseEditable()) {
       throw new PlatformServiceException(
-          Http.Status.BAD_REQUEST, "Universe UUID " + universe.universeUUID + " cannot be edited.");
+          Http.Status.BAD_REQUEST,
+          "Universe UUID " + universe.getUniverseUUID() + " cannot be edited.");
     }
 
     if (universe.nodesInTransit()) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST,
           "Cannot perform a toggle TLS operation on universe "
-              + universe.universeUUID
+              + universe.getUniverseUUID()
               + " as it has nodes in one of "
               + NodeDetails.IN_TRANSIT_STATES
               + " states.");
@@ -153,18 +154,20 @@ public class UniverseActionsHandler {
           Http.Status.BAD_REQUEST,
           String.format(
               "The certificate %s needs info. Update the cert and retry.",
-              CertificateInfo.get(requestParams.rootCA).label));
+              CertificateInfo.get(requestParams.rootCA).getLabel()));
     }
 
     if (requestParams.rootCA != null
-        && CertificateInfo.get(requestParams.rootCA).certType == CertConfigType.CustomServerCert) {
+        && CertificateInfo.get(requestParams.rootCA).getCertType()
+            == CertConfigType.CustomServerCert) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST,
           "CustomServerCert are only supported for Client to Server Communication.");
     }
 
     if (requestParams.rootCA != null
-        && CertificateInfo.get(requestParams.rootCA).certType == CertConfigType.CustomCertHostPath
+        && CertificateInfo.get(requestParams.rootCA).getCertType()
+            == CertConfigType.CustomCertHostPath
         && !userIntent.providerType.equals(Common.CloudType.onprem)) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST,
@@ -172,7 +175,7 @@ public class UniverseActionsHandler {
     }
 
     if (requestParams.clientRootCA != null
-        && CertificateInfo.get(requestParams.clientRootCA).certType
+        && CertificateInfo.get(requestParams.clientRootCA).getCertType()
             == CertConfigType.CustomCertHostPath
         && !userIntent.providerType.equals(Common.CloudType.onprem)) {
       throw new PlatformServiceException(
@@ -196,7 +199,7 @@ public class UniverseActionsHandler {
     UpgradeParams taskParams = new UpgradeParams();
     taskParams.taskType = UpgradeTaskType.ToggleTls;
     taskParams.upgradeOption = requestParams.upgradeOption;
-    taskParams.universeUUID = universe.universeUUID;
+    taskParams.universeUUID = universe.getUniverseUUID();
     taskParams.expectedUniverseVersion = -1;
     taskParams.enableNodeToNodeEncrypt = requestParams.enableNodeToNodeEncrypt;
     taskParams.enableClientToNodeEncrypt = requestParams.enableClientToNodeEncrypt;
@@ -226,7 +229,7 @@ public class UniverseActionsHandler {
                 : CertificateHelper.createRootCA(
                     runtimeConfigFactory.staticApplicationConf(),
                     universeDetails.nodePrefix,
-                    customer.uuid);
+                    customer.getUuid());
       }
     }
 
@@ -247,7 +250,7 @@ public class UniverseActionsHandler {
                 CertificateHelper.createClientRootCA(
                     runtimeConfigFactory.staticApplicationConf(),
                     universeDetails.nodePrefix,
-                    customer.uuid));
+                    customer.getUuid()));
           }
         } else {
           // Set the ClientRootCA to the user provided ClientRootCA if it exists
@@ -265,11 +268,11 @@ public class UniverseActionsHandler {
       // If client encryption is enabled, generate the client cert file for each node.
       CertificateInfo cert = CertificateInfo.get(taskParams.rootCA);
       if (taskParams.rootAndClientRootCASame) {
-        if (cert.certType == CertConfigType.SelfSigned
-            || cert.certType == CertConfigType.HashicorpVault) {
+        if (cert.getCertType() == CertConfigType.SelfSigned
+            || cert.getCertType() == CertConfigType.HashicorpVault) {
           CertificateHelper.createClientCertificate(
               runtimeConfigFactory.staticApplicationConf(),
-              customer.uuid,
+              customer.getUuid(),
               taskParams.getClientRootCA());
         }
       }
@@ -278,22 +281,22 @@ public class UniverseActionsHandler {
     UUID taskUUID = commissioner.submit(taskType, taskParams);
     LOG.info(
         "Submitted toggle tls for {} : {}, task uuid = {}.",
-        universe.universeUUID,
-        universe.name,
+        universe.getUniverseUUID(),
+        universe.getName(),
         taskUUID);
 
     CustomerTask.create(
         customer,
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.ToggleTls,
-        universe.name);
+        universe.getName());
     LOG.info(
         "Saved task uuid {} in customer tasks table for universe {} : {}.",
         taskUUID,
-        universe.universeUUID,
-        universe.name);
+        universe.getUniverseUUID(),
+        universe.getName());
     return taskUUID;
   }
 
@@ -332,12 +335,14 @@ public class UniverseActionsHandler {
       LOG.info(
           String.format(
               "Will disable alerts for universe %s until unix time %d [ %s ].",
-              universe.universeUUID, disabledUntilSecs, Util.unixTimeToString(disabledUntilSecs)));
+              universe.getUniverseUUID(),
+              disabledUntilSecs,
+              Util.unixTimeToString(disabledUntilSecs)));
     } else {
       LOG.info(
           String.format(
               "Will enable alerts for universe %s [unix time  = %d].",
-              universe.universeUUID, disabledUntilSecs));
+              universe.getUniverseUUID(), disabledUntilSecs));
     }
     config.put(Universe.DISABLE_ALERTS_UNTIL, Long.toString(disabledUntilSecs));
     universe.updateConfig(config);
@@ -347,41 +352,47 @@ public class UniverseActionsHandler {
   public UUID pause(Customer customer, Universe universe) {
     LOG.info(
         "Pause universe, customer uuid: {}, universe: {} [ {} ] ",
-        customer.uuid,
-        universe.name,
-        universe.universeUUID);
+        customer.getUuid(),
+        universe.getName(),
+        universe.getUniverseUUID());
 
     // Create the Commissioner task to pause the universe.
     PauseUniverse.Params taskParams = new PauseUniverse.Params();
-    taskParams.universeUUID = universe.universeUUID;
+    taskParams.universeUUID = universe.getUniverseUUID();
     // There is no staleness of a pause request. Perform it even if the universe has changed.
     taskParams.expectedUniverseVersion = -1;
-    taskParams.customerUUID = customer.uuid;
+    taskParams.customerUUID = customer.getUuid();
     // Submit the task to pause the universe.
     TaskType taskType = TaskType.PauseUniverse;
 
     UUID taskUUID = commissioner.submit(taskType, taskParams);
-    LOG.info("Submitted pause universe for " + universe.universeUUID + ", task uuid = " + taskUUID);
+    LOG.info(
+        "Submitted pause universe for " + universe.getUniverseUUID() + ", task uuid = " + taskUUID);
 
     // Add this task uuid to the user universe.
     CustomerTask.create(
         customer,
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.Pause,
-        universe.name);
+        universe.getName());
 
-    LOG.info("Paused universe " + universe.universeUUID + " for customer [" + customer.name + "]");
+    LOG.info(
+        "Paused universe "
+            + universe.getUniverseUUID()
+            + " for customer ["
+            + customer.getName()
+            + "]");
     return taskUUID;
   }
 
   public UUID resume(Customer customer, Universe universe) throws IOException {
     LOG.info(
         "Resume universe, customer uuid: {}, universe: {} [ {} ] ",
-        customer.uuid,
-        universe.name,
-        universe.universeUUID);
+        customer.getUuid(),
+        universe.getName(),
+        universe.getUniverseUUID());
 
     // Create the Commissioner task to resume the universe.
     // TODO: this is better done using copy constructors
@@ -401,25 +412,35 @@ public class UniverseActionsHandler {
 
     UUID taskUUID = commissioner.submit(taskType, taskParams);
     LOG.info(
-        "Submitted resume universe for " + universe.universeUUID + ", task uuid = " + taskUUID);
+        "Submitted resume universe for "
+            + universe.getUniverseUUID()
+            + ", task uuid = "
+            + taskUUID);
 
     // Add this task uuid to the user universe.
     CustomerTask.create(
         customer,
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.Resume,
-        universe.name);
+        universe.getName());
 
-    LOG.info("Resumed universe " + universe.universeUUID + " for customer [" + customer.name + "]");
+    LOG.info(
+        "Resumed universe "
+            + universe.getUniverseUUID()
+            + " for customer ["
+            + customer.getName()
+            + "]");
     return taskUUID;
   }
 
   public UUID updateLoadBalancerConfig(
       Customer customer, Universe universe, UniverseDefinitionTaskParams taskParams) {
     LOG.info(
-        "Update load balancer config, universe: {} [ {} ] ", universe.name, universe.universeUUID);
+        "Update load balancer config, universe: {} [ {} ] ",
+        universe.getName(),
+        universe.getUniverseUUID());
     // Set existing LB config
     taskParams.setExistingLBs(universe.getUniverseDetails().clusters);
     // Task to update LB config
@@ -427,22 +448,22 @@ public class UniverseActionsHandler {
     UUID taskUUID = commissioner.submit(taskType, taskParams);
     LOG.info(
         "Submitted update load balancer config for {} : {}, task uuid = {}.",
-        universe.universeUUID,
-        universe.name,
+        universe.getUniverseUUID(),
+        universe.getName(),
         taskUUID);
 
     CustomerTask.create(
         customer,
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.UpdateLoadBalancerConfig,
-        universe.name);
+        universe.getName());
     LOG.info(
         "Saved task uuid {} in customer tasks table for universe {} : {}.",
         taskUUID,
-        universe.universeUUID,
-        universe.name);
+        universe.getUniverseUUID(),
+        universe.getName());
     return taskUUID;
   }
 }

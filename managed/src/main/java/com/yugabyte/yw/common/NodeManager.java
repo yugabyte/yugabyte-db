@@ -127,7 +127,7 @@ public class NodeManager extends DevopsBase {
 
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
-  @Inject play.Configuration appConfig;
+  @Inject Config config;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
@@ -187,7 +187,7 @@ public class NodeManager extends DevopsBase {
     if (nodeDetails == null) {
       Iterator<NodeDetails> nodeIter = universe.getUniverseDetails().nodeDetailsSet.iterator();
       if (!nodeIter.hasNext()) {
-        throw new RuntimeException("No node is found in universe " + universe.name);
+        throw new RuntimeException("No node is found in universe " + universe.getName());
       }
       nodeDetails = nodeIter.next();
       LOG.info("Node {} not found, so using {}.", nodeTaskParam.nodeName, nodeDetails.nodeName);
@@ -198,12 +198,12 @@ public class NodeManager extends DevopsBase {
   private List<String> getCloudArgs(NodeTaskParams nodeTaskParam) {
     List<String> command = new ArrayList<>();
     command.add("--zone");
-    command.add(nodeTaskParam.getAZ().code);
+    command.add(nodeTaskParam.getAZ().getCode());
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
 
     // Right now for docker we grab the network from application conf.
     if (userIntent.providerType.equals(Common.CloudType.docker)) {
-      String networkName = appConfig.getString("yb.docker.network");
+      String networkName = config.getString("yb.docker.network");
       if (networkName == null) {
         throw new RuntimeException("yb.docker.network is not set in application.conf");
       }
@@ -229,12 +229,12 @@ public class NodeManager extends DevopsBase {
     Universe universe = Universe.getOrBadRequest(params.universeUUID);
     NodeDetails node = universe.getNode(params.nodeName);
     UserIntent userIntent = getUserIntentFromParams(params);
-    final String defaultAccessKeyCode = appConfig.getString("yb.security.default.access.key");
+    final String defaultAccessKeyCode = config.getString("yb.security.default.access.key");
 
     // TODO: [ENG-1242] we shouldn't be using our keypair, until we fix our VPC to support VPN
     if (userIntent != null && !userIntent.accessKeyCode.equalsIgnoreCase(defaultAccessKeyCode)) {
       AccessKey accessKey =
-          AccessKey.getOrBadRequest(params.getProvider().uuid, userIntent.accessKeyCode);
+          AccessKey.getOrBadRequest(params.getProvider().getUuid(), userIntent.accessKeyCode);
       AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
       String sshUser = null;
       // Currently we only need this for provision node operation.
@@ -308,7 +308,7 @@ public class NodeManager extends DevopsBase {
       subCommand.add("--install_node_exporter");
     }
 
-    ProviderDetails providerDetails = params.getProvider().details;
+    ProviderDetails providerDetails = params.getProvider().getDetails();
     subCommand.add("--custom_ssh_port");
     subCommand.add(providerDetails.sshPort.toString());
 
@@ -404,7 +404,7 @@ public class NodeManager extends DevopsBase {
 
   private List<String> getDeviceArgs(NodeTaskParams params) {
     List<String> args = new ArrayList<>();
-    if (params.deviceInfo.numVolumes != null && !params.getProvider().code.equals("onprem")) {
+    if (params.deviceInfo.numVolumes != null && !params.getProvider().getCode().equals("onprem")) {
       args.add("--num_volumes");
       args.add(Integer.toString(params.deviceInfo.numVolumes));
     } else if (params.deviceInfo.mountPoints != null) {
@@ -419,7 +419,7 @@ public class NodeManager extends DevopsBase {
   }
 
   private String getThirdpartyPackagePath() {
-    String packagePath = appConfig.getString("yb.thirdparty.packagePath");
+    String packagePath = config.getString("yb.thirdparty.packagePath");
     if (packagePath != null && !packagePath.isEmpty()) {
       File thirdpartyPackagePath = new File(packagePath);
       if (thirdpartyPackagePath.exists() && thirdpartyPackagePath.isDirectory()) {
@@ -478,14 +478,14 @@ public class NodeManager extends DevopsBase {
 
       String rootCertPath, serverCertPath, serverKeyPath, certsLocation;
 
-      switch (rootCert.certType) {
+      switch (rootCert.getCertType()) {
         case SelfSigned:
         case HashicorpVault:
           {
             try {
               // Creating a temp directory to save Server Cert and Key from Root for the node
               Path tempStorageDirectory;
-              if (rootCert.certType == CertConfigType.SelfSigned) {
+              if (rootCert.getCertType() == CertConfigType.SelfSigned) {
                 tempStorageDirectory =
                     Files.createTempDirectory(String.format("SelfSigned%s", taskParam.rootCA))
                         .toAbsolutePath();
@@ -504,7 +504,7 @@ public class NodeManager extends DevopsBase {
                   serverCertFile,
                   serverKeyFile,
                   subjectAltName);
-              rootCertPath = rootCert.certificate;
+              rootCertPath = rootCert.getCertificate();
               serverCertPath = String.format("%s/%s", tempStorageDirectory, serverCertFile);
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
@@ -582,14 +582,14 @@ public class NodeManager extends DevopsBase {
 
       String rootCertPath, serverCertPath, serverKeyPath, certsLocation;
 
-      switch (clientRootCert.certType) {
+      switch (clientRootCert.getCertType()) {
         case SelfSigned:
         case HashicorpVault:
           {
             try {
               // Creating a temp directory to save Server Cert and Key from Root for the node
               Path tempStorageDirectory;
-              if (clientRootCert.certType == CertConfigType.SelfSigned) {
+              if (clientRootCert.getCertType() == CertConfigType.SelfSigned) {
                 tempStorageDirectory =
                     Files.createTempDirectory(String.format("SelfSigned%s", taskParam.rootCA))
                         .toAbsolutePath();
@@ -608,7 +608,7 @@ public class NodeManager extends DevopsBase {
                   serverCertFile,
                   serverKeyFile,
                   subjectAltName);
-              rootCertPath = clientRootCert.certificate;
+              rootCertPath = clientRootCert.getCertificate();
               serverCertPath = String.format("%s/%s", tempStorageDirectory, serverCertFile);
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
@@ -632,7 +632,7 @@ public class NodeManager extends DevopsBase {
           {
             CertificateInfo.CustomServerCertInfo customServerCertInfo =
                 clientRootCert.getCustomServerCertInfo();
-            rootCertPath = clientRootCert.certificate;
+            rootCertPath = clientRootCert.getCertificate();
             serverCertPath = customServerCertInfo.serverCert;
             serverKeyPath = customServerCertInfo.serverKey;
             certsLocation = CERT_LOCATION_PLATFORM;
@@ -993,21 +993,21 @@ public class NodeManager extends DevopsBase {
                 if (rootCert == null) {
                   throw new RuntimeException("Certificate is null: " + taskParam.rootCA);
                 }
-                if (rootCert.certType == CertConfigType.CustomServerCert) {
+                if (rootCert.getCertType() == CertConfigType.CustomServerCert) {
                   throw new RuntimeException(
                       "Root certificate cannot be of type CustomServerCert.");
                 }
 
                 String rootCertPath = "";
                 String certsLocation = "";
-                if (rootCert.certType == CertConfigType.SelfSigned) {
-                  rootCertPath = rootCert.certificate;
+                if (rootCert.getCertType() == CertConfigType.SelfSigned) {
+                  rootCertPath = rootCert.getCertificate();
                   certsLocation = CERT_LOCATION_PLATFORM;
-                } else if (rootCert.certType == CertConfigType.CustomCertHostPath) {
+                } else if (rootCert.getCertType() == CertConfigType.CustomCertHostPath) {
                   rootCertPath = rootCert.getCustomCertPathParams().rootCertPath;
                   certsLocation = CERT_LOCATION_NODE;
-                } else if (rootCert.certType == CertConfigType.HashicorpVault) {
-                  rootCertPath = rootCert.certificate;
+                } else if (rootCert.getCertType() == CertConfigType.HashicorpVault) {
+                  rootCertPath = rootCert.getCertificate();
                   certsLocation = CERT_LOCATION_PLATFORM;
                 }
 
@@ -1254,9 +1254,9 @@ public class NodeManager extends DevopsBase {
       throw new UnsupportedOperationException("Not supported " + type);
     }
     Provider provider = nodeTaskParam.getProvider();
-    List<AccessKey> accessKeys = AccessKey.getAll(provider.uuid);
+    List<AccessKey> accessKeys = AccessKey.getAll(provider.getUuid());
     if (accessKeys.isEmpty()) {
-      throw new RuntimeException("No access keys for provider: " + provider.uuid);
+      throw new RuntimeException("No access keys for provider: " + provider.getUuid());
     }
     AccessKey accessKey = accessKeys.get(0);
     AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
@@ -1267,9 +1267,10 @@ public class NodeManager extends DevopsBase {
         getCommunicationPortsParams(
             new UserIntent(), accessKey, new UniverseTaskParams.CommunicationPorts()));
 
-    InstanceType instanceType = InstanceType.get(provider.uuid, nodeTaskParam.getInstanceType());
+    InstanceType instanceType =
+        InstanceType.get(provider.getUuid(), nodeTaskParam.getInstanceType());
     commandArgs.add("--mount_points");
-    commandArgs.add(instanceType.instanceTypeDetails.volumeDetailsList.get(0).mountPath);
+    commandArgs.add(instanceType.getInstanceTypeDetails().volumeDetailsList.get(0).mountPath);
 
     commandArgs.add(nodeTaskParam.getNodeName());
 
@@ -1281,7 +1282,7 @@ public class NodeManager extends DevopsBase {
 
     return execCommand(
         DevopsCommand.builder()
-            .regionUUID(nodeTaskParam.getRegion().uuid)
+            .regionUUID(nodeTaskParam.getRegion().getUuid())
             .command(type.toString().toLowerCase())
             .commandArgs(commandArgs)
             .cloudArgs(cloudArgs)
@@ -1889,7 +1890,8 @@ public class NodeManager extends DevopsBase {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           }
           AccessKey accessKey =
-              AccessKey.getOrBadRequest(nodeTaskParam.getProvider().uuid, userIntent.accessKeyCode);
+              AccessKey.getOrBadRequest(
+                  nodeTaskParam.getProvider().getUuid(), userIntent.accessKeyCode);
           commandArgs.addAll(
               getCommunicationPortsParams(userIntent, accessKey, nodeTaskParam.communicationPorts));
 
@@ -2010,15 +2012,15 @@ public class NodeManager extends DevopsBase {
           }
           RunHooks.Params taskParam = (RunHooks.Params) nodeTaskParam;
           commandArgs.add("--execution_lang");
-          commandArgs.add(taskParam.hook.executionLang.name());
+          commandArgs.add(taskParam.hook.getExecutionLang().name());
           commandArgs.add("--trigger");
           commandArgs.add(taskParam.trigger.name());
           commandArgs.add("--hook_path");
           commandArgs.add(taskParam.hookPath);
           commandArgs.add("--parent_task");
           commandArgs.add(taskParam.parentTask);
-          if (taskParam.hook.useSudo) commandArgs.add("--use_sudo");
-          Map<String, String> runtimeArgs = taskParam.hook.runtimeArgs;
+          if (taskParam.hook.isUseSudo()) commandArgs.add("--use_sudo");
+          Map<String, String> runtimeArgs = taskParam.hook.getRuntimeArgs();
           if (runtimeArgs != null && runtimeArgs.size() != 0) {
             commandArgs.add("--runtime_args");
             commandArgs.add(Json.stringify(Json.toJson(runtimeArgs)));
@@ -2038,7 +2040,7 @@ public class NodeManager extends DevopsBase {
     try {
       return execCommand(
           DevopsCommand.builder()
-              .regionUUID(nodeTaskParam.getRegion().uuid)
+              .regionUUID(nodeTaskParam.getRegion().getUuid())
               .command(type.toString().toLowerCase())
               .commandArgs(commandArgs)
               .cloudArgs(getCloudArgs(nodeTaskParam))
@@ -2063,7 +2065,7 @@ public class NodeManager extends DevopsBase {
     }
     CertificateInfo rootCert = CertificateInfo.get(rootCA);
     // checking only certs with CustomCertHostPath type, CustomServerCert is not used for onprem
-    if (rootCert.certType != CertConfigType.CustomCertHostPath) {
+    if (rootCert.getCertType() != CertConfigType.CustomCertHostPath) {
       return;
     }
     String suffix = isClient ? "_client_to_server" : "";
@@ -2116,7 +2118,7 @@ public class NodeManager extends DevopsBase {
       result.add("--redis_proxy_rpc_port");
       result.add(Integer.toString(ports.redisServerRpcPort));
     }
-    if (provider.details.installNodeExporter) {
+    if (provider.getDetails().installNodeExporter) {
       result.add("--node_exporter_http_port");
       result.add(Integer.toString(ports.nodeExporterPort));
     }
@@ -2151,16 +2153,16 @@ public class NodeManager extends DevopsBase {
       if (!Common.CloudType.onprem.equals(userIntent.providerType)) {
         // This is for backward compatibility where node UUID is not set in the Universe.
         nodeTaskParam.nodeUuid =
-            Util.generateNodeUUID(universe.universeUUID, nodeTaskParam.nodeName);
+            Util.generateNodeUUID(universe.getUniverseUUID(), nodeTaskParam.nodeName);
       }
     }
   }
 
   private void addAdditionalInstanceTags(
       Universe universe, NodeTaskParams nodeTaskParam, Map<String, String> tags) {
-    Customer customer = Customer.get(universe.customerId);
-    tags.put("customer-uuid", customer.uuid.toString());
-    tags.put("universe-uuid", universe.universeUUID.toString());
+    Customer customer = Customer.get(universe.getCustomerId());
+    tags.put("customer-uuid", customer.getUuid().toString());
+    tags.put("universe-uuid", universe.getUniverseUUID().toString());
     tags.put("node-uuid", nodeTaskParam.nodeUuid.toString());
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     if (userIntent.providerType.equals(Common.CloudType.gcp)) {
@@ -2235,7 +2237,7 @@ public class NodeManager extends DevopsBase {
   public List<String> getNodeSSHCommand(NodeAccessTaskParams params) {
     KeyInfo keyInfo = params.accessKey.getKeyInfo();
     Provider provider = Provider.getOrBadRequest(params.customerUUID, params.providerUUID);
-    Integer sshPort = provider.details.sshPort;
+    Integer sshPort = provider.getDetails().sshPort;
     String sshUser = params.sshUser;
     String vaultPasswordFile = keyInfo.vaultPasswordFile;
     String vaultFile = keyInfo.vaultFile;

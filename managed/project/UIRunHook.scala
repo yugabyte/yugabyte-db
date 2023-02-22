@@ -14,7 +14,7 @@ object UIRunHook {
 
       var watchProcess: Option[Process] = None
 
-      override def afterStarted(addr: InetSocketAddress): Unit = {
+      override def afterStarted(): Unit = {
         // don't run "npm start" directly as it leaves zombie node.js child processes on termination
         watchProcess = Some(
           Process(

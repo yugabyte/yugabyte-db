@@ -100,7 +100,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
         for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
           UUID azUUID = entry.getKey();
-          String azName = isMultiAz ? AvailabilityZone.getOrBadRequest(azUUID).code : null;
+          String azName = isMultiAz ? AvailabilityZone.getOrBadRequest(azUUID).getCode() : null;
 
           Map<String, String> config = entry.getValue();
 
@@ -111,7 +111,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
             helmDeletes.addSubTask(
                 createDestroyKubernetesTask(
                     universe.getUniverseDetails().nodePrefix,
-                    universe.name,
+                    universe.getName(),
                     universe.getUniverseDetails().useNewHelmNamingStyle,
                     azName,
                     config,
@@ -124,7 +124,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
           volumeDeletes.addSubTask(
               createDestroyKubernetesTask(
                   universe.getUniverseDetails().nodePrefix,
-                  universe.name,
+                  universe.getName(),
                   universe.getUniverseDetails().useNewHelmNamingStyle,
                   azName,
                   config,
@@ -148,7 +148,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
             namespaceDeletes.addSubTask(
                 createDestroyKubernetesTask(
                     universe.getUniverseDetails().nodePrefix,
-                    universe.name,
+                    universe.getName(),
                     universe.getUniverseDetails().useNewHelmNamingStyle,
                     azName,
                     config,

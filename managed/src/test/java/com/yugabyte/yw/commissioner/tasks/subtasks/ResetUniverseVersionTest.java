@@ -39,7 +39,7 @@ public class ResetUniverseVersionTest extends FakeDBApplication {
         .thenReturn(app.injector().instanceOf(PlatformExecutorFactory.class));
 
     params = new UniverseDefinitionTaskParams();
-    params.universeUUID = universe.universeUUID;
+    params.universeUUID = universe.getUniverseUUID();
 
     task = new ResetUniverseVersion(baseTaskDependencies);
     task.initialize(params);
@@ -56,6 +56,6 @@ public class ResetUniverseVersionTest extends FakeDBApplication {
     task.run();
     universe.refresh();
 
-    assertEquals(-1, universe.version);
+    assertEquals(-1, universe.getVersion());
   }
 }

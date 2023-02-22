@@ -125,7 +125,7 @@ public class EncryptionAtRestManager {
     byte[] universeKeyRef = null;
     try {
       kmsConfig = KmsConfig.get(configUUID);
-      keyService = getServiceInstance(kmsConfig.keyProvider.name());
+      keyService = getServiceInstance(kmsConfig.getKeyProvider().name());
       if (EncryptionAtRestUtil.getNumKeyRotations(universeUUID, configUUID) == 0) {
         LOG.info(String.format("Creating universe key for universe %s", universeUUID.toString()));
         universeKeyRef = keyService.createKey(universeUUID, configUUID, config);
@@ -155,7 +155,7 @@ public class EncryptionAtRestManager {
     byte[] keyVal = null;
     T keyService;
     try {
-      keyService = getServiceInstance(KmsConfig.get(configUUID).keyProvider.name());
+      keyService = getServiceInstance(KmsConfig.get(configUUID).getKeyProvider().name());
       keyVal =
           config == null
               ? keyService.retrieveKey(universeUUID, configUUID, keyRef)
@@ -177,8 +177,8 @@ public class EncryptionAtRestManager {
     KmsConfig.listKMSConfigs(customerUUID)
         .forEach(
             config ->
-                getServiceInstance(config.keyProvider.name())
-                    .cleanup(universeUUID, config.configUUID));
+                getServiceInstance(config.getKeyProvider().name())
+                    .cleanup(universeUUID, config.getConfigUUID()));
   }
 
   // Build up list of objects to backup
@@ -189,13 +189,13 @@ public class EncryptionAtRestManager {
             history -> {
               BackupEntry entry = null;
               try {
-                KmsConfig config = KmsConfig.get(history.configUuid);
-                entry = getServiceInstance(config.keyProvider.name()).getBackupEntry(history);
+                KmsConfig config = KmsConfig.get(history.getConfigUuid());
+                entry = getServiceInstance(config.getKeyProvider().name()).getBackupEntry(history);
               } catch (Exception e) {
                 String errMsg =
                     String.format(
                         "Error backing up universe key %s for universe %s",
-                        history.uuid.keyRef, universeUUID.toString());
+                        history.getUuid().getKeyRef(), universeUUID.toString());
                 LOG.error(errMsg, e);
               }
               return entry;
@@ -218,7 +218,10 @@ public class EncryptionAtRestManager {
       KmsConfig kmsConfig = KmsConfig.get(distinctKmsConfigUUIDs.iterator().next());
       backup.set(
           "master_key_metadata",
-          kmsConfig.keyProvider.getServiceInstance().getKeyMetadata(kmsConfig.configUUID));
+          kmsConfig
+              .getKeyProvider()
+              .getServiceInstance()
+              .getKeyMetadata(kmsConfig.getConfigUUID()));
     } else {
       LOG.debug(
           "Found {} master keys on universe '{}''. Not adding them to backup metadata: {}.",
@@ -347,8 +350,8 @@ public class EncryptionAtRestManager {
     EncryptionAtRestService<? extends SupportedAlgorithmInterface> keyService =
         getServiceInstance(keyProvider.name());
     for (KmsConfig kmsConfig : allKmsConfigs) {
-      if (keyService.verifyKmsConfigAndKeyRef(kmsConfig.configUUID, keyRef)) {
-        kmsConfigUUID = kmsConfig.configUUID;
+      if (keyService.verifyKmsConfigAndKeyRef(kmsConfig.getConfigUUID(), keyRef)) {
+        kmsConfigUUID = kmsConfig.getConfigUUID();
         break;
       }
     }

@@ -48,26 +48,26 @@ public class ScopedRuntimeConfig extends Model {
   }
 
   private ScopedRuntimeConfig(Customer customer) {
-    uuid = customer.uuid;
-    customerUUID = customer.uuid;
+    uuid = customer.getUuid();
+    customerUUID = customer.getUuid();
     universeUUID = null;
     providerUUID = null;
     LOG.info("Created Customer({}) ScopedRuntimeConfig", customerUUID);
   }
 
   private ScopedRuntimeConfig(Universe universe) {
-    uuid = universe.universeUUID;
+    uuid = universe.getUniverseUUID();
     providerUUID = null;
     customerUUID = null;
-    universeUUID = universe.universeUUID;
+    universeUUID = universe.getUniverseUUID();
     LOG.info("Created Universe({}) ScopedRuntimeConfig", universeUUID);
   }
 
   private ScopedRuntimeConfig(Provider provider) {
-    uuid = provider.uuid;
+    uuid = provider.getUuid();
     customerUUID = null;
     universeUUID = null;
-    providerUUID = provider.uuid;
+    providerUUID = provider.getUuid();
     LOG.info("Created Provider({}) ScopedRuntimeConfig", providerUUID);
   }
 
@@ -88,19 +88,19 @@ public class ScopedRuntimeConfig extends Model {
   }
 
   static void ensure(Customer customer) {
-    if (get(customer.uuid) == null) {
+    if (get(customer.getUuid()) == null) {
       new ScopedRuntimeConfig(customer).save();
     }
   }
 
   static void ensure(Universe universe) {
-    if (get(universe.universeUUID) == null) {
+    if (get(universe.getUniverseUUID()) == null) {
       new ScopedRuntimeConfig(universe).save();
     }
   }
 
   static void ensure(Provider provider) {
-    if (get(provider.uuid) == null) {
+    if (get(provider.getUuid()) == null) {
       new ScopedRuntimeConfig(provider).save();
     }
   }

@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
-import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import org.slf4j.Logger;
@@ -35,21 +34,16 @@ public class YugawareProperty extends Model {
     System,
   }
 
-  @Constraints.Required
-  @Column(nullable = false)
-  private PropertyEntryType type;
+  @Constraints.Required private PropertyEntryType type;
 
   // The property config.
-  @Constraints.Required
-  @Column(columnDefinition = "TEXT")
-  private JsonNode value;
+  @Constraints.Required private JsonNode value;
 
   public JsonNode getValue() {
     return value;
   }
 
   // The property description.
-  @Column(columnDefinition = "TEXT")
   private String description;
 
   public static final Finder<String, YugawareProperty> find =

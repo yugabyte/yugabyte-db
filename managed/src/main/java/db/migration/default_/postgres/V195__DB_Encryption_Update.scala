@@ -1,21 +1,19 @@
 // Copyright (c) YugaByte, Inc.
 
-package db.migration.default.postgres
+package db.migration.default_.postgres
 
-import java.sql.Connection
 import java.util.Map
 import java.util.UUID
-
-import org.flywaydb.core.api.migration.jdbc.JdbcMigration
-import play.api.libs.json._
 import com.yugabyte.yw.models.helpers.CommonUtils
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil
 import com.yugabyte.yw.common.kms.util.KeyProvider
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
+import org.flywaydb.core.api.migration.{BaseJavaMigration, Context}
 
-class V195__DB_Encryption_Update extends JdbcMigration {
-  override def migrate(connection: Connection): Unit = {
+class V195__DB_Encryption_Update extends BaseJavaMigration {
+  override def migrate(context: Context): Unit = {
+    val connection = context.getConnection
     // Install pgcrypto
     var extensionSet = connection.createStatement.executeQuery("select extname from pg_extension;")
     var pgcryptoExists = false

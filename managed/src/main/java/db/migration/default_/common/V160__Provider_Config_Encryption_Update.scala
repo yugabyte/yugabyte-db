@@ -1,18 +1,16 @@
 // Copyright (c) YugaByte, Inc.
 
-package db.migration.default.common
+package db.migration.default_.common
 
-import java.sql.Connection
 import java.util.Map
 import java.util.UUID
-
-import org.flywaydb.core.api.migration.jdbc.JdbcMigration
-import play.api.libs.json._
 import com.yugabyte.yw.models.helpers.CommonUtils
 import com.fasterxml.jackson.databind.ObjectMapper
+import org.flywaydb.core.api.migration.{BaseJavaMigration, Context}
 
-class V160__Provider_Config_Encryption_Update extends JdbcMigration {
-  override def migrate(connection: Connection): Unit = {
+class V160__Provider_Config_Encryption_Update extends BaseJavaMigration {
+  override def migrate(context: Context): Unit = {
+    val connection = context.getConnection
     val selectStmt = "SELECT uuid, config, code, customer_uuid FROM provider"
     val resultSet = connection.createStatement().executeQuery(selectStmt)
 

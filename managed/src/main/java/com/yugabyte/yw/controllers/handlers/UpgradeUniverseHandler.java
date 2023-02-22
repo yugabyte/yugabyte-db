@@ -264,10 +264,10 @@ public class UpgradeUniverseHandler {
     // This is there only for legacy support, no need if rootCA and clientRootCA are different.
     if (userIntent.enableClientToNodeEncrypt && requestParams.rootAndClientRootCASame) {
       CertificateInfo rootCert = CertificateInfo.get(requestParams.rootCA);
-      if (rootCert.certType == CertConfigType.SelfSigned
-          || rootCert.certType == CertConfigType.HashicorpVault) {
+      if (rootCert.getCertType() == CertConfigType.SelfSigned
+          || rootCert.getCertType() == CertConfigType.HashicorpVault) {
         CertificateHelper.createClientCertificate(
-            runtimeConfigFactory.staticApplicationConf(), customer.uuid, requestParams.rootCA);
+            runtimeConfigFactory.staticApplicationConf(), customer.getUuid(), requestParams.rootCA);
       }
     }
 
@@ -335,7 +335,7 @@ public class UpgradeUniverseHandler {
               CertificateHelper.createRootCA(
                   runtimeConfigFactory.staticApplicationConf(),
                   universeDetails.nodePrefix,
-                  customer.uuid);
+                  customer.getUuid());
         }
       } else {
         // If certificate already present then use the same as upgrade cannot rotate certs
@@ -359,7 +359,7 @@ public class UpgradeUniverseHandler {
                 CertificateHelper.createClientRootCA(
                     runtimeConfigFactory.staticApplicationConf(),
                     universeDetails.nodePrefix,
-                    customer.uuid));
+                    customer.getUuid()));
           }
         }
       } else {
@@ -377,10 +377,12 @@ public class UpgradeUniverseHandler {
       // This is there only for legacy support, no need if rootCA and clientRootCA are different.
       if (requestParams.rootAndClientRootCASame) {
         CertificateInfo cert = CertificateInfo.get(requestParams.rootCA);
-        if (cert.certType == CertConfigType.SelfSigned
-            || cert.certType == CertConfigType.HashicorpVault) {
+        if (cert.getCertType() == CertConfigType.SelfSigned
+            || cert.getCertType() == CertConfigType.HashicorpVault) {
           CertificateHelper.createClientCertificate(
-              runtimeConfigFactory.staticApplicationConf(), customer.uuid, requestParams.rootCA);
+              runtimeConfigFactory.staticApplicationConf(),
+              customer.getUuid(),
+              requestParams.rootCA);
         }
       }
     }
@@ -455,23 +457,23 @@ public class UpgradeUniverseHandler {
     log.info(
         "Submitted {} for {} : {}, task uuid = {}.",
         taskType,
-        universe.universeUUID,
-        universe.name,
+        universe.getUniverseUUID(),
+        universe.getName(),
         taskUUID);
 
     CustomerTask.create(
         customer,
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Universe,
         customerTaskType,
-        universe.name,
+        universe.getName(),
         customTaskName);
     log.info(
         "Saved task uuid {} in customer tasks table for universe {} : {}.",
         taskUUID,
-        universe.universeUUID,
-        universe.name);
+        universe.getUniverseUUID(),
+        universe.getName());
     return taskUUID;
   }
 

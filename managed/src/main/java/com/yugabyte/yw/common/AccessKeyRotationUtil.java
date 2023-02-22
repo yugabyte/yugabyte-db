@@ -107,16 +107,16 @@ public class AccessKeyRotationUtil {
     for (Region region : regions) {
       newAccessKey =
           accessManager.addKey(
-              region.uuid,
+              region.getUuid(),
               newKeyCode,
               null,
-              provider.details.sshUser,
-              provider.details.sshPort,
-              provider.details.airGapInstall,
-              provider.details.skipProvisioning,
-              provider.details.setUpChrony,
-              provider.details.ntpServers,
-              provider.details.showSetUpChrony);
+              provider.getDetails().sshUser,
+              provider.getDetails().sshPort,
+              provider.getDetails().airGapInstall,
+              provider.getDetails().skipProvisioning,
+              provider.getDetails().setUpChrony,
+              provider.getDetails().ntpServers,
+              provider.getDetails().showSetUpChrony);
     }
 
     if (newAccessKey == null) {
@@ -130,7 +130,7 @@ public class AccessKeyRotationUtil {
     List<UUID> filteredUniverses =
         Universe.getAllWithoutResources(new HashSet<UUID>(universeUUIDs))
             .stream()
-            .map(universe -> universe.universeUUID)
+            .map(universe -> universe.getUniverseUUID())
             .collect(Collectors.toList());
     return filteredUniverses;
   }
@@ -140,7 +140,7 @@ public class AccessKeyRotationUtil {
         Universe.getAllWithoutResources(new HashSet<UUID>(universeUUIDs))
             .stream()
             .filter(universe -> !universe.getUniverseDetails().universePaused)
-            .map(universe -> universe.universeUUID)
+            .map(universe -> universe.getUniverseUUID())
             .collect(Collectors.toList());
     return filteredUniverses;
   }
@@ -210,7 +210,7 @@ public class AccessKeyRotationUtil {
     Map<AccessKeyId, AccessKey> accessKeys =
         AccessKey.getAll()
             .stream()
-            .collect(Collectors.toMap(accessKey -> accessKey.idKey, Function.identity()));
+            .collect(Collectors.toMap(accessKey -> accessKey.getIdKey(), Function.identity()));
     return accessKeys;
   }
 }

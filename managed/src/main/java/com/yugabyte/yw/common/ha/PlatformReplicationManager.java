@@ -18,6 +18,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -62,18 +63,18 @@ public class PlatformReplicationManager {
 
   private final ConfigHelper configHelper;
 
-  private final play.Configuration appConfig;
+  private final Config config;
 
   @Inject
   public PlatformReplicationManager(
       PlatformScheduler platformScheduler,
       PlatformReplicationHelper replicationHelper,
       ConfigHelper configHelper,
-      play.Configuration appConfig) {
+      Config config) {
     this.platformScheduler = platformScheduler;
     this.replicationHelper = replicationHelper;
     this.configHelper = configHelper;
-    this.appConfig = appConfig;
+    this.config = config;
     this.schedule = new AtomicReference<>(null);
   }
 
@@ -317,7 +318,7 @@ public class PlatformReplicationManager {
                             instancesToSync.forEach(replicationHelper::syncToRemoteInstance);
                           });
                 } catch (Exception e) {
-                  log.error("Error running sync for HA config {}", config.getUUID(), e);
+                  log.error("Error running sync for HA config {}", config.getUuid(), e);
                 } finally {
                   // Remove locally created backups since they have already been sent to followers.
                   replicationHelper.cleanupCreatedBackups();
@@ -506,7 +507,7 @@ public class PlatformReplicationManager {
       log.error("Restore failed: " + response.message);
     } else {
       // Sync the files stored in DB to FS in case restore is successful.
-      configHelper.syncFileData(appConfig.getString(STORAGE_PATH), true);
+      configHelper.syncFileData(config.getString(STORAGE_PATH), true);
     }
 
     return response.code == 0;

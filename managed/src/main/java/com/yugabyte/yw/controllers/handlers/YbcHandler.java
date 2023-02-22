@@ -45,7 +45,7 @@ public class YbcHandler {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Cannot disable ybc on universe "
-              + universe.universeUUID
+              + universe.getUniverseUUID()
               + " as it has nodes in one of "
               + NodeDetails.IN_TRANSIT_STATES
               + " states.");
@@ -64,7 +64,7 @@ public class YbcHandler {
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.DisableYbc,
-        universe.name);
+        universe.getName());
     return taskUUID;
   }
 
@@ -82,7 +82,7 @@ public class YbcHandler {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Cannot perform a ybc upgrade on universe "
-              + universe.universeUUID
+              + universe.getUniverseUUID()
               + " as it has nodes in one of "
               + NodeDetails.IN_TRANSIT_STATES
               + " states.");
@@ -113,7 +113,7 @@ public class YbcHandler {
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.UpgradeUniverseYbc,
-        universe.name);
+        universe.getName());
     return taskUUID;
   }
 
@@ -125,7 +125,7 @@ public class YbcHandler {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Cannot perform a ybc installation on universe "
-              + universe.universeUUID
+              + universe.getUniverseUUID()
               + " as it has nodes in one of "
               + NodeDetails.IN_TRANSIT_STATES
               + " states.");
@@ -160,7 +160,7 @@ public class YbcHandler {
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.InstallYbcSoftware,
-        universe.name);
+        universe.getName());
     return taskUUID;
   }
 }

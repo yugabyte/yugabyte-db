@@ -11,7 +11,6 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -138,7 +137,7 @@ public class YbcUpgrade {
             break;
           } else {
             nodeCount += numNodesInUniverse;
-            targetUniverseList.add(universe.universeUUID);
+            targetUniverseList.add(universe.getUniverseUUID());
           }
         }
       }
@@ -201,7 +200,7 @@ public class YbcUpgrade {
         && !universe.getUniverseDetails().universePaused
         && !universe.getUniverseDetails().updateInProgress
         && !universe.getUniverseDetails().ybcSoftwareVersion.equals(ybcVersion)
-        && !failedYBCUpgradeUniverseSet.contains(universe.universeUUID);
+        && !failedYBCUpgradeUniverseSet.contains(universe.getUniverseUUID());
   }
 
   public synchronized void upgradeYBC(UUID universeUUID, String ybcVersion, boolean force)
@@ -211,7 +210,7 @@ public class YbcUpgrade {
         && !confGetter.getConfForScope(universe, UniverseConfKeys.ybcAllowScheduledUpgrade)) {
       log.debug(
           "Skipping scheduled ybc upgrade on universe {} as it was disabled.",
-          universe.universeUUID);
+          universe.getUniverseUUID());
       return;
     }
     if (checkYBCUpgradeProcessExists(universeUUID)) {
@@ -230,7 +229,7 @@ public class YbcUpgrade {
                 log.error(
                     "Ybc upgrade request failed on node: {} universe: {}, with error: {}",
                     node.nodeName,
-                    universe.universeUUID,
+                    universe.getUniverseUUID(),
                     e);
               }
             });
@@ -244,7 +243,7 @@ public class YbcUpgrade {
     Builder builder =
         UpgradeRequest.newBuilder()
             .setYbcVersion(ybcVersion)
-            .setHomeDir(Util.getNodeHomeDir(universe.universeUUID, node.nodeName));
+            .setHomeDir(Util.getNodeHomeDir(universe.getUniverseUUID(), node.nodeName));
     if (localPackage) {
       String location = ybcManager.getYbcPackageTmpLocation(universe, node, ybcVersion);
       builder.setLocation(location);
@@ -258,7 +257,7 @@ public class YbcUpgrade {
       client = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
       resp = client.Upgrade(upgradeRequest);
       if (resp == null) {
-        unreachableNodes.getOrDefault(universe.universeUUID, new HashSet<>()).add(nodeIp);
+        unreachableNodes.getOrDefault(universe.getUniverseUUID(), new HashSet<>()).add(nodeIp);
         log.warn("Skipping node {} for YBC upgrade as it is unreachable", nodeIp);
         return;
       }
@@ -268,7 +267,7 @@ public class YbcUpgrade {
             "YBC {} version is already present on the node {} of universe {}",
             ybcVersion,
             nodeIp,
-            universe.universeUUID);
+            universe.getUniverseUUID());
       } else if (!resp.getStatus().getCode().equals(ControllerStatus.OK)) {
         throw new RuntimeException(
             "Error occurred while sending  ybc update request: "

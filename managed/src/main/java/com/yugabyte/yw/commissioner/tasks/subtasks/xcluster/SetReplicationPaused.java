@@ -45,8 +45,8 @@ public class SetReplicationPaused extends XClusterConfigTaskBase {
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
 
     // Cannot pause a paused replication or resume an enabled replication.
-    if (xClusterConfig.paused == taskParams().pause) {
-      if (xClusterConfig.paused) {
+    if (xClusterConfig.isPaused() == taskParams().pause) {
+      if (xClusterConfig.isPaused()) {
         throw new RuntimeException(
             String.format("XClusterConfig %s is already paused", xClusterConfig));
       } else {
@@ -55,7 +55,7 @@ public class SetReplicationPaused extends XClusterConfigTaskBase {
       }
     }
 
-    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     try (YBClient client =
@@ -75,7 +75,7 @@ public class SetReplicationPaused extends XClusterConfigTaskBase {
       }
 
       // Save the pause state in the DB.
-      xClusterConfig.setPaused(taskParams().pause);
+      xClusterConfig.updatePaused(taskParams().pause);
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);

@@ -141,7 +141,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
       TestUtils.setFakeHttpContext(defaultUser);
       CustomerTask.create(
           defaultCustomer,
-          defaultUniverse.universeUUID,
+          defaultUniverse.getUniverseUUID(),
           taskUUID,
           CustomerTask.TargetType.Universe,
           CustomerTask.TaskType.Backup,
@@ -156,8 +156,8 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
   private TaskInfo submitTask(
       String keyspace, List<UUID> tableUUIDs, boolean transactional, TableType backupType) {
     MultiTableBackup.Params backupTableParams = new MultiTableBackup.Params();
-    backupTableParams.universeUUID = defaultUniverse.universeUUID;
-    backupTableParams.customerUUID = defaultCustomer.uuid;
+    backupTableParams.universeUUID = defaultUniverse.getUniverseUUID();
+    backupTableParams.customerUUID = defaultCustomer.getUuid();
     backupTableParams.setKeyspace(keyspace);
     backupTableParams.backupType = backupType;
     backupTableParams.storageConfigUUID = UUID.randomUUID();
@@ -210,8 +210,8 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     defaultUniverse.updateConfig(config);
     defaultUniverse.save();
     MultiTableBackup.Params backupTableParams = new MultiTableBackup.Params();
-    backupTableParams.universeUUID = defaultUniverse.universeUUID;
-    backupTableParams.customerUUID = defaultCustomer.uuid;
+    backupTableParams.universeUUID = defaultUniverse.getUniverseUUID();
+    backupTableParams.customerUUID = defaultCustomer.getUuid();
     backupTableParams.setKeyspace("InvalidKeyspace");
     backupTableParams.backupType = TableType.PGSQL_TABLE_TYPE;
     backupTableParams.storageConfigUUID = UUID.randomUUID();

@@ -75,10 +75,10 @@ public class TableManagerYb extends DevopsBase {
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     Region region = Region.get(primaryCluster.userIntent.regionList.get(0));
     UniverseDefinitionTaskParams.UserIntent userIntent = primaryCluster.userIntent;
-    Provider provider = Provider.get(region.provider.uuid);
+    Provider provider = Provider.get(region.getProvider().getUuid());
 
     String accessKeyCode = userIntent.accessKeyCode;
-    AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
+    AccessKey accessKey = AccessKey.get(region.getProvider().getUuid(), accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
     Map<String, String> extraVars = CloudInfoInterface.fetchEnvVars(provider);
     Map<String, Map<String, String>> podAddrToConfig = new HashMap<>();
@@ -87,7 +87,7 @@ public class TableManagerYb extends DevopsBase {
 
     boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
 
-    if (region.provider.code.equals("kubernetes")) {
+    if (region.getProvider().getCode().equals("kubernetes")) {
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         PlacementInfo pi = cluster.placementInfo;
         podAddrToConfig.putAll(
@@ -102,7 +102,7 @@ public class TableManagerYb extends DevopsBase {
         Provider clusterProvider =
             Provider.getOrBadRequest(UUID.fromString(clusterUserIntent.provider));
         AccessKey accessKeyForCluster =
-            AccessKey.getOrBadRequest(clusterProvider.uuid, clusterUserIntent.accessKeyCode);
+            AccessKey.getOrBadRequest(clusterProvider.getUuid(), clusterUserIntent.accessKeyCode);
         Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
         for (NodeDetails nodeInCluster : nodesInCluster) {
           if (nodeInCluster.cloudInfo.private_ip != null
@@ -168,8 +168,9 @@ public class TableManagerYb extends DevopsBase {
         if (taskParams.sse) {
           commandArgs.add("--sse");
         }
-        customer = Customer.find.query().where().idEq(universe.customerId).findOne();
-        customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
+        customer = Customer.find.query().where().idEq(universe.getCustomerId()).findOne();
+        customerConfig =
+            CustomerConfig.get(customer.getUuid(), backupTableParams.storageConfigUUID);
         CustomerConfigStorageData configData =
             (CustomerConfigStorageData) customerConfig.getDataObject();
         Map<String, String> regionLocationMap =
@@ -224,7 +225,7 @@ public class TableManagerYb extends DevopsBase {
           bulkImportParams.instanceCount = userIntent.numNodes * EMR_MULTIPLE;
         }
         // TODO(bogdan): does this work?
-        if (!region.provider.code.equals("kubernetes")) {
+        if (!region.getProvider().getCode().equals("kubernetes")) {
           commandArgs.add("--key_path");
           commandArgs.add(accessKey.getKeyInfo().privateKey);
         }
@@ -237,15 +238,16 @@ public class TableManagerYb extends DevopsBase {
         commandArgs.add("--s3bucket");
         commandArgs.add(bulkImportParams.s3Bucket);
 
-        extraVars.put("AWS_DEFAULT_REGION", region.code);
+        extraVars.put("AWS_DEFAULT_REGION", region.getCode());
 
         break;
       case DELETE:
         commandArgs.add("--ts_web_hosts_ports");
         commandArgs.add(universe.getTserverHTTPAddresses());
         backupTableParams = (BackupTableParams) taskParams;
-        customer = Customer.find.query().where().idEq(universe.customerId).findOne();
-        customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
+        customer = Customer.find.query().where().idEq(universe.getCustomerId()).findOne();
+        customerConfig =
+            CustomerConfig.get(customer.getUuid(), backupTableParams.storageConfigUUID);
         log.info("Deleting backup at location {}", backupTableParams.storageLocation);
         addCommonCommandArgs(
             backupTableParams,
@@ -267,7 +269,7 @@ public class TableManagerYb extends DevopsBase {
   }
 
   private String getCertsDir(Region region, Provider provider) {
-    return region.provider.code.equals("kubernetes")
+    return region.getProvider().getCode().equals("kubernetes")
         ? K8S_CERT_PATH
         : provider.getYbHome() + VM_CERT_DIR;
   }
@@ -282,12 +284,12 @@ public class TableManagerYb extends DevopsBase {
       boolean nodeToNodeTlsEnabled,
       Map<String, String> ipToSshKeyPath,
       List<String> commandArgs) {
-    if (region.provider.code.equals("kubernetes")) {
+    if (region.getProvider().getCode().equals("kubernetes")) {
       commandArgs.add("--k8s_config");
       commandArgs.add(Json.stringify(Json.toJson(podAddrToConfig)));
     } else {
       commandArgs.add("--ssh_port");
-      commandArgs.add(provider.details.sshPort.toString());
+      commandArgs.add(provider.getDetails().sshPort.toString());
       commandArgs.add("--ssh_key_path");
       commandArgs.add(accessKey.getKeyInfo().privateKey);
       if (!ipToSshKeyPath.isEmpty()) {

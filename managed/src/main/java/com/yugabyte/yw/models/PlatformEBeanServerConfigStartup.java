@@ -12,7 +12,7 @@ package com.yugabyte.yw.models;
 
 import com.yugabyte.yw.common.YbEncryptKeyManager;
 import com.yugabyte.yw.common.YbPgDbEncrypt;
-import io.ebean.config.ServerConfig;
+import io.ebean.config.DatabaseConfig;
 import io.ebean.event.ServerConfigStartup;
 import play.libs.Json;
 
@@ -22,7 +22,7 @@ import play.libs.Json;
  */
 public class PlatformEBeanServerConfigStartup implements ServerConfigStartup {
   @Override
-  public void onStart(ServerConfig serverConfig) {
+  public void onStart(DatabaseConfig serverConfig) {
     // Use same object mapper so that play.libs.Json and ebean's json serialization and
     // deserialization yields same results. Specifically FAIL_ON_UNKNOWN_PROPERTIES is
     // set to false by play.

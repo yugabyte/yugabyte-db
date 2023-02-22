@@ -110,7 +110,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
     ybcUpgrade.scheduleRunner();
     assertEquals(
         NEW_YBC_VERSION,
-        Universe.getOrBadRequest(defaultUniverse.universeUUID)
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
             .getUniverseDetails()
             .ybcSoftwareVersion);
   }
@@ -123,7 +123,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
     ybcUpgrade.scheduleRunner();
     assertEquals(
         oldYbcVersion,
-        Universe.getOrBadRequest(defaultUniverse.universeUUID)
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
             .getUniverseDetails()
             .ybcSoftwareVersion);
   }
@@ -158,11 +158,13 @@ public class YbcUpgradeTest extends FakeDBApplication {
         .scheduleRunner();
     Set<String> universeYbcVersions = new HashSet<>();
     universeYbcVersions.add(
-        Universe.getOrBadRequest(defaultUniverse.universeUUID)
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
             .getUniverseDetails()
             .ybcSoftwareVersion);
     universeYbcVersions.add(
-        Universe.getOrBadRequest(universe.universeUUID).getUniverseDetails().ybcSoftwareVersion);
+        Universe.getOrBadRequest(universe.getUniverseUUID())
+            .getUniverseDetails()
+            .ybcSoftwareVersion);
     Set<String> expectedUniversesYbcVersions = new HashSet<>();
     expectedUniversesYbcVersions.add(oldYbcVersion);
     expectedUniversesYbcVersions.add(NEW_YBC_VERSION);
@@ -201,11 +203,13 @@ public class YbcUpgradeTest extends FakeDBApplication {
         .scheduleRunner();
     Set<String> universeYbcVersions = new HashSet<>();
     universeYbcVersions.add(
-        Universe.getOrBadRequest(defaultUniverse.universeUUID)
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
             .getUniverseDetails()
             .ybcSoftwareVersion);
     universeYbcVersions.add(
-        Universe.getOrBadRequest(universe.universeUUID).getUniverseDetails().ybcSoftwareVersion);
+        Universe.getOrBadRequest(universe.getUniverseUUID())
+            .getUniverseDetails()
+            .ybcSoftwareVersion);
     Set<String> expectedUniversesYbcVersions = new HashSet<>();
     expectedUniversesYbcVersions.add(oldYbcVersion);
     expectedUniversesYbcVersions.add(NEW_YBC_VERSION);
@@ -243,12 +247,14 @@ public class YbcUpgradeTest extends FakeDBApplication {
         .scheduleRunner();
     assertEquals(
         NEW_YBC_VERSION,
-        Universe.getOrBadRequest(defaultUniverse.universeUUID)
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
             .getUniverseDetails()
             .ybcSoftwareVersion);
     assertEquals(
         NEW_YBC_VERSION,
-        Universe.getOrBadRequest(universe.universeUUID).getUniverseDetails().ybcSoftwareVersion);
+        Universe.getOrBadRequest(universe.getUniverseUUID())
+            .getUniverseDetails()
+            .ybcSoftwareVersion);
   }
 
   @Test
@@ -259,13 +265,13 @@ public class YbcUpgradeTest extends FakeDBApplication {
     ybcUpgrade.scheduleRunner();
     assertEquals(
         oldYbcVersion,
-        Universe.getOrBadRequest(defaultUniverse.universeUUID)
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
             .getUniverseDetails()
             .ybcSoftwareVersion);
     ybcUpgrade.scheduleRunner();
     assertEquals(
         oldYbcVersion,
-        Universe.getOrBadRequest(defaultUniverse.universeUUID)
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
             .getUniverseDetails()
             .ybcSoftwareVersion);
     UpgradeResponse resp =
@@ -280,7 +286,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
     ybcUpgrade.scheduleRunner();
     assertEquals(
         NEW_YBC_VERSION,
-        Universe.getOrBadRequest(defaultUniverse.universeUUID)
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
             .getUniverseDetails()
             .ybcSoftwareVersion);
   }
@@ -311,7 +317,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
     ybcUpgrade.scheduleRunner();
     assertEquals(
         oldYbcVersion,
-        Universe.getOrBadRequest(defaultUniverse.universeUUID)
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
             .getUniverseDetails()
             .ybcSoftwareVersion);
     when(mockYbcClient2.Upgrade(any())).thenReturn(resp);
@@ -324,7 +330,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
     ybcUpgrade.scheduleRunner();
     assertEquals(
         NEW_YBC_VERSION,
-        Universe.getOrBadRequest(defaultUniverse.universeUUID)
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
             .getUniverseDetails()
             .ybcSoftwareVersion);
   }
@@ -338,7 +344,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
     ybcUpgrade.scheduleRunner();
     assertEquals(
         oldYbcVersion,
-        Universe.getOrBadRequest(defaultUniverse.universeUUID)
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
             .getUniverseDetails()
             .ybcSoftwareVersion);
 
@@ -357,7 +363,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
     ybcUpgrade.scheduleRunner();
     assertEquals(
         NEW_YBC_VERSION,
-        Universe.getOrBadRequest(defaultUniverse.universeUUID)
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
             .getUniverseDetails()
             .ybcSoftwareVersion);
   }

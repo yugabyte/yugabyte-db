@@ -13,13 +13,13 @@ import lombok.Data;
 public class PriceComponentKey implements Serializable {
 
   // UUID for the provider that this PriceComponent belongs to
-  public UUID providerUuid;
+  UUID providerUuid;
 
   // Code for the region that this PriceComponent belongs to (e.g. "us-west-2")
-  public String regionCode;
+  String regionCode;
 
   // Code to identify this particular component (e.g. "m3.medium", "io1.size", etc.)
-  public String componentCode;
+  String componentCode;
 
   public static PriceComponentKey create(
       UUID providerUuid, String regionCode, String componentCode) {
@@ -32,6 +32,6 @@ public class PriceComponentKey implements Serializable {
 
   @Override
   public String toString() {
-    return providerUuid.toString() + "/" + regionCode + ":" + componentCode;
+    return providerUuid.toString() + "/" + regionCode + ":" + getComponentCode();
   }
 }

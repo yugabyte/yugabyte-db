@@ -36,6 +36,8 @@ import javax.persistence.Id;
 import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes;
 import org.yb.master.MasterDdlOuterClass;
@@ -43,6 +45,8 @@ import org.yb.master.MasterDdlOuterClass;
 @Slf4j
 @Entity
 @ApiModel(description = "xcluster config object")
+@Getter
+@Setter
 public class XClusterConfig extends Model {
 
   public static final BiMap<TableType, CommonTypes.TableType>
@@ -58,26 +62,26 @@ public class XClusterConfig extends Model {
 
   @Id
   @ApiModelProperty(value = "XCluster config UUID")
-  public UUID uuid;
+  private UUID uuid;
 
   @Column(name = "config_name")
   @ApiModelProperty(value = "XCluster config name")
-  public String name;
+  private String name;
 
   @ManyToOne
   @JoinColumn(name = "source_universe_uuid", referencedColumnName = "universe_uuid")
   @ApiModelProperty(value = "Source Universe UUID")
-  public UUID sourceUniverseUUID;
+  private UUID sourceUniverseUUID;
 
   @ManyToOne
   @JoinColumn(name = "target_universe_uuid", referencedColumnName = "universe_uuid")
   @ApiModelProperty(value = "Target Universe UUID")
-  public UUID targetUniverseUUID;
+  private UUID targetUniverseUUID;
 
   @ApiModelProperty(
       value = "Status",
       allowableValues = "Initialized, Running, Updating, DeletedUniverse, DeletionFailed, Failed")
-  public XClusterConfigStatusType status;
+  private XClusterConfigStatusType status;
 
   public enum XClusterConfigStatusType {
     Initialized("Initialized"),
@@ -113,27 +117,27 @@ public class XClusterConfig extends Model {
   }
 
   @ApiModelProperty(value = "tableType", allowableValues = "UNKNOWN, YSQL, YCQL")
-  public TableType tableType;
+  private TableType tableType;
 
   @ApiModelProperty(value = "Whether this xCluster replication config is paused")
-  public boolean paused;
+  private boolean paused;
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   @ApiModelProperty(
       value = "Create time of the xCluster config",
       example = "2022-04-26 15:37:32.610000")
-  public Date createTime;
+  private Date createTime;
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   @ApiModelProperty(
       value = "Last modify time of the xCluster config",
       example = "2022-04-26 15:37:32.610000")
-  public Date modifyTime;
+  private Date modifyTime;
 
   @OneToMany(mappedBy = "config", cascade = CascadeType.ALL, orphanRemoval = true)
   @ApiModelProperty(value = "Tables participating in this xCluster config")
   @JsonIgnore
-  public Set<XClusterTableConfig> tables;
+  private Set<XClusterTableConfig> tables;
 
   @ApiModelProperty(value = "Replication group name in DB")
   private String replicationGroupName;
@@ -142,39 +146,39 @@ public class XClusterConfig extends Model {
   public String toString() {
     return this.getReplicationGroupName()
         + "(uuid="
-        + this.uuid
+        + this.getUuid()
         + ",targetUuid="
-        + this.targetUniverseUUID
+        + this.getTargetUniverseUUID()
         + ",status="
-        + this.status
+        + this.getStatus()
         + ",paused="
-        + this.paused
+        + this.isPaused()
         + ",tableType="
-        + this.tableType
+        + this.getTableType()
         + ")";
   }
 
   public Optional<XClusterTableConfig> maybeGetTableById(String tableId) {
     // There will be at most one tableConfig for a tableId within each xCluster config.
-    return this.tables
+    return this.getTables()
         .stream()
-        .filter(tableConfig -> tableConfig.tableId.equals(tableId))
+        .filter(tableConfig -> tableConfig.getTableId().equals(tableId))
         .findAny();
   }
 
   @JsonIgnore
   public CommonTypes.TableType getTableTypeAsCommonType() {
-    if (tableType.equals(TableType.UNKNOWN)) {
+    if (getTableType().equals(TableType.UNKNOWN)) {
       throw new RuntimeException(
           "Table type is UNKNOWN, and cannot be mapped to CommonTypes.TableType");
     }
-    return XClusterConfigTableTypeCommonTypesTableTypeBiMap.get(tableType);
+    return XClusterConfigTableTypeCommonTypesTableTypeBiMap.get(getTableType());
   }
 
   @JsonIgnore
-  public CommonTypes.TableType setTableType(
+  public CommonTypes.TableType updateTableType(
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
-    if (!this.tableType.equals(TableType.UNKNOWN)) {
+    if (!this.getTableType().equals(TableType.UNKNOWN)) {
       log.info("tableType for {} is already set; skip setting it", this);
       return getTableTypeAsCommonType();
     }
@@ -201,8 +205,8 @@ public class XClusterConfig extends Model {
               "Only %s supported as CommonTypes.TableType for xCluster replication; got %s",
               XClusterConfigTableTypeCommonTypesTableTypeBiMap.values(), typeAsCommonType));
     }
-    this.tableType =
-        XClusterConfigTableTypeCommonTypesTableTypeBiMap.inverse().get(typeAsCommonType);
+    this.setTableType(
+        XClusterConfigTableTypeCommonTypesTableTypeBiMap.inverse().get(typeAsCommonType));
     update();
     return typeAsCommonType;
   }
@@ -219,10 +223,11 @@ public class XClusterConfig extends Model {
 
   public Set<XClusterTableConfig> getTablesById(Set<String> tableIds) {
     Map<String, XClusterTableConfig> tableConfigMap =
-        this.tables
+        this.getTables()
             .stream()
             .collect(
-                Collectors.toMap(tableConfig -> tableConfig.tableId, tableConfig -> tableConfig));
+                Collectors.toMap(
+                    tableConfig -> tableConfig.getTableId(), tableConfig -> tableConfig));
     Set<XClusterTableConfig> tableConfigs = new HashSet<>();
     tableIds.forEach(
         tableId -> {
@@ -238,26 +243,28 @@ public class XClusterConfig extends Model {
   }
 
   public Set<XClusterTableConfig> getTableDetails() {
-    return this.tables;
+    return this.getTables();
   }
 
   @JsonProperty
-  public Set<String> getTables() {
-    return this.tables.stream().map(table -> table.tableId).collect(Collectors.toSet());
+  public Set<String> getTableIds() {
+    return this.getTables().stream().map(table -> table.getTableId()).collect(Collectors.toSet());
   }
 
   @JsonIgnore
   public Set<String> getTableIdsWithReplicationSetup(Set<String> tableIds, boolean done) {
-    return this.tables
+    return this.getTables()
         .stream()
-        .filter(table -> tableIds.contains(table.tableId) && table.replicationSetupDone == done)
-        .map(table -> table.tableId)
+        .filter(
+            table ->
+                tableIds.contains(table.getTableId()) && table.isReplicationSetupDone() == done)
+        .map(table -> table.getTableId())
         .collect(Collectors.toSet());
   }
 
   @JsonIgnore
   public Set<String> getTableIdsWithReplicationSetup(boolean done) {
-    return getTableIdsWithReplicationSetup(getTables(), done);
+    return getTableIdsWithReplicationSetup(getTableIds(), done);
   }
 
   @JsonIgnore
@@ -272,12 +279,12 @@ public class XClusterConfig extends Model {
           "Both includeMainTables and includeIndexTables cannot be false");
     }
     if (includeMainTables && includeIndexTables) {
-      return this.getTables();
+      return this.getTableIds();
     }
-    return this.tables
+    return this.getTables()
         .stream()
-        .filter(table -> table.indexTable == includeIndexTables)
-        .map(table -> table.tableId)
+        .filter(table -> table.isIndexTable() == includeIndexTables)
+        .map(table -> table.getTableId())
         .collect(Collectors.toSet());
   }
 
@@ -286,18 +293,18 @@ public class XClusterConfig extends Model {
     return getTableIds(true /* includeMainTables */, false /* includeIndexTables */);
   }
 
-  public void setTables(Set<String> tableIds) {
-    setTables(tableIds, null /* tableIdsNeedBootstrap */);
+  public void setTablesByIds(Set<String> tableIds) {
+    setTablesByIds(tableIds, null /* tableIdsNeedBootstrap */);
   }
 
   @Transactional
-  public void setTables(Set<String> tableIds, Set<String> tableIdsNeedBootstrap) {
-    this.tables = new HashSet<>();
-    addTables(tableIds, tableIdsNeedBootstrap);
+  public void setTablesByIds(Set<String> tableIds, Set<String> tableIdsNeedBootstrap) {
+    this.setTables(new HashSet<>());
+    addTablesByIds(tableIds, tableIdsNeedBootstrap);
   }
 
   @Transactional
-  public void addTables(Set<String> tableIds, Set<String> tableIdsNeedBootstrap) {
+  public void addTablesByIds(Set<String> tableIds, Set<String> tableIdsNeedBootstrap) {
     if (tableIds == null) {
       throw new IllegalArgumentException("tableIds cannot be null");
     }
@@ -309,14 +316,14 @@ public class XClusterConfig extends Model {
               tableIdsNeedBootstrap, tableIds);
       throw new IllegalArgumentException(errMsg);
     }
-    if (this.tables == null) {
-      this.tables = new HashSet<>();
+    if (this.getTables() == null) {
+      this.setTables(new HashSet<>());
     }
     tableIds.forEach(
         tableId -> {
           XClusterTableConfig tableConfig = new XClusterTableConfig(this, tableId);
           if (tableIdsNeedBootstrap != null && tableIdsNeedBootstrap.contains(tableId)) {
-            tableConfig.needBootstrap = true;
+            tableConfig.setNeedBootstrap(true);
           }
           addTableConfig(tableConfig);
         });
@@ -332,7 +339,7 @@ public class XClusterConfig extends Model {
     Set<String> nonExistingTableIds =
         tableIds
             .stream()
-            .filter(tableId -> !this.getTables().contains(tableId))
+            .filter(tableId -> !this.getTableIds().contains(tableId))
             .collect(Collectors.toSet());
     Set<String> nonExistingTableIdsNeedBootstrap = null;
     if (tableIdsNeedBootstrap != null) {
@@ -342,7 +349,7 @@ public class XClusterConfig extends Model {
               .filter(nonExistingTableIds::contains)
               .collect(Collectors.toSet());
     }
-    addTables(nonExistingTableIds, nonExistingTableIdsNeedBootstrap);
+    addTablesByIds(nonExistingTableIds, nonExistingTableIdsNeedBootstrap);
     if (areIndexTables) {
       this.setIndexTableForTables(tableIds, true /* indexTable */);
     }
@@ -363,19 +370,19 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
-  public void addTables(Set<String> tableIds) {
-    addTables(tableIds, null /* tableIdsNeedBootstrap */);
+  public void addTablesByIds(Set<String> tableIds) {
+    addTablesByIds(tableIds, null /* tableIdsNeedBootstrap */);
   }
 
   @Transactional
-  public void addTables(Map<String, String> tableIdsStreamIdsMap) {
-    if (this.tables == null) {
-      this.tables = new HashSet<>();
+  public void addTablesByIds(Map<String, String> tableIdsStreamIdsMap) {
+    if (this.getTables() == null) {
+      this.setTables(new HashSet<>());
     }
     tableIdsStreamIdsMap.forEach(
         (tableId, streamId) -> {
           XClusterTableConfig tableConfig = new XClusterTableConfig(this, tableId);
-          tableConfig.streamId = streamId;
+          tableConfig.setStreamId(streamId);
           addTableConfig(tableConfig);
         });
     update();
@@ -383,10 +390,10 @@ public class XClusterConfig extends Model {
 
   @JsonIgnore
   public Set<String> getStreamIdsWithReplicationSetup() {
-    return this.tables
+    return this.getTables()
         .stream()
-        .filter(table -> table.replicationSetupDone)
-        .map(table -> table.streamId)
+        .filter(table -> table.isReplicationSetupDone())
+        .map(table -> table.getStreamId())
         .collect(Collectors.toSet());
   }
 
@@ -395,7 +402,7 @@ public class XClusterConfig extends Model {
     Set<XClusterTableConfig> tableConfigs = getTablesById(tableIds);
     Map<String, String> tableIdStreamIdMap = new HashMap<>();
     tableConfigs.forEach(
-        tableConfig -> tableIdStreamIdMap.put(tableConfig.tableId, tableConfig.streamId));
+        tableConfig -> tableIdStreamIdMap.put(tableConfig.getTableId(), tableConfig.getStreamId()));
     return tableIdStreamIdMap;
   }
 
@@ -409,18 +416,19 @@ public class XClusterConfig extends Model {
     for (String tableId : tableIds) {
       Optional<XClusterTableConfig> tableConfig = maybeGetTableById(tableId);
       if (tableConfig.isPresent()) {
-        tableConfig.get().replicationSetupDone = replicationSetupDone;
+        tableConfig.get().setReplicationSetupDone(replicationSetupDone);
       } else {
         String errMsg =
             String.format(
-                "Could not find tableId (%s) in the xCluster config with uuid (%s)", tableId, uuid);
+                "Could not find tableId (%s) in the xCluster config with uuid (%s)",
+                tableId, getUuid());
         throw new RuntimeException(errMsg);
       }
     }
     log.info(
         "Replication for tables {} in xCluster config {} is set to {}",
         tableIds,
-        name,
+        getName(),
         replicationSetupDone);
     update();
   }
@@ -431,14 +439,16 @@ public class XClusterConfig extends Model {
 
   @Transactional
   public void removeTables(Set<String> tableIds) {
-    if (this.tables == null) {
-      log.debug("No tables is set for xCluster config {}", this.uuid);
+    if (this.getTables() == null) {
+      log.debug("No tables is set for xCluster config {}", this.getUuid());
       return;
     }
     for (String tableId : tableIds) {
-      if (!this.tables.removeIf(tableConfig -> tableConfig.tableId.equals(tableId))) {
+      if (!this.getTables().removeIf(tableConfig -> tableConfig.getTableId().equals(tableId))) {
         log.debug(
-            "Table with id {} was not found to delete in xCluster config {}", tableId, this.uuid);
+            "Table with id {} was not found to delete in xCluster config {}",
+            tableId,
+            this.getUuid());
       }
     }
     update();
@@ -447,33 +457,33 @@ public class XClusterConfig extends Model {
   @Transactional
   public void setBackupForTables(Set<String> tableIds, Backup backup) {
     ensureTableIdsExist(tableIds);
-    this.tables
+    this.getTables()
         .stream()
-        .filter(tableConfig -> tableIds.contains(tableConfig.tableId))
-        .forEach(tableConfig -> tableConfig.backup = backup);
+        .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
+        .forEach(tableConfig -> tableConfig.setBackup(backup));
     update();
   }
 
   @Transactional
   public void setRestoreForTables(Set<String> tableIds, Restore restore) {
     ensureTableIdsExist(tableIds);
-    this.tables
+    this.getTables()
         .stream()
-        .filter(tableConfig -> tableIds.contains(tableConfig.tableId))
-        .forEach(tableConfig -> tableConfig.restore = restore);
+        .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
+        .forEach(tableConfig -> tableConfig.setRestore(restore));
     update();
   }
 
   @Transactional
   public void setRestoreTimeForTables(Set<String> tableIds, Date restoreTime, UUID taskUUID) {
     ensureTableIdsExist(tableIds);
-    this.tables
+    this.getTables()
         .stream()
-        .filter(tableConfig -> tableIds.contains(tableConfig.tableId))
+        .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
         .forEach(
             tableConfig -> {
-              tableConfig.restoreTime = restoreTime;
-              tableConfig.restore.update(taskUUID, Restore.State.Completed);
+              tableConfig.setRestoreTime(restoreTime);
+              tableConfig.getRestore().update(taskUUID, Restore.State.Completed);
             });
     update();
   }
@@ -481,40 +491,40 @@ public class XClusterConfig extends Model {
   @Transactional
   public void setNeedBootstrapForTables(Collection<String> tableIds, boolean needBootstrap) {
     ensureTableIdsExist(tableIds);
-    this.tables
+    this.getTables()
         .stream()
-        .filter(tableConfig -> tableIds.contains(tableConfig.tableId))
-        .forEach(tableConfig -> tableConfig.needBootstrap = needBootstrap);
+        .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
+        .forEach(tableConfig -> tableConfig.setNeedBootstrap(needBootstrap));
     update();
   }
 
   @Transactional
   public void setIndexTableForTables(Collection<String> tableIds, boolean indexTable) {
     ensureTableIdsExist(tableIds);
-    this.tables
+    this.getTables()
         .stream()
-        .filter(tableConfig -> tableIds.contains(tableConfig.tableId))
-        .forEach(tableConfig -> tableConfig.indexTable = indexTable);
+        .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
+        .forEach(tableConfig -> tableConfig.setIndexTable(indexTable));
     update();
   }
 
   @Transactional
   public void setBootstrapCreateTimeForTables(Collection<String> tableIds, Date moment) {
     ensureTableIdsExist(new HashSet<>(tableIds));
-    this.tables
+    this.getTables()
         .stream()
-        .filter(tableConfig -> tableIds.contains(tableConfig.tableId))
-        .forEach(tableConfig -> tableConfig.bootstrapCreateTime = moment);
+        .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
+        .forEach(tableConfig -> tableConfig.setBootstrapCreateTime(moment));
     update();
   }
 
   @Transactional
   public void setStatusForTables(Collection<String> tableIds, XClusterTableConfig.Status status) {
     ensureTableIdsExist(new HashSet<>(tableIds));
-    this.tables
+    this.getTables()
         .stream()
-        .filter(tableConfig -> tableIds.contains(tableConfig.tableId))
-        .forEach(tableConfig -> tableConfig.status = status);
+        .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
+        .forEach(tableConfig -> tableConfig.setStatus(status));
     update();
   }
 
@@ -528,12 +538,13 @@ public class XClusterConfig extends Model {
   public Set<String> getTableIdsInStatus(
       Collection<String> tableIds, Collection<XClusterTableConfig.Status> statuses) {
     ensureTableIdsExist(new HashSet<>(tableIds));
-    return this.tables
+    return this.getTables()
         .stream()
         .filter(
             tableConfig ->
-                tableIds.contains(tableConfig.tableId) && statuses.contains(tableConfig.status))
-        .map(tableConfig -> tableConfig.tableId)
+                tableIds.contains(tableConfig.getTableId())
+                    && statuses.contains(tableConfig.getStatus()))
+        .map(tableConfig -> tableConfig.getTableId())
         .collect(Collectors.toSet());
   }
 
@@ -547,37 +558,41 @@ public class XClusterConfig extends Model {
 
   @JsonIgnore
   public void setReplicationGroupName() {
-    setReplicationGroupName(this.sourceUniverseUUID, this.name);
+    setReplicationGroupName(this.getSourceUniverseUUID(), this.getName());
   }
 
   public void setReplicationGroupName(
       @JsonProperty("sourceUniverseUUID") UUID sourceUniverseUUID,
       @JsonProperty("name") String configName) {
-    replicationGroupName = getReplicationGroupName(sourceUniverseUUID, configName);
+    setReplicationGroupName(getReplicationGroupName(sourceUniverseUUID, configName));
   }
 
   public void setStatus(XClusterConfigStatusType status) {
+    this.status = status;
+  }
+
+  public void updateStatus(XClusterConfigStatusType status) {
     this.status = status;
     update();
   }
 
   public void enable() {
-    if (!paused) {
+    if (!isPaused()) {
       log.info("xCluster config {} is already enabled", this);
     }
-    paused = false;
+    setPaused(false);
     update();
   }
 
   public void disable() {
-    if (paused) {
+    if (isPaused()) {
       log.info("xCluster config {} is already disabled", this);
     }
-    paused = true;
+    setPaused(true);
     update();
   }
 
-  public void setPaused(boolean paused) {
+  public void updatePaused(boolean paused) {
     if (paused) {
       disable();
     } else {
@@ -586,9 +601,9 @@ public class XClusterConfig extends Model {
   }
 
   public void reset() {
-    this.status = XClusterConfigStatusType.Initialized;
-    this.paused = false;
-    this.tables.forEach(tableConfig -> tableConfig.restoreTime = null);
+    this.setStatus(XClusterConfigStatusType.Initialized);
+    this.setPaused(false);
+    this.getTables().forEach(tableConfig -> tableConfig.setRestoreTime(null));
     this.update();
   }
 
@@ -599,15 +614,15 @@ public class XClusterConfig extends Model {
       UUID targetUniverseUUID,
       XClusterConfigStatusType status) {
     XClusterConfig xClusterConfig = new XClusterConfig();
-    xClusterConfig.uuid = UUID.randomUUID();
-    xClusterConfig.name = name;
-    xClusterConfig.sourceUniverseUUID = sourceUniverseUUID;
-    xClusterConfig.targetUniverseUUID = targetUniverseUUID;
-    xClusterConfig.status = status;
-    xClusterConfig.paused = false;
-    xClusterConfig.createTime = new Date();
-    xClusterConfig.modifyTime = new Date();
-    xClusterConfig.tableType = TableType.UNKNOWN;
+    xClusterConfig.setUuid(UUID.randomUUID());
+    xClusterConfig.setName(name);
+    xClusterConfig.setSourceUniverseUUID(sourceUniverseUUID);
+    xClusterConfig.setTargetUniverseUUID(targetUniverseUUID);
+    xClusterConfig.setStatus(status);
+    xClusterConfig.setPaused(false);
+    xClusterConfig.setCreateTime(new Date());
+    xClusterConfig.setModifyTime(new Date());
+    xClusterConfig.setTableType(TableType.UNKNOWN);
     xClusterConfig.setReplicationGroupName();
     xClusterConfig.save();
     return xClusterConfig;
@@ -628,9 +643,9 @@ public class XClusterConfig extends Model {
             createFormData.sourceUniverseUUID,
             createFormData.targetUniverseUUID);
     if (createFormData.bootstrapParams != null) {
-      xClusterConfig.setTables(createFormData.tables, createFormData.bootstrapParams.tables);
+      xClusterConfig.setTablesByIds(createFormData.tables, createFormData.bootstrapParams.tables);
     } else {
-      xClusterConfig.setTables(createFormData.tables);
+      xClusterConfig.setTablesByIds(createFormData.tables);
     }
     return xClusterConfig;
   }
@@ -641,7 +656,7 @@ public class XClusterConfig extends Model {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
       Set<String> indexTableIdSet) {
     XClusterConfig xClusterConfig = create(createFormData);
-    xClusterConfig.setTableType(requestedTableInfoList);
+    xClusterConfig.updateTableType(requestedTableInfoList);
     xClusterConfig.setIndexTableForTables(indexTableIdSet, true /* indexTable */);
     return xClusterConfig;
   }
@@ -651,7 +666,7 @@ public class XClusterConfig extends Model {
   public static XClusterConfig create(
       XClusterConfigCreateFormData createFormData, XClusterConfigStatusType status) {
     XClusterConfig xClusterConfig = create(createFormData);
-    xClusterConfig.setStatus(status);
+    xClusterConfig.updateStatus(status);
     if (status == XClusterConfigStatusType.Running) {
       xClusterConfig.setReplicationSetupDone(createFormData.tables);
     }
@@ -660,7 +675,7 @@ public class XClusterConfig extends Model {
 
   @Override
   public void update() {
-    this.modifyTime = new Date();
+    this.setModifyTime(new Date());
     super.update();
   }
 
@@ -736,24 +751,24 @@ public class XClusterConfig extends Model {
   private static void checkXClusterConfigInCustomer(
       XClusterConfig xClusterConfig, Customer customer) {
     Set<UUID> customerUniverseUUIDs = customer.getUniverseUUIDs();
-    if ((xClusterConfig.sourceUniverseUUID != null
-            && !customerUniverseUUIDs.contains(xClusterConfig.sourceUniverseUUID))
-        || (xClusterConfig.targetUniverseUUID != null
-            && !customerUniverseUUIDs.contains(xClusterConfig.targetUniverseUUID))) {
+    if ((xClusterConfig.getSourceUniverseUUID() != null
+            && !customerUniverseUUIDs.contains(xClusterConfig.getSourceUniverseUUID()))
+        || (xClusterConfig.getTargetUniverseUUID() != null
+            && !customerUniverseUUIDs.contains(xClusterConfig.getTargetUniverseUUID()))) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
               "XClusterConfig %s doesn't belong to Customer %s",
-              xClusterConfig.uuid, customer.uuid));
+              xClusterConfig.getUuid(), customer.getUuid()));
     }
   }
 
   private void addTableConfig(XClusterTableConfig tableConfig) {
-    if (!this.tables.add(tableConfig)) {
+    if (!this.getTables().add(tableConfig)) {
       log.debug(
           "Table with id {} already exists in xCluster config ({})",
-          tableConfig.tableId,
-          this.uuid);
+          tableConfig.getTableId(),
+          this.getUuid());
     }
   }
 
@@ -761,14 +776,14 @@ public class XClusterConfig extends Model {
     if (tableIds.isEmpty()) {
       return;
     }
-    Set<String> tableIdsInXClusterConfig = getTables();
+    Set<String> tableIdsInXClusterConfig = getTableIds();
     tableIds.forEach(
         tableId -> {
           if (!tableIdsInXClusterConfig.contains(tableId)) {
             throw new RuntimeException(
                 String.format(
                     "Could not find tableId (%s) in the xCluster config with uuid (%s)",
-                    tableId, this.uuid));
+                    tableId, this.getUuid()));
           }
         });
   }

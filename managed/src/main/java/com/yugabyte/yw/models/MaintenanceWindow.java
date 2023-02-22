@@ -29,7 +29,6 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
 import java.util.UUID;
-import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
@@ -79,41 +78,34 @@ public class MaintenanceWindow extends Model {
   }
 
   @Id
-  @Column(nullable = false, unique = true)
   @ApiModelProperty(value = "Maintenance window UUID", accessMode = READ_ONLY)
   private UUID uuid;
 
   @NotNull
-  @Column(nullable = false)
   @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   private UUID customerUUID;
 
   @NotNull
   @Size(min = 1, max = 1000)
-  @Column(columnDefinition = "Text", nullable = false)
   @ApiModelProperty(value = "Name", accessMode = READ_WRITE)
   private String name;
 
   @NotNull
   @Size(min = 1)
-  @Column(columnDefinition = "Text")
   @ApiModelProperty(value = "Description", accessMode = READ_WRITE)
   private String description;
 
   @NotNull
-  @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   @ApiModelProperty(value = "Creation time", accessMode = READ_ONLY)
   private Date createTime;
 
   @NotNull
-  @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   @ApiModelProperty(value = "Start time", accessMode = READ_WRITE)
   private Date startTime;
 
   @NotNull
-  @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   @ApiModelProperty(value = "End time", accessMode = READ_WRITE)
   private Date endTime;
@@ -142,13 +134,10 @@ public class MaintenanceWindow extends Model {
 
   @NotNull
   @DbJson
-  @Column(nullable = false)
   @ApiModelProperty(value = "Alert configuration filter", accessMode = READ_WRITE)
   private AlertConfigurationApiFilter alertConfigurationFilter;
 
-  @Column(nullable = false)
-  @JsonIgnore
-  private boolean appliedToAlertConfigurations = false;
+  @JsonIgnore private boolean appliedToAlertConfigurations = false;
 
   private static final Finder<UUID, MaintenanceWindow> find =
       new Finder<UUID, MaintenanceWindow>(MaintenanceWindow.class) {};

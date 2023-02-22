@@ -29,7 +29,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 import javax.persistence.FetchType;
@@ -45,6 +44,8 @@ import play.libs.Json;
 
 @ApiModel(description = "Information about an instance")
 @Entity
+@Getter
+@Setter
 public class InstanceType extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(InstanceType.class);
 
@@ -79,26 +80,23 @@ public class InstanceType extends Model {
 
   @ApiModelProperty(value = "True if the instance is active", accessMode = READ_ONLY)
   @Constraints.Required
-  @Column(nullable = false, columnDefinition = "boolean default true")
   @Getter
   @Setter
   private boolean active = true;
 
   @ApiModelProperty(value = "The instance's number of CPU cores", accessMode = READ_WRITE)
   @Constraints.Required
-  @Column(nullable = false, columnDefinition = "float")
-  public Double numCores;
+  private Double numCores;
 
   @ApiModelProperty(value = "The instance's memory size, in gigabytes", accessMode = READ_WRITE)
   @Constraints.Required
-  @Column(nullable = false, columnDefinition = "float")
-  public Double memSizeGB;
+  private Double memSizeGB;
 
   @ApiModelProperty(
       value = "Extra details about the instance (as a JSON object)",
       accessMode = READ_WRITE)
   @DbJson
-  public InstanceTypeDetails instanceTypeDetails = new InstanceTypeDetails();
+  private InstanceTypeDetails instanceTypeDetails = new InstanceTypeDetails();
 
   @ApiModelProperty(value = "Instance type code", accessMode = READ_ONLY)
   public String getInstanceTypeCode() {
@@ -157,9 +155,9 @@ public class InstanceType extends Model {
       instanceType = new InstanceType();
       instanceType.idKey = InstanceTypeKey.create(instanceTypeCode, providerUuid);
     }
-    instanceType.memSizeGB = memSize;
-    instanceType.numCores = numCores;
-    instanceType.instanceTypeDetails = instanceTypeDetails;
+    instanceType.setMemSizeGB(memSize);
+    instanceType.setNumCores(numCores);
+    instanceType.setInstanceTypeDetails(instanceTypeDetails);
     // Update the in-memory fields.
     instanceType.save();
 
@@ -224,14 +222,16 @@ public class InstanceType extends Model {
                     configHelper.getAWSInstancePrefixesSupported(), allowUnsupported))
             .collect(Collectors.toList());
     for (InstanceType instanceType : entries) {
-      if (instanceType.instanceTypeDetails == null) {
-        instanceType.instanceTypeDetails = new InstanceTypeDetails();
+      if (instanceType.getInstanceTypeDetails() == null) {
+        instanceType.setInstanceTypeDetails(new InstanceTypeDetails());
       }
-      if (instanceType.instanceTypeDetails.volumeDetailsList.isEmpty()) {
-        instanceType.instanceTypeDetails.setVolumeDetailsList(
-            config.getInt(YB_AWS_DEFAULT_VOLUME_COUNT_KEY),
-            config.getInt(YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY),
-            VolumeType.EBS);
+      if (instanceType.getInstanceTypeDetails().volumeDetailsList.isEmpty()) {
+        instanceType
+            .getInstanceTypeDetails()
+            .setVolumeDetailsList(
+                config.getInt(YB_AWS_DEFAULT_VOLUME_COUNT_KEY),
+                config.getInt(YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY),
+                VolumeType.EBS);
       }
     }
     return entries;
@@ -250,10 +250,10 @@ public class InstanceType extends Model {
         InstanceType.find
             .query()
             .where()
-            .eq("provider_uuid", provider.uuid)
+            .eq("provider_uuid", provider.getUuid())
             .eq("active", true)
             .findList();
-    if (provider.code.equals("aws")) {
+    if (provider.getCode().equals("aws")) {
       return populateDefaultsIfEmpty(entries, config, configHelper, allowUnsupported);
     } else {
       return entries;

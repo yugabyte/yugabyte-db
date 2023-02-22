@@ -188,9 +188,9 @@ public class GFlagsUtil {
       boolean useHostname,
       Config config) {
     Map<String, String> extra_gflags = new TreeMap<>();
-    extra_gflags.put(PLACEMENT_CLOUD, taskParam.getProvider().code);
-    extra_gflags.put(PLACEMENT_REGION, taskParam.getRegion().code);
-    extra_gflags.put(PLACEMENT_ZONE, taskParam.getAZ().code);
+    extra_gflags.put(PLACEMENT_CLOUD, taskParam.getProvider().getCode());
+    extra_gflags.put(PLACEMENT_REGION, taskParam.getRegion().getCode());
+    extra_gflags.put(PLACEMENT_ZONE, taskParam.getAZ().getCode());
     extra_gflags.put(MAX_LOG_SIZE, "256");
     extra_gflags.put(UNDEFOK, ENABLE_YSQL);
     extra_gflags.put(METRIC_NODE_NAME, taskParam.nodeName);

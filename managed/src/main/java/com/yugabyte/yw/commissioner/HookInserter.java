@@ -50,19 +50,19 @@ public class HookInserter {
       // Create the hook script to run
       SubTaskGroup subTaskGroup =
           task.createSubTaskGroup(
-              "Hook-" + task.userTaskUUID + "-" + hook.name, SubTaskGroupType.RunningHooks);
+              "Hook-" + task.userTaskUUID + "-" + hook.getName(), SubTaskGroupType.RunningHooks);
       for (NodeDetails node : targetNodes) {
         RunHooks.Params taskParams = new RunHooks.Params();
         taskParams.creatingUser = universeParams.creatingUser;
         taskParams.hook = hook;
-        taskParams.hookPath = HOOK_ROOT_PATH + "/" + node.nodeUuid + "-" + hook.name;
+        taskParams.hookPath = HOOK_ROOT_PATH + "/" + node.nodeUuid + "-" + hook.getName();
         taskParams.trigger = trigger;
         taskParams.nodeName = node.nodeName;
         taskParams.nodeUuid = node.nodeUuid;
         taskParams.azUuid = node.azUuid;
         taskParams.universeUUID = universeParams.universeUUID;
         taskParams.parentTask = task.getClass().getSimpleName();
-        RunHooks runHooks = AbstractTaskBase.createTask(RunHooks.class);
+        RunHooks runHooks = task.createTask(RunHooks.class);
         runHooks.initialize(taskParams);
         subTaskGroup.addSubTask(runHooks);
       }
@@ -82,7 +82,7 @@ public class HookInserter {
         new ArrayList<Pair<Hook, Collection<NodeDetails>>>();
     UUID universeUUID = universeParams.universeUUID;
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    UUID customerUUID = Customer.get(universe.customerId).uuid;
+    UUID customerUUID = Customer.get(universe.getCustomerId()).getUuid();
 
     // Get global hooks
     HookScope globalScope = HookScope.getByTriggerScopeId(customerUUID, trigger, null, null, null);
@@ -130,7 +130,7 @@ public class HookInserter {
     Collections.sort(
         executionPlan,
         (a, b) -> {
-          return comparator.compare(a.getFirst().name, b.getFirst().name);
+          return comparator.compare(a.getFirst().getName(), b.getFirst().getName());
         });
 
     return executionPlan;
@@ -143,8 +143,8 @@ public class HookInserter {
       boolean isSudoEnabled) {
     if (hookScope == null) return;
     for (Hook hook : hookScope.getHooks()) {
-      if (!isSudoEnabled && hook.useSudo) {
-        log.debug("Sudo execution is not enabled, ignoring {}", hook.name);
+      if (!isSudoEnabled && hook.isUseSudo()) {
+        log.debug("Sudo execution is not enabled, ignoring {}", hook.getName());
         continue;
       }
       executionPlan.add(new Pair<Hook, Collection<NodeDetails>>(hook, nodes));

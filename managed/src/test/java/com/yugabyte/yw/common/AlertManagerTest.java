@@ -125,7 +125,8 @@ public class AlertManagerTest extends FakeDBApplication {
             channelsManager,
             metricService);
 
-    defaultDestination = alertDestinationService.createDefaultDestination(defaultCustomer.uuid);
+    defaultDestination =
+        alertDestinationService.createDefaultDestination(defaultCustomer.getUuid());
     defaultChannel = defaultDestination.getChannelsList().get(0);
     when(emailHelper.getDestinations(defaultCustomer.getUuid()))
         .thenReturn(Collections.singletonList(DEFAULT_EMAIL));
@@ -232,7 +233,9 @@ public class AlertManagerTest extends FakeDBApplication {
         ModelFactory.createEmailChannel(defaultCustomer.getUuid(), "AlertChannel 2");
     AlertDestination destination =
         ModelFactory.createAlertDestination(
-            defaultCustomer.uuid, ALERT_DESTINATION_NAME, ImmutableList.of(channel1, channel2));
+            defaultCustomer.getUuid(),
+            ALERT_DESTINATION_NAME,
+            ImmutableList.of(channel1, channel2));
     configuration.setDestinationUUID(destination.getUuid());
     configuration.save();
 
@@ -385,7 +388,7 @@ public class AlertManagerTest extends FakeDBApplication {
         ModelFactory.createEmailChannel(defaultCustomer.getUuid(), "AlertChannel 1");
     AlertDestination destination =
         ModelFactory.createAlertDestination(
-            defaultCustomer.uuid, ALERT_DESTINATION_NAME, ImmutableList.of(channel));
+            defaultCustomer.getUuid(), ALERT_DESTINATION_NAME, ImmutableList.of(channel));
     configuration.setDestinationUUID(destination.getUuid());
     configuration.save();
 

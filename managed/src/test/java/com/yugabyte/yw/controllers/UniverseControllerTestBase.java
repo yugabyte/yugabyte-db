@@ -69,9 +69,9 @@ import org.junit.Rule;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
-import org.pac4j.play.store.PlaySessionStore;
 import org.yb.client.YBClient;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -85,7 +85,6 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
 
   @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
   @Mock RuntimeConfGetter mockConfGetter;
-  @Mock protected play.Configuration mockAppConfig;
 
   private HealthChecker healthChecker;
   protected Customer customer;
@@ -149,8 +148,8 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
         .overrides(bind(YcqlQueryExecutor.class).toInstance(mockYcqlQueryExecutor))
         .overrides(bind(ShellProcessHandler.class).toInstance(mockShellProcessHandler))
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
-        .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
-        .overrides(bind(play.Configuration.class).toInstance(mockAppConfig))
+        .overrides(bind(SessionStore.class).toInstance(mockSessionStore))
+        .overrides(bind(Config.class).toInstance(mockRuntimeConfig))
         .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .overrides(
             bind(RuntimeConfigFactory.class)
@@ -173,35 +172,35 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
       // Get existing PlacementInfo Cloud or set up a new one.
       Provider currentProvider = currentAz.getProvider();
       PlacementInfo.PlacementCloud cloudItem =
-          placementCloudMap.getOrDefault(currentProvider.uuid, null);
+          placementCloudMap.getOrDefault(currentProvider.getUuid(), null);
       if (cloudItem == null) {
         cloudItem = new PlacementInfo.PlacementCloud();
-        cloudItem.uuid = currentProvider.uuid;
-        cloudItem.code = currentProvider.code;
+        cloudItem.uuid = currentProvider.getUuid();
+        cloudItem.code = currentProvider.getCode();
         cloudItem.regionList = new ArrayList<>();
-        placementCloudMap.put(currentProvider.uuid, cloudItem);
+        placementCloudMap.put(currentProvider.getUuid(), cloudItem);
       }
 
       // Get existing PlacementInfo Region or set up a new one.
-      Region currentRegion = currentAz.region;
+      Region currentRegion = currentAz.getRegion();
       PlacementInfo.PlacementRegion regionItem =
-          placementRegionMap.getOrDefault(currentRegion.uuid, null);
+          placementRegionMap.getOrDefault(currentRegion.getUuid(), null);
       if (regionItem == null) {
         regionItem = new PlacementInfo.PlacementRegion();
-        regionItem.uuid = currentRegion.uuid;
-        regionItem.name = currentRegion.name;
-        regionItem.code = currentRegion.code;
+        regionItem.uuid = currentRegion.getUuid();
+        regionItem.name = currentRegion.getName();
+        regionItem.code = currentRegion.getCode();
         regionItem.azList = new ArrayList<>();
         cloudItem.regionList.add(regionItem);
-        placementRegionMap.put(currentRegion.uuid, regionItem);
+        placementRegionMap.put(currentRegion.getUuid(), regionItem);
       }
 
       // Get existing PlacementInfo AZ or set up a new one.
       PlacementInfo.PlacementAZ azItem = new PlacementInfo.PlacementAZ();
-      azItem.name = currentAz.name;
-      azItem.subnet = currentAz.subnet;
+      azItem.name = currentAz.getName();
+      azItem.subnet = currentAz.getSubnet();
       azItem.replicationFactor = 1;
-      azItem.uuid = currentAz.uuid;
+      azItem.uuid = currentAz.getUuid();
       azItem.numNodesInAZ = azToNumNodesMap.get(azUUID);
       regionItem.azList.add(azItem);
     }
@@ -228,12 +227,9 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
             .put("name", "some config name")
             .put("base_url", "some_base_url")
             .put("api_key", "some_api_token");
-    kmsConfig = ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", kmsConfigReq);
+    kmsConfig = ModelFactory.createKMSConfig(customer.getUuid(), "SMARTKEY", kmsConfigReq);
     authToken = user.createAuthToken();
     runtimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
-
-    when(mockAppConfig.getString("yb.storage.path"))
-        .thenReturn("/tmp/" + this.getClass().getSimpleName());
 
     when(mockRuntimeConfig.getString("yb.storage.path"))
         .thenReturn("/tmp/" + this.getClass().getSimpleName());

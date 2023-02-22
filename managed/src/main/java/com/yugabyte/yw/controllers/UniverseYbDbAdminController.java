@@ -34,7 +34,7 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.UUID;
 import play.data.Form;
-import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -54,22 +54,21 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           required = true,
           dataType = "com.yugabyte.yw.forms.DatabaseSecurityFormData",
           paramType = "body"))
-  public Result setDatabaseCredentials(UUID customerUUID, UUID universeUUID) {
+  public Result setDatabaseCredentials(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     universeYbDbAdminHandler.setDatabaseCredentials(
         customer,
         universe,
-        formFactory.getFormDataOrBadRequest(DatabaseSecurityFormData.class).get());
+        formFactory.getFormDataOrBadRequest(request, DatabaseSecurityFormData.class).get());
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
-            Audit.ActionType.SetDBCredentials,
-            request().body().asJson());
+            Audit.ActionType.SetDBCredentials);
     return withMessage("Updated user in DB.");
   }
 
@@ -85,22 +84,21 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           required = true,
           dataType = "com.yugabyte.yw.forms.DatabaseUserDropFormData",
           paramType = "body"))
-  public Result dropUserInDB(UUID customerUUID, UUID universeUUID) {
+  public Result dropUserInDB(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     DatabaseUserDropFormData data =
-        formFactory.getFormDataOrBadRequest(DatabaseUserDropFormData.class).get();
+        formFactory.getFormDataOrBadRequest(request, DatabaseUserDropFormData.class).get();
 
     universeYbDbAdminHandler.dropUser(customer, universe, data);
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
-            Audit.ActionType.DropUserInDB,
-            Json.toJson(data));
+            Audit.ActionType.DropUserInDB);
     return withMessage("Deleted user in DB.");
   }
 
@@ -116,22 +114,22 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           required = true,
           dataType = "com.yugabyte.yw.forms.DatabaseUserFormData",
           paramType = "body"))
-  public Result createRestrictedUserInDB(UUID customerUUID, UUID universeUUID) {
+  public Result createRestrictedUserInDB(
+      UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     DatabaseUserFormData data =
-        formFactory.getFormDataOrBadRequest(DatabaseUserFormData.class).get();
+        formFactory.getFormDataOrBadRequest(request, DatabaseUserFormData.class).get();
 
     universeYbDbAdminHandler.createRestrictedUser(customer, universe, data);
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
-            Audit.ActionType.CreateRestrictedUserInDB,
-            Json.toJson(data));
+            Audit.ActionType.CreateRestrictedUserInDB);
     return withMessage("Created restricted user in DB.");
   }
 
@@ -146,22 +144,21 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           required = true,
           dataType = "com.yugabyte.yw.forms.DatabaseUserFormData",
           paramType = "body"))
-  public Result createUserInDB(UUID customerUUID, UUID universeUUID) {
+  public Result createUserInDB(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     DatabaseUserFormData data =
-        formFactory.getFormDataOrBadRequest(DatabaseUserFormData.class).get();
+        formFactory.getFormDataOrBadRequest(request, DatabaseUserFormData.class).get();
 
     universeYbDbAdminHandler.createUserInDB(customer, universe, data);
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
-            Audit.ActionType.CreateUserInDB,
-            Json.toJson(data));
+            Audit.ActionType.CreateUserInDB);
     return withMessage("Created user in DB.");
   }
 
@@ -178,20 +175,20 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.RunQueryFormData",
           required = true))
-  public Result runQuery(UUID customerUUID, UUID universeUUID) {
+  public Result runQuery(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-    Form<RunQueryFormData> formData = formFactory.getFormDataOrBadRequest(RunQueryFormData.class);
+    Form<RunQueryFormData> formData =
+        formFactory.getFormDataOrBadRequest(request, RunQueryFormData.class);
 
     JsonNode queryResult =
-        universeYbDbAdminHandler.validateRequestAndExecuteQuery(universe, formData.get());
+        universeYbDbAdminHandler.validateRequestAndExecuteQuery(universe, formData.get(), request);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
-            Audit.ActionType.RunYsqlQuery,
-            Json.toJson(formData.data()));
+            Audit.ActionType.RunYsqlQuery);
     return PlatformResults.withRawData(queryResult);
   }
 }

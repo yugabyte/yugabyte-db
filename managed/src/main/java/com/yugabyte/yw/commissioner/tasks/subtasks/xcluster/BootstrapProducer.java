@@ -47,7 +47,7 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
         "%s (sourceUniverse=%s, xClusterUuid=%s, tableIds=%s)",
         super.getName(),
         taskParams().universeUUID,
-        taskParams().getXClusterConfig().uuid,
+        taskParams().getXClusterConfig().getUuid(),
         taskParams().tableIds);
   }
 
@@ -112,17 +112,17 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
             xClusterConfig.maybeGetTableById(taskParams().tableIds.get(i));
         String bootstrapId = bootstrapIds.get(i);
         if (tableConfig.isPresent()) {
-          tableConfig.get().streamId = bootstrapId;
+          tableConfig.get().setStreamId(bootstrapId);
           // If the table is bootstrapped, no need to bootstrap again.
-          tableConfig.get().needBootstrap = false;
-          log.info("Stream id for table {} set to {}", tableConfig.get().tableId, bootstrapId);
+          tableConfig.get().setNeedBootstrap(false);
+          log.info("Stream id for table {} set to {}", tableConfig.get().getTableId(), bootstrapId);
         } else {
           // This code will never run because when we set the bootstrap creation time, we made sure
           // that all the tableIds exist.
           String errMsg =
               String.format(
                   "Could not find tableId (%s) in the xCluster config with uuid (%s)",
-                  taskParams().tableIds.get(i), taskParams().getXClusterConfig().uuid);
+                  taskParams().tableIds.get(i), taskParams().getXClusterConfig().getUuid());
           throw new RuntimeException(errMsg);
         }
       }

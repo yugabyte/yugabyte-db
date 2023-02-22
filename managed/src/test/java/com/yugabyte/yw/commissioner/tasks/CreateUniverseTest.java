@@ -14,9 +14,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static play.libs.Json.newObject;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -161,7 +159,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
   private UniverseDefinitionTaskParams getTaskParams(boolean enableAuth) {
     Universe result =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             u -> {
               UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
               Cluster primaryCluster = universeDetails.getPrimaryCluster();
@@ -181,7 +179,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
             });
     UniverseDefinitionTaskParams universeDetails = result.getUniverseDetails();
     universeDetails.creatingUser = defaultUser;
-    universeDetails.universeUUID = defaultUniverse.universeUUID;
+    universeDetails.universeUUID = defaultUniverse.getUniverseUUID();
     universeDetails.firstTry = true;
     universeDetails.setPreviousTaskUUID(null);
     return universeDetails;
@@ -260,7 +258,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     Map<UniverseTaskBase.ServerType, List<NodeDetails>> byDedicatedType =
         defaultUniverse.getNodes().stream().collect(Collectors.groupingBy(n -> n.dedicatedTo));
     List<NodeDetails> masterNodes = byDedicatedType.get(UniverseTaskBase.ServerType.MASTER);
@@ -297,7 +295,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
             Collections.emptyList());
     Universe updated =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdaterWithReadReplica(intent, placementInfo));
     taskParams.clusters.add(updated.getUniverseDetails().getReadOnlyClusters().get(0));
     taskParams.nodeDetailsSet = updated.getUniverseDetails().nodeDetailsSet;

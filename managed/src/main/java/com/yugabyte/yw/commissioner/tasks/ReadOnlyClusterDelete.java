@@ -60,7 +60,7 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
       if (Collections.isEmpty(roClusters)) {
         String msg =
             "Unable to delete RO cluster from universe \""
-                + universe.name
+                + universe.getName()
                 + "\" as it doesn't have any RO clusters.";
         log.error(msg);
         throw new RuntimeException(msg);

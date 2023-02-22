@@ -56,9 +56,9 @@ import java.util.UUID;
 import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
 import org.mockito.Mockito;
+import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
-import org.pac4j.play.store.PlaySessionStore;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
@@ -157,6 +157,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getExecutorFactory())
         .thenReturn(app.injector().instanceOf(PlatformExecutorFactory.class));
     when(mockBaseTaskDependencies.getTaskExecutor()).thenReturn(taskExecutor);
+    when(mockBaseTaskDependencies.getHealthChecker()).thenReturn(mockHealthChecker);
+    when(mockBaseTaskDependencies.getNodeManager()).thenReturn(mockNodeManager);
   }
 
   @Override
@@ -208,7 +210,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper))
                 .overrides(bind(CallHome.class).toInstance(mockCallHome))
                 .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
-                .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+                .overrides(bind(SessionStore.class).toInstance(mockSessionStore))
                 .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
                 .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
                 .overrides(bind(BaseTaskDependencies.class).toInstance(mockBaseTaskDependencies))

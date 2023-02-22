@@ -3,10 +3,10 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.Sets;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -14,8 +14,8 @@ import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.YugawareProperty;
 import java.io.File;
 import java.io.InputStream;
-import java.util.Collections;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +31,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.CustomClassLoaderConstructor;
-import play.Application;
+import play.Environment;
 import play.libs.Json;
 
 @Singleton
@@ -113,16 +113,16 @@ public class ConfigHelper {
     return type.getRegionMetadataConfigType().map(this::getConfig).orElse(Collections.emptyMap());
   }
 
-  public static String getCurrentVersion(Application app) {
+  public static String getCurrentVersion(Environment environment) {
 
     String configFile = "version_metadata.json";
-    InputStream inputStream = app.resourceAsStream(configFile);
+    InputStream inputStream = environment.resourceAsStream(configFile);
     if (inputStream == null) { // version_metadata.json not found
       LOG.info(
           "{} file not found. Reading version from version.txt file",
           FilenameUtils.getName(configFile));
-      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(app.classloader()));
-      String version = yaml.load(app.resourceAsStream("version.txt"));
+      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(environment.classLoader()));
+      String version = yaml.load(environment.resourceAsStream("version.txt"));
       return version;
     }
     JsonNode jsonNode = Json.parse(inputStream);
@@ -136,8 +136,8 @@ public class ConfigHelper {
     return version;
   }
 
-  public void loadSoftwareVersiontoDB(Application app) {
-    String version = getCurrentVersion(app);
+  public void loadSoftwareVersiontoDB(Environment environment) {
+    String version = getCurrentVersion(environment);
     loadConfigToDB(ConfigType.SoftwareVersion, ImmutableMap.of("version", version));
 
     // TODO: Version added to Yugaware metadata, now slowly decomission SoftwareVersion property
@@ -150,13 +150,13 @@ public class ConfigHelper {
     loadConfigToDB(ConfigType.YugawareMetadata, ywMetadata);
   }
 
-  public void loadConfigsToDB(Application app) {
+  public void loadConfigsToDB(Environment environment) {
     for (ConfigType type : ConfigType.values()) {
       if (type.getConfigFile() == null) {
         continue;
       }
-      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(app.classloader()));
-      Map<String, Object> config = yaml.load(app.resourceAsStream(type.getConfigFile()));
+      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(environment.classLoader()));
+      Map<String, Object> config = yaml.load(environment.resourceAsStream(type.getConfigFile()));
       loadConfigToDB(type, config);
     }
   }

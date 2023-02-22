@@ -20,8 +20,8 @@ import org.apache.commons.collections.CollectionUtils;
 @Data
 @NoArgsConstructor
 public class MaintenanceWindowApiFilter {
-  Set<UUID> uuids;
-  Set<State> states;
+  private Set<UUID> uuids;
+  private Set<State> states;
 
   public MaintenanceWindowFilter toFilter() {
     MaintenanceWindowFilter.MaintenanceWindowFilterBuilder builder =

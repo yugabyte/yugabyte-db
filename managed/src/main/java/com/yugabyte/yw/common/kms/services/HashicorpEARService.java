@@ -178,7 +178,7 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
     LOG.debug("updateCurrentAuthConfigProperties called for {}", configUUID.toString());
     try {
       KmsConfig config = KmsConfig.get(configUUID);
-      UUID customerUUID = config.customerUUID;
+      UUID customerUUID = config.getCustomerUUID();
 
       UpdateAuthConfigProperties(customerUUID, configUUID, authConfig);
     } catch (Exception e) {

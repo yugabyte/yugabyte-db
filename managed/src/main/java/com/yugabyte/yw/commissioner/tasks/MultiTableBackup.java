@@ -273,9 +273,9 @@ public class MultiTableBackup extends UniverseTaskBase {
           tableBackupParams.disableParallelism = params().disableParallelism;
 
           Backup backup = Backup.create(params().customerUUID, tableBackupParams);
-          backup.setTaskUUID(userTaskUUID);
-          tableBackupParams.backupUuid = backup.backupUUID;
-          log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
+          backup.assignTaskUuid(userTaskUUID);
+          tableBackupParams.backupUuid = backup.getBackupUUID();
+          log.info("Task id {} for the backup {}", backup.getTaskUUID(), backup.getBackupUUID());
 
           for (BackupTableParams backupParams : backupParamsList) {
             createEncryptedUniverseKeyBackupTask(backupParams)
@@ -288,9 +288,9 @@ public class MultiTableBackup extends UniverseTaskBase {
                 || (params().backupType == TableType.YQL_TABLE_TYPE
                     && params().transactionalBackup))) {
           Backup backup = Backup.create(params().customerUUID, tableBackupParams);
-          backup.setTaskUUID(userTaskUUID);
-          tableBackupParams.backupUuid = backup.backupUUID;
-          log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
+          backup.assignTaskUuid(userTaskUUID);
+          tableBackupParams.backupUuid = backup.getBackupUUID();
+          log.info("Task id {} for the backup {}", backup.getTaskUUID(), backup.getBackupUUID());
 
           createEncryptedUniverseKeyBackupTask(backup.getBackupInfo())
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
@@ -299,13 +299,13 @@ public class MultiTableBackup extends UniverseTaskBase {
         } else {
           for (BackupTableParams tableParams : backupParamsList) {
             Backup backup = Backup.create(params().customerUUID, tableParams);
-            backup.setTaskUUID(userTaskUUID);
-            tableParams.backupUuid = backup.backupUUID;
-            tableParams.customerUuid = backup.customerUUID;
+            backup.assignTaskUuid(userTaskUUID);
+            tableParams.backupUuid = backup.getBackupUUID();
+            tableParams.customerUuid = backup.getCustomerUUID();
             tableParams.disableChecksum = params().disableChecksum;
             tableBackupParams.useTablespaces = params().useTablespaces;
             tableBackupParams.disableParallelism = params().disableParallelism;
-            log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
+            log.info("Task id {} for the backup {}", backup.getTaskUUID(), backup.getBackupUUID());
 
             createEncryptedUniverseKeyBackupTask(tableParams)
                 .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
@@ -434,7 +434,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     Customer customer = Customer.get(customerUUID);
     JsonNode params = schedule.getTaskParams();
     MultiTableBackup.Params taskParams = Json.fromJson(params, MultiTableBackup.Params.class);
-    taskParams.scheduleUUID = schedule.scheduleUUID;
+    taskParams.scheduleUUID = schedule.getScheduleUUID();
     Universe universe;
     try {
       universe = Universe.getOrBadRequest(taskParams.universeUUID);
@@ -452,7 +452,7 @@ public class MultiTableBackup extends UniverseTaskBase {
 
       if (shouldTakeBackup) {
         schedule.updateBacklogStatus(true);
-        log.debug("Schedule {} backlog status is set to true", schedule.scheduleUUID);
+        log.debug("Schedule {} backlog status is set to true", schedule.getScheduleUUID());
         SCHEDULED_BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
@@ -467,9 +467,9 @@ public class MultiTableBackup extends UniverseTaskBase {
     }
     UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
-    if (schedule.getBacklogStatus()) {
+    if (schedule.isBacklogStatus()) {
       schedule.updateBacklogStatus(false);
-      log.debug("Schedule {} backlog status is set to false", schedule.scheduleUUID);
+      log.debug("Schedule {} backlog status is set to false", schedule.getScheduleUUID());
     }
     log.info(
         "Submitted backup for universe: {}, task uuid = {}.", taskParams.universeUUID, taskUUID);
@@ -479,12 +479,12 @@ public class MultiTableBackup extends UniverseTaskBase {
         taskUUID,
         CustomerTask.TargetType.Backup,
         CustomerTask.TaskType.Create,
-        universe.name);
+        universe.getName());
     log.info(
         "Saved task uuid {} in customer tasks table for universe {}:{}",
         taskUUID,
         taskParams.universeUUID,
-        universe.name);
+        universe.getName());
     SCHEDULED_BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     metricService.setOkStatusMetric(
         buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));

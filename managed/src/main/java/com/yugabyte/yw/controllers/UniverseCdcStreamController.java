@@ -28,6 +28,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
+import play.mvc.Http;
 import play.mvc.Result;
 
 // Keeping hidden until we have separate internal API publication
@@ -63,10 +64,12 @@ public class UniverseCdcStreamController extends AuthenticatedController {
   @ApiOperation(
       value = "Create CDC Stream for a cluster",
       notes = "Create CDC Stream for a cluster")
-  public Result createCdcStream(UUID customerUUID, UUID universeUUID) throws Exception {
+  public Result createCdcStream(UUID customerUUID, UUID universeUUID, Http.Request request)
+      throws Exception {
     Universe universe = checkCloudAndValidateUniverse(customerUUID, universeUUID);
 
-    Form<CdcStreamFormData> formData = formFactory.getFormDataOrBadRequest(CdcStreamFormData.class);
+    Form<CdcStreamFormData> formData =
+        formFactory.getFormDataOrBadRequest(request, CdcStreamFormData.class);
     CdcStreamFormData data = formData.get();
 
     // No need to check if database exists at this layer, as lower layers will try to

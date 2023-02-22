@@ -29,7 +29,6 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
-import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.ManyToOne;
@@ -52,14 +51,9 @@ public class PlatformInstance extends Model {
   private static final SimpleDateFormat TIMESTAMP_FORMAT =
       new SimpleDateFormat("EEE MMM dd HH:mm:ss zzz yyyy");
 
-  @Id
-  @Constraints.Required
-  @Column(nullable = false, unique = true)
-  private UUID uuid;
+  @Id @Constraints.Required private UUID uuid;
 
-  @Constraints.Required
-  @Column(nullable = false, unique = true)
-  private String address;
+  @Constraints.Required private String address;
 
   @ManyToOne private HighAvailabilityConfig config;
 
@@ -67,13 +61,9 @@ public class PlatformInstance extends Model {
   @Temporal(TemporalType.TIMESTAMP)
   private Date lastBackup;
 
-  @Constraints.Required()
-  @Column(unique = true)
-  private Boolean isLeader;
+  @Constraints.Required() private Boolean isLeader;
 
-  @Constraints.Required
-  @Column(unique = true)
-  private Boolean isLocal;
+  @Constraints.Required private Boolean isLocal;
 
   public UUID getUUID() {
     return this.uuid;
@@ -196,7 +186,7 @@ public class PlatformInstance extends Model {
     public void serialize(
         HighAvailabilityConfig value, JsonGenerator gen, SerializerProvider provider)
         throws IOException {
-      gen.writeString(value.getUUID().toString());
+      gen.writeString(value.getUuid().toString());
     }
   }
 

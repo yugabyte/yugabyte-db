@@ -52,7 +52,7 @@ public class UpgradeYbcTest extends FakeDBApplication {
   @Test
   public void testUpgradeSuccess() {
     UpgradeYbc.Params params = new UpgradeYbc.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.universeUUID = defaultUniverse.getUniverseUUID();
     params.validateOnlyMasterLeader = false;
     params.ybcVersion = TARGET_YBC_VERSION;
     UpgradeYbc upgradeYbcTask = AbstractTaskBase.createTask(UpgradeYbc.class);
@@ -71,7 +71,7 @@ public class UpgradeYbcTest extends FakeDBApplication {
   @Test
   public void testUpgradeRequestFailure() {
     UpgradeYbc.Params params = new UpgradeYbc.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.universeUUID = defaultUniverse.getUniverseUUID();
     params.validateOnlyMasterLeader = false;
     params.ybcVersion = TARGET_YBC_VERSION;
     UpgradeYbc upgradeYbcTask = AbstractTaskBase.createTask(UpgradeYbc.class);
@@ -102,7 +102,7 @@ public class UpgradeYbcTest extends FakeDBApplication {
                 null,
                 null,
                 false);
-    params.universeUUID = universe.universeUUID;
+    params.universeUUID = universe.getUniverseUUID();
     params.validateOnlyMasterLeader = false;
     params.ybcVersion = TARGET_YBC_VERSION;
     UpgradeYbc upgradeYbcTask = AbstractTaskBase.createTask(UpgradeYbc.class);
@@ -118,13 +118,13 @@ public class UpgradeYbcTest extends FakeDBApplication {
     assertThat(
         re.getMessage(),
         containsString(
-            "Cannot upgrade YBC as it is not enabled on universe " + universe.universeUUID));
+            "Cannot upgrade YBC as it is not enabled on universe " + universe.getUniverseUUID()));
   }
 
   @Test
   public void testUpgradeSameYbcVersion() {
     UpgradeYbc.Params params = new UpgradeYbc.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.universeUUID = defaultUniverse.getUniverseUUID();
     params.validateOnlyMasterLeader = false;
     params.ybcVersion = defaultUniverse.getUniverseDetails().ybcSoftwareVersion;
     UpgradeYbc upgradeYbcTask = AbstractTaskBase.createTask(UpgradeYbc.class);
@@ -141,14 +141,14 @@ public class UpgradeYbcTest extends FakeDBApplication {
         "YBC version "
             + params.ybcVersion
             + " is already installed on universe "
-            + defaultUniverse.universeUUID;
+            + defaultUniverse.getUniverseUUID();
     assertThat(re.getMessage(), containsString(errMsg));
   }
 
   @Test
   public void testPartialUpgradeSuccess() {
     UpgradeYbc.Params params = new UpgradeYbc.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.universeUUID = defaultUniverse.getUniverseUUID();
     params.validateOnlyMasterLeader = true;
     params.ybcVersion = TARGET_YBC_VERSION;
     UpgradeYbc upgradeYbcTask = AbstractTaskBase.createTask(UpgradeYbc.class);

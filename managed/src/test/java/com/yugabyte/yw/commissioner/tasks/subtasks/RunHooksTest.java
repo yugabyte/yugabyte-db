@@ -25,7 +25,7 @@ public class RunHooksTest extends NodeTaskBaseTest {
     Users defaultUser = ModelFactory.testUser(defaultCustomer);
     Hook hook =
         Hook.create(
-            defaultCustomer.uuid,
+            defaultCustomer.getUuid(),
             "test.sh",
             Hook.ExecutionLang.Bash,
             "DEFAULT\nTEXT\n",
@@ -43,6 +43,6 @@ public class RunHooksTest extends NodeTaskBaseTest {
     runHooks.run();
 
     verify(mockNodeManager, times(1)).nodeCommand(NodeManager.NodeCommandType.RunHooks, params);
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 }

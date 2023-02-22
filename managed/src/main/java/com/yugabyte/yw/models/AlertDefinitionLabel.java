@@ -15,7 +15,6 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.UniqueKeyListValue;
 import io.ebean.Model;
 import java.util.Objects;
-import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 import javax.persistence.ManyToOne;
@@ -33,9 +32,7 @@ public class AlertDefinitionLabel extends Model
 
   @NotNull @EmbeddedId private AlertDefinitionLabelKey key;
 
-  @Column(nullable = false)
-  @NotNull
-  private String value;
+  @NotNull private String value;
 
   @ManyToOne @JsonIgnore private AlertDefinition definition;
 

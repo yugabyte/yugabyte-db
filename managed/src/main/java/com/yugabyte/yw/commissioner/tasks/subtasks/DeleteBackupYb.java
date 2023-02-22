@@ -33,8 +33,8 @@ public class DeleteBackupYb extends AbstractTaskBase {
   @Override
   public void run() {
     Backup backup = Backup.getOrBadRequest(params().customerUUID, params().backupUUID);
-    if (Backup.IN_PROGRESS_STATES.contains(backup.state)) {
-      log.error("Cannot delete backup that are in {} state", backup.state);
+    if (Backup.IN_PROGRESS_STATES.contains(backup.getState())) {
+      log.error("Cannot delete backup that are in {} state", backup.getState());
       return;
     }
     boolean updateState = true;
@@ -46,11 +46,12 @@ public class DeleteBackupYb extends AbstractTaskBase {
           updateState = false;
           throw new RuntimeException(
               "Cannot delete backup "
-                  + backup.backupUUID
+                  + backup.getBackupUUID()
                   + " as a incremental/full backup is in progress.");
         }
         backupsToDelete.addAll(
-            Backup.fetchAllBackupsByBaseBackupUUID(backup.customerUUID, backup.backupUUID));
+            Backup.fetchAllBackupsByBaseBackupUUID(
+                backup.getCustomerUUID(), backup.getBackupUUID()));
       }
       backupsToDelete.add(backup);
       backupsToDelete.forEach(

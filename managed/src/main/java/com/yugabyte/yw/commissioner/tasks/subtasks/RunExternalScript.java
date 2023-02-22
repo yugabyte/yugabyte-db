@@ -99,7 +99,7 @@ public class RunExternalScript extends AbstractTaskBase {
       List<String> commandList = new ArrayList<>();
       commandList.add(SCRIPT_DIR + tempScriptFile.getName());
       commandList.add("--universe_name");
-      commandList.add(universe.name);
+      commandList.add(universe.getName());
       commandList.add("--universe_uuid");
       commandList.add(params().universeUUID.toString());
       commandList.add("--platform_url");

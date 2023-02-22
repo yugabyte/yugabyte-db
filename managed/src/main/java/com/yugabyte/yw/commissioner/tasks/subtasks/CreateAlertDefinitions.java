@@ -36,7 +36,7 @@ public class CreateAlertDefinitions extends UniverseTaskBase {
     try {
       log.info("Running {}", getName());
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-      Customer customer = Customer.get(universe.customerId);
+      Customer customer = Customer.get(universe.getCustomerId());
 
       AlertConfigurationFilter filter =
           AlertConfigurationFilter.builder()

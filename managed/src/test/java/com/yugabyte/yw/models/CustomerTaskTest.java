@@ -115,7 +115,7 @@ public class CustomerTaskTest extends FakeDBApplication {
           th.getFriendlyDescription(),
           is(allOf(notNullValue(), equalTo("Creating " + targetType.toString() + " : Foo"))));
       assertThat(th.getTargetUUID(), is(equalTo(targetUUID)));
-      assertThat(th.getCustomerUUID(), is(equalTo(defaultCustomer.uuid)));
+      assertThat(th.getCustomerUUID(), is(equalTo(defaultCustomer.getUuid())));
     }
   }
 

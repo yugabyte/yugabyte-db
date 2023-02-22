@@ -84,7 +84,7 @@ public class CloudAPITest extends FakeDBApplication {
     nodes.add("yb-spu1");
     nodes.add("yb-spu2");
     nodes.add("yb-spu3");
-    LoadBalancer lb = awsCloudImpl.getLoadBalancerByName(provider, region.code, "yb-spu-nlb");
+    LoadBalancer lb = awsCloudImpl.getLoadBalancerByName(provider, region.getCode(), "yb-spu-nlb");
     String lbArn =
         "arn:aws:elasticloadbalancing:"
             + "us-west-2:454529406029:loadbalancer/net/yb-spu-nlb/77d043677679338a";

@@ -66,7 +66,7 @@ public class AlertConfiguration extends Model {
   private static final String RAW_FIELDS =
       "uuid, customerUUID, name, description, createTime, "
           + "targetType, target, thresholds, thresholdUnit, template, durationSec, active, "
-          + "destinationUUID, defaultDestination, maintenanceWindowUuids";
+          + "destinationUUID, defaultDestination, maintenanceWindowUuids, labels";
 
   @ApiModel
   public enum SortBy implements PagedQuery.SortByIF {
@@ -370,7 +370,6 @@ public class AlertConfiguration extends Model {
     return uuid == null;
   }
 
-  @Transient
   @JsonIgnore
   public Set<UUID> getMaintenanceWindowUuidsSet() {
     if (maintenanceWindowUuids == null) {
@@ -399,7 +398,6 @@ public class AlertConfiguration extends Model {
     return this;
   }
 
-  @Transient
   @JsonIgnore
   @EqualsAndHashCode.Include
   /*

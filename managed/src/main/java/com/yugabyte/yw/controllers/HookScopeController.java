@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import play.data.Form;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Slf4j
@@ -48,9 +49,9 @@ public class HookScopeController extends AuthenticatedController {
       nickname = "listScopes",
       response = HookScope.class,
       responseContainer = "List")
-  public Result list(UUID customerUUID) {
+  public Result list(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    verifyAuth(customer);
+    verifyAuth(customer, request);
     List<HookScope> hookScopes = HookScope.getAll(customerUUID);
     return PlatformResults.withData(hookScopes);
   }
@@ -66,10 +67,11 @@ public class HookScopeController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.HookScopeFormData",
           required = true))
-  public Result create(UUID customerUUID) {
+  public Result create(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    verifyAuth(customer);
-    Form<HookScopeFormData> formData = formFactory.getFormDataOrBadRequest(HookScopeFormData.class);
+    verifyAuth(customer, request);
+    Form<HookScopeFormData> formData =
+        formFactory.getFormDataOrBadRequest(request, HookScopeFormData.class);
     HookScopeFormData form = formData.get();
     form.verify(customerUUID);
     HookScope hookScope;
@@ -89,12 +91,11 @@ public class HookScopeController extends AuthenticatedController {
     }
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.HookScope,
-            hookScope.uuid.toString(),
-            Audit.ActionType.CreateHookScope,
-            request().body().asJson());
-    log.info("Created hook scope with uuid {}", hookScope.uuid);
+            hookScope.getUuid().toString(),
+            Audit.ActionType.CreateHookScope);
+    log.info("Created hook scope with uuid {}", hookScope.getUuid());
     return PlatformResults.withData(hookScope);
   }
 
@@ -102,15 +103,15 @@ public class HookScopeController extends AuthenticatedController {
       value = "Delete a hook scope",
       nickname = "deleteHookScope",
       response = YBPSuccess.class)
-  public Result delete(UUID customerUUID, UUID hookScopeUUID) {
+  public Result delete(UUID customerUUID, UUID hookScopeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    verifyAuth(customer);
+    verifyAuth(customer, request);
     HookScope hookScope = HookScope.getOrBadRequest(customerUUID, hookScopeUUID);
     log.info("Deleting hook scope with UUID {}", hookScopeUUID);
     hookScope.delete();
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.HookScope,
             hookScopeUUID.toString(),
             Audit.ActionType.DeleteHookScope);
@@ -121,15 +122,19 @@ public class HookScopeController extends AuthenticatedController {
       value = "Add a hook to a hook scope",
       nickname = "addHook",
       response = HookScope.class)
-  public Result addHook(UUID customerUUID, UUID hookScopeUUID, UUID hookUUID) {
+  public Result addHook(
+      UUID customerUUID, UUID hookScopeUUID, UUID hookUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    verifyAuth(customer);
+    verifyAuth(customer, request);
     HookScope hookScope = HookScope.getOrBadRequest(customerUUID, hookScopeUUID);
     Hook hook = Hook.getOrBadRequest(customerUUID, hookUUID);
     hookScope.addHook(hook);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.HookScope, hookScopeUUID.toString(), Audit.ActionType.AddHook);
+        .createAuditEntry(
+            request,
+            Audit.TargetType.HookScope,
+            hookScopeUUID.toString(),
+            Audit.ActionType.AddHook);
     return PlatformResults.withData(hookScope);
   }
 
@@ -137,27 +142,28 @@ public class HookScopeController extends AuthenticatedController {
       value = "Remove a hook from a hook scope",
       nickname = "removeHook",
       response = HookScope.class)
-  public Result removeHook(UUID customerUUID, UUID hookScopeUUID, UUID hookUUID) {
+  public Result removeHook(
+      UUID customerUUID, UUID hookScopeUUID, UUID hookUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    verifyAuth(customer);
+    verifyAuth(customer, request);
     HookScope hookScope = HookScope.getOrBadRequest(customerUUID, hookScopeUUID);
     Hook hook = Hook.getOrBadRequest(customerUUID, hookUUID);
-    if (hook.hookScope == null || !hook.hookScope.uuid.equals(hookScopeUUID)) {
+    if (hook.getHookScope() == null || !hook.getHookScope().getUuid().equals(hookScopeUUID)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Hook " + hookUUID + " is not attached to hook scope " + hookScopeUUID);
     }
-    hook.hookScope = null;
+    hook.setHookScope(null);
     hook.update();
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.HookScope,
             hookScopeUUID.toString(),
             Audit.ActionType.RemoveHook);
     return PlatformResults.withData(hookScope);
   }
 
-  public void verifyAuth(Customer customer) {
+  public void verifyAuth(Customer customer, Http.Request request) {
     if (!confGetter.getGlobalConf(GlobalConfKeys.enableCustomHooks))
       throw new PlatformServiceException(
           UNAUTHORIZED, "Custom hooks is not enabled on this Anywhere instance");
@@ -166,10 +172,10 @@ public class HookScopeController extends AuthenticatedController {
       log.warn(
           "Not performing SuperAdmin authorization for this endpoint, customer={} as platform is in"
               + " cloud mode",
-          customer.uuid);
-      tokenAuthenticator.adminOrThrow(ctx());
+          customer.getUuid());
+      tokenAuthenticator.adminOrThrow(request);
     } else {
-      tokenAuthenticator.superAdminOrThrow(ctx());
+      tokenAuthenticator.superAdminOrThrow(request);
     }
   }
 }

@@ -46,7 +46,7 @@ public class CertificateInfoTest extends FakeDBApplication {
     Config spyConf = spy(app.config());
     doReturn(TMP_CERTS_PATH).when(spyConf).getString("yb.storage.path");
     for (String cert : certList) {
-      certIdList.add(CertificateHelper.createRootCA(spyConf, cert, customer.uuid));
+      certIdList.add(CertificateHelper.createRootCA(spyConf, cert, customer.getUuid()));
     }
   }
 
@@ -57,7 +57,7 @@ public class CertificateInfoTest extends FakeDBApplication {
 
   @Test
   public void testGetAllWithNoUniverses() {
-    List<CertificateInfo> certificateInfoList = CertificateInfo.getAll(customer.uuid);
+    List<CertificateInfo> certificateInfoList = CertificateInfo.getAll(customer.getUuid());
     assertEquals(3, certificateInfoList.size());
     for (CertificateInfo cert : certificateInfoList) {
       assertFalse(cert.getInUse());
@@ -90,17 +90,17 @@ public class CertificateInfoTest extends FakeDBApplication {
         null,
         certIdList.get(1));
 
-    List<CertificateInfo> certificateInfoList = CertificateInfo.getAll(customer.uuid);
+    List<CertificateInfo> certificateInfoList = CertificateInfo.getAll(customer.getUuid());
     assertEquals(3, certificateInfoList.size());
     for (CertificateInfo cert : certificateInfoList) {
-      if (cert.uuid.equals(certIdList.get(0))) {
+      if (cert.getUuid().equals(certIdList.get(0))) {
         assertTrue(cert.getInUse());
-        assertEquals(universe1.universeUUID, cert.getUniverseDetails().get(0).getUuid());
-      } else if (cert.uuid.equals(certIdList.get(1))) {
+        assertEquals(universe1.getUniverseUUID(), cert.getUniverseDetails().get(0).getUuid());
+      } else if (cert.getUuid().equals(certIdList.get(1))) {
         assertTrue(cert.getInUse());
         assertEquals(2, cert.getUniverseDetails().size());
-        assertNotEquals(universe1.universeUUID, cert.getUniverseDetails().get(0).getUuid());
-        assertNotEquals(universe1.universeUUID, cert.getUniverseDetails().get(1).getUuid());
+        assertNotEquals(universe1.getUniverseUUID(), cert.getUniverseDetails().get(0).getUuid());
+        assertNotEquals(universe1.getUniverseUUID(), cert.getUniverseDetails().get(1).getUuid());
       } else {
         assertFalse(cert.getInUse());
         assertEquals(0, cert.getUniverseDetails().size());
@@ -133,7 +133,7 @@ public class CertificateInfoTest extends FakeDBApplication {
         null,
         certIdList.get(1));
 
-    List<CertificateInfo> certificateInfoList = CertificateInfo.getAll(customer.uuid);
+    List<CertificateInfo> certificateInfoList = CertificateInfo.getAll(customer.getUuid());
     assertEquals(3, certificateInfoList.size());
 
     for (CertificateInfo cert : certificateInfoList) {

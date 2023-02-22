@@ -70,7 +70,7 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
           "Cannot perform a rolling upgrade on universe "
-              + universe.universeUUID
+              + universe.getUniverseUUID()
               + " as it has nodes in one of "
               + NodeDetails.IN_TRANSIT_STATES
               + " states.");
@@ -81,7 +81,7 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
         throw new PlatformServiceException(
             Status.BAD_REQUEST,
             "Cannot perform upgrade on universe. "
-                + universe.universeUUID
+                + universe.getUniverseUUID()
                 + " as it is not helm 3 compatible. "
                 + "Manually migrate the deployment to helm3 "
                 + "and then mark the universe as helm 3 compatible.");

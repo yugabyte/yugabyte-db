@@ -15,13 +15,10 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
-import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-
-import java.util.List;
+import com.yugabyte.yw.models.helpers.NodeStatus;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -65,8 +62,8 @@ public class AnsibleSetupServer extends NodeTaskBase {
     taskParams().useSystemd =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
 
-    if (p.code.equals(Common.CloudType.onprem.name())) {
-      skipProvision = p.details.skipProvisioning;
+    if (p.getCode().equals(Common.CloudType.onprem.name())) {
+      skipProvision = p.getDetails().skipProvisioning;
     }
 
     if (skipProvision) {

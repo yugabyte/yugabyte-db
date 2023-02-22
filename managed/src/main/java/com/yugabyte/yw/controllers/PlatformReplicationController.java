@@ -31,6 +31,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
+import play.mvc.Http;
 import play.mvc.Result;
 
 public class PlatformReplicationController extends AuthenticatedController {
@@ -39,7 +40,7 @@ public class PlatformReplicationController extends AuthenticatedController {
 
   @Inject private PlatformReplicationManager replicationManager;
 
-  public Result startPeriodicBackup(UUID configUUID) {
+  public Result startPeriodicBackup(UUID configUUID, Http.Request request) {
     try {
       Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get(configUUID);
       if (!config.isPresent()) {
@@ -47,7 +48,7 @@ public class PlatformReplicationController extends AuthenticatedController {
       }
 
       Form<PlatformBackupFrequencyFormData> formData =
-          formFactory.getFormDataOrBadRequest(PlatformBackupFrequencyFormData.class);
+          formFactory.getFormDataOrBadRequest(request, PlatformBackupFrequencyFormData.class);
 
       if (!config.get().isLocalLeader()) {
         return ApiResponse.error(BAD_REQUEST, "This platform instance is not a leader");
@@ -57,8 +58,8 @@ public class PlatformReplicationController extends AuthenticatedController {
 
       // Restart the backup schedule with the new frequency.
       auditService()
-          .createAuditEntryWithReqBody(
-              ctx(),
+          .createAuditEntry(
+              request,
               Audit.TargetType.HABackup,
               configUUID.toString(),
               Audit.ActionType.StartPeriodicBackup);
@@ -70,7 +71,7 @@ public class PlatformReplicationController extends AuthenticatedController {
     }
   }
 
-  public Result stopPeriodicBackup(UUID configUUID) {
+  public Result stopPeriodicBackup(UUID configUUID, Http.Request request) {
     try {
       Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get(configUUID);
       if (!config.isPresent()) {
@@ -81,8 +82,8 @@ public class PlatformReplicationController extends AuthenticatedController {
     } catch (Exception e) {
       LOG.error("Error cancelling backup schedule", e);
       auditService()
-          .createAuditEntryWithReqBody(
-              ctx(),
+          .createAuditEntry(
+              request,
               Audit.TargetType.HABackup,
               configUUID.toString(),
               Audit.ActionType.StopPeriodicBackup);

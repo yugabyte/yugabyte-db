@@ -5,8 +5,8 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -18,18 +18,15 @@ import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.contextComponents;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -39,7 +36,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -53,12 +49,12 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.CommonTypes.TableType;
 import org.yb.client.DeleteSnapshotScheduleResponse;
 import org.yb.client.ListSnapshotSchedulesResponse;
-import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.SnapshotInfo;
+import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.YBClient;
-import org.yb.CommonTypes.TableType;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 import play.libs.Json;
 import play.mvc.Http;
@@ -104,7 +100,7 @@ public class PitrControllerTest extends FakeDBApplication {
     String method = "POST";
     String url =
         "/api/customers/"
-            + defaultCustomer.uuid
+            + defaultCustomer.getUuid()
             + "/universes/"
             + universeUUID.toString()
             + "/keyspaces/"
@@ -120,7 +116,7 @@ public class PitrControllerTest extends FakeDBApplication {
     String method = "POST";
     String url =
         "/api/customers/"
-            + defaultCustomer.uuid
+            + defaultCustomer.getUuid()
             + "/universes/"
             + universeUUID.toString()
             + "/pitr";
@@ -134,13 +130,13 @@ public class PitrControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("retentionPeriodInSeconds", 7 * 86400L);
     bodyJson.put("intervalInSeconds", 86400L);
-    Result r = createPitrConfig(defaultUniverse.universeUUID, "YSQL", "yugabyte", bodyJson);
+    Result r = createPitrConfig(defaultUniverse.getUniverseUUID(), "YSQL", "yugabyte", bodyJson);
     assertOk(r);
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
     assertEquals(OK, r.status());
     verify(mockCommissioner, times(1)).submit(any(), any());
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
@@ -156,7 +152,8 @@ public class PitrControllerTest extends FakeDBApplication {
     bodyJson.put("intervalInSeconds", 86400L);
     Result r =
         assertPlatformException(
-            () -> createPitrConfig(defaultUniverse.universeUUID, "YSQL", "yugabyte", bodyJson));
+            () ->
+                createPitrConfig(defaultUniverse.getUniverseUUID(), "YSQL", "yugabyte", bodyJson));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertEquals(BAD_REQUEST, r.status());
     verify(mockCommissioner, times(0)).submit(any(), any());
@@ -190,7 +187,8 @@ public class PitrControllerTest extends FakeDBApplication {
     bodyJson.put("intervalInSeconds", 86400L);
     Result r =
         assertPlatformException(
-            () -> createPitrConfig(defaultUniverse.universeUUID, "YSQL", "yugabyte", bodyJson));
+            () ->
+                createPitrConfig(defaultUniverse.getUniverseUUID(), "YSQL", "yugabyte", bodyJson));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertEquals(BAD_REQUEST, r.status());
     verify(mockCommissioner, times(0)).submit(any(), any());
@@ -209,7 +207,8 @@ public class PitrControllerTest extends FakeDBApplication {
     bodyJson.put("intervalInSeconds", 86400L);
     Result r =
         assertPlatformException(
-            () -> createPitrConfig(defaultUniverse.universeUUID, "YSQL", "yugabyte", bodyJson));
+            () ->
+                createPitrConfig(defaultUniverse.getUniverseUUID(), "YSQL", "yugabyte", bodyJson));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertBadRequest(r, "Cannot enable PITR when the universe is in locked state");
     verify(mockCommissioner, times(0)).submit(any(), any());
@@ -224,7 +223,8 @@ public class PitrControllerTest extends FakeDBApplication {
     bodyJson.put("intervalInSeconds", 86400L);
     Result r =
         assertPlatformException(
-            () -> createPitrConfig(defaultUniverse.universeUUID, "YSQL", "yugabyte", bodyJson));
+            () ->
+                createPitrConfig(defaultUniverse.getUniverseUUID(), "YSQL", "yugabyte", bodyJson));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertValue(resultJson, "error", "PITR Config retention period cannot be less than 1 second");
     assertEquals(BAD_REQUEST, r.status());
@@ -240,7 +240,8 @@ public class PitrControllerTest extends FakeDBApplication {
     bodyJson.put("intervalInSeconds", 86400L);
     Result r =
         assertPlatformException(
-            () -> createPitrConfig(defaultUniverse.universeUUID, "YSQL", "yugabyte", bodyJson));
+            () ->
+                createPitrConfig(defaultUniverse.getUniverseUUID(), "YSQL", "yugabyte", bodyJson));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertValue(resultJson, "error", "PITR Config interval cannot be less than retention period");
     assertEquals(BAD_REQUEST, r.status());
@@ -256,7 +257,7 @@ public class PitrControllerTest extends FakeDBApplication {
     bodyJson.put("intervalInSeconds", 86400L);
     assertThrows(
         IllegalArgumentException.class,
-        () -> createPitrConfig(defaultUniverse.universeUUID, "YQL", "yugabyte", bodyJson));
+        () -> createPitrConfig(defaultUniverse.getUniverseUUID(), "YQL", "yugabyte", bodyJson));
   }
 
   @Test
@@ -269,14 +270,15 @@ public class PitrControllerTest extends FakeDBApplication {
     CreatePitrConfigParams params = new CreatePitrConfigParams();
     params.retentionPeriodInSeconds = 7 * 86400L;
     params.intervalInSeconds = 86400L;
-    params.universeUUID = defaultUniverse.universeUUID;
-    params.customerUUID = defaultCustomer.uuid;
+    params.universeUUID = defaultUniverse.getUniverseUUID();
+    params.customerUUID = defaultCustomer.getUuid();
     params.keyspaceName = "yugabyte";
     params.tableType = TableType.PGSQL_TABLE_TYPE;
     PitrConfig.create(UUID.randomUUID(), params);
     Result r =
         assertPlatformException(
-            () -> createPitrConfig(defaultUniverse.universeUUID, "YSQL", "yugabyte", bodyJson));
+            () ->
+                createPitrConfig(defaultUniverse.getUniverseUUID(), "YSQL", "yugabyte", bodyJson));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertValue(resultJson, "error", "PITR Config is already present");
     assertEquals(BAD_REQUEST, r.status());
@@ -289,7 +291,7 @@ public class PitrControllerTest extends FakeDBApplication {
     String method = "GET";
     String url =
         "/api/customers/"
-            + defaultCustomer.uuid
+            + defaultCustomer.getUuid()
             + "/universes/"
             + universeUUID.toString()
             + "/pitr_config";
@@ -306,8 +308,8 @@ public class PitrControllerTest extends FakeDBApplication {
     CreatePitrConfigParams params1 = new CreatePitrConfigParams();
     params1.retentionPeriodInSeconds = 7 * 86400L;
     params1.intervalInSeconds = 86400L;
-    params1.universeUUID = defaultUniverse.universeUUID;
-    params1.customerUUID = defaultCustomer.uuid;
+    params1.universeUUID = defaultUniverse.getUniverseUUID();
+    params1.customerUUID = defaultCustomer.getUuid();
     params1.keyspaceName = "yugabyte";
     params1.tableType = TableType.PGSQL_TABLE_TYPE;
     PitrConfig pitr1 = PitrConfig.create(scheduleUUID1, params1);
@@ -333,8 +335,8 @@ public class PitrControllerTest extends FakeDBApplication {
     CreatePitrConfigParams params2 = new CreatePitrConfigParams();
     params2.retentionPeriodInSeconds = 7 * 86400L;
     params2.intervalInSeconds = 86400L;
-    params2.universeUUID = defaultUniverse.universeUUID;
-    params2.customerUUID = defaultCustomer.uuid;
+    params2.universeUUID = defaultUniverse.getUniverseUUID();
+    params2.customerUUID = defaultCustomer.getUuid();
     params2.keyspaceName = "postgres";
     params2.tableType = TableType.PGSQL_TABLE_TYPE;
     PitrConfig pitr2 = PitrConfig.create(scheduleUUID2, params2);
@@ -360,8 +362,8 @@ public class PitrControllerTest extends FakeDBApplication {
     CreatePitrConfigParams params3 = new CreatePitrConfigParams();
     params3.retentionPeriodInSeconds = 7 * 86400L;
     params3.intervalInSeconds = 86400L;
-    params3.universeUUID = defaultUniverse.universeUUID;
-    params3.customerUUID = defaultCustomer.uuid;
+    params3.universeUUID = defaultUniverse.getUniverseUUID();
+    params3.customerUUID = defaultCustomer.getUuid();
     params3.keyspaceName = "cassandra";
     params3.tableType = TableType.YQL_TABLE_TYPE;
     long currentTime3 = System.currentTimeMillis();
@@ -385,7 +387,9 @@ public class PitrControllerTest extends FakeDBApplication {
     when(mockListSnapshotSchedulesResponse.getSnapshotScheduleInfoList())
         .thenReturn(scheduleInfoList);
     when(mockClient.listSnapshotSchedules(any())).thenReturn(mockListSnapshotSchedulesResponse);
-    Result r = pitrController.listPitrConfigs(defaultCustomer.uuid, defaultUniverse.universeUUID);
+    Result r =
+        pitrController.listPitrConfigs(
+            defaultCustomer.getUuid(), defaultUniverse.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(r));
     assertEquals(OK, r.status());
     assertTrue(json.isArray());
@@ -420,7 +424,7 @@ public class PitrControllerTest extends FakeDBApplication {
       }
     }
     assertEquals(3, count);
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
@@ -434,8 +438,8 @@ public class PitrControllerTest extends FakeDBApplication {
     CreatePitrConfigParams params1 = new CreatePitrConfigParams();
     params1.retentionPeriodInSeconds = 7 * 86400L;
     params1.intervalInSeconds = 86400L;
-    params1.universeUUID = defaultUniverse.universeUUID;
-    params1.customerUUID = defaultCustomer.uuid;
+    params1.universeUUID = defaultUniverse.getUniverseUUID();
+    params1.customerUUID = defaultCustomer.getUuid();
     params1.keyspaceName = "yugabyte";
     params1.tableType = TableType.PGSQL_TABLE_TYPE;
     PitrConfig pitr1 = PitrConfig.create(scheduleUUID1, params1);
@@ -444,8 +448,8 @@ public class PitrControllerTest extends FakeDBApplication {
     CreatePitrConfigParams params2 = new CreatePitrConfigParams();
     params2.retentionPeriodInSeconds = 7 * 86400L;
     params2.intervalInSeconds = 86400L;
-    params2.universeUUID = defaultUniverse.universeUUID;
-    params2.customerUUID = defaultCustomer.uuid;
+    params2.universeUUID = defaultUniverse.getUniverseUUID();
+    params2.customerUUID = defaultCustomer.getUuid();
     params2.keyspaceName = "postgres";
     params2.tableType = TableType.PGSQL_TABLE_TYPE;
     PitrConfig pitr2 = PitrConfig.create(scheduleUUID2, params2);
@@ -454,14 +458,16 @@ public class PitrControllerTest extends FakeDBApplication {
     CreatePitrConfigParams params3 = new CreatePitrConfigParams();
     params3.retentionPeriodInSeconds = 7 * 86400L;
     params3.intervalInSeconds = 86400L;
-    params3.universeUUID = defaultUniverse.universeUUID;
-    params3.customerUUID = defaultCustomer.uuid;
+    params3.universeUUID = defaultUniverse.getUniverseUUID();
+    params3.customerUUID = defaultCustomer.getUuid();
     params3.keyspaceName = "cassandra";
     params3.tableType = TableType.YQL_TABLE_TYPE;
     long currentTime3 = System.currentTimeMillis();
     PitrConfig pitr3 = PitrConfig.create(scheduleUUID3, params3);
 
-    Result r = pitrController.listPitrConfigs(defaultCustomer.uuid, defaultUniverse.universeUUID);
+    Result r =
+        pitrController.listPitrConfigs(
+            defaultCustomer.getUuid(), defaultUniverse.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(r));
     assertEquals(OK, r.status());
     assertTrue(json.isArray());
@@ -495,13 +501,15 @@ public class PitrControllerTest extends FakeDBApplication {
       }
     }
     assertEquals(3, count);
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test(expected = PlatformServiceException.class)
   public void testListPitrConfigsWithListSnapshotsFailure() throws Exception {
     when(mockClient.listSnapshotSchedules(any())).thenThrow(RuntimeException.class);
-    Result r = pitrController.listPitrConfigs(defaultCustomer.uuid, defaultUniverse.universeUUID);
+    Result r =
+        pitrController.listPitrConfigs(
+            defaultCustomer.getUuid(), defaultUniverse.getUniverseUUID());
   }
 
   @Test
@@ -518,7 +526,8 @@ public class PitrControllerTest extends FakeDBApplication {
     Result r =
         assertPlatformException(
             () ->
-                pitrController.listPitrConfigs(defaultCustomer.uuid, defaultUniverse.universeUUID));
+                pitrController.listPitrConfigs(
+                    defaultCustomer.getUuid(), defaultUniverse.getUniverseUUID()));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertEquals(BAD_REQUEST, r.status());
     verify(mockCommissioner, times(0)).submit(any(), any());
@@ -533,8 +542,8 @@ public class PitrControllerTest extends FakeDBApplication {
     CreatePitrConfigParams params1 = new CreatePitrConfigParams();
     params1.retentionPeriodInSeconds = 7 * 86400L;
     params1.intervalInSeconds = 86400L;
-    params1.universeUUID = defaultUniverse.universeUUID;
-    params1.customerUUID = defaultCustomer.uuid;
+    params1.universeUUID = defaultUniverse.getUniverseUUID();
+    params1.customerUUID = defaultCustomer.getUuid();
     params1.keyspaceName = "yugabyte";
     params1.tableType = TableType.PGSQL_TABLE_TYPE;
     PitrConfig pitr1 = PitrConfig.create(scheduleUUID1, params1);
@@ -548,8 +557,8 @@ public class PitrControllerTest extends FakeDBApplication {
     CreatePitrConfigParams params2 = new CreatePitrConfigParams();
     params2.retentionPeriodInSeconds = 7 * 86400L;
     params2.intervalInSeconds = 86400L;
-    params2.universeUUID = defaultUniverse.universeUUID;
-    params2.customerUUID = defaultCustomer.uuid;
+    params2.universeUUID = defaultUniverse.getUniverseUUID();
+    params2.customerUUID = defaultCustomer.getUuid();
     params2.keyspaceName = "postgres";
     params2.tableType = TableType.PGSQL_TABLE_TYPE;
     PitrConfig pitr2 = PitrConfig.create(scheduleUUID2, params2);
@@ -563,8 +572,8 @@ public class PitrControllerTest extends FakeDBApplication {
     CreatePitrConfigParams params3 = new CreatePitrConfigParams();
     params3.retentionPeriodInSeconds = 7 * 86400L;
     params3.intervalInSeconds = 86400L;
-    params3.universeUUID = defaultUniverse.universeUUID;
-    params3.customerUUID = defaultCustomer.uuid;
+    params3.universeUUID = defaultUniverse.getUniverseUUID();
+    params3.customerUUID = defaultCustomer.getUuid();
     params3.keyspaceName = "cassandra";
     params3.tableType = TableType.YQL_TABLE_TYPE;
     PitrConfig pitr3 = PitrConfig.create(scheduleUUID3, params3);
@@ -573,25 +582,17 @@ public class PitrControllerTest extends FakeDBApplication {
         new SnapshotScheduleInfo(scheduleUUID3, 86400L, 7L * 86400L, snapshotList3);
     preScheduleInfoList.add(schedule3);
 
-    Map<String, String> flashData = Collections.emptyMap();
-    Map<String, Object> argData =
-        ImmutableMap.of("user", new UserWithFeatures().setUser(defaultUser));
+    RequestContext.put("user", new UserWithFeatures().setUser(defaultUser));
     Http.Request request = mock(Http.Request.class);
     when(request.path())
         .thenReturn(
             "/api/customers/"
-                + defaultCustomer.uuid
+                + defaultCustomer.getUuid()
                 + "/universes/"
-                + defaultUniverse.universeUUID
+                + defaultUniverse.getUniverseUUID()
                 + "/pitr_config/"
                 + scheduleUUID3);
     when(request.method()).thenReturn("DELETE");
-    Long id = 1L;
-    play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
-    Http.Context context =
-        new Http.Context(id, header, request, flashData, flashData, argData, contextComponents());
-    Http.Context.current.set(context);
-
     when(mockListSnapshotSchedulesResponse.getSnapshotScheduleInfoList())
         .thenReturn(preScheduleInfoList);
     when(mockClient.listSnapshotSchedules(any())).thenReturn(mockListSnapshotSchedulesResponse);
@@ -599,15 +600,15 @@ public class PitrControllerTest extends FakeDBApplication {
         .thenReturn(mockDeleteSnapshotScheduleResponse);
     Result r =
         pitrController.deletePitrConfig(
-            defaultCustomer.uuid, defaultUniverse.universeUUID, scheduleUUID3);
+            defaultCustomer.getUuid(), defaultUniverse.getUniverseUUID(), scheduleUUID3, request);
     JsonNode json = Json.parse(contentAsString(r));
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
     assertEquals(OK, r.status());
 
     List<PitrConfig> configs = PitrConfig.getAll();
     assertEquals(2, configs.size());
     for (PitrConfig config : configs) {
-      if (!postScheduleUUIDList.contains(config.uuid)) {
+      if (!postScheduleUUIDList.contains(config.getUuid())) {
         Assert.fail();
       }
     }
@@ -619,8 +620,8 @@ public class PitrControllerTest extends FakeDBApplication {
     CreatePitrConfigParams params3 = new CreatePitrConfigParams();
     params3.retentionPeriodInSeconds = 7 * 86400L;
     params3.intervalInSeconds = 86400L;
-    params3.universeUUID = defaultUniverse.universeUUID;
-    params3.customerUUID = defaultCustomer.uuid;
+    params3.universeUUID = defaultUniverse.getUniverseUUID();
+    params3.customerUUID = defaultCustomer.getUuid();
     params3.keyspaceName = "cassandra";
     params3.tableType = TableType.YQL_TABLE_TYPE;
     PitrConfig pitr3 = PitrConfig.create(scheduleUUID3, params3);
@@ -636,7 +637,10 @@ public class PitrControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 pitrController.deletePitrConfig(
-                    defaultCustomer.uuid, defaultUniverse.universeUUID, scheduleUUID3));
+                    defaultCustomer.getUuid(),
+                    defaultUniverse.getUniverseUUID(),
+                    scheduleUUID3,
+                    fakeRequest));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertEquals(BAD_REQUEST, r.status());
     verify(mockCommissioner, times(0)).submit(any(), any());
@@ -648,8 +652,8 @@ public class PitrControllerTest extends FakeDBApplication {
     CreatePitrConfigParams params3 = new CreatePitrConfigParams();
     params3.retentionPeriodInSeconds = 7 * 86400L;
     params3.intervalInSeconds = 86400L;
-    params3.universeUUID = defaultUniverse.universeUUID;
-    params3.customerUUID = defaultCustomer.uuid;
+    params3.universeUUID = defaultUniverse.getUniverseUUID();
+    params3.customerUUID = defaultCustomer.getUuid();
     params3.keyspaceName = "cassandra";
     params3.tableType = TableType.YQL_TABLE_TYPE;
     PitrConfig pitr3 = PitrConfig.create(scheduleUUID3, params3);
@@ -665,7 +669,10 @@ public class PitrControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 pitrController.deletePitrConfig(
-                    defaultCustomer.uuid, defaultUniverse.universeUUID, scheduleUUID3));
+                    defaultCustomer.getUuid(),
+                    defaultUniverse.getUniverseUUID(),
+                    scheduleUUID3,
+                    fakeRequest));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertBadRequest(r, "Cannot delete PITR config when the universe is in locked state");
     verify(mockCommissioner, times(0)).submit(any(), any());
@@ -682,7 +689,10 @@ public class PitrControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 pitrController.deletePitrConfig(
-                    defaultCustomer.uuid, defaultUniverse.universeUUID, scheduleUUID3));
+                    defaultCustomer.getUuid(),
+                    defaultUniverse.getUniverseUUID(),
+                    scheduleUUID3,
+                    fakeRequest));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertEquals(BAD_REQUEST, r.status());
     verify(mockCommissioner, times(0)).submit(any(), any());
@@ -696,8 +706,8 @@ public class PitrControllerTest extends FakeDBApplication {
     CreatePitrConfigParams params3 = new CreatePitrConfigParams();
     params3.retentionPeriodInSeconds = 7 * 86400L;
     params3.intervalInSeconds = 86400L;
-    params3.universeUUID = defaultUniverse.universeUUID;
-    params3.customerUUID = defaultCustomer.uuid;
+    params3.universeUUID = defaultUniverse.getUniverseUUID();
+    params3.customerUUID = defaultCustomer.getUuid();
     params3.keyspaceName = "cassandra";
     params3.tableType = TableType.YQL_TABLE_TYPE;
     PitrConfig pitr3 = PitrConfig.create(pitrConfigUUID, params3);
@@ -716,26 +726,26 @@ public class PitrControllerTest extends FakeDBApplication {
     when(mockClient.listSnapshotSchedules(any())).thenReturn(mockListSnapshotSchedulesResponse);
 
     RestoreSnapshotScheduleParams params = new RestoreSnapshotScheduleParams();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.universeUUID = defaultUniverse.getUniverseUUID();
     params.pitrConfigUUID = pitrConfigUUID;
     params.restoreTimeInMillis = System.currentTimeMillis();
 
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("retentionPeriodInSeconds", 7 * 86400L);
     bodyJson.put("intervalInSeconds", 86400L);
-    Result r = performPitr(defaultUniverse.universeUUID, Json.toJson(params));
+    Result r = performPitr(defaultUniverse.getUniverseUUID(), Json.toJson(params));
     assertOk(r);
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
     assertEquals(OK, r.status());
     verify(mockCommissioner, times(1)).submit(any(), any());
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
   public void testPerformPitrWithNoUniverse() throws Exception {
     RestoreSnapshotScheduleParams params = new RestoreSnapshotScheduleParams();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.universeUUID = defaultUniverse.getUniverseUUID();
     params.pitrConfigUUID = UUID.randomUUID();
     params.restoreTimeInMillis = System.currentTimeMillis();
 
@@ -743,13 +753,13 @@ public class PitrControllerTest extends FakeDBApplication {
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertEquals(BAD_REQUEST, r.status());
     verify(mockCommissioner, times(0)).submit(any(), any());
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
   public void testPerformPitrWithUniversePaused() throws Exception {
     RestoreSnapshotScheduleParams params = new RestoreSnapshotScheduleParams();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.universeUUID = defaultUniverse.getUniverseUUID();
     params.pitrConfigUUID = UUID.randomUUID();
     params.restoreTimeInMillis = System.currentTimeMillis();
 
@@ -760,17 +770,17 @@ public class PitrControllerTest extends FakeDBApplication {
 
     Result r =
         assertPlatformException(
-            () -> performPitr(defaultUniverse.universeUUID, Json.toJson(params)));
+            () -> performPitr(defaultUniverse.getUniverseUUID(), Json.toJson(params)));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertEquals(BAD_REQUEST, r.status());
     verify(mockCommissioner, times(0)).submit(any(), any());
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
   public void testPerformPitrWithUniverseUpdateInProgress() throws Exception {
     RestoreSnapshotScheduleParams params = new RestoreSnapshotScheduleParams();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.universeUUID = defaultUniverse.getUniverseUUID();
     params.pitrConfigUUID = UUID.randomUUID();
     params.restoreTimeInMillis = System.currentTimeMillis();
 
@@ -781,17 +791,17 @@ public class PitrControllerTest extends FakeDBApplication {
 
     Result r =
         assertPlatformException(
-            () -> performPitr(defaultUniverse.universeUUID, Json.toJson(params)));
+            () -> performPitr(defaultUniverse.getUniverseUUID(), Json.toJson(params)));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertBadRequest(r, "Cannot perform PITR when the universe is in locked state");
     verify(mockCommissioner, times(0)).submit(any(), any());
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
   public void testPerformPitrWithIncompatibleUniverse() throws Exception {
     RestoreSnapshotScheduleParams params = new RestoreSnapshotScheduleParams();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.universeUUID = defaultUniverse.getUniverseUUID();
     params.pitrConfigUUID = UUID.randomUUID();
     params.restoreTimeInMillis = System.currentTimeMillis();
 
@@ -802,10 +812,10 @@ public class PitrControllerTest extends FakeDBApplication {
 
     Result r =
         assertPlatformException(
-            () -> performPitr(defaultUniverse.universeUUID, Json.toJson(params)));
+            () -> performPitr(defaultUniverse.getUniverseUUID(), Json.toJson(params)));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertEquals(BAD_REQUEST, r.status());
     verify(mockCommissioner, times(0)).submit(any(), any());
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 }

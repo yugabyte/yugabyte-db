@@ -45,7 +45,7 @@ public class ManageAlertDefinitionsTest extends FakeDBApplication {
     assertTrue(customerDefinition.isActive());
 
     ManageAlertDefinitions.Params params = new ManageAlertDefinitions.Params();
-    params.universeUUID = u.universeUUID;
+    params.universeUUID = u.getUniverseUUID();
     params.active = false;
 
     ManageAlertDefinitions manageAlertDefinitions =
@@ -63,7 +63,7 @@ public class ManageAlertDefinitionsTest extends FakeDBApplication {
 
     manageAlertDefinitions = app.injector().instanceOf(ManageAlertDefinitions.class);
     params = new ManageAlertDefinitions.Params();
-    params.universeUUID = u.universeUUID;
+    params.universeUUID = u.getUniverseUUID();
     params.active = true;
     manageAlertDefinitions.initialize(params);
 

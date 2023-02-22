@@ -12,7 +12,6 @@ package com.yugabyte.yw.models;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -28,16 +27,19 @@ import java.util.stream.Collectors;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.persistence.CascadeType;
-import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.OneToMany;
 import javax.persistence.Temporal;
 import javax.persistence.TemporalType;
+import lombok.Getter;
+import lombok.Setter;
 import play.data.validation.Constraints;
 
 @Entity
 @JsonPropertyOrder({"uuid", "cluster_key", "instances"})
+@Getter
+@Setter
 public class HighAvailabilityConfig extends Model {
 
   private static final Finder<UUID, HighAvailabilityConfig> find =
@@ -45,12 +47,8 @@ public class HighAvailabilityConfig extends Model {
 
   @JsonIgnore private final int id = 1;
 
-  @Id
-  @Constraints.Required
-  @Column(nullable = false, unique = true)
-  private UUID uuid;
+  @Id @Constraints.Required private UUID uuid;
 
-  @Column(nullable = false, unique = true)
   private String clusterKey;
 
   @Temporal(TemporalType.TIMESTAMP)
@@ -59,74 +57,48 @@ public class HighAvailabilityConfig extends Model {
   @OneToMany(mappedBy = "config", cascade = CascadeType.ALL)
   private List<PlatformInstance> instances;
 
-  public UUID getUUID() {
-    return this.uuid;
-  }
-
-  public void setUUID(UUID uuid) {
-    this.uuid = uuid;
-  }
-
-  @JsonGetter("cluster_key")
-  public String getClusterKey() {
-    return this.clusterKey;
-  }
-
-  public void setClusterKey(String clusterKey) {
-    this.clusterKey = clusterKey;
-  }
-
-  @JsonGetter("last_failover")
-  public Date getLastFailover() {
-    return this.lastFailover;
-  }
-
-  public void setLastFailover(Date lastFailover) {
+  public void updateLastFailover(Date lastFailover) {
     this.lastFailover = lastFailover;
     this.update();
   }
 
   public void updateLastFailover() {
-    this.lastFailover = new Date();
+    this.setLastFailover(new Date());
     this.update();
-  }
-
-  public List<PlatformInstance> getInstances() {
-    return this.instances;
   }
 
   @JsonIgnore
   public List<PlatformInstance> getRemoteInstances() {
-    return this.instances.stream().filter(i -> !i.getIsLocal()).collect(Collectors.toList());
+    return this.getInstances().stream().filter(i -> !i.getIsLocal()).collect(Collectors.toList());
   }
 
   @JsonIgnore
   public boolean isLocalLeader() {
-    return this.instances.stream().anyMatch(i -> i.getIsLeader() && i.getIsLocal());
+    return this.getInstances().stream().anyMatch(i -> i.getIsLeader() && i.getIsLocal());
   }
 
   @JsonIgnore
   public Optional<PlatformInstance> getLocal() {
-    return this.instances.stream().filter(PlatformInstance::getIsLocal).findFirst();
+    return this.getInstances().stream().filter(PlatformInstance::getIsLocal).findFirst();
   }
 
   @JsonIgnore
   public Optional<PlatformInstance> getLeader() {
-    return this.instances.stream().filter(PlatformInstance::getIsLeader).findFirst();
+    return this.getInstances().stream().filter(PlatformInstance::getIsLeader).findFirst();
   }
 
   public static HighAvailabilityConfig create(String clusterKey) {
     HighAvailabilityConfig model = new HighAvailabilityConfig();
-    model.uuid = UUID.randomUUID();
-    model.clusterKey = clusterKey;
-    model.instances = new ArrayList<>();
+    model.setUuid(UUID.randomUUID());
+    model.setClusterKey(clusterKey);
+    model.setInstances(new ArrayList<>());
     model.save();
 
     return model;
   }
 
   public static void update(HighAvailabilityConfig config, String clusterKey) {
-    config.clusterKey = clusterKey;
+    config.setClusterKey(clusterKey);
     config.update();
   }
 

@@ -43,15 +43,15 @@ public class AccessKeyHandler {
         "Creating access key {} for customer {}, provider {}.",
         formData.keyCode,
         customerUUID,
-        provider.uuid);
+        provider.getUuid());
     return providerEditRestrictionManager.tryEditProvider(
-        provider.uuid, () -> doCreate(provider, formData, requestBody));
+        provider.getUuid(), () -> doCreate(provider, formData, requestBody));
   }
 
   private AccessKey doCreate(
       Provider provider, AccessKeyFormData formData, RequestBody requestBody) {
     try {
-      List<Region> regionList = provider.regions;
+      List<Region> regionList = provider.getRegions();
       if (regionList.isEmpty()) {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, "Provider is in invalid state. No regions.");
@@ -59,7 +59,7 @@ public class AccessKeyHandler {
       Region region = regionList.get(0);
 
       if (formData.setUpChrony
-          && region.provider.code.equals(onprem.name())
+          && region.getProvider().getCode().equals(onprem.name())
           && (formData.ntpServers == null || formData.ntpServers.isEmpty())) {
         throw new PlatformServiceException(
             BAD_REQUEST,
@@ -67,7 +67,7 @@ public class AccessKeyHandler {
                 + " provider for which chrony setup is desired");
       }
 
-      if (region.provider.code.equals(onprem.name()) && formData.sshUser == null) {
+      if (region.getProvider().getCode().equals(onprem.name()) && formData.sshUser == null) {
         throw new PlatformServiceException(
             BAD_REQUEST, "sshUser cannot be null for onprem providers.");
       }
@@ -77,13 +77,13 @@ public class AccessKeyHandler {
       AccessKey accessKey;
       if (multiPartBody != null) {
         FilePart<File> filePart = multiPartBody.getFile("keyFile");
-        File uploadedFile = filePart.getFile();
+        File uploadedFile = filePart.getRef();
         if (formData.keyType == null || uploadedFile == null) {
           throw new PlatformServiceException(BAD_REQUEST, "keyType and keyFile params required.");
         }
         accessKey =
             accessManager.uploadKeyFile(
-                region.uuid,
+                region.getUuid(),
                 uploadedFile,
                 formData.keyCode,
                 formData.keyType,
@@ -105,7 +105,7 @@ public class AccessKeyHandler {
         // Upload temp file to create the access key and return success/failure
         accessKey =
             accessManager.uploadKeyFile(
-                region.uuid,
+                region.getUuid(),
                 tempFile.toFile(),
                 formData.keyCode,
                 formData.keyType,
@@ -119,7 +119,7 @@ public class AccessKeyHandler {
       } else {
         accessKey =
             accessManager.addKey(
-                region.uuid,
+                region.getUuid(),
                 formData.keyCode,
                 null,
                 formData.sshUser,
@@ -134,7 +134,7 @@ public class AccessKeyHandler {
       // In case of onprem provider, we add a couple of additional attributes like
       // passwordlessSudo
       // and create a pre-provision script
-      if (region.provider.code.equals(onprem.name())) {
+      if (region.getProvider().getCode().equals(onprem.name())) {
         templateManager.createProvisionTemplate(
             accessKey,
             formData.airGapInstall,
@@ -151,7 +151,7 @@ public class AccessKeyHandler {
       }
 
       KeyInfo keyInfo = accessKey.getKeyInfo();
-      keyInfo.mergeFrom(provider.details);
+      keyInfo.mergeFrom(provider.getDetails());
       return accessKey;
     } catch (IOException e) {
       log.error("Failed to create access key", e);
@@ -165,9 +165,9 @@ public class AccessKeyHandler {
         "Editing access key {} for customer {}, provider {}.",
         keyCode,
         customerUUID,
-        provider.uuid);
+        provider.getUuid());
     return providerEditRestrictionManager.tryEditProvider(
-        provider.uuid, () -> doEdit(provider, accessKey, keyCode));
+        provider.getUuid(), () -> doEdit(provider, accessKey, keyCode));
   }
 
   private AccessKey doEdit(Provider provider, AccessKey accessKey, String keyCode) {
@@ -177,7 +177,7 @@ public class AccessKeyHandler {
           FORBIDDEN, "Cannot modify the access key for the provider in use!");
     }
 
-    ProviderDetails details = provider.details;
+    ProviderDetails details = provider.getDetails();
     AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     String keyPairName = keyInfo.keyPairName;
     if (keyPairName == null) {
@@ -190,13 +190,13 @@ public class AccessKeyHandler {
       keyPairName = AccessKey.getNewKeyCode(keyPairName);
     }
     String sshPrivateKeyContent = keyInfo.getUnMaskedSshPrivateKeyContent();
-    List<Region> regions = Region.getByProvider(provider.uuid);
+    List<Region> regions = Region.getByProvider(provider.getUuid());
     AccessKey newAccessKey = null;
     for (Region region : regions) {
       if (!Strings.isNullOrEmpty(sshPrivateKeyContent)) {
         newAccessKey =
             accessManager.saveAndAddKey(
-                region.uuid,
+                region.getUuid(),
                 sshPrivateKeyContent,
                 keyPairName,
                 AccessManager.KeyType.PRIVATE,
@@ -211,7 +211,7 @@ public class AccessKeyHandler {
       } else {
         newAccessKey =
             accessManager.addKey(
-                region.uuid,
+                region.getUuid(),
                 keyPairName,
                 null,
                 details.sshUser,

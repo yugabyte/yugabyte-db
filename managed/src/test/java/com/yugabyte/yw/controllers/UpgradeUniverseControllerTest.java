@@ -211,10 +211,10 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   public void testRestartUniverseRolling() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    UUID universeUUID = createUniverse(customer.getCustomerId()).getUniverseUUID();
 
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/restart";
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/restart";
     ObjectNode bodyJson = Json.newObject().put("upgradeOption", "Rolling");
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
@@ -230,21 +230,21 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
-    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.RestartUniverse)));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
   public void testRestartUniverseNonRolling() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    UUID universeUUID = createUniverse(customer.getCustomerId()).getUniverseUUID();
 
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/restart";
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/restart";
     ObjectNode bodyJson = Json.newObject().put("upgradeOption", "Non-Rolling");
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
@@ -260,21 +260,21 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
-    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.RestartUniverse)));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
   public void testSoftwareUpgradeWithInvalidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    UUID universeUUID = createUniverse(customer.getCustomerId()).getUniverseUUID();
 
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/software";
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/software";
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
@@ -285,17 +285,17 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     verify(mockCommissioner, times(0)).submit(eq(TaskType.SoftwareUpgrade), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testSoftwareUpgradeWithValidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    UUID universeUUID = createUniverse(customer.getCustomerId()).getUniverseUUID();
 
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/software";
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/software";
     ObjectNode bodyJson = Json.newObject().put("ybSoftwareVersion", "0.0.1");
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
@@ -313,21 +313,21 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
-    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.SoftwareUpgrade)));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
   public void testSoftwareUpgradeNonRolling() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    UUID universeUUID = createUniverse(customer.getCustomerId()).getUniverseUUID();
 
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/software";
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/software";
     ObjectNode bodyJson =
         Json.newObject()
             .put("ybSoftwareVersion", "new-version")
@@ -348,11 +348,11 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
-    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.SoftwareUpgrade)));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -368,9 +368,9 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     String url =
         "/api/customers/"
-            + customer.uuid
+            + customer.getUuid()
             + "/universes/"
-            + universe.universeUUID
+            + universe.getUniverseUUID()
             + "/upgrade/software";
     ObjectNode bodyJson = Json.newObject().put("ybSoftwareVersion", "new-version");
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
@@ -390,21 +390,21 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
-    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.SoftwareUpgrade)));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
   public void testGFlagsUpgradeWithInvalidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    UUID universeUUID = createUniverse(customer.getCustomerId()).getUniverseUUID();
 
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/gflags";
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/gflags";
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
@@ -415,7 +415,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     verify(mockCommissioner, times(0)).submit(eq(TaskType.GFlagsUpgrade), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -432,13 +432,13 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           userIntent.tserverGFlags = ImmutableMap.of("tserver-flag", "456");
           universeObject.setUniverseDetails(universeDetails);
         };
-    Universe.saveDetails(universe.universeUUID, updater);
+    Universe.saveDetails(universe.getUniverseUUID(), updater);
 
     String url =
         "/api/customers/"
-            + customer.uuid
+            + customer.getUuid()
             + "/universes/"
-            + universe.universeUUID
+            + universe.getUniverseUUID()
             + "/upgrade/gflags";
     JsonNode masterGFlags = Json.parse("{ \"master-flag\": \"123\"}");
     JsonNode tserverGFlags = Json.parse("{ \"tserver-flag\": \"456\"}]");
@@ -455,7 +455,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     verify(mockCommissioner, times(0)).submit(eq(TaskType.GFlagsUpgrade), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -472,13 +472,13 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           userIntent.tserverGFlags = ImmutableMap.of("tserver-flag", "456");
           universeObject.setUniverseDetails(universeDetails);
         };
-    Universe.saveDetails(universe.universeUUID, updater);
+    Universe.saveDetails(universe.getUniverseUUID(), updater);
 
     String url =
         "/api/customers/"
-            + customer.uuid
+            + customer.getUuid()
             + "/universes/"
-            + universe.universeUUID
+            + universe.getUniverseUUID()
             + "/upgrade/gflags";
     JsonNode masterGFlags = Json.parse("{ \"master-flag\": \"123\"}");
     JsonNode tserverGFlags = Json.parse("{ \"tserver-flag2\": \"456\"}]");
@@ -495,17 +495,17 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     verify(mockCommissioner, times(0)).submit(eq(TaskType.GFlagsUpgrade), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testGFlagsUpgradeWithMalformedFlags() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    UUID universeUUID = createUniverse(customer.getCustomerId()).getUniverseUUID();
 
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/gflags";
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/gflags";
     ObjectNode bodyJson = Json.newObject().put("masterGFlags", "abcd").put("tserverGFlags", "abcd");
     Result result =
         assertPlatformException(
@@ -517,17 +517,17 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     verify(mockCommissioner, times(0)).submit(eq(TaskType.GFlagsUpgrade), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testGFlagsUpgradeWithValidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    UUID universeUUID = createUniverse(customer.getCustomerId()).getUniverseUUID();
 
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/gflags";
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/gflags";
     JsonNode masterGFlags = Json.parse("{ \"master-flag\": \"123\"}");
     JsonNode tserverGFlags = Json.parse("{ \"tserver-flag\": \"456\"}]");
     ObjectNode bodyJson = Json.newObject();
@@ -556,20 +556,20 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
-    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.GFlagsUpgrade)));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
   public void testGFlagsUpgradeWithTrimParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    UUID universeUUID = createUniverse(customer.getCustomerId()).getUniverseUUID();
 
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/gflags";
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/gflags";
     JsonNode masterGFlags = Json.parse("{ \"master-flag\": \" 123 \"}");
     JsonNode tserverGFlags = Json.parse("{ \"tserver-flag\": \" 456 \"}]");
     ObjectNode bodyJson = Json.newObject();
@@ -592,20 +592,20 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
-    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.GFlagsUpgrade)));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
   public void testGFlagsUpgradeNonRolling() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    UUID universeUUID = createUniverse(customer.getCustomerId()).getUniverseUUID();
 
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/gflags";
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/gflags";
     JsonNode masterGFlags = Json.parse("{ \"master-flag\": \"123\"}");
     JsonNode tserverGFlags = Json.parse("{ \"tserver-flag\": \"456\"}]");
     ObjectNode bodyJson = Json.newObject().put("upgradeOption", "Non-Rolling");
@@ -628,10 +628,10 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
-    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.GFlagsUpgrade)));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -647,9 +647,9 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     String url =
         "/api/customers/"
-            + customer.uuid
+            + customer.getUuid()
             + "/universes/"
-            + universe.universeUUID
+            + universe.getUniverseUUID()
             + "/upgrade/gflags";
     JsonNode masterGFlags = Json.parse("{ \"master-flag\": \"123\"}");
     JsonNode tserverGFlags = Json.parse("{ \"tserver-flag\": \"456\"}]");
@@ -674,10 +674,10 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
-    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.GFlagsUpgrade)));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -687,7 +687,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     UUID universeUUID = prepareUniverseForCertsRotate(false);
 
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/certs";
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/certs";
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
@@ -697,7 +697,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     verify(mockCommissioner, times(0)).submit(eq(TaskType.CertsRotate), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -707,7 +707,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     UUID universeUUID = prepareUniverseForCertsRotate(false);
 
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/certs";
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/certs";
     ObjectNode bodyJson = prepareRequestBodyForCertsRotate(false);
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
@@ -733,10 +733,10 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
-    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.CertsRotate)));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -744,7 +744,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = prepareUniverseForCertsRotate(false);
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/update_tls";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/update_tls";
     ObjectNode bodyJson = prepareRequestBodyForCertsRotate(false);
     bodyJson.put("enableNodeToNodeEncrypt", "true");
     bodyJson.put("enableClientToNodeEncrypt", "true");
@@ -778,10 +779,10 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
-    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.CertsRotate)));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -791,7 +792,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     UUID universeUUID = prepareUniverseForCertsRotate(true);
 
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/certs";
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/certs";
     ObjectNode bodyJson = prepareRequestBodyForCertsRotate(true);
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
@@ -808,10 +809,10 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
-    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.CertsRotate)));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -820,7 +821,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = prepareUniverseForTlsToggle(false, false, null);
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/tls";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/tls";
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
@@ -830,7 +832,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     verify(mockCommissioner, times(0)).submit(eq(TaskType.TlsToggle), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -839,7 +841,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = prepareUniverseForTlsToggle(false, false, null);
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/tls";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/tls";
     ObjectNode bodyJson = prepareRequestBodyForTlsToggle(true, true, null);
     bodyJson.put("upgradeOption", "ROLLING");
     Result result =
@@ -851,7 +854,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     verify(mockCommissioner, times(0)).submit(eq(TaskType.TlsToggle), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -860,7 +863,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = prepareUniverseForTlsToggle(false, false, null);
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/tls";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/tls";
     ObjectNode bodyJson = prepareRequestBodyForTlsToggle(false, false, null);
     Result result =
         assertPlatformException(
@@ -871,7 +875,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     verify(mockCommissioner, times(0)).submit(eq(TaskType.TlsToggle), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -880,7 +884,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = prepareUniverseForTlsToggle(false, false, null);
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/tls";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/tls";
     ObjectNode bodyJson = prepareRequestBodyForTlsToggle(true, false, UUID.randomUUID());
     Result result =
         assertPlatformException(
@@ -891,7 +896,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     verify(mockCommissioner, times(0)).submit(eq(TaskType.TlsToggle), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -899,11 +904,12 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     when(mockConfig.getString("yb.storage.path")).thenReturn(TMP_CERTS_PATH);
-    UUID certUUID1 = CertificateHelper.createRootCA(mockConfig, "test cert 1", customer.uuid);
-    UUID certUUID2 = CertificateHelper.createRootCA(mockConfig, "test cert 2", customer.uuid);
+    UUID certUUID1 = CertificateHelper.createRootCA(mockConfig, "test cert 1", customer.getUuid());
+    UUID certUUID2 = CertificateHelper.createRootCA(mockConfig, "test cert 2", customer.getUuid());
     UUID universeUUID = prepareUniverseForTlsToggle(true, true, certUUID1);
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/tls";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/tls";
     ObjectNode bodyJson = prepareRequestBodyForTlsToggle(false, true, certUUID2);
     Result result =
         assertPlatformException(
@@ -914,7 +920,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     verify(mockCommissioner, times(0)).submit(eq(TaskType.TlsToggle), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -924,7 +930,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     UUID universeUUID = prepareUniverseForTlsToggle(false, false, null);
     setInTransitNode(universeUUID);
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/tls";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/tls";
     ObjectNode bodyJson = prepareRequestBodyForTlsToggle(true, true, null);
     Result result =
         assertPlatformException(
@@ -935,7 +942,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     verify(mockCommissioner, times(0)).submit(eq(TaskType.TlsToggle), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -944,7 +951,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = prepareUniverseForTlsToggle(false, false, null);
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/tls";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/tls";
     ObjectNode bodyJson = prepareRequestBodyForTlsToggle(true, true, null);
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
@@ -962,7 +970,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertNotNull(taskParams.rootCA);
 
     assertNotNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -970,9 +978,10 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Provider provider = ModelFactory.onpremProvider(customer);
-    UUID universeUUID = prepareUniverseForVMImageUpgrade(provider, "type.small").universeUUID;
+    UUID universeUUID = prepareUniverseForVMImageUpgrade(provider, "type.small").getUniverseUUID();
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/vm";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/vm";
     ObjectNode bodyJson = Json.newObject();
     ObjectNode images = Json.newObject();
     UUID uuid = UUID.randomUUID();
@@ -988,7 +997,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     verify(mockCommissioner, times(0)).submit(eq(TaskType.VMImageUpgrade), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -996,9 +1005,10 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Provider provider = ModelFactory.awsProvider(customer);
-    UUID universeUUID = prepareUniverseForVMImageUpgrade(provider, "i3.xlarge").universeUUID;
+    UUID universeUUID = prepareUniverseForVMImageUpgrade(provider, "i3.xlarge").getUniverseUUID();
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/vm";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/vm";
     ObjectNode bodyJson = Json.newObject();
     ObjectNode images = Json.newObject();
     UUID uuid = UUID.randomUUID();
@@ -1014,7 +1024,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     verify(mockCommissioner, times(0)).submit(eq(TaskType.VMImageUpgrade), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -1022,9 +1032,10 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Provider provider = ModelFactory.awsProvider(customer);
-    UUID universeUUID = prepareUniverseForVMImageUpgrade(provider, "c5.xlarge").universeUUID;
+    UUID universeUUID = prepareUniverseForVMImageUpgrade(provider, "c5.xlarge").getUniverseUUID();
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/vm";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/vm";
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
@@ -1035,7 +1046,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     verify(mockCommissioner, times(0)).submit(eq(TaskType.VMImageUpgrade), argCaptor.capture());
 
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -1048,7 +1059,11 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
         universe.getUniverseDetails().getPrimaryCluster().userIntent.regionList.get(0);
 
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID + "/upgrade/vm";
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/upgrade/vm";
     ObjectNode bodyJson = Json.newObject();
     ObjectNode images = Json.newObject();
     images.put(regionUuid.toString(), "image-" + regionUuid);
@@ -1069,21 +1084,21 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
-    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.VMImageUpgrade)));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
   public void testRebootUniverse() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    UUID universeUUID = createUniverse(customer.getCustomerId()).getUniverseUUID();
 
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/reboot";
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/reboot";
     ObjectNode bodyJson = Json.newObject().put("upgradeOption", "Rolling");
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
@@ -1099,11 +1114,11 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
-    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.RebootUniverse)));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   private UUID prepareUniverseForCertsRotate(boolean onprem)
@@ -1120,7 +1135,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
       customCertInfo.nodeKeyPath = "nodeKeyPath";
       CertificateInfo.create(
           rootCA,
-          customer.uuid,
+          customer.getUuid(),
           "test1",
           date,
           date,
@@ -1130,7 +1145,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
       createTempFile("upgrade_universe_controller_test_ca2.crt", cert2Contents);
       CertificateInfo.create(
           rootCA,
-          customer.uuid,
+          customer.getUuid(),
           "test1",
           new Date(),
           new Date(),
@@ -1139,7 +1154,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           CertConfigType.SelfSigned);
       CertificateInfo.create(
           clientRootCA,
-          customer.uuid,
+          customer.getUuid(),
           "test2",
           new Date(),
           new Date(),
@@ -1148,7 +1163,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           CertConfigType.SelfSigned);
     }
 
-    UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    UUID universeUUID = createUniverse(customer.getCustomerId()).getUniverseUUID();
     Universe.saveDetails(universeUUID, ApiUtils.mockUniverseUpdater());
     return Universe.saveDetails(
             universeUUID,
@@ -1174,7 +1189,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
               universeDetails.allowInsecure = !universeDetails.allowInsecure;
               universe.setUniverseDetails(universeDetails);
             })
-        .universeUUID;
+        .getUniverseUUID();
   }
 
   private ObjectNode prepareRequestBodyForCertsRotate(boolean onprem)
@@ -1191,7 +1206,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
       customCertInfo.nodeKeyPath = "nodeKeyPath1";
       CertificateInfo.create(
           rootCA,
-          customer.uuid,
+          customer.getUuid(),
           "test2",
           date,
           date,
@@ -1204,7 +1219,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
       createTempFile("upgrade_universe_controller_test_ca.crt", cert1Contents);
       CertificateInfo.create(
           rootCA,
-          customer.uuid,
+          customer.getUuid(),
           "test3",
           new Date(),
           new Date(),
@@ -1213,7 +1228,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           CertConfigType.SelfSigned);
       CertificateInfo.create(
           clientRootCA,
-          customer.uuid,
+          customer.getUuid(),
           "test4",
           new Date(),
           new Date(),
@@ -1228,7 +1243,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
   private UUID prepareUniverseForTlsToggle(
       boolean enableNodeToNodeEncrypt, boolean enableClientToNodeEncrypt, UUID rootCA) {
-    UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    UUID universeUUID = createUniverse(customer.getCustomerId()).getUniverseUUID();
     Universe.saveDetails(universeUUID, ApiUtils.mockUniverseUpdater());
     // Update current TLS params
     Universe.saveDetails(
@@ -1263,7 +1278,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     Region region = Region.create(provider, "region", "Region", "yb-image-1");
     AvailabilityZone availabilityZone =
         AvailabilityZone.createOrThrow(region, "az", "AZ", "subnet");
-    UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    UUID universeUUID = createUniverse(customer.getCustomerId()).getUniverseUUID();
     Universe.saveDetails(universeUUID, ApiUtils.mockUniverseUpdater());
 
     return Universe.saveDetails(
@@ -1271,12 +1286,13 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
         universe -> {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           PlacementInfo placementInfo = new PlacementInfo();
-          PlacementInfoUtil.addPlacementZone(availabilityZone.uuid, placementInfo, 1, 2, false);
+          PlacementInfoUtil.addPlacementZone(
+              availabilityZone.getUuid(), placementInfo, 1, 2, false);
           universeDetails.getPrimaryCluster().placementInfo = placementInfo;
 
           InstanceType instanceType =
               InstanceType.upsert(
-                  provider.uuid,
+                  provider.getUuid(),
                   instanceTypeString,
                   10,
                   5.5,
@@ -1286,9 +1302,9 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           userIntent.numNodes = 3;
           userIntent.instanceType = instanceType.getInstanceTypeCode();
           userIntent.replicationFactor = 3;
-          userIntent.providerType = Common.CloudType.valueOf(provider.code);
-          userIntent.provider = provider.uuid.toString();
-          userIntent.regionList = ImmutableList.of(region.uuid);
+          userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
+          userIntent.provider = provider.getUuid().toString();
+          userIntent.regionList = ImmutableList.of(region.getUuid());
           universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
 
           universeDetails.nodeDetailsSet = new HashSet<>();
@@ -1301,8 +1317,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
             node.isTserver = true;
             node.cloudInfo = new CloudSpecificInfo();
             node.cloudInfo.private_ip = "1.2.3." + idx;
-            node.cloudInfo.az = availabilityZone.code;
-            node.azUuid = availabilityZone.uuid;
+            node.cloudInfo.az = availabilityZone.getCode();
+            node.azUuid = availabilityZone.getUuid();
             universeDetails.nodeDetailsSet.add(node);
           }
 

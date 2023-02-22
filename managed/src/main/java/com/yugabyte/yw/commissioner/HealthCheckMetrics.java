@@ -193,7 +193,7 @@ public class HealthCheckMetrics {
         .setHelp("Boolean result of health checks")
         .setCustomerUUID(customer.getUuid())
         .setSourceUuid(universe.getUniverseUUID())
-        .setLabel(kUnivNameLabel, universe.name)
+        .setLabel(kUnivNameLabel, universe.getName())
         .setLabel(kUnivUUIDLabel, universe.getUniverseUUID().toString())
         .setKeyLabel(kNodeLabel, node)
         .setKeyLabel(kCheckLabel, checkName)

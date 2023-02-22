@@ -193,7 +193,7 @@ public class EmailHelper {
     Customer customer = Customer.get(customerUUID);
     List<String> destinations = new ArrayList<>();
     String ybEmail = getYbEmail(customer);
-    CustomerConfig config = CustomerConfig.getAlertConfig(customer.uuid);
+    CustomerConfig config = CustomerConfig.getAlertConfig(customer.getUuid());
     if (config != null) {
       AlertingData alertingData = Json.fromJson(config.data, AlertingData.class);
       if (alertingData.sendAlertsToYb && !StringUtils.isEmpty(ybEmail)) {

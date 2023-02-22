@@ -40,12 +40,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
-import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
-import javax.persistence.Transient;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 import lombok.Data;
@@ -108,28 +106,23 @@ public class CustomerConfig extends Model {
 
   @NotNull
   @Size(min = 1, max = 100)
-  @Column(length = 100, nullable = true)
   @ApiModelProperty(value = "Config name", example = "backup20-01-2021")
   public String configName;
 
   @NotNull
-  @Column(nullable = false)
   @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   public UUID customerUUID;
 
   @NotNull
-  @Column(length = 25, nullable = false)
   @ApiModelProperty(value = "Config type", example = "STORAGE")
   public ConfigType type;
 
   @NotNull
   @Size(min = 1, max = 50)
-  @Column(length = 100, nullable = false)
   @ApiModelProperty(value = "Name", example = "S3")
   public String name;
 
   @NotNull
-  @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   @Encrypted
   @ApiModelProperty(
@@ -142,7 +135,6 @@ public class CustomerConfig extends Model {
   @ApiModelProperty(
       value = "state of the customerConfig. Possible values are Active, QueuedForDeletion.",
       accessMode = READ_ONLY)
-  @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   private ConfigState state = ConfigState.Active;
 
@@ -172,7 +164,6 @@ public class CustomerConfig extends Model {
     return data;
   }
 
-  @Transient
   @JsonIgnore
   public ObjectNode getMaskedData() {
     return CommonUtils.maskConfig(data);

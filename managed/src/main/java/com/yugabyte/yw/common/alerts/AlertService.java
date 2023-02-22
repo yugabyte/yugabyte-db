@@ -27,6 +27,7 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.paging.AlertPagedQuery;
 import com.yugabyte.yw.models.paging.AlertPagedResponse;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
+import io.ebean.DB;
 import io.ebean.Query;
 import io.ebean.annotation.Transactional;
 import java.util.Collections;
@@ -84,12 +85,12 @@ public class AlertService {
     List<Alert> toCreate = toCreateAndUpdate.getOrDefault(CREATE, Collections.emptyList());
     if (!toCreate.isEmpty()) {
       toCreate.forEach(Alert::generateUUID);
-      Alert.db().saveAll(toCreate);
+      DB.getDefault().saveAll(toCreate);
     }
 
     List<Alert> toUpdate = toCreateAndUpdate.getOrDefault(UPDATE, Collections.emptyList());
     if (!toUpdate.isEmpty()) {
-      Alert.db().updateAll(toUpdate);
+      DB.getDefault().updateAll(toUpdate);
     }
 
     log.trace("{} alerts saved", toCreate.size() + toUpdate.size());
