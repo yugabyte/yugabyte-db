@@ -122,7 +122,7 @@ public class NodeConfigValidator {
     boolean canConnect = sshIntoNode(provider, nodeData, operation);
     nodeConfigs.add(new NodeConfig(Type.SSH_ACCESS, String.valueOf(canConnect)));
 
-    if (operation == Operation.CONFIGURE && nodeAgentClient.isClientEnabled()) {
+    if (operation == Operation.CONFIGURE && nodeAgentClient.isClientEnabled(provider)) {
       canConnect = connectToNodeAgent(provider, nodeData, operation);
       nodeConfigs.add(new NodeConfig(Type.NODE_AGENT_ACCESS, String.valueOf(canConnect)));
     }
@@ -286,6 +286,7 @@ public class NodeConfigValidator {
 
   private boolean isNodeConfigRequired(ValidationData input) {
     MigratedKeyInfoFields keyInfo = input.getProvider().details;
+    Provider provider = input.getProvider();
     NodeConfig.Type type = input.nodeConfig.getType();
     switch (type) {
       case PROMETHEUS_NO_NODE_EXPORTER:
@@ -299,11 +300,13 @@ public class NodeConfigValidator {
         }
       case SSH_ACCESS:
         {
-          return input.getOperation() == Operation.PROVISION || !nodeAgentClient.isClientEnabled();
+          return input.getOperation() == Operation.PROVISION
+              || !nodeAgentClient.isClientEnabled(provider);
         }
       case NODE_AGENT_ACCESS:
         {
-          return input.getOperation() == Operation.CONFIGURE && nodeAgentClient.isClientEnabled();
+          return input.getOperation() == Operation.CONFIGURE
+              && nodeAgentClient.isClientEnabled(provider);
         }
       case CHRONYD_RUNNING:
       case RSYNC:
