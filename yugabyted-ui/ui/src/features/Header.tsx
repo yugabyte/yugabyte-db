@@ -10,18 +10,29 @@ import {
   IconButton,
   Link as MUILink
 } from '@material-ui/core';
-import {  Route, Switch, useRouteMatch } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import { YBDropdown } from '@app/components';
-import { VersionBadge } from '@app/features/clusters/VersionBadge';
 import HelpIcon from '@app/assets/help.svg';
 import FileIcon from '@app/assets/file.svg';
 import SlackIcon from '@app/assets/slack.svg';
+import HeartCheckIcon from '@app/assets/heart-check.svg';
+import { useGetClusterQuery } from '@app/api/src';
 
 const useStyles = makeStyles((theme) => ({
   divider: {
-    width: `calc(100% - ${theme.spacing(4)}px)`
+    width: '100%',
+    marginLeft: 0,
+  },
+  iconContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.palette.success[100],
+    padding: theme.spacing(1.5),
+    borderRadius: '100%',
+    margin: theme.spacing(2),
+    marginLeft: 0,
   },
   toRight: {
     marginLeft: 'auto',
@@ -53,14 +64,17 @@ const LINK_SLACK = 'https://yugabyte-db.slack.com/';
 export const Header: FC = () => {
   const classes = useStyles();
   const { t } = useTranslation();
-  const { path } = useRouteMatch<App.RouteParams>();
+  // const { path } = useRouteMatch<App.RouteParams>();
   // const history = useHistory();
   // const queryClient = useQueryClient();
+  const { data: clusterData } = useGetClusterQuery();
+
+  const clusterName = clusterData?.data?.spec.name || t('common.cluster');
 
   return (
     <AppBar position="static" color="transparent">
       <Toolbar>
-        <Switch>
+        {/* <Switch>
           <Route path={'/a/add/account'}>
             <Typography variant="h4" color="inherit">
               {t('common.addAccount')}
@@ -72,7 +86,7 @@ export const Header: FC = () => {
             </Typography>
           </Route>
           <Route path={`${path}/p/:projectId/analytics`}>
-            {/* <ProjectPicker /> */}
+            {/* <ProjectPicker /> /}
             <Typography variant="h4" color="inherit">
               {t('common.analytics')}
             </Typography>
@@ -118,7 +132,13 @@ export const Header: FC = () => {
             </Typography>
           </Route>
         </Switch>
-        <VersionBadge/>
+        <VersionBadge/> */}
+        <Box className={classes.iconContainer}>
+          <HeartCheckIcon />
+        </Box>
+        <Typography variant="h4" color="inherit">
+          {clusterName}
+        </Typography>
         <div className={classes.toRight}>
           <Box display="flex">
             <MUILink className={classes.sendFeedback} href={LINK_SLACK} target="_blank">

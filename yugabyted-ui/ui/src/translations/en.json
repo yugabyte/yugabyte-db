@@ -51,7 +51,7 @@
       "copyFailed": "Failed copy to the clipboard",
       "loadingText": "Loading ...",
       "sendFeedback": "Send feedback",
-      "joinSlack": "Join Yugabyte Community Slack Channel",
+      "joinSlack": "Join our Slack community",
       "apply": "Apply",
       "multiEntryFieldLabel": "Mutiple entries can be separated by `whitespace` or `,`",
       "multiEntryHitEnter": "Hit enter to confirm.",
@@ -95,7 +95,6 @@
           "dec": "Dec"
         }
       },
-      "back": "Back",
       "or": "or",
       "preview": "Preview",
       "stable": "Stable"

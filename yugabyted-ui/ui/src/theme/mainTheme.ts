@@ -145,7 +145,7 @@ export const mainTheme = createTheme({
 
         '&.MuiPaper-root': {
           border: 'none',
-          backgroundColor: 'transparent'
+          backgroundColor: 'white'
         }
       }
     },
