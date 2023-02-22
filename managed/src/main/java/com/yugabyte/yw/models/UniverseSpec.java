@@ -25,6 +25,7 @@ import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
@@ -77,6 +78,10 @@ public class UniverseSpec {
   public List<PriceComponent> priceComponents;
 
   public List<CertificateInfo> certificateInfoList;
+
+  public List<KmsConfig> kmsConfigs;
+
+  public List<KmsHistory> kmsHistoryList;
 
   public Map<String, String> universeConfig;
 
@@ -466,6 +471,12 @@ public class UniverseSpec {
     }
   }
 
+  private void updateKmsConfigDetails(Customer customer) {
+    for (KmsConfig kmsConfig : this.kmsConfigs) {
+      kmsConfig.customerUUID = customer.uuid;
+    }
+  }
+
   private void updateUniverseMetadata(String storagePath, Customer customer) {
 
     // Update universe information with new customer information and universe config.
@@ -479,6 +490,8 @@ public class UniverseSpec {
 
     // Update access key file paths.
     updateAccessKeyDetails(storagePath);
+
+    updateKmsConfigDetails(customer);
   }
 
   @Transactional
@@ -538,17 +551,31 @@ public class UniverseSpec {
     }
 
     for (CertificateInfo certificateInfo : certificateInfoList) {
-      certificateInfo.save();
+      if (!CertificateInfo.maybeGet(certificateInfo.uuid).isPresent()) {
+        certificateInfo.save();
 
-      File certificateInfoBaseDir =
-          new File(
-              CertificateHelper.getCADirPath(
-                  platformPaths.storagePath, certificateInfo.customerUUID, certificateInfo.uuid));
-      File[] certificateInfoFiles = certificateInfoBaseDir.listFiles();
-      if (certificateInfoFiles != null) {
-        for (File certificateInfoFile : certificateInfoFiles) {
-          FileData.writeFileToDB(certificateInfoFile.getAbsolutePath());
+        File certificateInfoBaseDir =
+            new File(
+                CertificateHelper.getCADirPath(
+                    platformPaths.storagePath, certificateInfo.customerUUID, certificateInfo.uuid));
+        File[] certificateInfoFiles = certificateInfoBaseDir.listFiles();
+        if (certificateInfoFiles != null) {
+          for (File certificateInfoFile : certificateInfoFiles) {
+            FileData.writeFileToDB(certificateInfoFile.getAbsolutePath());
+          }
         }
+      }
+    }
+
+    for (KmsConfig kmsConfig : kmsConfigs) {
+      if (KmsConfig.get(kmsConfig.configUUID) == null) {
+        kmsConfig.save();
+      }
+    }
+
+    for (KmsHistory kmsHistory : kmsHistoryList) {
+      if (!EncryptionAtRestUtil.keyRefExists(this.universe.universeUUID, kmsHistory.uuid.keyRef)) {
+        kmsHistory.save();
       }
     }
 

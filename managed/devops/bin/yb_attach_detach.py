@@ -12,6 +12,7 @@ import io
 import json
 import logging
 import mimetypes
+import os.path
 import re
 import shutil
 import urllib.request as urllib_request
@@ -94,6 +95,9 @@ class YBAttachDetach:
             raise ValueError(
                 f"Invalid action passed in. Got {self.action}. "
                 f"Expected one of: {VALID_ACTIONS}")
+
+        if (self.action == DETACH_ACTION and os.path.isfile(self.file)):
+            raise ValueError(f"File {self.file} already exists")
 
     def set_url_request_variables(self):
         """
