@@ -1611,12 +1611,12 @@ pgsm_create_hash_entry(uint64 bucket_id, uint64 queryid, PlanInfo *plan_info)
 	pgsmEntry *entry;
 	int sec_ctx;
 	bool found_client_addr = false;
-	char app_name[APPLICATIONNAME_LEN] = "";
 	char *app_name_ptr = app_name;
-	int	app_name_len = 0;
 	MemoryContext oldctx;
 	char *datname = NULL;
 	char *username = NULL;
+	static bool is_ip_set = false;
+	static uint32 ip = 0;
 
 	/* Create an entry in the pgsm memory context */
 	oldctx = MemoryContextSwitchTo(pgsm_get_ss()->pgsm_mem_cxt);
@@ -1633,7 +1633,13 @@ pgsm_create_hash_entry(uint64 bucket_id, uint64 queryid, PlanInfo *plan_info)
 	entry->key.appid = pgsm_hash_string((const char *)app_name_ptr, app_name_len);
 
 	/* client address */
-	entry->key.ip = pg_get_client_addr(&found_client_addr);
+	if (!is_ip_set)
+	{
+		ip = pg_get_client_addr(&found_client_addr);
+		is_ip_set = true;
+	}
+
+	entry->key.ip = ip;
 
 	/* PlanID, if there is one */
 	entry->key.planid = plan_info ? plan_info->planid : 0;
