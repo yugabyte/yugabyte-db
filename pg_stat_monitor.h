@@ -57,6 +57,9 @@
 #include "utils/lsyscache.h"
 #include "utils/guc.h"
 #include "utils/guc_tables.h"
+#include "utils/memutils.h"
+#include "utils/palloc.h"
+
 
 #define MAX_BACKEND_PROCESES (MaxBackends + NUM_AUXILIARY_PROCS + max_prepared_xacts)
 #define  IntArrayGetTextDatum(x,y) intarray_get_datum(x,y)
@@ -64,7 +67,6 @@
 /* XXX: Should USAGE_EXEC reflect execution time and/or buffer usage? */
 #define USAGE_EXEC(duration)	(1.0)
 #define USAGE_INIT				(1.0)	/* including initial planning */
-#define ASSUMED_MEDIAN_INIT		(10.0)	/* initial assumed median usage */
 #define ASSUMED_LENGTH_INIT		1024	/* initial assumed mean query length */
 #define USAGE_DECREASE_FACTOR	(0.99)	/* decreased every entry_dealloc */
 #define STICKY_DECREASE_FACTOR	(0.50)	/* factor for sticky entries */
@@ -74,16 +76,16 @@
 
 #define MAX_RESPONSE_BUCKET 50
 #define INVALID_BUCKET_ID	-1
-#define MAX_REL_LEN			255
 #define MAX_BUCKETS			10
 #define TEXT_LEN			255
 #define ERROR_MESSAGE_LEN	100
+#define REL_TYPENAME_LEN	64
 #define REL_LST				10
-#define REL_LEN				1000
+#define REL_LEN				132 /* REL_TYPENAME_LEN * 2 (relname + schema) + 1 (for view indication) + 1 and dot and string terminator */
 #define CMD_LST				10
 #define CMD_LEN				20
-#define APPLICATIONNAME_LEN	100
-#define COMMENTS_LEN        512
+#define APPLICATIONNAME_LEN	NAMEDATALEN
+#define COMMENTS_LEN        256
 #define PGSM_OVER_FLOW_MAX	10
 #define PLAN_TEXT_LEN		1024
 /* the assumption of query max nested level */
@@ -91,12 +93,13 @@
 
 #define MAX_QUERY_BUF						(PGSM_QUERY_SHARED_BUFFER * 1024 * 1024)
 #define MAX_BUCKETS_MEM 					(PGSM_MAX * 1024 * 1024)
-#define BUCKETS_MEM_OVERFLOW() 				((hash_get_num_entries(pgss_hash) * sizeof(pgssEntry)) >= MAX_BUCKETS_MEM)
-#define MAX_BUCKET_ENTRIES 					(MAX_BUCKETS_MEM / sizeof(pgssEntry))
+#define BUCKETS_MEM_OVERFLOW() 				((hash_get_num_entries(pgsm_hash) * sizeof(pgsmEntry)) >= MAX_BUCKETS_MEM)
+#define MAX_BUCKET_ENTRIES 					(MAX_BUCKETS_MEM / sizeof(pgsmEntry))
 #define QUERY_BUFFER_OVERFLOW(x,y)  		((x + y + sizeof(uint64) + sizeof(uint64)) > MAX_QUERY_BUF)
 #define QUERY_MARGIN 						100
 #define MIN_QUERY_LEN						10
 #define SQLCODE_LEN                         20
+#define TOTAL_RELS_LENGTH					(REL_LST * REL_LEN)
 
 #if PG_VERSION_NUM >= 130000
 #define	MAX_SETTINGS                        15
@@ -196,23 +199,23 @@ typedef enum OVERFLOW_TARGET
 	OVERFLOW_TARGET_DISK
 }			OVERFLOW_TARGET;
 
-typedef enum pgssStoreKind
+typedef enum pgsmStoreKind
 {
-	PGSS_INVALID = -1,
+	PGSM_INVALID = -1,
 
 	/*
-	 * PGSS_PLAN and PGSS_EXEC must be respectively 0 and 1 as they're used to
+	 * PGSM_PLAN and PGSM_EXEC must be respectively 0 and 1 as they're used to
 	 * reference the underlying values in the arrays in the Counters struct,
-	 * and this order is required in pg_stat_statements_internal().
+	 * and this order is required in pg_stat_monitor_internal().
 	 */
-	PGSS_PARSE = 0,
-	PGSS_PLAN,
-	PGSS_EXEC,
-	PGSS_FINISHED,
-	PGSS_ERROR,
+	PGSM_PARSE = 0,
+	PGSM_PLAN,
+	PGSM_EXEC,
+	PGSM_STORE,
+	PGSM_ERROR,
 
-	PGSS_NUMKIND				/* Must be last value of this enum */
-} pgssStoreKind;
+	PGSM_NUMKIND				/* Must be last value of this enum */
+} pgsmStoreKind;
 
 /* the assumption of query max nested level */
 #define DEFAULT_MAX_NESTED_LEVEL	10
@@ -247,17 +250,17 @@ typedef struct PlanInfo
 	size_t		plan_len;		/* strlen(plan_text) */
 }			PlanInfo;
 
-typedef struct pgssHashKey
+typedef struct pgsmHashKey
 {
 	uint64		bucket_id;		/* bucket number */
 	uint64		queryid;		/* query identifier */
-	uint64		userid;			/* user OID */
-	uint64		dbid;			/* database OID */
-	uint64		ip;				/* client ip address */
 	uint64		planid;			/* plan identifier */
 	uint64		appid;			/* hash of application name */
-	uint64		toplevel;		/* query executed at top level */
-} pgssHashKey;
+	Oid			userid;			/* user OID */
+	Oid			dbid;			/* database OID */
+	uint32		ip;				/* client ip address */
+	bool		toplevel;		/* query executed at top level */
+} pgsmHashKey;
 
 typedef struct QueryInfo
 {
@@ -307,6 +310,15 @@ typedef struct Blocks
 	double      temp_blk_read_time; /* time spent reading temp blocks, in msec */
 	double      temp_blk_write_time;    /* time spent writing temp blocks, in
                                           * msec */
+
+	/*
+	 * Variables for local entry. The values to be passed to pgsm_update_entry
+	 * from pgsm_store.
+	 */
+	instr_time      instr_blk_read_time;  		/* time spent reading blocks */
+	instr_time      instr_blk_write_time; 		/* time spent writing blocks */
+	instr_time      instr_temp_blk_read_time; 	/* time spent reading temp blocks */
+	instr_time      instr_temp_blk_write_time;	/* time spent writing temp blocks */
 }			Blocks;
 
 typedef struct JitInfo
@@ -322,12 +334,21 @@ typedef struct JitInfo
      int64       jit_emission_count; /* number of times emission time has been
                                       * > 0 */
      double      jit_emission_time;  /* total time to emit jit code */
+
+	/*
+	 * Variables for local entry. The values to be passed to pgsm_update_entry
+	 * from pgsm_store.
+	 */
+	instr_time      instr_generation_counter;  		/* generation counter */
+	instr_time      instr_inlining_counter;  		/* inlining counter */
+	instr_time      instr_optimization_counter; 	/* optimization counter */
+	instr_time      instr_emission_counter; 		/* emission counter */
 }			JitInfo;
 
 typedef struct SysInfo
 {
-	float		utime;			/* user cpu time */
-	float		stime;			/* system cpu time */
+	double		utime;			/* user cpu time */
+	double		stime;			/* system cpu time */
 }			SysInfo;
 
 typedef struct Wal_Usage
@@ -339,7 +360,6 @@ typedef struct Wal_Usage
 
 typedef struct Counters
 {
-	uint64		bucket_id;		/* bucket id */
 	Calls		calls;
 	QueryInfo	info;
 	CallTime	time;
@@ -355,7 +375,6 @@ typedef struct Counters
 	Wal_Usage	walusage;
 	int			resp_calls[MAX_RESPONSE_BUCKET];	/* execution time's in
 													 * msec */
-	int64		state;			/* query state */
 } Counters;
 
 /* Some global structure to get the cpu usage, really don't like the idea of global variable */
@@ -363,32 +382,33 @@ typedef struct Counters
 /*
  * Statistics per statement
  */
-typedef struct pgssEntry
+typedef struct pgsmEntry
 {
-	pgssHashKey key;			/* hash key of entry - MUST BE FIRST */
-	uint64		pgsm_query_id;	/* pgsm generate normalized query hash */
-	Counters	counters;		/* the statistics for this query */
-	int			encoding;		/* query text encoding */
-	slock_t		mutex;			/* protects the counters only */
-	dsa_pointer	query_pos;		/* query location within query buffer */
-} pgssEntry;
+	pgsmHashKey key;					/* hash key of entry - MUST BE FIRST */
+	uint64		pgsm_query_id;			/* pgsm generate normalized query hash */
+	char		datname[NAMEDATALEN];	/* database name */
+	char		username[NAMEDATALEN];		/* user name */
+	Counters	counters;				/* the statistics for this query */
+	int			encoding;				/* query text encoding */
+	slock_t		mutex;					/* protects the counters only */
+	union
+	{
+		dsa_pointer	query_pos;			/* query location within query buffer */
+		char*	query_pointer;
+	}query_text;
+} pgsmEntry;
 
 /*
  * Global shared state
  */
-typedef struct pgssSharedState
+typedef struct pgsmSharedState
 {
 	LWLock	   *lock;			/* protects hashtable search/modification */
-	double		cur_median_usage;	/* current median usage in hashtable */
 	slock_t		mutex;			/* protects following fields only: */
-	Size		extent;			/* current extent of query file */
-	int64		n_writers;		/* number of active writers to query file */
 	pg_atomic_uint64 current_wbucket;
 	pg_atomic_uint64 prev_bucket_sec;
 	uint64		bucket_entry[MAX_BUCKETS];
 	TimestampTz	bucket_start_time[MAX_BUCKETS]; /* start time of the bucket */
-	LWLock	   	*errors_lock;	/* protects errors hashtable
-								 * search/modification */
 	int         hash_tranche_id;
 	void        *raw_dsa_area;	/* DSA area pointer to store query texts.
 								 * dshash also lives in this memory when
@@ -398,27 +418,21 @@ typedef struct pgssSharedState
 								  * classic shared memory hash or dshash
 								  * (if we are using USE_DYNAMIC_HASH)
 								  */
-} pgssSharedState;
+	MemoryContext	pgsm_mem_cxt;
+								/* context to store stats in local
+								 * memory until they are pushed to shared hash
+								 */
+	bool pgsm_oom;
+} pgsmSharedState;
 
 typedef struct pgsmLocalState
 {
-	pgssSharedState *shared_pgssState;
+	pgsmSharedState *shared_pgsmState;
 	dsa_area   		*dsa;	/* local dsa area for backend attached to the
 							 * dsa area created by postmaster at startup.
 							 */
 	PGSM_HASH_TABLE *shared_hash;
 }pgsmLocalState;
-
-#define ResetSharedState(x) \
-do { \
-		x->cur_median_usage = ASSUMED_MEDIAN_INIT; \
-		x->cur_median_usage = ASSUMED_MEDIAN_INIT; \
-		x->n_writers = 0; \
-		pg_atomic_init_u64(&x->current_wbucket, 0); \
-		pg_atomic_init_u64(&x->prev_bucket_sec, 0); \
-		memset(&x->bucket_entry, 0, MAX_BUCKETS * sizeof(uint64)); \
-} while(0)
-
 
 #if PG_VERSION_NUM < 140000
 /*
@@ -456,40 +470,30 @@ typedef struct JumbleState
 } JumbleState;
 #endif
 
-/* Links to shared memory state */
-
-bool		SaveQueryText(uint64 bucketid,
-						  uint64 queryid,
-						  unsigned char *buf,
-						  const char *query,
-						  uint64 query_len,
-						  size_t *query_pos);
-
 /* guc.c */
 void		init_guc(void);
 GucVariable *get_conf(int i);
 
 /* hash_create.c */
 dsa_area   		*get_dsa_area_for_query_text(void);
-PGSM_HASH_TABLE	*get_pgssHash(void);
+PGSM_HASH_TABLE	*get_pgsmHash(void);
 
 void		pgsm_attach_shmem(void);
 bool		IsHashInitialize(void);
-void		pgss_shmem_startup(void);
-void		pgss_shmem_shutdown(int code, Datum arg);
+bool		IsSystemOOM(void);
+void		pgsm_shmem_startup(void);
+void		pgsm_shmem_shutdown(int code, Datum arg);
 int			pgsm_get_bucket_size(void);
-pgssSharedState *pgsm_get_ss(void);
-void		hash_entry_reset(void);
-void		hash_query_entryies_reset(void);
+pgsmSharedState *pgsm_get_ss(void);
 void		hash_query_entries();
 void		hash_query_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_buffer[]);
 void		hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_buffer);
-pgssEntry  *hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding);
+pgsmEntry  *hash_entry_alloc(pgsmSharedState *pgsm, pgsmHashKey *key, int encoding);
 Size		pgsm_ShmemSize(void);
-void		pgss_startup(void);
+void		pgsm_startup(void);
 
 /* hash_query.c */
-void		pgss_startup(void);
+void		pgsm_startup(void);
 
 /*---- GUC variables ----*/
 typedef enum
@@ -528,8 +532,8 @@ static const struct config_enum_entry track_options[] =
 #define HOOK_STATS_SIZE 0
 #endif
 
-void *pgsm_hash_find_or_insert(PGSM_HASH_TABLE *shared_hash, pgssHashKey *key, bool* found);
-void *pgsm_hash_find(PGSM_HASH_TABLE *shared_hash, pgssHashKey *key, bool* found);
+void *pgsm_hash_find_or_insert(PGSM_HASH_TABLE *shared_hash, pgsmHashKey *key, bool* found);
+void *pgsm_hash_find(PGSM_HASH_TABLE *shared_hash, pgsmHashKey *key, bool* found);
 void pgsm_hash_seq_init(PGSM_HASH_SEQ_STATUS *hstat, PGSM_HASH_TABLE *shared_hash, bool lock);
 void *pgsm_hash_seq_next(PGSM_HASH_SEQ_STATUS *hstat);
 void pgsm_hash_seq_term(PGSM_HASH_SEQ_STATUS *hstat);

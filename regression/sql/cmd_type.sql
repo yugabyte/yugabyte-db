@@ -10,6 +10,7 @@ DELETE FROM t1;
 SELECT b FROM t2 FOR UPDATE;
 TRUNCATE t1;
 DROP TABLE t1;
+DROP TABLE t2;
 SELECT query, cmd_type,  cmd_type_text FROM pg_stat_monitor ORDER BY query COLLATE "C";
 SELECT pg_stat_monitor_reset();
 

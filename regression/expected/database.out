@@ -27,13 +27,15 @@ SELECT * FROM t3,t4 WHERE t3.c = t4.d;
 (0 rows)
 
 \c contrib_regression
+DROP DATABASE db2;
 SELECT datname, query FROM pg_stat_monitor ORDER BY query COLLATE "C";
       datname       |                 query                 
 --------------------+---------------------------------------
+ contrib_regression | DROP DATABASE db2
  db1                | SELECT * FROM t1,t2 WHERE t1.a = t2.b
  db2                | SELECT * FROM t3,t4 WHERE t3.c = t4.d
  contrib_regression | SELECT pg_stat_monitor_reset()
-(3 rows)
+(4 rows)
 
 SELECT pg_stat_monitor_reset();
  pg_stat_monitor_reset 
@@ -44,10 +46,6 @@ SELECT pg_stat_monitor_reset();
 \c db1
 DROP TABLE t1;
 DROP TABLE t2;
-\c db2
-DROP TABLE t3;
-DROP TABLE t4;
 \c contrib_regression
 DROP DATABASE db1;
-DROP DATABASE db2;
 DROP EXTENSION pg_stat_monitor;

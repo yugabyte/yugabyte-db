@@ -14,3 +14,4 @@ SELECT routine_schema, routine_name, routine_type, data_type FROM information_sc
 SET ROLE su;
 DROP USER u1;
 DROP EXTENSION pg_stat_monitor;
+DROP USER su;

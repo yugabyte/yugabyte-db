@@ -16,4 +16,5 @@ SELECT query, rows FROM pg_stat_monitor ORDER BY query COLLATE "C";
 SELECT pg_stat_monitor_reset();
 
 DROP TABLE t1;
+DROP TABLE t2;
 DROP EXTENSION pg_stat_monitor;

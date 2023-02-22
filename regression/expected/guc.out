@@ -24,8 +24,8 @@ COLLATE "C";
  pg_stat_monitor.pgsm_histogram_buckets   | 20      |      | postmaster | integer | default | 2       | 50         |                | 20       | 20        | f
  pg_stat_monitor.pgsm_histogram_max       | 100000  |      | postmaster | integer | default | 10      | 2147483647 |                | 100000   | 100000    | f
  pg_stat_monitor.pgsm_histogram_min       | 1       |      | postmaster | integer | default | 0       | 2147483647 |                | 1        | 1         | f
- pg_stat_monitor.pgsm_max                 | 100     | MB   | postmaster | integer | default | 1       | 1000       |                | 100      | 100       | f
- pg_stat_monitor.pgsm_max_buckets         | 10      |      | postmaster | integer | default | 1       | 10         |                | 10       | 10        | f
+ pg_stat_monitor.pgsm_max                 | 256     | MB   | postmaster | integer | default | 10      | 10240      |                | 256      | 256       | f
+ pg_stat_monitor.pgsm_max_buckets         | 10      |      | postmaster | integer | default | 1       | 20000      |                | 10       | 10        | f
  pg_stat_monitor.pgsm_normalized_query    | off     |      | user       | bool    | default |         |            |                | off      | off       | f
  pg_stat_monitor.pgsm_overflow_target     | 1       |      | postmaster | integer | default | 0       | 1          |                | 1        | 1         | f
  pg_stat_monitor.pgsm_query_max_len       | 2048    |      | postmaster | integer | default | 1024    | 2147483647 |                | 2048     | 2048      | f
