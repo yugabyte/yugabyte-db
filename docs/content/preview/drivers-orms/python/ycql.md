@@ -97,7 +97,7 @@ cluster.shutdown()
 
 #### Use SSL
 
-To run the application with SSL, create the cluster connection with additional SSL parameters and imports described as follows:
+To run the application with SSL, create the cluster connection with additional SSL imports and parameters described as follows:
 
 ```python
 # Include additional imports.
@@ -112,7 +112,7 @@ ssl_context.verify_mode = CERT_REQUIRED
 # Create the cluster connection.
 cluster = Cluster(contact_points=['ip_address'],
     ssl_context=ssl_context,
-    ssl_options={'server_hostname': 'ip address'},
+    ssl_options={'server_hostname': 'ip_address'},
     auth_provider=PlainTextAuthProvider(username='username', password='password'))
 session = cluster.connect()
 ```
@@ -133,3 +133,4 @@ Created table employee
 Inserted (id, name, age, language) = (1, 'John', 35, 'Python')
 John 35 Python
 ```
+
