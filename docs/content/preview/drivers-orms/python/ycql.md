@@ -112,7 +112,7 @@ ssl_context.verify_mode = CERT_REQUIRED
 # Create the cluster connection.
 cluster = Cluster(contact_points=['ip_address'],
     ssl_context=ssl_context,
-    ssl_options={'server_hostname': 'ip address'},
+    ssl_options={'server_hostname': 'ip_address'},
     auth_provider=PlainTextAuthProvider(username='username', password='password'))
 session = cluster.connect()
 ```
