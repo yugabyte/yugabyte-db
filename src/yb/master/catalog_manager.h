@@ -2048,6 +2048,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       IncludeInactive include_inactive,
       PartitionsOnly partitions_only);
 
+  Status MaybeCreateLocalTransactionTable(
+      const CreateTableRequestPB& request, rpc::RpcContext* rpc);
+
+  int CalculateNumTabletsForTableCreation(
+      const CreateTableRequestPB& request, const Schema& schema,
+      const PlacementInfoPB& placement_info);
+
+  Result<std::pair<PartitionSchema, std::vector<Partition>>> CreatePartitions(
+      const Schema& schema, const PlacementInfoPB& placement_info, bool colocated,
+      CreateTableRequestPB* request, CreateTableResponsePB* resp);
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
