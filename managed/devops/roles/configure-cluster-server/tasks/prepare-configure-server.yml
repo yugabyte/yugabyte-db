@@ -190,7 +190,7 @@
     # Necessary for yb-master/tserver to be accessible. 'After' in service file.
     - name: Link network-online.target
       shell:
-        cmd: "systemctl --user link /lib/systemd/system/network-online.target"
+        cmd: "systemctl --user link /usr/lib/systemd/system/network-online.target"
 
     - name: Start network-online.target
       systemd:
