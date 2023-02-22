@@ -18,8 +18,9 @@ package yb.tserver;
 option java_package = "org.yb.tserver";
 
 import "yb/common/common.proto";
-import "yb/common/value.proto";
 import "yb/common/pgsql_protocol.proto";
+import "yb/common/transaction.proto";
+import "yb/common/value.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/master/master_ddl.proto";
 import "yb/master/master_types.proto";
@@ -44,6 +45,7 @@ service PgClientService {
       returns (PgGetCatalogMasterVersionResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
   rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
+  rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
   rpc GetIndexBackfillProgress(PgGetIndexBackfillProgressRequestPB)
@@ -290,6 +292,26 @@ message PgIsInitDbDoneRequestPB {
 message PgIsInitDbDoneResponsePB {
   AppStatusPB status = 1;
   bool done = 2;
+}
+
+message PgGetLockStatusRequestPB {
+  // The table to scan. If unset, scan all tables
+  bytes table_id = 1;
+
+  // If specified, only read the locks associated with this txn_id.
+  bytes transaction_id = 2;
+}
+
+message PgGetLockStatusResponsePB {
+  AppStatusPB status = 1;
+
+  message NodeLockStatusResponsePB {
+    bytes permanent_uuid = 1;
+
+    repeated TabletLockInfoPB tablet_lock_infos = 2;
+  }
+
+  repeated NodeLockStatusResponsePB node_locks = 2;
 }
 
 message PgListLiveTabletServersRequestPB {
