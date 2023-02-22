@@ -1,6 +1,6 @@
 name: yugabyted
 description: Create a yugabyted issue.
-title: "[DocDB] Title"
+title: "[yugabyted] Title"
 labels: ["area/ecosystem", "area/ybd", "status/awaiting-triage"]
 body:
 - type: textarea
