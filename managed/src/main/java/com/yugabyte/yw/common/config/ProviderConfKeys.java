@@ -233,4 +233,22 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.BETA));
+
+  public static final ConfKeyInfo<Boolean> enableNodeAgentClient =
+      new ConfKeyInfo<>(
+          "yb.node_agent.client.enabled",
+          ScopeType.PROVIDER,
+          "Enable Node Agent Client",
+          "Enable node agent client for communication to DB nodes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Boolean> installNodeAgentServer =
+      new ConfKeyInfo<>(
+          "yb.node_agent.server.install",
+          ScopeType.PROVIDER,
+          "Install Node Agent Server",
+          "Install node agent server on DB nodes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
