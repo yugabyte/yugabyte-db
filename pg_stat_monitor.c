@@ -24,6 +24,8 @@
 #include "commands/dbcommands.h"
 #include "commands/explain.h"
 #include "pg_stat_monitor.h"
+#include "libpq/libpq-be.h"
+
 
  /*
   * Extension version number, for supporting older extension versions' objects
@@ -135,7 +137,7 @@ PG_FUNCTION_INFO_V1(pg_stat_monitor);
 PG_FUNCTION_INFO_V1(get_histogram_timings);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_hook_stats);
 
-static uint pg_get_client_addr(bool *ok);
+static uint get_client_ip_address_integer(void);
 static int pg_get_application_name(char *name, int buff_size);
 static PgBackendStatus *pg_get_backend_status(void);
 static Datum intarray_get_datum(int32 arr[], int len);
@@ -1281,32 +1283,35 @@ pg_get_application_name(char *name, int buff_size)
 	return strlen(name);
 }
 
+#include <string.h>
+#include <sys/errno.h>
+
 static uint
-pg_get_client_addr(bool *ok)
+get_client_ip_address_integer(void)
 {
-	PgBackendStatus *beentry = pg_get_backend_status();
-	char		remote_host[NI_MAXHOST];
-	int			ret;
-
-	remote_host[0] = '\0';
-
-	if (!beentry)
-		return ntohl(inet_addr("127.0.0.1"));
-
-	*ok = true;
-
-	ret = pg_getnameinfo_all(&beentry->st_clientaddr.addr,
-							 beentry->st_clientaddr.salen,
-							 remote_host, sizeof(remote_host),
-							 NULL, 0,
-							 NI_NUMERICHOST | NI_NUMERICSERV);
-	if (ret != 0)
-		return ntohl(inet_addr("127.0.0.1"));
-
-	if (strcmp(remote_host, "[local]") == 0)
-		return ntohl(inet_addr("127.0.0.1"));
-
-	return ntohl(inet_addr(remote_host));
+	Port	*port = MyProcPort;
+	if (port)
+	{
+		char	remote_host[NI_MAXHOST];
+		int		ret;
+		remote_host[0] = '\0';
+		if (port->raddr.addr.ss_family == AF_INET)
+		{
+			ret = getnameinfo((const struct sockaddr *)&port->raddr.addr, port->raddr.salen,
+							remote_host, sizeof(remote_host),
+							NULL, 0,
+							NI_NUMERICHOST | NI_NUMERICSERV);
+			if (ret != 0)
+				return ntohl(inet_addr("127.0.0.1"));
+			return ntohl(inet_addr(remote_host));
+		}
+		else if (port->raddr.addr.ss_family == AF_INET6)
+		{
+			/* Since we do not support IPv6 as yet */
+			return 0;
+		}
+	}
+	return ntohl(inet_addr("127.0.0.1"));
 }
 
 static void
@@ -1642,13 +1647,16 @@ pgsm_create_hash_entry(uint64 bucket_id, uint64 queryid, PlanInfo *plan_info)
 {
 	pgsmEntry *entry;
 	int sec_ctx;
-	bool found_client_addr = false;
 	char app_name[APPLICATIONNAME_LEN] = "";
 	char *app_name_ptr = app_name;
 	int	app_name_len = 0;
 	MemoryContext oldctx;
 	char *datname = NULL;
 	char *username = NULL;
+	static uint	client_ip = 0xFFFFFFFF;
+
+	if (client_ip == 0xFFFFFFFF)
+		client_ip = get_client_ip_address_integer();
 
 	/* Create an entry in the pgsm memory context */
 	oldctx = MemoryContextSwitchTo(pgsm_get_ss()->pgsm_mem_cxt);
@@ -1665,8 +1673,7 @@ pgsm_create_hash_entry(uint64 bucket_id, uint64 queryid, PlanInfo *plan_info)
 	entry->key.appid = pgsm_hash_string((const char *)app_name_ptr, app_name_len);
 
 	/* client address */
-	entry->key.ip = pg_get_client_addr(&found_client_addr);
-
+	entry->key.ip = client_ip;
 	/* PlanID, if there is one */
 	entry->key.planid = plan_info ? plan_info->planid : 0;
 
@@ -2026,7 +2033,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		int64		bucketid = entry->key.bucket_id;
 		Oid			dbid = entry->key.dbid;
 		Oid			userid = entry->key.userid;
-		uint32		ip = entry->key.ip;
+		uint64		ip = (uint64)entry->key.ip;
 		uint64		planid = entry->key.planid;
 		uint64		pgsm_query_id = entry->pgsm_query_id;
 		dsa_area	*query_dsa_area;
@@ -2103,7 +2110,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		 * pg_read_all_stats members are allowed
 		 */
 		if (is_allowed_role || userid == GetUserId())
-			values[i++] = UInt32GetDatum(ip);
+			values[i++] = UInt64GetDatum(ip);
 		else
 			nulls[i++] = true;
 
