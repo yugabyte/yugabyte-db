@@ -139,7 +139,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
     sb.append(" && mv -f ").append(baseTargetDir).append("/node-agent");
     sb.append(" ").append(taskParams().nodeAgentHome);
     sb.append(" && rm -rf ").append(baseTargetDir);
-    sb.append(" && /tmp/node-agent-installer.sh -t install");
+    sb.append(" && /tmp/node-agent-installer.sh -c install");
     sb.append(" --skip_verify_cert --disable_egress");
     sb.append(" --id ").append(nodeAgent.uuid);
     sb.append(" --cert_dir ").append(installerFiles.getCertDir());
