@@ -104,7 +104,7 @@ export PATH="$HOME/tools/cmake-3.25.2-linux-x86_64/bin:$PATH"
 
 {{% readfile "includes/java.md" %}}
 
-The `maven` package satisfies both requirements.
+Install the following package to satisfy those requirements:
 
 ```sh
 sudo apt install -y maven

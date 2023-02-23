@@ -97,7 +97,7 @@ sudo yum install -y cmake3
 
 {{% readfile "includes/java.md" %}}
 
-Both requirements can be satisfied by the package manager.
+Install the following packages to satisfy those requirements:
 
 ```sh
 sudo yum install -y java-1.8.0-openjdk maven
