@@ -2156,7 +2156,13 @@ Status ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
   req.set_tablet_id(tablet_id);
   const auto resp = VERIFY_RESULT(InvokeRpc(
       &master::MasterAdminProxy::SplitTablet, *master_admin_proxy_, req));
-  std::cout << "Response: " << AsString(resp) << std::endl;
+  if (resp.has_error()) {
+    std::cout << "Response: " << AsString(resp);
+  } else {
+    std::cout << "split_tablet \"" << tablet_id << "\" was sent asynchronously. "
+                 "Check master logs for more details about the status of the task.";
+  }
+  std::cout << std::endl;
   return Status::OK();
 }
 
