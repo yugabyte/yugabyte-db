@@ -182,7 +182,6 @@ export function ReplicationDetails({
   const hideModal = () => dispatch(closeDialog());
   const isDeleteConfigModalVisible = showModal && visibleModal === XClusterModalName.DELETE_CONFIG;
   const xClusterConfig = xClusterConfigQuery.data;
-  const enabledConfigActions = getEnabledConfigActions(xClusterConfig);
   if (
     xClusterConfig.sourceUniverseUUID === undefined ||
     xClusterConfig.targetUniverseUUID === undefined
@@ -202,12 +201,7 @@ export function ReplicationDetails({
         <YBButton
           btnText="Delete Replication"
           btnClass="btn btn-orange delete-config-button"
-          disabled={!_.includes(enabledConfigActions, XClusterConfigAction.DELETE)}
-          onClick={() => {
-            if (_.includes(enabledConfigActions, XClusterConfigAction.DELETE)) {
-              dispatch(openDialog(XClusterModalName.DELETE_CONFIG));
-            }
-          }}
+          onClick={() => dispatch(openDialog(XClusterModalName.DELETE_CONFIG))}
         />
         {isDeleteConfigModalVisible && (
           <DeleteConfigModal
@@ -239,7 +233,9 @@ export function ReplicationDetails({
     targetUniverseQuery.isError ||
     sourceUniverseTableQuery.isError
   ) {
-    return <YBErrorIndicator customErrorMessage="Error fetching data." />;
+    return (
+      <YBErrorIndicator customErrorMessage="Error fetching information for participating universes." />
+    );
   }
 
   const configTableType = getXClusterConfigTableType(xClusterConfig, sourceUniverseTableQuery.data);
@@ -288,7 +284,11 @@ export function ReplicationDetails({
     },
     0
   );
-
+  const enabledConfigActions = getEnabledConfigActions(
+    xClusterConfig,
+    sourceUniverse,
+    targetUniverse
+  );
   const shouldShowConfigError = numTablesRequiringBootstrap > 0;
   const shouldShowTableLagWarning =
     maxAcceptableLagQuery.isSuccess &&

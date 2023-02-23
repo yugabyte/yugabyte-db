@@ -45,10 +45,10 @@ import {
   getFeatureState
 } from '../../../utils/LayoutUtils';
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
-import Replication from '../../xcluster/Replication';
 import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
 import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
 import { PerfAdvisor } from '../../queries/PerfAdvisor.tsx';
+import { XClusterReplication } from '../../xcluster/XClusterReplication';
 
 import './UniverseDetail.scss';
 
@@ -449,7 +449,7 @@ class UniverseDetail extends Component {
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.replication')}
           >
             {featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
-              <Replication currentUniverseUUID={currentUniverse.data.universeUUID} />
+              <XClusterReplication currentUniverseUUID={currentUniverse.data.universeUUID} />
             ) : (
               <ReplicationContainer />
             )}

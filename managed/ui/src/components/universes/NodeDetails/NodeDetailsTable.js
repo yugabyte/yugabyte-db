@@ -16,7 +16,7 @@ import {
   getReadOnlyCluster
 } from '../../../utils/UniverseUtils';
 import { isNotHidden, isDisabled, isHidden } from '../../../utils/LayoutUtils';
-import { getUniverseStatus, universeState } from '../helpers/universeHelpers';
+import { getUniverseStatus, UniverseState } from '../helpers/universeHelpers';
 
 import './NodeDetailsTable.scss';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
@@ -295,7 +295,7 @@ export default class NodeDetailsTable extends Component {
     const universeStatus = getUniverseStatus(currentUniverse.data);
     const displayNodeActions =
       !this.props.isReadOnlyUniverse &&
-      universeStatus.state !== universeState.PAUSED &&
+      universeStatus.state !== UniverseState.PAUSED &&
       isNotHidden(customer.currentCustomer.data.features, 'universes.tableActions');
 
     return (
