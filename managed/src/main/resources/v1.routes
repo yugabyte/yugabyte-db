@@ -9,6 +9,7 @@
 # -- Session specific API (UI ONLY)
 + nocsrf
 POST    /login                                                                 com.yugabyte.yw.controllers.SessionController.login()
+POST    /api_login                                                             com.yugabyte.yw.controllers.SessionController.apiLogin()
 GET     /platform_config                                                       com.yugabyte.yw.controllers.SessionController.getPlatformConfig()
 + forceAudit
 GET     /third_party_login                                                     com.yugabyte.yw.controllers.SessionController.thirdPartyLogin()

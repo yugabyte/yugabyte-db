@@ -135,14 +135,13 @@ public class Users extends Model {
   @Column(nullable = true)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
   @ApiModelProperty(
-      value = "API token creation date",
+      value = "UI session token creation date",
       example = "2021-06-17T15:00:05-04:00",
       accessMode = READ_ONLY)
   private Date authTokenIssueDate;
 
   @JsonIgnore
   @Column(nullable = true)
-  @ApiModelProperty(value = "User API token", accessMode = READ_ONLY)
   private String apiToken;
 
   @Column(nullable = true)
@@ -368,7 +367,7 @@ public class Users extends Model {
    */
   public String getApiToken() {
     if (apiToken == null) {
-      return null;
+      return upsertApiToken();
     }
     return apiToken;
   }
