@@ -55,7 +55,7 @@ AlmaLinux 8 is the recommended Linux development platform for YugabyteDB.
 
 ## Install necessary packages
 
-Update packages on your system, install development tools and additional packages:
+Update and install basic development packages:
 
 ```sh
 sudo yum update -y

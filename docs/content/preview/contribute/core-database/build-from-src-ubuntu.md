@@ -55,7 +55,7 @@ The following instructions are for Ubuntu 20.04 or Ubuntu 22.04.
 
 ## Install necessary packages
 
-Update packages on your system, install development tools and additional packages:
+Update and install basic development packages:
 
 ```sh
 sudo apt update
