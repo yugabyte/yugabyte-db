@@ -283,4 +283,5 @@ class AzureResumeInstancesMethod(AbstractInstancesMethod):
                                  help="The ip of the instance to resume.")
 
     def callback(self, args):
-        self.cloud.start_instance(args, [args.custom_ssh_port])
+        server_ports = self.get_server_ports_to_check(args)
+        self.cloud.start_instance(args, server_ports)

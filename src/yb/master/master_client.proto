@@ -215,6 +215,26 @@ message RedisConfigGetResponsePB {
   optional MasterErrorPB error = 3;
 }
 
+message GetStatefulServiceLocationRequestPB {
+  optional StatefulServiceKind service_kind = 1;
+}
+
+message StatefulServiceInfoPB {
+  optional bytes permanent_uuid = 1;
+
+  repeated HostPortPB private_rpc_addresses = 2;
+
+  repeated HostPortPB broadcast_addresses = 3;
+
+  optional CloudInfoPB cloud_info = 4;
+}
+
+message GetStatefulServiceLocationResponsePB {
+  optional MasterErrorPB error = 1;
+
+  optional StatefulServiceInfoPB service_info = 2;
+}
+
 service MasterClient {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -236,4 +256,7 @@ service MasterClient {
   // Redis Config
   rpc RedisConfigSet(RedisConfigSetRequestPB) returns (RedisConfigSetResponsePB);
   rpc RedisConfigGet(RedisConfigGetRequestPB) returns (RedisConfigGetResponsePB);
+
+  rpc GetStatefulServiceLocation(GetStatefulServiceLocationRequestPB)
+      returns (GetStatefulServiceLocationResponsePB);
 }

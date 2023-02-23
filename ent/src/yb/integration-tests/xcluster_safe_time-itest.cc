@@ -21,6 +21,7 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/integration-tests/xcluster_ysql_test_base.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_replication.pb.h"
@@ -61,9 +62,7 @@ const int kMasterCount = 3;
 const int kTServerCount = 3;
 const int kTabletCount = 3;
 const string kTableName = "test_table";
-constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
 const string kTableName2 = "test_table2";
-const string kDatabaseName = "yugabyte";
 constexpr auto kNumRecordsPerBatch = 10;
 
 namespace {
@@ -73,13 +72,15 @@ auto GetSafeTime(tserver::TabletServer* tserver, const NamespaceId& namespace_id
 }  // namespace
 
 class XClusterSafeTimeTest : public TwoDCTestBase {
+  typedef TwoDCTestBase super;
+
  public:
   void SetUp() override {
     // Disable LB as we dont want tablets moving during the test.
     FLAGS_enable_load_balancing = false;
     FLAGS_enable_replicate_transaction_status_table = true;
 
-    TwoDCTestBase::SetUp();
+    super::SetUp();
     MiniClusterOptions opts;
     opts.num_masters = kMasterCount;
     opts.num_tablet_servers = kTServerCount;
@@ -285,16 +286,9 @@ TEST_F(XClusterSafeTimeTest, LagInSafeTime) {
   ASSERT_OK(WaitForSafeTime(ht_2));
 }
 
-namespace {
-string GetCompleteTableName(const YBTableName& table) {
-  // Append schema name before table name, if schema is available.
-  return table.has_pgschema_name() ? Format("$0.$1", table.pgschema_name(), table.table_name())
-                                   : table.table_name();
-}
-}  // namespace
-
-class XClusterConsistencyTest : public TwoDCTestBase {
+class XClusterConsistencyTest : public XClusterYsqlTest {
  public:
+  typedef XClusterYsqlTest super;
   void SetUp() override {
     // Skip in TSAN as InitDB times out.
     YB_SKIP_TEST_IN_TSAN();
@@ -305,11 +299,11 @@ class XClusterConsistencyTest : public TwoDCTestBase {
     FLAGS_transaction_table_num_tablets = 1;
     FLAGS_enable_replicate_transaction_status_table = true;
 
-    TwoDCTestBase::SetUp();
+    super::SetUp();
     MiniClusterOptions opts;
     opts.num_masters = kMasterCount;
     opts.num_tablet_servers = kTServerCount;
-    ASSERT_OK(InitClusters(opts, true /* init_postgres */));
+    ASSERT_OK(InitClusters(opts));
 
     auto producer_cluster_future = std::async(std::launch::async, [&] {
       auto table_name = ASSERT_RESULT(CreateYsqlTable(
@@ -354,7 +348,7 @@ class XClusterConsistencyTest : public TwoDCTestBase {
     producer_cluster_future.get();
     consumer_cluster_future.get();
 
-    ASSERT_OK(GetNamespaceId());
+    namespace_id_ = ASSERT_RESULT(GetNamespaceId(consumer_client()));
 
     ASSERT_OK(producer_cluster_.client_->GetTablets(
         producer_table1_->name(), 0 /* max_tablets */, &producer_tablet_ids_, NULL));
@@ -408,61 +402,8 @@ class XClusterConsistencyTest : public TwoDCTestBase {
 
   virtual Status PreReplicationSetup() { return OK(); }
 
-  Status GetNamespaceId() {
-    master::GetNamespaceInfoResponsePB resp;
-
-    RETURN_NOT_OK(consumer_client()->GetNamespaceInfo(
-        {} /* namespace_id */, kDatabaseName, YQL_DATABASE_PGSQL, &resp));
-
-    namespace_id_ = resp.namespace_().id();
-    return OK();
-  }
-
   void WriteWorkload(const YBTableName& table, uint32_t start, uint32_t end) {
-    auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(table.namespace_name()));
-    std::string table_name_str = GetCompleteTableName(table);
-
-    LOG(INFO) << "Writing " << end - start << " inserts";
-
-    // Use a transaction if more than 1 row is to be inserted.
-    const bool use_tran = end - start > 1;
-    if (use_tran) {
-      EXPECT_OK(conn.ExecuteFormat("BEGIN"));
-    }
-
-    for (uint32_t i = start; i < end; i++) {
-      EXPECT_OK(
-          conn.ExecuteFormat("INSERT INTO $0($1) VALUES ($2)", table_name_str, kKeyColumnName, i));
-    }
-
-    if (use_tran) {
-      EXPECT_OK(conn.ExecuteFormat("COMMIT"));
-    }
-  }
-
-  Result<pgwrapper::PGResultPtr> ScanToStrings(const YBTableName& table_name, Cluster* cluster) {
-    auto conn = VERIFY_RESULT(cluster->ConnectToDB(table_name.namespace_name()));
-    const std::string table_name_str = GetCompleteTableName(table_name);
-    auto result = VERIFY_RESULT(
-        conn.FetchFormat("SELECT * FROM $0 ORDER BY $1", table_name_str, kKeyColumnName));
-    return result;
-  }
-
-  Result<int> GetRowCount(
-      const YBTableName& table_name, Cluster* cluster, bool read_latest = false) {
-    auto conn = VERIFY_RESULT(
-        cluster->ConnectToDB(table_name.namespace_name(), true /*simple_query_protocol*/));
-    if (read_latest) {
-      auto setting_res = VERIFY_RESULT(
-          conn.FetchRowAsString("UPDATE pg_settings SET setting = 'tablet' WHERE name = "
-                                "'yb_xcluster_consistency_level'"));
-      SCHECK_EQ(
-          setting_res, "tablet", IllegalState,
-          "Failed to set yb_xcluster_consistency_level to tablet.");
-    }
-    std::string table_name_str = GetCompleteTableName(table_name);
-    auto results = VERIFY_RESULT(conn.FetchFormat("SELECT * FROM $0", table_name_str));
-    return PQntuples(results.get());
+    super::WriteWorkload(table, start, end, &producer_cluster_);
   }
 
   virtual Status PostReplicationSetup() {
@@ -471,44 +412,13 @@ class XClusterConsistencyTest : public TwoDCTestBase {
   }
 
   Status WaitForRowCount(
-      const YBTableName& table_name, uint32_t row_count, bool allow_greater = false) {
-    uint32_t last_row_count = 0;
-
-    return WaitFor(
-        [&]() -> Result<bool> {
-          auto result = GetRowCount(table_name, &consumer_cluster_);
-          if (!result) {
-            LOG(INFO) << result.status().ToString();
-            return false;
-          }
-          last_row_count = result.get();
-          if (allow_greater) {
-            return last_row_count >= row_count;
-          }
-          return last_row_count == row_count;
-        },
-        MonoDelta::FromSeconds(kWaitForRowCountTimeout),
-        Format(
-            "Wait for consumer row_count $0 to reach $1 $2",
-            last_row_count,
-            allow_greater ? "atleast" : "",
-            row_count));
+      const client::YBTableName& table_name, uint32_t row_count, bool allow_greater = false) {
+    return super::WaitForRowCount(
+        table_name, row_count, &consumer_cluster_, allow_greater);
   }
 
   Status ValidateConsumerRows(const YBTableName& table_name, int row_count) {
-    auto results = VERIFY_RESULT(ScanToStrings(table_name, &consumer_cluster_));
-    auto actual_row_count = PQntuples(results.get());
-    SCHECK_EQ(
-        row_count, actual_row_count, Corruption,
-        Format("Expected $0 rows but got $1 rows", row_count, actual_row_count));
-
-    int result;
-    for (int i = 0; i < row_count; ++i) {
-      result = VERIFY_RESULT(pgwrapper::GetInt32(results.get(), i, 0));
-      SCHECK(i == result, Corruption, Format("Expected row value $0 but got $1", i, result));
-    }
-
-    return OK();
+    return ValidateRows(table_name, row_count, &consumer_cluster_);
   }
 
   void StoreReadTimes() {
@@ -775,31 +685,9 @@ class XClusterConsistencyTestWithBootstrap : public XClusterConsistencyTest {
   Status SetupUniverseReplication(
       const std::vector<std::shared_ptr<client::YBTable>>& tables, bool leader_only) override {
     // 1. Bootstrap the producer
-    cdc::BootstrapProducerRequestPB req;
-    cdc::BootstrapProducerResponsePB resp;
-
     std::vector<std::shared_ptr<client::YBTable>> new_tables = tables;
     new_tables.emplace_back(producer_tran_table_);
-
-    for (const auto& producer_table : new_tables) {
-      req.add_table_ids(producer_table->id());
-    }
-
-    rpc::RpcController rpc;
-    auto producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
-        &producer_client()->proxy_cache(),
-        HostPort::FromBoundEndpoint(producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
-    RETURN_NOT_OK(producer_cdc_proxy->BootstrapProducer(req, &resp, &rpc));
-    CHECK(!resp.has_error());
-
-    CHECK_EQ(resp.cdc_bootstrap_ids().size(), new_tables.size());
-
-    int table_idx = 0;
-    for (const auto& bootstrap_id : resp.cdc_bootstrap_ids()) {
-      LOG(INFO) << "Got bootstrap id " << bootstrap_id << " for table "
-                << new_tables[table_idx++]->name().table_name();
-      bootstrap_ids_.emplace_back(bootstrap_id);
-    }
+    bootstrap_ids_ = VERIFY_RESULT(BootstrapCluster(new_tables, &producer_cluster_));
 
     // 2. Write some rows transactonally.
     WriteWorkload(producer_table1_->name(), 0, kNumRecordsPerBatch);
@@ -814,7 +702,7 @@ class XClusterConsistencyTestWithBootstrap : public XClusterConsistencyTest {
     }
 
     // 4. Setup replication.
-    return TwoDCTestBase::SetupUniverseReplication(
+    return XClusterConsistencyTest::SetupUniverseReplication(
         producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, new_tables,
         leader_only, bootstrap_ids_);
   }

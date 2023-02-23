@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -47,6 +48,11 @@ extern bool yb_non_ddl_txn_for_sys_tables_allowed;
  * Toggles whether to force use of global transaction status table.
  */
 extern bool yb_force_global_transaction;
+
+/*
+ * Guc that toggles whether strict inequalities are pushed down.
+ */
+extern bool yb_pushdown_strict_inequality;
 
 /*
  * Guc variable to suppress non-Postgres logs from appearing in Postgres log file.
@@ -90,14 +96,14 @@ uint32_t YBCStatusPgsqlError(YBCStatus s);
 uint16_t YBCStatusTransactionError(YBCStatus s);
 void YBCFreeStatus(YBCStatus s);
 
+const char* YBCStatusFilename(YBCStatus s);
+int YBCStatusLineNumber(YBCStatus s);
+const char* YBCStatusFuncname(YBCStatus s);
 size_t YBCStatusMessageLen(YBCStatus s);
 const char* YBCStatusMessageBegin(YBCStatus s);
-const char* YBCStatusCodeAsCString(YBCStatus s);
-
-typedef const char* (*GetUniqueConstraintNameFn)(unsigned int);
-
-const char* BuildYBStatusMessage(YBCStatus status,
-                                 GetUniqueConstraintNameFn get_constraint_name);
+const char* YBCMessageAsCString(YBCStatus s);
+unsigned int YBCStatusRelationOid(YBCStatus s);
+const char** YBCStatusArguments(YBCStatus s, size_t* nargs);
 
 bool YBCIsRestartReadError(uint16_t txn_errcode);
 
@@ -164,6 +170,14 @@ void YBCLogImpl(int severity,
                 bool stack_trace,
                 const char* format,
                 ...) __attribute__((format(printf, 5, 6)));
+
+// VA version of YBCLogImpl
+void YBCLogVA(int severity,
+              const char* file_name,
+              int line_number,
+              bool stack_trace,
+              const char* format,
+              va_list args);
 
 // Returns a string representation of the given block of binary data. The memory for the resulting
 // string is allocated using palloc.

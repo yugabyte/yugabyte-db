@@ -31,6 +31,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
@@ -117,8 +118,6 @@ public class HealthChecker {
 
   private static final String MAX_NUM_THREADS_NODE_CHECK_KEY =
       "yb.health.max_num_parallel_node_checks";
-
-  private static final String K8S_NODE_YW_DATA_DIR = "/mnt/disk0/yw-data";
 
   public static final String READ_WRITE_TEST_PARAM = "yb.metrics.db_read_write_test";
 
@@ -907,7 +906,12 @@ public class HealthChecker {
     }
 
     String scriptPath =
-        (nodeInfo.isK8s() ? K8S_NODE_YW_DATA_DIR : nodeInfo.getYbHomeDir()) + "/bin/node_health.py";
+        Paths.get(
+                (nodeInfo.isK8s()
+                    ? KubernetesTaskBase.K8S_NODE_YW_DATA_DIR
+                    : nodeInfo.getYbHomeDir()),
+                "/bin/node_health.py")
+            .toString();
     if (uploadedInfo == null || !uploadedInfo.equals(nodeInfo)) {
       log.info("Uploading health check script to node {}", nodeInfo.getNodeName());
       String generatedScriptPath = generateNodeCheckScript(universe.universeUUID, nodeInfo);

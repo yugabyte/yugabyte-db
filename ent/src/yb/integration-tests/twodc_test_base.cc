@@ -29,11 +29,8 @@
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/catalog_manager_if.h"
-#include "yb/master/master_ddl.pb.h"
-#include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/sys_catalog_initialization.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -47,13 +44,7 @@
 using std::string;
 
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
-DECLARE_bool(enable_ysql);
-DECLARE_bool(hide_pg_catalog_table_creation_logs);
-DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(replication_factor);
-DECLARE_int32(pggate_rpc_timeout_secs);
-DECLARE_string(pgsql_proxy_bind_address);
-DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_string(certs_for_cdc_dir);
 DECLARE_string(certs_dir);
 DECLARE_bool(enable_replicate_transaction_status_table);
@@ -66,30 +57,15 @@ using tserver::enterprise::CDCConsumer;
 
 namespace enterprise {
 
-Status TwoDCTestBase::InitClusters(const MiniClusterOptions& opts, bool init_postgres) {
+Status TwoDCTestBase::InitClusters(const MiniClusterOptions& opts) {
   FLAGS_replication_factor = static_cast<int>(opts.num_tablet_servers);
   // Disable tablet split for regular tests, see xcluster-tablet-split-itest for those tests.
   FLAGS_enable_tablet_split_of_xcluster_replicated_tables = false;
-  if (init_postgres) {
-    master::SetDefaultInitialSysCatalogSnapshotFlags();
-    FLAGS_enable_ysql = true;
-    FLAGS_hide_pg_catalog_table_creation_logs = true;
-    FLAGS_master_auto_run_initdb = true;
-    FLAGS_pggate_rpc_timeout_secs = 120;
-  }
 
   auto producer_opts = opts;
   producer_opts.cluster_id = "producer";
 
   producer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(producer_opts);
-
-  // Randomly select the tserver index that will serve the postgres proxy.
-  const size_t pg_ts_idx = RandomUniformInt<size_t>(0, opts.num_tablet_servers - 1);
-  const std::string pg_addr = server::TEST_RpcAddress(pg_ts_idx + 1, server::Private::kTrue);
-  // The 'pgsql_proxy_bind_address' flag must be set before starting the producer cluster. Each
-  // tserver will store this address when it starts.
-  const uint16_t producer_pg_port = producer_cluster_.mini_cluster_->AllocateFreePort();
-  FLAGS_pgsql_proxy_bind_address = Format("$0:$1", pg_addr, producer_pg_port);
 
   RETURN_NOT_OK(producer_cluster()->StartSync());
 
@@ -97,58 +73,15 @@ Status TwoDCTestBase::InitClusters(const MiniClusterOptions& opts, bool init_pos
   consumer_opts.cluster_id = "consumer";
   consumer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(consumer_opts);
 
-  // Use a new pg proxy port for the consumer cluster.
-  const uint16_t consumer_pg_port = consumer_cluster_.mini_cluster_->AllocateFreePort();
-  FLAGS_pgsql_proxy_bind_address = Format("$0:$1", pg_addr, consumer_pg_port);
-
   RETURN_NOT_OK(consumer_cluster()->StartSync());
 
   RETURN_NOT_OK(RunOnBothClusters([&opts](MiniCluster* cluster) {
     return cluster->WaitForTabletServerCount(opts.num_tablet_servers);
   }));
 
-  // Verify the that the selected tablets have their rpc servers bound to the expected pg addr.
-  CHECK_EQ(producer_cluster_.mini_cluster_->mini_tablet_server(pg_ts_idx)->bound_rpc_addr().
-           address().to_string(), pg_addr);
-  CHECK_EQ(consumer_cluster_.mini_cluster_->mini_tablet_server(pg_ts_idx)->bound_rpc_addr().
-           address().to_string(), pg_addr);
-
   producer_cluster_.client_ = VERIFY_RESULT(producer_cluster()->CreateClient());
   consumer_cluster_.client_ = VERIFY_RESULT(consumer_cluster()->CreateClient());
-  producer_cluster_.pg_ts_idx_ = pg_ts_idx;
-  consumer_cluster_.pg_ts_idx_ = pg_ts_idx;
 
-  if (init_postgres) {
-    RETURN_NOT_OK(InitPostgres(&producer_cluster_, pg_ts_idx, producer_pg_port));
-    RETURN_NOT_OK(InitPostgres(&consumer_cluster_, pg_ts_idx, consumer_pg_port));
-  }
-
-  return Status::OK();
-}
-
-Status TwoDCTestBase::InitPostgres(Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port) {
-  RETURN_NOT_OK(WaitForInitDb(cluster->mini_cluster_.get()));
-
-  tserver::MiniTabletServer *const pg_ts = cluster->mini_cluster_->mini_tablet_server(pg_ts_idx);
-  CHECK(pg_ts);
-
-  yb::pgwrapper::PgProcessConf pg_process_conf =
-      VERIFY_RESULT(yb::pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
-          yb::ToString(Endpoint(pg_ts->bound_rpc_addr().address(), pg_port)),
-          pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
-          pg_ts->server()->GetSharedMemoryFd()));
-  pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
-  pg_process_conf.force_disable_log_file = true;
-  FLAGS_pgsql_proxy_webserver_port = cluster->mini_cluster_->AllocateFreePort();
-
-  LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses << ":"
-            << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
-            << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
-  cluster->pg_supervisor_ =
-      std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, nullptr /* tserver */);
-  RETURN_NOT_OK(cluster->pg_supervisor_->Start());
-
-  cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
   return Status::OK();
 }
 
@@ -238,129 +171,6 @@ Result<YBTableName> TwoDCTestBase::CreateTable(
                     .num_tablets(num_tablets)
                     .Create());
   return table;
-}
-
-Result<YBTableName> TwoDCTestBase::CreateYsqlTable(
-    Cluster* cluster,
-    const std::string& namespace_name,
-    const std::string& schema_name,
-    const std::string& table_name,
-    const boost::optional<std::string>& tablegroup_name,
-    uint32_t num_tablets,
-    bool colocated,
-    const ColocationId colocation_id,
-    const bool ranged_partitioned) {
-  auto conn = EXPECT_RESULT(cluster->ConnectToDB(namespace_name));
-  std::string colocation_id_string = "";
-  if (colocation_id > 0) {
-    colocation_id_string = Format("colocation_id = $0", colocation_id);
-  }
-  if (!schema_name.empty()) {
-    EXPECT_OK(conn.Execute(Format("CREATE SCHEMA IF NOT EXISTS $0;", schema_name)));
-  }
-  std::string full_table_name =
-      schema_name.empty() ? table_name : Format("$0.$1", schema_name, table_name);
-  std::string query = Format(
-      "CREATE TABLE $0($1 int, PRIMARY KEY ($1$2)) ", full_table_name, kKeyColumnName,
-      ranged_partitioned ? " ASC" : "");
-  // One cannot use tablegroup together with split into tablets.
-  if (tablegroup_name.has_value()) {
-    std::string with_clause =
-        colocation_id_string.empty() ? "" : Format("WITH ($0) ", colocation_id_string);
-    std::string tablegroup_clause = Format("TABLEGROUP $0", tablegroup_name.value());
-    query += Format("$0$1", with_clause, tablegroup_clause);
-  } else {
-    std::string colocated_clause = Format("colocation = $0", colocated);
-    std::string with_clause = colocation_id_string.empty()
-                                  ? colocated_clause
-                                  : Format("$0, $1", colocation_id_string, colocated_clause);
-    query += Format("WITH ($0)", with_clause);
-    if (!colocated) {
-      if (ranged_partitioned) {
-        if (num_tablets > 1) {
-          // Split at every 500 interval.
-          query += " SPLIT AT VALUES(";
-          for (size_t i = 0; i < num_tablets - 1; ++i) {
-            query +=
-                Format("($0)$1", i * kRangePartitionInterval, (i == num_tablets - 2) ? ")" : ", ");
-          }
-        }
-      } else {
-        query += Format(" SPLIT INTO $0 TABLETS", num_tablets);
-      }
-    }
-  }
-  EXPECT_OK(conn.Execute(query));
-  return GetYsqlTable(
-      cluster, namespace_name, schema_name, table_name, true /* verify_table_name */,
-      !schema_name.empty() /* verify_schema_name*/);
-}
-
-Status TwoDCTestBase::CreateYsqlTable(
-    uint32_t idx, uint32_t num_tablets, Cluster* cluster, std::vector<YBTableName>* table_names,
-    const boost::optional<std::string>& tablegroup_name, bool colocated,
-    const bool ranged_partitioned) {
-  // Generate colocation_id based on index so that we have the same colocation_id for
-  // producer/consumer.
-  const int colocation_id = (tablegroup_name.has_value() || colocated) ? (idx + 1) * 111111 : 0;
-  auto table = VERIFY_RESULT(CreateYsqlTable(
-      cluster, kNamespaceName, "" /* schema_name */, Format("test_table_$0", idx), tablegroup_name,
-      num_tablets, colocated, colocation_id, ranged_partitioned));
-  table_names->push_back(table);
-  return Status::OK();
-}
-
-Result<YBTableName> TwoDCTestBase::GetYsqlTable(
-    Cluster* cluster,
-    const std::string& namespace_name,
-    const std::string& schema_name,
-    const std::string& table_name,
-    bool verify_table_name,
-    bool verify_schema_name,
-    bool exclude_system_tables) {
-  master::ListTablesRequestPB req;
-  master::ListTablesResponsePB resp;
-
-  req.set_name_filter(table_name);
-  req.mutable_namespace_()->set_name(namespace_name);
-  req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
-  if (!exclude_system_tables) {
-    req.set_exclude_system_tables(true);
-    req.add_relation_type_filter(master::USER_TABLE_RELATION);
-  }
-
-  master::MasterDdlProxy master_proxy(
-      &cluster->client_->proxy_cache(),
-      VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
-
-  rpc::RpcController rpc;
-  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-  RETURN_NOT_OK(master_proxy.ListTables(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return STATUS(IllegalState, "Failed listing tables");
-  }
-
-  // Now need to find the table and return it.
-  for (const auto& table : resp.tables()) {
-    // If !verify_table_name, just return the first table.
-    if (!verify_table_name ||
-        (table.name() == table_name && table.namespace_().name() == namespace_name)) {
-      // In case of a match, further check for match in schema_name.
-      if (!verify_schema_name || (!table.has_pgschema_name() && schema_name.empty()) ||
-          (table.has_pgschema_name() && table.pgschema_name() == schema_name)) {
-        YBTableName yb_table;
-        yb_table.set_table_id(table.id());
-        yb_table.set_table_name(table_name);
-        yb_table.set_namespace_id(table.namespace_().id());
-        yb_table.set_namespace_name(namespace_name);
-        yb_table.set_pgschema_name(table.has_pgschema_name() ? table.pgschema_name() : "");
-        return yb_table;
-      }
-    }
-  }
-  return STATUS(
-      IllegalState,
-      strings::Substitute("Unable to find table $0 in namespace $1", table_name, namespace_name));
 }
 
 Status TwoDCTestBase::SetupUniverseReplication(
@@ -548,15 +358,19 @@ Status TwoDCTestBase::ToggleUniverseReplication(
   return Status::OK();
 }
 
-Status TwoDCTestBase::ChangeXClusterRole(cdc::XClusterRole role) {
+Status TwoDCTestBase::ChangeXClusterRole(const cdc::XClusterRole role, Cluster* cluster) {
+  if (!cluster) {
+    cluster = &consumer_cluster_;
+  }
+
   master::ChangeXClusterRoleRequestPB req;
   master::ChangeXClusterRoleResponsePB resp;
 
   req.set_role(role);
 
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
-      &consumer_client()->proxy_cache(),
-      VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+      &cluster->client_->proxy_cache(),
+      VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
@@ -682,8 +496,13 @@ Status TwoDCTestBase::WaitForSetupUniverseReplicationCleanUp(string producer_uui
   }, MonoDelta::FromSeconds(kRpcTimeout), "Waiting for universe to delete");
 }
 
-Status TwoDCTestBase::WaitForValidSafeTimeOnAllTServers(const NamespaceId& namespace_id) {
-  for (auto& tserver : consumer_cluster()->mini_tablet_servers()) {
+Status TwoDCTestBase::WaitForValidSafeTimeOnAllTServers(
+    const NamespaceId& namespace_id, Cluster* cluster) {
+  if (!cluster) {
+    cluster = &consumer_cluster_;
+  }
+
+  for (auto& tserver : cluster->mini_cluster_->mini_tablet_servers()) {
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
           auto safe_time =

@@ -244,6 +244,16 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
                             "Backfill operation in progress, table_id: $0", table.id());
   }
 
+  // Check if this table hosts stateful services. Only sys_catalog and ysql tables are currently
+  // marked as is_system tables. Other tables in system namespace are not marked as is_system table.
+  // #15998
+  if (!table.GetHostedStatefulServices().empty()) {
+    return STATUS_EC_FORMAT(
+        IllegalState, MasterError(MasterErrorPB::INVALID_REQUEST),
+        "Tablet splitting is not supported on tables that host stateful services, table_id: $0",
+        table.id());
+  }
+
   return ValidatePartitioningVersion(table);
 }
 

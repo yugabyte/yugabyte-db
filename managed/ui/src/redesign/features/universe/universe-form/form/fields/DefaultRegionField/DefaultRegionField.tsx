@@ -37,7 +37,7 @@ export const DefaultRegionField = ({ disabled }: DefaultRegionsFieldProps): Reac
 
   return (
     <>
-      <Box display="flex" width="100%">
+      <Box display="flex" width="100%" data-testid="DefaultRegionField-Container">
         <YBLabel dataTestId="DefaultRegionField-Label">
           {t('universeForm.cloudConfig.defaultRegion')}
         </YBLabel>

@@ -2257,7 +2257,7 @@ EXPLAIN (COSTS FALSE) UPDATE single_row_index SET v2 = v2 + 1000 WHERE k = 2;
 (2 rows)
 
 UPDATE single_row_index SET v2 = v2 + 1000 WHERE k = 2;
-ERROR:  Query error: smallint out of range
+ERROR:  smallint out of range
 -- Test column ordering.
 CREATE TABLE single_row_col_order(a int, b int, c int, d int, e int, primary key(d, b));
 -- Below statements should all USE single-row.

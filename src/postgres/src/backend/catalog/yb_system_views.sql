@@ -709,10 +709,13 @@ CREATE VIEW pg_stat_activity AS
             S.backend_xid,
             s.backend_xmin,
             S.query,
-            S.backend_type
+            S.backend_type,
+            yb_pg_stat_get_backend_catalog_version(B.beid) AS catalog_version
     FROM pg_stat_get_activity(NULL) AS S
         LEFT JOIN pg_database AS D ON (S.datid = D.oid)
-        LEFT JOIN pg_authid AS U ON (S.usesysid = U.oid);
+        LEFT JOIN pg_authid AS U ON (S.usesysid = U.oid)
+        LEFT JOIN (pg_stat_get_backend_idset() beid CROSS JOIN
+                   pg_stat_get_backend_pid(beid) pid) B ON B.pid = S.pid;
 
 CREATE VIEW pg_stat_replication AS
     SELECT

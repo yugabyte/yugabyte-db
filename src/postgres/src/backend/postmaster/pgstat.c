@@ -70,6 +70,7 @@
 #include "utils/tqual.h"
 
 #include "catalog/pg_database.h"
+#include "catalog/yb_catalog_version.h"
 #include "commands/progress.h"
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
@@ -3004,6 +3005,35 @@ pgstat_bestart(void)
 
 		/* Initialization of allocated memory measurement value */
 		lbeentry.yb_st_allocated_mem_bytes = PgMemTracker.backend_cur_allocated_mem_bytes;
+	}
+
+	if (YBIsEnabledInPostgresEnvVar())
+	{
+		if (lbeentry.st_backendType == B_BACKEND)
+		{
+			/*
+			 * catalog_version should already be initialized by
+			 * RelationCacheInitializePhase2 unless this is initdb.  It may be
+			 * zero if it's a fresh, old-version cluster that uses the protobuf
+			 * method (e.g. tests that use
+			 * BasePgSQLTest.recreateWithYsqlVersion, so also account for
+			 * that).
+			 */
+			Assert(lbeentry.yb_st_catalog_version.version
+				   || IsBootstrapProcessingMode()
+				   || yb_catalog_version_type == CATALOG_VERSION_PROTOBUF_ENTRY);
+
+			lbeentry.yb_st_catalog_version.has_version = true;
+		}
+		else
+		{
+			/*
+			 * We don't care about the catalog version of non-client backend
+			 * processes, so treat them as always latest.
+			 * TODO(jason): double-check this.
+			 */
+			lbeentry.yb_st_catalog_version.has_version = false;
+		}
 	}
 
 	/* We have userid for client-backends, wal-sender and bgworker processes */
@@ -6945,4 +6975,40 @@ yb_pgstat_report_allocated_mem_bytes(void)
 	beentry->yb_st_allocated_mem_bytes = PgMemTracker.backend_cur_allocated_mem_bytes;
 
 	PGSTAT_END_WRITE_ACTIVITY(beentry);
+}
+
+/* ----------
+ * yb_pgstat_set_catalog_version() -
+ *
+ *		Set yb_st_catalog_version.version for my backend
+ * ----------
+ */
+void
+yb_pgstat_set_catalog_version(uint64_t catalog_version)
+{
+	volatile PgBackendStatus *vbeentry = MyBEEntry;
+
+	PGSTAT_BEGIN_WRITE_ACTIVITY(vbeentry);
+
+	vbeentry->yb_st_catalog_version.version = catalog_version;
+
+	PGSTAT_END_WRITE_ACTIVITY(vbeentry);
+}
+
+/* ----------
+ * yb_pgstat_set_has_catalog_version() -
+ *
+ *		Set yb_st_catalog_version.has_version for my backend
+ * ----------
+ */
+void
+yb_pgstat_set_has_catalog_version(bool has_version)
+{
+	volatile PgBackendStatus *vbeentry = MyBEEntry;
+
+	PGSTAT_BEGIN_WRITE_ACTIVITY(vbeentry);
+
+	vbeentry->yb_st_catalog_version.has_version = has_version;
+
+	PGSTAT_END_WRITE_ACTIVITY(vbeentry);
 }

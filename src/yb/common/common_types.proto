@@ -147,3 +147,9 @@ enum ReplicationErrorPb {
   // There is a schema mismatch between the producer and consumer tables.
   REPLICATION_SCHEMA_MISMATCH = 2;
 }
+
+// Stateful services.
+enum StatefulServiceKind {
+  // Test service.
+  TEST_ECHO = 0;
+}

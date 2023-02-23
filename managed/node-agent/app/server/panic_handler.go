@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"node-agent/util"
+	"runtime/debug"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -20,7 +21,7 @@ func UnaryPanicHandler(interceptor grpc.UnaryServerInterceptor) grpc.ServerOptio
 	) (response interface{}, err error) {
 		defer func() {
 			if e := recover(); e != nil {
-				util.FileLogger().Errorf("Panic occurred: %v", err)
+				util.FileLogger().Errorf("Panic occurred: %v", string(debug.Stack()))
 				err = status.Errorf(codes.Internal, "Internal error occurred")
 			}
 		}()
@@ -44,7 +45,7 @@ func StreamPanicHandler(interceptor grpc.StreamServerInterceptor) grpc.ServerOpt
 	) (err error) {
 		defer func() {
 			if e := recover(); e != nil {
-				util.FileLogger().Errorf("Panic occurred: %v", e)
+				util.FileLogger().Errorf("Panic occurred: %v", string(debug.Stack()))
 				err = status.Errorf(codes.Internal, "Internal error occurred")
 			}
 		}()

@@ -71,6 +71,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread_restrictions.h"
+#include "yb/util/env_util.h"
 
 // Copied from falloc.h. Useful for older kernels that lack support for
 // hole punching; fallocate(2) will return EOPNOTSUPP.
@@ -125,6 +126,8 @@ DEFINE_test_flag(bool, simulate_fs_without_fallocate, false,
 
 DEFINE_test_flag(int64, simulate_free_space_bytes, -1,
     "If a non-negative value, GetFreeSpaceBytes will return the specified value.");
+
+DEFINE_test_flag(bool, skip_file_close, false, "If true, file will not be closed.");
 
 using namespace std::placeholders;
 using base::subtle::Atomic64;
@@ -370,11 +373,19 @@ class PosixWritableFile : public WritableFile {
   Status Close() override {
     TRACE_EVENT1("io", "PosixWritableFile::Close", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
+    if (FLAGS_TEST_skip_file_close) {
+      return Status::OK();
+    }
     Status s;
 
-    // If we've allocated more space than we used, truncate to the
+    // size_on_disk can be either pre_allocated_size_ or pre_allocated_size_ from
+    // previous writer. If we've allocated more space than we used, truncate to the
     // actual size of the file and perform Sync().
-    if (filesize_ < pre_allocated_size_) {
+    uint64_t size_on_disk = lseek(fd_, 0, SEEK_END);
+    if (size_on_disk < 0) {
+       return STATUS_IO_ERROR(filename_, errno);
+    }
+    if (filesize_ < size_on_disk) {
       if (ftruncate(fd_, filesize_) < 0) {
         s = STATUS_IO_ERROR(filename_, errno);
         pending_sync_ = true;
@@ -516,19 +527,14 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
                             bool sync_on_close)
       : PosixWritableFile(fname, fd, file_size, false /* sync_on_close */) {
 
-    if (file_size != 0) {
-      // For now, we don't support appending to an already existing file (of non-zero size).
-      // TODO(hector): If file size is not a multiple of block_size_, read the
-      // last aligned block.
-      LOG(FATAL) << "file size != 0";
-    }
-
-    next_write_offset_ = 0;
+    next_write_offset_ = file_size;
     last_block_used_bytes_ = 0;
     block_size_ = FLAGS_o_direct_block_size_bytes;
     last_block_idx_ = 0;
     has_new_data_ = false;
-    real_size_ = 0;
+    real_size_ = file_size;
+    LOG_IF(FATAL, file_size % block_size_ != 0) << "file_size is not a multiple of "
+      << "block_size_ during PosixDirectIOWritableFile's initialization";
     CHECK_GE(block_size_, 512);
   }
 
@@ -574,16 +580,22 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
   Status Close() override {
     TRACE_EVENT1("io", "PosixDirectIOWritableFile::Close", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
+    if (FLAGS_TEST_skip_file_close) {
+      return Status::OK();
+    }
     RETURN_NOT_OK(Sync());
     LOG(INFO) << "Closing file " << filename_ << " with " << block_ptr_vec_.size() << " blocks";
-    off_t fsize;
-    fsize = lseek(fd_, 0, SEEK_END);
-    CHECK_EQ(fsize, std::max(filesize_, pre_allocated_size_));
-
-    if (real_size_ < filesize_ || real_size_ < pre_allocated_size_) {
+    uint64_t size_on_disk = lseek(fd_, 0, SEEK_END);
+    if (size_on_disk < 0) {
+       return STATUS_IO_ERROR(filename_, errno);
+    }
+    // size_on_disk can be filesize_, pre_allocated_size_, or pre_allocated_size_
+    // from other previous writer.
+    if (real_size_ < size_on_disk) {
       LOG(INFO) << filename_ << ": Truncating file from size: " << filesize_
                 << " to size: " << real_size_
-                << ". Preallocated size: " << pre_allocated_size_;
+                << ". Preallocated size: " << pre_allocated_size_
+                << ". Size on disk: " << size_on_disk;
       if (ftruncate(fd_, real_size_) != 0) {
         return STATUS_IO_ERROR(filename_, errno);
       }
@@ -1631,17 +1643,45 @@ class PosixFileFactory : public FileFactory {
                                     std::unique_ptr<WritableFile>* result) {
     uint64_t file_size = 0;
     if (opts.mode == PosixEnv::OPEN_EXISTING) {
-      auto lseek_result = lseek(fd, 0, SEEK_END);
+      uint64_t lseek_result;
+      if (opts.initial_offset.has_value()) {
+        lseek_result = lseek(fd, opts.initial_offset.value(), SEEK_SET);
+      } else {
+        // Default starting offset will be at the end of file.
+        lseek_result = lseek(fd, 0, SEEK_END);
+      }
       if (lseek_result < 0) {
         return STATUS_IO_ERROR(fname, errno);
       }
       file_size = lseek_result;
     }
 #if defined(__linux__)
-    if (opts.o_direct)
-      *result = std::make_unique<PosixDirectIOWritableFile>(
-          fname, fd, file_size, opts.sync_on_close);
-    else
+    if (opts.o_direct) {
+      const size_t last_block_used_bytes = file_size % FLAGS_o_direct_block_size_bytes;
+      // We always initialize at the end of last aligned full block.
+      *result = std::make_unique<PosixDirectIOWritableFile>(fname, fd,
+                                                            file_size - last_block_used_bytes,
+                                                            opts.sync_on_close);
+      if (last_block_used_bytes != 0) {
+        // The o_direct option is turned on and file size is not a multiple of
+        // FLAGS_o_direct_block_size_bytes. In order to successfully reopen file
+        // for durable write, we read the last incomplete block data from disk,
+        // then append it to buffer.
+        Slice last_block_slice;
+        std::unique_ptr<uint8_t[]> last_block_scratch(new uint8_t[last_block_used_bytes]);
+        std::unique_ptr<RandomAccessFile> readable_file;
+        RETURN_NOT_OK(NewRandomAccessFile(fname, &readable_file));
+        RETURN_NOT_OK(env_util::ReadFully(readable_file.get(),
+                                          file_size - last_block_used_bytes,
+                                          last_block_used_bytes,
+                                          &last_block_slice, last_block_scratch.get()));
+        RETURN_NOT_OK((*result)->Append(last_block_slice));
+        RETURN_NOT_OK((*result)->Sync());
+        // Even after the Sync, this last_block_slice will still be in memory buffer until
+        // we have a full block flushed from memory to disk.
+      }
+      return Status::OK();
+    }
 #endif
     *result = std::make_unique<PosixWritableFile>(fname, fd, file_size, opts.sync_on_close);
     return Status::OK();

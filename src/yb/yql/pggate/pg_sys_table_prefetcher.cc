@@ -426,7 +426,7 @@ class PgSysTablePrefetcher::Impl {
     // DLOG(FATAL) is used instead of SCHECK to let user on release build proceed by reading
     // data from a master in a non efficient way (by using separate RPC).
     if (registered_for_loading_.find(table_id) == registered_for_loading_.end()) {
-      DLOG(FATAL) << "Sys table prefetching is enabled but requested table "
+      LOG(DFATAL) << "Sys table prefetching is enabled but requested table "
                   << table_id
                   << " was not registered. The list of tables ready for prefetching is: "
                   << CollectionToString(registered_for_loading_,

@@ -155,6 +155,7 @@ ADD_YB_TEST(doc_key-test)
 ADD_YB_TEST(doc_kv_util-test)
 ADD_YB_TEST(doc_operation-test)
 ADD_YB_TEST(docdb_filter_policy-test)
+ADD_YB_TEST(docdb_pgapi-test)
 ADD_YB_TEST(docdb_rocksdb_util-test)
 ADD_YB_TEST(docdb-test)
 ADD_YB_TEST(docrowwiseiterator-test)
@@ -167,3 +168,15 @@ ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(subdocument-test)
 ADD_YB_TEST(consensus_frontier-test)
 ADD_YB_TEST(compaction_file_filter-test)
+
+if(YB_BUILD_FUZZ_TARGETS)
+  # A library with common code shared between DocDB fuzz tests.
+  set(DOCDB_FUZZ_TARGET_COMMON_SRCS
+      fuzz-targets/docdb_fuzz_target_util.cc)
+  add_library(yb_docdb_fuzz_target_common ${DOCDB_FUZZ_TARGET_COMMON_SRCS})
+  add_dependencies(yb_docdb_fuzz_target_common gen_src_yb_rpc_any_proto)
+  set(YB_FUZZ_TARGET_LINK_LIBS yb_common_test_util yb_docdb_test_common
+      yb_docdb_fuzz_target_common ${YB_MIN_TEST_LIBS})
+  ADD_YB_FUZZ_TARGET(fuzz-targets/doc_key-fuzz_target)
+  ADD_YB_FUZZ_TARGET(fuzz-targets/subdoc_key-fuzz_target)
+endif()

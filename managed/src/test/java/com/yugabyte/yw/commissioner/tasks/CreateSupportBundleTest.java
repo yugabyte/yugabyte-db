@@ -38,8 +38,6 @@ import org.yb.client.YBClient;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CreateSupportBundleTest extends CommissionerBaseTest {
-  @Mock private YBClient mockYBClientActual;
-
   private Universe universe;
   private Customer customer;
   protected RuntimeConfigFactory runtimeConfigFactory;
@@ -51,7 +49,6 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
     this.customer = ModelFactory.testCustomer();
     this.universe = ModelFactory.createUniverse(customer.getCustomerId());
     this.runtimeConfigFactory = mockBaseTaskDependencies.getRuntimeConfigFactory();
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockYBClientActual);
   }
 
   @After

@@ -1,0 +1,1 @@
+YugabyteDB Anywhere {{ yugabyte_alert_severity }} alert {{ yugabyte_alert_policy_name }} {{ yugabyte_alert_status }} for {{ yugabyte_alert_source_name }}

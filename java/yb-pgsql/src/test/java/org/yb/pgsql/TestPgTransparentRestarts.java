@@ -44,7 +44,7 @@ import org.yb.util.CatchingThread;
 import org.yb.util.RandomUtil;
 import org.yb.util.ThreadUtil;
 import org.yb.util.ThrowingRunnable;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import com.yugabyte.util.PSQLException;
 import com.yugabyte.util.PSQLState;
@@ -59,7 +59,7 @@ import com.yugabyte.util.PSQLState;
  * <li> DML statements as standalone or within a SELECT func().
  * </ol>
  */
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestPgTransparentRestarts extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransparentRestarts.class);
 

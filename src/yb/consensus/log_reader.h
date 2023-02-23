@@ -184,6 +184,11 @@ class LogReader {
   // if no footer is present.
   Status AppendSegmentUnlocked(const scoped_refptr<ReadableLogSegment>& segment);
 
+  // Appends segment which doesn't have a footer to the segment sequence.
+  // This function is used in the case that, during rebooting the tablet, we reusing the last
+  // segment (that was left in-progress from a crash) as active writable segment at bootstrap.
+  Status AppendUnclosedSegmentUnlocked(const scoped_refptr<ReadableLogSegment>& segment);
+
   // Used by Log to update its LogReader on how far it is possible to read
   // the current segment. Requires that the reader has at least one segment
   // and that the last segment has no footer, meaning it is currently being

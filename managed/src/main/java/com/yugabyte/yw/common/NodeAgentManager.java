@@ -30,7 +30,9 @@ import java.security.KeyPair;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.X509Certificate;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -72,6 +74,7 @@ public class NodeAgentManager {
   public static final String NODE_AGENT_RELEASES_PATH_PROPERTY = "yb.node_agent.releases.path";
   public static final String NODE_AGENT_SERVER_INSTALL_PROPERTY = "yb.node_agent.server.install";
   public static final int CERT_EXPIRY_YEARS = 5;
+  public static final int NODE_AGENT_JWT_EXPIRY_SECS = 1800;
 
   private static final String NODE_AGENT_INSTALLER_FILE = "node-agent-installer.sh";
   private static final String NODE_AGENT_FILE_FILTER_FORMAT = "node_agent-%s*-%s-%s.tar.gz";
@@ -305,7 +308,7 @@ public class NodeAgentManager {
         .setIssuer("https://www.yugabyte.com")
         .setSubject(ClientType.NODE_AGENT.name())
         .setIssuedAt(Date.from(Instant.now()))
-        .setExpiration(Date.from(Instant.now().plusSeconds(600)))
+        .setExpiration(Date.from(Instant.now().plusSeconds(NODE_AGENT_JWT_EXPIRY_SECS)))
         .claim(JWTVerifier.CLIENT_ID_CLAIM, nodeAgentUuid.toString())
         .claim(JWTVerifier.USER_ID_CLAIM, userUuid.toString())
         .signWith(SignatureAlgorithm.RS256, privateKey)
@@ -414,23 +417,31 @@ public class NodeAgentManager {
    * @param nodeAgent the node agent record to be created.
    * @return the updated node agent record along with cert and key in the config.
    */
-  public NodeAgent create(NodeAgent nodeAgent) {
+  /**
+   * Create a node agent record in the DB.
+   *
+   * @param nodeAgent nodeAgent the node agent record to be created.
+   * @param includeCertContents if it is true, server cert and key contents are included.
+   * @return the updated node agent record along with cert and key in the config.
+   */
+  public NodeAgent create(NodeAgent nodeAgent, boolean includeCertContents) {
     nodeAgent.config = new HashMap<>();
     nodeAgent.state = State.REGISTERING;
     nodeAgent.insert();
     Path certDirPath = getOrCreateNextCertDirectory(nodeAgent);
     Pair<X509Certificate, KeyPair> serverPair = generateNodeAgentCerts(nodeAgent, certDirPath);
     nodeAgent.updateCertDirPath(certDirPath);
-    X509Certificate serverCert = serverPair.getLeft();
-    KeyPair serverKeyPair = serverPair.getRight();
-    nodeAgent.config =
-        ImmutableMap.<String, String>builder()
-            .putAll(nodeAgent.config)
-            .put(NodeAgent.SERVER_CERT_PROPERTY, CertificateHelper.getAsPemString(serverCert))
-            .put(
-                NodeAgent.SERVER_KEY_PROPERTY,
-                CertificateHelper.getAsPemString(serverKeyPair.getPrivate()))
-            .build();
+    ImmutableMap.Builder<String, String> builder =
+        ImmutableMap.<String, String>builder().putAll(nodeAgent.config);
+    if (includeCertContents) {
+      X509Certificate serverCert = serverPair.getLeft();
+      KeyPair serverKeyPair = serverPair.getRight();
+      builder.put(NodeAgent.SERVER_CERT_PROPERTY, CertificateHelper.getAsPemString(serverCert));
+      builder.put(
+          NodeAgent.SERVER_KEY_PROPERTY,
+          CertificateHelper.getAsPemString(serverKeyPair.getPrivate()));
+    }
+    nodeAgent.config = builder.build();
     return nodeAgent;
   }
 

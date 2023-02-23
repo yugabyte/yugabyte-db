@@ -1,8 +1,8 @@
 import React, { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useController } from 'react-hook-form';
-import { ButtonGroup, Box, makeStyles, Theme } from '@material-ui/core';
-import { YBButton, YBInputField, YBLabel } from '../../../../../../components';
+import { ButtonGroup, Box, makeStyles } from '@material-ui/core';
+import { YBButton, YBLabel, YBInputField } from '../../../../../../components';
 import { UniverseFormData } from '../../../utils/dto';
 import { REPLICATION_FACTOR_FIELD } from '../../../utils/constants';
 import { themeVariables } from '../../../../../../theme/variables';
@@ -12,7 +12,7 @@ interface ReplicationFactorProps {
   isPrimary: boolean;
 }
 
-const useStyles = makeStyles((theme: Theme) => ({
+const useStyles = makeStyles(() => ({
   rfButton: {
     height: themeVariables.inputHeight,
     borderWidth: '0.5px !important'
@@ -42,7 +42,9 @@ export const ReplicationFactor = ({
   return (
     <Box width="100%" display="flex" data-testid="ReplicationFactor-Container">
       <YBLabel dataTestId="ReplicationFactor-Label">
-        {t('universeForm.cloudConfig.replicationField')}
+        {isPrimary
+          ? t('universeForm.cloudConfig.replicationField')
+          : t('universeForm.cloudConfig.numReadReplicas')}
       </YBLabel>
       <Box flex={1}>
         {isPrimary ? (

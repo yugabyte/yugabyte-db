@@ -48,6 +48,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
 
   public static class Params extends NodeTaskParams {
     public int nodeAgentPort = DEFAULT_NODE_AGENT_PORT;
+    public String nodeAgentHome;
     public UUID customerUuid;
   }
 
@@ -79,7 +80,8 @@ public class InstallNodeAgent extends AbstractTaskBase {
     nodeAgent.osType = OSType.parse(parts[0].trim());
     nodeAgent.archType = ArchType.parse(parts[1].trim());
     nodeAgent.version = nodeAgentManager.getSoftwareVersion();
-    return nodeAgentManager.create(nodeAgent);
+    nodeAgent.home = taskParams().nodeAgentHome;
+    return nodeAgentManager.create(nodeAgent, false);
   }
 
   @Override
@@ -130,11 +132,12 @@ public class InstallNodeAgent extends AbstractTaskBase {
                   .processErrors();
             });
     sb.setLength(0);
-    sb.append("rm -rf /tmp/node-agent-installer.sh");
+    sb.append("rm -rf /tmp/node-agent-installer.sh /root/node-agent");
     sb.append(" && tar -zxf ").append(installerFiles.getPackagePath());
     sb.append(" --strip-components=3 -C /tmp */node-agent-installer.sh");
     sb.append(" && chmod +x /tmp/node-agent-installer.sh");
-    sb.append(" && mv -f ").append(baseTargetDir).append("/node-agent").append(" /root/");
+    sb.append(" && mv -f ").append(baseTargetDir).append("/node-agent");
+    sb.append(" ").append(taskParams().nodeAgentHome);
     sb.append(" && rm -rf ").append(baseTargetDir);
     sb.append(" && /tmp/node-agent-installer.sh -t install");
     sb.append(" --skip_verify_cert --disable_egress");

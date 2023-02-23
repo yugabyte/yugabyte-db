@@ -26,6 +26,21 @@ DEFINE_RUNTIME_AUTO_uint64(test_auto_uint64, kExternal, 1, 2, "Testing!");
 DEFINE_RUNTIME_AUTO_double(test_auto_double, kExternal, 1, 2, "Testing!");
 DEFINE_RUNTIME_AUTO_string(test_auto_string, kExternal, "false", "true", "Testing!");
 
+// Static Assert test flags. These should fail to compile.
+// DEFINE_RUNTIME_AUTO_int32(test_auto_flag, kExternal, 100, 1, "Testing"); // Duplicate flag
+// DEFINE_RUNTIME_AUTO_bool(test_auto_bool, kExternal, 10, true, "Testing!"); // Initial value
+// incompatible
+// DEFINE_RUNTIME_AUTO_bool(test_auto_bool, kExternal, false, "true", "Testing!"); // Target value
+// incompatible
+// DEFINE_RUNTIME_AUTO_string(test_auto_string, kExternal, 1, "test", "Testing!"); // Initial value
+// incompatible String
+// DEFINE_RUNTIME_AUTO_bool(test_auto_string, kExternal, "test", true, "Testing!"); // Target value
+// incompatible String
+// DEFINE_RUNTIME_AUTO_bool(test_auto_bool, kExternal, true, true, "Testing!"); // Initial and
+// Target are same
+// DEFINE_RUNTIME_AUTO_string(test_auto_string, kExternal, "test", "test", "Testing!"); // Initial
+// and Target are same String
+
 DISABLE_PROMOTE_ALL_AUTO_FLAGS_FOR_TEST;
 
 namespace yb {

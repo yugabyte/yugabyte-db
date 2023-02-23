@@ -8,6 +8,7 @@ import { api, QUERY_KEY } from '../../../utils/api';
 import { sortVersionStrings } from './DBVersionHelper';
 import { DEFAULT_ADVANCED_CONFIG, UniverseFormData } from '../../../utils/dto';
 import { SOFTWARE_VERSION_FIELD, PROVIDER_FIELD } from '../../../utils/constants';
+import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface DBVersionFieldProps {
   disabled?: boolean;
@@ -28,6 +29,7 @@ const transformData = (data: string[]) => {
 export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement => {
   const { control, setValue, getValues } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
+  const classes = useFormFieldStyles();
 
   //watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
@@ -71,10 +73,10 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
         const value = dbVersions.find((item) => item.value === field.value) ?? '';
         return (
           <Box display="flex" width="100%" data-testid="DBVersionField-Container">
-            <YBLabel dataTestId="DBVersionField-Label">
+            <YBLabel dataTestId="DBVersionField-Label" className={classes.advancedConfigLabel}>
               {t('universeForm.advancedConfig.dbVersion')}
             </YBLabel>
-            <Box flex={1}>
+            <Box flex={1} className={classes.advancedConfigTextBox}>
               <YBAutoComplete
                 disabled={disabled}
                 loading={isLoading}

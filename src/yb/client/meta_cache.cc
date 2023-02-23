@@ -571,7 +571,6 @@ void RemoteTablet::GetRemoteTabletServers(
 bool RemoteTablet::IsLocalRegion() {
   auto tservers = GetRemoteTabletServers(internal::IncludeFailedReplicas::kTrue);
   for (const auto &tserver : tservers) {
-    LOG(INFO) << "TSERVER" << tserver->ToString();
     if (!tserver->IsLocalRegion()) {
       return false;
     }
@@ -682,7 +681,7 @@ void MetaCache::SetLocalTabletServer(const string& permanent_uuid,
                                      const shared_ptr<TabletServerServiceProxy>& proxy,
                                      const LocalTabletServer* local_tserver) {
   const auto entry = ts_cache_.emplace(permanent_uuid,
-                                       std::make_unique<RemoteTabletServer>(permanent_uuid,
+                                       std::make_shared<RemoteTabletServer>(permanent_uuid,
                                                                             proxy,
                                                                             local_tserver));
   CHECK(entry.second);
@@ -698,7 +697,7 @@ void MetaCache::UpdateTabletServerUnlocked(const master::TSInfoPB& pb) {
   }
 
   VLOG_WITH_PREFIX(1) << "Client caching new TabletServer " << permanent_uuid;
-  CHECK(ts_cache_.emplace(permanent_uuid, std::make_unique<RemoteTabletServer>(pb)).second);
+  CHECK(ts_cache_.emplace(permanent_uuid, std::make_shared<RemoteTabletServer>(pb)).second);
 }
 
 // A (table, partition_key) --> tablet lookup. May be in-flight to a master, or
@@ -1183,6 +1182,16 @@ void MetaCache::InvalidateTableCache(const YBTable& table) {
         "MetaCache for table $0 has been invalidated.", table_id);
     boost::apply_visitor(LookupCallbackVisitor(s), callback);
   }
+}
+
+std::shared_ptr<RemoteTabletServer> MetaCache::GetRemoteTabletServer(
+    const std::string& permanent_uuid) {
+  SharedLock lock(mutex_);
+  auto it = ts_cache_.find(permanent_uuid);
+  if (it != ts_cache_.end()) {
+    return it->second;
+  }
+  return nullptr;
 }
 
 class MetaCache::CallbackNotifier {

@@ -12,7 +12,7 @@ AutoFlags are gFlags with two hard-coded values: Initial and Target (instead of 
 
 A Workflow is the series of activities that are necessary to complete a task (ex: user issuing a DML, tablet split, load balancing). They can be simple and confined to a function block or involve coordination between multiple universes. Workflows that add or modify the format of data that is sent over the wire to another process or is persisted on disk require special care. The consumer of the data and its persistence determines when the new workflow can be safely enabled after an upgrade, and whether it is safe to perform rollbacks or downgrades after they are enabled. AutoFlags are required to safely and automatically enable such workflows.
 
-For example, `yb_enable_expression_pushdown` requires all yb-tservers to run a version which can understand and respond to the new request type. So, it can only be enabled after all yb-tservers in the universe have upgraded to a supported code version. Using a regular gFlag, we have to set the default value to `false` so that we don't start using it during an upgrade. After the upgrade, customer will have to manually set it to `true`. An AutoFlag will have initial value `false` and target value `true` and will not require customers to explicitly set it.
+For example, `yb_enable_expression_pushdown` requires all yb-tservers to run a version which can understand and respond to the new request type. So, it can only be enabled after all yb-tservers in the universe have upgraded to a supported code version. Using a regular gFlag, we have to set the default value to `false` so that we don't start using it during an upgrade. After the upgrade, customer will have to manually set it to `true`. An AutoFlag will have initial value `false` and target value `true` and will not require customers to manually set it.
 
 ## How to add a new AutoFlag
 
@@ -41,11 +41,18 @@ If you need to use the AutoFlag in additional files then you can declare them  u
 Ex:  
 `DECLARE_bool(fun_with_flags);`
 
+Postgres AutoFlags require an AutoFlag and a GUC variable with the same name, value and description. These AutoFlags use a slightly different macro.
+
+`DEFINE_RUNTIME_AUTO_PG_FLAG(<value_type>, <flag_name>, <flag_class>, INITIAL_VAL(<initial_value>) , TARGET_VAL(<target_value>), "<usage>");`
+
+Ex:
+`DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_expression_pushdown, kLocalVolatile, false, true, "Push supported expressions from ysql down to DocDB for evaluation.");`
+
 ## How to choose the AutoFlag class
 
 AutoFlag class is picked based on the persistence property of the data, and which processes use it.
 1. LocalVolatile:  
-    Adds/modifies format of data that may be sent over the wire to another process within the same universe. No new\modification to the format of persisted data.
+    Adds/modifies format of data that may be sent over the wire to another process within the same universe. No new/modification to the format of persisted data.
 2. LocalPersisted:  
     Adds/modifies format of data that may be persisted but used only within the same universe.
 3. External:  
