@@ -42,6 +42,7 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
+#include "utils/yb_like_support.h"
 
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -261,7 +262,7 @@ get_greaterstr(Datum prefix, Oid datatype, Oid colloid)
 	Oid			opfamily;
 	Oid			oproid;
 
-	/* make_greater_string cannot accurately handle non-C collations. */
+	/* yb_make_greater_string cannot accurately handle non-C collations. */
 	if (!lc_collate_is_c(colloid))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -287,16 +288,7 @@ get_greaterstr(Datum prefix, Oid datatype, Oid colloid)
 		elog(ERROR, "no < operator for opfamily %u", opfamily);
 	fmgr_info(get_opcode(oproid), &ltproc);
 	prefix_const = text_to_const(prefix, colloid);
-#ifdef YB_TODO
-	/* YB_TODO(jasonk@yugabyte)
-	 * Postgres has stopped calling make_greater_string() in all backend executions. Need to
-	 * investigate if this call is the right thing to do.
-	 */
-	return make_greater_string(prefix_const, &ltproc, colloid);
-#else
-	/* This code is only for the compilation to proceed without errors */
-	return prefix_const;
-#endif
+	return yb_make_greater_string(prefix_const, &ltproc, colloid);
 }
 
 static void
