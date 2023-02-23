@@ -156,7 +156,7 @@ Install the following additional packages:
 sudo apt install -y file patchelf
 ```
 
-Run the `yb_release` script to build a release package:
+Run the `yb_release` script to build a release package using the following command:
 
 ```output.sh
 $ ./yb_release

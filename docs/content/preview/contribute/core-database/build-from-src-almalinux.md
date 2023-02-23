@@ -154,7 +154,7 @@ sudo yum install -y npm golang
 
 [Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
 
-Run the `yb_release` script to build a release package:
+Run the `yb_release` script to build a release package using the following command:
 
 ```output.sh
 $ ./yb_release
