@@ -17,6 +17,7 @@ showRightNav: false
 ### Contents
 
 - [What is a smart driver?](#what-is-a-smart-driver)
+- [What languages are supported?](#what-languages-are-supported)
 - [Why do I need connection load balancing?](#why-do-i-need-connection-load-balancing)
 - [When should I use a smart driver?](#when-should-i-use-a-smart-driver)
 - [How hard is it to port an application to use a smart driver?](#how-hard-is-it-to-port-an-application-to-use-a-smart-driver)
@@ -27,7 +28,20 @@ showRightNav: false
 
 ### What is a smart driver?
 
-Think of smart drivers as PostgreSQL drivers with the addition of "smart" features that take advantage of the distributed nature of YugabyteDB. A smart driver intelligently distributes application connections across the nodes and regions of a YugabyteDB cluster, without the need for external load balancers. Balanced connections provide lower latencies and prevent hot nodes. For more information, refer to [YugabyteDB smart drivers for YSQL](../../drivers-orms/smart-drivers/).
+Think of smart drivers as PostgreSQL drivers with the addition of "smart" features that take advantage of the distributed nature of YugabyteDB. A smart driver intelligently distributes application connections across the nodes and regions of a YugabyteDB cluster, without the need for external load balancers. Balanced connections provide lower latencies and prevent hot nodes. For geographically-distributed applications, the driver can seamlessly connect to the geographically nearest regions and availability zones for lower latency.
+
+For more information, refer to [YugabyteDB smart drivers for YSQL](../../drivers-orms/smart-drivers/).
+
+### What languages are supported?
+
+YugabyteDB smart drivers for YSQL are currently available for the following languages:
+
+- Java
+- Go
+- node.js
+- Python
+
+For more information, refer to [YugabyteDB smart drivers for YSQL](../../drivers-orms/smart-drivers/).
 
 ### Why do I need connection load balancing?
 
