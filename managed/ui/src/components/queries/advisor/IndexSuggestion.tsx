@@ -5,10 +5,10 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import documentationIcon from '../images/documentation.svg';
 import lightBulbIcon from '../images/lightbulb.svg';
 import { EXTERNAL_LINKS } from '../helpers/const';
-import { IndexSchemaRecommendation } from '../../../redesign/helpers/dtos';
+import { IndexSchemaRecommendation } from '../../../redesign/utils/dtos';
 import './styles.scss';
 
-export const IndexSuggestion: FC<IndexSchemaRecommendation> = ({data, summary}) => {
+export const IndexSuggestion: FC<IndexSchemaRecommendation> = ({ data, summary }) => {
   const { t } = useTranslation();
   if (!data?.length) {
     return null;
@@ -36,34 +36,31 @@ export const IndexSuggestion: FC<IndexSchemaRecommendation> = ({data, summary}) 
         </div>
       </div>
       <div className="recommendationClass">
-        <BootstrapTable
-          data={data}
-          pagination={data?.length > 10}
-        >
+        <BootstrapTable data={data} pagination={data?.length > 10}>
           <TableHeaderColumn
             dataField="index_name"
             isKey={true}
             width="17%"
-            tdStyle={{ whiteSpace: 'normal', wordWrap: 'break-word' }} 
+            tdStyle={{ whiteSpace: 'normal', wordWrap: 'break-word' }}
             columnClassName="no-border"
           >
-                  Unused Index Name
+            Unused Index Name
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="table_name"
             width="13%"
-            tdStyle={{ whiteSpace: 'normal', wordWrap: 'break-word' }} 
+            tdStyle={{ whiteSpace: 'normal', wordWrap: 'break-word' }}
             columnClassName="no-border"
           >
-                  Table
+            Table
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="index_command"
             width="70%"
-            tdStyle={{ whiteSpace: 'normal', wordWrap: 'break-word' }} 
+            tdStyle={{ whiteSpace: 'normal', wordWrap: 'break-word' }}
             columnClassName="no-border"
           >
-                  	Create Command
+            Create Command
           </TableHeaderColumn>
         </BootstrapTable>
       </div>

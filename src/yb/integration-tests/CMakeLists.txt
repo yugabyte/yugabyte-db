@@ -76,6 +76,7 @@ target_link_libraries(integration-tests
   yb_test_util
   yb-redis
   yb_pgwrapper
+  master_proto
   ${INTEGRATION_TESTS_LIB_EXTENSIONS})
 
 add_dependencies(integration-tests
@@ -119,6 +120,7 @@ ADD_YB_TEST(tablet_server-itest)
 ADD_YB_TEST(tablet-split-itest)
 ADD_YB_TEST(xcluster-tablet-split-itest)
 ADD_YB_TEST(cdcsdk_gflag-test)
+ADD_YB_TEST(stateful_services/stateful_service-itest)
 
 # Tests which fail on purpose for checking Jenkins test failures reporting, disabled
 # (commented out) by default:
@@ -171,6 +173,8 @@ ADD_YB_TEST(restart-test)
 ADD_YB_TEST(yb-ts-cli-itest)
 ADD_YB_TEST_DEPENDENCIES(yb-ts-cli-itest
   yb-ts-cli)
+ADD_YB_TEST(cql-backup-test)
+ADD_YB_TEST(snapshot-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)

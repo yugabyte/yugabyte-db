@@ -11,9 +11,11 @@ export const YBInput: FC<YBInputProps> = ({ label, tooltip, ...props }) => (
   <TextField
     {...props}
     label={
-      <>
-        {label} {tooltip && <YBTooltip title={tooltip} />}
-      </>
+      label && (
+        <>
+          {label} {tooltip && <YBTooltip title={tooltip} />}
+        </>
+      )
     }
     variant="standard"
   />

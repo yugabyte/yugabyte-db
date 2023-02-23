@@ -70,6 +70,10 @@ DEFINE_RUNTIME_int32(txn_slow_op_threshold_ms, 0,
     "disables printing the collected traces.");
 TAG_FLAG(txn_slow_op_threshold_ms, advanced);
 
+DEFINE_RUNTIME_bool(txn_print_trace_on_error, false,
+    "Controls whether to always print txn traces on error.");
+TAG_FLAG(txn_print_trace_on_error, advanced);
+
 DEFINE_UNKNOWN_uint64(transaction_heartbeat_usec, 500000 * yb::kTimeMultiplier,
               "Interval of transaction heartbeat in usec.");
 DEFINE_UNKNOWN_bool(transaction_disable_heartbeat_in_tests, false,
@@ -78,6 +82,9 @@ DECLARE_uint64(max_clock_skew_usec);
 
 DEFINE_UNKNOWN_bool(auto_promote_nonlocal_transactions_to_global, true,
             "Automatically promote transactions touching data outside of region to global.");
+
+DEFINE_RUNTIME_bool(log_failed_txn_metadata, false, "Log metadata about failed transactions.");
+TAG_FLAG(log_failed_txn_metadata, advanced);
 
 DEFINE_test_flag(int32, transaction_inject_flushed_delay_ms, 0,
                  "Inject delay before processing flushed operations by transaction.");
@@ -91,6 +98,9 @@ DEFINE_test_flag(int32, txn_status_moved_rpc_send_delay_ms, 0,
 
 DEFINE_test_flag(int32, old_txn_status_abort_delay_ms, 0,
                  "Inject delay before sending abort to old transaction status tablet.");
+
+DEFINE_test_flag(uint64, override_transaction_priority, 0,
+                 "Override priority of transactions if nonzero.");
 
 METRIC_DEFINE_counter(server, transaction_promotions,
                       "Number of transactions being promoted to global transactions",
@@ -189,12 +199,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
  public:
   Impl(TransactionManager* manager, YBTransaction* transaction, TransactionLocality locality)
       : trace_(Trace::NewTrace()),
-        start_(CoarseMonoClock::Now()),
         manager_(manager),
         transaction_(transaction),
         read_point_(manager->clock()),
         child_(Child::kFalse) {
-    metadata_.priority = RandomUniformInt<uint64_t>();
+    metadata_.priority =
+        PREDICT_FALSE(FLAGS_TEST_override_transaction_priority != 0)
+            ? FLAGS_TEST_override_transaction_priority
+            : RandomUniformInt<uint64_t>();
     metadata_.locality = locality;
     CompleteConstruction();
     VLOG_WITH_PREFIX(2) << "Started, metadata: " << metadata_;
@@ -202,7 +214,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   Impl(TransactionManager* manager, YBTransaction* transaction, const TransactionMetadata& metadata)
       : trace_(Trace::NewTrace()),
-        start_(CoarseMonoClock::Now()),
         manager_(manager),
         transaction_(transaction),
         metadata_(metadata),
@@ -214,7 +225,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   Impl(TransactionManager* manager, YBTransaction* transaction, ChildTransactionData data)
       : trace_(Trace::NewTrace()),
-        start_(CoarseMonoClock::Now()),
         manager_(manager),
         transaction_(transaction),
         read_point_(manager->clock()),
@@ -246,18 +256,25 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     const auto threshold = GetAtomicFlag(&FLAGS_txn_slow_op_threshold_ms);
     const auto print_trace_every_n = GetAtomicFlag(&FLAGS_txn_print_trace_every_n);
     const auto now = CoarseMonoClock::Now();
+    // start_ is not set if Init is not called - this happens for transactions that get
+    // aborted without doing anything, so we set time_spent to 0 for these transactions.
+    const auto time_spent = now - (start_ == CoarseTimePoint() ? now : start_);
     if ((trace_ && trace_->must_print())
-           || (threshold > 0 && ToMilliseconds(now - start_) > threshold)) {
-      LOG(INFO) << ToString() << " took " << ToMicroseconds(now - start_) << "us. Trace: \n"
+           || (threshold > 0 && ToMilliseconds(time_spent) > threshold)
+           || (FLAGS_txn_print_trace_on_error && !status_.ok())) {
+      LOG(INFO) << ToString() << " took " << ToMicroseconds(time_spent) << "us. Trace: \n"
         << (trace_ ? trace_->DumpToString(true) : "Not collected");
     } else if (trace_) {
       YB_LOG_IF_EVERY_N(INFO, print_trace_every_n > 0, print_trace_every_n)
-        << ToString() << " took " << ToMicroseconds(now - start_) << "us. Trace: \n"
+        << ToString() << " took " << ToMicroseconds(time_spent) << "us. Trace: \n"
         << trace_->DumpToString(true);
     }
   }
 
   void SetPriority(uint64_t priority) {
+    if (PREDICT_FALSE(FLAGS_TEST_override_transaction_priority != 0)) {
+      priority = FLAGS_TEST_override_transaction_priority;
+    }
     metadata_.priority = priority;
   }
 
@@ -349,14 +366,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     {
       UNIQUE_LOCK(lock, mutex_);
-      auto promotion_started = StartPromotionToGlobalIfNecessary(ops_info);
-      if (!promotion_started.ok()) {
-        QueueWaiter(std::move(waiter));
-        NotifyWaitersAndRelease(&lock, promotion_started.status(), "Nonlocal transaction");
-        return false;
-      }
-      const bool defer = !ready_ || *promotion_started;
-
       if (!status_.ok()) {
         auto status = status_;
         lock.unlock();
@@ -367,6 +376,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         return false;
       }
 
+      auto promotion_started = StartPromotionToGlobalIfNecessary(ops_info);
+      if (!promotion_started.ok()) {
+        QueueWaiter(std::move(waiter));
+        NotifyWaitersAndRelease(&lock, promotion_started.status(), "Nonlocal transaction");
+        return false;
+      }
+
+      const bool defer = !ready_ || *promotion_started;
       if (!defer || initial) {
         PrepareOpsGroups(initial, ops_info->groups);
       }
@@ -863,7 +880,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   std::future<Status> SendHeartBeatOnRollback(
       const CoarseTimePoint& deadline, const internal::RemoteTabletPtr& status_tablet,
       rpc::Rpcs::Handle* handle,
-      const AbortedSubTransactionSet& aborted_sub_txn_set) {
+      const SubtxnSet& aborted_sub_txn_set) {
     DCHECK(status_tablet);
 
     return MakeFuture<Status>([&, handle](auto callback) {
@@ -1020,6 +1037,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     } else {
       metadata_.start_time = read_point_.Now();
     }
+    start_ = CoarseMonoClock::Now();
   }
 
   void SetReadTimeIfNeeded(bool do_it) {
@@ -1064,7 +1082,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   rpc::RpcCommandPtr PrepareHeartbeatRPC(
       CoarseTimePoint deadline, const internal::RemoteTabletPtr& status_tablet,
       TransactionStatus status, UpdateTransactionCallback callback,
-      std::optional<AbortedSubTransactionSet> aborted_set_for_rollback_heartbeat =
+      std::optional<SubtxnSet> aborted_set_for_rollback_heartbeat =
         std::nullopt) {
     tserver::UpdateTransactionRequestPB req;
     req.set_tablet_id(status_tablet->tablet_id());
@@ -1654,9 +1672,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       switch (transaction_status) {
         case TransactionStatus::PROMOTED:
           {
-            auto promoting_state = TransactionState::kPromoting;
+            auto state = TransactionState::kPromoting;
             if (!state_.compare_exchange_strong(
-                    promoting_state, TransactionState::kRunning, std::memory_order_acq_rel)) {
+                    state, TransactionState::kRunning, std::memory_order_acq_rel) &&
+                state != TransactionState::kAborted) {
               LOG_WITH_PREFIX(DFATAL) << "Transaction status promoted but not in promoting state";
             }
           }
@@ -1857,18 +1876,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     manager_->rpcs().Unregister(handle);
 
     if (!status.ok()) {
-      auto state = state_.load(std::memory_order_acquire);
-      if (state == TransactionState::kRunning) {
-        // We haven't started committing yet, so we still have time to retry.
-        auto rpc = PrepareUpdateTransactionStatusLocationRpc(weak_transaction, id, tablet_id,
-                                                             participant_tablet, request_template);
-        LOG(INFO) << request_template.DebugString();
-
-        lock.unlock();
-        manager_->rpcs().RegisterAndStart(rpc, handle);
-        return;
-      }
-
       SetErrorUnlocked(status, "Move transaction status");
     }
 
@@ -1906,6 +1913,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     if (status_.ok()) {
       status_ = status.CloneAndPrepend(operation);
       state_.store(TransactionState::kAborted, std::memory_order_release);
+
+      if (FLAGS_log_failed_txn_metadata) {
+        LOG_WITH_PREFIX(INFO) << operation << " failed, status=" << status
+                              << ", metadata=" << AsString(metadata_)
+                              << ", state=" << AsString(state_)
+                              << ", old_status_tablet_state=" << AsString(old_status_tablet_state_)
+                              << ", tablets=" << AsString(tablets_);
+      }
     }
   }
 
@@ -1954,7 +1969,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // The trace buffer.
   scoped_refptr<Trace> trace_;
 
-  const CoarseTimePoint start_;
+  CoarseTimePoint start_;
 
   // Manager is created once per service.
   TransactionManager* const manager_;

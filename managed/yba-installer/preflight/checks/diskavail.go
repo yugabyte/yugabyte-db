@@ -71,7 +71,7 @@ func (r diskAvailCheck) Execute() Result {
 	}
 
 	minDiskReq := minFreeDiskInstall
-	_, err = os.Stat(common.InstalledFile)
+	_, err = os.Stat(common.YbaInstalledMarker())
 	if err == nil {
 		// upgrade
 		minDiskReq = minFreeDiskUpgrade

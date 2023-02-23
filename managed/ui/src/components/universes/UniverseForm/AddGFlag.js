@@ -42,7 +42,8 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
     formProps.setValues({
       ...gFlagProps,
       flagname: flag?.name,
-      flagvalue
+      flagvalue,
+      tags: flag?.tags
     });
   };
 
@@ -77,9 +78,10 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
         const defaultKey = flag?.data?.hasOwnProperty('current') ? 'current' : 'default';
         formProps.setValues({
           ...gFlagProps,
-          flagvalue: flag?.data[defaultKey]
+          flagvalue: flag?.data[defaultKey],
+          tags: flag?.data?.tags
         });
-      } else formProps.setValues(gFlagProps);
+      } else formProps.setValues({ ...gFlagProps, tags: flag?.data?.tags });
       setLoader(false);
     } catch (e) {
       setAPIError(e?.error);

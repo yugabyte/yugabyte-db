@@ -393,6 +393,9 @@ public class AlertTest extends FakeDBApplication {
             alert,
             KnownAlertLabels.CONFIGURATION_TYPE.labelName(),
             configuration.getTargetType().name());
+    AlertLabel alertTypeLabel =
+        new AlertLabel(
+            alert, KnownAlertLabels.ALERT_TYPE.labelName(), configuration.getTemplate().name());
     AlertLabel severityLabel =
         new AlertLabel(
             alert,
@@ -425,6 +428,7 @@ public class AlertTest extends FakeDBApplication {
             targetUuidLabel,
             targetNameLabel,
             targetTypeLabel,
+            alertTypeLabel,
             groupUuidLabel,
             groupTypeLabel,
             severityLabel,

@@ -32,6 +32,12 @@ This deployment provides the following advantages:
       YugabyteDB Managed
     </a>
   </li>
+  <li>
+    <a href="../synchronous-replication-yba/" class="nav-link">
+      <img src="/icons/server.svg" alt="Server Icon">
+      YugabyteDB Anywhere
+    </a>
+  </li>
 </ul>
 
 ## Create a Replicate across regions cluster

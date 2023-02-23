@@ -243,6 +243,16 @@ Status HandleResponse(uint64_t session_id,
     return ProcessUsedReadTime(session_id, op, resp, used_read_time);
   }
 
+  if (response.error_status().size() > 0) {
+    // We do not currently expect more than one status, when we do, we need to decide how to handle
+    // them. Possible options: aggregate multiple statuses into one, discard all but one, etc.
+    DCHECK_EQ(response.error_status().size(), 1) << "Too many error statuses in the response";
+    for (const auto& pb : response.error_status()) {
+      return StatusFromPB(pb);
+    }
+  }
+
+  // Older nodes may still use deprecated fields for status, so keep legacy handling
   auto status = STATUS(
       QLError, response.error_message(), Slice(), PgsqlRequestStatus(response.status()));
 
@@ -280,12 +290,13 @@ Result<PgClientSessionOperations> PrepareOperations(
       session->Abort();
     }
   });
+  const auto read_from_followers = req->options().read_from_followers();
   for (auto& op : *req->mutable_ops()) {
     if (op.has_read()) {
       auto& read = *op.mutable_read();
       RETURN_NOT_OK(GetTable(read.table_id(), table_cache, &table));
       auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, sidecars, &read);
-      if (op.read_from_followers()) {
+      if (read_from_followers) {
         read_op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
       }
       ops.push_back(read_op);
@@ -823,6 +834,9 @@ PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint dea
   const auto& options = req.options();
   PgClientSessionKind kind;
   if (options.use_catalog_session()) {
+    SCHECK(!options.read_from_followers(),
+           InvalidArgument,
+           "Reading catalog from followers is not allowed");
     kind = PgClientSessionKind::kCatalog;
     EnsureSession(kind);
   } else if (options.ddl_mode()) {
@@ -1127,8 +1141,8 @@ Status PgClientSession::FetchSequenceTuple(
   auto psql_write = client::YBPgsqlWriteOp::NewFetchSequence(table, &context->sidecars());
 
   auto* write_request = psql_write->mutable_request();
-  write_request->set_ysql_catalog_version(req.ysql_catalog_version());
-
+  RETURN_NOT_OK(
+      (SetCatalogVersion<PgFetchSequenceTupleRequestPB, PgsqlWriteRequestPB>(req, write_request)));
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.seq_oid());
 

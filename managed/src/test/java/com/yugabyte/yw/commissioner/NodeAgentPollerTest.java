@@ -96,6 +96,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     payload.ip = "10.20.30.40";
     payload.osType = OSType.LINUX.name();
     payload.archType = ArchType.AMD64.name();
+    payload.home = "/home/yugabyte/node-agent";
     NodeAgent nodeAgent = register(payload);
     UUID nodeAgentUuid = nodeAgent.uuid;
     Date time1 = nodeAgent.updatedAt;
@@ -135,6 +136,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     payload.ip = "10.20.30.40";
     payload.osType = OSType.LINUX.name();
     payload.archType = ArchType.AMD64.name();
+    payload.home = "/home/yugabyte/node-agent";
     NodeAgent nodeAgent = register(payload);
     UUID nodeAgentUuid = nodeAgent.uuid;
     Date time1 = nodeAgent.updatedAt;
@@ -170,6 +172,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
         .thenReturn(pingResponse2 /* heartbeat call */)
         .thenReturn(pingResponse1 /* after upgrade */)
         .thenReturn(pingResponse2 /* after restart */);
+    when(mockNodeAgentClient.finalizeUpgrade(any())).thenReturn("/home/yugabyte/node-agent");
     when(mockConfigHelper.getConfig(eq(ConfigType.SoftwareVersion)))
         .thenReturn(ImmutableMap.of("version", "2.13.0.0"));
     when(mockAppConfig.getString(eq(NodeAgentManager.NODE_AGENT_RELEASES_PATH_PROPERTY)))
@@ -180,6 +183,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     payload.ip = "10.20.30.40";
     payload.osType = OSType.LINUX.name();
     payload.archType = ArchType.AMD64.name();
+    payload.home = "/home/yugabyte/node-agent";
     NodeAgent nodeAgent = register(payload);
     Path certDir = nodeAgent.getCertDirPath();
     PollerTaskParam param =

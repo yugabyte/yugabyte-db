@@ -54,6 +54,7 @@ TEST(RestoreSysCatalogStateTest, Filter) {
       .non_system_objects_to_restore = {},
       .existing_system_tables = {},
       .restoring_system_tables = {},
+      .parent_to_child_tables = {},
       .non_system_tablets_to_restore = {},
   };
   RestoreSysCatalogState state(&restoration);

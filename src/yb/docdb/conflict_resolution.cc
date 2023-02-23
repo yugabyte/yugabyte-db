@@ -71,7 +71,7 @@ struct TransactionData {
   uint64_t priority;
   Status failure;
 
-  void RemoveAbortedSubtransactions(const AbortedSubTransactionSet& aborted_subtxn_set) {
+  void RemoveAbortedSubtransactions(const SubtxnSet& aborted_subtxn_set) {
     auto it = subtransactions->begin();
     while (it != subtransactions->end()) {
       if (aborted_subtxn_set.Test(it->first)) {
@@ -1038,7 +1038,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   }
 
   bool CheckConflictWithPending(const TransactionData& transaction_data) override {
-    // We remove aborted subtransactions when processing the AbortedSubtransactionSet stored
+    // We remove aborted subtransactions when processing the SubtxnSet stored
     // locally or returned by the status tablet. If this is now empty, then all potentially
     // conflicting intents have been aborted and there is no longer a conflict with this
     // transaction.
@@ -1217,6 +1217,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
   DCHECK(hybrid_time.is_valid());
   TRACE_FUNC();
 
+  VLOG_WITH_FUNC(3) << "conflict_management_policy=" << conflict_management_policy;
   auto context = std::make_unique<TransactionConflictResolverContext>(
       doc_ops, write_batch, hybrid_time, read_time, conflicts_metric,
       conflict_management_policy);
@@ -1253,6 +1254,8 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
                                  WaitQueue* wait_queue,
                                  ResolutionCallback callback) {
   TRACE("ResolveOperationConflicts");
+  VLOG_WITH_FUNC(3) << "conflict_management_policy=" << conflict_management_policy;
+
   auto context = std::make_unique<OperationConflictResolverContext>(
       &doc_ops, resolution_ht, conflicts_metric, conflict_management_policy);
   auto request_scope = VERIFY_RESULT(RequestScope::Create(status_manager));

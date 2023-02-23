@@ -114,6 +114,7 @@ class RestoreSysCatalogState {
   void AddTabletToSplitRelationshipsMap(const std::string& id, SysTabletsEntryPB* pb);
 
   Status PatchColocatedTablet(const std::string& id, SysTabletsEntryPB* pb);
+  bool IsNonSystemObsoleteTable(const TableId& table_id);
 
   Result<bool> PatchRestoringEntry(const std::string& id, SysNamespaceEntryPB* pb);
   Result<bool> PatchRestoringEntry(const std::string& id, SysTablesEntryPB* pb);

@@ -48,6 +48,9 @@ Status SetupLogDir(const std::string& server_type);
 
 void SetGLogHeader(const std::string& server_info = "");
 
+// Installs signal handler. Safe to call before glog is initialized. This is not thread safe.
+Status InstallSignalHandler(int signum, void (*handler)(int));
+
 // Initialize YB, checking that the platform we are running on is supported, etc.
 // Issues a FATAL log message if we fail to init.
 // argv0 is passed to InitGoogleLoggingSafe.

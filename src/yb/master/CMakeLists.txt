@@ -213,6 +213,7 @@ ADD_YB_TEST(master-test)
 ADD_YB_TEST(sys_catalog-test)
 Add_YB_TEST(table_index-test)
 ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
+ADD_YB_TEST(stateful_service-test)
 
 foreach(ADDITIONAL_TEST ${MASTER_ADDITIONAL_TESTS})
   ADD_YB_TEST(${ADDITIONAL_TEST})

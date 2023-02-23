@@ -75,6 +75,9 @@ public class PitrController extends AuthenticatedController {
     if (universe.getUniverseDetails().universePaused) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot enable PITR when the universe is in paused state");
+    } else if (universe.getUniverseDetails().updateInProgress) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot enable PITR when the universe is in locked state");
     }
 
     checkCompatibleYbVersion(
@@ -206,6 +209,9 @@ public class PitrController extends AuthenticatedController {
     if (universe.getUniverseDetails().universePaused) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot perform PITR when the universe is in paused state");
+    } else if (universe.getUniverseDetails().updateInProgress) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot perform PITR when the universe is in locked state");
     }
 
     RestoreSnapshotScheduleParams taskParams =
@@ -272,6 +278,9 @@ public class PitrController extends AuthenticatedController {
     if (universe.getUniverseDetails().universePaused) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot delete PITR config when the universe is in paused state");
+    } else if (universe.getUniverseDetails().updateInProgress) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot delete PITR config when the universe is in locked state");
     }
     PitrConfig pitrConfig = PitrConfig.getOrBadRequest(pitrConfigUUID);
 

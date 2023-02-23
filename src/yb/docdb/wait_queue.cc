@@ -346,7 +346,7 @@ class BlockerData {
  private:
   mutable rw_spinlock mutex_;
   Result<ResolutionStatus> txn_status_ GUARDED_BY(mutex_) = ResolutionStatus::kPending;
-  AbortedSubTransactionSet aborted_subtransactions_ GUARDED_BY(mutex_);
+  SubtxnSet aborted_subtransactions_ GUARDED_BY(mutex_);
   std::vector<std::weak_ptr<WaiterData>> waiters_ GUARDED_BY(mutex_);
 };
 

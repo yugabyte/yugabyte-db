@@ -17,7 +17,7 @@ YugabyteDB was created to achieve a number of design goals.
 
 ## Consistency
 
-YugabyteDB supports distributed transactions while offering strong consistency guarantees in the face of potential failures. 
+YugabyteDB supports distributed transactions while offering strong consistency guarantees in the face of potential failures.
 
 For more information, see the following:
 
@@ -43,12 +43,12 @@ YugabyteDB supports single-row linearizable writes. Linearizability is one of th
 
 YugabyteDB supports multi-row transactions with three isolation levels: Serializable, Snapshot (also known as repeatable read), and Read Committed isolation.
 
-- The [YSQL API](../../api/ysql/) supports Serializable, Snapshot (default), and Read Committed isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. For more details, see [YSQL vs. PostgreSQL isolation levels](#ysql-vs-postgresql-isolation -levels).
+- The [YSQL API](../../api/ysql/) supports Serializable, Snapshot (default), and Read Committed isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. For more details, see [YSQL vs. PostgreSQL isolation levels](#ysql-vs-postgresql-isolation-levels).
 - The [YCQL API](../../api/ycql/dml_transaction/) supports only Snapshot isolation (default) using the `BEGIN TRANSACTION` syntax.
 
 #### YSQL vs. PostgreSQL isolation levels
 
-`READ COMMITTED` is the default isolation level in PostgreSQL and YSQL. If `yb_enable_read_committed_isolation=true`, `READ COMMITTED` is mapped to Read Committed of YugabyteDB's transactional layer (that is, a statement sees all rows that are committed before it begins). However, by default `yb_enable_read_committed_isolation=false` and in this case Read Committed of YugabyteDB's transactional layer maps to Snapshot isolation, thus making Snapshot isolation default in YSQL. 
+`READ COMMITTED` is the default isolation level in PostgreSQL and YSQL. If `yb_enable_read_committed_isolation=true`, `READ COMMITTED` is mapped to Read Committed of YugabyteDB's transactional layer (that is, a statement sees all rows that are committed before it begins). However, by default `yb_enable_read_committed_isolation=false` and in this case Read Committed of YugabyteDB's transactional layer maps to Snapshot isolation, thus making Snapshot isolation default in YSQL.
 
 Note that Read Committed support in YugabyteDB is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
 
@@ -60,7 +60,7 @@ YugabyteDB does not reinvent data client APIs. The two supported APIs are YSQL a
 
 ### YSQL
 
-[YSQL](../../api/ysql/) is a fully-relational SQL API that is wire-compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution, while also using relational modeling features such as Joins, distributed transactions, and referential integrity (such as foreign keys). Note that YSQL [reuses the native query layer](https://blog.yugabyte.com/why-we-built-yugabytedb-by-reusing-the-postgresql-query-layer/) of the PostgreSQL open source project.
+[YSQL](../../api/ysql/) is a fully-relational SQL API that is wire-compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution, while also using relational modeling features such as Joins, distributed transactions, and referential integrity (such as foreign keys). Note that YSQL [reuses the native query layer](https://www.yugabyte.com/blog/why-we-built-yugabytedb-by-reusing-the-postgresql-query-layer/) of the PostgreSQL open source project.
 
 In addition:
 
@@ -127,7 +127,7 @@ YugabyteDB works natively in Kubernetes and other containerized environments as 
 
 YugabyteDB is open source under the very permissive Apache 2.0 license.
 
-## 
+##
 
 See also:
 

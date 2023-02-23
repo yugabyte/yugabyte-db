@@ -149,26 +149,17 @@ public class AzuEARService extends EncryptionAtRestService<AzuAlgorithm> {
   }
 
   @Override
-  public byte[] retrieveKeyWithService(
-      UUID universeUUID, UUID configUUID, byte[] keyRef, EncryptionAtRestConfig config) {
+  public byte[] retrieveKeyWithService(UUID configUUID, byte[] keyRef) {
     this.azuEARServiceUtil = getAzuEarServiceUtil();
     byte[] keyVal = null;
     try {
-      switch (config.type) {
-        case CMK:
-          keyVal = keyRef;
-          break;
-        default:
-        case DATA_KEY:
-          // Check if the key vault exists and key with given name exists in the key vault
-          ObjectNode authConfig = azuEARServiceUtil.getAuthConfig(configUUID);
-          azuEARServiceUtil.checkKeyVaultAndKeyExists(authConfig);
-          // Decrypt the locally stored encrypted byte array to give the universe key.
-          keyVal = azuEARServiceUtil.unwrapKey(authConfig, keyRef);
-          if (keyVal == null) {
-            LOG.warn("Could not retrieve key from key ref through AZU KMS");
-          }
-          break;
+      // Check if the key vault exists and key with given name exists in the key vault
+      ObjectNode authConfig = azuEARServiceUtil.getAuthConfig(configUUID);
+      azuEARServiceUtil.checkKeyVaultAndKeyExists(authConfig);
+      // Decrypt the locally stored encrypted byte array to give the universe key.
+      keyVal = azuEARServiceUtil.unwrapKey(authConfig, keyRef);
+      if (keyVal == null) {
+        LOG.warn("Could not retrieve key from key ref through AZU KMS");
       }
     } catch (Exception e) {
       final String errMsg = "Error occurred retrieving encryption key";
@@ -180,28 +171,16 @@ public class AzuEARService extends EncryptionAtRestService<AzuAlgorithm> {
 
   @Override
   protected byte[] validateRetrieveKeyWithService(
-      UUID universeUUID,
-      UUID configUUID,
-      byte[] keyRef,
-      EncryptionAtRestConfig config,
-      ObjectNode authConfig) {
+      UUID configUUID, byte[] keyRef, ObjectNode authConfig) {
     this.azuEARServiceUtil = getAzuEarServiceUtil();
     byte[] keyVal = null;
     try {
-      switch (config.type) {
-        case CMK:
-          keyVal = keyRef;
-          break;
-        default:
-        case DATA_KEY:
-          // Check if the key vault exists and key with given name exists in the key vault
-          azuEARServiceUtil.checkKeyVaultAndKeyExists(authConfig);
-          // Decrypt the locally stored encrypted byte array to give the universe key.
-          keyVal = azuEARServiceUtil.unwrapKey(authConfig, keyRef);
-          if (keyVal == null) {
-            LOG.warn("Could not retrieve key from key ref through AZU KMS");
-          }
-          break;
+      // Check if the key vault exists and key with given name exists in the key vault
+      azuEARServiceUtil.checkKeyVaultAndKeyExists(authConfig);
+      // Decrypt the locally stored encrypted byte array to give the universe key.
+      keyVal = azuEARServiceUtil.unwrapKey(authConfig, keyRef);
+      if (keyVal == null) {
+        LOG.warn("Could not retrieve key from key ref through AZU KMS");
       }
     } catch (Exception e) {
       final String errMsg = "Error occurred retrieving encryption key";

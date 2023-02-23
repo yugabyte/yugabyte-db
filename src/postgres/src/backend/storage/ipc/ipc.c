@@ -21,6 +21,7 @@
 
 #include <signal.h>
 #include <unistd.h>
+#include <stdatomic.h>
 #include <sys/stat.h>
 
 #include "miscadmin.h"
@@ -38,12 +39,12 @@
  * so that an ereport() from an on_proc_exit routine cannot get us out
  * of the exit procedure.  We do NOT want to go back to the idle loop...
  */
-bool		proc_exit_inprogress = false;
+atomic_bool		proc_exit_inprogress = false;
 
 /*
  * Set when shmem_exit() is in progress.
  */
-bool		shmem_exit_inprogress = false;
+atomic_bool		shmem_exit_inprogress = false;
 
 /*
  * This flag tracks whether we've called atexit() in the current process

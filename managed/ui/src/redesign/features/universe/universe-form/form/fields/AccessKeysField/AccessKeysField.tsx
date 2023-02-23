@@ -3,10 +3,19 @@ import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { useEffectOnce, useUpdateEffect } from 'react-use';
-import { Box, MenuItem } from '@material-ui/core';
+import { Box, MenuItem, makeStyles } from '@material-ui/core';
 import { YBLabel, YBSelectField } from '../../../../../../components';
 import { AccessKey, UniverseFormData } from '../../../utils/dto';
 import { ACCESS_KEY_FIELD, PROVIDER_FIELD } from '../../../utils/constants';
+import { useFormFieldStyles } from '../../../universeMainStyle';
+
+const useStyles = makeStyles((theme) => ({
+  overrideMuiSelectMenu: {
+    '& .MuiSelect-selectMenu': {
+      display: 'block'
+    }
+  }
+}));
 
 interface AccessKeysFieldProps {
   disabled?: boolean;
@@ -15,6 +24,8 @@ interface AccessKeysFieldProps {
 export const AccessKeysField = ({ disabled }: AccessKeysFieldProps): ReactElement => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
+  const classes = useFormFieldStyles();
+  const helperClasses = useStyles();
 
   //watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
@@ -45,11 +56,12 @@ export const AccessKeysField = ({ disabled }: AccessKeysFieldProps): ReactElemen
 
   return (
     <Box display="flex" width="100%" data-testid="AccessKeysField-Container">
-      <YBLabel dataTestId={'AccessKeysField-Label'}>
+      <YBLabel dataTestId={'AccessKeysField-Label'} className={classes.advancedConfigLabel}>
         {t('universeForm.advancedConfig.accessKey')}
       </YBLabel>
       <Box flex={1}>
         <YBSelectField
+          className={`${classes.advancedConfigTextBox} ${helperClasses.overrideMuiSelectMenu}`}
           rules={{
             required: !disabled
               ? (t('universeForm.validation.required', {
@@ -62,7 +74,6 @@ export const AccessKeysField = ({ disabled }: AccessKeysFieldProps): ReactElemen
           }}
           name={ACCESS_KEY_FIELD}
           control={control}
-          fullWidth
           disabled={disabled}
         >
           {accessKeysList.map((item: AccessKey) => (

@@ -19,7 +19,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.BuildTypeUtil;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -30,7 +30,7 @@ import java.util.Set;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestPgDdlFaultTolerance extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgDdlFaultTolerance.class);
 

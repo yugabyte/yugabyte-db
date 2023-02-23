@@ -62,11 +62,8 @@ class DocKeyBuilder {
       return Status::OK();
     }
 
-    std::string partition_key;
-    RETURN_NOT_OK(partition_schema.EncodePgsqlKey(
-        boost::make_iterator_range(hashed_values, hashed_values + hashed_components.size()),
-        &partition_key));
-    hash_ = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+    hash_ = VERIFY_RESULT(partition_schema.PgsqlHashColumnCompoundValue(
+        boost::make_iterator_range(hashed_values, hashed_values + hashed_components.size())));
     hashed_components_ = &hashed_components;
     return Status::OK();
   }

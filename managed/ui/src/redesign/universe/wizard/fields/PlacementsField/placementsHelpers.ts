@@ -26,7 +26,7 @@ export const useAvailabilityZones = (
   // zones are the derivatives from regions as every region item has "zones" prop
   const { data: allRegions } = useQuery(
     [QUERY_KEY.getRegionsList, provider?.uuid],
-    () => api.getRegionsList(provider?.uuid),
+    () => api.fetchProviderRegions(provider?.uuid),
     { enabled: !!provider?.uuid } // make sure query won't run when there's no provider defined
   );
 

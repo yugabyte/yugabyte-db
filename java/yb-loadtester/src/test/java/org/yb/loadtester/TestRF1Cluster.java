@@ -22,7 +22,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.AssertionWrappers;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBCluster;
 
 import static junit.framework.TestCase.assertTrue;
@@ -33,7 +33,7 @@ import static junit.framework.TestCase.assertEquals;
  * creating and deleting RF=1 cluster in the setup phase.
  */
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestRF1Cluster extends TestClusterBase {
   private static final Logger LOG = LoggerFactory.getLogger(TestRF1Cluster.class);
 

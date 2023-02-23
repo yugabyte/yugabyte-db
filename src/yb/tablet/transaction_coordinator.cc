@@ -149,7 +149,7 @@ namespace {
 struct NotifyApplyingData {
   TabletId tablet;
   TransactionId transaction;
-  AbortedSubTransactionSetPB aborted;
+  SubtxnSetPB aborted;
   HybridTime commit_time;
   bool sealed;
   bool is_external;
@@ -384,7 +384,7 @@ class TransactionState {
     }
   }
 
-  const AbortedSubTransactionSetPB& GetAbortedSubTransactionSetPB() const { return aborted_; }
+  const SubtxnSetPB& GetAbortedSubTransactionSetPB() const { return aborted_; }
 
   Result<TransactionStatusResult> GetStatus(
       std::vector<ExpectedTabletBatches>* expected_tablet_batches) const {
@@ -951,7 +951,7 @@ class TransactionState {
   int64_t first_entry_raft_index_ = std::numeric_limits<int64_t>::max();
 
   // Metadata tracking aborted subtransaction IDs in this transaction.
-  AbortedSubTransactionSetPB aborted_;
+  SubtxnSetPB aborted_;
 
   // The operation that we a currently replicating in RAFT.
   // It is owned by TransactionDriver (that will be renamed to OperationDriver).
