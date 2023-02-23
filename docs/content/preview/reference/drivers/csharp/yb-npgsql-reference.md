@@ -7,23 +7,23 @@ image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     name: C# Drivers
-    identifier: ref-postgres-npgsql-driver
+    identifier: ref-yb-npgsql-driver
     parent: drivers
-    weight: 620
+    weight: 600
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="../yb-npgsql-reference/" class="nav-link">
+    <a href="../yb-npgsql-reference/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YugabyteDB Npgsql Smart Driver
     </a>
   </li>
 
   <li >
-    <a href="../postgres-npgsql-reference/" class="nav-link active">
+    <a href="../postgres-npgsql-reference/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL Npgsql Driver
     </a>

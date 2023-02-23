@@ -19,6 +19,7 @@ The following projects can be used to implement C# applications using the Yugaby
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | :------ | :----------------------- | :-------------------- | :--------------------------- |
+| YugabyteDB C# Driver for YSQL [Recommended] | [Documentation](ysql/) |
 | PostgreSQL Npgsql Driver | [Documentation](postgres-npgsql/) <br /> [Reference](../../reference/drivers/csharp/postgres-npgsql-reference/) | [6.0.3](https://www.nuget.org/packages/Npgsql/) | 2.6 and above
 | YugabyteDB C# Driver for YCQL | [Documentation](ycql/) |
 
@@ -27,9 +28,9 @@ The following projects can be used to implement C# applications using the Yugaby
 | Entity Framework | [Documentation](entityframework/) <br/> [Hello World](../orms/csharp/ysql-entity-framework/) | [Entity Framework ORM App](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/csharp/entityframework) |
 | Dapper | [Hello World](../orms/csharp/ysql-dapper/) | [Dapper ORM App](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/csharp/dapper/DapperORM) |
 
-Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to [Connect an app](postgres-npgsql/) or [Use an ORM](entityframework/).
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to [Connect an app](ysql/) or [Use an ORM](entityframework/).
 
-For reference documentation, including using projects with SSL, refer to the [drivers and ORMs reference](../../reference/drivers/csharp/postgres-npgsql-reference/) pages.
+For reference documentation, including using projects with SSL, refer to the [drivers and ORMs reference](../../reference/drivers/csharp/yb-npgsql-reference/) pages.
 
 ## Prerequisites
 
