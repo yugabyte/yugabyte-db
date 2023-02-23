@@ -31,32 +31,32 @@ type: docs
 
 </ul>
 
-Npgsql is an open source ADO.NET Data Provider for PostgreSQL; it allows programs written in C#, Visual Basic, and F# to access the YugabyteDB server.
+The [Yugabyte Npgsql smart driver](https://github.com/yugabyte/npgsql) is a distributed .NET driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL Npgsql driver](https://github.com/npgsql/npgsql/tree/main/src/Npgsql), with additional [connection load balancing](../../smart-drivers/) features.
 
 ## Fundamentals
 
-Learn how to perform common tasks required for C# application development using the Npgsql driver.
+Learn how to perform common tasks required for C# application development using the NpgsqlYugabyteDB driver.
 
 ### Download the driver dependency
 
-If you are using Visual Studio IDE, add the Npgsql package to your project as follows:
+If you are using Visual Studio IDE, add the NpgsqlYugabyteDB package to your project as follows:
 
 1. Right-click **Dependencies** and choose **Manage Nuget Packages**
-1. Search for `Npgsql` and click **Add Package**
+1. Search for `NpgsqlYugabyteDB` and click **Add Package**. You may need to click the **Include prereleases** checkbox.
 
-To add the Npgsql package to your project when not using an IDE, use the following `dotnet` command:
+To add the NpgsqlYugabyteDB package to your project when not using an IDE, use the following `dotnet` command:
 
 ```csharp
-dotnet add package Npgsql
+dotnet add package NpgsqlYugabyteDB
 ```
 
-or any of the other methods mentioned on the [nuget page](https://www.nuget.org/packages/Npgsql/) for Npgsql.
+or any of the other methods mentioned on the [nuget page](https://www.nuget.org/packages/Npgsql/) for NpgsqlYugabyteDB.
 
 ### Connect to YugabyteDB database
 
-After setting up the dependencies, implement the C# client application that uses the Npgsql driver to connect to your YugabyteDB cluster and run a query on the sample data.
+After setting up the dependencies, implement the C# client application that uses the NpgsqlYugabyteDB driver to connect to your YugabyteDB cluster and run a query on the sample data.
 
-Import Npgsql and use the `NpgsqlConnection` class to create the connection object to perform DDLs and DMLs against the database.
+Import NpgsqlYugabyteDB and use the `NpgsqlConnection` class to create the connection object to perform DDLs and DMLs against the database.
 
 The following table describes the connection parameters for connecting to the YugabyteDB database.
 
@@ -67,12 +67,19 @@ The following table describes the connection parameters for connecting to the Yu
 | Database | Database name | yugabyte
 | Username | User connecting to the database | yugabyte
 | Password | Password for the user | yugabyte
+| Load Balance Hosts | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | False |
+| Topology Keys | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | Null |
+| YB Servers Refresh Interval | Parameter to regulate the refresh interval | 300 seconds |
+
+{{< note title ="Note" >}}
+The behaviour of `Load Balance Hosts` is different in YugabyteDB Npgsql Driver as compared to the upstream driver. The upstream driver balances connections on the list of hosts provided in the `Host` property, whereas the YugabyteDB Npgsql Driver balances the connections on the list of servers returned by the `yb_servers()` function.
+{{< /note >}}
 
 The following is a basic example connection string for connecting to YugabyteDB.
 
 ```csharp
-var connStringBuilder = "Host=localhost;Port=5433;Database=yugabyte;Username=yugabyte;Password=password"
-NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder);
+var connStringBuilder = "Host=localhost;Port=5433;Database=yugabyte;Username=yugabyte;Password=password;Load Balance Hosts=true"
+NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder)
 ```
 
 ### Create table
@@ -114,7 +121,7 @@ SELECT * from employee where id=1;
 
 ```csharp
 NpgsqlCommand empPrepCmd = new NpgsqlCommand("SELECT name, age, language FROM employee WHERE id = @EmployeeId", conn);
-empPrepCmd.Parameters.Add("@EmployeeId", NpgsqlTypes.NpgsqlDbType.Integer);
+empPrepCmd.Parameters.Add("@EmployeeId", YBNpgsqlTypes.NpgsqlDbType.Integer);
 
 empPrepCmd.Parameters["@EmployeeId"].Value = 1;
 NpgsqlDataReader reader = empPrepCmd.ExecuteReader();
@@ -126,7 +133,7 @@ while (reader.Read())
 }
 ```
 
-### Configure SSL/TLS
+<!-- ### Configure SSL/TLS
 
 The following table describes the additional parameters the .NET Npgsql driver requires as part of the connection string when using SSL.
 
@@ -184,12 +191,11 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
     CRUD(connStringBuilder.ConnectionString);
 ```
 
-For more information on TLS/SSL support, see [Security and Encryption](https://www.npgsql.org/doc/security.html?tabs=tabid-1) in the Npgsql documentation.
+For more information on TLS/SSL support, see [Security and Encryption](https://www.npgsql.org/doc/security.html?tabs=tabid-1) in the Npgsql documentation. -->
 
 ## Compatibility matrix
 
 | Driver Version | YugabyteDB Version | Support |
 | :------------- | :----------------- | :------ |
-| 6.0.3 | 2.11 (preview) | full
-| 6.0.3 |  2.8 (stable) | full
-| 6.0.3 | 2.6 | full
+| 6.0.3 | 2.17 (preview) | full
+| 6.0.3 | 2.16 (stable) | full

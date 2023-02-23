@@ -19,7 +19,7 @@ The following projects can be used to implement C# applications using the Yugaby
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | :------ | :----------------------- | :-------------------- | :--------------------------- |
-| YugabyteDB C# Driver for YSQL [Recommended] | [Documentation](ysql/) |
+| YugabyteDB C# Driver for YSQL [Recommended] | [Documentation](ysql/) <br /> [Reference](../../reference/drivers/csharp/yb-npgsql-reference/) |
 | PostgreSQL Npgsql Driver | [Documentation](postgres-npgsql/) <br /> [Reference](../../reference/drivers/csharp/postgres-npgsql-reference/) | [6.0.3](https://www.nuget.org/packages/Npgsql/) | 2.6 and above
 | YugabyteDB C# Driver for YCQL | [Documentation](ycql/) |
 
@@ -54,4 +54,4 @@ To develop C# applications for YugabyteDB, you need the following:
 
 ## Next step
 
-- [Connect an app](postgres-npgsql/)
+- [Connect an app](ysql/)
