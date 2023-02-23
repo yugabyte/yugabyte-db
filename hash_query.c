@@ -124,7 +124,7 @@ pgsm_startup(void)
 		/* If overflow is enabled, set the DSA size to unlimited,
 		 * and allow the DSA to grow beyond the shared memory space
 		 * into the swap area*/
-		if (PGSM_OVERFLOW_TARGET == OVERFLOW_TARGET_DISK)
+		if (pgsm_enable_overflow)
 			dsa_set_size_limit(dsa, -1);
 
 		pgsmStateLocal.shared_pgsmState = pgsm;

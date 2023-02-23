@@ -92,8 +92,8 @@
 /* the assumption of query max nested level */
 #define DEFAULT_MAX_NESTED_LEVEL	10
 
-#define MAX_QUERY_BUF						(PGSM_QUERY_SHARED_BUFFER * 1024 * 1024)
-#define MAX_BUCKETS_MEM 					(PGSM_MAX * 1024 * 1024)
+#define MAX_QUERY_BUF						(pgsm_query_shared_buffer * 1024 * 1024)
+#define MAX_BUCKETS_MEM 					(pgsm_max * 1024 * 1024)
 #define BUCKETS_MEM_OVERFLOW() 				((hash_get_num_entries(pgsm_hash) * sizeof(pgsmEntry)) >= MAX_BUCKETS_MEM)
 #define MAX_BUCKET_ENTRIES 					(MAX_BUCKETS_MEM / sizeof(pgsmEntry))
 #define QUERY_BUFFER_OVERFLOW(x,y)  		((x + y + sizeof(uint64) + sizeof(uint64)) > MAX_QUERY_BUF)
@@ -167,23 +167,6 @@ extern volatile bool __pgsm_do_not_capture_error;
 	#define	PGSM_HASH_SEQ_STATUS	HASH_SEQ_STATUS
 #endif
 
-typedef struct GucVariables
-{
-	enum config_type type;		/* PGC_BOOL, PGC_INT, PGC_REAL, PGC_STRING,
-								 * PGC_ENUM */
-	int			guc_variable;
-	char		guc_name[TEXT_LEN];
-	char		guc_desc[TEXT_LEN];
-	int			guc_default;
-	int			guc_min;
-	int			guc_max;
-	int			guc_unit;
-	int		   *guc_value;
-	bool		guc_restart;
-	int			n_options;
-	char		guc_options[MAX_ENUM_OPTIONS][32];
-}			GucVariable;
-
 
 #if PG_VERSION_NUM < 130000
 typedef struct WalUsage
@@ -194,11 +177,6 @@ typedef struct WalUsage
 } WalUsage;
 #endif
 
-typedef enum OVERFLOW_TARGET
-{
-	OVERFLOW_TARGET_NONE = 0,
-	OVERFLOW_TARGET_DISK
-}			OVERFLOW_TARGET;
 
 typedef enum pgsmStoreKind
 {
@@ -475,7 +453,6 @@ typedef struct JumbleState
 
 /* guc.c */
 void		init_guc(void);
-GucVariable *get_conf(int i);
 
 /* hash_create.c */
 dsa_area   		*get_dsa_area_for_query_text(void);
@@ -498,6 +475,10 @@ void		pgsm_startup(void);
 /* hash_query.c */
 void		pgsm_startup(void);
 
+/* guc.c */
+void		init_guc(void);
+
+/* GUC variables*/
 /*---- GUC variables ----*/
 typedef enum
 {
@@ -520,21 +501,22 @@ typedef enum
 	HISTOGRAM_COUNT
 } HistogramTimingType;
 
-#define PGSM_MAX get_conf(0)->guc_variable
-#define PGSM_QUERY_MAX_LEN get_conf(1)->guc_variable
-#define PGSM_TRACK_UTILITY get_conf(2)->guc_variable
-#define PGSM_NORMALIZED_QUERY get_conf(3)->guc_variable
-#define PGSM_MAX_BUCKETS get_conf(4)->guc_variable
-#define PGSM_BUCKET_TIME get_conf(5)->guc_variable
-#define PGSM_HISTOGRAM_MIN get_conf(6)->guc_variable
-#define PGSM_HISTOGRAM_MAX get_conf(7)->guc_variable
-#define PGSM_HISTOGRAM_BUCKETS_USER get_conf(8)->guc_variable
-#define PGSM_QUERY_SHARED_BUFFER get_conf(9)->guc_variable
-#define PGSM_OVERFLOW_TARGET get_conf(10)->guc_variable
-#define PGSM_QUERY_PLAN get_conf(11)->guc_variable
-#define PGSM_TRACK get_conf(12)->guc_variable
-#define PGSM_EXTRACT_COMMENTS get_conf(13)->guc_variable
-#define PGSM_TRACK_PLANNING get_conf(14)->guc_variable
+extern int pgsm_max;
+extern int pgsm_query_max_len;
+extern int pgsm_bucket_time;
+extern int pgsm_max_buckets;
+extern int pgsm_histogram_buckets;
+extern int pgsm_histogram_max;
+extern int pgsm_histogram_min;
+extern int pgsm_query_shared_buffer;
+extern bool pgsm_track_planning;
+extern bool pgsm_extract_comments;
+extern bool pgsm_enable_query_plan;
+extern bool pgsm_enable_overflow;
+extern bool pgsm_normalized_query;
+extern bool pgsm_track_utility;
+extern bool pgsm_enable_pgsm_query_id;
+extern int pgsm_track;
 
 #define DECLARE_HOOK(hook, ...) \
         static hook(__VA_ARGS__);

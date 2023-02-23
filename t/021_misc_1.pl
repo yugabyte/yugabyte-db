@@ -19,7 +19,7 @@ my $pgdata = $node->data_dir;
 # UPDATE postgresql.conf to include/load pg_stat_monitor library
 open my $conf, '>>', "$pgdata/postgresql.conf";
 print $conf "shared_preload_libraries = 'pg_stat_monitor'\n";
-print $conf "pg_stat_monitor.pgsm_overflow_target = 0\n";
+print $conf "pg_stat_monitor.pgsm_enable_overflow = false\n";
 print $conf "pg_stat_monitor.pgsm_max = 1\n";
 print $conf "pg_stat_monitor.pgsm_query_shared_buffer = 1\n";
 print $conf "pg_stat_monitor.pgsm_query_max_len =10000\n";
@@ -64,7 +64,7 @@ PGSM::append_to_file($stdout);
 ok($cmdret == 0, "SELECT count(queryid) FROM pg_stat_monitor");
 PGSM::append_to_file($stdout);
 
-$node->append_conf('postgresql.conf', "pg_stat_monitor.pgsm_overflow_target = 1\n");
+$node->append_conf('postgresql.conf', "pg_stat_monitor.pgsm_enable_overflow = true\n");
 $node->restart();
 
 ($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT pg_stat_monitor_reset();', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);

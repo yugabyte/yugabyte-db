@@ -52,8 +52,8 @@ PG_MODULE_MAGIC;
 
 #define pgsm_enabled(level) \
     (!IsParallelWorker() && \
-    (PGSM_TRACK == PGSM_TRACK_ALL || \
-    (PGSM_TRACK == PGSM_TRACK_TOP && (level) == 0)))
+    (pgsm_track == PGSM_TRACK_ALL || \
+    (pgsm_track == PGSM_TRACK_TOP && (level) == 0)))
 
 #define _snprintf2(_str_dst, _str_src, _len1, _len2)\
 do                                                      \
@@ -429,7 +429,7 @@ pgsm_post_parse_analyze_internal(ParseState *pstate, Query *query, JumbleState *
 	 */
 	if (query->utilityStmt)
 	{
-		if (PGSM_TRACK_UTILITY && !PGSM_HANDLED_UTILITY(query->utilityStmt))
+		if (pgsm_track_utility && !PGSM_HANDLED_UTILITY(query->utilityStmt))
 			query->queryId = UINT64CONST(0);
 
 		return;
@@ -465,7 +465,7 @@ pgsm_post_parse_analyze_internal(ParseState *pstate, Query *query, JumbleState *
 	norm_query_len = query_len;
 
 	/* Generate a normalized query */
-	if (jstate && jstate->clocations_count > 0)
+	if (jstate && jstate->clocations_count > 0 && (pgsm_enable_pgsm_query_id || pgsm_normalized_query) )
 	{
 		norm_query = generate_normalized_query(jstate, 
 												query_text,   		/* query */
@@ -498,7 +498,7 @@ pgsm_post_parse_analyze_internal(ParseState *pstate, Query *query, JumbleState *
 	 * In case of query_text, request the function to duplicate it so that
 	 * it is put in the relevant memory context.
 	 */
-	if (PGSM_NORMALIZED_QUERY && norm_query)
+	if (pgsm_normalized_query && norm_query)
 		pgsm_add_to_list(entry, norm_query, norm_query_len);
 	else
 	{
@@ -685,7 +685,7 @@ pgsm_ExecutorEnd(QueryDesc *queryDesc)
 	pgsmEntry  *entry = NULL;
 
 	/* Extract the plan information in case of SELECT statement */
-	if (queryDesc->operation == CMD_SELECT && PGSM_QUERY_PLAN)
+	if (queryDesc->operation == CMD_SELECT && pgsm_enable_query_plan)
 	{
 		plan_info.plan_len = snprintf(plan_info.plan_text, PLAN_TEXT_LEN, "%s", pgsm_explain(queryDesc));
 		plan_info.planid = pgsm_hash_string(plan_info.plan_text, plan_info.plan_len);
@@ -831,7 +831,7 @@ pgsm_planner_hook(Query *parse, const char *query_string, int cursorOptions, Par
 
 
 	if (pgsm_enabled(plan_nested_level + exec_nested_level) &&
-		PGSM_TRACK_PLANNING && query_string && parse->queryId != UINT64CONST(0))
+		pgsm_track_planning && query_string && parse->queryId != UINT64CONST(0))
 	{
 		instr_time	start;
 		instr_time	duration;
@@ -970,7 +970,7 @@ pgsm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	 * since we are already measuring the statement's costs at the utility
 	 * level.
 	 */
-	if (PGSM_TRACK_UTILITY && pgsm_enabled(exec_nested_level))
+	if (pgsm_track_utility && pgsm_enabled(exec_nested_level))
 		pstmt->queryId = UINT64CONST(0);
 #endif
 
@@ -988,7 +988,7 @@ pgsm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	 *
 	 * Likewise, we don't track execution of DEALLOCATE.
 	 */
-	if (PGSM_TRACK_UTILITY && pgsm_enabled(exec_nested_level) &&
+	if (pgsm_track_utility && pgsm_enabled(exec_nested_level) &&
 		PGSM_HANDLED_UTILITY(parsetree))
 	{
 		pgsmEntry  *entry;
@@ -1325,7 +1325,7 @@ pgsm_update_entry(pgsmEntry *entry,
 			SpinLockAcquire(&e->mutex);
 
 		/* Extract comments if enabled and only when the query has completed with or without error */
-		if (PGSM_EXTRACT_COMMENTS && kind == PGSM_STORE
+		if (pgsm_extract_comments && kind == PGSM_STORE
 			&& !e->counters.info.comments[0] && comments_len > 0)
 			_snprintf(e->counters.info.comments, comments, comments_len + 1, COMMENTS_LEN);
 
@@ -1389,7 +1389,7 @@ pgsm_update_entry(pgsmEntry *entry,
 					e->counters.time.max_time = exec_total_time;
 			}
 
-			index = get_histogram_bucket(exec_total_time * 1000.0);
+			index = get_histogram_bucket(exec_total_time);
 			e->counters.resp_calls[index]++;
 		}
 
@@ -1409,7 +1409,7 @@ pgsm_update_entry(pgsmEntry *entry,
 			e->counters.info.num_relations = num_relations;
 			_snprintf2(e->counters.info.relations, relations, num_relations, REL_LEN);
 
-			if (exec_nested_level > 0 && e->counters.info.parentid == 0 && PGSM_TRACK == PGSM_TRACK_ALL)
+			if (exec_nested_level > 0 && e->counters.info.parentid == 0 && pgsm_track == PGSM_TRACK_ALL)
 			{
 				if (exec_nested_level >= 0 && exec_nested_level < max_stack_depth)
 				{
@@ -1775,8 +1775,8 @@ pgsm_store(pgsmEntry *entry)
 		char		*query_buff;
 
 		/* New query, truncate length if necessary. */
-		if (query_len > PGSM_QUERY_MAX_LEN)
-			query_len = PGSM_QUERY_MAX_LEN;
+		if (query_len > pgsm_query_max_len)
+			query_len = pgsm_query_max_len;
 
 		/* Save the query text in raw dsa area */
 		query_dsa_area = get_dsa_area_for_query_text();
@@ -1929,7 +1929,7 @@ IsBucketValid(uint64 bucketid)
 
 	TimestampDifference(pgsm->bucket_start_time[bucketid], current_tz,&secs, &microsecs);
 
-	if (secs > (PGSM_BUCKET_TIME * PGSM_MAX_BUCKETS))
+	if (secs > (pgsm_bucket_time * pgsm_max_buckets))
 		return false;
 	return true;
 }
@@ -2051,7 +2051,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		 * In case that query plan is enabled, there is no need to show 0
 		 * planid query
 		 */
-		if (tmp.info.cmd_type == CMD_SELECT && PGSM_QUERY_PLAN && planid == 0)
+		if (tmp.info.cmd_type == CMD_SELECT && pgsm_enable_query_plan && planid == 0)
 			continue;
 
 		if (!IsBucketValid(bucketid))
@@ -2139,7 +2139,10 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			values[i++] = CStringGetTextDatum("<insufficient privilege>");
 		}
 
-		values[i++] = UInt64GetDatum(pgsm_query_id);
+		if (pgsm_query_id)		
+			values[i++] = UInt64GetDatum(pgsm_query_id);
+		else
+			nulls[i++] = true;
 
 		/* parentid at column number 9 */
 		if (tmp.info.parentid != UINT64CONST(0))
@@ -2379,7 +2382,7 @@ get_next_wbucket(pgsmSharedState *pgsm)
 	 * definitely make the while condition to fail, we can stop the loop as
 	 * another thread has already updated prev_bucket_sec.
 	 */
-	while ((tv.tv_sec - (uint)current_bucket_sec) >= ((uint)PGSM_BUCKET_TIME))
+	while ((tv.tv_sec - (uint)current_bucket_sec) >= ((uint)pgsm_bucket_time))
 	{
 		if (pg_atomic_compare_exchange_u64(&pgsm->prev_bucket_sec, &current_bucket_sec, (uint64)tv.tv_sec))
 		{
@@ -2393,7 +2396,7 @@ get_next_wbucket(pgsmSharedState *pgsm)
 	if (update_bucket)
 	{
 
-		new_bucket_id = (tv.tv_sec / PGSM_BUCKET_TIME) % PGSM_MAX_BUCKETS;
+		new_bucket_id = (tv.tv_sec / pgsm_bucket_time) % pgsm_max_buckets;
 
 		/* Update bucket id and retrieve the previous one. */
 		prev_bucket_id = pg_atomic_exchange_u64(&pgsm->current_wbucket, new_bucket_id);
@@ -2404,7 +2407,7 @@ get_next_wbucket(pgsmSharedState *pgsm)
 		LWLockRelease(pgsm->lock);
 
 		/* Allign the value in prev_bucket_sec to the bucket start time */
-		tv.tv_sec = (tv.tv_sec) - (tv.tv_sec % PGSM_BUCKET_TIME);
+		tv.tv_sec = (tv.tv_sec) - (tv.tv_sec % pgsm_bucket_time);
 
 		pg_atomic_exchange_u64(&pgsm->prev_bucket_sec, (uint64)tv.tv_sec);
 
@@ -2428,10 +2431,16 @@ get_next_wbucket(pgsmSharedState *pgsm)
 uint64
 get_pgsm_query_id_hash(const char *norm_query, int norm_len)
 {
-	char *query = palloc(norm_len + 1);
-	char *q_iter = query;
+	char *query;
+	char *q_iter;
 	char *norm_q_iter = (char *)norm_query;
 	uint64 pgsm_query_id = 0;
+
+	if (!pgsm_enable_pgsm_query_id)
+		return 0;
+
+	query = palloc(norm_len + 1);
+	q_iter = query;
 
 	while (norm_q_iter && *norm_q_iter && norm_q_iter < (norm_query + norm_len))
 	{
@@ -3540,12 +3549,12 @@ set_histogram_bucket_timings(void)
 	int64 b2_end;
 	int b_count;
 
-	hist_bucket_min = PGSM_HISTOGRAM_MIN;
-	hist_bucket_max = PGSM_HISTOGRAM_MAX;
-	hist_bucket_count_user = PGSM_HISTOGRAM_BUCKETS_USER;
+	hist_bucket_min = pgsm_histogram_min;
+	hist_bucket_max = pgsm_histogram_max;
+	hist_bucket_count_user = pgsm_histogram_buckets;
 	b_count = hist_bucket_count_user;
 
-	if (PGSM_HISTOGRAM_BUCKETS_USER >= 2)
+	if (pgsm_histogram_buckets >= 2)
 	{
 		for (; hist_bucket_count_user > 0; hist_bucket_count_user--)
 		{
