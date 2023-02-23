@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common.alerts.impl;
 
 import com.yugabyte.yw.common.WSClientRefresher;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
 import java.util.concurrent.CompletionStage;
 import play.libs.Json;
 import play.libs.ws.WSClient;
@@ -12,7 +13,10 @@ abstract class AlertChannelWebBase extends AlertChannelBase {
 
   private final WSClientRefresher wsClientRefresher;
 
-  public AlertChannelWebBase(WSClientRefresher wsClientRefresher) {
+  public AlertChannelWebBase(
+      WSClientRefresher wsClientRefresher,
+      AlertTemplateVariableService alertTemplateVariableService) {
+    super(alertTemplateVariableService);
     this.wsClientRefresher = wsClientRefresher;
   }
 

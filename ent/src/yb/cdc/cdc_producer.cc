@@ -520,9 +520,17 @@ Status GetChangesForXCluster(const std::string& stream_id,
   // Request scope on transaction participant so that transactions are not removed from participant
   // while RequestScope is active.
   RequestScope request_scope;
+  consensus::ReadOpsResult read_ops;
 
-  auto read_ops = VERIFY_RESULT(tablet_peer->consensus()->
-    ReadReplicatedMessagesForCDC(from_op_id, last_readable_opid_index, deadline));
+  {
+    auto consensus = tablet_peer ? tablet_peer->shared_consensus() : nullptr;
+    SCHECK(
+        consensus != nullptr, NotFound, Format("Tablet id $0 not found", tablet_peer->tablet_id()));
+
+    read_ops = VERIFY_RESULT(
+        consensus->ReadReplicatedMessagesForCDC(from_op_id, last_readable_opid_index, deadline));
+  }
+
   ScopedTrackedConsumption consumption;
   if (read_ops.read_from_disk_size && mem_tracker) {
     consumption = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);

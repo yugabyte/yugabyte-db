@@ -263,7 +263,7 @@ Note that the `AT TIME ZONE` statement above does not cater for the variants of 
 {{< note title="Note" >}}
 A database normally obtains its date and time from the underlying server. However, in the case of a distributed database, it is one synchronized database that is spread across many servers that are unlikely to have synchronized time.
 
-A detailed explanation of how time is obtained can be found at the blog post describing the [architecture of the storage layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-storage-layer/)
+A detailed explanation of how time is obtained can be found at the blog post describing the [architecture of the storage layer](https://www.yugabyte.com/blog/distributed-postgresql-on-a-google-spanner-architecture-storage-layer/)
 
 A simpler explanation is that the time is determined by the 'Shard Leader' of the table and this is the time used by all followers of the leader. Therefore there could be differences to the UTC timestamp of the underlying server to the current timestamp that is used for a transaction on a particular table.
 {{< /note >}}

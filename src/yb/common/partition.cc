@@ -56,7 +56,6 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/status_format.h"
-#include "yb/util/yb_partition.h"
 
 #include "yb/yql/redis/redisserver/redis_constants.h"
 
@@ -369,7 +368,9 @@ Status PartitionSchema::EncodeKey(const RepeatedPtrField<QLExpressionPB>& hash_c
       for (const auto &col_expr_pb : hash_col_values) {
         AppendToKey(col_expr_pb.value(), &tmp);
       }
-      return CompleteEncodeKey(tmp, buf);
+      const auto hash_value = YBPartition::HashColumnCompoundValue(tmp);
+      *buf = EncodeMultiColumnHashValue(hash_value);
+      return Status::OK();
     }
     case YBHashSchema::kPgsqlHash:
       DLOG(FATAL) << "Illegal code path. PGSQL hash cannot be computed from CQL expression";
@@ -1282,7 +1283,7 @@ Status PartitionSchema::EncodeColumns(const YBPartialRow& row,
   return Status::OK();
 }
 
-uint16_t PartitionSchema::HashColumnCompoundValue(const string& compound) {
+uint16_t PartitionSchema::HashColumnCompoundValue(std::string_view compound) {
   // In the future, if you wish to change the hashing behavior, you must introduce a new hashing
   // method for your newly-created tables.  Existing tables must continue to use their hashing
   // methods that was define by their PartitionSchema.
@@ -1433,12 +1434,6 @@ void PartitionSchema::ProcessHashKeyEntry(const LWPgsqlExpressionPB& expr, std::
 
 void PartitionSchema::ProcessHashKeyEntry(const PgsqlExpressionPB& expr, std::string* out) {
   AppendToKey(expr.value(), out);
-}
-
-Status PartitionSchema::CompleteEncodeKey(const std::string& key, std::string* buf) {
-  const uint16_t hash_value = YBPartition::HashColumnCompoundValue(key);
-  *buf = EncodeMultiColumnHashValue(hash_value);
-  return Status::OK();
 }
 
 } // namespace yb

@@ -1,10 +1,9 @@
-
-import { 
+import {
   fetchUnusedIndexesSuggestions,
   fetchQueryLoadSkewSuggestions,
   fetchRangeShardingSuggestions
 } from '../../../actions/universe';
-import { RecommendationTypeEnum } from '../../../redesign/helpers/dtos';
+import { RecommendationTypeEnum } from '../../../redesign/utils/dtos';
 
 export interface QueryData {
   type: RecommendationTypeEnum;
@@ -42,15 +41,17 @@ interface IndexInfoPerDatabase {
 }
 
 // TODO: Update API once ready with new endpoint
-// Handles Index Suggestions performance advice 
-export const handleIndexSuggestionRequest = async(universeUUID: string): Promise<QueryData[] | null> => {
+// Handles Index Suggestions performance advice
+export const handleIndexSuggestionRequest = async (
+  universeUUID: string
+): Promise<QueryData[] | null> => {
   const result: QueryData[] = [];
   const response = await fetchUnusedIndexesSuggestions(universeUUID);
   if (!response.data?.error && response.data.length) {
     const indexArray: IndexInfoPerDatabase[] = response.data;
     result.push({
       type: RecommendationTypeEnum.IndexSuggestion,
-      target: "yugabyte",
+      target: 'yugabyte',
       indicator: 4,
       table: {
         data: indexArray.slice(0, 5)
@@ -58,7 +59,7 @@ export const handleIndexSuggestionRequest = async(universeUUID: string): Promise
     });
     result.push({
       type: RecommendationTypeEnum.IndexSuggestion,
-      target: "employee",
+      target: 'employee',
       indicator: 2,
       table: {
         data: indexArray.slice(5, 7)
@@ -70,8 +71,10 @@ export const handleIndexSuggestionRequest = async(universeUUID: string): Promise
 };
 
 //TODO: Update API once ready with new endpoint
-// Handles Range Sharding performance advice 
-export const handleSchemaSuggestionRequest = async(universeUUID: string): Promise<QueryData[] | null> => {
+// Handles Range Sharding performance advice
+export const handleSchemaSuggestionRequest = async (
+  universeUUID: string
+): Promise<QueryData[] | null> => {
   const response = await fetchRangeShardingSuggestions(universeUUID);
   if (!response.data?.error && response.data.length) {
     const indexArray: IndexInfoPerDatabase[] = response.data;
@@ -88,14 +91,17 @@ export const handleSchemaSuggestionRequest = async(universeUUID: string): Promis
 };
 
 //TODO: Update API once ready with new endpoint
-// Handles the number of queries running on a node  performance advice 
+// Handles the number of queries running on a node  performance advice
 export const handleQuerySkewRequest = async (universeUUID: string): Promise<QueryData | null> => {
   const response = await fetchQueryLoadSkewSuggestions(universeUUID);
   if (!response.data?.error && response.data.length) {
     const maxQueryNodeName = response.data?.node_with_highest_query_load ?? '';
     const maxNodeDetails = response.data?.node_with_highest_query_load_details;
     const highestQueryCount =
-      maxNodeDetails.num_select + maxNodeDetails.num_insert + maxNodeDetails.num_update + maxNodeDetails.num_delete;
+      maxNodeDetails.num_select +
+      maxNodeDetails.num_insert +
+      maxNodeDetails.num_update +
+      maxNodeDetails.num_delete;
     const otherNodesDetails = response.data?.other_nodes_average_query_load_details;
     const totalQueryAvg =
       otherNodesDetails.num_select +

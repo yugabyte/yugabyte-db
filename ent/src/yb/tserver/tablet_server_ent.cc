@@ -28,7 +28,7 @@
 
 #include "yb/tablet/tablet_peer.h"
 
-#include "yb/tserver/backup_service.h"
+#include "../../../../src/yb/tserver/backup_service.h"
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/ts_tablet_manager.h"
 

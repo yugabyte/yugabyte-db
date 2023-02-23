@@ -1020,6 +1020,24 @@ typedef struct PgBackendSSLStatus
 	char		ssl_clientdn[NAMEDATALEN];	/* MUST be null-terminated */
 } PgBackendSSLStatus;
 
+/*
+ * YbPgBackendCatalogVersionStatus
+ *
+ * Each live backend maintains a YbPgBackendCatalogVersionStatus struct in
+ * shared memory indicating what catalog version it is at.  A backend in the
+ * middle of a query or transaction uses a consistent snapshot of the system
+ * catalog (technically, only the cache does, not direct reads/writes to/from
+ * system catalog).  The catalog version indicates that snapshot.  has_version
+ * is false for backends that are idle (and not in txn) or non-client backends.
+ */
+typedef struct YbPgBackendCatalogVersionStatus
+{
+	bool		has_version;	/* whether the backend is using the following
+								   version */
+	uint64_t	version;		/* if has_version, catalog version that the
+								   backend is on */
+} YbPgBackendCatalogVersionStatus;
+
 
 /* ----------
  * PgBackendStatus
@@ -1111,6 +1129,9 @@ typedef struct PgBackendStatus
 	 * + pggate memory usage + cached memory - memory that was freed but not recycled
 	 */
 	int64_t yb_st_allocated_mem_bytes;
+
+	/* YB catalog version */
+	YbPgBackendCatalogVersionStatus yb_st_catalog_version;
 } PgBackendStatus;
 
 /*
@@ -1486,4 +1507,7 @@ extern PgBackendStatus **getBackendStatusArrayPointer(void);
  * ----------
  */
 extern void yb_pgstat_report_allocated_mem_bytes(void);
+extern void yb_pgstat_set_catalog_version(uint64_t catalog_version);
+extern void yb_pgstat_set_has_catalog_version(bool has_catalog_version);
+
 #endif							/* PGSTAT_H */

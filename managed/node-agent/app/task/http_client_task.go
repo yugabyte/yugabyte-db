@@ -564,15 +564,12 @@ func platformHeadersWithAPIToken(apiToken string) map[string]string {
 }
 
 func createRegisterAgentRequest(config *util.Config) model.RegisterRequest {
-	req := model.RegisterRequest{}
-	req.Name = config.String(util.NodeNameKey)
-	req.IP = config.String(util.NodeIpKey)
-	req.Port = config.Int(util.NodePortKey)
-	req.Version = config.String(util.PlatformVersionKey)
-	req.ArchType = runtime.GOARCH
-	req.OSType = runtime.GOOS
-	req.State = model.Registering.Name()
-	return req
+	return model.RegisterRequest{
+		CommonInfo: createNodeAgentCommonInfo(
+			config, model.Registering,
+			config.String(util.PlatformVersionKey),
+		),
+	}
 }
 
 func createUpdateAgentStateRequest(
@@ -580,14 +577,25 @@ func createUpdateAgentStateRequest(
 	state model.NodeState,
 	version string,
 ) model.StateUpdateRequest {
-	req := model.StateUpdateRequest{}
-	req.Name = config.String(util.NodeNameKey)
-	req.IP = config.String(util.NodeIpKey)
-	req.Version = version
-	req.ArchType = runtime.GOARCH
-	req.OSType = runtime.GOOS
-	req.State = state.Name()
-	return req
+	return model.StateUpdateRequest{
+		CommonInfo: createNodeAgentCommonInfo(config, state, version),
+	}
+}
+
+func createNodeAgentCommonInfo(
+	config *util.Config,
+	state model.NodeState,
+	version string) model.CommonInfo {
+	info := model.CommonInfo{}
+	info.Name = config.String(util.NodeNameKey)
+	info.IP = config.String(util.NodeIpKey)
+	info.Port = config.Int(util.NodePortKey)
+	info.Version = version
+	info.ArchType = runtime.GOARCH
+	info.OSType = runtime.GOOS
+	info.State = state.Name()
+	info.Home = util.MustGetHomeDirectory()
+	return info
 }
 
 func createNodeDetailsRequest(

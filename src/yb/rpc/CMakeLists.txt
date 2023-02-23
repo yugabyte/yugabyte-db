@@ -103,8 +103,7 @@ set(YRPC_SRCS
     strand.cc
     tcp_stream.cc
     thread_pool.cc
-    yb_rpc.cc
-    ${RPC_SRCS_EXTENSIONS})
+    yb_rpc.cc)
 
 set(YRPC_LIBS
   gutil

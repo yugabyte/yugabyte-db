@@ -63,7 +63,6 @@ import static org.mockito.Mockito.when;
 public class YbcBackupUtilTest extends FakeDBApplication {
 
   @Mock UniverseInfoHandler universeInfoHandler;
-  @Mock YbcClientService ybcService;
   @Mock BackupUtil backupUtil;
   @Mock CustomerConfigService configService;
   @Mock EncryptionAtRestManager encryptionAtRestManager;

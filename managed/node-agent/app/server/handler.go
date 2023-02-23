@@ -14,10 +14,10 @@ import (
 )
 
 // Retrives current user associated with the API token from the platform.
-func RetrieveUser(apiToken string) error {
+func RetrieveUser(ctx context.Context, apiToken string) error {
 	config := util.CurrentConfig()
 	sessionInfoHandler := task.NewGetSessionInfoHandler(apiToken)
-	err := executor.GetInstance(ctx).
+	err := executor.GetInstance().
 		ExecuteTask(ctx, sessionInfoHandler.Handle)
 	if err != nil {
 		util.FileLogger().Errorf("Error fetching the session info - %s", err)
@@ -28,7 +28,7 @@ func RetrieveUser(apiToken string) error {
 	config.Update(util.UserIdKey, sessionInfo.UserId)
 
 	userHandler := task.NewGetUserHandler(apiToken)
-	err = executor.GetInstance(ctx).
+	err = executor.GetInstance().
 		ExecuteTask(ctx, userHandler.Handle)
 	if err != nil {
 		util.FileLogger().Errorf("Error fetching the user %s - %s", sessionInfo.UserId, err)
@@ -62,7 +62,7 @@ func RegisterNodeAgent(ctx context.Context, apiToken string) error {
 	util.FileLogger().Info("Submiting Registration task to the executor.")
 	registrationHandler := task.NewAgentRegistrationHandler(apiToken)
 	// Call platform to register the node agent.
-	err = executor.GetInstance(ctx).
+	err = executor.GetInstance().
 		ExecuteTask(ctx, registrationHandler.Handle)
 	if err != nil {
 		util.FileLogger().Errorf("Node Agent Registration Failed - %s", err)
@@ -85,7 +85,7 @@ func RegisterNodeAgent(ctx context.Context, apiToken string) error {
 	util.FileLogger().Info("Setting node agent state to Ready.")
 	agentStateHandler := task.NewPutAgentStateHandler(model.Ready, version)
 	// TODO add generic retry for HTTP calls.
-	err = executor.GetInstance(ctx).ExecuteTask(
+	err = executor.GetInstance().ExecuteTask(
 		ctx,
 		agentStateHandler.Handle,
 	)
@@ -111,7 +111,7 @@ func UnregisterNodeAgent(ctx context.Context, apiToken string) error {
 	}
 	util.FileLogger().Infof("Unregistering Node Agent - %s", nodeAgentId)
 	unregisterHandler := task.NewAgentUnregistrationHandler(apiToken)
-	err := executor.GetInstance(ctx).
+	err := executor.GetInstance().
 		ExecuteTask(ctx, unregisterHandler.Handle)
 	if err != nil {
 		util.FileLogger().Errorf("Node Agent Unregistration Failed - %s", err)

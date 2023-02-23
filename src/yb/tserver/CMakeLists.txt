@@ -173,6 +173,7 @@ add_dependencies(tserver_util gen_proto)
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 
 set(TSERVER_SRCS
+  backup_service.cc
   db_server_base.cc
   full_compaction_manager.cc
   heartbeater.cc
@@ -302,6 +303,7 @@ ADD_YB_TEST(tablet_server-test)
 ADD_YB_TEST(tablet_server-stress-test RUN_SERIAL true)
 ADD_YB_TEST(ts_tablet_manager-test)
 ADD_YB_TEST(header_manager_impl-test)
+ADD_YB_TEST(backup_service-test)
 
 ADD_YB_TEST(encrypted_sstable-test)
 YB_TEST_TARGET_LINK_LIBRARIES(encrypted_sstable-test encryption_test_util tserver_test_util tserver)

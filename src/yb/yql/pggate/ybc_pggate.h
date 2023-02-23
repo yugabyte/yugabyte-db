@@ -309,6 +309,7 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               bool is_unique_index,
                               const bool skip_index_backfill,
                               bool if_not_exist,
+                              bool is_colocated_via_database,
                               YBCPgOid tablegroup_oid,
                               YBCPgOid colocation_id,
                               YBCPgOid tablespace_oid,
@@ -636,9 +637,9 @@ void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer);
 
 void* YBCPgGetThreadLocalJumpBuffer();
 
-void YBCPgSetThreadLocalErrMsg(const void* new_msg);
+void* YBCPgSetThreadLocalErrStatus(void* new_status);
 
-const void* YBCPgGetThreadLocalErrMsg();
+void* YBCPgGetThreadLocalErrStatus();
 
 void YBCPgResetCatalogReadTime();
 

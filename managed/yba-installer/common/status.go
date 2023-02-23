@@ -63,8 +63,8 @@ func generalStatus() {
 	if viper.GetInt("platform.port") != 443 {
 		ybaUrl += fmt.Sprintf(":%d", viper.GetInt("platform.port"))
 	}
-	statusString := ybaUrl + " \t" + GetBaseInstall() + " \t" + InputFile + " \t" +
-		YbaCtlLogFile + " \t"
+	statusString := ybaUrl + " \t" + GetBaseInstall() + " \t" + InputFile() + " \t" +
+		YbactlLogFile() + " \t"
 
 	fmt.Fprintln(StatusOutput, outString)
 	fmt.Fprintln(StatusOutput, statusString)

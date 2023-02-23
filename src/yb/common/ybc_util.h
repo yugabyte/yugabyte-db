@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -95,14 +96,14 @@ uint32_t YBCStatusPgsqlError(YBCStatus s);
 uint16_t YBCStatusTransactionError(YBCStatus s);
 void YBCFreeStatus(YBCStatus s);
 
+const char* YBCStatusFilename(YBCStatus s);
+int YBCStatusLineNumber(YBCStatus s);
+const char* YBCStatusFuncname(YBCStatus s);
 size_t YBCStatusMessageLen(YBCStatus s);
 const char* YBCStatusMessageBegin(YBCStatus s);
-const char* YBCStatusCodeAsCString(YBCStatus s);
-
-typedef const char* (*GetUniqueConstraintNameFn)(unsigned int);
-
-const char* BuildYBStatusMessage(YBCStatus status,
-                                 GetUniqueConstraintNameFn get_constraint_name);
+const char* YBCMessageAsCString(YBCStatus s);
+unsigned int YBCStatusRelationOid(YBCStatus s);
+const char** YBCStatusArguments(YBCStatus s, size_t* nargs);
 
 bool YBCIsRestartReadError(uint16_t txn_errcode);
 
@@ -169,6 +170,14 @@ void YBCLogImpl(int severity,
                 bool stack_trace,
                 const char* format,
                 ...) __attribute__((format(printf, 5, 6)));
+
+// VA version of YBCLogImpl
+void YBCLogVA(int severity,
+              const char* file_name,
+              int line_number,
+              bool stack_trace,
+              const char* format,
+              va_list args);
 
 // Returns a string representation of the given block of binary data. The memory for the resulting
 // string is allocated using palloc.

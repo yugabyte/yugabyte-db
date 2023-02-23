@@ -20,6 +20,7 @@ GET     /logout                                                                c
 + nocsrf
 POST    /register                                                              com.yugabyte.yw.controllers.SessionController.register(generateApiToken: Boolean ?= false)
 GET     /customers/:cUUID/password_policy                                      com.yugabyte.yw.controllers.SessionController.getPasswordPolicy(cUUID: java.util.UUID)
+GET     /customers/:cUUID/admin_notifications                                  com.yugabyte.yw.controllers.SessionController.getAdminNotifications(cUUID: java.util.UUID)
 GET     /ui_theme                                                              com.yugabyte.yw.controllers.SessionController.getUITheme()
 
 # -- Session specific Public API:
@@ -28,7 +29,6 @@ GET     /customer_count                                                        c
 GET     /app_version                                                           com.yugabyte.yw.controllers.SessionController.appVersion()
 GET     /logs/:maxLines                                                        com.yugabyte.yw.controllers.SessionController.getLogs(maxLines: Integer)
 GET     /logs                                                                  com.yugabyte.yw.controllers.SessionController.getFilteredLogs(maxLines: Integer ?= 10000, universeName: String ?= null, queryRegex: String ?= null, startDate: String ?= null, endDate: String ?= null)
-
 # --
 
 POST    /logging_config                                                        com.yugabyte.yw.controllers.LoggingConfigController.setLoggingSettings()
@@ -55,12 +55,12 @@ GET     /customers/:cUUID/providers/:pUUID/initialize                          c
 # End Start UI only
 
 # These methods are handled by new Provider API controller
-POST    /customers/:cUUID/providers                                            com.yugabyte.yw.controllers.CloudProviderApiController.create(cUUID: java.util.UUID)
+POST    /customers/:cUUID/providers                                            com.yugabyte.yw.controllers.CloudProviderApiController.create(cUUID: java.util.UUID, validate:Boolean ?= false)
 GET     /customers/:cUUID/providers                                            com.yugabyte.yw.controllers.CloudProviderApiController.list(cUUID: java.util.UUID, name: String ?= null, providerCode: String ?= null)
 # This route should come after /suggested_kubernetes_config to avoid conflict.
 GET     /customers/:cUUID/providers/:pUUID                                     com.yugabyte.yw.controllers.CloudProviderApiController.index(cUUID: java.util.UUID, pUUID: java.util.UUID)
 DELETE  /customers/:cUUID/providers/:pUUID                                     com.yugabyte.yw.controllers.CloudProviderApiController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID)
-PUT     /customers/:cUUID/providers/:pUUID/edit                                com.yugabyte.yw.controllers.CloudProviderApiController.edit(cUUID: java.util.UUID, pUUID: java.util.UUID)
+PUT     /customers/:cUUID/providers/:pUUID/edit                                com.yugabyte.yw.controllers.CloudProviderApiController.edit(cUUID: java.util.UUID, pUUID: java.util.UUID, validate:Boolean ?= false)
 PUT     /customers/:cUUID/providers/:pUUID/refresh_pricing                     com.yugabyte.yw.controllers.CloudProviderApiController.refreshPricing(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/access_key_rotation                 com.yugabyte.yw.controllers.CloudProviderApiController.accessKeysRotation(cUUID:java.util.UUID, pUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/access_key_rotation/schedule        com.yugabyte.yw.controllers.CloudProviderApiController.scheduledAccessKeysRotation(cUUID:java.util.UUID, pUUID: java.util.UUID)
@@ -189,6 +189,11 @@ GET     /customers/:cUUID/alert_channels/:acUUID                               c
 PUT     /customers/:cUUID/alert_channels/:acUUID                               com.yugabyte.yw.controllers.AlertController.updateAlertChannel(cUUID: java.util.UUID, acUUID: java.util.UUID)
 DELETE  /customers/:cUUID/alert_channels/:acUUID                               com.yugabyte.yw.controllers.AlertController.deleteAlertChannel(cUUID: java.util.UUID, acUUID: java.util.UUID)
 
+GET     /customers/:cUUID/alert_channel_templates                              com.yugabyte.yw.controllers.AlertController.listAlertChannelTemplates(cUUID: java.util.UUID)
+GET     /customers/:cUUID/alert_channel_templates/:acType                      com.yugabyte.yw.controllers.AlertController.getAlertChannelTemplates(cUUID: java.util.UUID, acType: String)
+POST    /customers/:cUUID/alert_channel_templates/:acType                      com.yugabyte.yw.controllers.AlertController.setAlertChannelTemplates(cUUID: java.util.UUID, acType: String)
+DELETE  /customers/:cUUID/alert_channel_templates/:acType                      com.yugabyte.yw.controllers.AlertController.deleteAlertChannelTemplates(cUUID: java.util.UUID, acType: String)
+
 POST    /customers/:cUUID/alert_destinations                                   com.yugabyte.yw.controllers.AlertController.createAlertDestination(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alert_destinations                                   com.yugabyte.yw.controllers.AlertController.listAlertDestinations(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alert_destinations/:adUUID                           com.yugabyte.yw.controllers.AlertController.getAlertDestination(cUUID: java.util.UUID, adUUID: java.util.UUID)
@@ -198,6 +203,10 @@ DELETE  /customers/:cUUID/alert_destinations/:adUUID                           c
 PUT     /customers/:cUUID/alert_template_settings                              com.yugabyte.yw.controllers.AlertController.editAlertTemplateSettings(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alert_template_settings                              com.yugabyte.yw.controllers.AlertController.listAlertTemplateSettings(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID/alert_template_settings/:settingsUUID                com.yugabyte.yw.controllers.AlertController.deleteAlertTemplateSettings(cUUID: java.util.UUID, settingsUUID: java.util.UUID)
+
+PUT     /customers/:cUUID/alert_template_variables                             com.yugabyte.yw.controllers.AlertController.editAlertTemplateVariables(cUUID: java.util.UUID)
+GET     /customers/:cUUID/alert_template_variables                             com.yugabyte.yw.controllers.AlertController.listAlertTemplateVariables(cUUID: java.util.UUID)
+DELETE  /customers/:cUUID/alert_template_variables/:variableUUID               com.yugabyte.yw.controllers.AlertController.deleteAlertTemplateVariables(cUUID: java.util.UUID, variableUUID: java.util.UUID)
 
 # Maintenance Window API
 GET     /customers/:cUUID/maintenance_windows/:windowUUID                      com.yugabyte.yw.controllers.MaintenanceController.get(cUUID: java.util.UUID, windowUUID: java.util.UUID)
@@ -214,6 +223,7 @@ GET     /customers/:cUUID/providers/:pUUID/access_keys/:keyCode                c
 GET     /customers/:cUUID/providers/:pUUID/access_keys                         com.yugabyte.yw.controllers.AccessKeyController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)
 GET     /customers/:cUUID/access_keys                                          com.yugabyte.yw.controllers.AccessKeyController.listAllForCustomer(cUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/access_keys                         com.yugabyte.yw.controllers.AccessKeyController.create(cUUID: java.util.UUID, pUUID: java.util.UUID)
+PUT     /customers/:cUUID/providers/:pUUID/access_keys/:keyCode                com.yugabyte.yw.controllers.AccessKeyController.edit(cUUID: java.util.UUID, pUUID: java.util.UUID, keyCode: String)
 DELETE  /customers/:cUUID/providers/:pUUID/access_keys/:keyCode                com.yugabyte.yw.controllers.AccessKeyController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, keyCode: String)
 # ----------------------------- START OLD API -------------------------------------------
 # UI_ONLY: This is info request that relies on universe data being posted hence DEPRECATED
@@ -282,7 +292,7 @@ GET     /customers/:cUUID/universes/:uniUUID/range_hash                        c
 # Import a universe
 POST    /customers/:cUUID/universes/import                                     com.yugabyte.yw.controllers.ImportController.importUniverse(cUUID: java.util.UUID)
 
-# Link/Unlink universe
+# Attach/Detach universe
 POST   /customers/:cUUID/universes/:uniUUID/export                             com.yugabyte.yw.controllers.AttachDetachController.exportUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST   /customers/:cUUID/universes/:uniUUID/import                             com.yugabyte.yw.controllers.AttachDetachController.importUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
@@ -510,6 +520,7 @@ POST   /customers/:cUUID/performance_recommendation_state_change/page          c
 GET    /customers/:cUUID/universes/:uniUUID/perf_advisor_settings              com.yugabyte.yw.controllers.PerfAdvisorController.getSettings(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST   /customers/:cUUID/universes/:uniUUID/perf_advisor_settings              com.yugabyte.yw.controllers.PerfAdvisorController.updateSettings(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST   /customers/:cUUID/universes/:uniUUID/start_manually                     com.yugabyte.yw.controllers.PerfAdvisorController.runPerfAdvisor(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET    /customers/:cUUID/universes/:uniUUID/last_run                           com.yugabyte.yw.controllers.PerfAdvisorController.getLatestRun(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # List buckets API
 POST     /customers/:cUUID/cloud/:cloud/buckets                                com.yugabyte.yw.controllers.CustomerConfigController.listBuckets(cUUID: java.util.UUID, cloud: String)

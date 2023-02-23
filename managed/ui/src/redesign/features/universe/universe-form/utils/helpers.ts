@@ -12,13 +12,14 @@ import {
   Gflag,
   DEFAULT_FORM_DATA,
   InstanceTag,
-  InstanceTags
+  InstanceTags,
+  MasterPlacementMode
 } from './dto';
 import { UniverseFormContextState } from '../UniverseFormContainer';
 import {
   ASYNC_FIELDS,
   PRIMARY_FIELDS,
-  ASYNC_COPY_FIELDS,
+  INHERITED_FIELDS_FROM_PRIMARY,
   TOAST_AUTO_DISMISS_INTERVAL
 } from './constants';
 import { api } from './api';
@@ -48,8 +49,8 @@ export const getAsyncFormData = (universeData: UniverseDetails) =>
   getFormData(universeData, ClusterType.ASYNC);
 
 //returns fields needs to be copied from Primary to Async in Create+RR flow
-export const getAsyncCopyFields = (formData: UniverseFormData) =>
-  _.pick(formData, ASYNC_COPY_FIELDS);
+export const getPrimaryInheritedValues = (formData: UniverseFormData) =>
+  _.pick(formData, INHERITED_FIELDS_FROM_PRIMARY);
 
 //create error msg from reponse payload
 export const createErrorMessage = (payload: any) => {
@@ -133,7 +134,10 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
       numNodes: userIntent.numNodes,
       replicationFactor: userIntent.replicationFactor,
       placements: getPlacementsFromCluster(cluster),
-      autoPlacement: true //** */
+      masterPlacement: userIntent.dedicatedNodes
+        ? MasterPlacementMode.DEDICATED
+        : MasterPlacementMode.COLOCATED,
+      autoPlacement: true //** */,
     },
     instanceConfig: {
       instanceType: userIntent.instanceType,
@@ -168,7 +172,6 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
       ...transformGFlagToFlagsArray(userIntent.tserverGFlags, 'TSERVER')
     ]
   };
-
   return data;
 };
 
@@ -176,6 +179,7 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
 export const getUserIntent = ({ formData }: { formData: UniverseFormData }) => {
   const { cloudConfig, instanceConfig, advancedConfig, instanceTags, gFlags } = formData;
   const { masterGFlags, tserverGFlags } = transformFlagArrayToObject(gFlags);
+
   let intent: UserIntent = {
     universeName: cloudConfig.universeName,
     provider: cloudConfig.provider?.uuid as string,
@@ -183,7 +187,7 @@ export const getUserIntent = ({ formData }: { formData: UniverseFormData }) => {
     regionList: cloudConfig.regionList,
     numNodes: Number(cloudConfig.numNodes),
     replicationFactor: cloudConfig.replicationFactor,
-    dedicatedNodes: !!instanceConfig?.dedicatedNodes,
+    dedicatedNodes: cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED,
     instanceType: instanceConfig.instanceType,
     deviceInfo: instanceConfig.deviceInfo,
     assignPublicIP: instanceConfig.assignPublicIP,
@@ -207,6 +211,11 @@ export const getUserIntent = ({ formData }: { formData: UniverseFormData }) => {
   if (!_.isEmpty(advancedConfig.awsArnString)) intent.awsArnString = advancedConfig.awsArnString;
   if (!_.isEmpty(instanceTags)) intent.instanceTags = transformTagsArrayToObject(instanceTags);
 
+  if (cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
+    intent.masterInstanceType = instanceConfig.masterInstanceType;
+    intent.masterDeviceInfo = instanceConfig.masterDeviceInfo;
+  }
+
   if (instanceConfig.enableYSQLAuth && instanceConfig.ysqlPassword)
     intent.ysqlPassword = instanceConfig.ysqlPassword;
 
@@ -214,28 +223,6 @@ export const getUserIntent = ({ formData }: { formData: UniverseFormData }) => {
     intent.ycqlPassword = instanceConfig.ycqlPassword;
 
   return intent;
-};
-
-//Form Submit helpers
-const patchConfigResponse = (response: UniverseDetails, original: UniverseDetails) => {
-  const clusterIndex = response.clusters.findIndex(
-    (cluster: Cluster) => cluster.clusterType === ClusterType.PRIMARY
-  );
-
-  response.clusterOperation = original.clusterOperation;
-  response.currentClusterType = original.currentClusterType;
-  response.encryptionAtRestConfig = original.encryptionAtRestConfig;
-
-  const userIntent = response.clusters[clusterIndex].userIntent;
-  userIntent.instanceTags = original.clusters[clusterIndex].userIntent.instanceTags;
-  userIntent.masterGFlags = original.clusters[clusterIndex].userIntent.masterGFlags;
-  userIntent.tserverGFlags = original.clusters[clusterIndex].userIntent.tserverGFlags;
-
-  if (userIntent.enableYCQLAuth)
-    userIntent.ycqlPassword = original.clusters[clusterIndex].userIntent.ycqlPassword;
-
-  if (userIntent.enableYSQLAuth)
-    userIntent.ysqlPassword = original.clusters[clusterIndex].userIntent.ysqlPassword;
 };
 
 //Form Submit helpers

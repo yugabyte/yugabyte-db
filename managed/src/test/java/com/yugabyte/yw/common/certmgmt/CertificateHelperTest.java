@@ -329,7 +329,7 @@ public class CertificateHelperTest extends FakeDBApplication {
         + "-----END CERTIFICATE-----";
   }
 
-  public String getServerKeyContent() {
+  public static String getServerKeyContent() {
     return "-----BEGIN RSA PRIVATE KEY-----\n"
         + "MIIEpQIBAAKCAQEAyIc5Xxm7Ho4v/wEQW86MlnMSzdfKFUsWp7NS7EzfCt0cgZyN\n"
         + "H0BMGFlPsXh1NJ7G54e7FSMsPg+rraEKZrZNeCCkmkfDX/NWDnFW7F9uF9mqn6fs\n"

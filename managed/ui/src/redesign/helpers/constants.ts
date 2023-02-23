@@ -6,3 +6,9 @@ export const YBTableRelationType = {
 } as const;
 // eslint-disable-next-line no-redeclare
 export type YBTableRelationType = typeof YBTableRelationType[keyof typeof YBTableRelationType];
+
+export const YBAHost = {
+  GCP: 'gcp',
+  AWS: 'aws',
+  SELF_HOSTED: 'selfHosted'
+};

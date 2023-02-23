@@ -1459,9 +1459,12 @@ void PeerMessageQueue::DumpToHtml(std::ostream& out) const {
   out << "<table>" << endl;;
   out << "  <tr><th>Peer</th><th>Watermark</th></tr>" << endl;
   for (const PeersMap::value_type& entry : peers_map_) {
-    out << Substitute("  <tr><td>$0</td><td>$1</td></tr>",
-                      EscapeForHtmlToString(entry.first),
-                      EscapeForHtmlToString(entry.second->ToString())) << endl;
+    out << Substitute(
+               "  <tr><td><ul><li>$0</li><li>$1</li></ul></td><td>$2</td></tr>",
+               EscapeForHtmlToString("UUID: " + entry.first),
+               EscapeForHtmlToString("Host: " + entry.second->last_known_private_addr[0].host()),
+               EscapeForHtmlToString(entry.second->ToString()))
+        << endl;
   }
   out << "</table>" << endl;
 

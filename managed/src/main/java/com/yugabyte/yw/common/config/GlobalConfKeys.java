@@ -478,4 +478,20 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "List of tags to filter which keys are displayed",
           ConfDataType.TagListType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> dataValidationEnabled =
+      new ConfKeyInfo<>(
+          "runtime_config.data_validation.enabled",
+          ScopeType.GLOBAL,
+          "Enable Data Validation",
+          "Enable data validation while setting runtime keys",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> scopeStrictnessEnabled =
+      new ConfKeyInfo<>(
+          "runtime_config.scope_strictness.enabled",
+          ScopeType.GLOBAL,
+          "Enable Scope Strictness",
+          "Enable scope strictness while setting runtime keys",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

@@ -98,8 +98,9 @@ public class RuntimeConfController extends AuthenticatedController {
       response = ScopedConfig.class,
       notes = "Lists all runtime config entries for a given scope for current customer.")
   public Result getConfig(UUID customerUUID, UUID scopeUUID, boolean includeInherited) {
+    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(ctx());
     return PlatformResults.withData(
-        runtimeConfService.getConfig(customerUUID, scopeUUID, includeInherited));
+        runtimeConfService.getConfig(customerUUID, scopeUUID, includeInherited, isSuperAdmin));
   }
 
   @ApiOperation(
@@ -108,7 +109,8 @@ public class RuntimeConfController extends AuthenticatedController {
       response = String.class,
       produces = "text/plain")
   public Result getKey(UUID customerUUID, UUID scopeUUID, String path) {
-    return ok(runtimeConfService.getKeyOrBadRequest(customerUUID, scopeUUID, path));
+    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(ctx());
+    return ok(runtimeConfService.getKeyOrBadRequest(customerUUID, scopeUUID, path, isSuperAdmin));
   }
 
   @ApiOperation(
@@ -134,7 +136,8 @@ public class RuntimeConfController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot set null value");
     }
     verifyGlobalScope(scopeUUID);
-    runtimeConfService.setKey(customerUUID, scopeUUID, path, newValue);
+    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(ctx());
+    runtimeConfService.setKey(customerUUID, scopeUUID, path, newValue, isSuperAdmin);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -148,8 +151,9 @@ public class RuntimeConfController extends AuthenticatedController {
   @ApiOperation(value = "Delete a configuration key", response = YBPSuccess.class)
   @Transactional
   public Result deleteKey(UUID customerUUID, UUID scopeUUID, String path) {
+    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(ctx());
     verifyGlobalScope(scopeUUID);
-    runtimeConfService.deleteKey(customerUUID, scopeUUID, path);
+    runtimeConfService.deleteKey(customerUUID, scopeUUID, path, isSuperAdmin);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),

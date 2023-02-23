@@ -9,14 +9,11 @@ import EmptyTrayIcon from './images/empty-tray.svg';
 import { RecommendationBox } from './RecommendationBox';
 import { YBPanelItem } from '../panels';
 import { EXTERNAL_LINKS } from './helpers/const';
-import {
-  QueryData,
-  handleIndexSuggestionRequest,
-} from './helpers/perfQueryUtils';
+import { QueryData, handleIndexSuggestionRequest } from './helpers/perfQueryUtils';
 import { YBButton } from '../common/forms/fields';
 import { intlFormat } from 'date-fns';
 import { YBLoading } from '../../components/common/indicators';
-import { RecommendationTypeEnum } from '../../redesign/helpers/dtos';
+import { RecommendationTypeEnum } from '../../redesign/utils/dtos';
 import './PerfAdvisor.scss';
 
 interface RecommendationDetailProps {
@@ -27,23 +24,23 @@ interface RecommendationDetailProps {
 
 const mockResponseQueryDistribution: QueryData = {
   type: RecommendationTypeEnum.SchemaSuggestion,
-  target: "yugabyte",
+  target: 'yugabyte',
   indicator: 2,
   table: {
-    data: [{
-      current_database: 'yugabyte',
-      index_command: 'CREATE UNIQUE INDEX table1_pkey ON public.table1 USING lsm (column1 HASH)',
-      index_name: 'table1_pkey',
-      table_name: 'table1'
-    },
-    {
-      current_database: 'yugabyte',
-      index_command: 'CREATE INDEX table1_column2_idx ON public.table1 USING lsm (column2 HASH)',
-      index_name: 'table1_column2_idx',
-      table_name: 'table1'
-    }
-
-    ],
+    data: [
+      {
+        current_database: 'yugabyte',
+        index_command: 'CREATE UNIQUE INDEX table1_pkey ON public.table1 USING lsm (column1 HASH)',
+        index_name: 'table1_pkey',
+        table_name: 'table1'
+      },
+      {
+        current_database: 'yugabyte',
+        index_command: 'CREATE INDEX table1_column2_idx ON public.table1 USING lsm (column2 HASH)',
+        index_name: 'table1_column2_idx',
+        table_name: 'table1'
+      }
+    ]
   }
 };
 const maxNodeDetasils = {
@@ -215,19 +212,18 @@ export const PerfAdvisor: FC = () => {
     setIsScanningLoading(true);
 
     // TODO: Once API is ready, need to group all promise call here
-    const promiseArr = [
-      handleIndexSuggestionRequest(universeUUID),
-    ];
-    const results = await Promise.allSettled<Promise<QueryData | null> | Promise<QueryData[] | null>>(promiseArr);
-    const recommendationDataArray: QueryData[] =
-      results
-        .flatMap((promiseRes) => {
-          if (promiseRes.status === 'fulfilled' && promiseRes.value) {
-            return promiseRes.value;
-          }
-          return null;
-        })
-        .filter(Boolean) as QueryData[];
+    const promiseArr = [handleIndexSuggestionRequest(universeUUID)];
+    const results = await Promise.allSettled<
+      Promise<QueryData | null> | Promise<QueryData[] | null>
+    >(promiseArr);
+    const recommendationDataArray: QueryData[] = results
+      .flatMap((promiseRes) => {
+        if (promiseRes.status === 'fulfilled' && promiseRes.value) {
+          return promiseRes.value;
+        }
+        return null;
+      })
+      .filter(Boolean) as QueryData[];
     // Mocking API response as it is not ready
     // TODO: Need to remove this once APIs are available
     recommendationDataArray.push(mockResponseQueryDistribution);
@@ -237,13 +233,15 @@ export const PerfAdvisor: FC = () => {
     recommendationDataArray.push(mockCPUUsageRecommendation);
     const newRecommendations = processRecommendationData(recommendationDataArray);
     setRecommendations(newRecommendations);
-    localStorage.setItem(universeUUID, JSON.stringify({
-      data: newRecommendations,
-      lastUpdated: currentScanTime
-    }));
+    localStorage.setItem(
+      universeUUID,
+      JSON.stringify({
+        data: newRecommendations,
+        lastUpdated: currentScanTime
+      })
+    );
     setIsScanningLoading(false);
   };
-
 
   useEffect(() => {
     const checkForPreviousScanData = () => {
@@ -269,10 +267,10 @@ export const PerfAdvisor: FC = () => {
     void checkForPreviousScanData();
   }, [universeUUID]); // eslint-disable-line react-hooks/exhaustive-deps
 
-
   const filteredByDatabaseRecommendations = recommendations.filter((rec) => {
     if (databaseSelection) {
-      const isMatchingDb = DATABASE_TYPE_SUGGESTIONS.includes(rec.data.type) && rec.data.target === databaseSelection;
+      const isMatchingDb =
+        DATABASE_TYPE_SUGGESTIONS.includes(rec.data.type) && rec.data.target === databaseSelection;
       return isMatchingDb;
     }
     return true;
@@ -291,71 +289,87 @@ export const PerfAdvisor: FC = () => {
     recommendationTypeList[curr.data.type] = true;
   });
   const recommendationTypes = Object.keys(recommendationTypeList);
-  const recommendationLabel = displayedRecomendations?.length > 0 ? 'Recommendations' : 'Recommendation';
+  const recommendationLabel =
+    displayedRecomendations?.length > 0 ? 'Recommendations' : 'Recommendation';
 
   if (isScanningLoading) {
-    return (<YBPanelItem
-      header={
-        <div className="perfAdvisor__containerTitleGrid">
-          <YBLoading text="Scanning" />
-        </div>
-      }
-    />);
+    return (
+      <YBPanelItem
+        header={
+          <div className="perfAdvisor__containerTitleGrid">
+            <YBLoading text="Scanning" />
+          </div>
+        }
+      />
+    );
   }
 
   return (
-    // This dialog is shown when the user visits performance advisor for first time 
+    // This dialog is shown when the user visits performance advisor for first time
     // (or) when a user visits performance advisor in a new session
     <div className="parentPerfAdvisor">
-      {!lastScanTime && <YBPanelItem
-        header={
-          <div className="perfAdvisor">
-            <div className="perfAdvisor__containerTitleGrid">
-              <div className="contentContainer">
-                <img src={dbSettingsIcon} alt="more" className="dbImage" />
-                <h4 className="primaryDescription">{t('clusterDetail.performance.advisor.ScanCluster')}</h4>
-                <p className="secondaryDescription"> <b> Note: </b>{t('clusterDetail.performance.advisor.RunWorkload')}</p>
-                <Button
-                  bsClass='btn btn-orange rescanBtn'
-                  disabled={!!isUniversePaused}
-                  onClick={handleScan}
-                  data-toggle={isUniversePaused ? "tooltip" : ""}
-                  data-placement="left"
-                  title="Universe Paused"
-                >
-                  <i className="fa fa-search-minus" aria-hidden="true"></i>
-                  {t('clusterDetail.performance.advisor.ScanBtn')}
-                </Button>
-                <a className="learnMoreLink" href={EXTERNAL_LINKS.PERF_ADVISOR_DOCS_LINK}>
-                  <div className="learnMoreContent">
-                    <img src={documentationIcon} alt="more" className="learnMoreImage" />
-                    {t('clusterDetail.performance.advisor.LearnPerformanceAdvisor')}
-                  </div>
-                </a>
+      {!lastScanTime && (
+        <YBPanelItem
+          header={
+            <div className="perfAdvisor">
+              <div className="perfAdvisor__containerTitleGrid">
+                <div className="contentContainer">
+                  <img src={dbSettingsIcon} alt="more" className="dbImage" />
+                  <h4 className="primaryDescription">
+                    {t('clusterDetail.performance.advisor.ScanCluster')}
+                  </h4>
+                  <p className="secondaryDescription">
+                    {' '}
+                    <b> Note: </b>
+                    {t('clusterDetail.performance.advisor.RunWorkload')}
+                  </p>
+                  <Button
+                    bsClass="btn btn-orange rescanBtn"
+                    disabled={!!isUniversePaused}
+                    onClick={handleScan}
+                    data-toggle={isUniversePaused ? 'tooltip' : ''}
+                    data-placement="left"
+                    title="Universe Paused"
+                  >
+                    <i className="fa fa-search-minus" aria-hidden="true"></i>
+                    {t('clusterDetail.performance.advisor.ScanBtn')}
+                  </Button>
+                  <a className="learnMoreLink" href={EXTERNAL_LINKS.PERF_ADVISOR_DOCS_LINK}>
+                    <div className="learnMoreContent">
+                      <img src={documentationIcon} alt="more" className="learnMoreImage" />
+                      {t('clusterDetail.performance.advisor.LearnPerformanceAdvisor')}
+                    </div>
+                  </a>
+                </div>
               </div>
             </div>
-          </div>
-        }
-      />}
+          }
+        />
+      )}
 
       {/* // This dialog is shown when there are no performance scanning results  */}
-      {lastScanTime && !recommendations.length &&
+      {lastScanTime && !recommendations.length && (
         <YBPanelItem
           header={
             <div className="perfAdvisor">
               <div className="perfAdvisor__containerTitleGrid">
                 <div className="contentContainer">
                   <img src={EmptyTrayIcon} alt="more" />
-                  <h4 className="primaryDescription"> {t('clusterDetail.performance.advisor.Hurray')}</h4>
-                  <p className="secondaryDescription"> {t('clusterDetail.performance.advisor.NoPerformanceIssues')}</p>
+                  <h4 className="primaryDescription">
+                    {' '}
+                    {t('clusterDetail.performance.advisor.Hurray')}
+                  </h4>
+                  <p className="secondaryDescription">
+                    {' '}
+                    {t('clusterDetail.performance.advisor.NoPerformanceIssues')}
+                  </p>
                   <Button
-                    bsClass='btn btn-orange rescanBtn'
+                    bsClass="btn btn-orange rescanBtn"
                     disabled={!!isUniversePaused}
                     onClick={handleScan}
-                    data-toggle={isUniversePaused ? "tooltip" : ""}
+                    data-toggle={isUniversePaused ? 'tooltip' : ''}
                     data-placement="left"
                     title="Universe Paused"
-
                   >
                     <i className="fa fa-search-minus" aria-hidden="true"></i>
                     {t('clusterDetail.performance.advisor.ReScanBtn')}
@@ -372,13 +386,15 @@ export const PerfAdvisor: FC = () => {
             </div>
           }
         />
-      }
+      )}
 
       {/* // This dialog is shown when there are multiple recommendation options */}
-      {displayedRecomendations.length &&
+      {displayedRecomendations.length && (
         <div>
           <div className="perfAdvisor__containerTitleFlex">
-            <h5 className="numRecommendations">{displayedRecomendations.length} {recommendationLabel}</h5>
+            <h5 className="numRecommendations">
+              {displayedRecomendations.length} {recommendationLabel}
+            </h5>
             <p className="scanTime">
               {t('clusterDetail.performance.advisor.ScanTime')}
               {t('clusterDetail.performance.advisor.Separator')}
@@ -392,16 +408,20 @@ export const PerfAdvisor: FC = () => {
             />
           </div>
           <div className="perfAdvisor__containerRecommendationFlex">
-            <FormControl componentClass="select"
+            <FormControl
+              componentClass="select"
               onChange={handleDbSelection}
               value={databaseSelection}
-              className="filterDropdowns">
+              className="filterDropdowns"
+            >
               {databaseOptionList}
             </FormControl>
-            <FormControl componentClass="select"
+            <FormControl
+              componentClass="select"
               onChange={handleSuggestionTypeSelection}
               value={suggestionType}
-              className="filterDropdowns">
+              className="filterDropdowns"
+            >
               {recommendationTypes.map((type) => (
                 <option key={`suggestion-${type}`} value={type}>
                   {t(`clusterDetail.performance.suggestionTypes.${type}`)}
@@ -410,14 +430,10 @@ export const PerfAdvisor: FC = () => {
             </FormControl>
           </div>
           {displayedRecomendations.map((rec) => (
-            <RecommendationBox
-              key={rec.key}
-              type={rec.data.type}
-              data={rec.data}
-            />
+            <RecommendationBox key={rec.key} type={rec.data.type} data={rec.data} />
           ))}
         </div>
-      }
+      )}
     </div>
   );
 };

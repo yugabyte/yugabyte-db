@@ -50,17 +50,7 @@ public class EmailHelperTest extends FakeDBApplication {
 
   private static final String EMAIL_TEXT = "Simple email text";
 
-  private static final String EMAIL_TEST_USER = "Gregory";
-
-  private static final String EMAIL_TEST_USER_PWD = "2345-5432";
-
   private static final String YB_DEFAULT_EMAIL = "test@yugabyte.com";
-
-  private static final String EMAIL_SMTP_SERVER = "test-server";
-
-  private static final int EMAIL_SMTP_PORT = 25;
-
-  private static final int EMAIL_SMTP_PORT_SSL = 465;
 
   private static final int DEFAULT_SMTP_CONNECTION_TIMEOUT = 1000;
 
@@ -83,16 +73,6 @@ public class EmailHelperTest extends FakeDBApplication {
     when(configFactory.forCustomer(defaultCustomer)).thenReturn(mockCustomerConfig);
 
     when(mockCustomerConfig.getString("yb.health.default_email")).thenReturn(YB_DEFAULT_EMAIL);
-    when(mockCustomerConfig.getString("yb.health.ses_email_username")).thenReturn(EMAIL_TEST_USER);
-    when(mockCustomerConfig.getString("yb.health.ses_email_password"))
-        .thenReturn(EMAIL_TEST_USER_PWD);
-    when(mockCustomerConfig.getBoolean("yb.health.default_ssl")).thenReturn(false);
-
-    when(mockCustomerConfig.getString("yb.health.default_smtp_server"))
-        .thenReturn(EMAIL_SMTP_SERVER);
-    when(mockCustomerConfig.getInt("yb.health.default_smtp_port")).thenReturn(EMAIL_SMTP_PORT);
-    when(mockCustomerConfig.getInt("yb.health.default_smtp_port_ssl"))
-        .thenReturn(EMAIL_SMTP_PORT_SSL);
   }
 
   @Test
@@ -170,15 +150,6 @@ public class EmailHelperTest extends FakeDBApplication {
   }
 
   @Test
-  public void testGetSmtpData_NoDbConfig() {
-    SmtpData smtpData = emailHelper.getSmtpData(defaultCustomer.uuid);
-    assertEquals(YB_DEFAULT_EMAIL, smtpData.emailFrom);
-    assertEquals(EMAIL_TEST_USER, smtpData.smtpUsername);
-    assertEquals(EMAIL_TEST_USER_PWD, smtpData.smtpPassword);
-    assertFalse(smtpData.useSSL);
-  }
-
-  @Test
   public void testGetSmtpData_DbConfigExistsAndEmailFromFilled() {
     SmtpData testSmtpData = EmailFixtures.createSmtpData();
     CustomerConfig.createSmtpConfig(defaultCustomer.uuid, Json.toJson(testSmtpData)).save();
@@ -216,26 +187,13 @@ public class EmailHelperTest extends FakeDBApplication {
 
   @Test
   // @formatter:off
-  @Parameters({
-    "localhost, -1, false",
-    "localhost, -1, true",
-    "localhost, 999, false",
-    "localhost, 999, true",
-    ", -1, false",
-    ", -1, true",
-    "null, -1, false",
-    "null, -1, true",
-  })
+  @Parameters({"localhost, 999, false", "localhost, 999, true"})
   // @formatter:on
-  public void testSmtpDataToProperties(@Nullable String smtpServer, int smtpPort, boolean useSSL)
-      throws MessagingException, IOException {
+  public void testSmtpDataToProperties(@Nullable String smtpServer, int smtpPort, boolean useSSL) {
     SmtpData smtpData = EmailFixtures.createSmtpData();
     smtpData.smtpServer = smtpServer;
     smtpData.smtpPort = smtpPort;
     smtpData.useSSL = useSSL;
-    String expectedSmtpServer = StringUtils.isEmpty(smtpServer) ? EMAIL_SMTP_SERVER : smtpServer;
-    int expectedSmtpPort =
-        smtpPort == -1 ? (useSSL ? EMAIL_SMTP_PORT_SSL : EMAIL_SMTP_PORT) : smtpPort;
 
     Properties props = emailHelper.smtpDataToProperties(defaultCustomer, smtpData);
     assertNotNull(props);
@@ -243,11 +201,11 @@ public class EmailHelperTest extends FakeDBApplication {
     assertEquals(smtpData.smtpUsername, props.get("mail.smtp.user"));
     assertEquals("true", props.get("mail.smtp.auth"));
     assertEquals(String.valueOf(smtpData.useTLS), props.get("mail.smtp.starttls.enable"));
-    assertEquals(expectedSmtpServer, props.get("mail.smtp.host"));
-    assertEquals(String.valueOf(expectedSmtpPort), props.get("mail.smtp.port"));
+    assertEquals(smtpServer, props.get("mail.smtp.host"));
+    assertEquals(String.valueOf(smtpPort), props.get("mail.smtp.port"));
     assertEquals(String.valueOf(useSSL), props.get("mail.smtp.ssl.enable"));
     if (useSSL) {
-      assertEquals(expectedSmtpServer, props.get("mail.smtp.ssl.trust"));
+      assertEquals(smtpServer, props.get("mail.smtp.ssl.trust"));
     }
   }
 

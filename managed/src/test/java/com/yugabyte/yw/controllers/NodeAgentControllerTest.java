@@ -132,6 +132,7 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     formData.version = "2.12.0";
     formData.osType = OSType.LINUX.name();
     formData.archType = ArchType.AMD64.name();
+    formData.home = "/home/yugabyte/node-agent";
     // Register the node agent.
     Result result = registerNodeAgent(formData);
     assertOk(result);

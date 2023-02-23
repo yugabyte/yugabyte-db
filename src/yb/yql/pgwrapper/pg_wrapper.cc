@@ -558,7 +558,7 @@ Status PgWrapper::UpdateAndReloadConfig() {
 }
 
 void PgWrapper::Kill() {
-  WARN_NOT_OK(pg_proc_->Kill(SIGQUIT), "Kill PostgreSQL server failed");
+  WARN_NOT_OK(pg_proc_->Kill(SIGINT), "Kill PostgreSQL server failed");
 }
 
 Status PgWrapper::InitDb(bool yb_enabled) {

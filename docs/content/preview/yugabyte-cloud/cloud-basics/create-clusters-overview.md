@@ -49,8 +49,8 @@ Multi-region clusters are resilient to region-level outages, and are available i
 
 - **Replicate across regions**. Cluster nodes are deployed across 3 regions, with data replicated synchronously.
 - **Partition by region**. Cluster nodes are deployed in separate regions. Data is pinned to specific geographic regions. Allows fine-grained control over pinning rows in a user table to specific geographic locations.
-- **Cross-cluster**. Two clusters are deployed in separate regions. Data is shared between the clusters, either in one direction, or asynchronously.
 - **Read replica**. Replica clusters are deployed in separate regions. Data is written in the primary cluster, and copied to the read replicas, where it can be read. The primary cluster gets all write requests, while read requests can go either to the primary cluster or to the read replica clusters depending on which is closest.
+<!-- - **Cross-cluster**. Two clusters are deployed in separate regions. Data is shared between the clusters, either in one direction, or asynchronously. -->
 
 Multi-region clusters must be deployed in VPCs, with each region or read replica deployed in its own VPC. Refer to [VPC networking](../cloud-vpcs/).
 
@@ -193,8 +193,6 @@ The biggest factor in the price of a cluster is the number vCPUs.
 Cluster charges are based on the total number of vCPUs used and how long they have been running. Cluster per-hour charges include [free allowances](../../cloud-admin/cloud-billing-costs/) for disk storage, backup storage, and data transfer. If you use more than the free allowance, you incur overages on top of the base vCPU capacity cost.
 
 Before creating a cluster, you need to create your billing profile and add a payment method. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
-
-If you're interested in evaluating YugabyteDB Managed for production use and would like trial credits to conduct a proof-of-concept (POC), contact {{% support-cloud %}}.
 
 ## Next steps
 

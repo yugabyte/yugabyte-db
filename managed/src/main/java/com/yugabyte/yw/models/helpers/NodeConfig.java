@@ -118,6 +118,8 @@ public class NodeConfig {
 
     SSH_ACCESS("Ability to ssh into node as yugabyte user with key supplied in provider"),
 
+    NODE_AGENT_ACCESS("Reachability of node agent server"),
+
     MASTER_HTTP_PORT("Master http port is open"),
 
     MASTER_RPC_PORT("Master rpc port is open"),

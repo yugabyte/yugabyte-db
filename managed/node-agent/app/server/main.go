@@ -41,6 +41,7 @@ func Start() {
 	if nodeAgentId == "" {
 		util.FileLogger().Fatalf("Node Agent ID must be set")
 	}
+	executor.Init(Context())
 	host := config.String(util.NodeIpKey)
 	port := config.String(util.NodePortKey)
 
@@ -50,7 +51,7 @@ loop:
 	for {
 		select {
 		case <-ticker.C:
-			err := HandleRestart(ctx, config)
+			err := HandleRestart(Context(), config)
 			if err == nil {
 				ticker.Stop()
 				break loop
@@ -62,13 +63,11 @@ loop:
 		}
 	}
 	addr := fmt.Sprintf("%s:%s", host, port)
-	server, err := NewRPCServer(ctx, addr, true)
+	server, err := NewRPCServer(Context(), addr, true)
 	if err != nil {
 		util.FileLogger().Fatalf("Error in starting RPC server - %s", err.Error())
 	}
 	util.FileLogger().Infof("Started Service on %s", addr)
 	<-sigs
 	server.Stop()
-	cancelFunc()
-	executor.GetInstance(ctx).WaitOnShutdown()
 }

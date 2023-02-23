@@ -14,14 +14,12 @@ export const UserTags: FC = () => {
 
   //form context
   const { clusterType } = useContext(UniverseFormContext)[0];
+  const isAsyncCluster = clusterType === ClusterType.ASYNC;
 
   //field data
   const provider = useWatch({ name: PROVIDER_FIELD });
 
-  if (
-    clusterType === ClusterType.PRIMARY &&
-    [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code)
-  )
+  if ([CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code))
     return (
       <Box className={classes.sectionContainer} data-testid="user-tags-section">
         <Typography className={classes.sectionHeaderFont}>
@@ -29,7 +27,7 @@ export const UserTags: FC = () => {
         </Typography>
         <Box display="flex" width="100%" mt={2}>
           <Grid container item lg={6}>
-            <UserTagsField />
+            <UserTagsField disabled={isAsyncCluster} />
           </Grid>
         </Box>
       </Box>

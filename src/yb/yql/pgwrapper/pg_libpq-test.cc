@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <future>
 #include <fstream>
 #include <functional>
 #include <map>
@@ -28,6 +29,7 @@
 #include <boost/lexical_cast.hpp>
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/meta_cache.h"
 #include "yb/client/table.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
@@ -64,6 +66,9 @@
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+using std::future;
+using std::pair;
+using std::promise;
 using std::string;
 
 using namespace std::literals;
@@ -90,6 +95,8 @@ class PgLibPqTest : public LibPqTestBase {
                                                           PGConn* conn,
                                                           MonoDelta timeout)>
                                                           GetParentTableTabletLocation;
+  typedef pair<promise<Result<client::internal::RemoteTabletPtr>>,
+               future<Result<client::internal::RemoteTabletPtr>>> promise_future_pair;
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // Let colocated database related tests cover new Colocation GA implementation instead of legacy
@@ -139,6 +146,8 @@ class PgLibPqTest : public LibPqTestBase {
 
   void TestTableColocationEnabledByDefault(
       GetParentTableTabletLocation getParentTableTabletLocation);
+
+  Status TestDuplicateCreateTableRequest(PGConn conn);
 };
 
 static Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name) {
@@ -202,7 +211,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
 
     auto s = conn.Execute("DELETE FROM t");
     if (!s.ok()) {
-      ASSERT_TRUE(HasTryAgain(s)) << s;
+      ASSERT_TRUE(HasTransactionError(s)) << s;
       continue;
     }
     for (int k = 0; k != kKeys; ++k) {
@@ -222,7 +231,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
 
         auto res = connection.Fetch("SELECT * FROM t");
         if (!res.ok()) {
-          ASSERT_TRUE(HasTryAgain(res.status())) << res.status();
+          ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
           return;
         }
         auto columns = PQnfields(res->get());
@@ -240,9 +249,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
               "UPDATE t SET color = $1 WHERE key = $0", key, color);
           if (!status.ok()) {
             auto msg = status.message().ToBuffer();
-            // Missing metadata means that transaction was aborted and cleaned.
-            ASSERT_TRUE(HasTryAgain(status) ||
-                        msg.find("Missing metadata") != std::string::npos) << status;
+            ASSERT_TRUE(HasTransactionError(status)) << status;
             break;
           }
         }
@@ -1291,9 +1298,11 @@ void PgLibPqTest::TestTableColocation(GetParentTableTabletLocation getParentTabl
 
   // The tablets for bar_index should be deleted.
   std::vector<bool> tablet_founds(tablets_bar_index.size(), true);
+  std::vector<promise_future_pair> tablet_promises_futures(tablets_bar_index.size());
   ASSERT_OK(WaitFor(
       [&] {
         for (int i = 0; i < tablets_bar_index.size(); ++i) {
+          tablet_promises_futures[i].second = tablet_promises_futures[i].first.get_future();
           client->LookupTabletById(
               tablets_bar_index[i].tablet_id(),
               table_bar_index,
@@ -1301,9 +1310,12 @@ void PgLibPqTest::TestTableColocation(GetParentTableTabletLocation getParentTabl
               master::IncludeDeleted::kFalse,
               CoarseMonoClock::Now() + 30s,
               [&, i](const Result<client::internal::RemoteTabletPtr>& result) {
-                tablet_founds[i] = result.ok();
+                tablet_promises_futures[i].first.set_value(result);
               },
               client::UseCache::kFalse);
+        }
+        for (int i = 0; i < tablets_bar_index.size(); ++i) {
+          tablet_founds[i] = tablet_promises_futures[i].second.get().ok();
         }
         return std::all_of(
             tablet_founds.cbegin(),
@@ -1325,32 +1337,24 @@ void PgLibPqTest::TestTableColocation(GetParentTableTabletLocation getParentTabl
 
   // The colocation tablet should be deleted.
   bool tablet_found = true;
-  int rpc_calls = 0;
+  promise<Result<client::internal::RemoteTabletPtr>> tablet_promise;
+  auto tablet_future = tablet_promise.get_future();
   ASSERT_OK(WaitFor(
       [&] {
-        rpc_calls++;
         client->LookupTabletById(
             colocated_tablet_id,
             colocated_table,
-              master::IncludeInactive::kFalse,
-              master::IncludeDeleted::kFalse,
+            master::IncludeInactive::kFalse,
+            master::IncludeDeleted::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
-              tablet_found = result.ok();
-              rpc_calls--;
+              tablet_promise.set_value(result);
             },
             client::UseCache::kFalse);
+        tablet_found = tablet_future.get().ok();
         return !tablet_found;
       },
       30s, "Drop colocated database"));
-  // To prevent an "AddressSanitizer: stack-use-after-scope", do not return from this function until
-  // all callbacks are done.
-  ASSERT_OK(WaitFor(
-      [&rpc_calls] {
-        LOG(INFO) << "Waiting for " << rpc_calls << " RPCs to run callbacks";
-        return rpc_calls == 0;
-      },
-      30s, "Drop colocated database (wait for RPCs to finish)"));
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
@@ -1597,6 +1601,46 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReplayDeletedTableInTablegroups)) {
       "test_tgroup" /* tablegroup_name */);
 }
 
+class PgLibPqDuplicateClientCreateTableTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--TEST_duplicate_create_table_request=true");
+    options->extra_tserver_flags.push_back(Format("--yb_client_admin_operation_timeout_sec=$0",
+                                                  30));
+  }
+
+  void SetUp() override {
+    // Skip in TSAN as InitDB times out.
+    YB_SKIP_TEST_IN_TSAN();
+    PgLibPqTest::SetUp();
+  }
+};
+
+Status PgLibPqTest::TestDuplicateCreateTableRequest(PGConn conn) {
+  RETURN_NOT_OK(conn.Execute("CREATE TABLE tbl (k int primary key)"));
+  RETURN_NOT_OK(conn.Execute("INSERT INTO tbl VALUES (1)"));
+  const int k = VERIFY_RESULT(conn.FetchValue<int32_t>("SELECT * FROM tbl"));
+  SCHECK_EQ(k, 1, IllegalState, "wrong result");
+
+  return Status::OK();
+}
+
+// Ensure if client sends out duplicate create table requests, one create table request can
+// succeed and the other create table request should fail.
+TEST_F_EX(PgLibPqTest, DuplicateCreateTableRequest, PgLibPqDuplicateClientCreateTableTest) {
+  ASSERT_OK(TestDuplicateCreateTableRequest(ASSERT_RESULT(Connect())));
+}
+
+// Ensure if client sends out duplicate create table requests, one create table request can
+// succeed and the other create table request should fail in a colocated database.
+TEST_F_EX(PgLibPqTest, DuplicateCreateTableRequestInColocatedDB,
+          PgLibPqDuplicateClientCreateTableTest) {
+  const string database_name = "col_db";
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", database_name));
+  ASSERT_OK(TestDuplicateCreateTableRequest(ASSERT_RESULT(ConnectToDB(database_name))));
+}
+
 class PgLibPqTablegroupTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // Enable tablegroup beta feature
@@ -1719,7 +1763,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupBasics),
   ASSERT_EQ(tablets.size(), 1);
   ASSERT_EQ(tablets[0].tablet_id(), tablegroup_alt.tablet_id);
 
-    // Drop a table in the parent tablet.
+  // Drop a table in the parent tablet.
   ASSERT_OK(conn.Execute("DROP TABLE quuz"));
   ASSERT_FALSE(ASSERT_RESULT(
         client->TableExists(client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, "quuz"))));
@@ -1735,9 +1779,11 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupBasics),
 
   // The tablets for bar_index should be deleted.
   std::vector<bool> tablet_founds(tablets_bar_index.size(), true);
+  std::vector<promise_future_pair> tablet_promises_futures(tablets_bar_index.size());
   ASSERT_OK(WaitFor(
       [&] {
         for (int i = 0; i < tablets_bar_index.size(); ++i) {
+          tablet_promises_futures[i].second = tablet_promises_futures[i].first.get_future();
           client->LookupTabletById(
               tablets_bar_index[i].tablet_id(),
               table_bar_index,
@@ -1745,9 +1791,12 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupBasics),
               master::IncludeDeleted::kFalse,
               CoarseMonoClock::Now() + 30s,
               [&, i](const Result<client::internal::RemoteTabletPtr>& result) {
-                tablet_founds[i] = result.ok();
+                tablet_promises_futures[i].first.set_value(result);
               },
               client::UseCache::kFalse);
+        }
+        for (int i = 0; i < tablets_bar_index.size(); ++i) {
+          tablet_founds[i] = tablet_promises_futures[i].second.get().ok();
         }
         return std::all_of(
             tablet_founds.cbegin(),
@@ -1765,10 +1814,10 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupBasics),
 
   // The alt tablegroup tablet should be deleted after dropping the tablegroup.
   bool alt_tablet_found = true;
-  int rpc_calls = 0;
+  promise<Result<client::internal::RemoteTabletPtr>> alt_tablet_promise;
+  auto alt_tablet_future = alt_tablet_promise.get_future();
   ASSERT_OK(WaitFor(
       [&] {
-        rpc_calls++;
         client->LookupTabletById(
             tablegroup_alt.tablet_id,
             tablegroup_alt.table,
@@ -1776,10 +1825,10 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupBasics),
             master::IncludeDeleted::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
-              alt_tablet_found = result.ok();
-              rpc_calls--;
+              alt_tablet_promise.set_value(result);
             },
             client::UseCache::kFalse);
+        alt_tablet_found = alt_tablet_future.get().ok();
         return !alt_tablet_found;
       },
       30s, "Drop tablegroup"));
@@ -1811,9 +1860,10 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupBasics),
 
   // The original tablegroup tablet should be deleted after dropping the database.
   bool orig_tablet_found = true;
+  promise<Result<client::internal::RemoteTabletPtr>> orig_tablet_promise;
+  auto orig_tablet_future = orig_tablet_promise.get_future();
   ASSERT_OK(WaitFor(
       [&] {
-        rpc_calls++;
         client->LookupTabletById(
             tablegroup.tablet_id,
             tablegroup.table,
@@ -1821,19 +1871,20 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupBasics),
             master::IncludeDeleted::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
-              orig_tablet_found = result.ok();
-              rpc_calls--;
+              orig_tablet_promise.set_value(result);
             },
             client::UseCache::kFalse);
+        orig_tablet_found = orig_tablet_future.get().ok();
         return !orig_tablet_found;
       },
       30s, "Drop database with tablegroup"));
 
   // The second tablegroup tablet should also be deleted after dropping the database.
   bool second_tablet_found = true;
+  promise<Result<client::internal::RemoteTabletPtr>> second_tablet_promise;
+  auto second_tablet_future = second_tablet_promise.get_future();
   ASSERT_OK(WaitFor(
       [&] {
-        rpc_calls++;
         client->LookupTabletById(
             tablegroup_alt.tablet_id,
             tablegroup_alt.table,
@@ -1841,22 +1892,13 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupBasics),
             master::IncludeDeleted::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
-              second_tablet_found = result.ok();
-              rpc_calls--;
+              second_tablet_promise.set_value(result);
             },
             client::UseCache::kFalse);
+        second_tablet_found = second_tablet_future.get().ok();
         return !second_tablet_found;
       },
       30s, "Drop database with tablegroup"));
-
-  // To prevent an "AddressSanitizer: stack-use-after-scope", do not return from this function until
-  // all callbacks are done.
-  ASSERT_OK(WaitFor(
-      [&rpc_calls] {
-        LOG(INFO) << "Waiting for " << rpc_calls << " RPCs to run callbacks";
-        return rpc_calls == 0;
-      },
-      30s, "Drop database with tablegroup (wait for RPCs to finish)"));
 }
 
 TEST_F_EX(

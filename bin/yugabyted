@@ -115,8 +115,8 @@ PREREQS_ERROR_MSGS = {
         'we recommend installing chrony package.',
 }
 QUICK_START_LINKS = {
-    'mac' : 'https://docs.yugabyte.com/latest/quick-start/install/macos/',
-    'linux' : 'https://docs.yugabyte.com/latest/quick-start/install/linux/',
+    'mac' : 'https://docs.yugabyte.com/preview/quick-start/',
+    'linux' : 'https://docs.yugabyte.com/preview/quick-start/linux/',
 }
 LINUX_PREREQS_CMDS = {
     'transparent_hugepages' : 'cat /sys/kernel/mm/transparent_hugepage/enabled',
@@ -394,14 +394,30 @@ class ControlScript(object):
 
         self.start_processes()
 
+    # Kills all processes related to yugabyted
+    def kill_all_procs(self):
+        pid = self.script.get_pid()
+        if pid:
+            pgid = os.getpgid(pid)
+            if not pgid:
+                Output.log("PGID could not be found for {} process".format(SCRIPT_NAME) +
+                    "with PID {}. Is {} running?".format(pid, SCRIPT_NAME))
+                return ("No PGID", pid)
+            else:
+                try:
+                    os.killpg(pgid, SIGTERM)
+                except OSError as err:
+                    return (err, pid)
+        self.script.delete_pidfile()
+        return (None, pid)
+
     # Kills currently running yugabyted process if it exists.
     def stop(self, *args):
-        (err, pid) = self.script.kill()
+        (err, pid) = self.kill_all_procs()
         if err:
-            Output.print_out(
+            Output.log_error_and_exit(
                 "Failed to shut down {}: {}. Please check PID in {}".format(
                     SCRIPT_NAME, err, self.script.pidfile))
-            sys.exit(1)
         elif pid:
             self.script.wait_until_stop(pid)
             Output.print_out("Stopped {} using config {}.".format(SCRIPT_NAME, self.conf_file))
@@ -416,7 +432,7 @@ class ControlScript(object):
 
     # Destroy the YugabyteDB cluster.
     def destroy(self):
-        (err, pid) = self.script.kill()
+        (err, pid) = self.kill_all_procs()
         if err:
             Output.log_error_and_exit(
                 "Failed to shut down {}: {}. Please check PID in {}".format(
@@ -618,26 +634,28 @@ class ControlScript(object):
 
     # Configuring the data placement policy
     def configure_data_placement(self):
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
 
-        # to-do: can be removed after multi-region and geo-replicated feature is implemented
         fault_tolerance = self.configs.temp_data.get("fault_tolerance")
+        rf_value = self.configs.temp_data.get("replication_factor")
+
         if fault_tolerance == "cloud":
             Output.log_error_and_exit("Cloud based fault tolerance is not supported yet.")
 
-        join_ip = self.configs.saved_data.get("join")
-        advertise_ip = self.advertise_ip()
-        master_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
-                                        self.configs.saved_data.get("master_rpc_port"))
         current_masters = self.get_all_masters()
         current_masters = [ master.split(':')[0] for master in current_masters ]
         leader_master = self.get_leader_master().split(':')[0]
+        master_addr = "{}:{}".format(leader_master,
+                                        self.configs.saved_data.get("master_rpc_port"))
 
         leader_master_http_endpoint = "{}:{}".format(leader_master,
                         self.configs.saved_data.get("master_webserver_port"))
         placement_locations = self.get_all_masters_locations(leader_master_http_endpoint)
 
         new_masters = self.get_new_valid_masters(current_masters,
-                leader_master, placement_locations)
+                leader_master, placement_locations, rf_value)
 
         masters_to_remove = [ master for master in current_masters if master not in new_masters ]
         masters_to_add = [ master for master in new_masters if master not in current_masters ]
@@ -645,8 +663,21 @@ class ControlScript(object):
         if not masters_to_remove and not masters_to_add:
             Output.log("Desired fault tolerance is already setup. No Masters to move.")
         else :
-            for i in range(len(masters_to_remove)):
-                self.replace_master(master_addr, masters_to_remove[i], masters_to_add[i])
+            track_masters_to_remove = masters_to_remove
+            track_masters_to_add = masters_to_add
+            if masters_to_remove and masters_to_add:
+                for i in range(len(masters_to_remove)):
+                    self.replace_master(master_addr, masters_to_remove[i], masters_to_add[i])
+                    track_masters_to_remove.remove(masters_to_remove[i])
+                    track_masters_to_add.remove(masters_to_add[i])
+
+            if len(track_masters_to_add) != 0:
+                for master in track_masters_to_add:
+                    self.add_master_for_data_placement(master_addr, master)
+
+            if len(track_masters_to_remove) != 0:
+                for master in track_masters_to_remove:
+                    self.remove_master_for_data_placement(master_addr, master)
 
         current_masters = self.get_all_masters()
         placement_info = self.configs.temp_data.get("constraint_value")
@@ -656,14 +687,13 @@ class ControlScript(object):
                 placement_info.append(placement_locations[master.split(":")[0]])
             placement_info = ",".join(placement_info)
 
-        if not self.is_placement_constraint_valid_length(placement_info):
+        if not self.is_placement_constraint_valid_length(placement_info, rf_value):
             Output.log_error_and_exit("FAILED: Invalid number of placement constraint specified.")
 
         if not self.is_placement_constraint_valid_values(placement_locations, placement_info):
             Output.log_error_and_exit("FAILED: Invalid values provided for placement constraint.")
 
         master_addresses = ",".join(current_masters)
-        rf_value = self.configs.temp_data.get("replication_factor")
 
         if not YBAdminProxy.modify_placement_info(master_addresses, placement_info, rf_value):
             Output.log_error_and_exit("FAILED: Setting of placement info of masters")
@@ -672,8 +702,14 @@ class ControlScript(object):
 
         status_details = {}
         if self.is_master_placement_location_valid(placement_locations, new_masters):
-            success_status = "Universe can survive at least 1 availability {} failure".format(
-                    self.configs.temp_data.get("fault_tolerance"))
+            success_status = ""
+            if fault_tolerance == "zone":
+                success_status = "Universe can survive at least 1 availability {} failure".format(
+                    fault_tolerance)
+            if fault_tolerance == "region":
+                success_status = "Universe can survive at least 1 {} failure".format(
+                        fault_tolerance)
+
             status_details = [(Output.make_yellow("Status"),
             "Configuration successful. Primary data placement is geo-redundant"), ]
             status_details += [
@@ -861,6 +897,10 @@ class ControlScript(object):
 
     # Configuring encryption at rest
     def configure_encrypt_at_rest(self):
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
+
         status_details = []
         has_errors = False
 
@@ -1052,13 +1092,15 @@ class ControlScript(object):
 
     # Checks whether the prerequisites are met or not
     def prereqs_check(self, ulimits=False):
-        help_msg = "Review the following docs and rerun the start command.\n"
+        help_msg = ""
         if OS_NAME == "Linux":
             check = self.linux_prereqs_check()
-            help_msg+=('Quick start for Linux: '+QUICK_START_LINKS['linux']+'\n')
+            help_msg = "Please review the \'Quick start for Linux\' docs and rerun "\
+                "the start command: " + Output.make_underline(QUICK_START_LINKS['linux'])+'\n'
         else:
             check = self.mac_prereqs_check()
-            help_msg+=('Quick start for Mac: '+QUICK_START_LINKS['mac']+'\n')
+            help_msg+="Please review the \'Quick start for macOS\' docs and rerun "\
+                "the start command: "+ Output.make_underline(QUICK_START_LINKS['mac'])+'\n'
 
         prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn = check
 
@@ -1067,8 +1109,10 @@ class ControlScript(object):
         for prereq in prereqs_failed:
             failed_msg+=("- "+PREREQS_ERROR_MSGS[prereq]+"\n")
         warning_msg = ""
+        warnings = []
         for prereq in prereqs_warn:
             warning_msg+=("- "+PREREQS_ERROR_MSGS[prereq]+"\n")
+            warnings.append(PREREQS_ERROR_MSGS[prereq])
         ulimit_msg = {
             'open_files' :"- "+PREREQS_ERROR_MSGS['open_files']+"\n",
             'max_user_processes' :"- "+PREREQS_ERROR_MSGS['max_user_processes']+"\n",
@@ -1077,7 +1121,7 @@ class ControlScript(object):
         final_msg = ""
         check_status = None
         if prereqs_failed_flag:
-            final_msg += (Output.make_red("FAILED") + msg)
+            final_msg += (Output.ANIMATION_FAIL + " " + Output.make_red("FAILED") + ": " + msg)
             final_msg += (failed_msg+warning_msg)
             if ulimits:
                 for ulimit in ulimits:
@@ -1085,21 +1129,20 @@ class ControlScript(object):
             final_msg += ("\n"+help_msg+"\n")
             check_status = Output.ANIMATION_FAIL
         elif prereqs_warn_flag:
-            final_msg += (Output.make_yellow("WARNING") + msg)
-            final_msg += warning_msg
+            final_msg = warnings
             if ulimits:
                 for ulimit in ulimits:
-                    final_msg+=ulimit_msg[ulimit]
-            final_msg += ("\n"+help_msg+"\n")
+                    final_msg.append(PREREQS_ERROR_MSGS[ulimit])
+            final_msg.append(help_msg)
             check_status = Output.ANIMATION_WARNING
         elif ulimits:
-            final_msg += (Output.make_yellow("WARNING") + msg)
+            final_msg = []
             for ulimit in ulimits:
-                final_msg+=ulimit_msg[ulimit]
-            final_msg += ("\n"+help_msg+"\n")
+                final_msg.append(PREREQS_ERROR_MSGS[ulimit])
+            final_msg.append(help_msg)
             check_status = Output.ANIMATION_WARNING
         else:
-            final_msg = "System checks"
+            final_msg = Output.ANIMATION_SUCCESS + " " + "System checks"
             check_status = Output.ANIMATION_SUCCESS
 
         result = {
@@ -1333,6 +1376,9 @@ class ControlScript(object):
         if self.configs.saved_data.get("use_cassandra_authentication"):
             yb_tserver_cmd.extend(["--use_cassandra_authentication=true"])
 
+        if self.configs.saved_data.get("dns_enabled"):
+            yb_tserver_cmd.extend(["--use_node_hostname_for_local_tserver=true"])
+
         self.processes = {
             "master": YBProcessManager(
                 "master", yb_master_cmd, self.configs.saved_data.get("log_dir"),
@@ -1341,15 +1387,6 @@ class ControlScript(object):
                 "tserver", yb_tserver_cmd, self.configs.saved_data.get("log_dir"),
                 self.configs.saved_data.get("data_dir")),
         }
-
-        # if self.configs.temp_data.get("ui"):
-        #     yugabyted_ui_cmd = [ find_binary_location("yugabyted-ui")] + \
-        #         [
-        #             "-database_host={}".format(bind_ip)
-        #         ]
-        #     self.processes["yugabyted-ui"] = ProcessManager(
-        #         "yugabyted-ui", yugabyted_ui_cmd, self.configs.saved_data.get("log_dir"),
-        #         self.configs.saved_data.get("data_dir"))
 
         for p in self.processes.values():
             pid = p.get_pid()
@@ -1388,8 +1425,9 @@ class ControlScript(object):
 
             # Start or initialize yb-master and yb-tserver.
             if is_first_run:
-                Output.init_animation("Running system checks...")
-
+                # Output.init_animation("Running system checks...")
+                warnings = []
+                warning_help_msg=""
                 ulimits_failed = self.script.set_rlimits(print_info=True)
                 if ulimits_failed:
                     msg = "Failed to meet recommended settings. Ulimits too low - {}.\n".format(
@@ -1399,10 +1437,16 @@ class ControlScript(object):
                     self.alerts.append((ALERT_WARNING, ULIMIT_ERR_CODE, ulimit_warn_msg))
 
                 prereqs_check_result = self.prereqs_check(ulimits=ulimits_failed)
-                Output.update_animation(msg=prereqs_check_result['msg'],
-                    status=prereqs_check_result['status'])
-                if prereqs_check_result['status']==Output.ANIMATION_FAIL:
-                    Output.log(msg=prereqs_check_result['msg'], level=logging.ERROR)
+                # Output.update_animation(msg=prereqs_check_result['msg'],
+                #     status=prereqs_check_result['status'])
+                if prereqs_check_result['status']==Output.ANIMATION_SUCCESS:
+                    Output.print_out(prereqs_check_result['msg'])
+                elif prereqs_check_result['status']==Output.ANIMATION_WARNING:
+                    warnings.extend(prereqs_check_result['msg'][:-1])
+                    warning_help_msg = prereqs_check_result['msg'][-1]
+                elif prereqs_check_result['status']==Output.ANIMATION_FAIL:
+                    Output.log(msg=prereqs_check_result['msg'],
+                        level=logging.ERROR)
 
                 Output.init_animation("Starting the YugabyteDB Processes...")
 
@@ -1432,8 +1476,7 @@ class ControlScript(object):
                     Output.update_animation("Encryption in Transit and " +
                         "Password Authentication enabled")
                 else:
-                    Output.print_and_log(Output.make_yellow(Output.ANIMATION_WARNING +
-                        " WARNING:") + " Cluster started in an insecure mode without " +
+                    warnings.append("Cluster started in an insecure mode without " +
                         "authentication and encryption enabled. For non-production use only, " +
                         "not to be used without firewalls blocking the internet traffic.")
 
@@ -1474,6 +1517,15 @@ class ControlScript(object):
             if is_first_install and not join_ip:
                 self.first_install_init_auth()
 
+            if warnings:
+                warning_msg = "\n" + Output.make_yellow(Output.ANIMATION_WARNING +
+                    " WARNINGS") + ":\n"
+
+                for msg in warnings:
+                    warning_msg += "- " + msg + "\n"
+                if warning_help_msg:
+                    warning_msg += warning_help_msg
+
             if is_first_run:
                 status = self.get_status_string() + \
                     "{} YugabyteDB started successfully! To load a sample dataset, " \
@@ -1491,6 +1543,9 @@ class ControlScript(object):
 
                 if len(self.setup_env_init.get_ysql_password()) > 99:
                     status = status + Output.make_red(YSQL_PASSWORD_LENGTH_WARNING)
+
+                if warnings:
+                    Output.print_out(warning_msg)
 
                 Output.print_out(status)
 
@@ -1836,13 +1891,20 @@ class ControlScript(object):
 
     # Raises a Retryable error if the master is not in the list of master of the cluster
     def get_master_at_addrs(self, master):
-        join_ip = self.configs.saved_data.get("join")
-        advertise_ip = self.advertise_ip()
-        master_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
-                                        self.configs.saved_data.get("master_rpc_port"))
 
-        all_masters_and_roles = { m[1].split(":")[0]: m[2]
-                                    for m in YBAdminProxy.get_masters(master_addr) }
+        current_masters = self.configs.saved_data.get("current_masters")
+        all_masters_and_roles = ""
+        if current_masters:
+            all_masters_and_roles = { m[1].split(":")[0]: m[2]
+                                    for m in YBAdminProxy.get_masters(current_masters) }
+        if not all_masters_and_roles:
+            join_ip = self.configs.saved_data.get("join")
+            advertise_ip = self.advertise_ip()
+            master_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
+                                            self.configs.saved_data.get("master_rpc_port"))
+            all_masters_and_roles = { m[1].split(":")[0]: m[2]
+                                        for m in YBAdminProxy.get_masters(master_addr) }
+
         if master in all_masters_and_roles and all_masters_and_roles[master] == "FOLLOWER":
             return True
 
@@ -2000,41 +2062,54 @@ class ControlScript(object):
         return ft_location
 
     # Get new valid master addresses that does not violate fault tolerance policy
-    # if there are not any masters then raise error and output the same
-    def get_new_valid_masters(self, current_masters, leader_master, master_locations):
+    def get_new_valid_masters(self, current_masters, leader_master,
+                              master_locations, replication_factor):
+
         new_master_locations = dict()
         new_master_locations[leader_master] = self.get_cloud_location_per_fault_tolerance(
                                                 master_locations[leader_master])
-        self.get_cloud_location_per_fault_tolerance(master_locations[leader_master])
-
+        # check if the current master's cloud location are already
+        # statisfying the fault tolerance value and replication factor (implied or explicit)
+        # specified in the configure command
         for master in current_masters:
             ft_location = self.get_cloud_location_per_fault_tolerance(master_locations[master])
             if ft_location not in new_master_locations.values():
                 new_master_locations[master] = ft_location
 
-        if len(new_master_locations) == len(current_masters):
+        if len(new_master_locations) == int(replication_factor):
             return new_master_locations.keys()
 
+        # if new masters list is not equal to replication factor,
+        # determine new masters based on the distinct cloud locations
+        # of nodes in the cluster
         for master, location in master_locations.items():
             ft_location = self.get_cloud_location_per_fault_tolerance(location)
             if ft_location not in new_master_locations.values():
                 new_master_locations[master] = ft_location
-            if len(new_master_locations) == len(current_masters):
-                break
+            if len(new_master_locations) == int(replication_factor):
+                return new_master_locations.keys()
 
+        # if new master list is not equal to replication factor after iterating
+        # through the distinct cloud locations, add the existing masters back
+        # to the new master's list for satisfying the replication factor.
         new_valid_masters_list = new_master_locations.keys()
-
-        if len(new_valid_masters_list) != len(current_masters):
+        if len(new_valid_masters_list) != int(replication_factor):
             for master in current_masters:
                 if not master in new_valid_masters_list:
                     new_valid_masters_list.append(master)
-                if len(new_valid_masters_list) == len(current_masters):
+                if len(new_valid_masters_list) == int(replication_factor):
                     break
 
         return new_valid_masters_list
 
     # Replace the old master with a new one to maintain fault tolerance policy
     def replace_master(self, master_addr, old_master, new_master):
+        self.add_master_for_data_placement(master_addr, new_master)
+        self.remove_master_for_data_placement(master_addr, old_master)
+
+    # add a new master computed during configure data_placement command
+    def add_master_for_data_placement(self, master_addr, new_master):
+
         Output.log("Adding master {} to the cluster.".format(new_master))
         if not YBAdminProxy.add_master(master_addr, new_master):
             Output.log_error_and_exit("Failed to add master {} to the cluster."
@@ -2045,6 +2120,9 @@ class ControlScript(object):
         else:
             Output.log("Added master {} to the cluster".format(new_master))
 
+    # remove an master computed during configure data_placement command
+    def remove_master_for_data_placement(self, master_addr, old_master):
+
         Output.log("Removing master {} from the cluster.".format(old_master))
         if not YBAdminProxy.remove_master(master_addr, old_master):
             Output.log_error_and_exit("Failed to remove master {} from the cluster."
@@ -2054,6 +2132,7 @@ class ControlScript(object):
                             .format(old_master))
         else:
             Output.log("Removed master {} from the cluster".format(old_master))
+
 
     # After Master reconsile step is complete, determine if master placement
     # is valid per fault tolerance specified in the configure command
@@ -2102,12 +2181,11 @@ class ControlScript(object):
 
         return is_valid
 
-    def is_placement_constraint_valid_length(self, placement_constraint):
+    def is_placement_constraint_valid_length(self, placement_constraint, replication_factor):
 
         placement_constraint_list = placement_constraint.split(',')
-
         is_valid = True
-        if len(placement_constraint_list) != 3:
+        if len(placement_constraint_list) != int(replication_factor):
             is_valid = False
 
         return is_valid
@@ -2568,12 +2646,21 @@ class ControlScript(object):
         # Regex expression for validating IPv6
         ipv6_regex = "((([0-9a-fA-F]){1,4})\\:){7}([0-9a-fA-F]){1,4}"
 
+        # Regex expression for validating DNS names
+        dns_regex = "^((?!-)[A-Za-z0-9-]" + "{1,63}(?<!-)\\.)" +"+[A-Za-z]{2,6}"
+
         ipv4_pattern = re.compile(ipv4_regex)
         ipv6_pattern = re.compile(ipv6_regex)
+        dns_pattern = re.compile(dns_regex)
 
         # Checking if it is not a valid IPv4 or IPv6 addresses
-        if not (re.search(ipv4_pattern, ip) or re.search(ipv6_pattern, ip)):
+        if not (re.search(ipv4_pattern, ip) or
+                re.search(ipv6_pattern, ip) or
+                re.search(dns_pattern, ip)):
             return False
+
+        if re.search(dns_pattern, ip):
+            self.configs.saved_data["dns_enabled"] = True
 
         return True
 
@@ -3067,8 +3154,12 @@ class ControlScript(object):
                     self.configs.saved_data["ca_cert_file_path"] = os.path.join(args.certs_dir,
                                                                                     "ca.crt")
 
-            args.ui = self.parse_bool(args.ui)
             args.background = self.parse_bool(args.background)
+            if args.ui is not None:
+                args.ui = self.parse_bool(args.ui)
+            else:
+                args.ui = self.configs.saved_data.get("ui")
+
             if args.callhome is not None:
                 args.callhome = self.parse_bool(args.callhome)
             elif os.environ.get("YB_DISABLE_CALLHOME") is not None:
@@ -3093,15 +3184,6 @@ class ControlScript(object):
                 if self.setup_env_init.is_exists('YCQL_USER') or \
                         self.setup_env_init.is_exists('YCQL_PASSWORD'):
                     args.use_cassandra_authentication = True
-
-            # Output.log("Downloading the Yugabyted UI Binaries.")
-            # if args.ui and not self.download_extract_yugabyted_ui_binary():
-            #     Output.print_out('WARNING: UI disabled - Unable to download ui binaries.')
-            #     args.ui = False
-
-            # if args.ui and not self.java_installed():
-            #     Output.print_out('WARNING: UI disabled - Java 1.8 or higher is required.')
-            #     args.ui = False
 
             self.configs.temp_data["background"] = args.background
             self.configs.saved_data["ui"] = args.ui
@@ -3324,7 +3406,7 @@ class ControlScript(object):
                 "--callhome", choices=BOOL_CHOICES,
                 help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--ui", choices=BOOL_CHOICES, default="true", metavar="",
+                "--ui", choices=BOOL_CHOICES, metavar="",
                 help="Toggle enabling or disabling webserver UI. Default true.")
             cur_parser.add_argument(
                 "--ysql_enable_auth", choices=BOOL_CHOICES,
@@ -3492,6 +3574,7 @@ class Configs(object):
             "database_password": None,
             "current_masters": "",
             "ui": True,
+            "dns_enabled": False,
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
@@ -3675,7 +3758,6 @@ class ProcessManager(object):
         def temp_func():
             return self.is_proc_running(pid)
         retry_op(temp_func, timeout=60)
-        time.sleep(2)
         return
 
     # Delete corresponding pidfile for this process.

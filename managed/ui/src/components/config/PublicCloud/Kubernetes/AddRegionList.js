@@ -179,10 +179,10 @@ class AddRegionList extends Component {
     const { regionIndex, showZoneForm } = this.state;
     const { regionList } = formik.values;
     const currentRegion = regionList[regionIndex];
-    const zoneIndex =
-      currentRegion?.zoneList?.length ? currentRegion.zoneList.length - 1 : 0;
-    const nonEditingZones =
-      currentRegion?.zoneList ? currentRegion.zoneList?.slice(0, zoneIndex) : [];
+    const zoneIndex = currentRegion?.zoneList?.length ? currentRegion.zoneList.length - 1 : 0;
+    const nonEditingZones = currentRegion?.zoneList
+      ? currentRegion.zoneList?.slice(0, zoneIndex)
+      : [];
     const regionOptions = REGION_METADATA.map((region) => ({
       value: region.code,
       label: region.name
@@ -351,14 +351,13 @@ class AddRegionList extends Component {
                                         {typeof getIn(
                                           formik.errors,
                                           `regionList[${regionIndex}].zoneList`
-                                        ) === 'string' ?
-                                          (
-                                            <div className="input-feedback">
-                                              <ErrorMessage
-                                                name={`regionList[${regionIndex}].zoneList`}
-                                              />
-                                            </div>
-                                          ) : null}
+                                        ) === 'string' ? (
+                                          <div className="input-feedback">
+                                            <ErrorMessage
+                                              name={`regionList[${regionIndex}].zoneList`}
+                                            />
+                                          </div>
+                                        ) : null}
                                       </Col>
                                     </Row>
                                     <Row className="config-provider-row">
@@ -459,7 +458,9 @@ class AddRegionList extends Component {
 
                                     <Row className="config-provider-row">
                                       <Col lg={3}>
-                                        <div className="form-item-custom-label">Pod Address Template</div>
+                                        <div className="form-item-custom-label">
+                                          Pod Address Template
+                                        </div>
                                       </Col>
                                       <Col lg={7}>
                                         <Field
