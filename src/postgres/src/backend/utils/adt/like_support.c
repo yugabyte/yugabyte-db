@@ -1770,3 +1770,12 @@ string_to_bytea_const(const char *str, size_t str_len)
 
 	return makeConst(BYTEAOID, -1, InvalidOid, -1, conval, false, false);
 }
+
+/*
+ * Externally exposed make_greater_string used by YB.
+ */
+Const *
+yb_make_greater_string(const Const *str_const, FmgrInfo *ltproc, Oid collation)
+{
+	return make_greater_string(str_const, ltproc, collation);
+}
