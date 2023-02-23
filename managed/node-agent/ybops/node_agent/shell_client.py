@@ -69,7 +69,8 @@ class RpcShellClient(object):
         :return: None
         """
 
-        root_certs = open(self.cert_path, mode='rb').read()
+        with open(self.cert_path, mode='rb') as file:
+            root_certs = file.read()
         cert_creds = ssl_channel_credentials(root_certificates=root_certs)
         auth_creds = metadata_call_credentials(
                 AuthTokenCallback(self.auth_token), name='auth_creds')
@@ -259,7 +260,7 @@ class RpcShellClient(object):
         stub = NodeAgentStub(self.channel)
         try:
             timeout_sec = kwargs.get('timeout', PING_TIMEOUT_SEC)
-            stub.Ping(PingRequest(data="connection-test"), timeout=timeout_sec)
+            stub.Ping(PingRequest(), timeout=timeout_sec)
             return True
         except Exception as e:
             return False
