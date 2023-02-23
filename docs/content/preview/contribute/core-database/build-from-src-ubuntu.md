@@ -158,8 +158,11 @@ sudo apt install -y file patchelf
 
 Run the `yb_release` script to build a release package using the following command:
 
+```sh
+./yb_release
+```
+
 ```output.sh
-$ ./yb_release
 ......
 2023-02-17 01:26:37,156 [yb_release.py:299 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.17.2.0-ede2a2619ea8470064a5a2c0d7fa510dbee3ce81-release-clang15-ubuntu20-x86_64.tar.gz'
 ```

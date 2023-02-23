@@ -152,8 +152,11 @@ sudo yum install -y npm golang
 
 Run the `yb_release` script to build a release package using the following command:
 
+```sh
+./yb_release
+```
+
 ```output.sh
-$ ./yb_release
 ......
 2023-02-10 23:19:46,459 [yb_release.py:299 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.17.2.0-44b735cc69998d068d561f4b6f337b318fbc2424-release-clang15-centos-x86_64.tar.gz'
 ```
