@@ -20,6 +20,7 @@ import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -222,6 +223,23 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testValidAPILogin() {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer();
+    ModelFactory.testUser(customer);
+    ObjectNode loginJson = Json.newObject();
+    loginJson.put("email", "test@customer.com");
+    loginJson.put("password", "password");
+    Result result = route(fakeRequest("POST", "/api/api_login").bodyJson(loginJson));
+    JsonNode json = Json.parse(contentAsString(result));
+
+    assertEquals(OK, result.status());
+    assertNull("UI Session should not be created", json.get("authToken"));
+    assertNotNull(json.get("apiToken"));
     assertAuditEntry(1, customer.uuid);
   }
 
