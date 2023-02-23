@@ -95,7 +95,7 @@ sudo yum install -y cmake3
 
 ### Ninja (optional)
 
-Use [Ninja][ninja] for faster builds.
+{{% readfile "includes/ninja.md" %}}
 
 The latest release can be downloaded:
 
@@ -105,8 +105,6 @@ latest_zip_url=$(curl -Ls "https://api.github.com/repos/ninja-build/ninja/releas
 curl -Ls "$latest_zip_url" | zcat | sudo tee /usr/local/bin/ninja >/dev/null
 sudo chmod +x /usr/local/bin/ninja
 ```
-
-[ninja]: https://ninja-build.org
 
 ### Ccache (optional)
 

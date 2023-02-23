@@ -102,13 +102,11 @@ export PATH="$HOME/tools/cmake-3.25.2-linux-x86_64/bin:$PATH"
 
 ### Ninja (optional)
 
-Use [Ninja][ninja] for faster builds.
+{{% readfile "includes/ninja.md" %}}
 
 ```sh
 sudo apt install -y ninja-build
 ```
-
-[ninja]: https://ninja-build.org
 
 ### Ccache (optional)
 

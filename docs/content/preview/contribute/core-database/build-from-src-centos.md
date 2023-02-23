@@ -94,13 +94,11 @@ sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
 
 ### Ninja (optional)
 
-Use [Ninja][ninja] for faster builds.
+{{% readfile "includes/ninja.md" %}}
 
 ```sh
 sudo yum install -y ninja-build
 ```
-
-[ninja]: https://ninja-build.org
 
 ### Ccache (optional)
 
