@@ -60,7 +60,7 @@ Learn how to perform the common tasks required for Node.js application developme
 The following connection properties need to be added to enable load balancing:
 
 - `loadBalance` - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
-- `topologyKeys` - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`. Specify all zones in a region as `cloud.region.*`. To designate fallback locations for when the primary location is unreachable, specify a priority in the form `:n`, where n is the order of precedence. For example, `cloud1.datacenter1.rack1:1,cloud1.datacenter1.rack2:2`.
+- `topologyKeys` - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`. Specify all zones in a region as `cloud.region.*`. To designate fallback locations for when the primary location is unreachable, specify a priority in the form `:n`, where `n` is the order of precedence. For example, `cloud1.datacenter1.rack1:1,cloud1.datacenter1.rack2:2`.
 
 By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `ybServersRefreshInterval` parameter.
 
@@ -78,7 +78,7 @@ To use the driver, do the following:
     client.connect()
     ```
 
-    After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
+    After the driver establishes the initial connection, it fetches the list of available servers from the universe and performs load balancing of subsequent connection requests across these servers.
 
 - To specify topology keys, set the `topologyKeys` property to comma separated values, as per the following connection string:
 
