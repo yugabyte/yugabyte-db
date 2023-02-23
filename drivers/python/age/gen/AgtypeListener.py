@@ -12,7 +12,8 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-# Generated from Agtype.g4 by ANTLR 4.9.2
+# Generated from ../Agtype.g4 by ANTLR 4.11.1
+
 from antlr4 import *
 if __name__ is not None and "." in __name__:
     from .AgtypeParser import AgtypeParser

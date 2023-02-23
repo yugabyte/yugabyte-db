@@ -12,8 +12,9 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-# Generated from Agtype.g4 by ANTLR 4.9.2
+# Generated from ../Agtype.g4 by ANTLR 4.11.1
 # encoding: utf-8
+
 from antlr4 import *
 from io import StringIO
 import sys
@@ -22,39 +23,35 @@ if sys.version_info[1] > 5:
 else:
 	from typing.io import TextIO
 
-
 def serializedATN():
-    with StringIO() as buf:
-        buf.write("\3\u608b\ua72a\u8133\ub9ed\u417c\u3be7\u7786\u5964\3\25")
-        buf.write("R\4\2\t\2\4\3\t\3\4\4\t\4\4\5\t\5\4\6\t\6\4\7\t\7\4\b")
-        buf.write("\t\b\4\t\t\t\3\2\3\2\3\2\3\3\3\3\5\3\30\n\3\3\4\3\4\3")
-        buf.write("\4\3\4\3\4\3\4\3\4\3\4\5\4\"\n\4\3\5\3\5\3\5\3\5\7\5(")
-        buf.write("\n\5\f\5\16\5+\13\5\3\5\3\5\3\5\3\5\5\5\61\n\5\3\6\3\6")
-        buf.write("\3\6\3\6\3\7\3\7\3\7\3\7\7\7;\n\7\f\7\16\7>\13\7\3\7\3")
-        buf.write("\7\3\7\3\7\5\7D\n\7\3\b\3\b\3\b\3\t\3\t\3\t\5\tL\n\t\3")
-        buf.write("\t\3\t\5\tP\n\t\3\t\2\2\n\2\4\6\b\n\f\16\20\2\2\2Y\2\22")
-        buf.write("\3\2\2\2\4\25\3\2\2\2\6!\3\2\2\2\b\60\3\2\2\2\n\62\3\2")
-        buf.write("\2\2\fC\3\2\2\2\16E\3\2\2\2\20O\3\2\2\2\22\23\5\4\3\2")
-        buf.write("\23\24\7\2\2\3\24\3\3\2\2\2\25\27\5\6\4\2\26\30\5\16\b")
-        buf.write("\2\27\26\3\2\2\2\27\30\3\2\2\2\30\5\3\2\2\2\31\"\7\21")
-        buf.write("\2\2\32\"\7\22\2\2\33\"\5\20\t\2\34\"\7\3\2\2\35\"\7\4")
-        buf.write("\2\2\36\"\7\5\2\2\37\"\5\b\5\2 \"\5\f\7\2!\31\3\2\2\2")
-        buf.write("!\32\3\2\2\2!\33\3\2\2\2!\34\3\2\2\2!\35\3\2\2\2!\36\3")
-        buf.write("\2\2\2!\37\3\2\2\2! \3\2\2\2\"\7\3\2\2\2#$\7\6\2\2$)\5")
-        buf.write("\n\6\2%&\7\7\2\2&(\5\n\6\2\'%\3\2\2\2(+\3\2\2\2)\'\3\2")
-        buf.write("\2\2)*\3\2\2\2*,\3\2\2\2+)\3\2\2\2,-\7\b\2\2-\61\3\2\2")
-        buf.write("\2./\7\6\2\2/\61\7\b\2\2\60#\3\2\2\2\60.\3\2\2\2\61\t")
-        buf.write("\3\2\2\2\62\63\7\21\2\2\63\64\7\t\2\2\64\65\5\4\3\2\65")
-        buf.write("\13\3\2\2\2\66\67\7\n\2\2\67<\5\4\3\289\7\7\2\29;\5\4")
-        buf.write("\3\2:8\3\2\2\2;>\3\2\2\2<:\3\2\2\2<=\3\2\2\2=?\3\2\2\2")
-        buf.write("><\3\2\2\2?@\7\13\2\2@D\3\2\2\2AB\7\n\2\2BD\7\13\2\2C")
-        buf.write("\66\3\2\2\2CA\3\2\2\2D\r\3\2\2\2EF\7\f\2\2FG\7\20\2\2")
-        buf.write("G\17\3\2\2\2HP\7\23\2\2IP\7\24\2\2JL\7\r\2\2KJ\3\2\2\2")
-        buf.write("KL\3\2\2\2LM\3\2\2\2MP\7\16\2\2NP\7\17\2\2OH\3\2\2\2O")
-        buf.write("I\3\2\2\2OK\3\2\2\2ON\3\2\2\2P\21\3\2\2\2\n\27!)\60<C")
-        buf.write("KO")
-        return buf.getvalue()
-
+    return [
+        4,1,19,80,2,0,7,0,2,1,7,1,2,2,7,2,2,3,7,3,2,4,7,4,2,5,7,5,2,6,7,
+        6,2,7,7,7,1,0,1,0,1,0,1,1,1,1,3,1,22,8,1,1,2,1,2,1,2,1,2,1,2,1,2,
+        1,2,1,2,3,2,32,8,2,1,3,1,3,1,3,1,3,5,3,38,8,3,10,3,12,3,41,9,3,1,
+        3,1,3,1,3,1,3,3,3,47,8,3,1,4,1,4,1,4,1,4,1,5,1,5,1,5,1,5,5,5,57,
+        8,5,10,5,12,5,60,9,5,1,5,1,5,1,5,1,5,3,5,66,8,5,1,6,1,6,1,6,1,7,
+        1,7,1,7,3,7,74,8,7,1,7,1,7,3,7,78,8,7,1,7,0,0,8,0,2,4,6,8,10,12,
+        14,0,0,87,0,16,1,0,0,0,2,19,1,0,0,0,4,31,1,0,0,0,6,46,1,0,0,0,8,
+        48,1,0,0,0,10,65,1,0,0,0,12,67,1,0,0,0,14,77,1,0,0,0,16,17,3,2,1,
+        0,17,18,5,0,0,1,18,1,1,0,0,0,19,21,3,4,2,0,20,22,3,12,6,0,21,20,
+        1,0,0,0,21,22,1,0,0,0,22,3,1,0,0,0,23,32,5,15,0,0,24,32,5,16,0,0,
+        25,32,3,14,7,0,26,32,5,1,0,0,27,32,5,2,0,0,28,32,5,3,0,0,29,32,3,
+        6,3,0,30,32,3,10,5,0,31,23,1,0,0,0,31,24,1,0,0,0,31,25,1,0,0,0,31,
+        26,1,0,0,0,31,27,1,0,0,0,31,28,1,0,0,0,31,29,1,0,0,0,31,30,1,0,0,
+        0,32,5,1,0,0,0,33,34,5,4,0,0,34,39,3,8,4,0,35,36,5,5,0,0,36,38,3,
+        8,4,0,37,35,1,0,0,0,38,41,1,0,0,0,39,37,1,0,0,0,39,40,1,0,0,0,40,
+        42,1,0,0,0,41,39,1,0,0,0,42,43,5,6,0,0,43,47,1,0,0,0,44,45,5,4,0,
+        0,45,47,5,6,0,0,46,33,1,0,0,0,46,44,1,0,0,0,47,7,1,0,0,0,48,49,5,
+        15,0,0,49,50,5,7,0,0,50,51,3,2,1,0,51,9,1,0,0,0,52,53,5,8,0,0,53,
+        58,3,2,1,0,54,55,5,5,0,0,55,57,3,2,1,0,56,54,1,0,0,0,57,60,1,0,0,
+        0,58,56,1,0,0,0,58,59,1,0,0,0,59,61,1,0,0,0,60,58,1,0,0,0,61,62,
+        5,9,0,0,62,66,1,0,0,0,63,64,5,8,0,0,64,66,5,9,0,0,65,52,1,0,0,0,
+        65,63,1,0,0,0,66,11,1,0,0,0,67,68,5,10,0,0,68,69,5,14,0,0,69,13,
+        1,0,0,0,70,78,5,17,0,0,71,78,5,18,0,0,72,74,5,11,0,0,73,72,1,0,0,
+        0,73,74,1,0,0,0,74,75,1,0,0,0,75,78,5,12,0,0,76,78,5,13,0,0,77,70,
+        1,0,0,0,77,71,1,0,0,0,77,73,1,0,0,0,77,76,1,0,0,0,78,15,1,0,0,0,
+        8,21,31,39,46,58,65,73,77
+    ]
 
 class AgtypeParser ( Parser ):
 
@@ -111,7 +108,7 @@ class AgtypeParser ( Parser ):
 
     def __init__(self, input:TokenStream, output:TextIO = sys.stdout):
         super().__init__(input, output)
-        self.checkVersion("4.9.2")
+        self.checkVersion("4.11.1")
         self._interp = ParserATNSimulator(self, self.atn, self.decisionsToDFA, self.sharedContextCache)
         self._predicates = None
 
@@ -218,7 +215,7 @@ class AgtypeParser ( Parser ):
             self.state = 21
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if _la==AgtypeParser.T__9:
+            if _la==10:
                 self.state = 20
                 self.typeAnnotation()
 
@@ -447,49 +444,49 @@ class AgtypeParser ( Parser ):
             self.state = 31
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [AgtypeParser.STRING]:
+            if token in [15]:
                 localctx = AgtypeParser.StringValueContext(self, localctx)
                 self.enterOuterAlt(localctx, 1)
                 self.state = 23
                 self.match(AgtypeParser.STRING)
                 pass
-            elif token in [AgtypeParser.INTEGER]:
+            elif token in [16]:
                 localctx = AgtypeParser.IntegerValueContext(self, localctx)
                 self.enterOuterAlt(localctx, 2)
                 self.state = 24
                 self.match(AgtypeParser.INTEGER)
                 pass
-            elif token in [AgtypeParser.T__10, AgtypeParser.T__11, AgtypeParser.T__12, AgtypeParser.RegularFloat, AgtypeParser.ExponentFloat]:
+            elif token in [11, 12, 13, 17, 18]:
                 localctx = AgtypeParser.FloatValueContext(self, localctx)
                 self.enterOuterAlt(localctx, 3)
                 self.state = 25
                 self.floatLiteral()
                 pass
-            elif token in [AgtypeParser.T__0]:
+            elif token in [1]:
                 localctx = AgtypeParser.TrueBooleanContext(self, localctx)
                 self.enterOuterAlt(localctx, 4)
                 self.state = 26
                 self.match(AgtypeParser.T__0)
                 pass
-            elif token in [AgtypeParser.T__1]:
+            elif token in [2]:
                 localctx = AgtypeParser.FalseBooleanContext(self, localctx)
                 self.enterOuterAlt(localctx, 5)
                 self.state = 27
                 self.match(AgtypeParser.T__1)
                 pass
-            elif token in [AgtypeParser.T__2]:
+            elif token in [3]:
                 localctx = AgtypeParser.NullValueContext(self, localctx)
                 self.enterOuterAlt(localctx, 6)
                 self.state = 28
                 self.match(AgtypeParser.T__2)
                 pass
-            elif token in [AgtypeParser.T__3]:
+            elif token in [4]:
                 localctx = AgtypeParser.ObjectValueContext(self, localctx)
                 self.enterOuterAlt(localctx, 7)
                 self.state = 29
                 self.obj()
                 pass
-            elif token in [AgtypeParser.T__7]:
+            elif token in [8]:
                 localctx = AgtypeParser.ArrayValueContext(self, localctx)
                 self.enterOuterAlt(localctx, 8)
                 self.state = 30
@@ -559,7 +556,7 @@ class AgtypeParser ( Parser ):
                 self.state = 39
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                while _la==AgtypeParser.T__4:
+                while _la==5:
                     self.state = 35
                     self.match(AgtypeParser.T__4)
                     self.state = 36
@@ -697,7 +694,7 @@ class AgtypeParser ( Parser ):
                 self.state = 58
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                while _la==AgtypeParser.T__4:
+                while _la==5:
                     self.state = 54
                     self.match(AgtypeParser.T__4)
                     self.state = 55
@@ -819,22 +816,22 @@ class AgtypeParser ( Parser ):
             self.state = 77
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [AgtypeParser.RegularFloat]:
+            if token in [17]:
                 self.enterOuterAlt(localctx, 1)
                 self.state = 70
                 self.match(AgtypeParser.RegularFloat)
                 pass
-            elif token in [AgtypeParser.ExponentFloat]:
+            elif token in [18]:
                 self.enterOuterAlt(localctx, 2)
                 self.state = 71
                 self.match(AgtypeParser.ExponentFloat)
                 pass
-            elif token in [AgtypeParser.T__10, AgtypeParser.T__11]:
+            elif token in [11, 12]:
                 self.enterOuterAlt(localctx, 3)
                 self.state = 73
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                if _la==AgtypeParser.T__10:
+                if _la==11:
                     self.state = 72
                     self.match(AgtypeParser.T__10)
 
@@ -842,7 +839,7 @@ class AgtypeParser ( Parser ):
                 self.state = 75
                 self.match(AgtypeParser.T__11)
                 pass
-            elif token in [AgtypeParser.T__12]:
+            elif token in [13]:
                 self.enterOuterAlt(localctx, 4)
                 self.state = 76
                 self.match(AgtypeParser.T__12)
@@ -857,8 +854,5 @@ class AgtypeParser ( Parser ):
         finally:
             self.exitRule()
         return localctx
-
-
-
 
 

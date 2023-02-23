@@ -5,3 +5,5 @@ build.sh
 .idea
 .deps
 .DS_Store
+*.tokens
+*.interp
