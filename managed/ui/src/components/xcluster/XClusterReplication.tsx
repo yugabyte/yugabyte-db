@@ -1,30 +1,55 @@
 import React from 'react';
+import clsx from 'clsx';
 import { Col, Row } from 'react-bootstrap';
 import { useDispatch, useSelector } from 'react-redux';
-import clsx from 'clsx';
+import { useQuery } from 'react-query';
 
 import { closeDialog, openDialog } from '../../actions/modal';
 import { YBButton } from '../common/forms/fields';
 import { ConfigureMaxLagTimeModal } from './ConfigureMaxLagTimeModal';
 import { CreateConfigModal } from './createConfig/CreateConfigModal';
 import { XClusterConfigList } from './XClusterConfigList';
+import { api } from '../../redesign/helpers/api';
+import { YBErrorIndicator, YBLoading } from '../common/indicators';
+import { getUniverseStatus } from '../universes/helpers/universeHelpers';
+import { UnavailableUniverseStates } from '../../redesign/helpers/constants';
 
-import styles from './Replication.module.scss';
+import { Universe } from '../../redesign/helpers/dtos';
 
-export default function Replication({ currentUniverseUUID }: { currentUniverseUUID: string }) {
+import styles from './XClusterReplication.module.scss';
+
+export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUUID: string }) => {
   const dispatch = useDispatch();
   const { showModal, visibleModal } = useSelector((state: any) => state.modal);
+
+  const universeQuery = useQuery<Universe>(['universe', currentUniverseUUID], () =>
+    api.fetchUniverse(currentUniverseUUID)
+  );
+
+  if (universeQuery.isLoading || universeQuery.isIdle) {
+    return <YBLoading />;
+  }
+
+  if (universeQuery.isError) {
+    return (
+      <YBErrorIndicator
+        customErrorMessage={`Error fetching universe with UUID: ${currentUniverseUUID}`}
+      />
+    );
+  }
 
   const showAddClusterReplicationModal = () => {
     dispatch(openDialog('addClusterReplicationModal'));
   };
-
   const showConfigureMaxLagTimeModal = () => {
     dispatch(openDialog('configureMaxLagTimeModal'));
   };
 
   const hideModal = () => dispatch(closeDialog());
 
+  const shouldDisableXClusterActions = UnavailableUniverseStates.includes(
+    getUniverseStatus(universeQuery.data).state
+  );
   return (
     <>
       <Row>
@@ -44,6 +69,7 @@ export default function Replication({ currentUniverseUUID }: { currentUniverseUU
                 btnText="Configure Replication"
                 btnClass={'btn btn-orange'}
                 onClick={showAddClusterReplicationModal}
+                disabled={shouldDisableXClusterActions}
               />
             </Row>
           </Row>
@@ -67,4 +93,4 @@ export default function Replication({ currentUniverseUUID }: { currentUniverseUU
       </Row>
     </>
   );
-}
+};
