@@ -3201,8 +3201,46 @@ class PgLibPqCatalogVersionTest : public PgLibPqTest {
     Version last_breaking_version;
   };
 
+  static constexpr auto kYugabyteDatabase = "yugabyte";
+  static constexpr auto kTestDatabase = "test_db";
+
   using MasterCatalogVersionMap = std::unordered_map<Oid, CatalogVersion>;
   using ShmCatalogVersionMap = std::unordered_map<Oid, Version>;
+
+  // Prepare the table pg_yb_catalog_version to have one row per database.
+  // The pg_yb_catalog_version row for a database is inserted at CREATE DATABASE time
+  // when the gflag --TEST_enable_db_catalog_version_mode is true. It is expected for
+  // users to add the rows for existing databases manually. If we change to always
+  // insert a row into pg_yb_catalog_version at CREATE DATABASE time regardless of
+  // the value of --TEST_enable_db_catalog_version_mode, then a new YSQL upgrade
+  // migration will take care of adding rows for existing databases.
+  Status PrepareDBCatalogVersion(PGConn* conn) {
+    LOG(INFO) << "Preparing pg_yb_catalog_version to have one row per database";
+    RETURN_NOT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+    // "ON CONFLICT DO NOTHING" is only needed for the case where the cluster already has
+    // those rows (e.g., when initdb is run with --TEST_enable_db_catalog_version_mode=true).
+    RETURN_NOT_OK(conn->Execute("INSERT INTO pg_catalog.pg_yb_catalog_version "
+                                "SELECT oid, 1, 1 from pg_catalog.pg_database where oid != 1 "
+                                "ON CONFLICT DO NOTHING"));
+    return Status::OK();
+  }
+
+  void RestartClusterWithDBCatalogVersionMode(
+      const std::vector<string>& extra_tserver_flags = {}) {
+    LOG(INFO) << "Restart the cluster and turn on --TEST_enable_db_catalog_version_mode";
+    cluster_->Shutdown();
+    for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+      cluster_->master(i)->mutable_flags()->push_back("--TEST_enable_db_catalog_version_mode=true");
+    }
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      cluster_->tablet_server(i)->mutable_flags()->push_back(
+          "--TEST_enable_db_catalog_version_mode=true");
+      for (const auto& flag : extra_tserver_flags) {
+        cluster_->tablet_server(i)->mutable_flags()->push_back(flag);
+      }
+    }
+    ASSERT_OK(cluster_->Restart());
+  }
 
   // Return a MasterCatalogVersionMap by making a query of the pg_yb_catalog_version table.
   static Result<MasterCatalogVersionMap> GetMasterCatalogVersionMap(PGConn* conn) {
@@ -3359,45 +3397,18 @@ class PgLibPqCatalogVersionTest : public PgLibPqTest {
 };
 
 TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion), PgLibPqCatalogVersionTest) {
-  const auto kYugabyteDatabase = "yugabyte"s;
-  const auto kTestDatabase = "test_db"s;
-
-  // Prepare the table pg_yb_catalog_version to have one row per database.
-  // The pg_yb_catalog_version row for a database is inserted at CREATE DATABATE time
-  // when the gflag --TEST_enable_db_catalog_version_mode is true. It is expected for
-  // users to add the rows for existing databases manually. If we change to always
-  // insert a row into pg_yb_catalog_version at CREATE DATABATE time regardless of
-  // the value of --TEST_enable_db_catalog_version_mode, then a new YSQL upgrade
-  // migration will take care of adding rows for existing databases.
   auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
-  LOG(INFO) << "Preparing pg_yb_catalog_version to have one row per database";
-  ASSERT_OK(conn_yugabyte.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
-  // "ON CONFLICT DO NOTHING" is only needed for the case where the cluster already has
-  // those rows (e.g., when initdb is run with --TEST_enable_db_catalog_version_mode=true).
-  ASSERT_OK(conn_yugabyte.Execute("INSERT INTO pg_catalog.pg_yb_catalog_version "
-                                  "SELECT oid, 1, 1 from pg_catalog.pg_database where oid != 1 "
-                                  "ON CONFLICT DO NOTHING"));
-
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
   // Remember the number of pre-existing databases.
   size_t num_initial_databases = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte)).size();
-
-  LOG(INFO) << "Restart the cluster and turn on --TEST_enable_db_catalog_version_mode";
-  cluster_->Shutdown();
-  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
-    cluster_->master(i)->mutable_flags()->push_back("--TEST_enable_db_catalog_version_mode=true");
-  }
-  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    cluster_->tablet_server(i)->mutable_flags()->push_back(
-        "--TEST_enable_db_catalog_version_mode=true");
-    // Set --ysql_num_databases_reserved_in_db_catalog_version_mode to a large number
-    // that allows room for only one more database to be created.
-    cluster_->tablet_server(i)->mutable_flags()->push_back(
-        Format("--ysql_num_databases_reserved_in_db_catalog_version_mode=$0",
-               tserver::TServerSharedData::kMaxNumDbCatalogVersions - num_initial_databases - 1));
-  }
-  ASSERT_OK(cluster_->Restart());
-
-  LOG(INFO) << "Connects to database 'yugabyte' on node at index 0.";
+  LOG(INFO) << "num_initial_databases: " << num_initial_databases;
+  // Set --ysql_num_databases_reserved_in_db_catalog_version_mode to a large number
+  // that allows room for only one more database to be created.
+  RestartClusterWithDBCatalogVersionMode(
+      {Format("--ysql_num_databases_reserved_in_db_catalog_version_mode=$0",
+              tserver::TServerSharedData::kMaxNumDbCatalogVersions -
+              num_initial_databases - 1)});
+  LOG(INFO) << "Connects to database '" << kYugabyteDatabase << "' on node at index 0.";
   pg_ts = cluster_->tablet_server(0);
   conn_yugabyte = ASSERT_RESULT(EnableCacheEventLog(ConnectToDB(kYugabyteDatabase)));
 
@@ -3537,6 +3548,45 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion), PgLibPqCatalog
   status = conn_yugabyte.ExecuteFormat("CREATE DATABASE $0_2", kTestDatabase);
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(), "too many databases");
+}
+
+/*
+ * (1) the test session connects to a database
+ * (2) the yugabyte session drops the database from another node
+ * (3) the test session runs its first query
+ */
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionDropDB),
+          PgLibPqCatalogVersionTest) {
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
+  RestartClusterWithDBCatalogVersionMode();
+  LOG(INFO) << "Connects to database '" << kYugabyteDatabase << "' on node at index 0.";
+  pg_ts = cluster_->tablet_server(0);
+  conn_yugabyte = ASSERT_RESULT(EnableCacheEventLog(ConnectToDB(kYugabyteDatabase)));
+  LOG(INFO) << "Create a new database";
+  const string new_db_name = kTestDatabase;
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", new_db_name));
+  auto new_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, new_db_name));
+  // The test session connects to a database from node at index 1.
+  pg_ts = cluster_->tablet_server(1);
+  auto conn_test = ASSERT_RESULT(EnableCacheEventLog(ConnectToDB(new_db_name)));
+
+  // The yugabyte session drops the database from node at index 0.
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("DROP DATABASE $0", new_db_name));
+  WaitForCatalogVersionToPropagate();
+
+  // Execute the first query in test session that does not involve any
+  // metadata lookup. This is fine.
+  ASSERT_OK(conn_test.Fetch("SELECT 1"));
+
+  // Execute any query in the test session that requires metadata lookup
+  // should fail with error indicating that the database has been dropped.
+  auto status = ResultToStatus(conn_test.Fetch("SELECT * FROM non_exist_table"));
+  LOG(INFO) << "status: " << status;
+  ASSERT_TRUE(status.IsNetworkError());
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      Format("catalog version for database $0 was not found", new_db_oid));
+  ASSERT_STR_CONTAINS(status.ToString(), "Database might have been dropped by another user");
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
