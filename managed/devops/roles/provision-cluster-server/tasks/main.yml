@@ -54,19 +54,28 @@
   when: use_chrony
   tags: yb-prebuilt-ami
 
-- name: Provision | Set swappiness off
-  sysctl:
-    name: vm.swappiness
-    value: 0
-    state: present
-  tags: yb-prebuilt-ami
+# Set sysctl values
+- block:
+  - name: Provision | Set swappiness off
+    sysctl:
+      name: vm.swappiness
+      value: 0
+      state: present
+    tags: yb-prebuilt-ami
 
-- name: Provision | Create core dump kernel pattern
-  sysctl:
-    name: kernel.core_pattern
-    value: "{{ yb_home_dir }}/cores/core_%e.%p"
-    state: present
-  tags: yb-prebuilt-ami
+  - name: Provision | Create core dump kernel pattern
+    sysctl:
+      name: kernel.core_pattern
+      value: "{{ yb_home_dir }}/cores/core_%e.%p"
+      state: present
+    tags: yb-prebuilt-ami
+
+  - name: "Provision | Set max map count to {{ vm_max_map_count }}"
+    sysctl:
+      name: vm.max_map_count
+      value: "{{ vm_max_map_count }}"
+      state: present
+    tags: yb-prebuilt-ami
 
 - name: Provision | Ensure proper permissions for mount paths.
   file:

@@ -499,6 +499,7 @@ bool		row_security;
 bool		check_function_bodies = true;
 bool		default_with_oids = false;
 bool		session_auth_is_superuser;
+bool		yb_enable_memory_tracking = true;
 
 int			log_min_error_statement = ERROR;
 int			log_min_messages = WARNING;
@@ -2164,6 +2165,18 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_enable_sequence_pushdown,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_memory_tracking", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enables tracking of memory consumption of the PostgreSQL "
+						  "process. This enhances garbage collection behaviour and memory usage "
+						  "observability."),
+			NULL
+		},
+		&yb_enable_memory_tracking,
 		true,
 		NULL, NULL, NULL
 	},

@@ -1366,9 +1366,10 @@ public class NodeManager extends DevopsBase {
         nodeIp = nodeDetails.cloudInfo.private_ip;
       }
     }
-    if (StringUtils.isNotBlank(nodeIp)) {
+    if (StringUtils.isNotBlank(nodeIp) && StringUtils.isNotBlank(userIntent.provider)) {
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
       getNodeAgentClient()
-          .maybeGetNodeAgentClient(nodeIp)
+          .maybeGetNodeAgentClient(nodeIp, provider)
           .ifPresent(
               nodeAgent -> {
                 commandArgs.add("--connection_type");

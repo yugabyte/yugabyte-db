@@ -1,4 +1,4 @@
-@import '../../../_style/colors';
+@use '../../../_style/colors';
 
 .ha-replication-view {
   &__header-buttons {
@@ -21,7 +21,7 @@
   }
 
   &__label {
-    color: $YB_SUBTITLE_COLOR;
+    color: colors.$YB_SUBTITLE_COLOR;
   }
 
   &__value {
@@ -66,9 +66,9 @@
     border: none;
     padding: 0;
 
-    color: $YB_ORANGE;
+    color: colors.$YB_ORANGE;
     &:hover {
-      color: $YB_ORANGE_HOVER;
+      color: colors.$YB_ORANGE_HOVER;
       text-decoration: underline;
     }
     cursor: pointer;

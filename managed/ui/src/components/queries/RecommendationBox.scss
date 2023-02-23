@@ -1,7 +1,7 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../_style/colors.scss';
-@import '../../_style/mixins.scss';
+@use '../../_style/colors.scss';
+@use '../../_style/mixins.scss';
 
 
 // Below changes are applied directly to React Bootstrap Panel component
@@ -42,7 +42,7 @@
         &:after {
           top: 30px;
           left: 13px;
-          color: $YB_VIOLET;
+          color: colors.$YB_VIOLET;
         }
 
         &:hover {
@@ -54,11 +54,11 @@
 
       display: block;
       position: relative;
-      @include transition(0.35s);
+      @include mixins.transition(0.35s);
 
       &:after {
         position: absolute;
-        color: $YB_VIOLET;
+        color: colors.$YB_VIOLET;
         top: 30px;
         left: 11px;
       }
@@ -68,7 +68,7 @@
         height: 65px;
         color: #FFFFFF;
         text-decoration: none;
-        @include transition(0.125s);
+        @include mixins.transition(0.125s);
       }
 
       &:active {

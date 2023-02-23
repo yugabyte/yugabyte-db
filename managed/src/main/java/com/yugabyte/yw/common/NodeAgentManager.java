@@ -6,12 +6,15 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.JWTVerifier;
 import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
+import com.yugabyte.yw.models.Provider;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import java.io.BufferedInputStream;
@@ -82,11 +85,14 @@ public class NodeAgentManager {
 
   private final Config appConfig;
   private final ConfigHelper configHelper;
+  private final RuntimeConfGetter confGetter;
 
   @Inject
-  public NodeAgentManager(Config appConfig, ConfigHelper configHelper) {
+  public NodeAgentManager(
+      Config appConfig, ConfigHelper configHelper, RuntimeConfGetter confGetter) {
     this.appConfig = appConfig;
     this.configHelper = configHelper;
+    this.confGetter = confGetter;
   }
 
   @Getter
@@ -264,8 +270,8 @@ public class NodeAgentManager {
    *
    * @return true if yes, false otherwise.
    */
-  public boolean isServerToBeInstalled() {
-    return appConfig.getBoolean(NODE_AGENT_SERVER_INSTALL_PROPERTY);
+  public boolean isServerToBeInstalled(Provider provider) {
+    return confGetter.getConfForScope(provider, ProviderConfKeys.installNodeAgentServer);
   }
 
   /**

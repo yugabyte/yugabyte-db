@@ -1,7 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import './mixins.scss';
-@import './variables.scss';
+@use "sass:color";
 
 $YB_TEXT_COLOR: #232329;
 
@@ -16,11 +15,17 @@ $YB_DARK_NAVY_BLUE: #000041;
 $YB_VIOLET_TEXT: #44518b;
 $YB_VIOLET_TEXT_NEW: #303a78;
 $YB_VIOLET_TEXT_LIGHT: #7f8ac5;
-$YB_VIOLET_TEXT_LIGHT_HOVER: lighten($YB_VIOLET_TEXT_LIGHT, 15%);
+$YB_VIOLET_TEXT_LIGHT_HOVER: color.adjust($YB_VIOLET_TEXT_LIGHT, $lightness: 15%);
 $YB_SIDEBAR_ICON: #495589;
-$YB_SIDEBAR_ICON_HOVER: desaturate(lighten($YB_SIDEBAR_ICON, 8%), 1.5%);
+$YB_SIDEBAR_ICON_HOVER: color.adjust(
+  color.adjust($YB_SIDEBAR_ICON, $lightness: 8%),
+  $saturation: -1.5%
+);
 $YB_SIDEBAR_TEXT: #afbaf5;
-$YB_SIDEBAR_TEXT_HOVER: desaturate(lighten($YB_SIDEBAR_TEXT, 20%), 7.5%);
+$YB_SIDEBAR_TEXT_HOVER: color.adjust(
+  color.adjust($YB_SIDEBAR_TEXT, $lightness: 20%),
+  $saturation: -7.5%
+);
 $YB_SIDEBAR_ACTIVE: #293569;
 $YB_LOGO_SUB: #626997;
 
@@ -35,8 +40,8 @@ $YB_ERROR_ICON_COLOR: #e73e36;
 $YB_WARNING_ICON_COLOR: #c88900;
 $YB_ERROR_LIGHT: #fdeceb;
 $YB_BLUE_COLOR: #35a3ff;
-$YB_FAIL_COLOR_ICON: darken($YB_FAIL_COLOR, 20%);
-$YB_FAIL_COLOR_DARK: darken($YB_FAIL_COLOR, 30%);
+$YB_FAIL_COLOR_ICON: color.adjust($YB_FAIL_COLOR, $lightness: -20%);
+$YB_FAIL_COLOR_DARK: color.adjust($YB_FAIL_COLOR, $lightness: -30%);
 $YB_WARNING_COLOR: #ff9933;
 $YB_DARK_GRAY: #9f9ea7;
 $YB_DARKER_GRAY: #67666c;

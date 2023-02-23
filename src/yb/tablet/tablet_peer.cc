@@ -116,6 +116,9 @@ DEFINE_UNKNOWN_int32(wait_queue_poll_interval_ms, 1000,
     "The interval duration between wait queue polls to fetch transaction statuses of "
     "active blockers.");
 
+DEFINE_RUNTIME_bool(abort_active_txns_during_xcluster_bootstrap, true,
+    "Abort active transactions during bootstrapping.");
+
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
 DECLARE_int64(cdc_intent_retention_ms);
@@ -1028,7 +1031,7 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
   return min_index;
 }
 
-Result<OpId> TabletPeer::GetCdcBootstrapOpIdByTableType() const {
+Result<OpId> TabletPeer::GetCdcBootstrapOpIdByTableType() {
   if (VERIFY_RESULT(shared_tablet_safe())->table_type() ==
       TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     // Transaction status tables do not have backup/restores, instead we need to bootstrap from the
@@ -1042,7 +1045,11 @@ Result<OpId> TabletPeer::GetCdcBootstrapOpIdByTableType() const {
     return OpId(0, index);
   }
 
-  return GetLatestLogEntryOpId();
+  auto index = GetLatestLogEntryOpId();
+  if (GetAtomicFlag(&FLAGS_abort_active_txns_during_xcluster_bootstrap)) {
+    RETURN_NOT_OK(AbortSQLTransactions());
+  }
+  return index;
 }
 
 Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
