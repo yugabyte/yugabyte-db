@@ -13,14 +13,14 @@ type: docs
 
 YugabyteDB Managed uses volume encryption for all data at rest, including your account data and your clusters and their backups. Data is AES-256 encrypted using native cloud provider technologies - S3 and EBS volume encryption for AWS, and server-side and persistent disk encryption for GCP. Volume encryption keys are managed by the cloud provider and anchored by hardware security appliances.
 
-In addition to basic volume encryption, you can enable database-level encryption for clusters. When enabled, your YugabyteDB database (including backups) is encrypted using a customer managed key (CMK) residing in a cloud provider Key Management Service (KMS). (Currently, only AWS KMS is supported, for clusters deployed in AWS.) You can grant YugabyteDB Managed access to the key with the requisite permissions to perform cryptographic operations using the key to secure the databases in your clusters.
+In addition to basic volume encryption, you can enable database-level encryption at rest (EAR) for clusters. When enabled, your YugabyteDB database (including backups) is encrypted using a customer managed key (CMK) residing in a cloud provider Key Management Service (KMS). (Currently, only AWS KMS is supported, for clusters deployed in AWS.) You can grant YugabyteDB Managed access to the key with the requisite permissions to perform cryptographic operations using the key to secure the databases in your clusters.
 
 Cluster-level encryption can be configured as follows:
 
 - On the **Security** page of the **Create Cluster** wizard when you create a cluster.
 - On the cluster **Settings** tab under **Encryption at rest**.
 
-You must be signed in as an Admin user to manage cluster-level encryption.
+You must be signed in as an Admin user to manage cluster-level EAR.
 
 ## Limitations
 
@@ -40,7 +40,7 @@ To use your own customer managed key (CMK) to encrypt your data, make sure you h
 
 ## Encrypt a cluster
 
-You can encrypt a cluster deployed in AWS as follows:
+You can enable database EAR for clusters deployed in AWS as follows:
 
 1. On the cluster **Settings** tab, select **Encryption at rest**.
 1. Click **Enable Encryption**.
