@@ -6,6 +6,7 @@ import { useGetClusterTabletsQuery } from '@app/api/src';
 // Local imports
 import type { HealthCheckInfo } from '@app/api/src';
 import clsx from 'clsx';
+import { STATUS_TYPES, YBStatus } from '@app/components';
 
 const useStyles = makeStyles((theme) => ({
   container: {
@@ -18,6 +19,7 @@ const useStyles = makeStyles((theme) => ({
   sectionBorder: {
     paddingLeft: theme.spacing(2),
     marginLeft: theme.spacing(11.75),
+    marginRight: theme.spacing(8),
     borderLeft: `1px solid ${theme.palette.grey[300]}`
   },
   title: {
@@ -35,7 +37,8 @@ const useStyles = makeStyles((theme) => ({
   },
   value: {
     color: theme.palette.grey[900],
-    textAlign: 'left'
+    textAlign: 'left',
+    paddingTop: theme.spacing(0.25)
   },
 }));
 
@@ -53,12 +56,10 @@ export const ClusterTabletWidget: FC<ClusterTabletWidgetProps> = ({ health }) =>
   const tabletIds = Object.keys(tabletsList);
   const totalTablets = tabletIds.length;
   const underReplicatedTablets = health?.under_replicated_tablets ?? [];
-//   const unavailableTablets = health?.leaderless_tablets ?? [];
+  const unavailableTablets = health?.leaderless_tablets ?? [];
 //   const unavailableTablets = tabletIds.filter((key) => {
 //     !tabletsList[key].has_leader
 //   });
-//   const numUnavailableTablets = unavailableTablets.length
-
 
   return (
     <Box>
@@ -73,11 +74,25 @@ export const ClusterTabletWidget: FC<ClusterTabletWidgetProps> = ({ health }) =>
           </Typography>
         </div>
         <div className={clsx(classes.section, classes.sectionBorder)}>
-          <Typography variant="h4" className={classes.value}>
-            {underReplicatedTablets.length}
-          </Typography>
+          <Box display="flex" gridGap={7}>
+            <Typography variant="h4" className={classes.value}>
+              {underReplicatedTablets.length}
+            </Typography>
+            <YBStatus type={STATUS_TYPES.WARNING}/>
+          </Box>
           <Typography variant="body2" className={classes.label}>
             {t('clusterDetail.overview.underReplicated')}
+          </Typography>
+        </div>
+        <div className={classes.section}>
+          <Box display="flex" gridGap={7}>
+            <Typography variant="h4" className={classes.value}>
+              {unavailableTablets.length}
+            </Typography>
+            <YBStatus type={STATUS_TYPES.FAILED}/>
+          </Box>
+          <Typography variant="body2" className={classes.label}>
+            {t('clusterDetail.overview.unavailable')}
           </Typography>
         </div>
       </Grid>

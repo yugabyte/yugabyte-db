@@ -7,6 +7,7 @@ import { HealthCheckInfo, useGetClusterNodesQuery, useGetIsLoadBalancerIdleQuery
 import { ChevronRight } from '@material-ui/icons';
 import clsx from 'clsx';
 import { ClusterTabletWidget } from './ClusterTabletWidget';
+import { STATUS_TYPES, YBStatus } from '@app/components';
 
 const useStyles = makeStyles((theme) => ({
   clusterInfo: {
@@ -48,7 +49,8 @@ const useStyles = makeStyles((theme) => ({
   },
   value: {
     color: theme.palette.grey[900],
-    textAlign: 'left'
+    textAlign: 'left',
+    paddingTop: theme.spacing(0.25)
   },
   arrow: {
     color: theme.palette.grey[600],
@@ -113,25 +115,34 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
           </Typography>
         </div>
         <div className={clsx(classes.section, classes.sectionBorder)}>
-          <Typography variant="h4" className={classes.value}>
-            {fetchingNodes ? <div className={classes.loadingCount} /> : healthyNodes}
-          </Typography>
+          <Box display="flex" gridGap={7}>
+            <Typography variant="h4" className={classes.value}>
+              {fetchingNodes ? <div className={classes.loadingCount} /> : healthyNodes}
+            </Typography>
+            <YBStatus type={STATUS_TYPES.SUCCESS}/>
+          </Box>
           <Typography variant="body2" className={classes.label}>
             {t('clusterDetail.nodes.running')}
           </Typography>
         </div>
         <div className={classes.section}>
-          <Typography variant="h4" className={classes.value}>
-          {fetchingNodes ? <div className={classes.loadingCount} /> : deadNodes.length}
-          </Typography>
+          <Box display="flex" gridGap={7}>
+            <Typography variant="h4" className={classes.value}>
+              {fetchingNodes ? <div className={classes.loadingCount} /> : deadNodes.length}
+            </Typography>
+            <YBStatus type={STATUS_TYPES.FAILED}/>
+          </Box>
           <Typography variant="body2" className={classes.label}>
             {t('clusterDetail.nodes.down')}
           </Typography>
         </div>
         <div className={clsx(classes.section, classes.sectionBorder)}>
-          <Typography variant="h4" className={classes.value}>
-            {fetchingNodes ? <div className={classes.loadingCount} /> : bootstrappingNodes.length}
-          </Typography>
+          <Box display="flex" gridGap={7}>
+            <Typography variant="h4" className={classes.value}>
+              {fetchingNodes ? <div className={classes.loadingCount} /> : bootstrappingNodes.length}
+            </Typography>
+            <YBStatus type={STATUS_TYPES.IN_PROGRESS}/>
+          </Box>
           <Typography variant="body2" className={classes.label}>
             {t('clusterDetail.nodes.bootstrapping')}
           </Typography>

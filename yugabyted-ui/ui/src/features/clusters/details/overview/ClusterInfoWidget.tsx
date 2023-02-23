@@ -1,6 +1,6 @@
 import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Divider, Grid, makeStyles, Paper, Typography } from '@material-ui/core';
+import { Box, Divider, Grid, makeStyles, Paper, Typography } from '@material-ui/core';
 import { intlFormat } from 'date-fns';
 
 // Local imports
@@ -9,6 +9,7 @@ import {
   roundDecimal,
   getFaultTolerance,
 } from '@app/helpers';
+import { STATUS_TYPES, YBStatus } from '@app/components';
 
 const useStyles = makeStyles((theme) => ({
   clusterInfo: {
@@ -30,7 +31,7 @@ const useStyles = makeStyles((theme) => ({
     textAlign: 'start'
   },
   value: {
-    paddingTop: theme.spacing(0.57),
+    paddingTop: theme.spacing(0.36),
     textAlign: 'start'
   }
 }));
@@ -88,6 +89,8 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
   }
 
   // Get text for encryption
+  const encryptionAtRest = clusterSpec?.encryption_info?.encryption_at_rest ?? false;
+  const encryptionInTransit = clusterSpec?.encryption_info?.encryption_in_transit ?? false;
   const getEncryptionText = (encryptionAtRest: boolean, encryptionInTransit: boolean) => {
     if (encryptionAtRest && encryptionInTransit) {
       return t('clusters.inTransitAtRest');
@@ -100,6 +103,7 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
     }
     return t('clusters.none')
   }
+  const encryption = getEncryptionText(encryptionAtRest, encryptionInTransit);
 
   return (
     <Paper className={classes.clusterInfo}>
@@ -132,10 +136,14 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
           <Typography variant="subtitle2" className={classes.label}>
             {t('clusters.encryption')}
           </Typography>
-          <Typography variant="body2" className={classes.value}>
-            {getEncryptionText(clusterSpec?.encryption_info?.encryption_at_rest ?? false,
-              clusterSpec?.encryption_info?.encryption_in_transit ?? false)}
-          </Typography>
+          <Box display="flex">
+            {!encryptionAtRest && !encryptionInTransit &&
+              <YBStatus type={STATUS_TYPES.WARNING}/>
+            }
+            <Typography variant="body2" className={classes.value}>
+              {encryption}
+            </Typography>
+          </Box>
         </Grid>
       </Grid>
       <Divider orientation="horizontal" variant="middle" className={classes.divider} />
@@ -168,9 +176,14 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
           <Typography variant="subtitle2" className={classes.label}>
             {t('clusterDetail.overview.authentication')}
           </Typography>
-          <Typography variant="body2" className={classes.value}>
-            {authentication}
-          </Typography>
+          <Box display="flex">
+            {authentication === "Unknown" &&
+              <YBStatus type={STATUS_TYPES.WARNING}/>
+            }
+            <Typography variant="body2" className={classes.value}>
+              {authentication}
+            </Typography>
+          </Box>
         </Grid>
       </Grid>
     </Paper>

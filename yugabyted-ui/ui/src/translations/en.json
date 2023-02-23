@@ -730,7 +730,7 @@
         "tablets": "Tablets",
         "total": "Total",
         "underReplicated": "Under-Replicated",
-        "unavailableTablets": "Unavailable Tablets"
+        "unavailable": "Unavailable"
       },
       "tables": {
         "numTables": "{{count}} Table",
