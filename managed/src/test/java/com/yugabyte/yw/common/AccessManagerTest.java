@@ -601,17 +601,22 @@ public class AccessManagerTest extends FakeDBApplication {
 
   @Test
   public void testCreateKubernetesConfigFileExists() {
+    String path, providerPath;
     try {
       Map<String, String> config = new HashMap<>();
-      String providerPath = "/tmp/yugaware_tests/keys/" + defaultProvider.uuid;
+      providerPath = TMP_KEYS_PATH + "/" + defaultProvider.uuid;
       Files.createDirectory(Paths.get(providerPath));
       Files.write(Paths.get(providerPath + "/demo.conf"), ImmutableList.of("hello world"));
       config.put("KUBECONFIG_NAME", "demo.conf");
       config.put("KUBECONFIG_CONTENT", "hello world");
-      accessManager.createKubernetesConfig(defaultProvider.uuid.toString(), config, false);
+      path = accessManager.createKubernetesConfig(defaultProvider.uuid.toString(), config, false);
     } catch (IOException | RuntimeException e) {
       assertEquals("File demo.conf already exists.", e.getMessage());
+      return;
     }
+    fail(
+        String.format(
+            "%s not expected to be created as it already exits (%s)", path, providerPath));
   }
 
   @Test
