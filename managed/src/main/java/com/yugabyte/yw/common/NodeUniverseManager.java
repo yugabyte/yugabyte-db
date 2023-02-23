@@ -286,7 +286,7 @@ public class NodeUniverseManager extends DevopsBase {
       AccessKey accessKey =
           AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
       Optional<NodeAgent> optional =
-          getNodeAgentClient().maybeGetNodeAgentClient(node.cloudInfo.private_ip, provider);
+          getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider);
       if (optional.isPresent()) {
         commandArgs.add("rpc");
         NodeAgentClient.addNodeAgentClientParams(optional.get(), commandArgs);
