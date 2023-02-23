@@ -478,7 +478,7 @@ const getBootstrapTableUUIDs = async (
       sourceUniverseUUID,
       selectedTableUUIDs.map(adaptTableUUID)
     );
-  } catch (error) {
+  } catch (error: any) {
     toast.error(
       <span className={styles.alertMsg}>
         <div>

@@ -1,0 +1,82 @@
+@use '../../../../_style/colors.scss';
+
+.viewContainer {
+  padding: 24px 32px;
+
+  background-color: colors.$YB_WHITE;
+
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+
+    padding-bottom: 16px;
+
+    border-bottom: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
+
+    .arrowBack {
+      color: colors.$YB_ORANGE;
+      :hover {
+        cursor: pointer;
+      }
+    }
+
+    .actionButton {
+      margin-left: auto;
+
+      border-radius: 8px;
+    }
+  }
+
+  .body {
+    display: flex;
+  }
+
+  .sideNav {
+    display: flex;
+
+    width: 260px;
+    padding: 32px 22px;
+
+    border-right: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
+
+    .tabGroup {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+
+      padding-left: 1px;
+
+      .tabButton {
+        padding: 12px 16px;
+
+        width: 210px;
+        height: 40px;
+        box-sizing: border-box;
+
+        border-radius: 8px;
+      }
+      .selectedTab {
+        // Negative margin to avoid pushing the
+        // text when adding a 1px border.
+        margin: 0 -1px;
+
+        background-color: colors.$YB_BACKGROUND;
+        border: 1px solid colors.$YB_GRAY_BORDER;
+      }
+      .tabLabelWrapper {
+        align-items: flex-start;
+
+        font-size: 13px;
+        font-weight: 400;
+        text-transform: none;
+        color: colors.$YB_TEXT_COLOR;
+      }
+    }
+  }
+
+  .content {
+    width: 100%;
+    padding: 32px;
+  }
+}

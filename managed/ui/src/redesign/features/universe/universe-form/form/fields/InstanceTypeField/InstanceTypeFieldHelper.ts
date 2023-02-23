@@ -1,5 +1,5 @@
 import _ from 'lodash';
-import { CloudType, InstanceType, InstanceTypeWithGroup } from '../../../utils/dto';
+import { CloudType, InstanceType, InstanceTypeWithGroup, RunTimeConfigEntry } from '../../../utils/dto';
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
 
@@ -16,11 +16,28 @@ export const AZURE_INSTANCE_TYPE_GROUPS = {
   'P-Series': /^standard_p.+/i
 };
 
-export const DEFAULT_INSTANCE_TYPES = {
-  [CloudType.aws]: 'c5.large',
-  [CloudType.gcp]: 'n1-standard-1',
-  [CloudType.kubernetes]: 'small'
-};
+export const getDefaultInstanceType = (providerCode: string, runtimeConfigs: any) => {
+  let instanceType = null;
+
+  if (providerCode === CloudType.aws) {
+    instanceType = runtimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === 'yb.aws.default_instance_type'
+    )?.value;
+  } else if(providerCode === CloudType.gcp) {
+    instanceType = runtimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === 'yb.gcp.default_instance_type'
+    )?.value;
+  } else if(providerCode === CloudType.kubernetes) {
+    instanceType = runtimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === 'yb.kubernetes.default_instance_type'
+    )?.value;
+  } else if (providerCode === CloudType.azu) {
+    instanceType = runtimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === 'yb.azure.default_instance_type'
+    )?.value;
+  }
+  return instanceType;
+}
 
 export const isEphemeralAwsStorageInstance = (instance: InstanceType) => {
   return (

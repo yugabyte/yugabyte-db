@@ -27,7 +27,8 @@ import java.util.Map;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.util.json.Checker;
 import org.yb.util.json.Checkers;
 import org.yb.util.json.JsonUtil;
@@ -35,7 +36,14 @@ import org.yb.util.json.ObjectChecker;
 import org.yb.pgsql.ExplainAnalyzeUtils.PlanCheckerBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.TopLevelCheckerBuilder;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+import org.yb.util.json.ValueChecker;
+import org.yb.YBTestRunner;
+
+/**
+ * Test EXPLAIN ANALYZE command. Just verify non-zero values for volatile measures
+ * such as RPC wait times.
+ */
+@RunWith(value=YBTestRunner.class)
 public class TestPgExplainAnalyze extends BasePgSQLTest {
   private static final String TABLE_NAME = "explain_test_table";
   private static final String INDEX_NAME = String.format("i_%s_c3_c2", TABLE_NAME);
@@ -343,7 +351,7 @@ public class TestPgExplainAnalyze extends BasePgSQLTest {
             INDEX_NAME, TABLE_NAME, alias),
         makeTopLevelBuilder()
             .storageReadRequests(Checkers.greater(0))
-            .storageWriteRequests(Checkers.equal(206))
+            .storageWriteRequests(Checkers.equal(1))
             .storageExecutionTime(Checkers.greater(0.0))
             .plan(makePlanBuilder()
                 .nodeType(NODE_MODIFY_TABLE)
@@ -453,7 +461,7 @@ public class TestPgExplainAnalyze extends BasePgSQLTest {
             INDEX_NAME, TABLE_NAME, alias),
         makeTopLevelBuilder()
             .storageReadRequests(Checkers.equal(2))
-            .storageWriteRequests(Checkers.equal(206))
+            .storageWriteRequests(Checkers.equal(1))
             .storageExecutionTime(Checkers.greater(0.0))
             .plan(makePlanBuilder()
                 .nodeType(NODE_MODIFY_TABLE)
@@ -500,7 +508,7 @@ public class TestPgExplainAnalyze extends BasePgSQLTest {
             TABLE_NAME),
         makeTopLevelBuilder()
             .storageReadRequests(Checkers.equal(1))
-            .storageWriteRequests(Checkers.equal(6))
+            .storageWriteRequests(Checkers.equal(1))
             .storageExecutionTime(Checkers.greater(0.0))
             .plan(makePlanBuilder()
                 .nodeType(NODE_MODIFY_TABLE)

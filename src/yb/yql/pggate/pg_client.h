@@ -84,6 +84,8 @@ class PgClient {
   Result<PgTableDescPtr> OpenTable(
       const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time);
 
+  Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
+
   Status FinishTransaction(Commit commit, DdlType ddl_type);
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
@@ -159,7 +161,7 @@ class PgClient {
   Result<bool> CheckIfPitrActive();
 
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
-      bool size_only);
+      bool size_only, uint32_t db_oid);
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DECLARE(r, data, method) \
   Status method(                             \

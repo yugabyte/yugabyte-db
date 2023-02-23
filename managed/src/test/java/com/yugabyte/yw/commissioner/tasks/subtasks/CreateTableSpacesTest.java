@@ -13,13 +13,10 @@ import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static play.test.Helpers.contextComponents;
 
-import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -29,15 +26,12 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.CreateTablespaceParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.TaskInfo.State;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.Universe;
 
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import org.junit.Before;
@@ -47,7 +41,6 @@ import org.junit.runner.RunWith;
 import org.mockito.AdditionalMatchers;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import play.mvc.Http;
 
 @RunWith(JUnitParamsRunner.class)
 public class CreateTableSpacesTest extends CommissionerBaseTest {
@@ -198,17 +191,8 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
     try {
       UUID taskUUID = commissioner.submit(TaskType.CreateTableSpaces, taskParams);
       // Set http context
-      Users user = ModelFactory.testUser(defaultCustomer);
-      Map<String, String> flashData = Collections.emptyMap();
-      user.email = "shagarwal@yugabyte.com";
-      Map<String, Object> argData = ImmutableMap.of("user", new UserWithFeatures().setUser(user));
-      Http.Request request = mock(Http.Request.class);
-      Long id = 2L;
-      play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
-      Http.Context currentContext =
-          new Http.Context(id, header, request, flashData, flashData, argData, contextComponents());
-      Http.Context.current.set(currentContext);
-
+      Users defaultUser = ModelFactory.testUser(defaultCustomer);
+      TestUtils.setFakeHttpContext(defaultUser);
       CustomerTask.create(
           defaultCustomer,
           universe.universeUUID,

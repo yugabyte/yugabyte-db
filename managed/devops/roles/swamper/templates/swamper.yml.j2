@@ -113,6 +113,10 @@ scrape_configs:
         regex: "node_disk_bytes_written"
         target_label: "__name__"
         replacement: "node_disk_written_bytes_total"
+      - source_labels: ["__name__"]
+        regex: "node_boot_time"
+        target_label: "__name__"
+        replacement: "node_boot_time_seconds"
       # Save the name of the metric so we can group_by since we cannot by __name__ directly...
       - source_labels: ["__name__"]
         regex: "(.*)"

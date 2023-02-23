@@ -75,8 +75,7 @@ public class RuntimeConfigPreChangeNotifier {
   }
 
   private void maybeValidateMetadata(UUID scopeUUID, String path, String newValue) {
-    boolean validation =
-        confGetter.getStaticConf().getBoolean("runtime_config.data_validation.enabled");
+    boolean validation = confGetter.getGlobalConf(GlobalConfKeys.dataValidationEnabled);
 
     if (validation) {
       keyMetaData.get(path).getDataType().getParser().apply(newValue);
@@ -84,8 +83,7 @@ public class RuntimeConfigPreChangeNotifier {
       log.debug("Data validation disabled");
     }
 
-    boolean scopeStrictness =
-        confGetter.getStaticConf().getBoolean("runtime_config.scope_strictness.enabled");
+    boolean scopeStrictness = confGetter.getGlobalConf(GlobalConfKeys.scopeStrictnessEnabled);
 
     if (scopeStrictness) {
       ConfKeyInfo<?> keyInfo = keyMetaData.get(path);

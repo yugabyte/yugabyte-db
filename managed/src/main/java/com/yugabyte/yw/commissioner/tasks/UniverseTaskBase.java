@@ -129,6 +129,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Restore;
@@ -172,11 +173,13 @@ import org.slf4j.MDC;
 import org.yb.ColumnSchema.SortOrder;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.GetTableSchemaResponse;
+import org.yb.client.ListMastersResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.ModifyClusterConfigIncrementVersion;
 import org.yb.client.YBClient;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
+import org.yb.util.ServerInfo;
 import play.api.Play;
 import play.libs.Json;
 
@@ -1033,14 +1036,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup(InstallNodeAgent.class.getSimpleName(), executor);
     NodeAgentManager nodeAgentManager = application.injector().instanceOf(NodeAgentManager.class);
-    if (nodeAgentManager.isServerToBeInstalled()) {
-      Universe universe = getUniverse();
-      for (NodeDetails node : nodes) {
-        if (node.cloudInfo == null) {
-          continue;
-        }
-        Cluster cluster = getUniverse().getCluster(node.placementUuid);
-        Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    boolean createSubTaskGroup = false;
+    Universe universe = getUniverse();
+    for (NodeDetails node : nodes) {
+      if (node.cloudInfo == null) {
+        continue;
+      }
+      Cluster cluster = getUniverse().getCluster(node.placementUuid);
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      if (nodeAgentManager.isServerToBeInstalled(provider)) {
+        createSubTaskGroup = true;
         if (provider.getCloudCode() == CloudType.onprem) {
           AccessKey accessKey =
               AccessKey.getOrBadRequest(provider.uuid, cluster.userIntent.accessKeyCode);
@@ -1057,10 +1062,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         params.customerUuid = provider.customerUUID;
         params.azUuid = node.azUuid;
         params.universeUUID = universe.universeUUID;
+        params.nodeAgentHome = NodeAgent.ROOT_NODE_AGENT_HOME;
         InstallNodeAgent task = createTask(InstallNodeAgent.class);
         task.initialize(params);
         subTaskGroup.addSubTask(task);
       }
+    }
+    if (createSubTaskGroup) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
     return subTaskGroup;
@@ -1070,11 +1078,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup(WaitForNodeAgent.class.getSimpleName(), executor);
     NodeAgentClient nodeAgentClient = application.injector().instanceOf(NodeAgentClient.class);
-    if (nodeAgentClient.isClientEnabled()) {
-      for (NodeDetails node : nodes) {
-        if (node.cloudInfo == null) {
-          continue;
-        }
+    boolean createSubTaskGroup = false;
+    for (NodeDetails node : nodes) {
+      if (node.cloudInfo == null) {
+        continue;
+      }
+      Cluster cluster = getUniverse().getCluster(node.placementUuid);
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      if (nodeAgentClient.isClientEnabled(provider)) {
+        createSubTaskGroup = true;
         WaitForNodeAgent.Params params = new WaitForNodeAgent.Params();
         params.nodeName = node.nodeName;
         params.azUuid = node.azUuid;
@@ -1084,6 +1096,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         task.initialize(params);
         subTaskGroup.addSubTask(task);
       }
+    }
+    if (createSubTaskGroup) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
     return subTaskGroup;
@@ -1706,14 +1720,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   public void createChangeConfigTask(
       NodeDetails node, boolean isAdd, UserTaskDetails.SubTaskGroupType subTask) {
-    createChangeConfigTask(node, isAdd, subTask, false);
-  }
-
-  public void createChangeConfigTask(
-      NodeDetails node,
-      boolean isAdd,
-      UserTaskDetails.SubTaskGroupType subTask,
-      boolean useHostPort) {
     // Create a new task list for the change config so that it happens one by one.
     String subtaskGroupName =
         "ChangeMasterConfig(" + node.nodeName + ", " + (isAdd ? "add" : "remove") + ")";
@@ -1729,7 +1735,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // This is an add master.
     params.opType =
         isAdd ? ChangeMasterConfig.OpType.AddMaster : ChangeMasterConfig.OpType.RemoveMaster;
-    params.useHostPort = useHostPort;
     // Create the task.
     ChangeMasterConfig changeConfig = createTask(ChangeMasterConfig.class);
     changeConfig.initialize(params);
@@ -3039,6 +3044,37 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return Optional.of(unmatchedCount == 0);
   }
 
+  /**
+   * Fetches the list of masters from the DB and checks if the master config change operation has
+   * already been performed.
+   *
+   * @param universe Universe to query.
+   * @param node Node to check.
+   * @param isAddMasterOp True if the IP is to be added, false otherwise.
+   * @param ipToUse IP to be checked.
+   * @return true if it is already done, else false.
+   */
+  protected boolean isChangeMasterConfigDone(
+      Universe universe, NodeDetails node, boolean isAddMasterOp, String ipToUse) {
+    String masterAddresses = universe.getMasterAddresses();
+    YBClient client = ybService.getClient(masterAddresses, universe.getCertificateNodetoNode());
+    try {
+      ListMastersResponse response = client.listMasters();
+      List<ServerInfo> servers = response.getMasters();
+      boolean anyMatched = servers.stream().anyMatch(s -> s.getHost().equals(ipToUse));
+      return anyMatched == isAddMasterOp;
+    } catch (Exception e) {
+      String msg =
+          String.format(
+              "Error while performing master change config on node %s (%s:%d) - %s",
+              node.nodeName, ipToUse, node.masterRpcPort, e.getMessage());
+      log.error(msg, e);
+      throw new RuntimeException(msg);
+    } finally {
+      ybService.closeClient(client, masterAddresses);
+    }
+  }
+
   // Perform preflight checks on the given node.
   public String performPreflightCheck(
       Cluster cluster,
@@ -3083,7 +3119,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return null;
   }
 
-  private boolean isServerAlive(NodeDetails node, ServerType server, String masterAddrs) {
+  protected boolean isServerAlive(NodeDetails node, ServerType server, String masterAddrs) {
     YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
 
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);

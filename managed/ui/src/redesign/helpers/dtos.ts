@@ -1,6 +1,28 @@
 import { YBTableRelationType } from './constants';
 import { DeepPartial } from './types';
 
+export interface HostInfo {
+  aws:
+    | {
+        'instance-id': string;
+        privateIp: string;
+        region: string;
+        'vpc-id': string;
+      }
+    | string;
+  gcp:
+    | {
+        network: string;
+        project: string;
+      }
+    | string;
+}
+
+export interface ResourceCreationResponse {
+  resourceUUID: string;
+  taskUUID: string;
+}
+
 export interface PlacementAZ {
   uuid: string;
   name: string;
@@ -105,10 +127,11 @@ export interface UserIntent {
   instanceTags: FlagsObject | FlagsArray;
 }
 
-export enum ClusterType {
-  PRIMARY = 'PRIMARY',
-  ASYNC = 'ASYNC'
-}
+export const ClusterType = {
+  PRIMARY: 'PRIMARY',
+  ASYNC: 'ASYNC'
+} as const;
+export type ClusterType = typeof ClusterType[keyof typeof ClusterType];
 
 export interface Cluster {
   placementInfo: {
@@ -389,6 +412,7 @@ export interface GraphFilter {
   selectedRegionClusterUUID?: string | null;
   selectedRegionCode?: string | null;
   selectedZoneName?: string | null;
+  currentSelectedNodeType: string | null;
 }
 
 export interface MetricSettings {
@@ -403,83 +427,5 @@ export interface MetricQueryParams {
   nodePrefix: string;
   nodeNames: string[];
 }
-export interface CpuMeasureQueryData {
-  maxNodeName: string;
-  maxNodeValue: number;
-  otherNodesAvgValue: number;
-}
-export interface CpuMeasureRecommendation {
-  data: CpuMeasureQueryData;
-  summary: React.ReactNode | string;
-}
 
-export interface CpuUsageRecommendation {
-  summary: React.ReactNode | string;
-}
-
-export interface IndexSchemaQueryData {
-  table_name: string;
-  index_name: string;
-  index_command: string;
-}
-
-export interface IndexSchemaRecommendation {
-  data: IndexSchemaQueryData[];
-  summary: React.ReactNode | string;
-}
-
-export interface NodeDistributionData {
-  numSelect: number;
-  numInsert: number;
-  numUpdate: number;
-  numDelete: number;
-}
-
-export interface QueryLoadData {
-  maxNodeName: string;
-  percentDiff: number;
-  maxNodeDistribution: NodeDistributionData;
-  otherNodesDistribution: NodeDistributionData;
-}
-
-export interface QueryLoadRecommendation {
-  data: QueryLoadData;
-  summary: React.ReactNode | string;
-}
-
-export enum RecommendationTypeEnum {
-  All = 'All',
-  SchemaSuggestion = 'SchemaSuggestion',
-  QueryLoadSkew = 'QueryLoadSkew',
-  IndexSuggestion = 'IndexSuggestion',
-  ConnectionSkew = 'ConnectionSkew',
-  CpuSkew = 'CpuSkew',
-  CpuUsage = 'CpuUsage'
-}
-
-export interface RunTimeConfigData {
-  configID: number;
-  configKey: string;
-  configValue: string;
-  configTags: string[];
-  isConfigInherited: boolean;
-  displayName: string;
-  helpTxt: string;
-  type: string;
-  scope: string;
-}
-
-export enum RunTimeConfigScope {
-  GLOBAL = 'GLOBAL',
-  UNIVERSE = 'UNIVERSE',
-  PROVIDER = 'PROVIDER',
-  CUSTOMER = 'CUSTOMER'
-}
-
-export interface RuntimeConfigScopeProps {
-  configTagFilter: string[];
-  fetchRuntimeConfigs: (scope?: string) => void;
-  setRuntimeConfig: (key: string, value: string, scope?: string) => void;
-  deleteRunTimeConfig: (key: string, scope?: string) => void;
-  resetRuntimeConfigs: () => void;
-}
+// TODO: Need to move the above enums to global dtos file under src/redesign/utils as part of PLAT-7010

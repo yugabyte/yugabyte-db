@@ -199,7 +199,7 @@ bool PgIndexBackfillTest::HasClientTimedOut(const Status& s) {
   //
   // The first is postgres-tserver; the second is tserver-master.
   const std::string msg = s.message().ToBuffer();
-  return msg.find("Timed out: BackfillIndex RPC") != std::string::npos ||
+  return msg.find("timed out after") != std::string::npos ||
          msg.find("Timed out waiting for Backfill Index") != std::string::npos;
 }
 
@@ -752,7 +752,7 @@ TEST_F_EX(PgIndexBackfillTest,
           "relation \"$0\" already exists", kIndexName);
       const std::vector<std::string> allowed_msgs{
         "Catalog Version Mismatch",
-        "Conflicts with higher priority transaction",
+        "conflicts with higher priority transaction",
         "Restart read required",
         "Transaction aborted",
         "Transaction metadata missing",

@@ -23,8 +23,8 @@ func TestDisplaceInterfaces(t *testing.T) {
 	}
 	iFaces := displayInterfaces(testData)
 	for i, iFace := range iFaces {
-		if iFace.ToString() != testData[i].name {
-			t.Fatalf("Expected %s, found %s", testData[i].name, iFace.ToString())
+		if iFace.String() != testData[i].name {
+			t.Fatalf("Expected %s, found %s", testData[i].name, iFace)
 		}
 	}
 }

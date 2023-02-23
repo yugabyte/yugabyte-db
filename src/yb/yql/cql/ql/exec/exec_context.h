@@ -82,6 +82,8 @@ class QueryPagingState {
   // Compose paging state to send to users.
   Status ComposePagingStateForUser();
   Status ComposePagingStateForUser(const QLPagingStatePB& child_state);
+  Status ComposePagingStateForUser(const QLPagingStatePB& child_state,
+                                   uint32_t overridden_schema_version);
 
   // Load the paging state in DocDB responses.
   Status LoadPagingStateFromDocdb(const RowsResult::SharedPtr& rows_result,

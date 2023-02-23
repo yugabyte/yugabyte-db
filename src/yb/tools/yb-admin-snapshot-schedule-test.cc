@@ -4626,5 +4626,35 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(CreateDuplicateSc
     "already exists for the given keyspace ysql." + kTableName.namespace_name());
 }
 
+class YbAdminSnapshotScheduleTestWithYsqlTransactionalDDL
+    : public YbAdminSnapshotScheduleTestWithYsql {
+ public:
+  std::vector<std::string> ExtraMasterFlags() override {
+    // To speed up tests.
+    return { "--snapshot_coordinator_cleanup_delay_ms=1000",
+             "--snapshot_coordinator_poll_interval_ms=500",
+             "--enable_transactional_ddl_gc=true" };
+  }
+};
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(BeforeCreateFinishes),
+          YbAdminSnapshotScheduleTestWithYsqlTransactionalDDL) {
+  auto schedule_id = ASSERT_RESULT(PreparePg(YsqlColocationConfig::kDBColocated));
+
+  auto conn = ASSERT_RESULT(PgConnect(kTableName.namespace_name()));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE demo_new (id INT, name TEXT)"));
+
+  // We want to restore to time before table was created.
+  auto time = ASSERT_RESULT(GetCurrentTime());
+  // Skip txn verification at the master so that txn metadata remains.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_skip_transaction_verification", "true"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE demo (id INT, name TEXT)"));
+
+  // Reset the flag.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_skip_transaction_verification", "false"));
+  // Restore to this time. There should be no fatals.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+}
+
 }  // namespace tools
 }  // namespace yb

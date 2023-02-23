@@ -110,7 +110,8 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      const QLValuePB& ybctid,
+      const QLValuePB& min_ybctid,
+      const QLValuePB& max_ybctid,
       docdb::YQLRowwiseIteratorIf::UniPtr* iter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();

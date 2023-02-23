@@ -130,6 +130,7 @@ namespace master {
 
 struct DeferredAssignmentActions;
 class XClusterSafeTimeService;
+struct TemporaryLoadingState;
 
 using PlacementId = std::string;
 
@@ -274,6 +275,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   //
   // This is called at the end of CreateTable.
   Status CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc);
+
+  Status CreateStatefulService(
+      const StatefulServiceKind& service_kind, const client::YBSchema& yb_schema);
+
+  Status CreateTestEchoService();
 
   // Get the information about an in-progress create operation.
   Status IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
@@ -541,13 +547,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void DisableTabletSplittingInternal(const MonoDelta& duration, const std::string& feature);
 
+  void ReenableTabletSplittingInternal(const std::string& feature);
+
   // Returns true if there are no outstanding tablets and the tablet split manager is not currently
   // processing tablet splits.
   Status IsTabletSplittingComplete(
       const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
       rpc::RpcContext* rpc);
 
-  bool IsTabletSplittingCompleteInternal(bool wait_for_parent_deletion);
+  bool IsTabletSplittingCompleteInternal(bool wait_for_parent_deletion, CoarseTimePoint deadline);
 
   // Delete CDC streams for a table.
   virtual Status DeleteCDCStreamsForTable(const TableId& table_id) EXCLUDES(mutex_);
@@ -1042,6 +1050,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       ReportYsqlDdlTxnStatusResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  Status GetStatefulServiceLocation(
+      const GetStatefulServiceLocationRequestPB* req,
+      GetStatefulServiceLocationResponsePB* resp);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -1067,6 +1079,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   FRIEND_TEST(MasterTest, TestTabletsDeletedWhenTableInDeletingState);
   FRIEND_TEST(yb::MasterPartitionedTest, VerifyOldLeaderStepsDown);
+
+  FRIEND_TEST(StatefulServiceTest, TestStatefulService);
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.
@@ -1157,6 +1171,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                              const NamespaceName& namespace_name,
                              const std::vector<Partition>& partitions,
                              bool colocated,
+                             IsSystemObject system_table,
                              IndexInfoPB* index_info,
                              TabletInfos* tablets,
                              CreateTableResponsePB* resp,
@@ -1545,7 +1560,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status RegisterTsFromRaftConfig(const consensus::RaftPeerPB& peer);
 
   template <class Loader>
-  Status Load(const std::string& title, const int64_t term);
+  Status Load(const std::string& title, TemporaryLoadingState* state, const int64_t term);
 
   virtual void Started() {}
 
@@ -2003,7 +2018,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   TSDescriptorVector GetAllLiveNotBlacklistedTServers() const;
 
-  const YQLPartitionsVTable& GetYqlPartitionsVtable() const;
+  // Get the ycql system.partitions vtable. Note that this has EXCLUDES(mutex_), in order to
+  // maintain lock ordering.
+  const YQLPartitionsVTable& GetYqlPartitionsVtable() const EXCLUDES(mutex_);
 
   void InitializeTableLoadState(
       const TableId& table_id, TSDescriptorVector ts_descs, CMPerTableLoadState* state);

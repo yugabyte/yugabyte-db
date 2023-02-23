@@ -219,7 +219,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   Status get_ysql_db_oid_to_cat_version_info_map(
-      bool size_only, tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
+      const tserver::GetTserverCatalogVersionInfoRequestPB& req,
+      tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
@@ -349,6 +350,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
  private:
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();
+
+  void InvalidatePgTableCache();
 
   std::string log_prefix_;
 

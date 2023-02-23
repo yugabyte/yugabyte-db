@@ -86,7 +86,7 @@ class TwoDCTestBase : public YBTest {
     safe_time_propagation_timeout_ = MonoDelta::FromSeconds(30);
   }
 
-  Status InitClusters(const MiniClusterOptions& opts, bool init_postgres = false);
+  virtual Status InitClusters(const MiniClusterOptions& opts);
 
   void TearDown() override;
 
@@ -101,32 +101,6 @@ class TwoDCTestBase : public YBTest {
   static Result<client::YBTableName> CreateTable(
       YBClient* client, const std::string& namespace_name, const std::string& table_name,
       uint32_t num_tablets, const client::YBSchema* schema);
-
-  Result<client::YBTableName> CreateYsqlTable(
-      Cluster* cluster,
-      const std::string& namespace_name,
-      const std::string& schema_name,
-      const std::string& table_name,
-      const boost::optional<std::string>& tablegroup_name,
-      uint32_t num_tablets,
-      bool colocated = false,
-      const ColocationId colocation_id = 0,
-      const bool ranged_partitioned = false);
-
-  Status CreateYsqlTable(
-      uint32_t idx, uint32_t num_tablets, Cluster* cluster,
-      std::vector<client::YBTableName>* table_names,
-      const boost::optional<std::string>& tablegroup_name = {}, bool colocated = false,
-      const bool ranged_partitioned = false);
-
-  Result<client::YBTableName> GetYsqlTable(
-      Cluster* cluster,
-      const std::string& namespace_name,
-      const std::string& schema_name,
-      const std::string& table_name,
-      bool verify_table_name = true,
-      bool verify_schema_name = false,
-      bool exclude_system_tables = true);
 
   virtual Status SetupUniverseReplication(
       const std::vector<std::shared_ptr<client::YBTable>>& tables, bool leader_only = true);
@@ -162,7 +136,7 @@ class TwoDCTestBase : public YBTest {
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, int num_expected_table);
 
-  Status ChangeXClusterRole(cdc::XClusterRole role);
+  Status ChangeXClusterRole(const cdc::XClusterRole role, Cluster* cluster = nullptr);
 
   Status ToggleUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
@@ -190,7 +164,8 @@ class TwoDCTestBase : public YBTest {
 
   Status WaitForSetupUniverseReplicationCleanUp(std::string producer_uuid);
 
-  Status WaitForValidSafeTimeOnAllTServers(const NamespaceId& namespace_id);
+  Status WaitForValidSafeTimeOnAllTServers(
+      const NamespaceId& namespace_id, Cluster* cluster = nullptr);
 
   // Wait for replication drain on a list of tables.
   Status WaitForReplicationDrain(
@@ -256,10 +231,6 @@ class TwoDCTestBase : public YBTest {
   MonoDelta safe_time_propagation_timeout_;
 
  private:
-  // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this
-  // is not safe to run in parallel.
-  Status InitPostgres(Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);
-
   // Function that translates the api response from a WaitForReplicationDrainResponsePB call into
   // a status.
   Status SetupWaitForReplicationDrainStatus(

@@ -3,7 +3,7 @@ import { MenuItem, Dropdown } from 'react-bootstrap';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
 import { fetchUniversesList } from '../../../actions/xClusterReplication';
-import { RunTimeConfigScope, RuntimeConfigScopeProps } from '../../../redesign/helpers/dtos';
+import { RunTimeConfigScope, RuntimeConfigScopeProps } from '../../../redesign/utils/dtos';
 import { ConfigData } from '../ConfigData';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 

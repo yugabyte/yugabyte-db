@@ -53,6 +53,7 @@ struct SnapshotScheduleRestoration {
     std::pair<TabletId, SysTabletsEntryPB*> parent;
     std::unordered_map<TabletId, SysTabletsEntryPB*> children;
   };
+  std::unordered_map<TableId, std::vector<TableId>> parent_to_child_tables;
   // Tablets as of the restoring time with their parent-child relationships.
   // Map from parent tablet id -> information about parent and children.
   // For colocated tablets or tablets that have not been split as of restoring time,

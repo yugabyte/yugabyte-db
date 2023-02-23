@@ -62,11 +62,8 @@ class DocKeyBuilder {
       return Status::OK();
     }
 
-    std::string partition_key;
-    RETURN_NOT_OK(partition_schema.EncodePgsqlKey(
-        boost::make_iterator_range(hashed_values, hashed_values + hashed_components.size()),
-        &partition_key));
-    hash_ = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+    hash_ = VERIFY_RESULT(partition_schema.PgsqlHashColumnCompoundValue(
+        boost::make_iterator_range(hashed_values, hashed_values + hashed_components.size())));
     hashed_components_ = &hashed_components;
     return Status::OK();
   }
@@ -390,15 +387,18 @@ Status PgDmlRead::BindColumnCondBetween(int attr_num, PgExpr *attr_value,
       auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
       auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
       auto op3_pb = condition_expr_pb->mutable_condition()->add_operands();
-      auto op4_pb = condition_expr_pb->mutable_condition()->add_operands();
-      auto op5_pb = condition_expr_pb->mutable_condition()->add_operands();
 
       op1_pb->set_column_id(col.id());
 
       RETURN_NOT_OK(attr_value->EvalTo(op2_pb));
       RETURN_NOT_OK(attr_value_end->EvalTo(op3_pb));
-      op4_pb->mutable_value()->set_bool_value(start_inclusive);
-      op5_pb->mutable_value()->set_bool_value(end_inclusive);
+
+      if (yb_pushdown_strict_inequality) {
+        auto op4_pb = condition_expr_pb->mutable_condition()->add_operands();
+        auto op5_pb = condition_expr_pb->mutable_condition()->add_operands();
+        op4_pb->mutable_value()->set_bool_value(start_inclusive);
+        op5_pb->mutable_value()->set_bool_value(end_inclusive);
+      }
     } else {
       auto op = QL_OP_GREATER_THAN_EQUAL;
       if (!start_inclusive) {

@@ -48,11 +48,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Map.Entry;
 import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.api.Play;
@@ -425,10 +428,10 @@ public class Backup extends Model {
     this.save();
   }
 
-  public void onIncrementCompletion(Date incrementExpiryDate) {
-    if (incrementExpiryDate == null
-        || (this.getExpiry() != null && this.getExpiry().before(incrementExpiryDate))) {
-      this.expiry = incrementExpiryDate;
+  public void onIncrementCompletion(Date incrementCreateDate) {
+    Date newExpiryDate = new Date(incrementCreateDate.getTime() + this.backupInfo.timeBeforeDelete);
+    if (this.getExpiry() != null && this.getExpiry().before(newExpiryDate)) {
+      this.expiry = newExpiryDate;
     }
     this.backupInfo.fullChainSizeInBytes =
         fetchAllBackupsByBaseBackupUUID(this.customerUUID, this.baseBackupUUID)
@@ -450,6 +453,24 @@ public class Backup extends Model {
         .stream()
         .filter(backup -> backup.getBackupInfo().universeUUID.equals(universeUUID))
         .collect(Collectors.toList());
+  }
+
+  public static ImmutablePair<UUID, Long> getUniverseInProgressBackupCreateTime(
+      UUID customerUUID, UUID universeUUID) {
+    Optional<Backup> oBkp =
+        find.query()
+            .where()
+            .eq("customer_uuid", customerUUID)
+            .eq("universe_uuid", universeUUID)
+            .eq("state", BackupState.InProgress)
+            .orderBy("create_time desc")
+            .setMaxRows(1)
+            .findOneOrEmpty();
+    if (oBkp.isPresent()) {
+      Backup backup = oBkp.get();
+      return ImmutablePair.of(universeUUID, backup.getCreateTime().getTime());
+    }
+    return ImmutablePair.of(universeUUID, 0l);
   }
 
   public static List<Backup> fetchBackupToDeleteByUniverseUUID(

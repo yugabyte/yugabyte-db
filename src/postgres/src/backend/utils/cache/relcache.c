@@ -2027,6 +2027,8 @@ YBPreloadRelCache()
 
 	if (relations_result.has_partitioned_tables)
 	{
+		if (!prefetch_additional_tables)
+			YbRegisterSysTableForPrefetching(CastRelationId);  // pg_cast
 		YbRegisterSysTableForPrefetching(ProcedureRelationId); // pg_proc
 		YbRegisterSysTableForPrefetching(InheritsRelationId);  // pg_inherits
 	}
@@ -2036,6 +2038,8 @@ YBPreloadRelCache()
 
 	if (relations_result.has_partitioned_tables)
 	{
+		if (!prefetch_additional_tables)
+			YbPreloadCatalogCache(CASTSOURCETARGET, -1); // pg_cast
 		YbPreloadCatalogCache(PROCOID, PROCNAMEARGSNSP); // pg_proc
 		YbPreloadCatalogCache(INHERITSRELID, -1);        // pg_inherits
 	}
@@ -4627,7 +4631,10 @@ RelationCacheInitializePhase3(void)
 	 * In YB mode initialize the relache at the beginning so that we need
 	 * fewer cache lookups in steady state.
 	 */
-	if (IsYugaByteEnabled() && (needNewCacheFile || YBCIsInitDbModeEnvVarSet()))
+	if (IsYugaByteEnabled() &&
+		(needNewCacheFile ||
+		 YBCIsInitDbModeEnvVarSet() ||
+		 *YBCGetGFlags()->ysql_enable_read_request_caching))
 	{
 		YBPreloadRelCache();
 	}

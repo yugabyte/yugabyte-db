@@ -191,22 +191,33 @@ Status SnapshotTestUtil::RestoreSnapshot(
 }
 
 Result<TxnSnapshotId> SnapshotTestUtil::StartSnapshot(const TableHandle& table) {
+  return StartSnapshot(table.table()->id());
+}
+
+Result<TxnSnapshotId> SnapshotTestUtil::StartSnapshot(const TableId& table_id, bool imported) {
   rpc::RpcController controller;
   controller.set_timeout(60s);
   master::CreateSnapshotRequestPB req;
   req.set_transaction_aware(true);
   auto id = req.add_tables();
-  id->set_table_id(table.table()->id());
+  id->set_table_id(table_id);
+  if (imported) {
+    req.set_imported(true);
+  }
   master::CreateSnapshotResponsePB resp;
   RETURN_NOT_OK(VERIFY_RESULT(MakeBackupServiceProxy()).CreateSnapshot(req, &resp, &controller));
   RETURN_NOT_OK(ResponseStatus(resp));
   return FullyDecodeTxnSnapshotId(resp.snapshot_id());
 }
 
-Result<TxnSnapshotId> SnapshotTestUtil::CreateSnapshot(const TableHandle& table) {
-  TxnSnapshotId snapshot_id = VERIFY_RESULT(StartSnapshot(table));
+Result<TxnSnapshotId> SnapshotTestUtil::CreateSnapshot(const TableId& table_id, bool imported) {
+  TxnSnapshotId snapshot_id = VERIFY_RESULT(StartSnapshot(table_id, imported));
   RETURN_NOT_OK(WaitSnapshotDone(snapshot_id));
   return snapshot_id;
+}
+
+Result<TxnSnapshotId> SnapshotTestUtil::CreateSnapshot(const TableHandle& table) {
+  return CreateSnapshot(table.table()->id());
 }
 
 Status SnapshotTestUtil::DeleteSnapshot(const TxnSnapshotId& snapshot_id) {

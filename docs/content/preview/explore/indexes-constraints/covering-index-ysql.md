@@ -128,4 +128,4 @@ The following exercise demonstrates how to perform an index-only scan on an [exp
 
 ## Learn more
 
-Explore the [Benefits of an Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/) in depth with a real world example.
+Explore the [Benefits of an Index-only scan](https://www.yugabyte.com/blog/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/) in depth with a real world example.

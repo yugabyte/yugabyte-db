@@ -188,6 +188,7 @@ class BootstrapTest : public LogTestBase {
       .partition = partition.second,
       .tablet_data_state = TABLET_DATA_READY,
       .snapshot_schedules = {},
+      .hosted_services = {},
     }));
     RETURN_NOT_OK(result->Flush());
     return result;

@@ -101,6 +101,27 @@ std::string PrettyFunctionName(const char* name) {
   return result;
 }
 
+client::VersionedTablePartitionList BuildTablePartitionList(
+    const tserver::PgTablePartitionsPB& partitionsPB, const PgObjectId& table_id) {
+  client::VersionedTablePartitionList partition_list;
+  partition_list.version = partitionsPB.version();
+  const auto& keys = partitionsPB.keys();
+  if (PREDICT_FALSE(FLAGS_TEST_index_read_multiple_partitions && keys.size() > 1)) {
+    // It is required to simulate tablet splitting. This is done by reducing number of partitions.
+    // Only middle element is used to split table into 2 partitions.
+    // DocDB partition schema like [, 12, 25, 37, 50, 62, 75, 87] will be interpret by YSQL
+    // as [, 50].
+    partition_list.keys = {PartitionKey(), keys[keys.size() / 2]};
+    static auto key_printer = [](const auto& key) { return Slice(key).ToDebugHexString(); };
+    LOG(INFO) << "Partitions for " << table_id << " are joined."
+              << " source: " << yb::ToString(keys, key_printer)
+              << " result: " << yb::ToString(partition_list.keys, key_printer);
+  } else {
+    partition_list.keys.assign(keys.begin(), keys.end());
+  }
+  return partition_list;
+}
+
 } // namespace
 
 class PgClient::Impl {
@@ -189,27 +210,21 @@ class PgClient::Impl {
     RETURN_NOT_OK(proxy_->OpenTable(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
 
-    auto partitions = std::make_shared<client::VersionedTablePartitionList>();
-    partitions->version = resp.partitions().version();
-    const auto& keys = resp.partitions().keys();
-    if (PREDICT_FALSE(FLAGS_TEST_index_read_multiple_partitions && keys.size() > 1)) {
-      // It is required to simulate tablet splitting. This is done by reducing number of partitions.
-      // Only middle element is used to split table into 2 partitions.
-      // DocDB partition schema like [, 12, 25, 37, 50, 62, 75, 87] will be interpret by YSQL
-      // as [, 50].
-      partitions->keys = {PartitionKey(), keys[keys.size() / 2]};
-      static auto key_printer = [](const auto& key) { return Slice(key).ToDebugHexString(); };
-      LOG(INFO) << "Partitions for " << table_id << " are joined."
-                << " source: " << yb::ToString(keys, key_printer)
-                << " result: " << yb::ToString(partitions->keys, key_printer);
-    } else {
-      partitions->keys.assign(keys.begin(), keys.end());
-    }
-
     auto result = make_scoped_refptr<PgTableDesc>(
-        table_id, resp.info(), std::move(partitions));
+        table_id, resp.info(), BuildTablePartitionList(resp.partitions(), table_id));
     RETURN_NOT_OK(result->Init());
     return result;
+  }
+
+  Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id) {
+    tserver::PgGetTablePartitionListRequestPB req;
+    req.set_table_id(table_id.GetYbTableId());
+
+    tserver::PgGetTablePartitionListResponsePB resp;
+    RETURN_NOT_OK(proxy_->GetTablePartitionList(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+
+    return BuildTablePartitionList(resp.partitions(), table_id);
   }
 
   Status FinishTransaction(Commit commit, DdlType ddl_type) {
@@ -439,9 +454,6 @@ class PgClient::Impl {
       if (op->is_read()) {
         auto& read_op = down_cast<PgsqlReadOp&>(*op);
         union_op.ref_read(&read_op.read_request());
-        if (read_op.read_from_followers()) {
-          union_op.set_read_from_followers(true);
-        }
       } else {
         auto& write_op = down_cast<PgsqlWriteOp&>(*op);
         if (write_op.write_time()) {
@@ -596,12 +608,11 @@ class PgClient::Impl {
   }
 
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
-      bool size_only) {
+      bool size_only, uint32_t db_oid) {
     tserver::PgGetTserverCatalogVersionInfoRequestPB req;
     tserver::PgGetTserverCatalogVersionInfoResponsePB resp;
-    if (size_only) {
-      req.set_size_only(true);
-    }
+    req.set_size_only(size_only);
+    req.set_db_oid(db_oid);
     RETURN_NOT_OK(proxy_->GetTserverCatalogVersionInfo(req, &resp, PrepareController()));
     if (resp.has_status()) {
       return StatusFromPB(resp.status());
@@ -689,6 +700,11 @@ void PgClient::SetTimeout(MonoDelta timeout) {
 Result<PgTableDescPtr> PgClient::OpenTable(
     const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time) {
   return impl_->OpenTable(table_id, reopen, invalidate_cache_time);
+}
+
+Result<client::VersionedTablePartitionList> PgClient::GetTablePartitionList(
+    const PgObjectId& table_id) {
+  return impl_->GetTablePartitionList(table_id);
 }
 
 Status PgClient::FinishTransaction(Commit commit, DdlType ddl_type) {
@@ -825,8 +841,8 @@ Result<bool> PgClient::CheckIfPitrActive() {
 }
 
 Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCatalogVersionInfo(
-    bool size_only) {
-  return impl_->GetTserverCatalogVersionInfo(size_only);
+    bool size_only, uint32_t db_oid) {
+  return impl_->GetTserverCatalogVersionInfo(size_only, db_oid);
 }
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DEFINE(r, data, method) \

@@ -1722,6 +1722,11 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 					Expr *leftArg = linitial(opexpr->args);
 					Expr *rightArg = lsecond(opexpr->args);
 
+					if (IsA(leftArg, RelabelType))
+						leftArg = ((RelabelType *) leftArg)->arg;
+					
+					if (IsA(rightArg, RelabelType))
+						rightArg = ((RelabelType *) rightArg)->arg;
 
 					Var *innerArg;
 					Expr *outerArg;

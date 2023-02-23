@@ -893,6 +893,7 @@ YBCCreateIndex(const char *indexName,
 			   Relation rel,
 			   OptSplit *split_options,
 			   const bool skip_index_backfill,
+			   bool is_colocated,
 			   Oid tablegroupId,
 			   Oid colocationId,
 			   Oid tablespaceId)
@@ -917,7 +918,9 @@ YBCCreateIndex(const char *indexName,
 									   rel->rd_rel->relisshared,
 									   indexInfo->ii_Unique,
 									   skip_index_backfill,
-									   false, /* if_not_exists */
+									   false /* if_not_exists */,
+									   MyDatabaseColocated && is_colocated
+									   /* is_colocated_via_database */,
 									   tablegroupId,
 									   colocationId,
 									   tablespaceId,

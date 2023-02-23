@@ -17,7 +17,6 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
-import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.NodeInstance;
@@ -146,11 +145,13 @@ public class NodeAgentPoller {
       } catch (RuntimeException e) {
         int count =
             lastFailedCount.updateAndGet(val -> val >= MAX_FAILED_CONN_COUNT ? val : val + 1);
-        log.warn(
-            "Node agent {} has not been responding for count {}- {}",
-            nodeAgent.uuid,
-            count,
-            e.getMessage());
+        if (count % 10 == 0) {
+          log.warn(
+              "Node agent {} has not been responding for count {}- {}",
+              nodeAgent.uuid,
+              count,
+              e.getMessage());
+        }
         Instant expiryDate =
             Instant.now().minus(param.getLifetime().toMinutes(), ChronoUnit.MINUTES);
         if (expiryDate.isAfter(nodeAgent.updatedAt.toInstant())) {
@@ -212,7 +213,7 @@ public class NodeAgentPoller {
           {
             log.info("Finalizing upgrade for node agent {}", nodeAgent.uuid);
             // Inform the node agent to restart and load the new cert and key on restart.
-            nodeAgentClient.finalizeUpgrade(nodeAgent);
+            String nodeAgentHome = nodeAgentClient.finalizeUpgrade(nodeAgent);
             PingResponse pingResponse =
                 nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofMinutes(2));
             ServerInfo serverInfo = pingResponse.getServerInfo();
@@ -222,6 +223,7 @@ public class NodeAgentPoller {
               // If the node has restarted and loaded the new cert and key,
               // delete the local merged certs.
               nodeAgentManager.postUpgrade(nodeAgent);
+              nodeAgent.home = nodeAgentHome;
               nodeAgent.version = serverInfo.getVersion();
               nodeAgent.saveState(State.READY);
               log.info("Node agent {} has been upgraded successfully", nodeAgent.uuid);

@@ -791,6 +791,7 @@ index_create(Relation heapRelation,
 			 Oid *constraintId,
 			 OptSplit *split_options,
 			 const bool skip_index_backfill,
+			 bool is_colocated,
 			 Oid tablegroupId,
 			 Oid colocationId)
 {
@@ -1005,6 +1006,7 @@ index_create(Relation heapRelation,
 					   heapRelation,
 					   split_options,
 					   skip_index_backfill,
+					   is_colocated,
 					   tablegroupId,
 					   colocationId,
 					   tableSpaceId);

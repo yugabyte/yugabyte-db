@@ -447,10 +447,10 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ImmutableList.of(ConfKeyTags.BETA));
   public static ConfKeyInfo<Boolean> syncDBStateToFS =
       new ConfKeyInfo<>(
-          "yb.fs_stateless.sync_db_to_fs_startup",
+          "yb.fs_stateless.disable_sync_db_to_fs_startup",
           ScopeType.GLOBAL,
           "Sync DB State to FS",
-          "If enabled syncs the files in DB to FS on every YBA startup",
+          "If disables does not syncs the files in DB to FS on every YBA startup",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
   public static ConfKeyInfo<Duration> taskGcCheckInterval =
@@ -477,5 +477,21 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "UI Tag Filters",
           "List of tags to filter which keys are displayed",
           ConfDataType.TagListType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> dataValidationEnabled =
+      new ConfKeyInfo<>(
+          "runtime_config.data_validation.enabled",
+          ScopeType.GLOBAL,
+          "Enable Data Validation",
+          "Enable data validation while setting runtime keys",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> scopeStrictnessEnabled =
+      new ConfKeyInfo<>(
+          "runtime_config.scope_strictness.enabled",
+          ScopeType.GLOBAL,
+          "Enable Scope Strictness",
+          "Enable scope strictness while setting runtime keys",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

@@ -4,7 +4,6 @@ package com.yugabyte.yw.common;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.yugabyte.yw.common.PlacementInfoUtil.getNumMasters;
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -22,16 +21,17 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.Users;
 import io.swagger.annotations.ApiModel;
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -55,6 +55,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
@@ -69,12 +70,12 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
-import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
+import play.mvc.Http.Context;
 
 public class Util {
   public static final Logger LOG = LoggerFactory.getLogger(Util.class);
@@ -893,5 +894,16 @@ public class Util {
       }
       return result.toString().toLowerCase();
     }
+  }
+
+  public static String maybeGetEmailFromContext(Context context) {
+    String userEmail =
+        Optional.ofNullable(context)
+            .map(context1 -> (UserWithFeatures) context1.args.get("user"))
+            .map(UserWithFeatures::getUser)
+            .map(Users::getEmail)
+            .map(Object::toString)
+            .orElse("Unknown");
+    return userEmail;
   }
 }

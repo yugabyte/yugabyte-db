@@ -108,6 +108,8 @@ message CreateTableRequestPB {
   optional bool is_matview = 26;
 
   optional bytes matview_pg_table_id = 24;
+
+  repeated StatefulServiceKind hosted_stateful_services = 27;
 }
 
 message CreateTableResponsePB {

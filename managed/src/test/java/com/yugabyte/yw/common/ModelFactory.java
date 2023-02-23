@@ -9,14 +9,12 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.TableSpaceStructures.PlacementBlock;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceInfo;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
@@ -43,6 +41,7 @@ import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.AlertTemplateSettings;
+import com.yugabyte.yw.models.AlertTemplateVariable;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -50,6 +49,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.MaintenanceWindow;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
@@ -155,6 +155,11 @@ public class ModelFactory {
   public static Provider newProvider(
       Customer customer, Common.CloudType cloud, Map<String, String> config) {
     return Provider.create(customer.uuid, cloud, cloud.toString(), config);
+  }
+
+  public static Provider newProvider(
+      Customer customer, Common.CloudType cloud, ProviderDetails details) {
+    return Provider.create(customer.uuid, cloud, cloud.toString(), details);
   }
 
   /*

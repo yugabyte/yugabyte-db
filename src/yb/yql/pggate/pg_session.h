@@ -125,7 +125,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Resets the read point for catalog tables.
   // Next catalog read operation will read the very latest catalog's state.
   void ResetCatalogReadPoint();
-  [[nodiscard]] bool HasCatalogReadPoint() const;
+  [[nodiscard]] const ReadHybridTime& catalog_read_time() const { return catalog_read_time_; }
 
   //------------------------------------------------------------------------------------------------
   // Operations on Session.
@@ -329,8 +329,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     return pg_client_;
   }
 
-  bool ShouldUseFollowerReads() const;
-
   Status SetActiveSubTransaction(SubTransactionId id);
   Status RollbackToSubTransaction(SubTransactionId id);
 
@@ -344,6 +342,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   void GetAndResetOperationFlushRpcStats(uint64_t* count, uint64_t* wait_time);
 
  private:
+  Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);
   Result<PerformFuture> FlushOperations(BufferableOperations ops, bool transactional);
 
   class RunHelper;

@@ -769,6 +769,15 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		}
 	}
 
+	/*
+	 * In a colocated database, tablegroups are created under the hood.
+	 * Disallow users from using the underlying tablegroups.
+	 */
+	if (MyDatabaseColocated && stmt->tablegroupname)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot use tablegroups in a colocated database")));
+
 	Oid tablegroupId = stmt->tablegroupname
 		? get_tablegroup_oid(stmt->tablegroupname, false)
 		: InvalidOid;
@@ -7840,7 +7849,13 @@ YBCloneRelationSetPrimaryKey(Relation old_rel, IndexStmt* stmt, ObjectAddress* r
 	ReleaseSysCache(tuple);
 
 	const Oid tablegroup_oid = old_rel->yb_table_properties->tablegroup_oid;
-	if (OidIsValid(tablegroup_oid))
+
+	/*
+	 * In a colocated database, tablegroups are created under the hood,
+	 * so don't fill tablegroup name in the CREATE TABLE statement because the
+	 * tablegroup for each colocated table is chosen by us.
+	 */
+	if (!MyDatabaseColocated && OidIsValid(tablegroup_oid))
 	{
 		create_stmt->tablegroupname = get_tablegroup_name(tablegroup_oid);
 		Assert(create_stmt->tablegroupname);

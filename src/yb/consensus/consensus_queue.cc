@@ -236,17 +236,20 @@ PeerMessageQueue::PeerMessageQueue(const scoped_refptr<MetricEntity>& metric_ent
 }
 
 void PeerMessageQueue::Init(const OpId& last_locally_replicated) {
-  LockGuard lock(queue_lock_);
-  CHECK_EQ(queue_state_.state, State::kQueueConstructed);
-  log_cache_.Init(last_locally_replicated.ToPB<OpIdPB>());
-  queue_state_.last_appended = last_locally_replicated;
-  queue_state_.state = State::kQueueOpen;
-  local_peer_ = TrackPeerUnlocked(local_peer_pb_);
+  {
+    LockGuard lock(queue_lock_);
+    CHECK_EQ(queue_state_.state, State::kQueueConstructed);
+    log_cache_.Init(last_locally_replicated.ToPB<OpIdPB>());
+    queue_state_.last_appended = last_locally_replicated;
+    queue_state_.state = State::kQueueOpen;
+    local_peer_ = TrackPeerUnlocked(local_peer_pb_);
+  }  // Ensure that the queue_lock_ is released.
 
   if (context_) {
     context_->ListenNumSSTFilesChanged(std::bind(&PeerMessageQueue::NumSSTFilesChanged, this));
     installed_num_sst_files_changed_listener_ = true;
   }
+
 }
 
 void PeerMessageQueue::SetLeaderMode(const OpId& committed_op_id,
@@ -1456,9 +1459,12 @@ void PeerMessageQueue::DumpToHtml(std::ostream& out) const {
   out << "<table>" << endl;;
   out << "  <tr><th>Peer</th><th>Watermark</th></tr>" << endl;
   for (const PeersMap::value_type& entry : peers_map_) {
-    out << Substitute("  <tr><td>$0</td><td>$1</td></tr>",
-                      EscapeForHtmlToString(entry.first),
-                      EscapeForHtmlToString(entry.second->ToString())) << endl;
+    out << Substitute(
+               "  <tr><td><ul><li>$0</li><li>$1</li></ul></td><td>$2</td></tr>",
+               EscapeForHtmlToString("UUID: " + entry.first),
+               EscapeForHtmlToString("Host: " + entry.second->last_known_private_addr[0].host()),
+               EscapeForHtmlToString(entry.second->ToString()))
+        << endl;
   }
   out << "</table>" << endl;
 

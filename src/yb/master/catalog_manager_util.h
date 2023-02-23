@@ -109,7 +109,8 @@ class CatalogManagerUtil {
       const SetPreferredZonesRequestPB* req, ReplicationInfoPB* replication_info);
 
   static void GetAllAffinitizedZones(
-      const ReplicationInfoPB& replication_info, std::vector<AffinitizedZonesSet>* affinitized_zones);
+      const ReplicationInfoPB& replication_info,
+      std::vector<AffinitizedZonesSet>* affinitized_zones);
 
   static Status CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info);
 

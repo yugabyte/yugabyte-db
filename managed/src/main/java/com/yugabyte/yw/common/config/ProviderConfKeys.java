@@ -26,10 +26,58 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> defaultAwsInstanceType =
       new ConfKeyInfo<>(
-          "yb.internal.default_aws_instance_type",
+          "yb.aws.default_instance_type",
           ScopeType.PROVIDER,
           "Default AWS Instance Type",
           "Default AWS Instance Type",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> defaultGcpInstanceType =
+      new ConfKeyInfo<>(
+          "yb.gcp.default_instance_type",
+          ScopeType.PROVIDER,
+          "Default GCP Instance Type",
+          "Default GCP Instance Type",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> defaultAzureInstanceType =
+      new ConfKeyInfo<>(
+          "yb.azure.default_instance_type",
+          ScopeType.PROVIDER,
+          "Default Azure Instance Type",
+          "Default Azure Instance Type",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> defaultKubInstanceType =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.default_instance_type",
+          ScopeType.PROVIDER,
+          "Default Kubernetes Instance Type",
+          "Default Kubernetes Instance Type",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> defaultAwsStorageType =
+      new ConfKeyInfo<>(
+          "yb.aws.storage.default_storage_type",
+          ScopeType.PROVIDER,
+          "Default AWS Storage Type",
+          "Default AWS Storage Type",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> defaultGcpStorageType =
+      new ConfKeyInfo<>(
+          "yb.gcp.storage.default_storage_type",
+          ScopeType.PROVIDER,
+          "Default GCP Storage Type",
+          "Default GCP Storage Type",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> defaultAzureStorageType =
+      new ConfKeyInfo<>(
+          "yb.azure.storage.default_storage_type",
+          ScopeType.PROVIDER,
+          "Default Azure Storage Type",
+          "Default Azure Storage Type",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> universeBootScript =
@@ -57,6 +105,46 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> defaultAwsVolumeCount =
+      new ConfKeyInfo<>(
+          "yb.aws.default_volume_count",
+          ScopeType.PROVIDER,
+          "Default AWS Volume Count",
+          "Default AWS Volume Count",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> defaultAwsVolumeSize =
+      new ConfKeyInfo<>(
+          "yb.aws.default_volume_size_gb",
+          ScopeType.PROVIDER,
+          "Default AWS Volume Size",
+          "Default AWS Volume Size",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> defaultGcpVolumeSize =
+      new ConfKeyInfo<>(
+          "yb.gcp.default_volume_size_gb",
+          ScopeType.PROVIDER,
+          "Default GCP Volume Size",
+          "Default GCP Volume Size",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> defaultAzureVolumeSize =
+      new ConfKeyInfo<>(
+          "yb.azure.default_volume_size_gb",
+          ScopeType.PROVIDER,
+          "Default Azure Volume Size",
+          "Default Azure Volume Size",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> defaultKubernetesVolumeSize =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.default_volume_size_gb",
+          ScopeType.PROVIDER,
+          "Default Kubernetes Volume Size",
+          "Default Kubernetes Volume Size",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> user =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.user",
@@ -145,4 +233,22 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.BETA));
+
+  public static final ConfKeyInfo<Boolean> enableNodeAgentClient =
+      new ConfKeyInfo<>(
+          "yb.node_agent.client.enabled",
+          ScopeType.PROVIDER,
+          "Enable Node Agent Client",
+          "Enable node agent client for communication to DB nodes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Boolean> installNodeAgentServer =
+      new ConfKeyInfo<>(
+          "yb.node_agent.server.install",
+          ScopeType.PROVIDER,
+          "Install Node Agent Server",
+          "Install node agent server on DB nodes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

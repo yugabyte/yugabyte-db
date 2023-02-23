@@ -33,18 +33,6 @@ import (
 // Systemctl linux command.
 const Systemctl string = "systemctl"
 
-// YBA-CTL specific files
-const (
-	// InputFile where installer config settings are specified.
-	InputFile      = "/opt/yba-ctl/yba-ctl.yml"
-	YbaCtlLogFile  = "/opt/yba-ctl/yba-ctl.log"
-	installingFile = "/opt/yba-ctl/.installing"
-
-	// InstalledFile is location of install completed marker file.
-	InstalledFile      = "/opt/yba-ctl/.installed"
-	LicenseFileInstall = "/opt/yba-ctl/yba.lic"
-)
-
 const PostgresPackageGlob = "yba_installer-*linux*/postgresql-*-linux-x64-binaries.tar.gz"
 
 var skipConfirmation = false
@@ -53,7 +41,7 @@ var yumList = []string{"RedHat", "CentOS", "Oracle", "Alma", "Amazon"}
 
 var aptList = []string{"Ubuntu", "Debian"}
 
-const goBinaryName = "yba-ctl"
+const GoBinaryName = "yba-ctl"
 
 const versionMetadataJSON = "version_metadata.json"
 
@@ -74,7 +62,7 @@ func DetectOS() string {
 }
 
 // GetVersion gets the version at execution time so that yba-installer
-// installs the correct version of Yugabyte Anywhere.
+// installs the correct version of YugabyteDB Anywhere.
 func GetVersion() string {
 
 	// locate the version metadata json file in the same dir as the yba-ctl
@@ -306,11 +294,21 @@ func UserConfirm(prompt string, defAns defaultAnswer) bool {
 	}
 }
 
+// InitViper will set some sane defaults as needed, and read the config.
 func InitViper() {
 	// Init Viper
 	viper.SetDefault("service_username", DefaultServiceUser)
 	viper.SetDefault("installRoot", "/opt/yugabyte")
-	viper.SetConfigFile(InputFile)
+
+	// Update the installRoot to home directory for non-root installs. Will honor custom install root.
+	if !HasSudoAccess() && viper.GetString("installRoot") == "/opt/yugabyte" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			panic(err)
+		}
+		viper.Set("installRoot", filepath.Join(homeDir, "yugabyte"))
+	}
+	viper.SetConfigFile(InputFile())
 	viper.ReadInConfig()
 }
 
@@ -563,7 +561,7 @@ func RunFromInstalled() bool {
 
 	// Regex for "installed paths" of yba-ctl
 	matcher, err := regexp.Compile("(?:/opt/yba-ctl/yba-ctl)|(?:/usr/bin/yba-ctl)|" +
-		"(?:/opt/yugabyte/software/.*/yba_installer/yba-ctl)")
+		"(?:.*/yugabyte/software/.*/yba_installer/yba-ctl)")
 	if err != nil {
 		panic("bad regex: " + err.Error())
 	}

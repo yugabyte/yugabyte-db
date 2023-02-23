@@ -1088,12 +1088,13 @@ class TransactionParticipant::Impl
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = transactions_.find(transaction_id);
     if (it == transactions_.end()) {
-      // This case may happen if the transaction gets expired before the update RPC is received.
-      auto status = STATUS_FORMAT(
-          NotFound, "Update transaction status location for unknown transaction: $0",
-          transaction_id);
-      LOG(WARNING) << status;
-      return status;
+      // This case may happen if the transaction gets aborted due to conflict or expired
+      // before the update RPC is received.
+      YB_LOG_WITH_PREFIX_HIGHER_SEVERITY_WHEN_TOO_MANY(INFO, WARNING, 1s, 50)
+          << "Request to unknown transaction " << transaction_id;
+      return STATUS_EC_FORMAT(
+          Expired, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
+          "Transaction $0 expired or aborted by a conflict", transaction_id);
     }
 
     auto& transaction = *it;
@@ -1548,7 +1549,7 @@ class TransactionParticipant::Impl
     TransactionApplyData data = {
         .leader_term = term,
         .transaction_id = *id,
-        .aborted = AbortedSubTransactionSet(),
+        .aborted = SubtxnSet(),
         .op_id = OpId(),
         .commit_ht = HybridTime(),
         .log_ht = HybridTime(),
@@ -1570,7 +1571,7 @@ class TransactionParticipant::Impl
     TransactionApplyData apply_data = {
       .leader_term = data.leader_term,
       .transaction_id = id,
-      .aborted = VERIFY_RESULT(AbortedSubTransactionSet::FromPB(data.state.aborted().set())),
+      .aborted = VERIFY_RESULT(SubtxnSet::FromPB(data.state.aborted().set())),
       .op_id = data.op_id,
       .commit_ht = commit_time,
       .log_ht = data.hybrid_time,
@@ -1617,39 +1618,43 @@ class TransactionParticipant::Impl
       std::lock_guard<std::mutex> lock(mutex_);
 
       ProcessRemoveQueueUnlocked(&min_running_notifier);
-      if (ANNOTATE_UNPROTECTED_READ(FLAGS_transactions_poll_check_aborted)) {
-        CheckForAbortedTransactions();
-      }
       CleanTransactionsQueue(&graceful_cleanup_queue_, &min_running_notifier);
+    }
+
+    if (ANNOTATE_UNPROTECTED_READ(FLAGS_transactions_poll_check_aborted)) {
+      CheckForAbortedTransactions();
     }
     CleanupStatusResolvers();
   }
 
-  void CheckForAbortedTransactions() REQUIRES(mutex_) {
-    if (transactions_.empty()) {
-      return;
-    }
-    auto now = participant_context_.Now();
-    auto& index = transactions_.get<AbortCheckTimeTag>();
+  void CheckForAbortedTransactions() EXCLUDES(mutex_) {
     TransactionStatusResolver* resolver = nullptr;
-    for (;;) {
-      auto& txn = **index.begin();
-      if (txn.external_transaction()) {
-        break;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (transactions_.empty()) {
+        return;
       }
-      if (txn.abort_check_ht() > now) {
-        break;
+      auto now = participant_context_.Now();
+      auto& index = transactions_.get<AbortCheckTimeTag>();
+      for (;;) {
+        auto& txn = **index.begin();
+        if (txn.external_transaction()) {
+          break;
+        }
+        if (txn.abort_check_ht() > now) {
+          break;
+        }
+        if (!resolver) {
+          resolver = &AddStatusResolver();
+        }
+        const auto& metadata = txn.metadata();
+        VLOG_WITH_PREFIX(4)
+            << "Check aborted: " << metadata.status_tablet << ", " << metadata.transaction_id;
+        resolver->Add(metadata.status_tablet, metadata.transaction_id);
+        CHECK(index.modify(index.begin(), [now](const auto& txn) {
+          txn->UpdateAbortCheckHT(now, UpdateAbortCheckHTMode::kStatusRequestSent);
+        }));
       }
-      if (!resolver) {
-        resolver = &AddStatusResolver();
-      }
-      const auto& metadata = txn.metadata();
-      VLOG_WITH_PREFIX(4)
-          << "Check aborted: " << metadata.status_tablet << ", " << metadata.transaction_id;
-      resolver->Add(metadata.status_tablet, metadata.transaction_id);
-      CHECK(index.modify(index.begin(), [now](const auto& txn) {
-        txn->UpdateAbortCheckHT(now, UpdateAbortCheckHTMode::kStatusRequestSent);
-      }));
     }
 
     // We don't introduce limit on number of status resolutions here, because we cannot predict

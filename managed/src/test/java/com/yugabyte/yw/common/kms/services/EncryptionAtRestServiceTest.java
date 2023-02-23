@@ -79,19 +79,14 @@ class TestEncryptionAtRestService extends EncryptionAtRestService<TestAlgorithm>
   }
 
   @Override
-  public byte[] retrieveKeyWithService(
-      UUID universeUUID, UUID configUUID, byte[] keyRef, EncryptionAtRestConfig config) {
+  public byte[] retrieveKeyWithService(UUID configUUID, byte[] keyRef) {
     this.createRequest = !this.createRequest;
     return this.createRequest ? null : "some_key_value".getBytes();
   }
 
   @Override
   public byte[] validateRetrieveKeyWithService(
-      UUID universeUUID,
-      UUID configUUID,
-      byte[] keyRef,
-      EncryptionAtRestConfig config,
-      ObjectNode authConig) {
+      UUID configUUID, byte[] keyRef, ObjectNode authConig) {
     this.createRequest = !this.createRequest;
     return this.createRequest ? null : "some_key_value".getBytes();
   }

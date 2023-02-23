@@ -30,19 +30,6 @@ import { HelmOverridesModal } from '../../../universes/UniverseForm/HelmOverride
 
 import './RollingUpgradeForm.scss';
 
-const GFLAG_UPDATE_OPTIONS = [
-  { value: 'Rolling', label: 'Apply all changes using a rolling restart (slower, zero downtime)' },
-  {
-    value: 'Non-Rolling',
-    label: 'Apply all changes immediately, using a concurrent restart (faster, some downtime)'
-  },
-  {
-    value: 'Non-Restart',
-    label:
-      'Apply all changes which do not require a restart immediately; apply remaining changes the next time the database is restarted'
-  }
-];
-
 export default class RollingUpgradeForm extends Component {
   constructor(props) {
     super(props);
@@ -90,6 +77,8 @@ export default class RollingUpgradeForm extends Component {
     let systemdBoolean = false;
 
     const payload = {};
+    payload.clusters = [];
+    const asyncCluster = _.cloneDeep(getReadOnlyCluster(clusters));
     switch (visibleModal) {
       case 'softwareUpgradesModal': {
         payload.taskType = 'Software';
@@ -139,6 +128,12 @@ export default class RollingUpgradeForm extends Component {
       case 'rollingRestart': {
         payload.taskType = 'Restart';
         payload.upgradeOption = 'Rolling';
+        //send read replica clsuter details in payload only for k8s universe
+        if (
+          isKubernetesUniverse(this.props.universe.currentUniverse.data) &&
+          isNonEmptyObject(asyncCluster)
+        )
+          payload.clusters.push(asyncCluster);
         break;
       }
       case 'resizeNodesModal': {
@@ -191,7 +186,7 @@ export default class RollingUpgradeForm extends Component {
       primaryCluster.userIntent.azOverrides = values.azOverrides;
     }
 
-    payload.clusters = [primaryCluster];
+    payload.clusters = [primaryCluster, ...payload.clusters];
     payload.sleepAfterMasterRestartMillis = values.timeDelay * 1000;
     payload.sleepAfterTServerRestartMillis = values.timeDelay * 1000;
     if (overrideIntentParams) {
@@ -396,6 +391,30 @@ export default class RollingUpgradeForm extends Component {
         );
       }
       case 'gFlagsModal': {
+        //checks if tags are not runtime , runtime flags changes apply without restart
+        const isNotRuntime = formValues?.gFlags.some((f) => !f?.tags?.includes('runtime'));
+        const GFLAG_UPDATE_OPTIONS = [
+          {
+            value: 'Rolling',
+            label: 'Apply all changes using a rolling restart (slower, zero downtime)'
+          },
+          {
+            value: 'Non-Rolling',
+            label:
+              'Apply all changes immediately, using a concurrent restart (faster, some downtime)'
+          },
+          {
+            value: 'Non-Restart',
+            label:
+              'Apply all changes which do not require a restart immediately;' +
+              `${
+                isNotRuntime
+                  ? 'apply remaining changes the next time the database is restarted'
+                  : ''
+              }`
+          }
+        ];
+
         return (
           <YBModal
             className={getPromiseState(universe.rollingUpgrade).isError() ? 'modal-shake' : ''}

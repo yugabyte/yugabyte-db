@@ -27,8 +27,9 @@ from ybops.utils import get_path_from_yb, \
     YB_SUDO_PASS, DEFAULT_MASTER_HTTP_PORT, DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
     DEFAULT_TSERVER_RPC_PORT, DEFAULT_CQL_PROXY_RPC_PORT, DEFAULT_REDIS_PROXY_RPC_PORT
 from ansible_vault import Vault
+from ybops.utils.remote_shell import copy_to_tmp, wait_for_server, get_host_port_user
 from ybops.utils.ssh import wait_for_ssh, format_rsa_key, validated_key_file, \
-    generate_rsa_keypair, scp_to_tmp, get_public_key_content, \
+    generate_rsa_keypair, get_public_key_content, \
     get_ssh_host_port, DEFAULT_SSH_USER, DEFAULT_SSH_PORT
 from ybops.utils import remote_exec_command
 
@@ -190,6 +191,8 @@ class AbstractInstancesMethod(AbstractMethod):
                                  help="Node agent cert path")
         self.parser.add_argument("--node_agent_auth_token", required=False,
                                  help="Node agent auth token")
+        self.parser.add_argument("--node_agent_home", required=False,
+                                 help="Node agent home path")
 
         mutex_group = self.parser.add_mutually_exclusive_group()
         mutex_group.add_argument("--num_volumes", type=int, default=0,
@@ -251,6 +254,8 @@ class AbstractInstancesMethod(AbstractMethod):
             updated_args["node_agent_cert_path"] = args.node_agent_cert_path
         if args.node_agent_auth_token:
             updated_args["node_agent_auth_token"] = args.node_agent_auth_token
+        if args.node_agent_home:
+            updated_args["node_agent_home"] = args.node_agent_home
 
         if args.instance_tags:
             updated_args["instance_tags"] = json.loads(args.instance_tags)
@@ -269,7 +274,7 @@ class AbstractInstancesMethod(AbstractMethod):
             "instance_name": host_info["name"],
             "instance_type": host_info["instance_type"]
         })
-        self.extra_vars.update(get_ssh_host_port(host_info, custom_ssh_port))
+        self.extra_vars.update(self.get_server_host_port(host_info, custom_ssh_port))
 
     def wait_for_host(self, args, default_port=True):
         logging.info("Waiting for instance {}".format(args.search_pattern))
@@ -282,12 +287,10 @@ class AbstractInstancesMethod(AbstractMethod):
                 host_info = self.cloud.get_host_info(args)
 
             if host_info:
-                self.extra_vars.update(
-                    get_ssh_host_port(host_info, args.custom_ssh_port, default_port=default_port))
-                if wait_for_ssh(self.extra_vars["ssh_host"],
-                                self.extra_vars["ssh_port"],
-                                self.extra_vars["ssh_user"],
-                                args.private_key_file, ssh2_enabled=args.ssh2_enabled):
+                self.extra_vars.update(self.get_server_host_port(
+                    host_info, args.custom_ssh_port, default_port))
+                self.update_open_ssh_port(args)
+                if wait_for_server(self.extra_vars):
                     return host_info
 
             sys.stdout.write('.')
@@ -295,22 +298,59 @@ class AbstractInstancesMethod(AbstractMethod):
             time.sleep(1)
             host_lookup_count += 1
 
-        raise YBOpsRecoverableError("Timed out waiting for instance: '{0}'. {}@{}:{}".format(
-            args.search_pattern, self.extra_vars["ssh_user"],
-            self.extra_vars["ssh_host"], self.extra_vars["ssh_port"]))
+        host_port_user = get_host_port_user(self.extra_vars)
+        raise YBOpsRecoverableError("Timed out waiting for instance: '{}'. {}@{}:{} using {}"
+                                    .format(args.search_pattern, host_port_user["user"],
+                                            host_port_user["host"], host_port_user["port"],
+                                            host_port_user["connection_type"]))
+
+    def get_connection_type(self, args=None):
+        connection_type = self.extra_vars.get("connection_type")
+        if connection_type is None and args and hasattr(args, "connection_type"):
+            connection_type = args.connection_type
+        if connection_type is None:
+            return 'ssh'
+        return connection_type
 
     # Find the open ssh port and update the dictionary.
     def update_open_ssh_port(self, args):
         ssh_port_updated = False
-        ssh_ports = [self.extra_vars["ssh_port"]]
-        if args.custom_ssh_port and int(args.custom_ssh_port) != self.extra_vars["ssh_port"]:
-            ssh_ports.append(int(args.custom_ssh_port))
-        ssh_port = self.cloud.wait_for_ssh_ports(
-            self.extra_vars["ssh_host"], args.search_pattern, ssh_ports)
-        if self.extra_vars["ssh_port"] != ssh_port:
-            self.extra_vars["ssh_port"] = ssh_port
-            ssh_port_updated = True
+        connection_type = self.get_connection_type(args)
+        if connection_type == 'ssh':
+            ssh_ports = [self.extra_vars["ssh_port"]]
+            if args.custom_ssh_port and int(args.custom_ssh_port) != self.extra_vars["ssh_port"]:
+                ssh_ports.append(int(args.custom_ssh_port))
+            ssh_port = self.cloud.wait_for_server_ports(
+                self.extra_vars["ssh_host"], args.search_pattern, ssh_ports)
+            if self.extra_vars["ssh_port"] != ssh_port:
+                self.extra_vars["ssh_port"] = ssh_port
+                ssh_port_updated = True
         return ssh_port_updated
+
+    def get_server_host_port(self, host_info, custom_ssh_port, default_port=False):
+        connection_type = self.get_connection_type()
+        if connection_type == 'ssh':
+            return get_ssh_host_port(host_info, custom_ssh_port, default_port)
+        if connection_type == 'node_agent_rpc':
+            return {
+                "node_agent_ip": host_info["private_ip"],
+                "node_agent_port": self.extra_vars["node_agent_port"]
+            }
+        raise YBOpsRuntimeError("Unknown connction type: {}".format(connection_type))
+
+    def get_server_ports_to_check(self, args):
+        server_ports = []
+        connection_type = self.get_connection_type(args)
+        if connection_type is None or connection_type == 'ssh':
+            server_ports.append(DEFAULT_SSH_PORT)
+            ssh_port = self.extra_vars.get("ssh_port")
+            if ssh_port:
+                server_ports.append(ssh_port)
+            if args.custom_ssh_port:
+                server_ports.append(int(args.custom_ssh_port))
+        elif connection_type == 'node_agent_rpc':
+            server_ports.append(self.extra_vars["node_agent_port"])
+        return list(set(server_ports))
 
 
 class VerifySSHConnection(AbstractInstancesMethod):
@@ -518,9 +558,18 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
         except Exception as e:
             logging.exception(e)
             if unmounted:
-                self._mount_root_volume(host_info, current_root_volume)
+                # Note: This doesn't work if VM image upgrade has already been done successfully
+                # at least once before. The boot disk name will no longer correlate directly with
+                # the instance name(id).
+                old_disk_url = os.path.join(
+                    args.replacement_disk[:args.replacement_disk.rfind('/')], id)
+                self._mount_root_volume(host_info, old_disk_url)
+                logging.warning("Mounted the original volume {} on {} before failing".format(
+                                old_disk_url, id))
+            raise e
         finally:
-            self.cloud.start_instance(host_info, [22, args.custom_ssh_port])
+            server_ports = self.get_server_ports_to_check(args)
+            self.cloud.start_instance(host_info, server_ports)
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -528,7 +577,7 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
         if not host_info:
             raise YBOpsRuntimeError(
                 "Instance {} not found, was it stopped?".format(args.search_pattern))
-
+        self.update_ansible_vars_with_args(args)
         self._replace_root_volume(args, *self._host_info_with_current_root_volume(args, host_info))
 
 
@@ -606,21 +655,19 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         host_info = self.cloud.get_host_info(args)
         # Set the host and default port.
         self.extra_vars.update(
-            get_ssh_host_port(host_info, args.custom_ssh_port, default_port=True))
+            self.get_server_host_port(host_info, args.custom_ssh_port, default_port=True))
         # Update with the open port.
         self.update_open_ssh_port(args)
         self.extra_vars['ssh_user'] = self.extra_vars.get("ssh_user", DEFAULT_SSH_USER)
-        # Port is already open. Wait for ssh to succeed.
-        connected = wait_for_ssh(self.extra_vars["ssh_host"],
-                                 self.extra_vars["ssh_port"],
-                                 self.extra_vars["ssh_user"],
-                                 args.private_key_file,
-                                 ssh2_enabled=args.ssh2_enabled)
+        # Port is already open. Wait for connection to server to succeed.
+        connected = wait_for_server(self.extra_vars)
         if not connected:
-            raise YBOpsRuntimeError("SSH connection to host {} by user {} failed at port {}"
-                                    .format(self.extra_vars["ssh_host"],
-                                            self.extra_vars["ssh_user"],
-                                            self.extra_vars["ssh_port"]))
+            host_port_user = get_host_port_user(self.extra_vars)
+            raise YBOpsRuntimeError("Connection({}) to host {} by user {} failed at port {}"
+                                    .format(host_port_user["connection_type"],
+                                            host_port_user["host"],
+                                            host_port_user["user"],
+                                            host_port_user["port"]))
 
         if args.boot_script:
             logging.info(
@@ -696,23 +743,23 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
 
         self.update_ansible_vars_with_args(args)
 
-        self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port,
-                                                 default_port=True))
+        self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port,
+                                                         default_port=True))
 
-        # Check if ssh port has already been updated
-        ssh_port_updated = self.update_open_ssh_port(args,)
-        use_default_port = not ssh_port_updated
-
-        self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port,
-                                                 default_port=use_default_port))
+        # Check if ssh port has already been updated.
+        # This updates extra_vars with the open port.
+        ssh_port_updated = self.update_open_ssh_port(args)
+        use_default_ssh_port = not ssh_port_updated
 
         # Check if secondary subnet is present. If so, configure it.
         if host_info.get('secondary_subnet'):
-            # Wait for host to be ready to run ssh commands
-            self.wait_for_host(args, use_default_port)
+            # Wait for host to be ready to run ssh commands.
+            self.wait_for_host(args, use_default_ssh_port)
+            server_ports = self.get_server_ports_to_check(args)
             self.cloud.configure_secondary_interface(
                 args, self.extra_vars, self.cloud.get_subnet_cidr(args,
-                                                                  host_info['secondary_subnet']))
+                                                                  host_info['secondary_subnet']),
+                server_ports)
             # The bootscript might have failed due to no access to public internet
             # Re-run it.
             if args.boot_script:
@@ -722,7 +769,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         if not args.skip_preprovision:
             self.preprovision(args)
 
-        self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
+        self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         if args.local_package_path:
             self.extra_vars.update({"local_package_path": args.local_package_path})
         if args.air_gap:
@@ -746,17 +793,16 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.extra_vars["lun_indexes"] = args.lun_indexes
 
-        if wait_for_ssh(self.extra_vars["ssh_host"],
-                        self.extra_vars["ssh_port"],
-                        self.extra_vars["ssh_user"],
-                        args.private_key_file, ssh2_enabled=args.ssh2_enabled):
+        if wait_for_server(self.extra_vars):
             self.cloud.setup_ansible(args).run("yb-server-provision.yml",
                                                self.extra_vars, host_info)
         else:
-            raise YBOpsRecoverableError("Could not ssh into node {}:{} using username {}"
-                                        .format(self.extra_vars["ssh_host"],
-                                                self.extra_vars["ssh_port"],
-                                                self.extra_vars["ssh_user"]))
+            host_port_user = get_host_port_user(self.extra_vars)
+            raise YBOpsRecoverableError("Could not connect({}) into node {}:{} using username {}"
+                                        .format(host_port_user["connection_type"],
+                                                host_port_user["host"],
+                                                host_port_user["user"],
+                                                host_port_user["port"]))
 
     def update_ansible_vars(self, args):
         for arg_name in ["cloud_subnet",
@@ -775,15 +821,15 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
 
     def preprovision(self, args):
         self.update_ansible_vars(args)
-        ssh_port_updated = self.update_open_ssh_port(args,)
-        use_default_port = not ssh_port_updated
-        host_info = self.wait_for_host(args, default_port=use_default_port)
+        ssh_port_updated = self.update_open_ssh_port(args)
+        use_default_ssh_port = not ssh_port_updated
+        host_info = self.wait_for_host(args, use_default_ssh_port)
         ansible = self.cloud.setup_ansible(args)
         ansible.run("preprovision.yml", self.extra_vars, host_info)
 
         # Disabling custom_ssh_port for onprem provider when ssh2_enabled, because
         # we won't be able to know whether the nodes used are having openssh/tectia server.
-        if not args.disable_custom_ssh and use_default_port and \
+        if not args.disable_custom_ssh and use_default_ssh_port and \
                 not (args.ssh2_enabled and self.cloud.name == "onprem"):
             ansible.run("use_custom_ssh_port.yml", self.extra_vars, host_info)
 
@@ -812,12 +858,14 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
     def callback(self, args):
         unique_string = ''.join(random.choice(string.ascii_lowercase) for i in range(6))
         args.search_pattern = "{}-".format(unique_string) + args.search_pattern
-        vid = self.create_master_volume(args)
-        output = [vid]
+        volume_id = self.create_master_volume(args)
+        output = [volume_id]
         num_disks = int(args.num_disks) - 1
 
+        # Now clone and create the remaining disks if any as the machine image is the same
         if num_disks > 0:
-            output.extend(self.cloud.clone_disk(args, vid, num_disks))
+            logging.info("Cloning {} other disks using volume_id {}".format(num_disks, volume_id))
+            output.extend(self.cloud.clone_disk(args, volume_id, num_disks))
 
         logging.info("==> Created volumes {}".format(output))
         print(json.dumps(output))
@@ -898,14 +946,8 @@ class UpdateDiskMethod(AbstractInstancesMethod):
         self.cloud.update_disk(args)
         host_info = self.cloud.get_host_info(args)
         self.update_ansible_vars_with_args(args)
-        ssh_options = {
-            # TODO: replace with args.ssh_user when it's setup in the flow
-            "ssh_user": self.extra_vars["ssh_user"],
-            "private_key_file": args.private_key_file,
-            "ssh2_enabled": args.ssh2_enabled
-        }
-        ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
-        self.cloud.expand_file_system(args, ssh_options)
+        self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
+        self.cloud.expand_file_system(args, self.extra_vars)
 
 
 class UpdateMountedDisksMethod(AbstractInstancesMethod):
@@ -924,7 +966,7 @@ class UpdateMountedDisksMethod(AbstractInstancesMethod):
         host_info = self.cloud.get_host_info(args)
         ansible = self.cloud.setup_ansible(args)
         self.update_ansible_vars_with_args(args)
-        self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
+        self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         ansible.playbook_args["remote_role"] = "mount_ephemeral_drives"
         logging.debug(pprint(self.extra_vars))
         ansible.run("remote_role.yml", self.extra_vars, host_info)
@@ -991,7 +1033,8 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
             raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'
                                     .format(repr(e)))
         finally:
-            self.cloud.start_instance(host_info, [int(args.custom_ssh_port)])
+            server_ports = self.get_server_ports_to_check(args)
+            self.cloud.start_instance(host_info, server_ports)
             logging.info('Instance {} is started'.format(args.search_pattern))
         # Make sure we are using the updated cgroup value if instance type is changing.
         self.cloud.setup_ansible(args).run("setup-cgroup.yml", self.extra_vars, host_info)
@@ -1010,16 +1053,15 @@ class CronCheckMethod(AbstractInstancesMethod):
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
-        ssh_options = {
-            "ssh_user": self.get_ssh_user(),
-            "private_key_file": args.private_key_file
-        }
-        ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
-        if not args.systemd_services and not validate_cron_status(
-                ssh_options['ssh_host'], ssh_options['ssh_port'], ssh_options['ssh_user'],
-                ssh_options['private_key_file'], ssh2_enabled=args.ssh2_enabled):
+        self.update_ansible_vars_with_args(args)
+        connect_options = {}
+        connect_options.update(self.extra_vars)
+        connect_options["ssh_user"] = self.get_ssh_user()
+        connect_options.update(self.get_server_host_port(host_info, args.custom_ssh_port))
+        if not args.systemd_services and not validate_cron_status(connect_options):
+            host_port_user = get_host_port_user(connect_options)
             raise YBOpsRuntimeError(
-                'Failed to find cronjobs on host {}'.format(ssh_options['ssh_host']))
+                'Failed to find cronjobs on host {}'.format(host_port_user['host']))
 
 
 class ConfigureInstancesMethod(AbstractInstancesMethod):
@@ -1275,13 +1317,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                         args.itest_s3_package_path,
                         args.search_pattern, time.time() - start_time))
                 else:
-                    if scp_to_tmp(
-                          args.package,
-                          self.extra_vars["private_ip"],
-                          self.extra_vars["ssh_user"],
-                          self.extra_vars["ssh_port"],
-                          args.private_key_file,
-                          ssh2_enabled=args.ssh2_enabled):
+                    if copy_to_tmp(self.extra_vars, args.package):
                         raise YBOpsRecoverableError(
                             f"[app] Failed to copy package {args.package} to {args.search_pattern}")
 
@@ -1292,13 +1328,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 ybc_package_path = args.ybc_package
                 if os.path.isfile(ybc_package_path):
                     start_time = time.time()
-                    if scp_to_tmp(
-                          ybc_package_path,
-                          self.extra_vars["private_ip"],
-                          self.extra_vars["ssh_user"],
-                          self.extra_vars["ssh_port"],
-                          args.private_key_file,
-                          ssh2_enabled=args.ssh2_enabled):
+                    if copy_to_tmp(self.extra_vars, ybc_package_path):
                         raise YBOpsRecoverableError(f"[app] Failed to copy package "
                                                     f"{ybc_package_path} to {args.search_pattern}")
                     logging.info("[app] Copying package {} to {} took {:.3f} sec".format(
@@ -1314,19 +1344,11 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 "install-third-party.yml", self.extra_vars, host_info)
             return
 
-        ssh_options = {
-            # TODO: replace with args.ssh_user when it's setup in the flow
-            "ssh_user": self.get_ssh_user(),
-            "private_key_file": args.private_key_file,
-            "ssh2_enabled": args.ssh2_enabled
-        }
-        ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
-
         rotate_certs = False
         if args.cert_rotate_action is not None:
             if args.cert_rotate_action == "APPEND_NEW_ROOT_CERT":
                 self.cloud.append_new_root_cert(
-                    ssh_options,
+                    self.extra_vars,
                     args.root_cert_path,
                     args.certs_location,
                     args.certs_node_dir
@@ -1334,21 +1356,21 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 return
             if args.cert_rotate_action == "REMOVE_OLD_ROOT_CERT":
                 self.cloud.remove_old_root_cert(
-                    ssh_options,
+                    self.extra_vars,
                     args.certs_node_dir
                 )
                 return
             if args.cert_rotate_action == "ROTATE_CERTS":
                 rotate_certs = True
                 # Clean up client certs to remove old cert traces
-                self.cloud.cleanup_client_certs(ssh_options)
+                self.cloud.cleanup_client_certs(self.extra_vars)
 
         # Copying Server Certs
         logging.info("Copying certificates to {}.".format(args.search_pattern))
         if args.root_cert_path is not None:
             logging.info("Server RootCA Certificate Exists: {}.".format(args.root_cert_path))
             self.cloud.copy_server_certs(
-                ssh_options,
+                self.extra_vars,
                 args.root_cert_path,
                 args.server_cert_path,
                 args.server_key_path,
@@ -1361,7 +1383,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             logging.info("Server clientRootCA Certificate Exists: {}.".format(
                 args.root_cert_path_client_to_server))
             self.cloud.copy_server_certs(
-                ssh_options,
+                self.extra_vars,
                 args.root_cert_path_client_to_server,
                 args.server_cert_path_client_to_server,
                 args.server_key_path_client_to_server,
@@ -1375,7 +1397,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             logging.info("Client Certificate Exists: {}.".format(args.client_cert_path))
             if args.root_cert_path_client_to_server is not None:
                 self.cloud.copy_client_certs(
-                    ssh_options,
+                    self.extra_vars,
                     args.root_cert_path_client_to_server,
                     args.client_cert_path,
                     args.client_key_path,
@@ -1383,7 +1405,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 )
             else:
                 self.cloud.copy_client_certs(
-                    ssh_options,
+                    self.extra_vars,
                     args.root_cert_path,
                     args.client_cert_path,
                     args.client_key_path,
@@ -1394,7 +1416,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             self.extra_vars["encryption_key_file"] = args.encryption_key_source_file
             logging.info("Copying over encryption-at-rest certificate from {} to {}".format(
                 args.encryption_key_source_file, args.encryption_key_target_dir))
-            self.cloud.create_encryption_at_rest_file(self.extra_vars, ssh_options)
+            self.cloud.create_encryption_at_rest_file(self.extra_vars, self.extra_vars)
 
         if args.reset_master_state and args.extra_gflags is not None:
             delete_paths = []
@@ -1427,19 +1449,18 @@ class InitYSQLMethod(AbstractInstancesMethod):
                                  help="host:port csv of tserver's masters.")
 
     def callback(self, args):
-        ssh_options = {
-            # TODO: replace with args.ssh_user when it's setup in the flow
-            "ssh_user": "yugabyte",
-            "private_key_file": args.private_key_file,
-            "ssh2_enabled": args.ssh2_enabled
-        }
+        self.update_ansible_vars_with_args(args)
+        connect_options = {}
+        connect_options.update(self.extra_vars)
+        # TODO: replace with args.ssh_user when it's setup in the flow
+        connect_options["ssh_user"] = "yugabyte"
         host_info = self.cloud.get_host_info(args)
         if not host_info:
             raise YBOpsRuntimeError("Instance: {} does not exist, cannot call initysql".format(
                                     args.search_pattern))
-        ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
+        connect_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         logging.info("Initializing YSQL on Instance: {}".format(args.search_pattern))
-        self.cloud.initYSQL(args.master_addresses, ssh_options)
+        self.cloud.initYSQL(args.master_addresses, connect_options)
 
 
 class ControlInstanceMethod(AbstractInstancesMethod):
@@ -1458,8 +1479,8 @@ class ControlInstanceMethod(AbstractInstancesMethod):
                 args.search_pattern, host_info['server_type'],
                 self.YB_SERVER_TYPE))
 
-        # Skip if instance is not running.
-        if not host_info.get("is_running", True):
+        # Skip if instance is not running and command is stopping process.
+        if not host_info.get("is_running", True) and self.name == "stop":
             logging.info(
                 "Skipping ctl command %s for process: %s due to node not in running state",
                 self.name, self.base_command.name)
@@ -1469,6 +1490,7 @@ class ControlInstanceMethod(AbstractInstancesMethod):
             self.name, self.base_command.name, args.search_pattern))
 
         self.update_ansible_vars_with_args(args)
+        self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         self.cloud.run_control_script(
             self.base_command.name, self.name, args, self.extra_vars, host_info)
 
@@ -1681,25 +1703,24 @@ class TransferXClusterCerts(AbstractInstancesMethod):
         if args.ssh_user is not None:
             self.ssh_user = args.ssh_user
         host_info = self.cloud.get_host_info(args)
-        ssh_options = {
-            "ssh_user": self.ssh_user,
-            "private_key_file": args.private_key_file,
-            "ssh2_enabled": args.ssh2_enabled
-        }
-        ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
+        # Populate extra_vars.
+        self.update_ansible_vars_with_args(args)
+        connect_options = {"ssh_user": self.ssh_user}
+        connect_options.update(self.extra_vars)
+        connect_options.update(self.get_server_host_port(host_info, args.custom_ssh_port))
 
         # TODO: Add support for rotate certs
         if args.action == "copy":
             if args.root_cert_path is None:
                 raise YBOpsRuntimeError("--root_cert_path argument is missing")
             self.cloud.copy_xcluster_root_cert(
-                ssh_options,
+                connect_options,
                 args.root_cert_path,
                 args.replication_config_name,
                 args.producer_certs_dir)
         elif args.action == "remove":
             self.cloud.remove_xcluster_root_cert(
-                ssh_options,
+                connect_options,
                 args.replication_config_name,
                 args.producer_certs_dir)
         else:
@@ -1713,6 +1734,7 @@ class RebootInstancesMethod(AbstractInstancesMethod):
 
     def add_extra_args(self):
         super().add_extra_args()
+        # TODO correct it to use --use_reboot_command.
         self.parser.add_argument("--use_ssh", action='store_true', default=False,
                                  help="Use 'sudo reboot' instead of cloud provider SDK.")
 
@@ -1721,9 +1743,9 @@ class RebootInstancesMethod(AbstractInstancesMethod):
         if not host_info:
             raise YBOpsRuntimeError("Could not find host {} to reboot".format(
                 args.search_pattern))
-        if not host_info['is_running']:
+        if not host_info.get('is_running'):
             raise YBOpsRuntimeError("Host must be running to be rebooted, currently in '{}' state"
-                                    .format(host_info['instance_state']))
+                                    .format(host_info.get('instance_state')))
         logging.info("Rebooting instance {}".format(args.search_pattern))
 
         # Get Sudo SSH User
@@ -1731,17 +1753,14 @@ class RebootInstancesMethod(AbstractInstancesMethod):
         if ssh_user is None:
             ssh_user = DEFAULT_SSH_USER
 
+        # Populate extra_vars.
+        self.update_ansible_vars_with_args(args)
         if args.use_ssh:
-            self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port,
-                                                     default_port=True))
+            self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port,
+                                                             default_port=True))
             self.extra_vars.update({"ssh_user": ssh_user})
             self.update_open_ssh_port(args)
-            _, _, stderr = remote_exec_command(
-                                    self.extra_vars["ssh_host"],
-                                    self.extra_vars["ssh_port"],
-                                    self.extra_vars["ssh_user"],
-                                    args.private_key_file,
-                                    'sudo reboot', ssh2_enabled=args.ssh2_enabled)
+            _, _, stderr = remote_exec_command(self.extra_vars, 'sudo reboot')
             # Cannot rely on rc, as for reboot script won't exit gracefully,
             # & we will be returned -1.
             if (isinstance(stderr, list) and len(stderr) > 0):
@@ -1749,8 +1768,8 @@ class RebootInstancesMethod(AbstractInstancesMethod):
 
             self.wait_for_host(args, False)
         else:
-            extra_vars = get_ssh_host_port(host_info, args.custom_ssh_port)
-            self.cloud.reboot_instance(host_info, [DEFAULT_SSH_PORT, extra_vars["ssh_port"]])
+            server_ports = self.get_server_ports_to_check(args)
+            self.cloud.reboot_instance(host_info, server_ports)
 
 
 class RunHooks(AbstractInstancesMethod):
@@ -1795,7 +1814,7 @@ class RunHooks(AbstractInstancesMethod):
     def callback(self, args):
         self._verify_params(args)
         ssh_user = "yugabyte"
-        use_default_port = args.trigger == 'PreNodeProvision'
+        use_default_ssh_port = args.trigger == 'PreNodeProvision'
 
         # Use the SSH user if:
         # 1. Sudo permissions are needed
@@ -1806,68 +1825,53 @@ class RunHooks(AbstractInstancesMethod):
             else:
                 ssh_user = DEFAULT_SSH_USER
 
+        self.update_ansible_vars_with_args(args)
         host_info = self.cloud.get_host_info(args)
         self.extra_vars.update(
-            get_ssh_host_port(host_info, args.custom_ssh_port, default_port=use_default_port))
+            self.get_server_host_port(
+                host_info, args.custom_ssh_port, use_default_ssh_port))
         self.extra_vars.update({"ssh_user": ssh_user})
-        self.wait_for_host(args, use_default_port)
+        self.wait_for_host(args, use_default_ssh_port)
 
         # Copy the hook to the remote node
-        scp_result = scp_to_tmp(
-                        args.hook_path,
-                        self.extra_vars["ssh_host"],
-                        self.extra_vars["ssh_user"],
-                        self.extra_vars["ssh_port"],
-                        args.private_key_file)
+        scp_result = copy_to_tmp(self.extra_vars, args.hook_path)
         if scp_result:
             raise YBOpsRuntimeError("Could not transfer hook to target node.")
 
         # Execute hook on remote node
-        rc, stdout, stderr = remote_exec_command(
-                                self.extra_vars["ssh_host"],
-                                self.extra_vars["ssh_port"],
-                                self.extra_vars["ssh_user"],
-                                args.private_key_file,
-                                self.get_exec_command(args))
+        rc, _, stderr = remote_exec_command(self.extra_vars, self.get_exec_command(args))
         if rc:
             raise YBOpsRuntimeError("Failed running custom hook:\n" + ''.join(stderr))
 
         # Delete custom hook
         remove_command = "rm " + os.path.join("/tmp", os.path.basename(args.hook_path))
-        rc, stdout, stderr = remote_exec_command(
-                                self.extra_vars["ssh_host"],
-                                self.extra_vars["ssh_port"],
-                                self.extra_vars["ssh_user"],
-                                args.private_key_file,
-                                remove_command)
+        rc, _, stderr = remote_exec_command(self.extra_vars, remove_command)
         if rc:
             logging.warn("Failed deleting custom hook:\n" + ''.join(stderr))
 
 
-class WaitForSSHConnection(AbstractInstancesMethod):
+class WaitForConnection(AbstractInstancesMethod):
     def __init__(self, base_command):
-        super(WaitForSSHConnection, self).__init__(base_command, "wait_for_ssh", True)
+        super(WaitForConnection, self).__init__(base_command, "wait_for_connection", True)
 
     def add_extra_args(self):
-        super(WaitForSSHConnection, self).add_extra_args()
+        super(WaitForConnection, self).add_extra_args()
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
+        # Update the ansible args (particularly connection params).
+        self.update_ansible_vars_with_args(args)
         # Set the host and default port.
         self.extra_vars.update(
-            get_ssh_host_port(host_info, args.custom_ssh_port, default_port=True))
+            self.get_server_host_port(host_info, args.custom_ssh_port, default_port=True))
         # Update with the open port.
         self.update_open_ssh_port(args)
-        # Update the ansible args (particularly ssh user).
-        self.update_ansible_vars_with_args(args)
         # Port is already open. Wait for ssh to succeed.
-        connected = wait_for_ssh(self.extra_vars["ssh_host"],
-                                 self.extra_vars["ssh_port"],
-                                 self.extra_vars["ssh_user"],
-                                 args.private_key_file,
-                                 ssh2_enabled=args.ssh2_enabled)
+        connected = wait_for_server(self.extra_vars)
         if not connected:
-            raise YBOpsRuntimeError("SSH connection to host {} by user {} failed at port {}"
-                                    .format(self.extra_vars["ssh_host"],
-                                            self.extra_vars["ssh_user"],
-                                            self.extra_vars["ssh_port"]))
+            host_port_user = get_host_port_user(self.extra_vars)
+            raise YBOpsRuntimeError("Connection({}) to host {} by user {} failed at port {}"
+                                    .format(host_port_user["connection_type"],
+                                            host_port_user["host"],
+                                            host_port_user["user"],
+                                            host_port_user["port"]))
