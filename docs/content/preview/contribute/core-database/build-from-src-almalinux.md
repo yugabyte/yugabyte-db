@@ -138,17 +138,21 @@ Both requirements can be satisfied by the package manager.
 sudo yum install -y java-1.8.0-openjdk maven
 ```
 
+### yugabyted-ui
+
+{{% readfile "includes/yugabyted-ui.md" %}}
+
+```sh
+sudo yum install -y npm golang
+```
+
 ## Build the code
 
 {{% readfile "includes/build-the-code.md" %}}
 
 ### Build release package (optional)
 
-Install the following additional packages to build yugabyted-ui:
-
-```sh
-sudo yum install -y npm golang
-```
+[Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
 
 Run the `yb_release` script to build a release package:
 
@@ -157,3 +161,5 @@ $ ./yb_release
 ......
 2023-02-14 04:14:16,092 [yb_release.py:299 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.17.2.0-b8e42eecde0e45a743d51e244dbd9662a6130cd6-release-clang15-centos-x86_64.tar.gz'
 ```
+
+{{% readfile "includes/ulimit.md" %}}
