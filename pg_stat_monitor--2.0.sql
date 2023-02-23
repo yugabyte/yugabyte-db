@@ -87,7 +87,7 @@ CREATE FUNCTION pg_stat_monitor_internal(
     OUT username            text,
     OUT dbid                oid,
     OUT datname             text,
-    OUT client_ip           int4,
+    OUT client_ip           int8,
 
     OUT queryid             int8,  -- 4
     OUT planid              int8,
