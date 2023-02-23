@@ -93,6 +93,24 @@ python3 -V
 sudo yum install -y cmake3
 ```
 
+### Java
+
+{{% readfile "includes/java.md" %}}
+
+Both requirements can be satisfied by the package manager.
+
+```sh
+sudo yum install -y java-1.8.0-openjdk maven
+```
+
+### yugabyted-ui
+
+{{% readfile "includes/yugabyted-ui.md" %}}
+
+```sh
+sudo yum install -y npm golang
+```
+
 ### Ninja (optional)
 
 {{% readfile "includes/ninja.md" %}}
@@ -122,24 +140,6 @@ To compile with GCC, install the following packages, and adjust the version numb
 
 ```sh
 sudo yum install -y gcc-toolset-11 gcc-toolset-11-libatomic-devel
-```
-
-### Java
-
-{{% readfile "includes/java.md" %}}
-
-Both requirements can be satisfied by the package manager.
-
-```sh
-sudo yum install -y java-1.8.0-openjdk maven
-```
-
-### yugabyted-ui
-
-{{% readfile "includes/yugabyted-ui.md" %}}
-
-```sh
-sudo yum install -y npm golang
 ```
 
 ## Build the code

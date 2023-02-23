@@ -100,24 +100,6 @@ curl -L "https://github.com/Kitware/CMake/releases/download/v3.25.2/cmake-3.25.2
 export PATH="$HOME/tools/cmake-3.25.2-linux-x86_64/bin:$PATH"
 ```
 
-### Ninja (optional)
-
-{{% readfile "includes/ninja.md" %}}
-
-```sh
-sudo apt install -y ninja-build
-```
-
-### Ccache (optional)
-
-{{% readfile "includes/ccache.md" %}}
-
-```sh
-sudo apt install -y ccache
-# Also add the following line to your .bashrc or equivalent.
-export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
-```
-
 ### Java
 
 {{% readfile "includes/java.md" %}}
@@ -136,6 +118,24 @@ sudo apt install -y maven
 sudo apt install -y npm golang-1.18
 # Also add the following line to your .bashrc or equivalent.
 export PATH="/usr/lib/go-1.18/bin:$PATH"
+```
+
+### Ninja (optional)
+
+{{% readfile "includes/ninja.md" %}}
+
+```sh
+sudo apt install -y ninja-build
+```
+
+### Ccache (optional)
+
+{{% readfile "includes/ccache.md" %}}
+
+```sh
+sudo apt install -y ccache
+# Also add the following line to your .bashrc or equivalent.
+export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
 ```
 
 ## Build the code

@@ -92,6 +92,26 @@ sudo ln -s /usr/bin/cmake3 /usr/local/bin/cmake
 sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
 ```
 
+### Java
+
+{{% readfile "includes/java.md" %}}
+
+Both requirements can be satisfied by the package manager.
+
+```sh
+sudo yum install -y java-1.8.0-openjdk rh-maven35
+# Also add the following line to your .bashrc or equivalent.
+source /opt/rh/rh-maven35/enable
+```
+
+### yugabyted-ui
+
+{{% readfile "includes/yugabyted-ui.md" %}}
+
+```sh
+sudo yum install -y npm golang
+```
+
 ### Ninja (optional)
 
 {{% readfile "includes/ninja.md" %}}
@@ -116,26 +136,6 @@ To compile with GCC, install the following packages, and adjust the version numb
 
 ```sh
 sudo yum install -y devtoolset-11 devtoolset-11-libatomic-devel
-```
-
-### Java
-
-{{% readfile "includes/java.md" %}}
-
-Both requirements can be satisfied by the package manager.
-
-```sh
-sudo yum install -y java-1.8.0-openjdk rh-maven35
-# Also add the following line to your .bashrc or equivalent.
-source /opt/rh/rh-maven35/enable
-```
-
-### yugabyted-ui
-
-{{% readfile "includes/yugabyted-ui.md" %}}
-
-```sh
-sudo yum install -y npm golang
 ```
 
 ## Build the code
