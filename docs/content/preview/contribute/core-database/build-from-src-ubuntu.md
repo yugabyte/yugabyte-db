@@ -87,7 +87,7 @@ sudo apt install -y libffi-dev python3 python3-dev python3-venv
 
 {{% readfile "includes/cmake.md" %}}
 
-The CMake version in the package manager is too old (3.16), so manually download a release.
+The CMake version in the package manager is too old (3.16), so manually download a release as follows:
 
 ```sh
 mkdir ~/tools
