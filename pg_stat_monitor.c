@@ -63,6 +63,11 @@ do                                                      \
 		strlcpy((char *)_str_dst[i], _str_src[i], _len2); \
 }while(0)
 
+#define PGSM_INVALID_IP_MASK	0xFFFFFFFF
+
+#define pgsm_client_ip_is_valid() \
+	(pgsm_client_ip != PGSM_INVALID_IP_MASK)
+
 /*---- Initicalization Function Declarations ----*/
 void		_PG_init(void);
 
@@ -80,6 +85,8 @@ static double hist_bucket_max;
 static int hist_bucket_count_user;
 static int hist_bucket_count_total;
 int64 	   hist_bucket_timings[MAX_RESPONSE_BUCKET + 2][2];	/* Start and end timings */
+
+static uint32 pgsm_client_ip = PGSM_INVALID_IP_MASK;
 
 /* The array to store outer layer query id*/
 uint64	   *nested_queryids;
@@ -1382,7 +1389,7 @@ pgsm_update_entry(pgsmEntry *entry,
 					e->counters.time.max_time = exec_total_time;
 			}
 
-			index = get_histogram_bucket(exec_total_time);
+			index = get_histogram_bucket(exec_total_time * 1000.0);
 			e->counters.resp_calls[index]++;
 		}
 
@@ -1615,8 +1622,6 @@ pgsm_create_hash_entry(uint64 bucket_id, uint64 queryid, PlanInfo *plan_info)
 	MemoryContext oldctx;
 	char *datname = NULL;
 	char *username = NULL;
-	static bool is_ip_set = false;
-	static uint32 ip = 0;
 
 	/* Create an entry in the pgsm memory context */
 	oldctx = MemoryContextSwitchTo(pgsm_get_ss()->pgsm_mem_cxt);
@@ -1633,13 +1638,10 @@ pgsm_create_hash_entry(uint64 bucket_id, uint64 queryid, PlanInfo *plan_info)
 	entry->key.appid = pgsm_hash_string((const char *)app_name_ptr, app_name_len);
 
 	/* client address */
-	if (!is_ip_set)
-	{
-		ip = pg_get_client_addr(&found_client_addr);
-		is_ip_set = true;
-	}
+	if (!pgsm_client_ip_is_valid())
+		pgsm_client_ip = pg_get_client_addr(&found_client_addr);
 
-	entry->key.ip = ip;
+	entry->key.ip = pgsm_client_ip;
 
 	/* PlanID, if there is one */
 	entry->key.planid = plan_info ? plan_info->planid : 0;
@@ -2012,7 +2014,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		int64		bucketid = entry->key.bucket_id;
 		Oid			dbid = entry->key.dbid;
 		Oid			userid = entry->key.userid;
-		uint32		ip = entry->key.ip;
+		uint64		ip = (uint64)entry->key.ip;
 		uint64		planid = entry->key.planid;
 		uint64		pgsm_query_id = entry->pgsm_query_id;
 		dsa_area	*query_dsa_area;
