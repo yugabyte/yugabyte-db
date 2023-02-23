@@ -24,8 +24,8 @@ int pgsm_query_max_len;
 int pgsm_bucket_time;
 int pgsm_max_buckets;
 int pgsm_histogram_buckets;
-int pgsm_histogram_max;
-int pgsm_histogram_min;
+double pgsm_histogram_min;
+double pgsm_histogram_max;
 int pgsm_query_shared_buffer;
 bool pgsm_track_planning;
 bool pgsm_extract_comments;
@@ -38,8 +38,8 @@ int pgsm_track;
 static int pgsm_overflow_target; /* Not used since 2.0 */
 
 /* Check hooks to ensure histogram_min < histogram_max */
-static bool check_histogram_min(int *newval, void **extra, GucSource source);
-static bool check_histogram_max(int *newval, void **extra, GucSource source);
+static bool check_histogram_min(double *newval, void **extra, GucSource source);
+static bool check_histogram_max(double *newval, void **extra, GucSource source);
 static bool check_overflow_targer(int *newval, void **extra, GucSource source);
 /*
  * Define (or redefine) custom GUC variables.
@@ -98,35 +98,35 @@ init_guc(void)
 							1, /* min value */
 							INT_MAX, /* max value */
 							PGC_POSTMASTER, /* context */
-							0, /* flags */
+							GUC_UNIT_S, /* flags */
 							NULL, /* check_hook */
 							NULL, /* assign_hook */
 							NULL /* show_hook */
 							);
 
-	DefineCustomIntVariable("pg_stat_monitor.pgsm_histogram_min", /* name */
+	DefineCustomRealVariable("pg_stat_monitor.pgsm_histogram_min", /* name */
  							"Sets the time in millisecond.", /* short_desc */
  							NULL, /* long_desc */
 							&pgsm_histogram_min, /* value address */
 							1, /* boot value */
 							0, /* min value */
-							INT_MAX, /* max value */
+							HISTOGRAM_MAX_TIME, /* max value */
 							PGC_POSTMASTER, /* context */
-							0, /* flags */
+							GUC_UNIT_MS, /* flags */
 							check_histogram_min, /* check_hook */
 							NULL, /* assign_hook */
 							NULL /* show_hook */
 							);
 
-	DefineCustomIntVariable("pg_stat_monitor.pgsm_histogram_max", /* name */
+	DefineCustomRealVariable("pg_stat_monitor.pgsm_histogram_max", /* name */
  							"Sets the time in millisecond.", /* short_desc */
  							NULL, /* long_desc */
 							&pgsm_histogram_max, /* value address */
-							100000, /* boot value */
-							10, /* min value */
-							INT_MAX, /* max value */
+							100000.0, /* boot value */
+							10.0, /* min value */
+							HISTOGRAM_MAX_TIME, /* max value */
 							PGC_POSTMASTER, /* context */
-							0, /* flags */
+							GUC_UNIT_MS, /* flags */
 							check_histogram_max, /* check_hook */
 							NULL, /* assign_hook */
 							NULL /* show_hook */
@@ -276,20 +276,21 @@ init_guc(void)
 
 }
 
+/* Maximum value must be greater or equal to minimum + 1.0 */
 static bool
-check_histogram_min(int *newval, void **extra, GucSource source)
+check_histogram_min(double *newval, void **extra, GucSource source)
 {
 	/*
 	 * During module initialization PGSM_HISTOGRAM_MIN is initialized before
 	 * PGSM_HISTOGRAM_MAX, in this case PGSM_HISTOGRAM_MAX will be zero.
 	 */
-	return (pgsm_histogram_max == 0 || *newval < pgsm_histogram_max);
+	return (pgsm_histogram_max == 0 || (*newval + 1.0) <= pgsm_histogram_max);
 }
 
 static bool
-check_histogram_max(int *newval, void **extra, GucSource source)
+check_histogram_max(double *newval, void **extra, GucSource source)
 {
-	return (*newval > pgsm_histogram_min);
+	return (*newval >= (pgsm_histogram_min + 1.0));
 }
 
 static bool

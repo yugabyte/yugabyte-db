@@ -74,7 +74,7 @@
 
 #define JUMBLE_SIZE				1024	/* query serialization buffer size */
 
-#define HISTOGRAM_MAX_TIME		INT_MAX
+#define HISTOGRAM_MAX_TIME		50000000
 #define MAX_RESPONSE_BUCKET 50
 #define INVALID_BUCKET_ID	-1
 #define MAX_BUCKETS			10
@@ -506,8 +506,8 @@ extern int pgsm_query_max_len;
 extern int pgsm_bucket_time;
 extern int pgsm_max_buckets;
 extern int pgsm_histogram_buckets;
-extern int pgsm_histogram_max;
-extern int pgsm_histogram_min;
+extern double pgsm_histogram_min;
+extern double pgsm_histogram_max;
 extern int pgsm_query_shared_buffer;
 extern bool pgsm_track_planning;
 extern bool pgsm_extract_comments;

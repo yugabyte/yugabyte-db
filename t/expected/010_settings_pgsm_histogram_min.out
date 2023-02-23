@@ -6,9 +6,9 @@ SELECT pg_stat_monitor_reset();
 (1 row)
 
 SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_histogram_min';
-                name                | setting | unit |  context   | vartype |       source       | min_val |  max_val   | enumvals | boot_val | reset_val | pending_restart 
-------------------------------------+---------+------+------------+---------+--------------------+---------+------------+----------+----------+-----------+-----------------
- pg_stat_monitor.pgsm_histogram_min | 1       |      | postmaster | integer | configuration file | 0       | 2147483647 |          | 1        | 1         | f
+                name                | setting | unit |  context   | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------+---------+------+------------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_histogram_min | 1       | ms   | postmaster | real    | configuration file | 0       | 5e+07   |          | 1        | 1         | f
 (1 row)
 
 SELECT pg_stat_monitor_reset();
@@ -18,9 +18,9 @@ SELECT pg_stat_monitor_reset();
 (1 row)
 
 SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_histogram_min';
-                name                | setting | unit |  context   | vartype |       source       | min_val |  max_val   | enumvals | boot_val | reset_val | pending_restart 
-------------------------------------+---------+------+------------+---------+--------------------+---------+------------+----------+----------+-----------+-----------------
- pg_stat_monitor.pgsm_histogram_min | 20      |      | postmaster | integer | configuration file | 0       | 2147483647 |          | 1        | 20        | f
+                name                | setting | unit |  context   | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------+---------+------+------------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_histogram_min | 20      | ms   | postmaster | real    | configuration file | 0       | 5e+07   |          | 1        | 20        | f
 (1 row)
 
 SELECT pg_stat_monitor_reset();
@@ -30,9 +30,9 @@ SELECT pg_stat_monitor_reset();
 (1 row)
 
 SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_histogram_min';
-                name                | setting | unit |  context   | vartype |       source       | min_val |  max_val   | enumvals | boot_val | reset_val | pending_restart 
-------------------------------------+---------+------+------------+---------+--------------------+---------+------------+----------+----------+-----------+-----------------
- pg_stat_monitor.pgsm_histogram_min | 100     |      | postmaster | integer | configuration file | 0       | 2147483647 |          | 1        | 100       | f
+                name                | setting | unit |  context   | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------+---------+------+------------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_histogram_min | 100     | ms   | postmaster | real    | configuration file | 0       | 5e+07   |          | 1        | 100       | f
 (1 row)
 
 DROP EXTENSION pg_stat_monitor;

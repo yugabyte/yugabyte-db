@@ -82,9 +82,9 @@ static int	plan_nested_level = 0;
 /* Histogram bucket variables */
 static double hist_bucket_min;
 static double hist_bucket_max;
+static double hist_bucket_timings[MAX_RESPONSE_BUCKET + 2][2];	/* Start and end timings */
 static int hist_bucket_count_user;
 static int hist_bucket_count_total;
-int64 	   hist_bucket_timings[MAX_RESPONSE_BUCKET + 2][2];	/* Start and end timings */
 
 static uint32 pgsm_client_ip = PGSM_INVALID_IP_MASK;
 
@@ -112,7 +112,7 @@ static char *pgsm_explain(QueryDesc *queryDesc);
 
 static void extract_query_comments(const char *query, char *comments, size_t max_len);
 static void set_histogram_bucket_timings(void);
-static void histogram_bucket_timings(int index, int64 *b_start, int64 *b_end);
+static void histogram_bucket_timings(int index, double *b_start, double *b_end);
 static int	get_histogram_bucket(double q_time);
 
 static bool IsSystemInitialized(void);
@@ -3545,8 +3545,8 @@ unpack_sql_state(int sql_state)
 static void
 set_histogram_bucket_timings(void)
 {
-	int64 b2_start;
-	int64 b2_end;
+	double b2_start;
+	double b2_end;
 	int b_count;
 
 	hist_bucket_min = pgsm_histogram_min;
@@ -3596,7 +3596,7 @@ set_histogram_bucket_timings(void)
  * Given an index, return the histogram start and end times.
  */
 static void
-histogram_bucket_timings(int index, int64 *b_start, int64 *b_end)
+histogram_bucket_timings(int index, double *b_start, double *b_end)
 {
 	double		q_min = hist_bucket_min;
 	double		q_max = hist_bucket_max;
@@ -3640,7 +3640,7 @@ static int
 get_histogram_bucket(double q_time)
 {
 	int			index = 0;
-	int64		exec_time = (int64)q_time;
+	double		exec_time = q_time;
 
 	for (index = 0; index < hist_bucket_count_total; index++)
 	{
@@ -3662,8 +3662,8 @@ get_histogram_bucket(double q_time)
 Datum
 get_histogram_timings(PG_FUNCTION_ARGS)
 {
-	int64		b_start;
-	int64		b_end;
+	double		b_start;
+	double		b_end;
 	int			b_count = hist_bucket_count_total;
 	int			index = 0;
 	char	   *tmp_str = palloc0(MAX_STRING_LEN);
@@ -3675,16 +3675,16 @@ get_histogram_timings(PG_FUNCTION_ARGS)
 
 		if (index == 0)
 		{
-			snprintf(text_str, MAX_STRING_LEN, "{{%ld - %ld}", b_start, b_end);
+			snprintf(text_str, MAX_STRING_LEN, "{{%.3lf - %.3lf}", b_start, b_end);
 		}
 		else if (index == (b_count - 1))
 		{
-			snprintf(tmp_str, MAX_STRING_LEN, "%s, (%ld - ...}}", text_str, b_start);
+			snprintf(tmp_str, MAX_STRING_LEN, "%s, (%.3lf - ...}}", text_str, b_start);
 			snprintf(text_str, MAX_STRING_LEN, "%s", tmp_str);
 		}
 		else
 		{
-			snprintf(tmp_str, MAX_STRING_LEN, "%s, (%ld - %ld}", text_str, b_start, b_end);
+			snprintf(tmp_str, MAX_STRING_LEN, "%s, (%.3lf - %.3lf}", text_str, b_start, b_end);
 			snprintf(text_str, MAX_STRING_LEN, "%s", tmp_str);
 		}
 	}
