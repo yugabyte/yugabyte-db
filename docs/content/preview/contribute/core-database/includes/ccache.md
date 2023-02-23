@@ -4,6 +4,6 @@ private = true
 +++
 -->
 
-Use [Ccache][ccache] for faster builds.
+Install and configure [Ccache][ccache] for faster builds as follows:
 
 [ccache]: https://ccache.dev
