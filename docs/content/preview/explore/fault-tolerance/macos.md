@@ -50,13 +50,13 @@ The examples are based on the YB Workload Simulator application, which uses the 
     </a>
   </li>
   <li>
-    <a href="../macos-ybm/" class="nav-link ">
+    <a href="../continuous-ybm/" class="nav-link ">
       <img src="/icons/cloud.svg" alt="Server Icon">
       YugabyteDB Managed
     </a>
   </li>
   <li>
-    <a href="../macos-yba/" class="nav-link">
+    <a href="../continuous-yba/" class="nav-link">
       <img src="/icons/server.svg" alt="Server Icon">
       YugabyteDB Anywhere
     </a>
