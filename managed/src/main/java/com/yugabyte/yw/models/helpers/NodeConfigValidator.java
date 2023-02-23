@@ -241,6 +241,11 @@ public class NodeConfigValidator {
           int value = getFromConfig(CONFIG_INT_SUPPLIER, provider, "swappiness");
           return Integer.parseInt(nodeConfig.getValue()) == value;
         }
+      case VM_MAX_MAP_COUNT:
+        {
+          int value = getFromConfig(CONFIG_INT_SUPPLIER, provider, "vm_max_map_count");
+          return Integer.parseInt(nodeConfig.getValue()) >= value;
+        }
       case MOUNT_POINTS_WRITABLE:
       case MASTER_HTTP_PORT:
       case MASTER_RPC_PORT:
@@ -308,6 +313,10 @@ public class NodeConfigValidator {
           return input.getOperation() == Operation.CONFIGURE
               && nodeAgentClient.isClientEnabled(provider);
         }
+      case VM_MAX_MAP_COUNT:
+        {
+          return input.getOperation() == Operation.CONFIGURE;
+        }
       case CHRONYD_RUNNING:
       case RSYNC:
       case XXHASH:
@@ -340,7 +349,7 @@ public class NodeConfigValidator {
     ConfigKey configKey =
         ConfigKey.builder().provider(provider).path(String.format(CONFIG_KEY_FORMAT, key)).build();
     T value = function.apply(configKey);
-    log.trace("Value for {}: {}", configKey, value);
+    log.debug("Value for {}: {}", configKey, value);
     return value;
   }
 
