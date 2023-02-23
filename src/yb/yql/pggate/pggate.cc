@@ -1688,10 +1688,7 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
                status.IsTimedOut() ? ", there may be too many databases or "
                "the database might have been dropped" : ""));
 
-    // For correctness return 0 because any loaded catalog cache prior to this call may
-    // be older than the current catalog version and needs to be refreshed.
     CHECK(catalog_version_db_index_);
-    return 0;
   }
   if (catalog_version_db_index_->first != *db_oid) {
     return STATUS_FORMAT(

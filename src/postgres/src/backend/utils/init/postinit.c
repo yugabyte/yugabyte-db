@@ -967,20 +967,14 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	if (MyDatabaseId != TemplateDbOid && YBIsDBCatalogVersionMode())
 	{
 		/*
-		 * Rather than fetching the current DB catalog version for MyDatabaseId
-		 * from master which requires another RPC that can cause the connection
-		 * establishment to slow down, we just set yb_catalog_cache_version from
-		 * that in the local tserver's catalog version ver. We expect in most
-		 * cases it will be identical to what we would get from master. However
-		 * it may be stale because of the heartbeat delay between the tserver
-		 * and master. If in rare cases we have set yb_catalog_cache_version to
-		 * a stale version, a future tserver to master hearbeat response will
-		 * bring the newer version and cause a cache refresh.
-		 * TODO: It is possible that catalog cache was changed on a master
-		 *       at this point (due to concurrent DDL). Cache refresh is
-		 *       required in this case. GH #14741 is created to handle this.
+		 * Here we assume that the entire table pg_yb_catalog_version is
+		 * prefetched. Note that in this case YbGetMasterCatalogVersion()
+		 * returns the prefetched catalog version of MyDatabaseId which is
+		 * consistent with all the other tables that are prefetched.
 		 */
-		YbUpdateCatalogCacheVersion(YbGetSharedCatalogVersion());
+		uint64_t master_catalog_version = YbGetMasterCatalogVersion();
+		Assert(master_catalog_version > YB_CATCACHE_VERSION_UNINITIALIZED);
+		YbUpdateCatalogCacheVersion(master_catalog_version);
 	}
 
 	/*
@@ -1100,6 +1094,12 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 		{
 			YBCStopSysTablePrefetching();
 			YBCPgResetCatalogReadTime();
+			/*
+			 * This prefetch can happen at a higher catalog version than
+			 * what we have set to yb_catalog_cache_version earlier but
+			 * having a mix of prefetched content is fine as long as they
+			 * are all >= yb_catalog_cache_version.
+			 */
 			YBCStartSysTablePrefetching(
 				YbGetLastKnownCatalogCacheVersion(),
 				*YBCGetGFlags()->ysql_enable_read_request_caching);
