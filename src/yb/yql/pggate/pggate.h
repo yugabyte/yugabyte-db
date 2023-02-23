@@ -637,6 +637,8 @@ class PgApiImpl {
 
   MemTracker &GetMemTracker() { return *mem_tracker_; }
 
+  MemTracker &GetRootMemTracker() { return *MemTracker::GetRootTracker(); }
+
  private:
   class Interrupter;
 
