@@ -1,6 +1,6 @@
 import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Grid, makeStyles, Paper, Typography } from '@material-ui/core';
+import { Divider, Grid, makeStyles, Paper, Typography } from '@material-ui/core';
 import { intlFormat } from 'date-fns';
 
 // Local imports
@@ -15,6 +15,12 @@ const useStyles = makeStyles((theme) => ({
     padding: theme.spacing(2),
     border: `1px solid ${theme.palette.grey[200]}`,
     width: '100%'
+  },
+  divider: {
+    width: '100%',
+    marginLeft: 0,
+    marginTop: theme.spacing(2.5),
+    marginBottom: theme.spacing(2.5),
   },
   label: {
     color: theme.palette.grey[600],
@@ -131,6 +137,9 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
               clusterSpec?.encryption_info?.encryption_in_transit ?? false)}
           </Typography>
         </Grid>
+      </Grid>
+      <Divider orientation="horizontal" variant="middle" className={classes.divider} />
+      <Grid container spacing={4}>
         <Grid item xs={3}>
           <Typography variant="subtitle2" className={classes.label}>
             {t('clusterDetail.overview.totalvCPU')}

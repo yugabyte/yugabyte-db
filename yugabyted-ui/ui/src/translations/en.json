@@ -725,9 +725,11 @@
         "diskUsage": "Disk Usage",
         "usedDiskText": "{{usedDiskSizeGb}} GB used",
         "freeDiskText": "{{freeDiskSizeGb}} GB free out of {{totalDiskSizeGb}} GB",
+        "nodes": "Nodes",
         "deadNodes": "Dead Nodes",
-        "totalTablets": "Total Tablets",
-        "underReplicatedTablets": "Under Replicated Tablets",
+        "tablets": "Tablets",
+        "total": "Total",
+        "underReplicated": "Under-Replicated",
         "unavailableTablets": "Unavailable Tablets"
       },
       "tables": {

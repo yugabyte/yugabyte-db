@@ -1,5 +1,5 @@
 import React, { FC } from 'react';
-import { Grid, makeStyles } from '@material-ui/core';
+import { Grid, makeStyles, Paper } from '@material-ui/core';
 
 // Local imports
 import type { ClusterData, HealthCheckInfo } from '@app/api/src';
@@ -23,8 +23,8 @@ export const ClusterStatusWidget: FC<ClusterStatusWidgetProps> = ({ cluster, hea
   const classes = useStyles();
   return (
       <Grid container className={classes.container}>
-        <ClusterNodeWidget cluster={cluster} health={health}/>
-        <ClusterTabletWidget health={health}/>
+        <ClusterNodeWidget health={health}/>
+        <Paper style={{ width: "200px" }}></Paper> {/* Placeholder for now */}
         <ClusterDiskWidget cluster={cluster}/>
       </Grid>
   );
