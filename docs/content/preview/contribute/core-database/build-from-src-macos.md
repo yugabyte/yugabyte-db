@@ -103,7 +103,7 @@ echo 'export PATH="/usr/local/opt/openjdk@11/bin:$PATH"' >>~/.bashrc
 
 ### Build release package (optional)
 
-(See [yugabyted-ui requirement](#yugabyted-ui).)
+[Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
 
 Run the `yb_release` script to build a release package:
 

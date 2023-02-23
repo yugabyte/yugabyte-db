@@ -148,7 +148,7 @@ export PATH="/usr/lib/go-1.18/bin:$PATH"
 
 ### Build release package (optional)
 
-(See [yugabyted-ui requirement](#yugabyted-ui).)
+[Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
 
 Install the following additional packages:
 
