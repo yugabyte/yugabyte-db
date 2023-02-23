@@ -110,15 +110,13 @@ sudo apt install -y ninja-build
 
 ### Ccache (optional)
 
-Use [Ccache][ccache] for faster builds.
+{{% readfile "includes/ccache.md" %}}
 
 ```sh
 sudo apt install -y ccache
 # Also add the following line to your .bashrc or equivalent.
 export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
 ```
-
-[ccache]: https://ccache.dev
 
 ### Java
 
