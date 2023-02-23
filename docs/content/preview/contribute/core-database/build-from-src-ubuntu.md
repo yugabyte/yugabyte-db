@@ -75,6 +75,10 @@ sudo apt install -y "${packages[@]}"
 sudo locale-gen en_US.UTF-8
 ```
 
+### /opt/yb-build
+
+{{% readfile "includes/opt-yb-build.md" %}}
+
 ### Python 3
 
 {{% readfile "includes/python.md" %}}
@@ -95,10 +99,6 @@ curl -L "https://github.com/Kitware/CMake/releases/download/v3.25.2/cmake-3.25.2
 # Also add the following line to your .bashrc or equivalent.
 export PATH="$HOME/tools/cmake-3.25.2-linux-x86_64/bin:$PATH"
 ```
-
-### /opt/yb-build
-
-{{% readfile "includes/opt-yb-build.md" %}}
 
 ### Ninja (optional)
 

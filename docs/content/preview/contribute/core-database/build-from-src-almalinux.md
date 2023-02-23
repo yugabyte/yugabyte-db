@@ -63,6 +63,10 @@ sudo yum groupinstall -y 'Development Tools'
 sudo yum -y install epel-release libatomic rsync
 ```
 
+### /opt/yb-build
+
+{{% readfile "includes/opt-yb-build.md" %}}
+
 ### Python 3
 
 {{% readfile "includes/python.md" %}}
@@ -88,10 +92,6 @@ python3 -V
 ```sh
 sudo yum install -y cmake3
 ```
-
-### /opt/yb-build
-
-{{% readfile "includes/opt-yb-build.md" %}}
 
 ### Ninja (optional)
 

@@ -63,6 +63,10 @@ sudo yum groupinstall -y 'Development Tools'
 sudo yum install -y centos-release-scl epel-release git libatomic rsync which
 ```
 
+### /opt/yb-build
+
+{{% readfile "includes/opt-yb-build.md" %}}
+
 ### Python 3
 
 {{% readfile "includes/python.md" %}}
@@ -87,10 +91,6 @@ sudo yum install -y cmake3
 sudo ln -s /usr/bin/cmake3 /usr/local/bin/cmake
 sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
 ```
-
-### /opt/yb-build
-
-{{% readfile "includes/opt-yb-build.md" %}}
 
 ### Ninja (optional)
 
