@@ -4,6 +4,6 @@ private = true
 +++
 -->
 
-Use [Ninja][ninja] for faster builds.
+Install [Ninja][ninja] for faster builds as follows:
 
 [ninja]: https://ninja-build.org
