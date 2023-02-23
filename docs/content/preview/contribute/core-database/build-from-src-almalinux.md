@@ -148,17 +148,18 @@ sudo yum install -y npm golang
 
 ### Build release package (optional)
 
-[Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
+Perform the following steps to build a release package:
 
-Run the `yb_release` script to build a release package using the following command:
+1. [Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
+1. Run the `yb_release` script using the following command:
 
-```sh
-./yb_release
-```
+   ```sh
+   ./yb_release
+   ```
 
-```output.sh
-......
-2023-02-14 04:14:16,092 [yb_release.py:299 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.17.2.0-b8e42eecde0e45a743d51e244dbd9662a6130cd6-release-clang15-centos-x86_64.tar.gz'
-```
+   ```output.sh
+   ......
+   2023-02-14 04:14:16,092 [yb_release.py:299 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.17.2.0-b8e42eecde0e45a743d51e244dbd9662a6130cd6-release-clang15-centos-x86_64.tar.gz'
+   ```
 
 {{% readfile "includes/ulimit.md" %}}

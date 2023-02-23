@@ -144,23 +144,24 @@ export PATH="/usr/lib/go-1.18/bin:$PATH"
 
 ### Build release package (optional)
 
-[Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
+Perform the following steps to build a release package:
 
-Install the following additional packages:
+1. [Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
+1. Install additional packages using the following command:
 
-```sh
-sudo apt install -y file patchelf
-```
+   ```sh
+   sudo apt install -y file patchelf
+   ```
 
-Run the `yb_release` script to build a release package using the following command:
+1. Run the `yb_release` script using the following command:
 
-```sh
-./yb_release
-```
+   ```sh
+   ./yb_release
+   ```
 
-```output.sh
-......
-2023-02-17 01:26:37,156 [yb_release.py:299 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.17.2.0-ede2a2619ea8470064a5a2c0d7fa510dbee3ce81-release-clang15-ubuntu20-x86_64.tar.gz'
-```
+   ```output.sh
+   ......
+   2023-02-17 01:26:37,156 [yb_release.py:299 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.17.2.0-ede2a2619ea8470064a5a2c0d7fa510dbee3ce81-release-clang15-ubuntu20-x86_64.tar.gz'
+   ```
 
 {{% readfile "includes/ulimit.md" %}}
