@@ -87,8 +87,9 @@ The following table describes the connection parameters required to connect to t
 | Username  | User connecting to the database | yugabyte
 | Password  | Password for the user | yugabyte
 | Load Balance Hosts | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | False |
+| `yb_servers_refresh_interval` | If `load_balance` is true, the interval in seconds to refresh the servers list | 300 |
 | Topology Keys | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | Null |
-| YB Servers Refresh Interval | Parameter to regulate the refresh interval | 300 seconds |
+
 
 {{< note title ="Note" >}}
 The behaviour of `Load Balance Hosts` is different in YugabyteDB Npgsql Driver as compared to the upstream driver. The upstream driver balances connections on the list of hosts provided in the `Host` property, whereas the YugabyteDB Npgsql Driver balances the connections on the list of servers returned by the `yb_servers()` function.
