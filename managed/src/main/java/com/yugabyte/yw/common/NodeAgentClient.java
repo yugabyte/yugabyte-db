@@ -375,7 +375,7 @@ public class NodeAgentClient {
     }
   }
 
-  public Optional<NodeAgent> maybeGetNodeAgentClient(String ip, Provider provider) {
+  public Optional<NodeAgent> maybeGetNodeAgent(String ip, Provider provider) {
     if (isClientEnabled(provider)) {
       Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(ip);
       if (optional.isPresent() && optional.get().state != State.REGISTERING) {
