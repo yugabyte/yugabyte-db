@@ -29,6 +29,7 @@
 /* YB includes */
 #include "pgstat.h"
 #include "pg_yb_utils.h"
+#include "commands/explain.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 #ifdef __linux__
@@ -77,7 +78,7 @@ YbPgMemUpdateMax()
 
 /*
  * Update the current actual heap memory usage in MemTracker by getting
- * the value from TCMalloc.
+ * the value from the root MemTracker's consumption
  */
 static void
 YbPgMemUpdateCur()
@@ -91,6 +92,8 @@ YbPgMemUpdateCur()
 int64_t
 YbPgGetCurRSSMemUsage(int pid)
 {
+	if (!yb_enable_memory_tracking)
+		return -1;
 #ifdef __linux__
 	uint64 resident = 0;
 	char path[20];
@@ -122,6 +125,9 @@ YbPgGetCurRSSMemUsage(int pid)
 void
 YbPgMemAddConsumption(Size sz)
 {
+	if (!yb_enable_memory_tracking)
+		return;
+
 	if (IsMultiThreadedMode())
 		return;
 
@@ -135,8 +141,9 @@ YbPgMemAddConsumption(Size sz)
 	PgMemTracker.pggate_alive = YBCTryMemConsume(
 		PgMemTracker.pggate_alive ? sz : PgMemTracker.pg_cur_mem_bytes);
 
-	/* Only update max memory when memory is increasing */
-	YbPgMemUpdateMax();
+	if (yb_run_with_explain_analyze)
+		/* Only update max memory when memory is increasing */
+		YbPgMemUpdateMax();
 
 	/* Update current heap memory usage */
 	YbPgMemUpdateCur();
@@ -145,6 +152,9 @@ YbPgMemAddConsumption(Size sz)
 void
 YbPgMemSubConsumption(Size sz)
 {
+	if (!yb_enable_memory_tracking)
+		return;
+
 	if (IsMultiThreadedMode())
 		return;
 

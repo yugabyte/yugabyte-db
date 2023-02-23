@@ -129,7 +129,7 @@ DEFINE_UNKNOWN_bool(mem_tracker_log_stack_trace, false,
             "Enable logging of stack traces on memory tracker consume/release operations. "
             "Only takes effect if mem_tracker_logging is also enabled.");
 
-DEFINE_UNKNOWN_int64(mem_tracker_update_consumption_interval_us, 2000000,
+DEFINE_NON_RUNTIME_int64(mem_tracker_update_consumption_interval_us, 2 * 1000 * 1000,
     "Interval that is used to update memory consumption from external source. "
     "For instance from tcmalloc statistics.");
 
@@ -234,17 +234,6 @@ std::string CreateMetricDescription(const MemTracker& mem_tracker) {
 }
 
 #ifdef YB_TCMALLOC_ENABLED
-// If the mem_tracker is in Postgres backends, the default value of
-// FLAGS_mem_tracker_tcmalloc_gc_release_bytes will be overriden by a dedicated value for Postgres
-// from FLAGS_pg_mem_tracker_tcmalloc_gc_release_bytes.
-void OverrideTcmallocGcThresholdForPg() {
-  if (const auto mem_gc_threshold = std::getenv("FLAGS_pg_mem_tracker_tcmalloc_gc_release_bytes")) {
-    FLAGS_mem_tracker_tcmalloc_gc_release_bytes = strtoll(mem_gc_threshold, NULL, 10);
-    LOG(INFO) << "Overriding FLAGS_mem_tracker_tcmalloc_gc_release_bytes to "
-              << FLAGS_mem_tracker_tcmalloc_gc_release_bytes;
-  }
-}
-
 // Malloc hooks are not suppported in Google's TCMalloc as of Dec 12 2022 (and thus tracing is not
 // either). // See issue: https://github.com/google/tcmalloc/issues/44.
 #if defined(YB_GPERFTOOLS_TCMALLOC)
@@ -386,8 +375,6 @@ void MemTracker::CreateRootTracker() {
 #ifdef YB_TCMALLOC_ENABLED
   consumption_functor = &MemTracker::GetTCMallocActualHeapSizeBytes;
 
-  OverrideTcmallocGcThresholdForPg();
-
   if (FLAGS_mem_tracker_tcmalloc_gc_release_bytes < 0) {
     // Allocate 1% of memory to the tcmalloc page heap freelist.
     // On a 4GB RAM machine, the master gets 10%, so 400MB, so 1% is 4MB.
@@ -395,6 +382,9 @@ void MemTracker::CreateRootTracker() {
     FLAGS_mem_tracker_tcmalloc_gc_release_bytes =
         std::min(static_cast<size_t>(1.0 * limit / 100), 128_MB);
   }
+
+  LOG(INFO) << "Creating root MemTracker with garbage collection threshold "
+            << FLAGS_mem_tracker_tcmalloc_gc_release_bytes << " bytes";
 #endif
 
   root_tracker = std::make_shared<MemTracker>(
@@ -592,7 +582,7 @@ bool MemTracker::UpdateConsumption(bool force) {
   if (consumption_functor_) {
     auto now = CoarseMonoClock::now();
     auto interval = std::chrono::microseconds(
-        GetAtomicFlag(&FLAGS_mem_tracker_update_consumption_interval_us));
+      GetAtomicFlag(&FLAGS_mem_tracker_update_consumption_interval_us));
     if (force || now > last_consumption_update_ + interval) {
       last_consumption_update_ = now;
       auto value = consumption_functor_();
@@ -694,10 +684,13 @@ void MemTracker::Release(int64_t bytes) {
   if (PREDICT_FALSE(base::subtle::Barrier_AtomicIncrement(&released_memory_since_gc, bytes) >
                     GetAtomicFlag(&FLAGS_mem_tracker_tcmalloc_gc_release_bytes))) {
     GcTcmalloc();
-  }
-
-  if (UpdateConsumption()) {
-    return;
+    if (UpdateConsumption(true /* force */)) {
+      return;
+    }
+  } else {
+    if (UpdateConsumption()) {
+      return;
+    }
   }
 
   if (bytes == 0) {
