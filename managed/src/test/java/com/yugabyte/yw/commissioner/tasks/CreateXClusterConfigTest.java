@@ -18,11 +18,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static play.test.Helpers.contextComponents;
 
-import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
@@ -36,7 +35,6 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -47,7 +45,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.apache.commons.lang3.tuple.ImmutablePair;
@@ -71,7 +68,6 @@ import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
 import org.yb.master.MasterTypes.MasterErrorPB;
 import org.yb.master.MasterTypes.MasterErrorPB.Code;
-import play.mvc.Http;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CreateXClusterConfigTest extends CommissionerBaseTest {
@@ -80,6 +76,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
   private String sourceUniverseName;
   private UUID sourceUniverseUUID;
   private Universe sourceUniverse;
+  private Users defaultUser;
   private String targetUniverseName;
   private UUID targetUniverseUUID;
   private Universe targetUniverse;
@@ -103,6 +100,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     super.setUp();
 
     defaultCustomer = testCustomer("CreateXClusterConfig-test-customer");
+    defaultUser = ModelFactory.testUser(defaultCustomer);
 
     configName = "CreateXClusterConfigTest-test-config";
 
@@ -198,18 +196,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     try {
       UUID taskUUID = commissioner.submit(TaskType.CreateXClusterConfig, taskParams);
 
-      // Set http context
-      Users user = ModelFactory.testUser(defaultCustomer);
-      Map<String, String> flashData = Collections.emptyMap();
-      user.email = "shagarwal@yugabyte.com";
-      Map<String, Object> argData = ImmutableMap.of("user", new UserWithFeatures().setUser(user));
-      Http.Request request = mock(Http.Request.class);
-      Long id = 2L;
-      play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
-      Http.Context currentContext =
-          new Http.Context(id, header, request, flashData, flashData, argData, contextComponents());
-      Http.Context.current.set(currentContext);
-
+      // Set http context.
+      TestUtils.setFakeHttpContext(defaultUser);
       CustomerTask.create(
           defaultCustomer,
           targetUniverse.universeUUID,

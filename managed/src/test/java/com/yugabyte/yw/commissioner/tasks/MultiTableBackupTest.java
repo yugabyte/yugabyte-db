@@ -14,21 +14,18 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static play.test.Helpers.contextComponents;
 
-import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,12 +40,12 @@ import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.MasterTypes;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
-import play.mvc.Http;
 
 @RunWith(MockitoJUnitRunner.class)
 public class MultiTableBackupTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
+  private Users defaultUser;
   private static final UUID TABLE_1_UUID = UUID.randomUUID();
   private static final UUID TABLE_2_UUID = UUID.randomUUID();
   private static final UUID TABLE_3_UUID = UUID.randomUUID();
@@ -62,6 +59,8 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
 
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
+    defaultUser = ModelFactory.testUser(defaultCustomer);
+
     List<TableInfo> tableInfoList = new ArrayList<>();
     List<TableInfo> tableInfoList1 = new ArrayList<>();
     List<TableInfo> tableInfoList2 = new ArrayList<>();
@@ -139,17 +138,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     try {
       UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, backupTableParams);
       // Set http context
-      Users user = ModelFactory.testUser(defaultCustomer);
-      Map<String, String> flashData = Collections.emptyMap();
-      user.email = "shagarwal@yugabyte.com";
-      Map<String, Object> argData = ImmutableMap.of("user", new UserWithFeatures().setUser(user));
-      Http.Request request = mock(Http.Request.class);
-      Long id = 2L;
-      play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
-      Http.Context currentContext =
-          new Http.Context(id, header, request, flashData, flashData, argData, contextComponents());
-      Http.Context.current.set(currentContext);
-
+      TestUtils.setFakeHttpContext(defaultUser);
       CustomerTask.create(
           defaultCustomer,
           defaultUniverse.universeUUID,

@@ -2,9 +2,10 @@ import React, { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { Box } from '@material-ui/core';
-import { YBLabel, YBHelper, YBToggleField } from '../../../../../../components';
+import { YBLabel, YBToggleField, YBTooltip } from '../../../../../../components';
 import { CloudType, UniverseFormData } from '../../../utils/dto';
 import { TIME_SYNC_FIELD, PROVIDER_FIELD } from '../../../utils/constants';
+import InfoMessageIcon from '../../../../../../assets/info-message.svg';
 
 interface TimeSyncFieldProps {
   disabled: boolean;
@@ -19,6 +20,7 @@ const PROVIDER_FRIENDLY_NAME = {
 export const TimeSyncField = ({ disabled }: TimeSyncFieldProps): ReactElement => {
   const { control } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
+  const timeSyncTooltipText = t('universeForm.instanceConfig.useTimeSyncHelper');
 
   //watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
@@ -27,21 +29,22 @@ export const TimeSyncField = ({ disabled }: TimeSyncFieldProps): ReactElement =>
 
   return (
     <Box display="flex" width="100%" data-testid="TimeSyncField-Container">
-      <YBLabel dataTestId="TimeSyncField-Label">
-        {t('universeForm.instanceConfig.useTimeSync', stringMap)}
-      </YBLabel>
+      <YBToggleField
+        name={TIME_SYNC_FIELD}
+        inputProps={{
+          'data-testid': 'TimeSyncField-Toggle'
+        }}
+        control={control}
+        disabled={disabled}
+      />
       <Box flex={1}>
-        <YBToggleField
-          name={TIME_SYNC_FIELD}
-          inputProps={{
-            'data-testid': 'TimeSyncField-Toggle'
-          }}
-          control={control}
-          disabled={disabled}
-        />
-        <YBHelper dataTestId="TimeSyncField-Helper">
-          {t('universeForm.instanceConfig.useTimeSyncHelper', stringMap)}
-        </YBHelper>
+        <YBLabel dataTestId="TimeSyncField-Label">
+          {t('universeForm.instanceConfig.useTimeSync', stringMap)}
+          &nbsp;
+          <YBTooltip title={timeSyncTooltipText}>
+            <img alt="Info" src={InfoMessageIcon} />
+          </YBTooltip>
+        </YBLabel>
       </Box>
     </Box>
   );

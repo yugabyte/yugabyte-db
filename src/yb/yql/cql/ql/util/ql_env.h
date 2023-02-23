@@ -66,8 +66,8 @@ class QLEnv {
   virtual Status DeleteIndexTable(const client::YBTableName& name,
                                           client::YBTableName* indexed_table_name);
 
-  virtual Result<SchemaVersion> GetUpToDateTableSchemaVersion(
-      const client::YBTableName& table_name);
+  virtual Result<SchemaVersion> GetCachedTableSchemaVersion(const TableId& table_id);
+  virtual Result<SchemaVersion> GetUpToDateTableSchemaVersion(const TableId& table_id);
 
   virtual std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name,
                                                         bool* cache_used);

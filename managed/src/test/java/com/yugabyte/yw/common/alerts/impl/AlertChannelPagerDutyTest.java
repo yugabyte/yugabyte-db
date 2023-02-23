@@ -12,10 +12,14 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.WSClientRefresher;
 import com.yugabyte.yw.common.alerts.AlertChannelPagerDutyParams;
+import com.yugabyte.yw.common.alerts.AlertChannelTemplateService;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.Customer;
 import java.io.IOException;
 import java.nio.charset.Charset;
@@ -41,6 +45,12 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
 
   private MockWebServer server;
 
+  AlertChannelTemplateService alertChannelTemplateService;
+
+  AlertTemplateVariableService alertTemplateVariableService;
+
+  AlertChannelTemplatesExt alertChannelTemplatesExt;
+
   @Before
   public void setUp() throws IOException {
     defaultCustomer = ModelFactory.testCustomer();
@@ -48,7 +58,14 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
     server.start();
     HttpUrl baseUrl = server.url(PAGERDUTY_PATH);
     WSClientRefresher refresher = app.injector().instanceOf(WSClientRefresher.class);
-    channel = new AlertChannelPagerDuty(baseUrl.toString(), refresher);
+
+    alertTemplateVariableService = app.injector().instanceOf(AlertTemplateVariableService.class);
+    alertChannelTemplateService = app.injector().instanceOf(AlertChannelTemplateService.class);
+    alertChannelTemplatesExt =
+        alertChannelTemplateService.getWithDefaults(
+            defaultCustomer.getUuid(), ChannelType.PagerDuty);
+    channel =
+        new AlertChannelPagerDuty(baseUrl.toString(), refresher, alertTemplateVariableService);
   }
 
   @Test
@@ -62,7 +79,7 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
     channelConfig.setParams(params);
 
     Alert alert = ModelFactory.createAlert(defaultCustomer);
-    channel.sendNotification(defaultCustomer, alert, channelConfig);
+    channel.sendNotification(defaultCustomer, alert, channelConfig, alertChannelTemplatesExt);
 
     RecordedRequest request = server.takeRequest();
     assertThat(request.getPath(), is(PAGERDUTY_PATH));
@@ -99,7 +116,7 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
 
     Alert alert = ModelFactory.createAlert(defaultCustomer);
     alert.setState(State.RESOLVED);
-    channel.sendNotification(defaultCustomer, alert, channelConfig);
+    channel.sendNotification(defaultCustomer, alert, channelConfig, alertChannelTemplatesExt);
 
     RecordedRequest request = server.takeRequest();
     assertThat(request.getPath(), is(PAGERDUTY_PATH));
@@ -123,7 +140,9 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
     Alert alert = ModelFactory.createAlert(defaultCustomer);
 
     assertThat(
-        () -> channel.sendNotification(defaultCustomer, alert, channelConfig),
+        () ->
+            channel.sendNotification(
+                defaultCustomer, alert, channelConfig, alertChannelTemplatesExt),
         thrown(
             PlatformNotificationException.class,
             "Error sending PagerDuty event for alert Alert 1: {\"error\":\"not_ok\"}"));

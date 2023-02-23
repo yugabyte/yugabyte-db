@@ -8,6 +8,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -81,6 +82,8 @@ public class GFlagsUtil {
   public static final String TXN_TABLE_WAIT_MIN_TS_COUNT = "txn_table_wait_min_ts_count";
   public static final String CALLHOME_COLLECTION_LEVEL = "callhome_collection_level";
   public static final String CALLHOME_ENABLED = "callhome_enabled";
+  public static final String USE_NODE_HOSTNAME_FOR_LOCAL_TSERVER =
+      "use_node_hostname_for_local_tserver";
   public static final String SERVER_BROADCAST_ADDRESSES = "server_broadcast_addresses";
   public static final String RPC_BIND_ADDRESSES = "rpc_bind_addresses";
   public static final String TSERVER_MASTER_ADDRS = "tserver_master_addrs";
@@ -133,6 +136,7 @@ public class GFlagsUtil {
           .add(CLUSTER_UUID)
           .add(REPLICATION_FACTOR)
           .add(TXN_TABLE_WAIT_MIN_TS_COUNT)
+          .add(USE_NODE_HOSTNAME_FOR_LOCAL_TSERVER)
           .add(SERVER_BROADCAST_ADDRESSES)
           .add(RPC_BIND_ADDRESSES)
           .add(TSERVER_MASTER_ADDRS)
@@ -287,6 +291,9 @@ public class GFlagsUtil {
     ybcFlags.put("ysqlsh", getYbHomeDir(providerUUID) + YSQLSH_PATH);
     ybcFlags.put("ycqlsh", getYbHomeDir(providerUUID) + YCQLSH_PATH);
 
+    if (taskParam.enableNodeToNodeEncrypt) {
+      ybcFlags.put(CERT_NODE_FILENAME, node.cloudInfo.private_ip);
+    }
     if (MapUtils.isNotEmpty(userIntent.ybcFlags)) {
       ybcFlags.putAll(userIntent.ybcFlags);
     }
@@ -322,6 +329,7 @@ public class GFlagsUtil {
       gflags.put(
           SERVER_BROADCAST_ADDRESSES,
           String.format("%s:%s", privateIp, Integer.toString(node.tserverRpcPort)));
+      gflags.put(USE_NODE_HOSTNAME_FOR_LOCAL_TSERVER, "true");
     } else {
       gflags.put(SERVER_BROADCAST_ADDRESSES, "");
     }
@@ -475,6 +483,7 @@ public class GFlagsUtil {
       gflags.put(
           SERVER_BROADCAST_ADDRESSES,
           String.format("%s:%s", privateIp, Integer.toString(node.masterRpcPort)));
+      gflags.put(USE_NODE_HOSTNAME_FOR_LOCAL_TSERVER, "true");
     } else {
       gflags.put(SERVER_BROADCAST_ADDRESSES, "");
     }

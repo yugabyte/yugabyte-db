@@ -63,12 +63,6 @@ public class AccessKeyTest extends FakeDBApplication {
     assertNull(keyInfo.privateKey);
   }
 
-  @Test(expected = PersistenceException.class)
-  public void testCreateWithDuplicateCode() {
-    AccessKey.create(defaultProvider.uuid, "access-code1", new AccessKey.KeyInfo());
-    AccessKey.create(defaultProvider.uuid, "access-code1", new AccessKey.KeyInfo());
-  }
-
   @Test
   public void testGetValidKeyCode() {
     AccessKey.create(defaultProvider.uuid, "access-code1", new AccessKey.KeyInfo());

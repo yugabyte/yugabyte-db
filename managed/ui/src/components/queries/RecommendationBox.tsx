@@ -10,7 +10,7 @@ import { CpuSkew } from './advisor/CpuSkew';
 import { CpuUsage } from './advisor/CpuUsage';
 import { QueryData } from './helpers/perfQueryUtils';
 import { YBPanelItem } from '../panels';
-import { RecommendationTypeEnum } from '../../redesign/helpers/dtos';
+import { RecommendationTypeEnum } from '../../redesign/utils/dtos';
 import './RecommendationBox.scss';
 
 interface RecommendationProps {
@@ -19,12 +19,14 @@ interface RecommendationProps {
   key: string;
 }
 
-const getRecommendation = (type: RecommendationTypeEnum, summary: ReactNode | string, data: QueryData) => {
+const getRecommendation = (
+  type: RecommendationTypeEnum,
+  summary: ReactNode | string,
+  data: QueryData
+) => {
   if (type === RecommendationTypeEnum.IndexSuggestion) {
     const indexSuggestionData = data.table?.data ?? [];
-    return (
-      <IndexSuggestion summary={summary} data={indexSuggestionData} />
-    );
+    return <IndexSuggestion summary={summary} data={indexSuggestionData} />;
   }
   if (type === RecommendationTypeEnum.SchemaSuggestion) {
     const schemaSuggestionData = data.table?.data ?? [];
@@ -54,7 +56,7 @@ const getRecommendation = (type: RecommendationTypeEnum, summary: ReactNode | st
     const connectionSkewData = {
       maxNodeName: data.target,
       maxNodeValue: data.graph?.max.value ?? 0,
-      otherNodesAvgValue: data.graph?.other.value ?? 0,
+      otherNodesAvgValue: data.graph?.other.value ?? 0
     };
     return <ConnectionSkew data={connectionSkewData} summary={summary} />;
   }
@@ -115,9 +117,13 @@ export const RecommendationBox: FC<RecommendationProps> = ({ key, type, data }) 
         default:
           return null;
       }
-    }, [t]
+    },
+    [t]
   );
-  const getSummaryContent = (recommendationType: RecommendationTypeEnum, recommendationData: QueryData) => {
+  const getSummaryContent = (
+    recommendationType: RecommendationTypeEnum,
+    recommendationData: QueryData
+  ) => {
     if (recommendationType === RecommendationTypeEnum.IndexSuggestion) {
       const { indicator: numIndexes, target: databaseName } = recommendationData;
       return (
@@ -179,7 +185,11 @@ export const RecommendationBox: FC<RecommendationProps> = ({ key, type, data }) 
       );
     }
     if (recommendationType === RecommendationTypeEnum.CpuUsage) {
-      const { target: nodeName, indicator: percent, timeDurationSec: duration } = recommendationData;
+      const {
+        target: nodeName,
+        indicator: percent,
+        timeDurationSec: duration
+      } = recommendationData;
       const minuteDuration = Math.round((duration ?? 0) / 60);
       return (
         <Fragment>
@@ -207,17 +217,17 @@ export const RecommendationBox: FC<RecommendationProps> = ({ key, type, data }) 
           className="recommendationContainer"
         >
           <Panel.Heading>
-            <Panel.Title
-              toggle
-              onClick={() => setPanelExpanded(!isPanelExpanded)}
-            >
+            <Panel.Title toggle onClick={() => setPanelExpanded(!isPanelExpanded)}>
               {getTypeTagColor(type)}
               {!isPanelExpanded && getSummaryContent(type, data)}
             </Panel.Title>
           </Panel.Heading>
-          <Panel.Body collapsible>{isPanelExpanded && getRecommendation(type, getSummaryContent(type, data), data)}</Panel.Body>
+          <Panel.Body collapsible>
+            {isPanelExpanded && getRecommendation(type, getSummaryContent(type, data), data)}
+          </Panel.Body>
         </Panel>
-      } noBackground
+      }
+      noBackground
     />
   );
 };

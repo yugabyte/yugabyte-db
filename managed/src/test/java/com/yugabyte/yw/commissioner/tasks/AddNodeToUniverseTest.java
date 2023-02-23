@@ -23,7 +23,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static play.test.Helpers.contextComponents;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -32,6 +31,7 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -42,7 +42,6 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -68,7 +67,6 @@ import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.ListMastersResponse;
 import org.yb.client.ListTabletServersResponse;
 import play.libs.Json;
-import play.mvc.Http;
 
 @RunWith(JUnitParamsRunner.class)
 public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
@@ -164,16 +162,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     try {
       UUID taskUUID = commissioner.submit(TaskType.AddNodeToUniverse, taskParams);
       // Set http context
-      Map<String, String> flashData = Collections.emptyMap();
-      defaultUser.email = "shagarwal@yugabyte.com";
-      Map<String, Object> argData =
-          ImmutableMap.of("user", new UserWithFeatures().setUser(defaultUser));
-      Http.Request request = mock(Http.Request.class);
-      Long id = 2L;
-      play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
-      Http.Context currentContext =
-          new Http.Context(id, header, request, flashData, flashData, argData, contextComponents());
-      Http.Context.current.set(currentContext);
+      TestUtils.setFakeHttpContext(defaultUser);
 
       CustomerTask.create(
           defaultCustomer,

@@ -356,7 +356,7 @@ Result<bool> WriteQuery::CqlPrepareExecute() {
     auto write_op = std::make_unique<docdb::QLWriteOperation>(
         req,
         table_info->doc_read_context,
-        *table_info->index_map,
+        table_info->index_map,
         tablet->unique_index_key_schema(),
         txn_op_ctx);
     RETURN_NOT_OK(write_op->Init(resp));

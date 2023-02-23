@@ -14,6 +14,7 @@ import {
 } from '@material-ui/core';
 import type { TransitionProps } from '@material-ui/core/transitions';
 import { YBTooltip, YBButton, YBButtonProps } from '../../components/';
+import { isSubmitting } from 'redux-form';
 
 export interface OverrideButtonProps {
   primary?: YBButtonProps;
@@ -42,6 +43,7 @@ export interface YBModalProps extends DialogProps {
   customTitle?: React.ReactNode;
   hideCloseBtn?: boolean;
   dialogContentProps?: DialogContentProps;
+  isSubmitting?: boolean;
 }
 
 export const SlideTransition = React.forwardRef(
@@ -143,6 +145,7 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
     hideCloseBtn,
     submitButtonTooltip,
     cancelButtonTooltip,
+    isSubmitting,
     dialogContentProps = {},
     ...dialogProps
   } = props;
@@ -230,6 +233,7 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
         {...submitBtnProps}
         type="submit"
         autoFocus
+        showSpinner={isSubmitting}
         data-testid={submitTestId}
       >
         {submitLabel}

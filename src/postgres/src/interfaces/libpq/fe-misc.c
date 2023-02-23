@@ -32,6 +32,7 @@
 
 #include <signal.h>
 #include <time.h>
+#include <stdatomic.h>
 
 #ifdef WIN32
 #include "win32.h"
@@ -1217,7 +1218,7 @@ PQenv2encoding(void)
 static void
 libpq_binddomain()
 {
-	static bool already_bound = false;
+	static atomic_bool already_bound = false;
 
 	if (!already_bound)
 	{

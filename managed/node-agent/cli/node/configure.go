@@ -11,6 +11,7 @@ import (
 	"node-agent/util"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -25,7 +26,8 @@ var (
 )
 
 func SetupConfigureCommand(parentCmd *cobra.Command) {
-	configureCmd.PersistentFlags().String("api_token", "", "API token for fetching config info.")
+	configureCmd.PersistentFlags().
+		StringP("api_token", "t", "", "API token for fetching config info.")
 	configureCmd.PersistentFlags().StringP("url", "u", "", "Platform URL")
 	configureCmd.PersistentFlags().
 		Bool("skip_verify_cert", false, "Skip Yugabyte Anywhere SSL cert verification.")
@@ -150,14 +152,14 @@ func interactiveConfigHandler(cmd *cobra.Command) {
 	checkConfigAndUpdate(util.NodeIpKey, "Node IP")
 	checkConfigAndUpdate(util.NodeNameKey, "Node Name")
 
-	err = server.RetrieveUser(apiToken)
+	err = server.RetrieveUser(ctx, apiToken)
 	if err != nil {
 		util.ConsoleLogger().Fatalf(
 			"Error fetching the current user with the API key - %s", err.Error())
 	}
 	providersHandler := task.NewGetProvidersHandler(apiToken)
 	// Get Providers from the platform (only on-prem providers displayed)
-	err = executor.GetInstance(ctx).ExecuteTask(ctx, providersHandler.Handle)
+	err = executor.GetInstance().ExecuteTask(ctx, providersHandler.Handle)
 	if err != nil {
 		util.ConsoleLogger().Fatalf("Error fetching the providers - %s", err)
 	}
@@ -170,7 +172,8 @@ func interactiveConfigHandler(cmd *cobra.Command) {
 		}
 	}
 	onpremProviders := providers[:i]
-	providerNum, err := displayOptionsAndGetSelected(
+	providerNum, err := displayOptionsAndUpdateSelected(
+		util.ProviderIdKey,
 		displayInterfaces(onpremProviders),
 		"Onprem Provider",
 	)
@@ -178,41 +181,41 @@ func interactiveConfigHandler(cmd *cobra.Command) {
 		util.ConsoleLogger().Fatalf("Error while displaying providers - %s", err.Error())
 	}
 	selectedProvider := onpremProviders[providerNum]
-	config.Update(util.ProviderIdKey, selectedProvider.Uuid)
 
 	instanceTypesHandler := task.NewGetInstanceTypesHandler(apiToken)
 	// Get Instance Types for the provider from the platform.
-	err = executor.GetInstance(ctx).
+	err = executor.GetInstance().
 		ExecuteTask(ctx, instanceTypesHandler.Handle)
 	if err != nil {
 		util.ConsoleLogger().Fatalf("Error fetching the instance types - %s", err.Error())
 	}
 	instances := *instanceTypesHandler.Result()
-	instanceNum, err := displayOptionsAndGetSelected(
+	_, err = displayOptionsAndUpdateSelected(
+		util.NodeInstanceTypeKey,
 		displayInterfaces(instances),
 		"Instance Type",
 	)
 	if err != nil {
 		util.ConsoleLogger().Fatalf("Error while displaying instance Types - %s", err.Error())
 	}
-	selectedInstanceType := instances[instanceNum]
-	config.Update(util.NodeInstanceTypeKey, selectedInstanceType.InstanceTypeCode)
-
 	regions := selectedProvider.Regions
-	regionNum, err := displayOptionsAndGetSelected(displayInterfaces(regions), "Region")
+	regionNum, err := displayOptionsAndUpdateSelected(
+		util.NodeRegionKey, displayInterfaces(regions), "Region")
 	if err != nil {
 		util.ConsoleLogger().Fatalf("Error while displaying regions - %s", err.Error())
 	}
-	config.Update(util.NodeRegionKey, regions[regionNum].Code)
 
 	// Update availability Zone.
 	zones := regions[regionNum].Zones
-	zoneNum, err := displayOptionsAndGetSelected(displayInterfaces(zones), "Zone")
+	zoneNum, err := displayOptionsAndUpdateSelected(
+		util.NodeZoneKey,
+		displayInterfaces(zones),
+		"Zone",
+	)
 	if err != nil {
 		util.ConsoleLogger().Fatalf("Error while displaying zones - %s", err.Error())
 	}
 	config.Update(util.NodeAzIdKey, zones[zoneNum].Uuid)
-	config.Update(util.NodeZoneKey, zones[zoneNum].Code)
 	util.ConsoleLogger().Infof("Completed Node Agent Configuration")
 
 	err = server.RegisterNodeAgent(server.Context(), apiToken)
@@ -223,34 +226,69 @@ func interactiveConfigHandler(cmd *cobra.Command) {
 }
 
 // Displays the options and prompts the user to select an option followed by validating the option.
-func displayOptionsAndGetSelected(
+func displayOptionsAndUpdateSelected(
+	key string,
 	options []model.DisplayInterface,
 	displayHead string,
 ) (int, error) {
 	if len(options) == 0 {
 		return -1, fmt.Errorf("No record found for %s", displayHead)
 	}
-	fmt.Printf("* Select your %s\n", displayHead)
+	config := util.CurrentConfig()
+	selectedIdx := -1
+	fmt.Printf("* Select your %s.\n", displayHead)
 	for i, option := range options {
-		fmt.Printf("%d. %s\n", i+1, option.ToString())
+		fmt.Printf("%d. %s\n", i+1, option)
+	}
+	// Check if the key is already set.
+	val := config.String(key)
+	if val != "" {
+		for i, option := range options {
+			if option.Id() == val {
+				fmt.Printf(
+					"* The current value is %s.\n",
+					option,
+				)
+				selectedIdx = i
+				break
+			}
+		}
+
 	}
 	for {
-		fmt.Printf("\t Enter the option number: ")
+		if selectedIdx >= 0 {
+			fmt.Printf("\t Enter new option number or enter to skip: ")
+		} else {
+			fmt.Printf("\t Enter option number: ")
+		}
 		var newVal string
 		fmt.Scanln(&newVal)
-		optionNum, err := strconv.Atoi(newVal)
-		if err != nil {
-			util.ConsoleLogger().Errorf("Expected a number")
+		newVal = strings.TrimSpace(newVal)
+		if newVal == "" {
+			if selectedIdx >= 0 {
+				break
+			}
 			fmt.Println()
-			continue
+			// Continue as long as newVal is not set.
+		} else {
+			optionNum, err := strconv.Atoi(newVal)
+			if err != nil {
+				util.ConsoleLogger().Errorf("Expected a number")
+				fmt.Println()
+				continue
+			}
+			if optionNum < 1 || optionNum > len(options) {
+				util.ConsoleLogger().Errorf("Expected an option within the range")
+				fmt.Println()
+				continue
+			}
+			selectedIdx = optionNum - 1
+			break
 		}
-		if optionNum < 1 || optionNum > len(options) {
-			util.ConsoleLogger().Errorf("Expected an option within the range")
-			fmt.Println()
-			continue
-		}
-		return optionNum - 1, nil
 	}
+	selectedOption := options[selectedIdx]
+	err := config.Update(key, selectedOption.Id())
+	return selectedIdx, err
 }
 
 func displayInterfaces(i any) []model.DisplayInterface {

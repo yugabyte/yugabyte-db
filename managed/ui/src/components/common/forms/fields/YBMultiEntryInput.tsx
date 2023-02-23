@@ -24,7 +24,7 @@ const DEFAULT_MULTI_ENTRY_INPUT_STYLE: Partial<Styles> = {
   control: (base) => ({ ...base, borderRadius: '8px', minHeight: '42px' })
 };
 
-interface YBMultiEntryInputProps {
+export interface YBMultiEntryInputProps {
   defaultOptions?: Option[];
   delimiters?: string[];
   onChange?: (val: Option[]) => void;
@@ -112,8 +112,9 @@ export const YBMultiEntryInput: FC<YBMultiEntryInputProps> = ({
   );
 };
 
-export const YBLabelledMultiEntryInput : FC<YBMultiEntryInputProps & {label:string, meta: any, form: any, field: any}> = ({label, meta, form, field, ...rest}) => {
-
+export const YBLabelledMultiEntryInput: FC<
+  YBMultiEntryInputProps & { label: string; meta: any; form: any; field: any }
+> = ({ label, meta, form, field, ...rest }) => {
   let errorMsg;
   let hasError = false;
   let touched;
@@ -130,17 +131,11 @@ export const YBLabelledMultiEntryInput : FC<YBMultiEntryInputProps & {label:stri
     hasError = touched && isNonEmptyString(errorMsg);
   }
   return (
-    <YBLabel
-      label={label}
-   
-    >
-      <YBMultiEntryInput styles={{ menu: provided => ({ ...provided, zIndex: 2 }) }} {...rest}/>
+    <YBLabel label={label}>
+      <YBMultiEntryInput styles={{ menu: (provided) => ({ ...provided, zIndex: 2 }) }} {...rest} />
       {hasError && (
-        <div
-          className={`help-block standard-error`}
-          data-testid="yb-label-validation-error"
-        >
-          <span className='field-error'>{errorMsg}</span>
+        <div className={`help-block standard-error`} data-testid="yb-label-validation-error">
+          <span className="field-error">{errorMsg}</span>
         </div>
       )}
     </YBLabel>

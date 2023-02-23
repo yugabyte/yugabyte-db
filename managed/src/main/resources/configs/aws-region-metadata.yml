@@ -86,3 +86,15 @@ eu-north-1:
   name: Europe (Stockholm)
   latitude: 59.329323
   longitude: 18.068581
+us-gov-east-1:
+  name: US Govt East (N. Virginia)
+  latitude: 37.478397
+  longitude: -76.453077
+us-gov-west-1:
+  name: US Govt West (N. Virginia)
+  latitude: 36.778261
+  longitude: -119.417932
+ap-southeast-3:
+  name: Asia Pacific (Jakarta)
+  latitude: -6.200000
+  longitude: 106.816666

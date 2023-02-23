@@ -11,8 +11,10 @@
 package com.yugabyte.yw.models;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -77,6 +79,20 @@ public class KmsConfig extends Model {
     return KmsConfig.find.query().where().idEq(configUUID).findOne();
   }
 
+  /**
+   * Good for chained function calls.
+   *
+   * @param configUUID the kms config UUID.
+   * @return the KMS config object.
+   */
+  public static KmsConfig getOrBadRequest(UUID configUUID) {
+    KmsConfig kmsConfig = KmsConfig.get(configUUID);
+    if (kmsConfig == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "KMS config not found: " + kmsConfig);
+    }
+    return kmsConfig;
+  }
+
   public static KmsConfig createKMSConfig(
       UUID customerUUID, KeyProvider keyProvider, ObjectNode authConfig, String name) {
     KmsConfig kmsConfig = new KmsConfig();
@@ -100,6 +116,15 @@ public class KmsConfig extends Model {
         .query()
         .where()
         .eq("customer_UUID", customerUUID)
+        .eq("version", SCHEMA_VERSION)
+        .findList();
+  }
+
+  public static List<KmsConfig> listKMSProviderConfigs(KeyProvider keyProvider) {
+    return KmsConfig.find
+        .query()
+        .where()
+        .eq("key_provider", keyProvider)
         .eq("version", SCHEMA_VERSION)
         .findList();
   }

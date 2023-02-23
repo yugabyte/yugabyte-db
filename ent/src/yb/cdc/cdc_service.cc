@@ -209,7 +209,7 @@ struct TabletCheckpointInfo {
 struct CDCStateMetadataInfo {
   ProducerTabletInfo producer_tablet_info;
 
-  mutable std::string commit_timestamp;
+  mutable uint64_t commit_timestamp;
   mutable std::shared_ptr<Schema> current_schema;
   mutable OpId last_streamed_op_id;
   mutable SchemaVersion current_schema_version;
@@ -265,7 +265,7 @@ class CDCServiceImpl::Impl {
 
   void UpdateCDCStateMetadata(
       const ProducerTabletInfo& producer_tablet,
-      const std::string& timestamp,
+      const uint64_t& timestamp,
       const std::shared_ptr<Schema>& schema,
       const OpId& op_id,
       const uint32_t current_schema_version) {
@@ -983,24 +983,12 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
   // Generate a stream id by calling CreateCDCStream, and also setup the stream in the master.
   std::unordered_map<std::string, std::string> options = GetCreateCDCStreamOptions(req);
 
-  CDCStreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
-      client()->CreateCDCStream(ns_id, options, false /*active*/),
-      CDCError(CDCErrorPB::INTERNAL_ERROR));
-
+  // Filter out tables with PK
   master::NamespaceIdentifierPB ns_identifier;
   ns_identifier.set_id(ns_id);
   auto table_list = VERIFY_RESULT_OR_SET_CODE(
       client()->ListUserTables(ns_identifier), CDCError(CDCErrorPB::INTERNAL_ERROR));
-
-  options.erase(kIdType);
-
-  std::vector<client::YBOperationPtr> ops;
-  std::vector<TableId> table_ids;
-  std::vector<CDCStreamId> stream_ids;
-
-  auto cdc_state_table =
-      VERIFY_RESULT_OR_SET_CODE(GetCdcStateTable(), CDCError(CDCErrorPB::INTERNAL_ERROR));
-
+  std::vector<client::YBTableName> required_tables;
   for (const auto& table_iter : table_list) {
     std::shared_ptr<client::YBTable> table;
 
@@ -1020,10 +1008,27 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
       RETURN_NOT_OK_SET_CODE(CheckCdcCompatibility(table), CDCError(CDCErrorPB::INVALID_REQUEST));
     }
 
+    required_tables.push_back(table_iter);
+  }
+
+  bool set_active = required_tables.empty();
+  CDCStreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
+      client()->CreateCDCStream(ns_id, options, set_active),
+      CDCError(CDCErrorPB::INTERNAL_ERROR));
+
+  options.erase(kIdType);
+
+  std::vector<client::YBOperationPtr> ops;
+  std::vector<TableId> table_ids;
+  std::vector<CDCStreamId> stream_ids;
+
+  auto cdc_state_table =
+      VERIFY_RESULT_OR_SET_CODE(GetCdcStateTable(), CDCError(CDCErrorPB::INTERNAL_ERROR));
+
+  for (const auto& table_iter : required_tables) {
     // We only change the stream's state to "ACTIVE", while we are inserting the last table for the
     // stream.
-    bool set_active = table_iter == table_list.back();
-
+    bool set_active = table_iter == required_tables.back();
     const CDCStreamId stream_id = VERIFY_RESULT_OR_SET_CODE(
         client()->CreateCDCStream(table_iter.table_id(), options, set_active, db_stream_id),
         CDCError(CDCErrorPB::INTERNAL_ERROR));
@@ -1612,7 +1617,7 @@ void CDCServiceImpl::GetChanges(
             &CDCServiceImpl::UpdateChildrenTabletsOnSplitOp, this, producer_tablet, _1, session),
         mem_tracker, &msgs_holder, resp, &last_readable_index, get_changes_deadline);
   } else {
-    std::string commit_timestamp;
+    uint64_t commit_timestamp;
     OpId last_streamed_op_id;
     auto cached_schema_info = impl_->GetOrAddSchema(producer_tablet, req->need_schema_info());
 
@@ -1730,6 +1735,7 @@ void CDCServiceImpl::GetChanges(
     // If snapshot operation or before image is enabled, don't allow compaction.
     HybridTime cdc_sdk_safe_time =
         record.record_type == CDCRecordType::ALL || cdc_sdk_op_id.write_id() == -1
+            // TODO(abharadwaj): The safe time should be from  the req rather than from the response
             ? HybridTime::FromPB(resp->safe_hybrid_time())
             : HybridTime::kInvalid;
     if (UpdateCheckpointRequired(record, cdc_sdk_op_id, &force_update)) {
@@ -3975,7 +3981,8 @@ Status CDCServiceImpl::CheckTabletValidForStream(const ProducerTabletInfo& info)
     for (const auto& tablet : tablets) {
       if (tablet.has_split_parent_tablet_id() &&
           tablet.split_parent_tablet_id() == info.tablet_id) {
-        return STATUS_FORMAT(TabletSplit, Format("Tablet Split detected on $0", info.tablet_id));
+        return STATUS_FORMAT(
+            TabletSplit, Format("Tablet Split detected on $0 : $1", info.tablet_id, status));
       }
     }
   }

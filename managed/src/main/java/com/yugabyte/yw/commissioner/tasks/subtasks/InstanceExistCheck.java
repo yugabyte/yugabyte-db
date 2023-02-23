@@ -24,9 +24,9 @@ public class InstanceExistCheck extends NodeTaskBase {
   @Override
   public void run() {
     if (instanceExists(taskParams())) {
-      log.info("Waiting for SSH to succeed on existing instance {}", taskParams().nodeName);
+      log.info("Waiting for connection to succeed on existing instance {}", taskParams().nodeName);
       getNodeManager()
-          .nodeCommand(NodeManager.NodeCommandType.Wait_For_SSH, taskParams())
+          .nodeCommand(NodeManager.NodeCommandType.Wait_For_Connection, taskParams())
           .processErrors();
     }
   }

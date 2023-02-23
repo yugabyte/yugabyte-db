@@ -15,19 +15,17 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static play.test.Helpers.contextComponents;
 
-import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -55,6 +53,7 @@ public class CreateBackupTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
   private CustomerConfig storageConfig;
+  private Users defaultUser;
   private static final UUID TABLE_1_UUID = UUID.randomUUID();
   private static final UUID TABLE_2_UUID = UUID.randomUUID();
   private static final UUID TABLE_3_UUID = UUID.randomUUID();
@@ -69,6 +68,7 @@ public class CreateBackupTest extends CommissionerBaseTest {
 
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
+    defaultUser = ModelFactory.testUser(defaultCustomer);
     storageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "bar");
     List<TableInfo> tableInfoList = new ArrayList<>();
     List<TableInfo> tableInfoList1 = new ArrayList<>();
@@ -154,19 +154,8 @@ public class CreateBackupTest extends CommissionerBaseTest {
   private TaskInfo submitTask(ITaskParams backupTableParams) {
     try {
       UUID taskUUID = commissioner.submit(TaskType.CreateBackup, backupTableParams);
-
       // Set http context
-      Users user = ModelFactory.testUser(defaultCustomer);
-      Map<String, String> flashData = Collections.emptyMap();
-      user.email = "shagarwal@yugabyte.com";
-      Map<String, Object> argData = ImmutableMap.of("user", new UserWithFeatures().setUser(user));
-      Http.Request request = mock(Http.Request.class);
-      Long id = 2L;
-      play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
-      Http.Context currentContext =
-          new Http.Context(id, header, request, flashData, flashData, argData, contextComponents());
-      Http.Context.current.set(currentContext);
-
+      TestUtils.setFakeHttpContext(defaultUser);
       CustomerTask.create(
           defaultCustomer,
           defaultUniverse.universeUUID,

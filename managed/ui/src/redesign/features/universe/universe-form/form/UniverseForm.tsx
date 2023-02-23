@@ -9,6 +9,7 @@ import {
   GFlags,
   HelmOverrides,
   InstanceConfiguration,
+  SecurityConfiguration,
   UserTags,
   UniverseResourceContainer
 } from './sections';
@@ -209,10 +210,15 @@ export const UniverseForm: FC<UniverseFormProps> = ({
       <>
         <CloudConfiguration />
         <InstanceConfiguration />
-        <AdvancedConfiguration />
-        <GFlags />
+        {isPrimary && (
+          <>
+            <SecurityConfiguration />
+            <AdvancedConfiguration />
+            <GFlags />
+            <HelmOverrides />
+          </>
+        )}
         <UserTags />
-        <HelmOverrides />
       </>
     );
   };

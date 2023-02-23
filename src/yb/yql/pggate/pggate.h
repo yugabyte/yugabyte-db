@@ -13,7 +13,6 @@
 
 #pragma once
 
-#include <functional>
 #include <memory>
 #include <optional>
 #include <unordered_map>
@@ -23,6 +22,9 @@
 
 #include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"
+
+#include "yb/docdb/key_bytes.h"
+#include "yb/docdb/doc_key.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
@@ -35,6 +37,7 @@
 #include "yb/tserver/tserver_util_fwd.h"
 
 #include "yb/util/mem_tracker.h"
+#include "yb/util/memory/arena.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_mem.h"
@@ -354,6 +357,7 @@ class PgApiImpl {
                         bool is_unique_index,
                         const bool skip_index_backfill,
                         bool if_not_exist,
+                        bool is_colocated_via_database,
                         const PgObjectId& tablegroup_oid,
                         const YBCPgOid& colocation_id,
                         const PgObjectId& tablespace_oid,
@@ -451,9 +455,7 @@ class PgApiImpl {
   Status DmlAddYBTupleIdColumn(PgStatement *handle, int attr_num, uint64_t datum,
                                bool is_null, const YBCPgTypeEntity *type_entity);
 
-  using YBTupleIdProcessor = std::function<Status(const Slice&)>;
-  Status ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
-                          const YBTupleIdProcessor& processor);
+  Result<docdb::KeyBytes> BuildTupleId(const YBCPgYBTupleIdDescriptor& descr);
 
   // DB Operations: SET, WHERE, ORDER_BY, GROUP_BY, etc.
   // + The following operations are run by DocDB.
@@ -635,8 +637,22 @@ class PgApiImpl {
 
   MemTracker &GetMemTracker() { return *mem_tracker_; }
 
+  MemTracker &GetRootMemTracker() { return *MemTracker::GetRootTracker(); }
+
  private:
   class Interrupter;
+
+  class TupleIdBuilder {
+   public:
+    Result<docdb::KeyBytes> Build(PgSession* session, const YBCPgYBTupleIdDescriptor& descr);
+
+   private:
+    void Prepare();
+
+    ThreadSafeArena arena_;
+    docdb::DocKey doc_key_;
+    size_t counter_ = 0;
+  };
 
   // Metrics.
   std::unique_ptr<MetricRegistry> metric_registry_;
@@ -671,6 +687,7 @@ class PgApiImpl {
   std::optional<std::pair<PgOid, int32_t>> catalog_version_db_index_;
   // Used as a snapshot of the tserver catalog version map prior to MyDatabaseId is resolved.
   std::unique_ptr<tserver::PgGetTserverCatalogVersionInfoResponsePB> catalog_version_info_;
+  TupleIdBuilder tuple_id_builder_;
 };
 
 }  // namespace pggate

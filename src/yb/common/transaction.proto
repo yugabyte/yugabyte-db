@@ -74,12 +74,55 @@ enum RowMarkType {
   ROW_MARK_ABSENT = 15;
 }
 
-message AbortedSubTransactionSetPB {
+message SubtxnSetPB {
   repeated uint32 set = 1;
 }
 
 message SubTransactionMetadataPB {
   optional uint32 subtransaction_id = 1;
 
-  optional AbortedSubTransactionSetPB aborted = 2;
+  optional SubtxnSetPB aborted = 2;
+}
+
+enum LockMode {
+  WEAK_READ = 0;
+  WEAK_WRITE = 1;
+  STRONG_READ = 2;
+  STRONG_WRITE = 3;
+}
+
+message LockInfoPB {
+  // TODO(pglocks): https://github.com/yugabyte/yugabyte-db/issues/15908
+  // We should consider the following potential optimizations:
+  // 1. Group lock information by transaction_id to avoid repeated transaction_ids
+  // 2. Omit prefix locks, which are implied to exist if their fully-qualified forms are present
+  repeated bytes hash_cols = 1;
+
+  repeated bytes range_cols = 2;
+
+  optional uint32 column_id = 3;
+
+  optional bool is_full_pk = 4;
+
+  optional fixed64 wait_start_ht = 5;
+
+  // If this is set, then the lock has been granted.
+  optional fixed64 wait_end_ht = 6;
+
+  // If empty, this is a single-shard transaction.
+  optional bytes transaction_id = 7;
+
+  optional uint32 subtransaction_id = 8;
+
+  optional bool is_explicit = 9;
+
+  repeated LockMode modes = 10;
+}
+
+message TabletLockInfoPB {
+  optional bytes table_id = 1;
+
+  optional bytes tablet_id = 2;
+
+  repeated LockInfoPB locks = 3;
 }

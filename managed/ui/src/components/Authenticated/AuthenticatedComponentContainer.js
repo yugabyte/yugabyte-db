@@ -44,7 +44,9 @@ import {
   insecureLoginResponse,
   fetchUser,
   fetchUserSuccess,
-  fetchUserFailure
+  fetchUserFailure,
+  fetchAdminNotifications,
+  fetchAdminNotificationsResponse
 } from '../../actions/customers';
 import {
   fetchCustomerTasks,
@@ -190,6 +192,12 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(fetchUserFailure(userResponse.payload.error));
         }
       });
+    },
+
+    fetchAdminNotifications: () => {
+      dispatch(fetchAdminNotifications()).then((response) => {
+        dispatch(fetchAdminNotificationsResponse(response.payload));
+      });
     }
   };
 };
@@ -201,7 +209,8 @@ const mapStateToProps = (state) => {
     universe: state.universe,
     tasks: state.tasks,
     fetchMetadata: state.cloud.fetchMetadata,
-    fetchUniverseMetadata: state.universe.fetchUniverseMetadata
+    fetchUniverseMetadata: state.universe.fetchUniverseMetadata,
+    adminNotifications: state.customer.adminNotifications
   };
 };
 

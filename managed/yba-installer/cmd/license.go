@@ -67,7 +67,7 @@ func InstallLicense() {
 	if !pubkey.Validate(lic.Sha256Data(), lic.Signature) {
 		log.Fatal("invalid license")
 	}
-	if err := lic.WriteToLocation(common.LicenseFileInstall); err != nil {
+	if err := lic.WriteToLocation(common.LicenseFile()); err != nil {
 		log.Fatal("failed to install license: " + err.Error())
 	}
 }

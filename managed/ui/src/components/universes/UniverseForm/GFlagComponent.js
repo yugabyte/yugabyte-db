@@ -140,7 +140,11 @@ export default function GFlagComponent(props) {
       }
 
       case ADD_GFLAG: {
-        const obj = { Name: values?.flagname, [values?.server]: values?.flagvalue };
+        const obj = {
+          Name: values?.flagname,
+          [values?.server]: values?.flagvalue,
+          tags: values?.tags
+        };
         checkExistsAndPush(obj);
         callValidation([obj]);
         setToggleModal(false);

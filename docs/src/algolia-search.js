@@ -59,7 +59,6 @@ import algoliasearch from 'algoliasearch';
    * Main Docs section HTML.
    */
   function docsSection(hitIs) {
-    console.log(hitIs);
     let content = '';
     hitIs.forEach(hit => {
       const hitLevel0 = hit.hierarchy.lvl0;

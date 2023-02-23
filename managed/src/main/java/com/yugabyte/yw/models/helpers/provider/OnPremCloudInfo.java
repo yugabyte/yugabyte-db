@@ -51,4 +51,9 @@ public class OnPremCloudInfo implements CloudInfoInterface {
   public void withSensitiveDataMasked() {
     // Pass
   }
+
+  @JsonIgnore
+  public void mergeMaskedFields(CloudInfoInterface providerCloudInfo) {
+    // Pass
+  }
 }

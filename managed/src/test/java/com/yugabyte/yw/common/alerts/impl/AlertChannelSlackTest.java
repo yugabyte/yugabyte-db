@@ -11,9 +11,12 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
+import com.yugabyte.yw.common.alerts.AlertChannelTemplateService;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.Customer;
 import java.io.IOException;
 import java.nio.charset.Charset;
@@ -35,10 +38,18 @@ public class AlertChannelSlackTest extends FakeDBApplication {
 
   private AlertChannelSlack alertChannelSlack;
 
+  AlertChannelTemplateService alertChannelTemplateService;
+
+  AlertChannelTemplatesExt alertChannelTemplatesExt;
+
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     alertChannelSlack = app.injector().instanceOf(AlertChannelSlack.class);
+
+    alertChannelTemplateService = app.injector().instanceOf(AlertChannelTemplateService.class);
+    alertChannelTemplatesExt =
+        alertChannelTemplateService.getWithDefaults(defaultCustomer.getUuid(), ChannelType.Slack);
   }
 
   @Test
@@ -55,7 +66,7 @@ public class AlertChannelSlackTest extends FakeDBApplication {
       channel.setParams(params);
 
       Alert alert = ModelFactory.createAlert(defaultCustomer);
-      alertChannelSlack.sendNotification(defaultCustomer, alert, channel);
+      alertChannelSlack.sendNotification(defaultCustomer, alert, channel, alertChannelTemplatesExt);
 
       RecordedRequest request = server.takeRequest();
       assertThat(request.getPath(), is(SLACK_TEST_PATH));
@@ -80,7 +91,9 @@ public class AlertChannelSlackTest extends FakeDBApplication {
       Alert alert = ModelFactory.createAlert(defaultCustomer);
 
       assertThat(
-          () -> alertChannelSlack.sendNotification(defaultCustomer, alert, channel),
+          () ->
+              alertChannelSlack.sendNotification(
+                  defaultCustomer, alert, channel, alertChannelTemplatesExt),
           thrown(
               PlatformNotificationException.class,
               "Error sending Slack message for alert Alert 1: "

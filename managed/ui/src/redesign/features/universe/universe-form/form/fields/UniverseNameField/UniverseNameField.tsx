@@ -6,6 +6,7 @@ import { YBInputField, YBLabel } from '../../../../../../components';
 import { api } from '../../../../../../helpers/api';
 import { UniverseFormData } from '../../../utils/dto';
 import { UNIVERSE_NAME_FIELD } from '../../../utils/constants';
+import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface UniverseNameFieldProps {
   disabled?: boolean;
@@ -13,6 +14,7 @@ interface UniverseNameFieldProps {
 
 export const UniverseNameField = ({ disabled }: UniverseNameFieldProps): ReactElement => {
   const { control } = useFormContext<UniverseFormData>();
+  const classes = useFormFieldStyles();
   const { t } = useTranslation();
 
   //validate universe name if exists
@@ -35,7 +37,7 @@ export const UniverseNameField = ({ disabled }: UniverseNameFieldProps): ReactEl
       <YBLabel dataTestId="UniverseNameField-Label">
         {t('universeForm.cloudConfig.universeName')}
       </YBLabel>
-      <Box flex={1}>
+      <Box flex={1} className={classes.defaultTextBox}>
         <YBInputField
           control={control}
           name={UNIVERSE_NAME_FIELD}

@@ -10,9 +10,13 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.SetMultimap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
@@ -34,6 +38,7 @@ import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -53,7 +58,6 @@ import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
@@ -61,18 +65,12 @@ import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Ebean;
-import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-import play.mvc.Http;
-import play.mvc.Http.Status;
-
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -87,9 +85,12 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
+import play.mvc.Http;
+import play.mvc.Http.Status;
 
 public class UniverseCRUDHandler {
 
@@ -450,6 +451,8 @@ public class UniverseCRUDHandler {
       // Set the provider code.
       c.userIntent.providerType = Common.CloudType.valueOf(provider.code);
       c.validate(!cloudEnabled, isAuthEnforced);
+      // Enforce user tags.
+      validateUserTags(customer, c.userIntent);
       // Check if for a new create, no value is set, we explicitly set it to UNEXPOSED.
       if (c.userIntent.enableExposingService
           == UniverseDefinitionTaskParams.ExposingServiceState.NONE) {
@@ -622,8 +625,13 @@ public class UniverseCRUDHandler {
             taskParams.cmkArn = new String(cmkArnBytes);
           }
         }
+
+        boolean isNodeUIHttpsEnabled =
+            confGetter.getConfForScope(universe, UniverseConfKeys.nodeUIHttpsEnabled);
         if (Universe.shouldEnableHttpsUI(
-            primaryIntent.enableNodeToNodeEncrypt, primaryIntent.ybSoftwareVersion)) {
+            primaryIntent.enableNodeToNodeEncrypt,
+            primaryIntent.ybSoftwareVersion,
+            isNodeUIHttpsEnabled)) {
           universe.updateConfig(ImmutableMap.of(Universe.HTTPS_ENABLED_UI, "true"));
         }
       }
@@ -704,6 +712,8 @@ public class UniverseCRUDHandler {
   public UUID update(Customer customer, Universe u, UniverseDefinitionTaskParams taskParams) {
     checkCanEdit(customer, u);
     checkTaskParamsForUpdate(u, taskParams);
+    // enforce user tags for cloud instances.
+    for (Cluster cluster : taskParams.clusters) validateUserTags(customer, cluster.userIntent);
     if (u.isYbcEnabled()) {
       taskParams.installYbc = true;
       taskParams.enableYbc = true;
@@ -932,6 +942,8 @@ public class UniverseCRUDHandler {
               + " for "
               + universe.universeUUID);
     }
+
+    for (Cluster cluster : taskParams.clusters) validateUserTags(customer, cluster.userIntent);
 
     if (universe.isYbcEnabled()) {
       taskParams.installYbc = true;
@@ -1833,6 +1845,35 @@ public class UniverseCRUDHandler {
       String errMsg = "Unknown cluster " + StringUtils.join(taskParamClustersUuids, ",");
       LOG.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+  }
+
+  // This method enforces the user tags provided in runtime config.
+  // This ensures that universe creation fails when enforced tags are not provided.
+  private void validateUserTags(
+      Customer customer, UniverseDefinitionTaskParams.UserIntent userIntent) {
+    boolean enforceUserTags =
+        confGetter.getConfForScope(customer, CustomerConfKeys.enforceUserTags);
+    if (!userIntent.providerType.enforceInstanceTags() || !enforceUserTags) return;
+
+    Map<String, String> instanceTags = userIntent.instanceTags;
+    SetMultimap<String, String> tagToValues =
+        confGetter.getConfForScope(customer, CustomerConfKeys.enforcedUserTagsMap);
+    for (String userTag : tagToValues.keySet()) {
+      if (!instanceTags.containsKey(userTag))
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format("%s user tags required.", StringUtils.join(tagToValues.keySet(), ", ")));
+      Set<String> acceptedValuesSet = tagToValues.get(userTag);
+
+      // "*" in the accepted values set should allow any value
+      if (!acceptedValuesSet.contains("*")
+          && !acceptedValuesSet.contains(instanceTags.get(userTag)))
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Invalid value for %s (accepted values: %s)",
+                userTag, StringUtils.join(acceptedValuesSet, ", ")));
     }
   }
 }

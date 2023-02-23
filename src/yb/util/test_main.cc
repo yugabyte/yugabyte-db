@@ -38,6 +38,7 @@
 
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/flags.h"
+#include "yb/util/init.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/debug-util.h"
@@ -111,14 +112,10 @@ int main(int argc, char **argv) {
 }
 
 static void CreateAndStartTimer() {
-  struct sigaction action;
-  struct itimerval timer;
-
   // Create the test-timeout timer.
-  memset(&action, 0, sizeof(action));
-  action.sa_handler = &KillTestOnTimeout;
-  CHECK_ERR(sigaction(SIGALRM, &action, nullptr)) << "Unable to set timeout action";
+  CHECK_OK(yb::InstallSignalHandler(SIGALRM, &KillTestOnTimeout));
 
+  struct itimerval timer;
   timer.it_interval.tv_sec = 0;                      // No repeat.
   timer.it_interval.tv_usec = 0;
   timer.it_value.tv_sec = FLAGS_test_timeout_after;  // Fire in timeout seconds.

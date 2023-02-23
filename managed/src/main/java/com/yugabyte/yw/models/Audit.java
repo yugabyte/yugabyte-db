@@ -70,8 +70,14 @@ public class Audit extends Model {
     @EnumValue("Alert Template Settings")
     AlertTemplateSettings,
 
+    @EnumValue("Alert Template Variables")
+    AlertTemplateVariables,
+
     @EnumValue("Alert Channel")
     AlertChannel,
+
+    @EnumValue("Alert Channel Templates")
+    AlertChannelTemplates,
 
     @EnumValue("Alert Destination")
     AlertDestination,

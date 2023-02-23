@@ -5,6 +5,7 @@ import com.google.api.client.util.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -32,6 +33,7 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -193,7 +195,14 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   public static String getProducerCertsDir(UUID providerUuid) {
-    return Provider.getOrBadRequest(providerUuid).getYbHome() + DEFAULT_SOURCE_ROOT_CERTS_DIR_NAME;
+    Provider provider = Provider.getOrBadRequest(providerUuid);
+    // For Kubernetes universe, we must use the PV instead of home directory.
+    return Paths.get(
+            (provider.code.equals(CloudType.kubernetes.toString())
+                ? KubernetesTaskBase.K8S_NODE_YW_DATA_DIR
+                : provider.getYbHome()),
+            DEFAULT_SOURCE_ROOT_CERTS_DIR_NAME)
+        .toString();
   }
 
   public static String getProducerCertsDir(String providerUuid) {
