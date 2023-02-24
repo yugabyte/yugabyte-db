@@ -148,17 +148,15 @@ shared_ptr<YBTable> QLEnv::GetTableDesc(const TableId& table_id, bool* cache_use
   return yb_table;
 }
 
-Result<SchemaVersion> QLEnv::GetCachedTableSchemaVersion(const TableId& table_id) {
-  bool cache_used = false;
-  const shared_ptr<YBTable> yb_table = GetTableDesc(table_id, &cache_used);
-  SCHECK_FORMAT(yb_table, NotFound, "Cannot get table $0 from cache", table_id);
-  return yb_table->schema().version();
-}
+Result<SchemaVersion> QLEnv::GetUpToDateTableSchemaVersion(const YBTableName& table_name) {
+  shared_ptr<YBTable> yb_table;
+  RETURN_NOT_OK(client_->OpenTable(table_name, &yb_table));
 
-Result<SchemaVersion> QLEnv::GetUpToDateTableSchemaVersion(const TableId& table_id) {
-  // Force update the metadata cache.
-  RemoveCachedTableDesc(table_id);
-  return GetCachedTableSchemaVersion(table_id);
+  if (yb_table) {
+    return yb_table->schema().version();
+  } else {
+    return STATUS_SUBSTITUTE(NotFound, "Cannot get table $0", table_name.ToString());
+  }
 }
 
 shared_ptr<QLType> QLEnv::GetUDType(const std::string& keyspace_name,
