@@ -171,6 +171,19 @@ public class AppInit {
       // Import new local releases into release metadata
       releaseManager.importLocalReleases();
       releaseManager.updateCurrentReleases();
+      // Background thread to query for latest ARM release version.
+      Thread armReleaseThread =
+          new Thread(
+              () -> {
+                try {
+                  Logger.info("Attempting to query latest ARM release link.");
+                  releaseManager.findLatestArmRelease(configHelper.getCurrentVersion(application));
+                  Logger.info("Imported ARM release download link.");
+                } catch (Exception e) {
+                  Logger.warn("Error importing ARM release download link", e);
+                }
+              });
+      armReleaseThread.start();
 
       // initialize prometheus exports
       DefaultExports.initialize();
