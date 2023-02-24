@@ -76,7 +76,7 @@ $ make install
 
 ## C\#
 
-### NpgsqlYugabyteDB
+### Npgsql YugabyteDB Smart Driver
 
 The YugabyteDB Npgsql Smart Driver is a .NET driver for YSQL built on the PostgreSQL Npgsql driver, with features that eliminate the need for external load balancers.
 
