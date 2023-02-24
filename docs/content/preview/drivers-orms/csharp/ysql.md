@@ -73,7 +73,7 @@ or any of the other methods mentioned on the [nuget page](https://www.nuget.org/
 
 ### Step 2: Set up the database connection
 
-After setting up the dependencies, implement a C# client application that uses the NpgsqlYugabyteDB driver to connect to your YugabyteDB cluster and run a query on the sample data.
+After setting up the dependencies, implement a C# client application that uses the Npgsql YugabyteDB driver to connect to your YugabyteDB cluster and run a query on the sample data.
 
 Import YBNpgsql and use the `NpgsqlConnection` class for getting connection objects for the YugabyteDB database that can be used for performing DDLs and DMLs against the database.
 
