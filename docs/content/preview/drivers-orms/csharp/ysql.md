@@ -115,7 +115,7 @@ NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder)
 
 #### Use topology-aware load balancing
 
-To use Topology Aware Load Balancing, specify the topology keys by setting the `Topology Keys` property to the  connection string, as per the following example:
+To use topology-aware load balancing, specify the topology keys by setting the `Topology Keys` parameter, as per the following example:
 
 ```csharp
 var connStringBuilder = "Host=127.0.0.1,127.0.0.2,127.0.0.3;Port=5433;Database=yugabyte;Username=yugabyte;Password=password;Load Balance Hosts=true;Topology Keys=cloud.region.zone"
