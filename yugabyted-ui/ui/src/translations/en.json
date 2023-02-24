@@ -729,6 +729,10 @@
         "deadNodes": "Dead Nodes",
         "tablets": "Tablets",
         "total": "Total",
+        "activities": "Activities",
+        "noActivities": "No in progress activities",
+        "alerts": "Alerts",
+        "noAlerts": "No unread alerts",
         "underReplicated": "Under-Replicated",
         "unavailable": "Unavailable"
       },

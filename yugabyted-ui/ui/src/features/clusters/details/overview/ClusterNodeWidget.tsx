@@ -1,6 +1,6 @@
 import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Box, Divider, Grid, Link, makeStyles, Paper, Typography } from '@material-ui/core';
+import { Box, Divider, Grid, Link, makeStyles, Typography } from '@material-ui/core';
 
 // Local imports
 import { HealthCheckInfo, useGetClusterNodesQuery, useGetIsLoadBalancerIdleQuery } from '@app/api/src';
@@ -10,12 +10,6 @@ import { ClusterTabletWidget } from './ClusterTabletWidget';
 import { STATUS_TYPES, YBStatus } from '@app/components';
 
 const useStyles = makeStyles((theme) => ({
-  clusterInfo: {
-    padding: theme.spacing(2),
-    flexGrow: 1,
-    flexBasis: 0,
-    border: `1px solid ${theme.palette.grey[200]}`
-  },
   divider: {
     width: '100%',
     marginLeft: 0,
@@ -98,7 +92,7 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
   const healthyNodes = numNodes - deadNodes.length;
 
   return (
-    <Paper className={classes.clusterInfo}>
+    <Box>
       <Box display="flex" alignItems="center">
         <Typography variant="body2" className={classes.title}>{t('clusterDetail.overview.nodes')}</Typography>
         <Link>
@@ -150,6 +144,6 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
       </Grid>
       <Divider orientation="horizontal" variant="middle" className={classes.divider} />
       <ClusterTabletWidget health={health} />
-    </Paper>
+    </Box>
   );
 };

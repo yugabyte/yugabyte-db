@@ -1,7 +1,7 @@
 import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, Divider, Grid, makeStyles, Paper, Typography } from '@material-ui/core';
-import { intlFormat } from 'date-fns';
+// import { intlFormat } from 'date-fns';
 
 // Local imports
 import type { ClusterData } from '@app/api/src';
@@ -40,7 +40,7 @@ interface ClusterInfoWidgetProps {
   cluster: ClusterData;
 }
 
-const getDate = (rawDate?: string): string => {
+/* const getDate = (rawDate?: string): string => {
   if (rawDate) {
     return intlFormat(new Date(rawDate), {
       year: 'numeric',
@@ -54,7 +54,7 @@ const getDate = (rawDate?: string): string => {
     });
   }
   return '-';
-};
+}; */
 
 export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
   const classes = useStyles();
