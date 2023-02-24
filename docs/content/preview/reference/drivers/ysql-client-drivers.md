@@ -182,7 +182,7 @@ The YugabyteDB node-postgres Smart Driver is a distributed Node.js driver for YS
 
 For information on the YugabyteDB node-postgres Smart Driver and its load balancing features, see [YugabyteDB node-postgres Smart Driver](../../../reference/drivers/nodejs/yugabyte-pg-reference/).
 
-For building a sample Java application with the YugabyteDB JDBC driver, see [Connect an application](../../../drivers-orms/nodejs/yugabyte-node-driver/).
+For building a sample node.js application with the YugabyteDB node-postgres driver, see [Connect an application](../../../drivers-orms/nodejs/yugabyte-node-driver/).
 
 ### node-postgres
 
