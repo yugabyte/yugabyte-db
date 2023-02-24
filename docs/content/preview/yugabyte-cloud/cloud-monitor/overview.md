@@ -22,7 +22,7 @@ Use these metrics to monitor the performance of your cluster and to determine wh
 
 You can enable alerts for some performance metrics. Refer to [Alerts](../cloud-alerts/).
 
-![Cluster Performance Metrics](/images/yb-cloud/cloud-clusters-metrics.png)
+![Cluster Performance Metrics](/images/yb-cloud/managed-monitor-performance.png)
 
 You can show metrics by region and by node, for the past hour, 6 hours, 12 hours, 24 hours, or 7 days.
 
