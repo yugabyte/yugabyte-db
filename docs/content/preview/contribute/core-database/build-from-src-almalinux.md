@@ -58,9 +58,9 @@ AlmaLinux 8 is the recommended Linux development platform for YugabyteDB.
 Update and install basic development packages:
 
 ```sh
-sudo yum update -y
-sudo yum groupinstall -y 'Development Tools'
-sudo yum -y install epel-release libatomic rsync
+sudo dnf update -y
+sudo dnf groupinstall -y 'Development Tools'
+sudo dnf -y install epel-release libatomic rsync
 ```
 
 ### /opt/yb-build
@@ -74,7 +74,7 @@ sudo yum -y install epel-release libatomic rsync
 The following example installs Python 3.9.
 
 ```sh
-sudo yum install -y python39
+sudo dnf install -y python39
 ```
 
 In case there is more than one Python 3 version installed, ensure that `python3` refers to the right one.
@@ -90,7 +90,7 @@ python3 -V
 {{% readfile "includes/cmake.md" %}}
 
 ```sh
-sudo yum install -y cmake3
+sudo dnf install -y cmake3
 ```
 
 ### Java
@@ -100,7 +100,7 @@ sudo yum install -y cmake3
 Install the following packages to satisfy those requirements:
 
 ```sh
-sudo yum install -y java-1.8.0-openjdk maven
+sudo dnf install -y java-1.8.0-openjdk maven
 ```
 
 ### yugabyted-ui
@@ -108,7 +108,7 @@ sudo yum install -y java-1.8.0-openjdk maven
 {{% readfile "includes/yugabyted-ui.md" %}}
 
 ```sh
-sudo yum install -y npm golang
+sudo dnf install -y npm golang
 ```
 
 ### Ninja (optional)
@@ -129,7 +129,7 @@ sudo chmod +x /usr/local/bin/ninja
 {{% readfile "includes/ccache.md" %}}
 
 ```sh
-sudo yum install -y ccache
+sudo dnf install -y ccache
 # Also add the following line to your .bashrc or equivalent.
 export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
 ```
@@ -139,7 +139,7 @@ export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
 To compile with GCC, install the following packages, and adjust the version numbers to match the GCC version you plan to use.
 
 ```sh
-sudo yum install -y gcc-toolset-11 gcc-toolset-11-libatomic-devel
+sudo dnf install -y gcc-toolset-11 gcc-toolset-11-libatomic-devel
 ```
 
 ## Build the code
