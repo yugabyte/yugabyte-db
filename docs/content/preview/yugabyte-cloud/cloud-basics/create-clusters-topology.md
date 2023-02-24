@@ -263,7 +263,3 @@ You can add replicas to an existing primary cluster as needed. Refer to [Read re
 
 - [Read replicas](../../../architecture/docdb-replication/read-replicas/)
 - [Follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/)
-
-## Next steps
-
-- [Plan your cluster](../create-clusters-overview/)
