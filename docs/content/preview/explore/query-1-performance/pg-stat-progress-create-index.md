@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-You can add a new index to an existing table using the YSQL [`CREATE INDEX`](../../../api/ysql/the-sql-language/statements/ddl_create_index/#semantics) statement. YugabyteDB supports [online index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) and its enabled by default, that is, you can build indexes on non-empty tables online, without failing other concurrent writes. YugabyteDB also supports the [`CREATE INDEX NONCONCURRENTLY`](../../../api/ysql/the-sql-language/statements/ddl_create_index/#nonconcurrently) statement to disable online index backfill.
+You can add a new index to an existing table using the YSQL [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index/#semantics) statement. YugabyteDB supports [online index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md), which is enabled by default. Using this feature, you can build indexes on non-empty tables online, without failing other concurrent writes. YugabyteDB also supports the [CREATE INDEX NONCONCURRENTLY](../../../api/ysql/the-sql-language/statements/ddl_create_index/#nonconcurrently) statement to disable online index backfill.
 
 ### pg_stat_progress_create_index
 
