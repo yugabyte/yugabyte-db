@@ -2139,7 +2139,6 @@ TEST_F(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
   ASSERT_EQ(tablet_peer->tablet_metadata()->cdc_min_replicated_index(), 5);
 
   ASSERT_OK(cluster_->mini_tablet_server(leader_idx)->Start());
-  ASSERT_OK(cluster_->mini_tablet_server(leader_idx)->WaitStarted());
 }
 
 class CDCServiceLowRpc: public CDCServiceTest {
