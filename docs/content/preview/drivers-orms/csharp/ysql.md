@@ -81,7 +81,7 @@ The following table describes the connection parameters required to connect, inc
 
 | Parameter | Description | Default |
 | :-------- | :---------- | :------ |
-| Host      | Host name of the YugabyteDB instance | localhost
+| Host      | Host name of the YugabyteDB instance. You can also enter [multiple addresses](#use-multiple-addresses). | localhost
 | Port      |  Listen port for YSQL | 5433
 | Database  | Database name | yugabyte
 | Username  | User connecting to the database | yugabyte
