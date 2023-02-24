@@ -1313,7 +1313,7 @@ TEST_F(QLTabletTest, HistoryCutoff) {
   }
 
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Start(tserver::WaitTabletsBootstrapped::kFalse));
     for (;;) {
       auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
       ASSERT_LE(peers.size(), 1);
@@ -1330,7 +1330,7 @@ TEST_F(QLTabletTest, HistoryCutoff) {
   }
 
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Start(tserver::WaitTabletsBootstrapped::kFalse));
   }
   ASSERT_NO_FATALS(VerifyHistoryCutoff(cluster_.get(), &committed_history_cutoff, "After restart"));
 
@@ -1528,7 +1528,7 @@ TEST_F(QLTabletTest, LastAppliedOpIdTracking) {
   ASSERT_GT(max_applied_op_id, all_applied_op_id);
 
   LOG(INFO) << "Restarting TS-0";
-  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
 
   // TS-0 should catch up on applied ops.
   ASSERT_OK(WaitFor(
@@ -1598,11 +1598,12 @@ TEST_F(QLTabletTest, ElectUnsynchronizedFollower) {
     ASSERT_FALSE(resp.has_error()) << resp.error().ShortDebugString();
   }
 
-  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
 
   ASSERT_NO_FATALS(SetValue(session, 2, -2, table));
 
-  ASSERT_OK(cluster_->mini_tablet_server(follower_idx)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(follower_idx)->Start(
+    tserver::WaitTabletsBootstrapped::kFalse));
 }
 
 TEST_F(QLTabletTest, FollowerRestartDuringWrite) {
@@ -1636,7 +1637,8 @@ TEST_F(QLTabletTest, FollowerRestartDuringWrite) {
 
     SetValue(session, 4, -4, table);
 
-    ASSERT_OK(cluster_->mini_tablet_server(follower_idx)->Start());
+    ASSERT_OK(cluster_->mini_tablet_server(follower_idx)->Start(
+      tserver::WaitTabletsBootstrapped::kFalse));
 
     // Wait until newly started follower receive a new operation.
     // Without fix for GH #7145 it would crash in this case.

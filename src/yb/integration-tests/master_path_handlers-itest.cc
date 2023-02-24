@@ -132,7 +132,7 @@ TEST_F(MasterPathHandlersItest, TestDeadTServers) {
   ASSERT_TRUE(result_str.find(kTserverDead, pos + 1) == string::npos);
 
   // Startup the tserver and wait for heartbeats.
-  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
 
   ASSERT_OK(WaitFor([&]() -> bool {
     TestUrl("/tablet-servers", &result);
@@ -183,7 +183,7 @@ TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
   ASSERT_NOTNULL(leader);
 
   // Restart the server which was previously the leader of the now orphaned tablet.
-  ASSERT_OK(leader->Start());
+  ASSERT_OK(leader->Start(tserver::WaitTabletsBootstrapped::kFalse));
   // Sleep here to give the master's catalog_manager time to receive heartbeat from "leader".
   std::this_thread::sleep_for(std::chrono::milliseconds(6 * FLAGS_heartbeat_interval_ms));
 

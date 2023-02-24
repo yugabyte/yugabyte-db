@@ -992,7 +992,7 @@ TEST_F_EX(QLStressTest, LongRemoteBootstrap, QLStressTestLongRemoteBootstrap) {
   }, 30s, "Logs cleaned"));
 
   LOG(INFO) << "Bring replica back, keys written: " << key.load(std::memory_order_acquire);
-  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
 
   thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
     while (!stop.load(std::memory_order_acquire)) {
