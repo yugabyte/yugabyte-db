@@ -202,7 +202,10 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                   <YBInput
                     type="number"
                     fullWidth
-                    disabled={fixedNumVolumes || !instanceTypeChanged.current || disableNumVolumes}
+                    disabled={fixedNumVolumes || 
+                      disableNumVolumes || 
+                      (isEditMode && !instanceTypeChanged.current)
+                    }
                     inputProps={{ min: 1, 'data-testid': `VolumeInfoField-${dataTag}-VolumeInput` }}
                     value={convertToString(fieldValue.numVolumes)}
                     onChange={(event) => onNumVolumesChanged(event.target.value)}
@@ -220,10 +223,10 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                     fullWidth
                     disabled={
                       fixedVolumeSize ||
+                      disableVolumeSize ||
                       (provider?.code !== CloudType.kubernetes &&
                         !smartResizePossible &&
-                        !instanceTypeChanged.current) ||
-                      disableVolumeSize
+                        (isEditMode && !instanceTypeChanged.current))
                     }
                     inputProps={{
                       min: 1,
