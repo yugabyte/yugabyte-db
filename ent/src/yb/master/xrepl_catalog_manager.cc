@@ -4587,26 +4587,6 @@ bool CatalogManager::IsCdcEnabledUnlocked(const TableInfo& table_info) const {
   return IsTableCdcProducer(table_info) || IsTableCdcConsumer(table_info);
 }
 
-// This function will be replaced with IsTablePartOfCDCSDK when PR for
-// tablet split will be merged: https://phabricator.dev.yugabyte.com/D18638
-bool CatalogManager::IsCdcSdkEnabled(const TableInfo& table_info) {
-  master::ListCDCStreamsRequestPB list_req;
-  master::ListCDCStreamsResponsePB list_resp;
-  list_req.set_id_type(master::IdTypePB::NAMESPACE_ID);
-  list_req.set_namespace_id(table_info.namespace_id());
-  RETURN_NOT_OK_RET(ListCDCStreams(&list_req, &list_resp), false);
-  if (list_resp.streams().size() != 0) {
-    for (auto stream : list_resp.streams()) {
-      for (auto table_id : stream.table_id()) {
-        if (table_id == table_info.id()) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
-}
-
 bool CatalogManager::IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const {
   SharedLock lock(mutex_);
   return IsTablePartOfBootstrappingCdcStreamUnlocked(table_info);
