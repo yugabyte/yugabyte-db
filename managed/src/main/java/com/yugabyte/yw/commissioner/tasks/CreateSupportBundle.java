@@ -6,6 +6,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
@@ -158,7 +159,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
   }
 
   private Path generateBundlePath(Universe universe) {
-    String storagePath = runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path");
+    String storagePath = AppConfigHelper.getStoragePath();
     String datePrefix = new SimpleDateFormat("yyyyMMddHHmmss.SSS").format(new Date());
     String bundleName = "yb-support-bundle-" + universe.getName() + "-" + datePrefix + "-logs";
     Path bundlePath = Paths.get(storagePath + "/" + bundleName);
