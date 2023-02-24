@@ -57,7 +57,6 @@ using client::YBTable;
 using client::YBTableName;
 using OK = Status::OK;
 
-namespace enterprise {
 const int kMasterCount = 3;
 const int kTServerCount = 3;
 const int kTabletCount = 3;
@@ -800,5 +799,4 @@ TEST_F_EX(XClusterConsistencyTest, BootstrapAbortInFlightTxn, XClusterSingleClus
   ASSERT_EQ(count, 10);
 }
 
-}  // namespace enterprise
 }  // namespace yb

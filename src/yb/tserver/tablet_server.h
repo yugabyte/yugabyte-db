@@ -70,9 +70,7 @@ class AutoFlagsManager;
 
 namespace tserver {
 
-namespace enterprise {
 class CDCConsumer;
-}
 class PgClientServiceImpl;
 
 class TabletServer : public DbServerBase, public TabletServerIf {

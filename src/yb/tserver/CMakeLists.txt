@@ -201,6 +201,10 @@ set(TSERVER_SRCS
   tserver_metrics_heartbeat_data_provider.cc
   server_main_util.cc
   xcluster_safe_time_map.cc
+  cdc_consumer.cc
+  cdc_poller.cc
+  twodc_output_client.cc
+  twodc_write_implementations.cc
   ${TSERVER_SRCS_EXTENSIONS})
 
 set(TSERVER_DEPS
@@ -223,7 +227,8 @@ set(TSERVER_DEPS
   yb_client
   yb_pggate_flags
   ysql_upgrade
-  ${TSERVER_LIB_EXTENSIONS})
+  cdc
+  cdc_consumer_proto)
 
 ADD_YB_LIBRARY(tserver
   SRCS ${TSERVER_SRCS}

@@ -55,7 +55,7 @@ DECLARE_int32(cdc_max_stream_intent_records);
 
 namespace yb {
 namespace cdc {
-class CDCSDKGFlagValueTest : public enterprise::CDCSDKTestBase {
+class CDCSDKGFlagValueTest : public CDCSDKTestBase {
 };
 
 TEST_F(CDCSDKGFlagValueTest, YB_DISABLE_TEST_IN_TSAN(GFlagsDefaultValue)) {

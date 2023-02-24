@@ -35,7 +35,6 @@ DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 
 namespace yb {
 
-namespace enterprise {
 using OK = Status::OK;
 using client::YBTableName;
 
@@ -395,5 +394,4 @@ Result<std::vector<std::string>> XClusterYsqlTest::BootstrapCluster(
 
   return bootstrap_ids;
 }
-}  // namespace enterprise
 }  // namespace yb

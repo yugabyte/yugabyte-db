@@ -27,8 +27,6 @@ namespace tserver {
 
 class WriteRequestPB;
 
-namespace enterprise {
-
 struct ProcessRecordInfo {
   TabletId tablet_id;
 
@@ -58,6 +56,5 @@ class TwoDCWriteInterface {
 
 void ResetWriteInterface(std::unique_ptr<TwoDCWriteInterface>* write_strategy);
 
-} // namespace enterprise
 } // namespace tserver
 } // namespace yb

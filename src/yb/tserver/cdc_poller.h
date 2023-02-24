@@ -42,7 +42,6 @@ class CDCServiceProxy;
 } // namespace cdc
 
 namespace tserver {
-namespace enterprise {
 
 class CDCConsumer;
 
@@ -130,6 +129,5 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
   int idle_polls_ GUARDED_BY(data_mutex_){0};
 };
 
-} // namespace enterprise
 } // namespace tserver
 } // namespace yb

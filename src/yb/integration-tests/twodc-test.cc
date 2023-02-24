@@ -140,9 +140,7 @@ using client::YBTableType;
 using client::YBTableName;
 using master::MiniMaster;
 using tserver::MiniTabletServer;
-using tserver::enterprise::CDCConsumer;
-
-namespace enterprise {
+using tserver::CDCConsumer;
 
 using SessionTransactionPair = std::pair<client::YBSessionPtr, client::YBTransactionPtr>;
 
@@ -3614,5 +3612,4 @@ TEST_P(TwoDCTest, YB_DISABLE_TEST_IN_TSAN(TestPrematureLogGC)) {
     consumer_table->id(), stream_id, ReplicationErrorPb::REPLICATION_MISSING_OP_ID);
 }
 
-} // namespace enterprise
 } // namespace yb
