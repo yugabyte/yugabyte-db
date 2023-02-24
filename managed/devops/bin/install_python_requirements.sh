@@ -104,7 +104,10 @@ else
   if should_use_virtual_env; then
     log "Expecting there to be no differences between the output of 'pip freeze' and the contents" \
         "of $FROZEN_REQUIREMENTS_FILE"
-    if grep -Fxvf <(run_pip freeze | grep -v ybops) "$FROZEN_REQUIREMENTS_FILE" >/dev/null; then
+    # We will skip grpcio in this check, as it has addition python version requirements included in
+    # the requirements.txt, and this data is not stored by pip.
+    if grep -Fvf <(run_pip freeze | grep -v ybops) <(egrep -v 'grpcio|protobuf' \
+        $FROZEN_REQUIREMENTS_FILE); then
       log_warn "WARNING: discrepancies found between the contents of '$FROZEN_REQUIREMENTS_FILE'" \
               "and what's installed in the virtualenv $virtualenv_dir."
       log_error "Showing full diff output, but please ignore extra modules that were installed."
