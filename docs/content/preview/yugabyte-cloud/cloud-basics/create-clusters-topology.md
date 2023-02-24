@@ -84,7 +84,7 @@ In a cluster that is replicated across regions, the nodes of the cluster are dep
 
 **Latency**: Latency in a multi-region cluster depends on the distance and network packet transfer times between the nodes of the cluster and between the cluster and the client. Write latencies in this deployment mode can be high. This is because the tablet leader replicates write operations across a majority of tablet peers before sending a response to the client. All writes involve cross-zone communication between tablet peers.
 
-As a mitigation, you can enable [follower reads](../../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/) and set a [preferred region](../create-clusters/create-clusters-multisync/#preferred-region).
+As a mitigation, you can enable [follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/) and set a [preferred region](../create-clusters/create-clusters-multisync/#preferred-region).
 
 **Strengths**
 
@@ -267,5 +267,3 @@ You can add replicas to an existing primary cluster as needed. Refer to [Read re
 ## Next steps
 
 - [Plan your cluster](../create-clusters-overview/)
-- [Create a single region cluster](../create-clusters/create-single-region/)
-- [Create a synchronous multi-region cluster](../create-clusters/create-clusters-multisync/)
