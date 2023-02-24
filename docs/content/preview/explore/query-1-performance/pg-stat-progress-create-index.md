@@ -31,7 +31,7 @@ The following table describes the view columns:
 | pid | integer | Process ID of backend that is running the CREATE INDEX. |
 | datid | OID | Object ID of the database to which this backend is connected. |
 | datname | name | Name of the database to which this backend is connected. |
-| relid | OID | Object ID of indexed relation.|
+| relid | OID | Object ID of the indexed relation.|
 | index_relid | OID | Object ID of index. |
 | command | text | The command that is running CREATE INDEX CONCURRENTLY, or CREATE INDEX NONCONCURRENTLY. |
 | phase | text | The current phase of the command. The possible phases are _initializing_, or _backfilling_. |
