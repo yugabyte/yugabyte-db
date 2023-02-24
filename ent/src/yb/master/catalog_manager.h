@@ -291,8 +291,6 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   bool IsCdcEnabled(const TableInfo& table_info) const override EXCLUDES(mutex_);
   bool IsCdcEnabledUnlocked(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
 
-  bool IsCdcSdkEnabled(const TableInfo& table_info) override;
-
   bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const override
     EXCLUDES(mutex_);
   bool IsTablePartOfBootstrappingCdcStreamUnlocked(const TableInfo& table_info) const override
