@@ -113,7 +113,7 @@ var connStringBuilder = "Host=127.0.0.1,127.0.0.2,127.0.0.3;Port=5433;Database=y
 NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder)
 ```
 
-#### Using Topology Aware Load Balancing
+#### Use topology-aware load balancing
 
 To use Topology Aware Load Balancing, specify the topology keys by setting the `Topology Keys` property to the  connection string, as per the following example:
 
