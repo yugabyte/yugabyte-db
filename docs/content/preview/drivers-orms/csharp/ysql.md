@@ -77,7 +77,7 @@ After setting up the dependencies, implement a C# client application that uses t
 
 Import YBNpgsql and use the `NpgsqlConnection` class for getting connection objects for the YugabyteDB database that can be used for performing DDLs and DMLs against the database.
 
-The following table describes the connection parameters required to connect to the YugabyteDB database.
+The following table describes the connection parameters required to connect, including [smart driver parameters](../../smart-drivers/) for uniform and topology load balancing.
 
 | Parameter | Description | Default |
 | :-------- | :---------- | :------ |
