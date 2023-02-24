@@ -26,6 +26,14 @@ YugabyteDB Managed offers a number of deployment and replication options in geo-
 | Partition by region | Strong | Low in region (1-10ms); high across regions (40-100ms) | Low in region (1-10ms); high across regions (40-100ms) | Compliance, low latency I/O by moving data closer to customers |
 | Read replica | Strong in source, eventual in replica | Low in region (1-10ms) | Low in primary region (1-10ms) | Low latency reads |
 
+For more information on replication and deployment strategies for YugabyteDB, see the following:
+
+- [DocDB replication layer](../../../architecture/docdb-replication/)
+- [Multi-region deployments](../../../explore/multi-region-deployments/)
+- [Engineering Around the Physics of Latency](https://vimeo.com/548171949)
+- [9 Techniques to Build Cloud-Native, Geo-Distributed SQL Apps with Low Latency](https://www.yugabyte.com/blog/9-techniques-to-build-cloud-native-geo-distributed-sql-apps-with-low-latency/)
+- [Geo-partitioning of Data in YugabyteDB](https://www.yugabyte.com/blog/geo-partitioning-of-data-in-yugabytedb/)
+
 <!--
 | xCluster active-passive | Strong | Low in region (1-10ms) | Low in region (1-10ms) | Backup and data recovery, low latency I/O |
 | xCluster active-active | Eventual (timeline) | Low in region (1-10ms) | Low in region (1-10ms) | Backup and data recovery-, low latency I/O |
@@ -98,7 +106,8 @@ To deploy a multi-region replicated cluster, refer to [Replicate across regions]
 
 **Learn more**
 
-[Replication](../../../architecture/docdb-replication/replication/)
+- [Synchronous multi-region](../../../explore/multi-region-deployments/synchronous-replication-cloud/)
+- [Synchronous replication](../../../architecture/docdb-replication/replication/)
 
 ## Partition by region
 
@@ -254,13 +263,6 @@ You can add replicas to an existing primary cluster as needed. Refer to [Read re
 
 - [Read replicas](../../../architecture/docdb-replication/read-replicas/)
 - [Follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/)
-
-## Learn more
-
-- [DocDB replication layer](../../../architecture/docdb-replication/)
-- Webinar: [Engineering Around the Physics of Latency](https://vimeo.com/548171949)
-- Blog: [9 Techniques to Build Cloud-Native, Geo-Distributed SQL Apps with Low Latency](https://www.yugabyte.com/blog/9-techniques-to-build-cloud-native-geo-distributed-sql-apps-with-low-latency/)
-- Blog: [Geo-partitioning of Data in YugabyteDB](https://www.yugabyte.com/blog/geo-partitioning-of-data-in-yugabytedb/)
 
 ## Next steps
 
