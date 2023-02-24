@@ -139,7 +139,7 @@ using client::YBTableName;
 using master::GetNamespaceInfoResponsePB;
 using master::MiniMaster;
 using tserver::MiniTabletServer;
-using tserver::enterprise::CDCConsumer;
+using tserver::CDCConsumer;
 
 using pgwrapper::ToString;
 using pgwrapper::GetInt32;
@@ -147,8 +147,6 @@ using pgwrapper::GetValue;
 using pgwrapper::PGConn;
 using pgwrapper::PGResultPtr;
 using pgwrapper::PgSupervisor;
-
-namespace enterprise {
 
 struct TwoDCYsqlTestParams {
   explicit TwoDCYsqlTestParams(int batch_size_)
@@ -3236,5 +3234,4 @@ TEST_P(TwoDCYsqlTest, DeletingDatabaseContainingReplicatedTable) {
   ASSERT_OK(consumer_client()->DeleteNamespace(kNamespaceName, YQL_DATABASE_PGSQL));
 }
 
-} // namespace enterprise
 } // namespace yb

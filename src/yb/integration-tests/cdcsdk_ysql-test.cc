@@ -23,7 +23,6 @@ using pgwrapper::PGResultPtr;
 using rpc::RpcController;
 
 namespace cdc {
-namespace enterprise {
 
 namespace {
 
@@ -6211,6 +6210,5 @@ TEST_F(
   ASSERT_EQ(count, 2000);
 }
 
-}  // namespace enterprise
 }  // namespace cdc
 }  // namespace yb

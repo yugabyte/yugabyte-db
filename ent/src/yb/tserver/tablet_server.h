@@ -21,9 +21,9 @@
 namespace yb {
 
 namespace tserver {
+class CDCConsumer;
 namespace enterprise {
 
-class CDCConsumer;
 
 class TabletServer : public yb::tserver::TabletServer {
   typedef yb::tserver::TabletServer super;

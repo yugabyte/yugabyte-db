@@ -16,7 +16,6 @@
 #include "yb/integration-tests/twodc_test_base.h"
 
 namespace yb {
-namespace enterprise {
 constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
 const std::string kDatabaseName = "yugabyte";
 
@@ -86,5 +85,4 @@ class XClusterYsqlTest : public TwoDCTestBase {
   Status InitPostgres(Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);
 };
 
-}  // namespace enterprise
 }  // namespace yb

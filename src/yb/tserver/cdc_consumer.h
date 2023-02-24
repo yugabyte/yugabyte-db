@@ -51,8 +51,6 @@ class ConsumerRegistryPB;
 } // namespace cdc
 
 namespace tserver {
-namespace enterprise {
-
 class CDCPoller;
 class TabletServer;
 
@@ -224,6 +222,5 @@ class CDCConsumer {
     GUARDED_BY(tablet_replication_error_map_lock_);
 };
 
-} // namespace enterprise
 } // namespace tserver
 } // namespace yb

@@ -22,7 +22,6 @@ namespace yb {
 class ThreadPool;
 
 namespace tserver {
-namespace enterprise {
 
 class CDCConsumer;
 struct CDCClient;
@@ -39,6 +38,5 @@ std::shared_ptr<cdc::CDCOutputClient> CreateTwoDCOutputClient(
     client::YBTablePtr global_transaction_status_table,
     bool enable_replicate_transaction_status_table);
 
-} // namespace enterprise
 } // namespace tserver
 } // namespace yb

@@ -86,7 +86,7 @@ using client::YBTableType;
 using master::GetNamespaceInfoResponsePB;
 using master::MiniMaster;
 using tserver::MiniTabletServer;
-using tserver::enterprise::CDCConsumer;
+using tserver::CDCConsumer;
 
 using pgwrapper::GetInt32;
 using pgwrapper::PGConn;
@@ -97,7 +97,6 @@ using pgwrapper::ToString;
 using rpc::RpcController;
 
 namespace cdc {
-namespace enterprise {
 class CDCSDKStreamTest : public CDCSDKTestBase {
  public:
   struct ExpectedRecord {
@@ -524,6 +523,5 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(ExplicitCheckPointValidate)) {
     }
 }
 
-}  // namespace enterprise
 }  // namespace cdc
 }  // namespace yb

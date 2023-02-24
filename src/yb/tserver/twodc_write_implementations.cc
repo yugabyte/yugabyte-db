@@ -54,7 +54,6 @@ namespace yb {
 using namespace yb::size_literals;
 
 namespace tserver {
-namespace enterprise {
 
 // Updates the packed row encoded in the value with the local schema version
 // without decoding the value. In case of a non-packed row, return as is.
@@ -324,6 +323,5 @@ void ResetWriteInterface(std::unique_ptr<TwoDCWriteInterface>* write_strategy) {
   write_strategy->reset(new BatchedWriteImplementation());
 }
 
-} // namespace enterprise
 } // namespace tserver
 } // namespace yb

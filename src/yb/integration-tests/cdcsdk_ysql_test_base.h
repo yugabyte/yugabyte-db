@@ -131,7 +131,6 @@ using pgwrapper::PGResultPtr;
 using rpc::RpcController;
 
 namespace cdc {
-namespace enterprise {
 
 YB_DEFINE_ENUM(IntentCountCompareOption, (GreaterThanOrEqualTo)(GreaterThan)(EqualTo));
 YB_DEFINE_ENUM(OpIdExpectedValue, (MaxOpId)(InvalidOpId)(ValidNonMaxOpId));
@@ -2755,6 +2754,5 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   }
 };
 
-}  // namespace enterprise
 }  // namespace cdc
 }  // namespace yb
