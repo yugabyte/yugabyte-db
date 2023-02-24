@@ -52,7 +52,7 @@ To use smart driver load balancing features when connecting to clusters in Yugab
 
 ## CRUD operations
 
-The following sections demonstrate how to perform common tasks required for C# application development.
+The following sections demonstrate how to perform common tasks required for C# application development using the Yugabyte Npgsql smart driver APIs.
 
 To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
