@@ -695,7 +695,19 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
       tombstone_last_logged_opid_ = OpId();
     }
     cdc_min_replicated_index_ = superblock.cdc_min_replicated_index();
-    cdc_sdk_min_checkpoint_op_id_ = OpId::FromPB(superblock.cdc_sdk_min_checkpoint_op_id());
+
+    {
+      if (superblock.has_cdc_sdk_min_checkpoint_op_id()) {
+        cdc_sdk_min_checkpoint_op_id_ = OpId::FromPB(superblock.cdc_sdk_min_checkpoint_op_id());
+      } else {
+        // If a cluster is upgraded from any version lesser than 2.14,
+        // 'cdc_sdk_min_checkpoint_op_id' would be absent from the superblock, and we need to set
+        // 'cdc_sdk_min_checkpoint_op_id_' to OpId::Invalid() as this indicates that there are no
+        // active CDC streams on this tablet.
+        cdc_sdk_min_checkpoint_op_id_ = OpId::Invalid();
+      }
+    }
+
     is_under_twodc_replication_ = superblock.is_under_twodc_replication();
     hidden_ = superblock.hidden();
     auto restoration_hybrid_time = HybridTime::FromPB(superblock.restoration_hybrid_time());
