@@ -34,9 +34,9 @@ For the following examples, you need to identify which node holds a specific row
 
     ```sql
     CREATE TABLE txndemo (
-        k1 int,
-        k2 int,
-        PRIMARY KEY(k1)
+        k int,
+        v int,
+        PRIMARY KEY(k)
     );
     ```
 
@@ -46,7 +46,7 @@ For the following examples, you need to identify which node holds a specific row
     INSERT INTO txndemo SELECT id,10 FROM generate_series(1,5) AS id;
     ```
 
-- Fetch the hash code of the primary key k1 using the [yb_hash_code(id)](../../../api/ysql/exprs/func_yb_hash_code/) function, and correlate it with the `yb-admin` output to figure out where that key is located. The examples on this page use the row with `k1=1`.
+- Fetch the hash code of the primary key k using the [yb_hash_code()](../../../api/ysql/exprs/func_yb_hash_code/) function, and correlate it with the `yb-admin` output to figure out where that key is located. The examples on this page use the row with `k=1`.
 
     ```sql
     SELECT id, upper(to_hex(yb_hash_code(id))) AS hash FROM generate_series(1,5) AS id;
@@ -73,16 +73,33 @@ For the following examples, you need to identify which node holds a specific row
     Tablet-UUID                       Key Range         Leader-IP       Leader-UUID
     7e2dfb66a4654aa5b2fb133b446aaabc  [0x0000, 0x5554]  127.0.0.2:9100  4739b43f76184e1cab003b88686df290
     a9b4675fdaaa4d4b949adc5e53d183bf  [0x5555, 0xAAA9]  127.0.0.3:9100  7402fbc9c6384d80bb7bcd09b89dbca9
-    a8c50129f63642459a02ed4ee492a1f3  [0x0000, 0x5554]  127.0.0.1:9100  6789e52b1c334844a66078fe9fdf95fa
+    a8c50129f63642459a02ed4ee492a1f3  [0xAAAA, 0xFFFF]  127.0.0.1:9100  6789e52b1c334844a66078fe9fdf95fa
     ```
 
-From the hash ranges listed on the [tablet-servers](http://localhost:7000/tablet-servers) page, and the [yb-admin](../../../admin/yb-admin/) output, you can determine that the row with `k1=1` whose hash code is `1210` resides on node `127.0.0.2`, as that node has the tablet containing the key range `[0x0000, 0x5554]`.
+    If you see an output of the Range similar to `partition_key_start: "" partition_key_end: "UU"` , then it is printing the hash code in octal. The mapping to hex would be:
+
+    ```output.sh
+    ""         :  0x0000
+    "UU"       :  0x5555
+    "\252\252" :  0xAAAA
+    ```
+
+
+From the hash ranges listed on the [tablet-servers](http://localhost:7000/tablet-servers) page, and the [yb-admin](../../../admin/yb-admin/) output, you can determine that the row with `k=1` whose hash code is `1210` resides on node `127.0.0.2`, as that node has the tablet containing the key range `[0x0000, 0x5554]`.
+
+{{< note title="Note" >}}
+Here, the row with __`k=1`__ was located on node __`127.0.0.2`__. But in your setup it could be on a different node. Make sure to use that node during failure simulation in the examples below.
+{{< /note >}}
 
 ## Failure of a node after receiving a write
 
 During a transaction, when a row is updated, YugabyteDB sends the modified row (also known as [Provisional Records](../../../architecture/transactions/distributed-txns/#provisional-records)) to the node containing the row that is being modified. In this example, you can see how a transaction completes when the node that has just received a provisional write fails.
 
-Because the row with `k1=1` is located on the node `127.0.0.2` (via [Identifying the row location](#identifing-the-location-of-a-row)), connect to node `127.0.0.3` as you have to stop the node `127.0.0.2` before committing the transaction in the following example.
+Because the row with `k=1` is located on the node `127.0.0.2` (via [Identifying the row location](#identifing-the-location-of-a-row)), connect to node `127.0.0.3` as you have to stop the node `127.0.0.2` before committing the transaction in the following example.
+
+{{< note title="Note" >}}
+You need to pick a node other than the node that the row with __`k=1`__ resides in to connect to. In this setup, we are picking the node __`127.0.0.3`__ to connect to as the row with __`k=1`__ is located at node __`127.0.0.2`__. In your setup, the row with __`k=1`__ could be located on a different node. So choose a node to connect to appropriately.
+{{< /note >}}
 
 1. Connect to `127.0.0.3` using the following ysqlsh command:
 
@@ -90,7 +107,7 @@ Because the row with `k1=1` is located on the node `127.0.0.2` (via [Identifying
     ./bin/ysqlsh -h 127.0.0.3  -U yugabyte -d yugabyte
     ```
 
-1. Start a transaction to update the value of row `k1=1` to `20` using the following commands:
+1. Start a transaction to update the value of row `k=1` to `20` using the following commands:
 
     ```sql
     BEGIN;
@@ -102,7 +119,7 @@ Because the row with `k1=1` is located on the node `127.0.0.2` (via [Identifying
     ```
 
     ```sql
-    UPDATE txndemo set k2=20 where k1=1;
+    UPDATE txndemo set v=20 where k=1;
     ```
 
     ```output
@@ -110,7 +127,7 @@ Because the row with `k1=1` is located on the node `127.0.0.2` (via [Identifying
     Time: 51.513 ms
     ```
 
-    The update will succeed. This means that the updated row with value `k2=20` has been sent to node `127.0.0.2`, but not yet committed.
+    The update will succeed. This means that the updated row with value `v=20` has been sent to node `127.0.0.2`, but not yet committed.
 
 1. From another terminal of your YugabyteDB home directory, stop the node at `127.0.0.2`, as this is the node that has received the modified row.
 
@@ -118,17 +135,17 @@ Because the row with `k1=1` is located on the node `127.0.0.2` (via [Identifying
     ./bin/yugabyted stop --base_dir=/tmp/ybd2
     ```
 
-1. Verify that the node at `127.0.0.2` is not active and that a new leader has been elected for the row with `k1=1`. List the nodes as follows:
+1. Verify that the node at `127.0.0.2` is not active and that a new leader has been elected for the row with `k=1`. List the nodes as follows:
 
     ```sh
-    ./bin/yb-admin list_tablets ysql.yugabyte txndemo
+    ./bin/yb-admin -master_addresses 127.0.0.1,127.0.0.2,127.0.0.3 list_tablets ysql.yugabyte txndemo
     ```
 
     ```output.sh
     Tablet-UUID                        Key Range         Leader-IP       Leader-UUID
     7e2dfb66a4654aa5b2fb133b446aaabc   [0x0000, 0x5554]  127.0.0.3:9100  7402fbc9c6384d80bb7bcd09b89dbca9
     a9b4675fdaaa4d4b949adc5e53d183bf   [0x5555, 0xAAA9]  127.0.0.3:9100  7402fbc9c6384d80bb7bcd09b89dbca9
-    a8c50129f63642459a02ed4ee492a1f3   [0x0000, 0x5554]  127.0.0.1:9100  6789e52b1c334844a66078fe9fdf95fa
+    a8c50129f63642459a02ed4ee492a1f3   [0xAAAA, 0xFFFF]  127.0.0.1:9100  6789e52b1c334844a66078fe9fdf95fa
     ```
 
     Notice that `127.0.0.2` is gone from the list and `127.0.0.3` is now the leader for the tablet that was in `127.0.0.2` (`7e2dfb66a..`)
@@ -146,22 +163,35 @@ Because the row with `k1=1` is located on the node `127.0.0.2` (via [Identifying
 
     The transaction succeeds even though the node at `127.0.0.2` failed after receiving the provisional write, and the row value updates to `20`. This is because, the provisional writes were replicated to the follower tablets and when the leader failed, a new leader that was quickly elected already had the provisional writes, which enabled the transaction to continue further without disruption.
 
-1. Check the value of the row at `k1=1` using the following command:
+1. Check the value of the row at `k=1` using the following command:
 
     ```sql
-    SELECT * from txndemo where k1=1;
+    SELECT * from txndemo where k=1;
     ```
 
     ```output
-     k1 | k2
+      k | v
     ----+----
       1 | 20
     (1 row)
     ```
 
-    The row with `k1=1` has the new value of `k2=20`, confirming the completion of the transaction.
+    The row with `k=1` has the new value of `v=20`, confirming the completion of the transaction.
 
-1. From another terminal of your YugabyteDB home directory, restart the node at `127.0.0.2` using the following command:
+1. From another terminal of your YugabyteDB home directory, restart the node at `127.0.0.2` using the following procedure.
+    
+    Identify the master leader using the following command:
+
+    ```sh
+    ./bin/yb-admin -master_addresses 127.0.0.1,127.0.0.2,127.0.0.3 list_all_masters | grep LEADER
+    ```
+
+    You would see an output similar to:
+    ```output.sh
+    8b6af7ef33f44a13926e6d49ce9186eb 	127.0.0.1:7100       	ALIVE    	LEADER 	127.0.0.1:7100
+    ```
+
+    Here, `127.0.0.1` is the master leader ip(This might be different in your setup). Start your node again and join the cluster at this ip using the following command:
 
     ```sh
     ./bin/yugabyted start --base_dir=/tmp/ybd2 --join=127.0.0.1
@@ -171,7 +201,11 @@ Because the row with `k1=1` is located on the node `127.0.0.2` (via [Identifying
 
 As mentioned in the preceding example, when a row is updated during a transaction, YugabyteDB sends the modified row to the node the row that is being modified.
 
-In this example, you can see how a transaction completes when the node that is about to receive a provisional write fails. You will take down node `127.0.0.2` as that node has the row with `k1=1`.
+In this example, you can see how a transaction completes when the node that is about to receive a provisional write fails. You will take down node `127.0.0.2` as that node has the row with `k=1`.
+
+{{< note title="Note" >}}
+You need to pick a node other than the node that the row with __`k=1`__ resides in to connect to. In this setup, we are picking the node __`127.0.0.3`__ to connect to as the row with __`k=1`__ is located at node __`127.0.0.2`__. In your setup, the row with __`k=1`__ could be located on a different node. So choose a node to connect to appropriately.
+{{< /note >}}
 
 1. Connect to `127.0.0.3` as follows:
 
@@ -192,7 +226,7 @@ In this example, you can see how a transaction completes when the node that is a
 
     The transaction is started, but you have not yet modified the row. So at this point, no provisional records have been sent to node `127.0.0.2`.
 
-1. From another terminal of your YugabyteDB home directory, stop the node at `127.0.0.2`. (This is the node from [Identifying the row location](#identifing-the-location-of-a-row).)
+1. From another terminal of your YugabyteDB home directory, stop the node at `127.0.0.2`, which has the row with `k=1` (This is the node from [Identifying the row location](#identifing-the-location-of-a-row)).
 
     ```sh
     ./bin/yugabyted stop --base_dir=/tmp/ybd2
@@ -201,14 +235,14 @@ In this example, you can see how a transaction completes when the node that is a
 1. List the nodes to verify the node at `127.0.0.2` is gone from the tablet list using the following command:
 
     ```sh
-    ./bin/yb-admin list_tablets ysql.yugabyte txndemo
+    ./bin/yb-admin -master_addresses 127.0.0.1,127.0.0.2,127.0.0.3 list_tablets ysql.yugabyte txndemo
     ```
 
     ```output.sh
     Tablet-UUID                        Key Range         Leader-IP       Leader-UUID
     7e2dfb66a4654aa5b2fb133b446aaabc   [0x0000, 0x5554]  127.0.0.3:9100  7402fbc9c6384d80bb7bcd09b89dbca9
     a9b4675fdaaa4d4b949adc5e53d183bf   [0x5555, 0xAAA9]  127.0.0.3:9100  7402fbc9c6384d80bb7bcd09b89dbca9
-    a8c50129f63642459a02ed4ee492a1f3   [0x0000, 0x5554]  127.0.0.1:9100  6789e52b1c334844a66078fe9fdf95fa
+    a8c50129f63642459a02ed4ee492a1f3   [0xAAAA, 0xFFFF]  127.0.0.1:9100  6789e52b1c334844a66078fe9fdf95fa
     ```
 
     Notice that the node `127.0.0.2` is gone and a new leader `127.0.0.3` has been elected for the tablet (`7e2dfb66a..`) which was in node `127.0.0.2`.
@@ -216,7 +250,7 @@ In this example, you can see how a transaction completes when the node that is a
 1. Complete and commit the transaction as follows:
 
     ```sql
-    UPDATE txndemo set k2=30 where k1=1;
+    UPDATE txndemo set v=30 where k=1;
     COMMIT;
     ```
 
@@ -229,22 +263,35 @@ In this example, you can see how a transaction completes when the node that is a
 
     The transaction succeeds even though the node at `127.0.0.2` failed before receiving the provisional write, and the value updates to `30`. The transaction succeeds because a new leader (the node at `127.0.0.3`) gets quickly elected.
 
-1. Check the value of the row at `k1=1` using the following command:
+1. Check the value of the row at `k=1` using the following command:
 
     ```sql
-    SELECT * from txndemo where k1=1;
+    SELECT * from txndemo where k=1;
     ```
 
     ```output
-     k1 | k2
+      k | v
     ----+----
       1 | 30
     (1 row)
     ```
 
-    The row with `k1=1` has the new value of `k2=30`, confirming the completion of the transaction.
+    The row with `k=1` has the new value of `v=30`, confirming the completion of the transaction.
 
-1. From another terminal of your YugabyteDB home directory, restart the node at `127.0.0.2` using the following command:
+1. From another terminal of your YugabyteDB home directory, restart the node at `127.0.0.2` using the following procedure.
+    
+    Identify the master leader using the following command:
+
+    ```sh
+    ./bin/yb-admin -master_addresses 127.0.0.1,127.0.0.2,127.0.0.3 list_all_masters | grep LEADER
+    ```
+
+    You would see an output similar to:
+    ```output.sh
+    8b6af7ef33f44a13926e6d49ce9186eb 	127.0.0.1:7100       	ALIVE    	LEADER 	127.0.0.1:7100
+    ```
+
+    Here, `127.0.0.1` is the master leader ip(This might be different in your setup). Start your node again and join the cluster at this ip using the following command:
 
     ```sh
     ./bin/yugabyted start --base_dir=/tmp/ybd2 --join=127.0.0.1
@@ -254,7 +301,11 @@ In this example, you can see how a transaction completes when the node that is a
 
 The node to which a client connects acts as the manager for the transaction. The transaction manager coordinates the flow of transaction and maintains the corelation between the client and the transaction-id (a unique identifier for each transaction). YugabyteDB is inherently resilient to node failures as mentioned in the previous two scenarios.
 
-In this example, you can see how a transaction will abort when the transaction manager fails. For more details on the role of the transaction manager, see [Transactional I/O](../../../architecture/transactions/transactional-io-path/#client-requests-transaction).
+In this example, you can see how a transaction will abort when the transaction manager fails. For more details on the role of the transaction manager, see [Transactional I/O](../../../architecture/transactions/transactional-io-path/#client-requests-transaction). 
+
+{{< note title="Note" >}}
+For this case, you can connect to any node in the cluster.(`127.0.0.3` has been chosen here).
+{{< /note >}}
 
 1. Connect to the node at `127.0.0.3` as follows:
 
@@ -262,7 +313,7 @@ In this example, you can see how a transaction will abort when the transaction m
     ./bin/ysqlsh -h 127.0.0.3  -U yugabyte -d yugabyte
     ```
 
-1. Start a transaction to update the value of row `k1=1` to `40` as follows:
+1. Start a transaction to update the value of row `k=1` to `40` as follows:
 
     ```sql
     BEGIN;
@@ -274,7 +325,7 @@ In this example, you can see how a transaction will abort when the transaction m
     ```
 
     ```sql
-    UPDATE txndemo set k2=40 where k1=1;
+    UPDATE txndemo set v=40 where k=1;
     ```
 
     ```output
@@ -312,11 +363,11 @@ In this example, you can see how a transaction will abort when the transaction m
     ```
 
     ```sql
-    SELECT * from txndemo where k1=1;
+    SELECT * from txndemo where k=1;
     ```
 
     ```output
-     k1 | k2
+      k | v
     ----+----
       1 | 30
     (1 row)
