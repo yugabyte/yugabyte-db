@@ -72,24 +72,20 @@ By default, the driver refreshes the list of nodes every 300 seconds (5 minutes)
 
 To use the driver, pass new connection properties for load balancing in the connection URL or properties pool.
 
-To enable uniform load balancing across all servers, you set the `load_balance` property to `true` in the URL, as per the following example:
+To enable uniform load balancing across all servers, you set the `Load Balance Hosts` property to `true` in the URL, as per the following example:
 
-```go
-baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
-                  user, password, host, port, dbname)
-url := fmt.Sprintf("%s?load_balance=true", baseUrl)
-conn, err := pgx.Connect(context.Background(), url)
+```csharp
+var connStringBuilder = "Host=127.0.0.1,127.0.0.2,127.0.0.3;Port=5433;Database=yugabyte;Username=yugabyte;Password=password;Load Balance Hosts=true;"
+NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder)
 ```
 
-You can specify [multiple hosts](../../../../drivers-orms/go/yb-pgx/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the universe, and performs load balancing of subsequent connection requests across these servers.
+You can specify [multiple hosts](../../../../drivers-orms/csharp/ysql/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the universe, and performs load balancing of subsequent connection requests across these servers.
 
-To specify topology keys, you set the `topology_keys` property to comma separated values, as per the following example:
+To specify topology keys, you set the `Topology Keys` property to comma separated values, as per the following example:
 
 ```go
-baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
-                  user, password, host, port, dbname)
-url = fmt.Sprintf("%s?load_balance=true&topology_keys=cloud1.datacenter1.rack1", baseUrl)
-conn, err := pgx.Connect(context.Background(), url)
+var connStringBuilder = "Host=127.0.0.1,127.0.0.2,127.0.0.3;Port=5433;Database=yugabyte;Username=yugabyte;Password=password;Load Balance Hosts=true;Topology Keys=cloud.region.zone"
+NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder)
 ```
 
 ### Create table
