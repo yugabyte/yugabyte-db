@@ -48,7 +48,7 @@ The `pg_stat_progress_create_index` view includes the following YugabyteDB-speci
 
 - In YugabyteDB, the `pg_stat_progress_create_index` view is a local view; it only has entries for CREATE INDEX commands issued by local YSQL clients.
 
-- In PostgreSQL, `tuples_done` and `tuples_total` refer to the tuples of the _index_. However, in YugabyteDB, these fields refer to the tuples of the _indexed table_. This applies only to partial indexes, where the reported progress will be less than the actual progress. `tuples_total` is an estimate that is retrieved from `pg_class.reltuples`.
+- In PostgreSQL, `tuples_done` and `tuples_total` refer to the tuples of the _index_. However, in YugabyteDB, these fields refer to the tuples of the _indexed table_. This applies only to partial indexes, where the reported progress is less than the actual progress. `tuples_total` is an estimate that is retrieved from `pg_class.reltuples`.
 - In YugabyteDB, the values for `tuples_done` and `tuples_total` for temporary indexes are not displayed unlike PostgreSQL, because these columns reflect tuples of the indexed table.
 
 ## Example
