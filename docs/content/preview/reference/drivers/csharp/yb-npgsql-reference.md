@@ -31,11 +31,14 @@ type: docs
 
 </ul>
 
-The [Yugabyte Npgsql smart driver](https://github.com/yugabyte/npgsql) is a distributed .NET driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL Npgsql driver](https://github.com/npgsql/npgsql/tree/main/src/Npgsql), with additional [connection load balancing](../../smart-drivers/) features.
+Yugabyte Npgsql smart driver is a .NET driver for [YSQL](../../../../api/ysql/) based on [PostgreSQL Npgsql driver](https://github.com/npgsql/npgsql/tree/main/src/Npgsql), with additional connection load balancing features.
 
-## Fundamentals
+For more information on the Yugabyte Npgsql smart driver, see the following:
 
-Learn how to perform common tasks required for C# application development using the NpgsqlYugabyteDB driver.
+- [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
+- [CRUD operations](../../../../drivers-orms/go/ysql)
+- [GitHub repository](https://github.com/yugabyte/npgsql)
+- [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 
 ### Download the driver dependency
 
@@ -52,34 +55,41 @@ dotnet add package NpgsqlYugabyteDB
 
 or any of the other methods mentioned on the [nuget page](https://www.nuget.org/packages/Npgsql/) for NpgsqlYugabyteDB.
 
-### Connect to YugabyteDB database
+## Fundamentals
 
-After setting up the dependencies, implement the C# client application that uses the NpgsqlYugabyteDB driver to connect to your YugabyteDB cluster and run a query on the sample data.
+Learn how to perform common tasks required for C# application development using the Npgsql YugabyteDB driver.
 
-Import NpgsqlYugabyteDB and use the `NpgsqlConnection` class to create the connection object to perform DDLs and DMLs against the database.
+### Load balancing connection properties
 
-The following table describes the connection parameters for connecting to the YugabyteDB database.
+The following connection properties need to be added to enable load balancing:
 
-| Parameters | Description | Default |
-| :---------- | :---------- | :------ |
-| Host  | Host name of the YugabyteDB instance | localhost
-| Port |  Listen port for YSQL | 5433
-| Database | Database name | yugabyte
-| Username | User connecting to the database | yugabyte
-| Password | Password for the user | yugabyte
-| Load Balance Hosts | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | False |
-| `yb_servers_refresh_interval` | If `load_balance` is true, the interval in seconds to refresh the servers list | 300 |
-| Topology Keys | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | Null |
+- `Load Balance Hosts` - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
+- `Topology Keys` - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`. Specify all zones in a region as `cloud.region.*`. To designate fallback locations for when the primary location is unreachable, specify a priority in the form `:n`, where `n` is the order of precedence. For example, `cloud1.datacenter1.rack1:1,cloud1.datacenter1.rack2:2`.
 
-{{< note title ="Note" >}}
-The behaviour of `Load Balance Hosts` is different in YugabyteDB Npgsql Driver as compared to the upstream driver. The upstream driver balances connections on the list of hosts provided in the `Host` property, whereas the YugabyteDB Npgsql Driver balances the connections on the list of servers returned by the `yb_servers()` function.
-{{< /note >}}
+By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `YB Servers Refresh Interval` connection parameter.
 
-The following is a basic example connection string for connecting to YugabyteDB.
+### Use the driver
 
-```csharp
-var connStringBuilder = "Host=localhost;Port=5433;Database=yugabyte;Username=yugabyte;Password=password;Load Balance Hosts=true"
-NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder)
+To use the driver, pass new connection properties for load balancing in the connection URL or properties pool.
+
+To enable uniform load balancing across all servers, you set the `load_balance` property to `true` in the URL, as per the following example:
+
+```go
+baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
+                  user, password, host, port, dbname)
+url := fmt.Sprintf("%s?load_balance=true", baseUrl)
+conn, err := pgx.Connect(context.Background(), url)
+```
+
+You can specify [multiple hosts](../../../../drivers-orms/go/yb-pgx/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the universe, and performs load balancing of subsequent connection requests across these servers.
+
+To specify topology keys, you set the `topology_keys` property to comma separated values, as per the following example:
+
+```go
+baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
+                  user, password, host, port, dbname)
+url = fmt.Sprintf("%s?load_balance=true&topology_keys=cloud1.datacenter1.rack1", baseUrl)
+conn, err := pgx.Connect(context.Background(), url)
 ```
 
 ### Create table
@@ -192,10 +202,3 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
 ```
 
 For more information on TLS/SSL support, see [Security and Encryption](https://www.npgsql.org/doc/security.html?tabs=tabid-1) in the Npgsql documentation. -->
-
-## Compatibility matrix
-
-| Driver Version | YugabyteDB Version | Support |
-| :------------- | :----------------- | :------ |
-| 6.0.3 | 2.17 (preview) | full
-| 6.0.3 | 2.16 (stable) | full

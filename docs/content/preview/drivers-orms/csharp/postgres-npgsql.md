@@ -29,7 +29,7 @@ type: docs
   <li >
     <a href="../ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YugabyteDB C# Smart Driver
+      YugabyteDB Npgsql Smart Driver
     </a>
   </li>
 

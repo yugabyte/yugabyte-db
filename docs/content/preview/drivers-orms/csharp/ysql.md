@@ -29,7 +29,7 @@ type: docs
   <li >
     <a href="../ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YugabyteDB C# Smart Driver
+      YugabyteDB Npgsql Smart Driver
     </a>
   </li>
 
@@ -69,7 +69,7 @@ To add the Npgsql package to your project when not using an IDE, use the followi
 dotnet add package NpgsqlYugabyteDB
 ```
 
-or any of the other methods mentioned on the [nuget page](https://www.nuget.org/packages/Npgsql/) for NpgsqlYugabyteDB.
+or any of the other methods mentioned on the [nuget page](https://www.nuget.org/packages/NpgsqlYugabyteDB/) for NpgsqlYugabyteDB.
 
 ### Step 2: Set up the database connection
 
@@ -179,6 +179,8 @@ namespace Yugabyte_CSharp_Demo
 }
 ```
 
+To run the project `Program.cs`, choose _Run -> Start Without Debugging_.
+
 You should see output similar to the following:
 
 ```output
@@ -191,5 +193,7 @@ John  35   CSharp
 
 ## Learn more
 
-- [PostgreSQL Npgsql driver reference](../../../reference/drivers/csharp/yb-npgsql-reference/)
-- Build C# applications using [EntityFramework ORM](../entityframework)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
+- [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
+- [YugabyteDB Npgsql Smart Driver reference](../../../reference/drivers/csharp/yb-npgsql-reference/)
+- Build C# applications using [Entity Framework ORM](../entityframework)
