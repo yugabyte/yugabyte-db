@@ -87,7 +87,7 @@ The following table describes the connection parameters required to connect, inc
 | Username  | User connecting to the database | yugabyte
 | Password  | Password for the user | yugabyte
 | Load Balance Hosts | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | False |
-| `yb_servers_refresh_interval` | If `load_balance` is true, the interval in seconds to refresh the servers list | 300 |
+| YB Servers Refresh Interval | If Load Balance Hosts is true, the interval in seconds to refresh the servers list | 300 |
 | Topology Keys | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | Null |
 
 
