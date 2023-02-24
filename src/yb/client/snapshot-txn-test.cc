@@ -882,7 +882,7 @@ void SnapshotTxnTest::TestRemoteBootstrap() {
     // Start all servers. Cluster verifier should check that all tablets are synchronized.
     for (auto i = cluster_->num_tablet_servers(); i > 0;) {
       --i;
-      ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
+      ASSERT_OK(cluster_->mini_tablet_server(i)->Start(tserver::WaitTabletsBootstrapped::kFalse));
     }
 
     ASSERT_OK(WaitFor([this] { return CheckAllTabletsRunning(); }, 20s * kTimeMultiplier,
@@ -929,7 +929,7 @@ TEST_F_EX(SnapshotTxnTest, TruncateDuringShutdown, RemoteBootstrapOnStartBase) {
 
   ASSERT_OK(client_->TruncateTable(table_.table()->id()));
 
-  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
 
   ASSERT_OK(WaitFor([this] { return CheckAllTabletsRunning(); }, 20s * kTimeMultiplier,
                     "All tablets running"));
@@ -1004,7 +1004,7 @@ TEST_F(SnapshotTxnTest, DeleteOnLoad) {
   // Wait delete table request to replicate on alive node.
   std::this_thread::sleep_for(1s * kTimeMultiplier);
 
-  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
 }
 
 } // namespace client

@@ -1163,7 +1163,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyNodeRest
   SleepFor(MonoDelta::FromSeconds(1));
   test_cluster()->mini_tablet_server(1)->Shutdown();
   ASSERT_OK(test_cluster()->mini_tablet_server(1)->Start());
-  ASSERT_OK(test_cluster()->mini_tablet_server(1)->WaitStarted());
 
   // Check all the tserver checkpoint info it's should be valid.
   for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
@@ -1697,7 +1696,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyAllNodes
   for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
     test_cluster()->mini_tablet_server(i)->Shutdown();
     ASSERT_OK(test_cluster()->mini_tablet_server(i)->Start());
-    ASSERT_OK(test_cluster()->mini_tablet_server(i)->WaitStarted());
   }
   LOG(INFO) << "All nodes restarted";
   EnableCDCServiceInAllTserver(3);
@@ -1770,7 +1768,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyAllNode
   for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
     test_cluster()->mini_tablet_server(i)->Shutdown();
     ASSERT_OK(test_cluster()->mini_tablet_server(i)->Start());
-    ASSERT_OK(test_cluster()->mini_tablet_server(i)->WaitStarted());
   }
   LOG(INFO) << "All nodes restarted";
   SleepFor(MonoDelta::FromSeconds(60));
@@ -1839,7 +1836,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestHighIntentCountPersistencyAll
   for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
     test_cluster()->mini_tablet_server(i)->Shutdown();
     ASSERT_OK(test_cluster()->mini_tablet_server(i)->Start());
-    ASSERT_OK(test_cluster()->mini_tablet_server(i)->WaitStarted());
   }
   LOG(INFO) << "All nodes restarted";
   SleepFor(MonoDelta::FromSeconds(60));
@@ -1906,7 +1902,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyBootstr
 
   // Restart the tserver hosting the initial leader.
   ASSERT_OK(test_cluster()->mini_tablet_server(first_leader_index)->Start());
-  ASSERT_OK(test_cluster()->mini_tablet_server(first_leader_index)->WaitStarted());
   SleepFor(MonoDelta::FromSeconds(1));
 
   OpId last_seen_checkpoint_op_id = OpId::Invalid();
@@ -2015,7 +2010,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumOnRestart)) {
   SleepFor(MonoDelta::FromSeconds(1));
   test_cluster()->mini_tablet_server(0)->Shutdown();
   ASSERT_OK(test_cluster()->mini_tablet_server(0)->Start());
-  ASSERT_OK(test_cluster()->mini_tablet_server(0)->WaitStarted());
 
   // Insert some more records in transaction.
   ASSERT_OK(WriteEnumsRows(insert_count / 2, insert_count, &test_cluster_));
@@ -2173,7 +2167,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompositeTypeWithRestart)) {
   SleepFor(MonoDelta::FromSeconds(1));
   test_cluster()->mini_tablet_server(0)->Shutdown();
   ASSERT_OK(test_cluster()->mini_tablet_server(0)->Start());
-  ASSERT_OK(test_cluster()->mini_tablet_server(0)->WaitStarted());
 
   // Insert some more records in transaction.
   ASSERT_OK(WriteCompositeRows(insert_count / 2, insert_count, &test_cluster_));
@@ -2482,7 +2475,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyAfterCo
   for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
     test_cluster()->mini_tablet_server(i)->Shutdown();
     ASSERT_OK(test_cluster()->mini_tablet_server(i)->Start());
-    ASSERT_OK(test_cluster()->mini_tablet_server(i)->WaitStarted());
   }
   LOG(INFO) << "All nodes restarted";
 
@@ -2554,7 +2546,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCedWithTabletBootStrap)) 
   // Restart of the tsever will make Tablet Bootstrap.
   test_cluster()->mini_tablet_server(0)->Shutdown();
   ASSERT_OK(test_cluster()->mini_tablet_server(0)->Start());
-  ASSERT_OK(test_cluster()->mini_tablet_server(0)->WaitStarted());
 
   SleepFor(MonoDelta::FromSeconds(FLAGS_log_min_seconds_to_retain));
   // Here testcase behave like a WAL cleaner thread.
@@ -2622,7 +2613,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestXClusterLogGCedWithTabletBoot
   // Restart of the tsever will make Tablet Bootstrap.
   test_cluster()->mini_tablet_server(0)->Shutdown();
   ASSERT_OK(test_cluster()->mini_tablet_server(0)->Start());
-  ASSERT_OK(test_cluster()->mini_tablet_server(0)->WaitStarted());
 
   SleepFor(MonoDelta::FromSeconds(FLAGS_log_min_seconds_to_retain));
   // Here testcase behave like a WAL cleaner thread.
@@ -2926,7 +2916,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDeletedStreamRowRemovedEvenAf
   // We shutdown the TServer so that the stream cache is cleared.
   test_cluster()->mini_tablet_server(0)->Shutdown();
   ASSERT_OK(test_cluster()->mini_tablet_server(0)->Start());
-  ASSERT_OK(test_cluster()->mini_tablet_server(0)->WaitStarted());
 
   // We verify that the row is deleted even after GetChanges() overwrote the OpId from Max.
   VerifyStreamDeletedFromCdcState(test_client(), stream_id, tablets[0].tablet_id());
@@ -3352,7 +3341,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderRestart)
 
   // restart the initial leader tserver
   ASSERT_OK(test_cluster()->mini_tablet_server(first_leader_index)->Start());
-  ASSERT_OK(test_cluster()->mini_tablet_server(first_leader_index)->WaitStarted());
 
   // Insert some records in transaction after leader shutdown.
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
@@ -4844,7 +4832,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentGCedWithTabletBootStrap
   for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
     test_cluster()->mini_tablet_server(i)->Shutdown();
     ASSERT_OK(test_cluster()->mini_tablet_server(i)->Start());
-    ASSERT_OK(test_cluster()->mini_tablet_server(i)->WaitStarted());
   }
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));

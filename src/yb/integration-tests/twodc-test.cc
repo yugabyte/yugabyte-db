@@ -1207,7 +1207,8 @@ TEST_P(TwoDCTest, PollWithConsumerRestart) {
     ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
   }
 
-  ASSERT_OK(consumer_cluster()->mini_tablet_server(0)->Start());
+  ASSERT_OK(consumer_cluster()->mini_tablet_server(0)->Start(
+    tserver::WaitTabletsBootstrapped::kFalse));
 
   // After restarting the node.
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
@@ -1255,7 +1256,8 @@ TEST_P(TwoDCTest, PollWithProducerNodesRestart) {
 
   // Restart the Producer TServer and verify that rebalancing happens.
   ASSERT_OK(old_master->Start());
-  ASSERT_OK(producer_cluster()->mini_tablet_server(0)->Start());
+  ASSERT_OK(producer_cluster()->mini_tablet_server(0)->Start(
+    tserver::WaitTabletsBootstrapped::kFalse));
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 4));
   WriteWorkload(6, 10, producer_client(), tables[0]->name());
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
@@ -3084,7 +3086,8 @@ TEST_P(TwoDCTest, TestNonZeroLagMetricsWithoutGetChange) {
       "Whether lag != 0 when no GetChanges is received."));
 
   // Bring up the consumer tserver and verify that replication is successful.
-  ASSERT_OK(consumer_cluster()->mini_tablet_server(0)->Start());
+  ASSERT_OK(consumer_cluster()->mini_tablet_server(0)->Start(
+    tserver::WaitTabletsBootstrapped::kFalse));
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 
   ASSERT_OK(DeleteUniverseReplication());
@@ -3518,7 +3521,8 @@ TEST_P(TwoDCTestWaitForReplicationDrain, TestProducerChange) {
   auto drain_api_future = drain_api_promise->get_future();
   producer_cluster()->mini_tablet_server(0)->Shutdown();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_wait_replication_drain) = false;
-  ASSERT_OK(producer_cluster()->mini_tablet_server(0)->Start());
+  ASSERT_OK(producer_cluster()->mini_tablet_server(0)->Start(
+    tserver::WaitTabletsBootstrapped::kFalse));
   ASSERT_OK(drain_api_future.get());
 
   // 3. Verify that producer rebalancing does not impact the API.

@@ -1692,7 +1692,7 @@ TEST_F(ClientTest, TestStaleLocations) {
 
   // Restart the TS and Wait for the tablets to be reported to the master.
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
-    ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Start(tserver::WaitTabletsBootstrapped::kFalse));
   }
   ASSERT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers()));
   locs_pb.Clear();
