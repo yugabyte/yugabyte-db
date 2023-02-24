@@ -169,10 +169,6 @@ public class EncryptionAtRestUtil {
         KmsHistoryId.TargetType.UNIVERSE_KEY);
   }
 
-  public static boolean keyRefExists(UUID universeUUID, String keyRef) {
-    return KmsHistory.entryExists(universeUUID, keyRef, KmsHistoryId.TargetType.UNIVERSE_KEY);
-  }
-
   @Deprecated
   public static KmsHistory getActiveKey(UUID universeUUID) {
     KmsHistory activeHistory = null;
