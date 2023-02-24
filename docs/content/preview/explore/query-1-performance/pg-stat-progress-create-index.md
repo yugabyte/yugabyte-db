@@ -53,7 +53,7 @@ The `pg_stat_progress_create_index` view includes the following YugabyteDB-speci
 
 ## Example
 
-The following example demonstrate the possible phases (initializing, backfilling) for the CREATE INDEX operation using the `pg_stat_progress_create_index` view.
+The following example demonstrates the possible phases (initializing, backfilling) for the CREATE INDEX operation using the `pg_stat_progress_create_index` view.
 
 {{< note title="Setup" >}}
 
