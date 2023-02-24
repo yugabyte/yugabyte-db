@@ -228,7 +228,7 @@ The YugabyteDB Psycopg2 Smart Driver is a distributed Node.js driver for YSQL bu
 
 For information on the YugabyteDB Psycopg2 Smart Driver and its load balancing features, see [YugabyteDB Psycopg2 Smart Driver](../../../reference/drivers/python/yugabyte-psycopg2-reference/).
 
-For building a sample Java application with the YugabyteDB JDBC driver, see [Connect an application](../../../drivers-orms/python/yugabyte-psycopg2/).
+For building a sample Python application with the YugabyteDB Psycopg2 driver, see [Connect an application](../../../drivers-orms/python/yugabyte-psycopg2/).
 
 ### psycopg2
 
