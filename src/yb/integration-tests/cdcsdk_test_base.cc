@@ -74,7 +74,6 @@ using client::YBClient;
 using client::YBTableName;
 
 namespace cdc {
-namespace enterprise {
 
 void CDCSDKTestBase::TearDown() {
   YBTest::TearDown();
@@ -405,6 +404,5 @@ Result<std::string> CDCSDKTestBase::CreateDBStream(
   return resp.db_stream_id();
 }
 
-}  // namespace enterprise
 } // namespace cdc
 } // namespace yb

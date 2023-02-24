@@ -45,7 +45,6 @@ using client::YBClient;
 using client::YBTableName;
 
 namespace cdc {
-namespace enterprise {
 constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
@@ -196,6 +195,5 @@ class CDCSDKTestBase : public YBTest {
 
   Cluster test_cluster_;
 };
-} // namespace enterprise
 } // namespace cdc
 } // namespace yb

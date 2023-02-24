@@ -41,8 +41,6 @@ namespace yb {
 
 using client::YBClient;
 
-namespace enterprise {
-
 constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
@@ -239,5 +237,4 @@ class TwoDCTestBase : public YBTest {
       int expected_num_nondrained);
 };
 
-} // namespace enterprise
 } // namespace yb

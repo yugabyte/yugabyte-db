@@ -14,7 +14,6 @@
 
 namespace yb {
 namespace cdc {
-namespace enterprise {
 
 namespace {
 
@@ -975,6 +974,5 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionDeleteRowsWit
   ASSERT_EQ(insert_count, 2 * delete_count);
 }
 
-}  // namespace enterprise
 }  // namespace cdc
 }  // namespace yb

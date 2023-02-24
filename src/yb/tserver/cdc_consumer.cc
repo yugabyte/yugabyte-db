@@ -83,8 +83,6 @@ namespace yb {
 namespace tserver {
 using cdc::ProducerTabletInfo;
 
-namespace enterprise {
-
 CDCClient::~CDCClient() {
   if (messenger) {
     messenger->Shutdown();
@@ -674,6 +672,5 @@ cdc::TabletReplicationErrorMap CDCConsumer::GetReplicationErrors() const {
   return tablet_replication_error_map_;
 }
 
-} // namespace enterprise
 } // namespace tserver
 } // namespace yb

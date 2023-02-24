@@ -55,7 +55,6 @@ using namespace std::placeholders;
 
 namespace yb {
 namespace tserver {
-namespace enterprise {
 
 class TwoDCOutputClient : public cdc::CDCOutputClient {
  public:
@@ -780,6 +779,5 @@ std::shared_ptr<cdc::CDCOutputClient> CreateTwoDCOutputClient(
       enable_replicate_transaction_status_table);
 }
 
-}  // namespace enterprise
 }  // namespace tserver
 }  // namespace yb
