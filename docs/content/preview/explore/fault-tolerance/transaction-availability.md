@@ -135,10 +135,6 @@ Because the row with `k1=1` is located on the node `127.0.0.2` (via [Identifying
 
 1. Commit the transaction as follows:
 
-    ```sh
-    ./bin/ysqlsh -h 127.0.0.3  -U yugabyte -d yugabyte
-    ```
-
     ```sql
     COMMIT;
     ```
