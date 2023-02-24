@@ -42,7 +42,7 @@ type: docs
 
 </ul>
 
-The [Yugabyte Npgsql smart driver](https://github.com/yugabyte/npgsql) is a distributed .NET driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL Npgsql driver](https://github.com/npgsql/npgsql/tree/main/src/Npgsql), with additional [connection load balancing](../../smart-drivers/) features.
+The [Yugabyte Npgsql smart driver](https://github.com/yugabyte/npgsql) is a .NET driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL Npgsql driver](https://github.com/npgsql/npgsql/tree/main/src/Npgsql), with additional [connection load balancing](../../smart-drivers/) features.
 
 {{< note title="YugabyteDB Managed" >}}
 
