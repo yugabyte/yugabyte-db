@@ -95,7 +95,7 @@ The following table describes the connection parameters required to connect, inc
 The behaviour of `Load Balance Hosts` is different in YugabyteDB Npgsql Smart Driver as compared to the upstream driver. The upstream driver balances connections on the list of hosts provided in the `Host` property, whereas the smart driver balances the connections on the list of servers returned by the `yb_servers()` function.
 {{< /note >}}
 
-The following is a basic example connection string for connecting to YugabyteDB.
+The following is an example of a basic connection string for connecting to YugabyteDB:
 
 ```csharp
 var connStringBuilder = "Host=localhost;Port=5433;Database=yugabyte;Username=yugabyte;Password=password;Load Balance Hosts=true"
