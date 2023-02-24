@@ -43,11 +43,11 @@ The following table describes the metrics available on the **Overview**.
 
 ## Performance metrics
 
-To choose the metrics to display on the **Performance** tab, click **Metrics** and then click **Options**. You can display up to four metrics at a time. You can additionally view the metrics for specific nodes.
+To choose the metrics to display on the **Performance** tab, click **Metrics** and then click **Add Charts**. To rearrange the metrics, click **Add Charts** and **Reorder Charts**, then drag the chart to a new position. You can additionally view the metrics for specific nodes.
 
-The **Performance** tab provides the following metrics.
+The **Performance** tab provides the following metrics in addition to the Overview metrics.
 
-### YSQL
+### YSQL Ops
 
 | Graph | Description | Use |
 | :---| :--- | :--- |
@@ -55,7 +55,7 @@ The **Performance** tab provides the following metrics.
 | YSQL Average Latency (ms) | Average time (in milliseconds) of DELETE, INSERT, SELECT, and UPDATE statements through the YSQL API. | When latency is close to or higher than your application SLA, it may be a cause for concern. The overall latency metric is less helpful for troubleshooting specific queries. It is recommended that the application track query latency. There could be reasons your traffic experiences spikes in latency, such as when ad-hoc queries such as count(*) are executed. |
 | YSQL Connections | Cumulative number of connections to YSQL backend for all nodes. This includes various background connections, such as checkpointer, as opposed to an active connections count that only includes the client backend connections. | By default, you can have up to 10 simultaneous connections per vCPU. An [alert](../cloud-alerts/) is issued when the number of connections exceeds 60% (Warning) and 95% (Severe) of the limit. |
 
-### YCQL
+### YCQL Ops
 
 | Graph | Description | Use |
 | :---| :--- | :--- |
@@ -64,7 +64,7 @@ The **Performance** tab provides the following metrics.
 | YCQL Remote Operations/Sec | The number of remote read and write requests. Remote requests are rerouted internally to a different node for executing the operation. | If an application is using a driver that supports local query routing optimization and prepared statements, the expected value for this is close to zero. If using a YCQL driver or not using prepared statements, expect to see a relatively even split between local and remote operations (for example, ~66% of requests to be remote for a 3-node cluster). |
 <!--| YCQL Average Latency (P99) | The average time (in milliseconds) of the top 99% of DELETE, INSERT, SELECT, and UPDATE transactions, as well as other statements through the YCQL API. | If this value is significantly higher than expected, then it might be a cause for concern. You should check whether or not there are consistent spikes in latency. |-->
 
-### Node / Resources
+### Infrastructure
 
 | Graph | Description | Use |
 | :---| :--- | :--- |
@@ -93,7 +93,7 @@ The **Performance** tab provides the following metrics.
 | Transaction | The number of transactions. | This value depends on the application or activity. Because transactions can have batched statements, no specific guidance is possible for this metric. |
 | Inbound RPC Connections Alive | The count of current connections at the CQL API level. | If this spikes to a number much higher than average, you should consider that there may be an active DDoS or a security incident. |-->
 
-### YB-Tablet Server
+### Tablet Server
 
 The [YugabyteDB Tablet Server](../../../architecture/concepts/yb-tserver/) (YB-TServer) is responsible for the actual I/O of client requests in a YugabyteDB cluster. Each node in the cluster has a YB-TServer, and each one hosts one or more tablet peers.
 
@@ -129,7 +129,7 @@ The [YugabyteDB Tablet Server](../../../architecture/concepts/yb-tserver/) (YB-T
 | CPU Util Secs / Sec  | The tablet server CPU use. | The tablet server should not use the full allocation of CPUs. For example, on a 4-core computer, three cores are used by the tablet server, but if the usage is usually close to three, you should increase the number of available CPUs. |
 | Inbound RPC Connections Alive | The count of active connections to YB-TServers. | |-->
 
-### YB-Master server
+### Master Server
 
 The [YugabyteDB Master Server](../../../architecture/concepts/yb-master/) (YB-Master) hosts system metadata, records about tables in the system and locations of their tablets, users, roles, permissions, and so on. YB-Masters are also responsible for coordinating background operations.
 
