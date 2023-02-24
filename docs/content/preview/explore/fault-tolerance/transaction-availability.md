@@ -112,7 +112,7 @@ Because the row with `k1=1` is located on the node `127.0.0.2` (via [Identifying
 
     The update will succeed. This means that the updated row with value `k2=20` has been sent to node `127.0.0.2`, but not yet committed.
 
-1. From your YugabyteDB home directory, stop the node at `127.0.0.2`, as this is the node that has received the modified row.
+1. From another terminal of your YugabyteDB home directory, stop the node at `127.0.0.2`, as this is the node that has received the modified row.
 
     ```sh
     ./bin/yugabyted stop --base_dir=/tmp/ybd2
@@ -165,7 +165,7 @@ Because the row with `k1=1` is located on the node `127.0.0.2` (via [Identifying
 
     The row with `k1=1` has the new value of `k2=20`, confirming the completion of the transaction.
 
-1. From your YugabyteDB home directory, restart the node at `127.0.0.2` using the following command:
+1. From another terminal of your YugabyteDB home directory, restart the node at `127.0.0.2` using the following command:
 
     ```sh
     ./bin/yugabyted start --base_dir=/tmp/ybd2 --join=127.0.0.1
@@ -196,7 +196,7 @@ In this example, you can see how a transaction completes when the node that is a
 
     The transaction is started, but you have not yet modified the row. So at this point, no provisional records have been sent to node `127.0.0.2`.
 
-1. From your YugabyteDB home directory, stop the node at `127.0.0.2`. (This is the node from [Identifying the row location](#identifing-the-location-of-a-row).)
+1. From another terminal of your YugabyteDB home directory, stop the node at `127.0.0.2`. (This is the node from [Identifying the row location](#identifing-the-location-of-a-row).)
 
     ```sh
     ./bin/yugabyted stop --base_dir=/tmp/ybd2
@@ -248,7 +248,7 @@ In this example, you can see how a transaction completes when the node that is a
 
     The row with `k1=1` has the new value of `k2=30`, confirming the completion of the transaction.
 
-1. From your YugabyteDB home directory, restart the node at `127.0.0.2` using the following command:
+1. From another terminal of your YugabyteDB home directory, restart the node at `127.0.0.2` using the following command:
 
     ```sh
     ./bin/yugabyted start --base_dir=/tmp/ybd2 --join=127.0.0.1
@@ -286,7 +286,7 @@ In this example, you can see how a transaction will abort when the transaction m
     Time: 50.624 ms
     ```
 
-1. From your YugabyteDB home directory, stop the node at `127.0.0.3` (the node that you have connected to) as follows:
+1. From another terminal of your YugabyteDB home directory, stop the node at `127.0.0.3` (the node that you have connected to) as follows:
 
     ```sh
     ./bin/yugabyted stop --base_dir=/tmp/ybd3
@@ -309,7 +309,7 @@ In this example, you can see how a transaction will abort when the transaction m
     Time: 2.499 ms
     ```
 
-1. From your YugabyteDB home directory, connect to a different node and check the value as follows:
+1. From another terminal of your YugabyteDB home directory, connect to a different node and check the value as follows:
 
     ```sh
     ./bin/ysqlsh -h 127.0.0.1  -U yugabyte -d yugabyte
