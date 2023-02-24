@@ -40,7 +40,7 @@ The following table describes the view columns:
 | partitions_total | bigint | If the ongoing CREATE INDEX is for a partitioned table, this refers to the total number of partitions in the table. Set to 0 otherwise. |
 | partitions_done | bigint | If the ongoing CREATE INDEX is for a partitioned table, this refers to the number of partitions the index has been created for. Set to 0 otherwise. |
 
-Columns such as `lockers_total`, `lockers_done`, `current_locker_pid`, `blocks_total`, and `blocks_done` are not applicable to YugabyteDB and will have always have null values.
+Columns such as `lockers_total`, `lockers_done`, `current_locker_pid`, `blocks_total`, and `blocks_done` are not applicable to YugabyteDB and always have null values.
 
 ## YugabyteDB-specific changes
 
