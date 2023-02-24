@@ -122,7 +122,7 @@ var connStringBuilder = "Host=127.0.0.1,127.0.0.2,127.0.0.3;Port=5433;Database=y
 NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder)
 ```
 
-Multiple topologies can also be passed to the `Topology Keys` property, and each of them can be given a preference value, as per the following example:
+You can pass multiple keys to the `Topology Keys` property, and give each of them a preference value, as per the following example:
 
 ```csharp
 var connStringBuilder = "Host=127.0.0.1,127.0.0.2,127.0.0.3;Port=5433;Database=yugabyte;Username=yugabyte;Password=password;Load Balance Hosts=true;Topology Keys=cloud1.region1.zone1:1,cloud2.region2.zone2:2";
