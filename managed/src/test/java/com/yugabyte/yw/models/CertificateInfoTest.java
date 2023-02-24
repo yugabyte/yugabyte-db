@@ -8,7 +8,6 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.spy;
 
 import com.typesafe.config.Config;
@@ -43,7 +42,6 @@ public class CertificateInfoTest extends FakeDBApplication {
   public void setUp() {
     customer = ModelFactory.testCustomer();
     Config spyConf = spy(app.config());
-    doReturn(TMP_CERTS_PATH).when(spyConf).getString("yb.storage.path");
     for (String cert : certList) {
       certIdList.add(CertificateHelper.createRootCA(spyConf, cert, customer.getUuid()));
     }
@@ -109,8 +107,7 @@ public class CertificateInfoTest extends FakeDBApplication {
   }
 
   @Test
-  public void testGetAllUniverseDetailsInvocation()
-      throws NoSuchFieldException, IllegalAccessException {
+  public void testGetAllUniverseDetailsInvocation() {
     createUniverse(
         "Test Universe 1",
         UUID.randomUUID(),

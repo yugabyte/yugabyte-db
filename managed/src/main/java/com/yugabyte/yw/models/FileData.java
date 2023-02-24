@@ -2,8 +2,11 @@
 
 package com.yugabyte.yw.models;
 
-import com.typesafe.config.Config;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.yugabyte.yw.common.AccessManager;
+import com.yugabyte.yw.common.AppConfigHelper;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -43,9 +46,8 @@ import play.data.validation.Constraints;
 public class FileData extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(FileData.class);
-
   private static final String PUBLIC_KEY_EXTENSION = "pub";
-  private static final String YB_STORAGE_PATH = "yb.storage.path";
+
   private static final String UUID_PATTERN =
       "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
@@ -67,15 +69,6 @@ public class FileData extends Model {
 
   private static final Finder<UUID, FileData> find = new Finder<UUID, FileData>(FileData.class) {};
 
-  /**
-   * Create new FileData entry.
-   *
-   * @param parentUUID
-   * @param filePath
-   * @param fileExtension
-   * @param fileContent
-   * @return Newly Created FileData table entry.
-   */
   public static void create(
       UUID parentUUID, String filePath, String fileExtension, String fileContent) {
     FileData entry = new FileData();
@@ -105,38 +98,23 @@ public class FileData extends Model {
     return new HashSet<>();
   }
 
-  public static String getStoragePath() {
-    Config appConfig = StaticInjectorHolder.injector().instanceOf(Config.class);
-    return appConfig.getString(YB_STORAGE_PATH);
-  }
-
   public static void writeFileToDB(String file) {
     RuntimeConfGetter confGetter =
         StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
-    writeFileToDB(file, getStoragePath(), confGetter);
+    writeFileToDB(file, AppConfigHelper.getStoragePath(), confGetter);
   }
 
   public static void writeFileToDB(
       String file, String storagePath, RuntimeConfGetter runtimeConfGetter) {
     try {
-      long maxAllowedFileSize =
-          runtimeConfGetter.getGlobalConf(GlobalConfKeys.fsStatelessMaxFileSizeBytes);
-
       File f = new File(file);
-      if (f.exists()) {
-        if (maxAllowedFileSize < f.length()) {
-          throw new RuntimeException(
-              "The File size is too big. Check the file or "
-                  + "try updating the flag `yb.fs_stateless.max_file_size_bytes`"
-                  + "for updating the limit");
-        }
-      }
+      validateFileSize(f, runtimeConfGetter);
 
       Matcher parentUUIDMatcher = Pattern.compile(UUID_PATTERN).matcher(file);
       UUID parentUUID = null;
       if (parentUUIDMatcher.find()) {
         parentUUID = UUID.fromString((parentUUIDMatcher.group()));
-        // Retrieve the last occurence.
+        // Retrieve the last occurrence.
         while (parentUUIDMatcher.find()) {
           parentUUID = UUID.fromString(parentUUIDMatcher.group());
         }
@@ -146,8 +124,7 @@ public class FileData extends Model {
 
       String filePath = f.getAbsolutePath();
       String fileExtension = FilenameUtils.getExtension(filePath);
-      // We just need the path relative to the storage since that can be changed
-      // later.
+      // We just need the path relative to the storage as storage path could change later.
       filePath = filePath.replace(storagePath, "");
       String content = Base64.getEncoder().encodeToString(Files.readAllBytes(Paths.get(file)));
       FileData.create(parentUUID, filePath, fileExtension, content);
@@ -162,8 +139,17 @@ public class FileData extends Model {
     }
   }
 
-  public static void writeFileToDisk(FileData fileData) {
-    writeFileToDisk(fileData, null);
+  private static void validateFileSize(File f, RuntimeConfGetter runtimeConfGetter) {
+    long maxAllowedFileSize =
+        runtimeConfGetter.getGlobalConf(GlobalConfKeys.fsStatelessMaxFileSizeBytes);
+    if (f.exists()) {
+      if (maxAllowedFileSize < f.length()) {
+        String msg =
+            "The File size is too big. Check the file or try updating the flag "
+                + "`yb.fs_stateless.max_file_size_bytes` for updating the limit";
+        throw new PlatformServiceException(BAD_REQUEST, msg);
+      }
+    }
   }
 
   public static void writeFileToDisk(FileData fileData, String storagePath) {
@@ -171,7 +157,7 @@ public class FileData extends Model {
     Path directoryPath =
         Paths.get(storagePath, relativeFilePath.substring(0, relativeFilePath.lastIndexOf("/")));
     if (storagePath == null) {
-      storagePath = getStoragePath();
+      storagePath = AppConfigHelper.getStoragePath();
     }
     Path absoluteFilePath = Paths.get(storagePath, relativeFilePath);
     Util.getOrCreateDir(directoryPath);
@@ -195,7 +181,7 @@ public class FileData extends Model {
       return;
     }
 
-    String storagePath = getStoragePath();
+    String storagePath = AppConfigHelper.getStoragePath();
     String relativeDirPath = dirPath.replace(storagePath, "");
     File directory = new File(dirPath);
 
@@ -216,5 +202,69 @@ public class FileData extends Model {
         LOG.error("Failed to delete directory: " + directory + " with error: ", e);
       }
     }
+  }
+
+  public static boolean deleteFileFromDB(String filePath) {
+    filePath = getRelativePath(filePath);
+    FileData fileData = getFromFile(filePath);
+    if (fileData == null) return false;
+    return fileData.delete();
+  }
+
+  public static void addToBackup(List<String> filesToBackup) throws IOException {
+    if (filesToBackup == null) return;
+    for (String filePath : filesToBackup) {
+      FileData.upsertFileInDB(filePath);
+    }
+  }
+
+  /**
+   * Updates the latest record if there is at least one with the specified filePath already, else
+   * inserts the record.
+   *
+   * @param filePath
+   * @return true if updated, false if inserted
+   * @throws IOException
+   */
+  public static boolean upsertFileInDB(String filePath) throws IOException {
+    String relativeFilePath = getRelativePath(filePath);
+    FileData fileData = getLatest(relativeFilePath);
+    if (fileData == null) writeFileToDB(filePath);
+    else {
+      File file = new File(filePath);
+      RuntimeConfGetter confGetter =
+          StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+      validateFileSize(file, confGetter);
+      fileData.setFileContent(getContents(Files.readAllBytes(new File(filePath).toPath())));
+      fileData.setTimestamp(new Date());
+      fileData.update();
+      return true;
+    }
+    return false;
+  }
+
+  public static FileData getLatest(String fileRelativePath) {
+    return find.query()
+        .where()
+        .eq("file_path", fileRelativePath)
+        .order()
+        .desc("timestamp")
+        .setMaxRows(1)
+        .findOne();
+  }
+
+  private static String getRelativePath(String filePath) {
+    return filePath.replace(AppConfigHelper.getStoragePath(), "");
+  }
+
+  private static String getContents(byte[] fileContents) {
+    return Base64.getEncoder().encodeToString(fileContents);
+  }
+
+  public static byte[] getDecodedData(String filePath) {
+    String relFilePath = getRelativePath(filePath);
+    FileData fileData = FileData.getFromFile(relFilePath);
+    byte[] decodedData = Base64.getDecoder().decode(fileData.getFileContent().getBytes());
+    return decodedData;
   }
 }
