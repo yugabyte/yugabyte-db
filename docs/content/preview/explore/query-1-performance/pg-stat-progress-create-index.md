@@ -16,7 +16,7 @@ You can add a new index to an existing table using the YSQL [CREATE INDEX](../..
 
 ### pg_stat_progress_create_index
 
-YugabyteDB supports the PostgreSQL `pg_stat_progress_create` view to report the progress of the CREATE INDEX command execution. Whenever [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index/) is running, the `pg_stat_progress_create_index` view contains one row for each client connection that is currently running a CREATE INDEX command, and the row entry is cleared after the completion of command execution.
+YugabyteDB supports the PostgreSQL `pg_stat_progress_create_index` view to report the progress of the CREATE INDEX command execution. Whenever CREATE INDEX is running, the `pg_stat_progress_create_index` view contains one row for each client connection that is currently running a CREATE INDEX command, and the row entry is cleared after the completion of command execution.
 
 The `pg_stat_progress_create_index` view can provide the following details:
 
