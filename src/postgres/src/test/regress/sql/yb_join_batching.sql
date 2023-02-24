@@ -239,6 +239,20 @@ DROP TABLE q1;
 DROP TABLE q2;
 DROP TABLE q3;
 
+/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan on) Set(enable_material off) Leading((q3 (q2 q1)))*/EXPLAIN (COSTS OFF) SELECT c.column_name, c.is_nullable = 'YES', c.udt_name, c.character_maximum_length, c.numeric_precision,
+	c.numeric_precision_radix, c.numeric_scale, c.datetime_precision, 8 * typlen, c.column_default, pd.description,
+	c.identity_increment
+	FROM information_schema.columns AS c
+	JOIN pg_type AS pgt ON c.udt_name = pgt.typname
+	LEFT JOIN pg_catalog.pg_description as pd ON pd.objsubid = c.ordinal_position AND pd.objoid = (
+	  SELECT oid FROM pg_catalog.pg_class
+	  WHERE relname = c.table_name AND relnamespace = (
+	    SELECT oid FROM pg_catalog.pg_namespace
+	    WHERE nspname = c.table_schema
+	    )
+	  )
+	where table_catalog = 'yugabyte' AND table_schema = 'clusters' AND table_name = 'clusters';
+
 create table oidtable(a oid, primary key(a asc));
 create table int4table(a int4, primary key(a asc));
 insert into oidtable select i from generate_series(1,20) i where i % 2 = 0;
