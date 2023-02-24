@@ -189,6 +189,126 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardMultiColUpdateWithAuto
   CheckCount(expected_count, count);
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleStreams)) {
+  DisableYsqlPackedRow();
+
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+
+  // Create 2 cdc streams.
+  CDCStreamId stream_id_1 = ASSERT_RESULT(CreateDBStream());
+  auto set_resp_1 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_1, tablets));
+  ASSERT_FALSE(set_resp_1.has_error());
+
+  CDCStreamId stream_id_2 = ASSERT_RESULT(CreateDBStream());
+  auto set_resp_2 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_2, tablets));
+  ASSERT_FALSE(set_resp_2.has_error());
+
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count[] = {3, 3, 3, 1, 0, 0};
+
+  uint32_t count_1[] = {0, 0, 0, 0, 0, 0};
+  uint32_t count_2[] = {0, 0, 0, 0, 0, 0};
+
+  // Perform sql operations.
+  ASSERT_OK(WriteRows(1, 2, &test_cluster_));
+  ASSERT_OK(UpdateRows(1, 3, &test_cluster_));
+  ASSERT_OK(WriteRows(2, 3, &test_cluster_));
+  ASSERT_OK(DeleteRows(1, &test_cluster_));
+
+  ExpectedRecord expected_records_1[] = {{0, 0}, {1, 2}, {1, 3}, {2, 3}, {1, 3}};
+  RowMessage::Op expected_record_types_1[] = {
+      RowMessage::DDL, RowMessage::INSERT, RowMessage::UPDATE, RowMessage::INSERT,
+      RowMessage::DELETE};
+
+  // Catch up both streams.
+  GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id_1, tablets));
+  uint32_t record_size_1 = change_resp_1.cdc_sdk_proto_records_size();
+  GetChangesResponsePB change_resp_2 = ASSERT_RESULT(GetChangesFromCDC(stream_id_2, tablets));
+  uint32_t record_size_2 = change_resp_2.cdc_sdk_proto_records_size();
+
+  ASSERT_EQ(record_size_1, 5);
+  ASSERT_EQ(record_size_2, 5);
+
+  for (uint32_t i = 0; i < record_size_1; ++i) {
+    const CDCSDKProtoRecordPB record = change_resp_1.cdc_sdk_proto_records(i);
+    ASSERT_EQ(record.row_message().op(), expected_record_types_1[i]);
+    CheckRecord(record, expected_records_1[i], count_1);
+  }
+
+  for (uint32_t i = 0; i < record_size_2; ++i) {
+    const CDCSDKProtoRecordPB record = change_resp_2.cdc_sdk_proto_records(i);
+    ASSERT_EQ(record.row_message().op(), expected_record_types_1[i]);
+    CheckRecord(record, expected_records_1[i], count_2);
+  }
+
+  // Perform sql operations.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 INT"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 10 WHERE key = 2"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (4, 5, 6)"));
+
+  ExpectedRecordWithThreeColumns expected_records_2[] = {{0, 0, 0}, {2, 10, 0}, {4, 5, 6}};
+  bool validate_three_columns_2[] = {false, false, true};
+  RowMessage::Op expected_record_types_2[] = {
+      RowMessage::DDL, RowMessage::UPDATE, RowMessage::INSERT};
+
+  // Call GetChanges only on stream 1.
+  auto previous_checkpoint_1 = change_resp_1.cdc_sdk_checkpoint();
+  change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id_1, tablets, &previous_checkpoint_1));
+  record_size_1 = change_resp_1.cdc_sdk_proto_records_size();
+  ASSERT_EQ(record_size_1, 3);
+
+  for (uint32_t i = 0; i < record_size_1; ++i) {
+    const CDCSDKProtoRecordPB record = change_resp_1.cdc_sdk_proto_records(i);
+    ASSERT_EQ(record.row_message().op(), expected_record_types_2[i]);
+    CheckRecordWithThreeColumns(
+        record, expected_records_2[i], count_1, false, {}, validate_three_columns_2[i]);
+  }
+
+  uint32_t records_missed_by_stream_2 = 3;
+
+  // Perform sql operations.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value_2"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 1 WHERE key = 4"));
+
+  ExpectedRecord expected_records_3[] = {{0, 0}, {4, 1}};
+  RowMessage::Op expected_record_types_3[] = {RowMessage::DDL, RowMessage::UPDATE};
+
+  // Call GetChanges on stream 1.
+  previous_checkpoint_1 = change_resp_1.cdc_sdk_checkpoint();
+  change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id_1, tablets, &previous_checkpoint_1));
+  record_size_1 = change_resp_1.cdc_sdk_proto_records_size();
+  ASSERT_EQ(record_size_1, 2);
+
+  for (uint32_t i = 0; i < record_size_1; ++i) {
+    const CDCSDKProtoRecordPB record = change_resp_1.cdc_sdk_proto_records(i);
+    ASSERT_EQ(record.row_message().op(), expected_record_types_3[i]);
+    CheckRecord(record, expected_records_3[i], count_1);
+  }
+
+  // Call GetChanges on stream 2. Except all records to be received in same order.
+  auto previous_checkpoint_2 = change_resp_2.cdc_sdk_checkpoint();
+  change_resp_2 = ASSERT_RESULT(GetChangesFromCDC(stream_id_2, tablets, &previous_checkpoint_2));
+  record_size_2 = change_resp_2.cdc_sdk_proto_records_size();
+  ASSERT_EQ(record_size_2, 5);
+
+  for (uint32_t i = 0; i < record_size_2; ++i) {
+    const CDCSDKProtoRecordPB record = change_resp_2.cdc_sdk_proto_records(i);
+
+    if (i < records_missed_by_stream_2) {
+      ASSERT_EQ(record.row_message().op(), expected_record_types_2[i]);
+      CheckRecordWithThreeColumns(
+          record, expected_records_2[i], count_2, false, {}, validate_three_columns_2[i]);
+    } else {
+      ASSERT_EQ(record.row_message().op(), expected_record_types_3[i - records_missed_by_stream_2]);
+      CheckRecord(record, expected_records_3[i - records_missed_by_stream_2], count_2);
+    }
+  }
+
+  CheckCount(expected_count, count_1);
+  CheckCount(expected_count, count_2);
+}
 
 // Insert 3 rows, update 2 of them.
 // Expected records: (DDL, 3 INSERT, 2 UPDATE).
