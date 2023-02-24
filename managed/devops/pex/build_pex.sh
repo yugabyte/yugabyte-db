@@ -19,13 +19,13 @@ PYTHON_REQUIREMENTS_FILE=""
 
 # Generate the PEX file that support multiple platforms and Python Versions.
 # Currently supports all Linux Platforms newer than manylinux_2014, and all Python
-# Versions from 3.6 to 3.9. macOS support might also be added in the future.
+# Versions from 3.6 to 3.11. macOS support might also be added in the future.
 function generateMultiPlatformPex {
 
     echo "Generating the PEX file ... "
     # Executable command to generate the PEX file. Components:
     # Line 1: Required Python dependencies (python3_requirements_frozen.txt)
-    # Line 2: Required Python versions (3.6, 3.7, 3.8, 3.9)
+    # Line 2: Required Python versions (3.6, 3.7, 3.8, 3.9, 3.10, 3.11)
     # Line 3: Required Linux Platforms (manyLinux2014, one for each Python version)
     # Line 4: Data directories to bundle into the PEX (opscli)
     # Line 5: --resolve-local-platforms flag (Ensure wheels built in the pex match
