@@ -28,7 +28,7 @@ type: docs
 
 ## Leaders and leader leases
 
-In a distributed environment, when one node in a cluster is elected as the leader holding the latest data, it is possible that another node may assume that it is the leader, and that it holds the latest data. This could result in serving stale reads to a client. To avoid this confusion, YugabyteDB provides a [leader lease mechanism](../../../../architecture/transactions/single-row-transactions/) where an elected node member is guaranteed to be the leader until its lease expires.
+In a distributed environment, when one node in a cluster is elected as the leader holding the latest data, it is possible that another node may assume that it is the leader, and that it holds the latest data. This could result in serving stale reads to a client. To avoid this confusion, YugabyteDB provides a [leader lease mechanism](../../../../architecture/transactions/single-row-transactions/#leader-leases-reading-the-latest-data-in-case-of-a-network-partition) where an elected node member is guaranteed to be the leader until its lease expires.
 
 The leader lease mechanism guarantees to serve strongly consistent reads where a client can fetch reads directly from the leader, because the leader under lease will have the latest data.
 
