@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -192,5 +193,13 @@ public class FileUtils {
     }
 
     return tmpDir.toPath();
+  }
+
+  public static List<String> listFiles(File file) throws IOException {
+    return Files.walk(Paths.get(file.toURI()))
+        .map(p -> p.toFile())
+        .filter(f -> f.isFile())
+        .map(f -> f.getAbsolutePath())
+        .collect(Collectors.toList());
   }
 }
