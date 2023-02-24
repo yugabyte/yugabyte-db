@@ -1,9 +1,9 @@
 ---
-title: Synchronous replication (3+ regions)
-headerTitle: Synchronous replication (3+ regions)
+title: Synchronous multi region (3+ regions)
+headerTitle: Synchronous multi region (3+ regions)
 linkTitle: Synchronous (3+ regions)
 description: Global data distributed using synchronous replication across regions.
-headcontent: Distribute data across regions
+headcontent: Distribute data synchronously across regions
 aliases:
   - /preview/explore/global-distribution-linux/
   - /preview/explore/global-distribution/macos
