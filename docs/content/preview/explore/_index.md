@@ -196,7 +196,7 @@ Next, join two more nodes with the previous node. yugabyted automatically applie
 After starting the yugabyted processes on all the nodes, configure the data placement constraint of the universe, as follows:
 
 ```sh
-./bin/yugabyted configure --fault_tolerance=zone --base_dir=/tmp/ybd1
+./bin/yugabyted configure data_placement --fault_tolerance=zone --base_dir=/tmp/ybd1
 ```
 
 This command can be executed on any node where you already started YugabyteDB.
