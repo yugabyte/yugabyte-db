@@ -230,7 +230,7 @@ In an active-active configuration, both clusters can handle writes to potentiall
 
 ## Read replicas
 
-For applications that have writes happening from a single zone or region but want to serve read requests from multiple remote regions, you can use read replicas. Data from the primary cluster is automatically replicated asynchronously to one or more read replica clusters. The primary cluster gets all write requests, while read requests can go either to the primary cluster or to the read replica clusters depending on which is closest.
+For applications that have writes happening from a single zone or region but want to serve read requests from multiple remote regions, you can use read replicas. Data from the primary cluster is automatically replicated asynchronously to one or more read replica clusters. The primary cluster gets all write requests, while read requests can go either to the primary cluster or to the read replica clusters depending on which is closest. To read data from a read replica, you enable [follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/) for the cluster.
 
 ![Read replicas](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-6.png)
 
