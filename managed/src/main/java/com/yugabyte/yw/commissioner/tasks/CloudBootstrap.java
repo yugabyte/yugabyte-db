@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
@@ -125,12 +126,18 @@ public class CloudBootstrap extends CloudTaskBase {
       // Required: False.
       public String instanceTemplate = null;
 
+      // Image architecture for region.
+      // Default: x86_64
+      public Architecture architecture;
+
       public static PerRegionMetadata fromRegion(Region region) {
         PerRegionMetadata perRegionMetadata = new PerRegionMetadata();
         perRegionMetadata.customImageId = region.getYbImage();
         perRegionMetadata.customSecurityGroupId = region.getSecurityGroupId();
         //    perRegionMetadata.subnetId = can only be set per zone
         perRegionMetadata.vpcId = region.getVnetName();
+        perRegionMetadata.architecture =
+            region.getArchitecture() != null ? region.getArchitecture() : Architecture.x86_64;
         // Instance templates are currently only implemented for GCP.
         if (Common.CloudType.valueOf(region.provider.code).equals(Common.CloudType.gcp)) {
           GCPRegionCloudInfo g = CloudInfoInterface.get(region);
