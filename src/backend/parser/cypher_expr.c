@@ -318,16 +318,18 @@ static Node *transform_ColumnRef(cypher_parsestate *cpstate, ColumnRef *cref)
                 }
 
                 /*
-                 * Try to find the columnRef as a transform_entity and extract
-                 * the expr.
+                 * If expr_kind is WHERE, Try to find the columnRef as a
+                 * transform_entity and extract the expr.
                  */
-                te = find_variable(cpstate, colname) ;
-                if (te != NULL && te->expr != NULL)
+                if (pstate->p_expr_kind == EXPR_KIND_WHERE)
                 {
-                    node = (Node *)te->expr;
-                    break;
+                    te = find_variable(cpstate, colname) ;
+                    if (te != NULL && te->expr != NULL)
+                    {
+                        node = (Node *)te->expr;
+                        break;
+                    }
                 }
-
                 /*
                  * Not known as a column of any range-table entry.
                  * Try to find the name as a relation.  Note that only

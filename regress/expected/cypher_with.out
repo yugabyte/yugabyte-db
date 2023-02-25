@@ -16,8 +16,12 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+ \! cp -r regress/age_load/data regress/instance/data/age_load
 LOAD 'age';
 SET search_path TO ag_catalog;
+--
+-- Load data
+--
 SELECT create_graph('cypher_with');
 NOTICE:  graph "cypher_with" has been created
  create_graph 
@@ -25,31 +29,366 @@ NOTICE:  graph "cypher_with" has been created
  
 (1 row)
 
+SELECT create_vlabel('cypher_with','Country');
+NOTICE:  VLabel "Country" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT load_labels_from_file('cypher_with', 'Country',
+    'age_load/countries.csv');
+ load_labels_from_file 
+-----------------------
+ 
+(1 row)
+
+SELECT create_vlabel('cypher_with','City');
+NOTICE:  VLabel "City" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT load_labels_from_file('cypher_with', 'City',
+    'age_load/cities.csv');
+ load_labels_from_file 
+-----------------------
+ 
+(1 row)
+
+SELECT create_elabel('cypher_with','has_city');
+NOTICE:  ELabel "has_city" has been created
+ create_elabel 
+---------------
+ 
+(1 row)
+
+SELECT load_edges_from_file('cypher_with', 'has_city',
+     'age_load/edges.csv');
+ load_edges_from_file 
+----------------------
+ 
+(1 row)
+
+--
+-- Test WITH clause
+--
+SELECT count(*) FROM cypher('cypher_with', $$
+    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'}) 
+    WITH m,b
+    RETURN m,b
+$$) AS (City agtype, Country agtype);
+ count 
+-------
+  2361
+(1 row)
+
+-- WITH/AS
 SELECT * FROM cypher('cypher_with', $$
-WITH true AS b
-RETURN b
+    MATCH (b:Country {iso2 : 'AT'}) 
+    WITH b.name AS name, id(b) AS id 
+    RETURN name,id
+$$) AS (Country agtype, Country_id agtype);
+  country  |   country_id    
+-----------+-----------------
+ "Austria" | 844424930131983
+(1 row)
+
+SELECT * FROM cypher('cypher_with', $$
+    MATCH (m:City {name: 'Zell'})-[]-(b:Country {iso2 : 'AT'})
+    WITH b as country, count(*) AS foaf
+    WHERE foaf > 1      
+    RETURN country.name, foaf
+$$) as (name agtype, foaf agtype);
+   name    | foaf 
+-----------+------
+ "Austria" | 2
+(1 row)
+
+SELECT * FROM cypher('cypher_with', $$
+    WITH true AS b
+    RETURN b
 $$) AS (b bool);
  b 
 ---
  t
 (1 row)
 
+-- WITH/WHERE
+SELECT * FROM cypher('cypher_with', $$
+    MATCH (m:City)-[:has_city]->(b:Country{iso2:'BE'})
+    WITH b,m 
+    WHERE m.name='x'
+    RETURN m.name,b.iso2
+$$) AS ( "m.name" agtype, "b" agtype);
+ m.name | b 
+--------+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_with', $$
+    MATCH (b:Country {iso2 : 'AT'}) 
+    WITH b.name AS name, id(b) AS id
+    WHERE name = 'Austria'
+    RETURN name,id
+$$) AS (Country agtype, Country_id agtype);
+  country  |   country_id    
+-----------+-----------------
+ "Austria" | 844424930131983
+(1 row)
+
+SELECT * FROM cypher('cypher_with', $$
+    MATCH (b:Country {iso2 : 'AT'}) 
+    WITH b.name AS name, id(b) AS id
+    WHERE name = 'Austria' OR name = 'Kosovo'
+    RETURN name,id                             
+$$) AS (Country agtype, Country_id agtype);
+  country  |   country_id    
+-----------+-----------------
+ "Austria" | 844424930131983
+(1 row)
+
+SELECT * FROM cypher('cypher_with', $$
+    MATCH p = (m:City)-[:has_city*1..2]->(b:Country {iso2 : 'AT'}) 
+    WITH p, length(p) AS path_length 
+    WHERE path_length > 1 
+    RETURN p
+$$) AS (pattern agtype);
+ pattern 
+---------
+(0 rows)
+
+-- MATCH/WHERE with WITH/WHERE
+SELECT * FROM cypher('cypher_with', $$
+    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'})
+    WHERE b.name = 'Austria'
+    WITH m.name AS city,b.name AS country
+    WHERE city = 'Vienna'
+    RETURN city,country
+$$) AS (City agtype, Country agtype);
+   city   |  country  
+----------+-----------
+ "Vienna" | "Austria"
+(1 row)
+
+-- WITH/ORDER BY
+SELECT * FROM cypher('cypher_with', $$
+    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'})
+    WITH m AS city,b AS country
+    ORDER BY id(m) DESC LIMIT 10
+    RETURN id(city),city
+$$) AS (id agtype, city agtype);
+        id        |                                                                                                                                     city                                                                                                                                      
+------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 1125899906986495 | {"id": 1125899906986495, "label": "City", "properties": {"id": "143871", "name": "Zell", "__id__": 143871, "latitude": "46.47222222", "state_id": "2057", "longitude": "14.38888889", "country_id": "15", "state_code": "2", "country_code": "AT"}}::vertex
+ 1125899906986492 | {"id": 1125899906986492, "label": "City", "properties": {"id": "143868", "name": "Weißenstein", "__id__": 143868, "latitude": "46.68222222", "state_id": "2057", "longitude": "13.72361111", "country_id": "15", "state_code": "2", "country_code": "AT"}}::vertex
+ 1125899906986491 | {"id": 1125899906986491, "label": "City", "properties": {"id": "143867", "name": "Weißensee", "__id__": 143867, "latitude": "46.71666667", "state_id": "2057", "longitude": "13.3", "country_id": "15", "state_code": "2", "country_code": "AT"}}::vertex
+ 1125899906986490 | {"id": 1125899906986490, "label": "City", "properties": {"id": "143866", "name": "Weitensfeld im Gurktal", "__id__": 143866, "latitude": "46.84861111", "state_id": "2057", "longitude": "14.19166667", "country_id": "15", "state_code": "2", "country_code": "AT"}}::vertex
+ 1125899906986489 | {"id": 1125899906986489, "label": "City", "properties": {"id": "143865", "name": "Velden am Wörther See", "__id__": 143865, "latitude": "46.6125", "state_id": "2057", "longitude": "14.04194444", "country_id": "15", "state_code": "2", "country_code": "AT"}}::vertex
+ 1125899906986488 | {"id": 1125899906986488, "label": "City", "properties": {"id": "143864", "name": "Umberg", "__id__": 143864, "latitude": "46.64833", "state_id": "2057", "longitude": "13.9575", "country_id": "15", "state_code": "2", "country_code": "AT"}}::vertex
+ 1125899906986487 | {"id": 1125899906986487, "label": "City", "properties": {"id": "143863", "name": "Tschachoritsch", "__id__": 143863, "latitude": "46.55352", "state_id": "2057", "longitude": "14.21461", "country_id": "15", "state_code": "2", "country_code": "AT"}}::vertex
+ 1125899906986486 | {"id": 1125899906986486, "label": "City", "properties": {"id": "143862", "name": "Treffen", "__id__": 143862, "latitude": "46.66833333", "state_id": "2057", "longitude": "13.85555556", "country_id": "15", "state_code": "2", "country_code": "AT"}}::vertex
+ 1125899906986484 | {"id": 1125899906986484, "label": "City", "properties": {"id": "143860", "name": "Timenitz", "__id__": 143860, "latitude": "46.68333", "state_id": "2057", "longitude": "14.41667", "country_id": "15", "state_code": "2", "country_code": "AT"}}::vertex
+ 1125899906986483 | {"id": 1125899906986483, "label": "City", "properties": {"id": "143859", "name": "Techelsberg", "__id__": 143859, "latitude": "46.65861111", "state_id": "2057", "longitude": "14.10194444", "country_id": "15", "state_code": "2", "country_code": "AT"}}::vertex
+(10 rows)
+
+SELECT * FROM cypher('cypher_with', $$
+    MATCH (m:City) 
+    WITH m AS city
+    ORDER BY id(m) ASC LIMIT 10
+    RETURN id(city),city.name
+$$) AS (id agtype, names agtype);
+        id        |         names         
+------------------+-----------------------
+ 1125899906842625 | "Andorra la Vella"
+ 1125899906842626 | "Arinsal"
+ 1125899906842627 | "Canillo"
+ 1125899906842628 | "El Tarter"
+ 1125899906842629 | "Encamp"
+ 1125899906842630 | "Ordino"
+ 1125899906842631 | "Pas de la Casa"
+ 1125899906842632 | "Sant Julià de Lòria"
+ 1125899906842633 | "la Massana"
+ 1125899906842634 | "les Escaldes"
+(10 rows)
+
+-- WITH/ORDER BY/DESC/WHERE
+SELECT * FROM cypher('cypher_with', $$
+    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'})
+    WITH m AS city,b AS country
+    ORDER BY id(m) DESC LIMIT 10
+    WHERE city.name = 'Zell' OR city.name = 'Umberg'
+    RETURN id(city),city.name,country.name
+$$) AS (id agtype, city agtype, country agtype);
+        id        |   city   |  country  
+------------------+----------+-----------
+ 1125899906986495 | "Zell"   | "Austria"
+ 1125899906986488 | "Umberg" | "Austria"
+(2 rows)
+
+-- multiple WITH clauses
+SELECT * FROM cypher('cypher_with', $$
+    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'})
+    WITH m AS city,b AS country     
+    WITH city LIMIT 10
+    RETURN city.name
+$$) AS (city agtype);
+        city         
+---------------------
+ "Andau"
+ "Antau"
+ "Apetlon"
+ "Bad Sauerbrunn"
+ "Bad Tatzmannsdorf"
+ "Badersdorf"
+ "Bernstein"
+ "Bocksdorf"
+ "Breitenbrunn"
+ "Bruckneudorf"
+(10 rows)
+
+SELECT * FROM cypher('cypher_with', $$
+    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'})
+    WITH m AS city,b AS country
+    ORDER BY id(m) DESC LIMIT 10
+    WITH city
+    WHERE city.name = 'Zell'
+    RETURN id(city),city.name
+$$) AS (id agtype, city agtype);
+        id        |  city  
+------------------+--------
+ 1125899906986495 | "Zell"
+(1 row)
+
+SELECT * FROM cypher('cypher_with', $$
+    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'})
+    WITH m AS city,b AS country
+    WHERE country.name = 'Austria'
+    WITH city
+    ORDER BY id(city) DESC
+    WHERE city.name = 'Zell'
+    RETURN id(city),city.name
+$$) AS (id agtype, city agtype);
+        id        |  city  
+------------------+--------
+ 1125899906986495 | "Zell"
+ 1125899906846495 | "Zell"
+(2 rows)
+
 -- Expression item must be aliased.
 SELECT * FROM cypher('cypher_with', $$
-WITH 1 + 1
-RETURN i
+    WITH 1 + 1
+    RETURN i
 $$) AS (i int);
 ERROR:  expression item must be aliased
-LINE 2: WITH 1 + 1
-             ^
+LINE 2:     WITH 1 + 1
+                 ^
 HINT:  Items can be aliased by using AS.
+SELECT * FROM cypher('cypher_with', $$
+    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'})
+    WITH id(m)
+    RETURN m
+$$) AS (id agtype, city agtype);
+ERROR:  expression item must be aliased
+LINE 3:     WITH id(m)
+                 ^
+HINT:  Items can be aliased by using AS.
+-- Reference undefined variable in WITH clause (should error out)
+SELECT count(*) FROM cypher('cypher_with', $$
+    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'}) 
+    WITH m  
+    RETURN m,b
+$$) AS (City agtype, Country agtype);
+ERROR:  could not find rte for b
+LINE 4:     RETURN m,b
+                     ^
+SELECT * FROM cypher('cypher_with', $$
+    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'})
+    WITH m AS city,b AS country
+    WHERE country.name = 'Austria'
+    WITH city
+    WHERE city.name = 'Zell'
+    RETURN id(city),country.name
+$$) AS (id agtype, country agtype);
+ERROR:  could not find rte for country
+LINE 7:     RETURN id(city),country.name
+                            ^
+-- Clean up
 SELECT drop_graph('cypher_with', true);
-NOTICE:  drop cascades to 2 other objects
+NOTICE:  drop cascades to 5 other objects
 DETAIL:  drop cascades to table cypher_with._ag_label_vertex
 drop cascades to table cypher_with._ag_label_edge
+drop cascades to table cypher_with."Country"
+drop cascades to table cypher_with."City"
+drop cascades to table cypher_with.has_city
 NOTICE:  graph "cypher_with" has been dropped
  drop_graph 
 ------------
  
 (1 row)
 
+-- Issue 329 (should error out)
+SELECT create_graph('graph');
+NOTICE:  graph "graph" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('graph', $$
+    CREATE (a:A)-[:incs]->(:C), (a)-[:incs]->(:C)
+    RETURN a
+$$) AS (n agtype);
+                                n                                
+-----------------------------------------------------------------
+ {"id": 844424930131969, "label": "A", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('graph', $$
+    MATCH (a:A) 
+    WHERE ID(a)=0 
+    WITH a 
+    OPTIONAL MATCH (a)-[:incs]->(c)-[d:incs]-() 
+    WITH a,c,COUNT(d) AS deps 
+    WHERE deps<=1 
+    RETURN c,d
+$$) AS (n agtype, d agtype);
+ERROR:  could not find rte for d
+LINE 8:     RETURN c,d
+                     ^
+-- Issue 396 (should error out)
+SELECT * FROM cypher('graph',$$
+     CREATE (v),(u),(w),
+            (v)-[:hasFriend]->(u),
+            (u)-[:hasFriend]->(w)
+$$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('graph',$$
+      MATCH p=(v)-[*1..2]->(u) 
+      WITH p,length(p) AS path_length 
+      RETURN v,path_length
+$$) as (a agtype,b agtype);
+ERROR:  could not find rte for v
+LINE 4:       RETURN v,path_length
+                     ^
+-- Clean up
+SELECT drop_graph('graph', true);
+NOTICE:  drop cascades to 6 other objects
+DETAIL:  drop cascades to table graph._ag_label_vertex
+drop cascades to table graph._ag_label_edge
+drop cascades to table graph."A"
+drop cascades to table graph.incs
+drop cascades to table graph."C"
+drop cascades to table graph."hasFriend"
+NOTICE:  graph "graph" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+--
+-- End of test
+--

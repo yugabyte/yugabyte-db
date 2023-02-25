@@ -114,7 +114,8 @@ static Query *transform_cypher_with(cypher_parsestate *cpstate,
                                     cypher_clause *clause);
 static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
                                                  transform_method transform,
-                                                 cypher_clause *clause);
+                                                 cypher_clause *clause,
+                                                 Node *where);
 // match clause
 static Query *transform_cypher_match(cypher_parsestate *cpstate,
                                      cypher_clause *clause);
@@ -1067,7 +1068,7 @@ static Query * transform_cypher_call_stmt(cypher_parsestate *cpstate,
 
         return transform_cypher_clause_with_where(cpstate,
                                                   transform_cypher_call_subquery,
-                                                  clause);
+                                                  clause, self->where);
     }
 
     return NULL;
@@ -2194,7 +2195,7 @@ static Query *transform_cypher_with(cypher_parsestate *cpstate,
     wrapper->prev = clause->prev;
 
     return transform_cypher_clause_with_where(cpstate, transform_cypher_return,
-                                              wrapper);
+                                              wrapper, self->where);
 }
 
 static bool match_check_valid_label(cypher_match *match,
@@ -2254,28 +2255,14 @@ static bool match_check_valid_label(cypher_match *match,
 
     return true;
 }
-
 static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
                                                  transform_method transform,
-                                                 cypher_clause *clause)
+                                                 cypher_clause *clause, Node *where)
 {
     ParseState *pstate = (ParseState *)cpstate;
     Query *query;
     Node *self = clause->self;
-    cypher_match *match_self;
-    cypher_call *call_self;
-    Node *where;
-
-    if (is_ag_node(self, cypher_call))
-    {
-        call_self = (cypher_call*) clause->self;
-        where = call_self->where;
-    }
-    else
-    {
-        match_self = (cypher_match*) clause->self;
-        where = match_self->where;
-    }
+    Node *where_qual = NULL;
 
     if (where)
     {
@@ -2290,32 +2277,27 @@ static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
         rtindex = list_length(pstate->p_rtable);
         Assert(rtindex == 1); // rte is the only RangeTblEntry in pstate
 
+        /*
+         * add all the target entries in rte to the current target list to pass
+         * all the variables that are introduced in the previous clause to the
+         * next clause
+         */
         query->targetList = expandRelAttrs(pstate, rte, rtindex, 0, -1);
 
         markTargetListOrigins(pstate, query->targetList);
 
         query->rtable = pstate->p_rtable;
 
-        if (is_ag_node(clause->self, cypher_call))
+        if (!is_ag_node(self, cypher_match))
         {
-            cypher_call *call = (cypher_call *)clause->self;
+            where_qual = transform_cypher_expr(cpstate, where,
+                                                        EXPR_KIND_WHERE);
 
-            if (call->where != NULL)
-            {
-                Expr *where_qual = NULL;
-
-                where_qual = (Expr *)transform_cypher_expr(cpstate, call->where,
-                                                           EXPR_KIND_WHERE);
-
-                where_qual = (Expr *)coerce_to_boolean(pstate, (Node *)where_qual,
-                                               "WHERE");
-                query->jointree = makeFromExpr(pstate->p_joinlist, (Node *)where_qual);
-            }
+            where_qual = coerce_to_boolean(pstate, where_qual,
+                                            "WHERE");
         }
-        else
-        {
-            query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
-        }
+        
+        query->jointree = makeFromExpr(pstate->p_joinlist, where_qual);
         assign_query_collations(pstate, query);
     }
     else
@@ -2352,7 +2334,8 @@ static Query *transform_cypher_match(cypher_parsestate *cpstate,
     }
 
     return transform_cypher_clause_with_where(
-        cpstate, transform_cypher_match_pattern, clause);
+        cpstate, transform_cypher_match_pattern, clause, 
+        match_self->where);
 }
 
 /*
