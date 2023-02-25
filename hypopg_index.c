@@ -1291,7 +1291,7 @@ hypopg(PG_FUNCTION_ARGS)
 Datum
 hypopg_create_index(PG_FUNCTION_ARGS)
 {
-	char	   *sql = TextDatumGetCString(PG_GETARG_TEXT_PP(0));
+	char	   *sql = TextDatumGetCString(PG_GETARG_DATUM(0));
 	List	   *parsetree_list;
 	ListCell   *parsetree_item;
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
