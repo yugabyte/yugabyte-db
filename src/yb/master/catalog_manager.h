@@ -795,6 +795,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const ChangeMasterClusterConfigRequestPB* req,
       ChangeMasterClusterConfigResponsePB* resp) override;
 
+  Result<uint32_t> GetXClusterConfigVersion() const;
 
   // Validator for placement information with respect to cluster configuration
   Status ValidateReplicationInfo(
@@ -1070,6 +1071,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   friend class MultiStageAlterTable;
   friend class BackfillTable;
   friend class BackfillTablet;
+  friend class XClusterConfigLoader;
 
   FRIEND_TEST(SysCatalogTest, TestCatalogManagerTasksTracker);
   FRIEND_TEST(SysCatalogTest, TestPrepareDefaultClusterConfig);
@@ -1120,6 +1122,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   //
   // Sets the version field of the SysClusterConfigEntryPB to 0.
   Status PrepareDefaultClusterConfig(int64_t term) REQUIRES(mutex_);
+
+  Status PrepareDefaultXClusterConfig(int64_t term) REQUIRES(mutex_);
 
   // Sets up various system configs.
   Status PrepareDefaultSysConfig(int64_t term) REQUIRES(mutex_);
@@ -1651,6 +1655,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   std::shared_ptr<ClusterConfigInfo> ClusterConfig() const;
 
+  std::shared_ptr<XClusterConfigInfo> XClusterConfig() const;
+
   Result<TableInfoPtr> GetGlobalTransactionStatusTable();
 
   Result<bool> IsCreateTableDone(const TableInfoPtr& table);
@@ -1731,6 +1737,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // are locked out since they grab the scoped leader shared lock that
   // depends on this leader lock.
   std::shared_ptr<ClusterConfigInfo> cluster_config_ = nullptr; // No GUARD, only write on load.
+
+  std::shared_ptr<XClusterConfigInfo> xcluster_config_;  // No GUARD, only write on load.
 
   // YSQL Catalog information.
   scoped_refptr<SysConfigInfo> ysql_catalog_config_ = nullptr; // No GUARD, only write on Load.

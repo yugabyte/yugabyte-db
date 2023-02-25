@@ -45,6 +45,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (UpdateConsumerOnProducerMetadata)
     (ListCDCStreams)
     (SetUniverseReplicationEnabled)
+    (PauseResumeXClusterProducerStreams)
     (SetupUniverseReplication)
     (UpdateCDCStream)
     (GetCDCDBStreamInfo)

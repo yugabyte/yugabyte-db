@@ -904,6 +904,25 @@ class ClusterConfigInfo : public MetadataCowWrapper<PersistentClusterConfigInfo>
   const std::string fake_id_;
 };
 
+// This wraps around the proto containing xcluster cluster level config information. It will be used
+// for CowObject managed access.
+struct PersistentXClusterConfigInfo
+    : public Persistent<SysXClusterConfigEntryPB, SysRowEntryType::XCLUSTER_CONFIG> {};
+
+// This is the in memory representation of the xcluster config information serialized proto
+// data, using metadata() for CowObject access.
+class XClusterConfigInfo : public MetadataCowWrapper<PersistentXClusterConfigInfo> {
+ public:
+  XClusterConfigInfo() {}
+  ~XClusterConfigInfo() = default;
+
+  virtual const std::string& id() const override { return fake_id_; }
+
+ private:
+  // We do not use the ID field in the sys_catalog table.
+  const std::string fake_id_;
+};
+
 struct PersistentRedisConfigInfo
     : public Persistent<SysRedisConfigEntryPB, SysRowEntryType::REDIS_CONFIG> {};
 

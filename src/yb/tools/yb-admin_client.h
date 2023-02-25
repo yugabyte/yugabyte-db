@@ -411,6 +411,9 @@ class ClusterAdminClient {
   Status SetUniverseReplicationEnabled(const std::string& producer_id,
                                        bool is_enabled);
 
+  Status PauseResumeXClusterProducerStreams(
+      const std::vector<std::string>& stream_ids, bool is_paused);
+
   Status BootstrapProducer(const std::vector<TableId>& table_id);
 
   Status WaitForReplicationDrain(const std::vector<CDCStreamId>& stream_ids,
