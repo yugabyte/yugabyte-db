@@ -116,8 +116,6 @@ For help with specific `ybm` resource commands, run `ybm [ resource ] [ command 
 ybm read-replica create -h
 ```
 
-### completion
-
 ## Resources
 
 The following resources can be managed using the CLI:
@@ -151,9 +149,9 @@ Examples:
 - Create a local single-node cluster:
 
   ```sh
-  ybm cluster create 
-      --cluster-name=test-cluster
-      --credentials=username=anonymous,password=password123
+  ybm cluster create \
+      --cluster-name=test-cluster \
+      --credentials=username=admin,password=password123
   ```
 
 #### create
@@ -180,7 +178,7 @@ Create a cluster.
 : Specify one `--region-info` flag for each region in the cluster.
 
 --cluster-tier=_tier_
-: Type of cluster; `free` or `paid`.
+: Type of cluster; `sandbox` or `dedicated`.
 
 --fault-tolerance=_tolerance_
 : Fault tolerance for the cluster. `none`, `zone`, or `region`.
@@ -221,7 +219,7 @@ Fetch information about the specified cluster.
 : Specify one `--region-info` flag for each region in the cluster.
 
 --cluster-tier=_tier_
-: Type of cluster; `free` or `paid`.
+: Type of cluster; `sandbox` or `dedicated`.
 
 --fault-tolerance=_tolerance_
 : Fault tolerance for the cluster. `none`, `zone`, or `region`.
@@ -269,9 +267,9 @@ Examples:
 - Create a single address allow list:
 
   ```sh
-  ybm network-allow-list create 
-      --name=test-cluster
-      --description="my IP address"
+  ybm network-allow-list create \
+      --name=test-cluster \
+      --description="my IP address" \
       --ip_addr=0.0.0.0/0
   ```
 
@@ -314,7 +312,7 @@ Examples:
 - Create a read-replica cluster:
 
   ```sh
-  ybm read-replica create
+  ybm read-replica create \
     --replica=num_cores=<region-num_cores>,\
     memory_mb=<memory_mb>,\
     disk_size_gb=<disk_size_gb>,\
@@ -387,9 +385,9 @@ Examples:
 - Create a global VPC on GCP:
 
   ```sh
-  ybm vpc create
-      --name=demo-vpc
-      --cloud=GCP
+  ybm vpc create \
+      --name=demo-vpc \
+      --cloud=GCP \
       --global-cidr=10.0.0.0/18
   ```
 
@@ -438,13 +436,13 @@ Examples:
 - Create a VPC peering on GCP:
 
   ```sh
-  ybm vpc-peering create
-      --name=demo-peer
-      --vpc-name=demo-vpc
-      --cloud=GCP
-      --project=project
-      --vpc=vpc-name
-      --region=us-west1
+  ybm vpc-peering create \
+      --name=demo-peer \
+      --vpc-name=demo-vpc \
+      --cloud=GCP \
+      --project=project \
+      --vpc=vpc-name \
+      --region=us-west1 \
       --cidr=10.0.0.0/18
   ```
 
@@ -488,7 +486,7 @@ Examples:
 : Name of the peering.
 
 -----
-
+<!--
 ### cdc-sink
 
 Use the `cdc-sink` resource to create, update, and delete CDC sinks.
@@ -502,13 +500,13 @@ Examples:
 - Create a CDC sink:
 
   ```sh
-  ybm cdc_sink create
-      --name=sink-2 
-      --hostname=kafka.self.us 
-      --auth-type=BASIC 
-      --cdc-sink-type=KAFKA 
-      --username=myname 
-      --password=qwerty
+  ybm cdc_sink create \
+      --name=sink-2 \
+      --hostname=kafka.self.us \
+      --auth-type=BASIC \
+      --cdc-sink-type=KAFKA \
+      --username=admin \
+      --password=password
   ```
 
 #### create
@@ -570,13 +568,13 @@ Examples:
 - Create a CDC stream:
 
   ```sh
-  ybm cdc-stream create
-      --cluster-name=cluster-1 
-      --name=stream-2 
-      --tables=table1,table2 
-      --sink=mysink 
-      --db-name=mydatabase 
-      --snapshot-existing-data=true 
+  ybm cdc-stream create \
+      --cluster-name=cluster-1 \
+      --name=stream-2 \
+      --tables=table1,table2 \
+      --sink=mysink \
+      --db-name=mydatabase \
+      --snapshot-existing-data=true \
       --kafka-prefix=prefix
   ```
 
@@ -633,7 +631,7 @@ Examples:
 --name=_name_
 : Name of the stream.
 
------
+----->
 
 ### backup
 
@@ -652,9 +650,9 @@ Examples:
 - Create a backup:
 
   ```sh
-  ybm backup create 
-      --cluster-name=test-cluster
-      --credentials=username=anonymous,password=password123
+  ybm backup create \
+      --cluster-name=test-cluster \
+      --credentials=username=admin,password=password123
   ```
 
 #### create
@@ -686,6 +684,18 @@ Examples:
 --backup-id=_id_
 : The ID of the backup to restore.
 
+### wait flag
+
+For long-running commands such as creating or deleting cluster, you can use the `--wait` flag to wait until the operation is completed. For example:
+
+```sh
+ybm cluster delete \
+    --cluster-name=test-cluster \
+    --wait
+```
+
+If you are using the CLI with the `--wait` flag in your CI system, you can specify the environment variable `YBM_CI` to `true` to avoid generating unnecessary logs lines.
+
 ## Environment variables
 
 In the case of multi-node deployments, all nodes should have similar environment variables.
@@ -699,6 +709,10 @@ The following are combinations of environment variables and their uses:
 - `YBM_HOST`
 
   The YugabyteDB Managed host.
+
+- `YBM_CI`
+
+  Set to `true` to avoid outputting unnecessary log lines.
 
 ## Examples
 
