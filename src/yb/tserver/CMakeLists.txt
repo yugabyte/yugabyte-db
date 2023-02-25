@@ -245,7 +245,8 @@ set(TSERVER_DEPS
   yb_pggate_flags
   ysql_upgrade
   cdc
-  cdc_consumer_proto)
+  cdc_consumer_proto
+  xcluster_producer_proto)
 
 ADD_YB_LIBRARY(tserver
   SRCS ${TSERVER_SRCS}

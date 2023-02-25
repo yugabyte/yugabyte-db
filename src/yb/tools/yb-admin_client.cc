@@ -3858,6 +3858,30 @@ Status ClusterAdminClient::SetUniverseReplicationEnabled(
   return Status::OK();
 }
 
+Status ClusterAdminClient::PauseResumeXClusterProducerStreams(
+    const std::vector<std::string>& stream_ids, bool is_paused) {
+  master::PauseResumeXClusterProducerStreamsRequestPB req;
+  master::PauseResumeXClusterProducerStreamsResponsePB resp;
+  for (const auto& stream_id : stream_ids) {
+        req.add_stream_ids(stream_id);
+  }
+  req.set_is_paused(is_paused);
+  const auto toggle = (is_paused ? "paus" : "resum");
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->PauseResumeXClusterProducerStreams(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        cout << "Error " << toggle << "ing "
+             << "replication: " << resp.error().status().message() << endl;
+        return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Replication " << toggle << "ed successfully" << endl;
+  return Status::OK();
+}
+
 Result<HostPort> ClusterAdminClient::GetFirstRpcAddressForTS() {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));

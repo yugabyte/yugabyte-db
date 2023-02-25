@@ -261,11 +261,20 @@ class XClusterTest : public XClusterTestBase,
   Status VerifyWrittenRecords(const YBTableName& producer_table,
                               const YBTableName& consumer_table,
                               int timeout_secs = kRpcTimeout) {
-    return LoggedWaitFor([this, producer_table, consumer_table]() -> Result<bool> {
-      auto producer_results = ScanTableToStrings(producer_table, producer_client());
-      auto consumer_results = ScanTableToStrings(consumer_table, consumer_client());
-      return producer_results == consumer_results;
-    }, MonoDelta::FromSeconds(timeout_secs), "Verify written records");
+    std::vector<std::string> producer_results, consumer_results;
+    const auto s = LoggedWaitFor(
+        [this, producer_table, consumer_table, &producer_results,
+         &consumer_results]() -> Result<bool> {
+          producer_results = ScanTableToStrings(producer_table, producer_client());
+          consumer_results = ScanTableToStrings(consumer_table, consumer_client());
+          return producer_results == consumer_results;
+        },
+        MonoDelta::FromSeconds(timeout_secs), "Verify written records");
+    if (!s.ok()) {
+      LOG(ERROR) << "Producer records: " << JoinStrings(producer_results, ",")
+                 << ";Consumer records: " << JoinStrings(consumer_results, ",");
+    }
+    return s;
   }
 
   Status VerifyNumRecords(const YBTableName& table, YBClient* client, size_t expected_size) {
@@ -518,6 +527,65 @@ class XClusterTest : public XClusterTestBase,
 
     RETURN_NOT_OK(DeleteUniverseReplication());
     return Status::OK();
+  }
+
+  Status PauseResumeXClusterProducerStreams(
+      const std::vector<std::string>& stream_ids, bool is_paused) {
+    master::PauseResumeXClusterProducerStreamsRequestPB req;
+    master::PauseResumeXClusterProducerStreamsResponsePB resp;
+
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+        &producer_client()->proxy_cache(),
+        VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    for (const auto& stream_id : stream_ids) {
+      req.add_stream_ids(stream_id);
+    }
+    req.set_is_paused(is_paused);
+    RETURN_NOT_OK(master_proxy->PauseResumeXClusterProducerStreams(req, &resp, &rpc));
+    SCHECK(
+        !resp.has_error(), IllegalState,
+        Format(
+            "PauseResumeXClusterProducerStreams returned error: $0", resp.error().DebugString()));
+    return Status::OK();
+  }
+
+  void WriteWorkloadAndVerifyWrittenRows(
+      const std::shared_ptr<client::YBTable>& producer_table,
+      const std::shared_ptr<client::YBTable>& consumer_table, uint32_t start, uint32_t end,
+      bool replication_enabled = true, int timeout = kRpcTimeout) {
+    LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
+    WriteWorkload(start, end, producer_client(), producer_table->name());
+    if (replication_enabled) {
+      ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name(), timeout));
+    } else {
+      ASSERT_NOK(VerifyWrittenRecords(producer_table->name(), consumer_table->name(), timeout));
+    }
+  }
+
+  // Empty stream_ids will pause all streams.
+  void SetPauseAndVerifyWrittenRows(
+      const std::vector<std::string>& stream_ids,
+      const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
+      const std::vector<std::shared_ptr<client::YBTable>>& consumer_tables, uint32_t start,
+      uint32_t end, bool pause = true) {
+    ASSERT_OK(PauseResumeXClusterProducerStreams(stream_ids, pause));
+    // Needs to sleep to wait for heartbeat to propogate.
+    SleepFor(3s * kTimeMultiplier);
+
+    // If stream_ids is empty, then write and test replication on all streams, otherwise write and
+    // test on only those selected in stream_ids.
+    size_t size = stream_ids.size() ? stream_ids.size() : producer_tables.size();
+    for (size_t i = 0; i < size; i++) {
+      const auto& producer_table = producer_tables[i];
+      const auto& consumer_table = consumer_tables[i];
+      // Reduce the timeout time when we don't expect replication to be successful.
+      int timeout = pause ? 10 : kRpcTimeout;
+      WriteWorkloadAndVerifyWrittenRows(
+          producer_table, consumer_table, start, end, !pause, timeout);
+    }
   }
 
  private:
@@ -3609,6 +3677,112 @@ TEST_P(XClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPrematureLogGC)) {
   // Verify that the GetReplicationStatus RPC contains the 'REPLICATION_MISSING_OP_ID' error.
   VerifyReplicationError(
     consumer_table->id(), stream_id, ReplicationErrorPb::REPLICATION_MISSING_OP_ID);
+}
+
+TEST_P(XClusterTest, PausingAndResumingReplicationFromProducerSingleTable) {
+  constexpr int kNTabletsPerTable = 3;
+  constexpr int kNumTables = 1;
+  uint32_t kReplicationFactor = NonTsanVsTsan(3, 1);
+  std::vector<uint32_t> tables_vector(kNumTables);
+  for (size_t i = 0; i < kNumTables; i++) {
+    tables_vector[i] = kNTabletsPerTable;
+  }
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, kReplicationFactor));
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+
+  producer_tables.push_back(tables[0]);
+  consumer_tables.push_back(tables[1]);
+
+  // Empty case.
+  ASSERT_OK(PauseResumeXClusterProducerStreams({}, true));
+  ASSERT_OK(PauseResumeXClusterProducerStreams({}, false));
+
+  // Invalid ID case.
+  ASSERT_NOK(PauseResumeXClusterProducerStreams({"invalid_id"}, true));
+  ASSERT_NOK(PauseResumeXClusterProducerStreams({"invalid_id"}, false));
+
+  ASSERT_OK(SetupUniverseReplication(producer_tables));
+  master::IsSetupUniverseReplicationDoneResponsePB is_resp;
+  ASSERT_OK(WaitForSetupUniverseReplication(
+      consumer_cluster(), consumer_client(), kUniverseId, &is_resp));
+
+  std::vector<std::string> stream_ids;
+
+  WriteWorkloadAndVerifyWrittenRows(producer_tables[0], consumer_tables[0], 0, 10);
+
+  // Test pausing all streams (by passing empty streams list) when there is only one stream.
+  SetPauseAndVerifyWrittenRows({}, producer_tables, consumer_tables, 10, 20);
+
+  // Test resuming all streams (by passing empty streams list) when there is only one stream.
+  SetPauseAndVerifyWrittenRows({}, producer_tables, consumer_tables, 20, 30, false);
+
+  // Test pausing stream by ID when there is only one stream by passing non-empty stream_ids.
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_tables[0]->id()));
+  stream_ids.push_back(stream_id);
+  SetPauseAndVerifyWrittenRows(stream_ids, producer_tables, consumer_tables, 30, 40);
+
+  // Test resuming stream by ID when there is only one stream by passing non-empty stream_ids.
+  SetPauseAndVerifyWrittenRows(stream_ids, producer_tables, consumer_tables, 40, 50, false);
+
+  ASSERT_OK(DeleteUniverseReplication());
+}
+
+TEST_P(XClusterTest, PausingAndResumingReplicationFromProducerMultiTable) {
+  constexpr int kNTabletsPerTable = 3;
+  constexpr int kNumTables = 3;
+  uint32_t kReplicationFactor = NonTsanVsTsan(3, 1);
+  std::vector<uint32_t> tables_vector(kNumTables);
+  for (size_t i = 0; i < kNumTables; i++) {
+    tables_vector[i] = kNTabletsPerTable;
+  }
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, kReplicationFactor));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  // Testing on multiple tables.
+  producer_tables.reserve(tables.size() / 2);
+  consumer_tables.reserve(tables.size() / 2);
+  for (size_t i = 0; i < tables.size(); i++) {
+    if (i % 2 == 0) {
+      producer_tables.push_back(tables[i]);
+    } else {
+      consumer_tables.push_back(tables[i]);
+    }
+  }
+
+  std::vector<std::string> stream_ids;
+
+  ASSERT_OK(SetupUniverseReplication(producer_tables));
+  master::IsSetupUniverseReplicationDoneResponsePB is_resp;
+  ASSERT_OK(WaitForSetupUniverseReplication(
+      consumer_cluster(), consumer_client(), kUniverseId, &is_resp));
+
+  SetPauseAndVerifyWrittenRows({}, producer_tables, consumer_tables, 0, 10, false);
+  // Test pausing all streams (by passing empty streams list) when there are multiple streams.
+  SetPauseAndVerifyWrittenRows({}, producer_tables, consumer_tables, 10, 20);
+  // Test resuming all streams (by passing empty streams list) when there are multiple streams.
+  SetPauseAndVerifyWrittenRows({}, producer_tables, consumer_tables, 20, 30, false);
+  // Add the stream IDs of the first two tables to test pausing and resuming just those ones.
+  for (size_t i = 0; i < producer_tables.size() - 1; ++i) {
+    auto stream_id = (string)ASSERT_RESULT(GetCDCStreamID(producer_tables[i]->id()));
+    stream_ids.push_back(stream_id);
+  }
+  // Test pausing replication on the first two tables by passing stream_ids containing their
+  // corresponding xcluster streams.
+  SetPauseAndVerifyWrittenRows(stream_ids, producer_tables, consumer_tables, 30, 40);
+  // Verify that the remaining streams are unpaused still.
+  for (size_t i = stream_ids.size(); i < producer_tables.size(); ++i) {
+    WriteWorkloadAndVerifyWrittenRows(producer_tables[i], consumer_tables[i], 30, 40);
+  }
+  // Test resuming replication on the first two tables by passing stream_ids containing their
+  // corresponding xcluster streams.
+  SetPauseAndVerifyWrittenRows(stream_ids, producer_tables, consumer_tables, 40, 50, false);
+  // Verify that the previously unpaused streams are still replicating.
+  for (size_t i = stream_ids.size(); i < producer_tables.size(); ++i) {
+    WriteWorkloadAndVerifyWrittenRows(producer_tables[i], consumer_tables[i], 40, 50);
+  }
+  ASSERT_OK(DeleteUniverseReplication());
 }
 
 } // namespace yb

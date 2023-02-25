@@ -1862,6 +1862,29 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClient* client) {
       });
 
   Register(
+      "pause_producer_xcluster_streams", " (<comma_separated_list_of_stream_ids>|all) [resume]",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() > 2 || args.size() < 1) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        bool is_paused = true;
+        vector<string> stream_ids;
+        if (!boost::iequals(args[0], "all")) {
+          boost::split(stream_ids, args[0], boost::is_any_of(","));
+        }
+        if (args.size() == 2) {
+          if (!boost::iequals(args[args.size() - 1], "resume")) {
+            return ClusterAdminCli::kInvalidArguments;
+          }
+          is_paused = false;
+        }
+        RETURN_NOT_OK_PREPEND(
+            client->PauseResumeXClusterProducerStreams(stream_ids, is_paused),
+            Substitute("Unable to $0 replication", is_paused ? "pause" : "resume"));
+        return Status::OK();
+      });
+
+  Register(
       "bootstrap_cdc_producer", " <comma_separated_list_of_table_ids>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1) {

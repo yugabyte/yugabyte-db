@@ -1479,6 +1479,11 @@ Result<TabletCheckpoint> CDCServiceImpl::TEST_GetTabletInfoFromCache(
   return impl_->TEST_GetTabletInfoFromCache(producer_tablet);
 }
 
+bool CDCServiceImpl::IsReplicationPausedForStream(const std::string& stream_id) const {
+  SharedLock l(mutex_);
+  return paused_xcluster_producer_streams_.contains(stream_id);
+}
+
 void CDCServiceImpl::GetChanges(
     const GetChangesRequestPB* req, GetChangesResponsePB* resp, RpcContext context) {
   RPC_CHECK_AND_RETURN_ERROR(
@@ -1602,8 +1607,14 @@ void CDCServiceImpl::GetChanges(
     }
   }
 
-  if (PREDICT_FALSE(FLAGS_TEST_block_get_changes)) {
-    // Early exit for testing purpose.
+  bool is_replication_paused_for_stream = IsReplicationPausedForStream(req->stream_id());
+  if (is_replication_paused_for_stream || PREDICT_FALSE(FLAGS_TEST_block_get_changes)) {
+    if (is_replication_paused_for_stream && VLOG_IS_ON(1)) {
+      YB_LOG_EVERY_N_SECS(INFO, 300)
+          << "Replication is paused from the producer for stream: " << req->stream_id();
+    }
+    // Returning success to slow down polling on the consumer side while replication is paused or
+    // early exit for testing purpose.
     from_op_id.ToPB(resp->mutable_checkpoint()->mutable_op_id());
     context.RespondSuccess();
     return;
@@ -2067,6 +2078,27 @@ bool CDCServiceImpl::ShouldUpdateCDCMetrics(MonoTime time_since_update_metrics) 
 bool CDCServiceImpl::CDCEnabled() { return cdc_enabled_.load(std::memory_order_acquire); }
 
 void CDCServiceImpl::SetCDCServiceEnabled() { cdc_enabled_.store(true, std::memory_order_release); }
+
+void CDCServiceImpl::SetPausedXClusterProducerStreams(
+    const ::google::protobuf::Map<std::string, bool>& paused_producer_stream_ids,
+    uint32_t xcluster_config_version) {
+  std::lock_guard<rw_spinlock> l(mutex_);
+  if (xcluster_config_version_ < xcluster_config_version) {
+    paused_xcluster_producer_streams_.clear();
+    for (const auto& stream_id : paused_producer_stream_ids) {
+      paused_xcluster_producer_streams_.insert(stream_id.first);
+    }
+    xcluster_config_version_ = xcluster_config_version;
+    const auto list_str = JoinStrings(paused_xcluster_producer_streams_, ",");
+    LOG(INFO) << "Updating xCluster paused producer streams: " << list_str
+              << " Config version: " << xcluster_config_version_;
+  }
+}
+
+uint32_t CDCServiceImpl::GetXClusterConfigVersion() const {
+  SharedLock<rw_spinlock> l(mutex_);
+  return xcluster_config_version_;
+}
 
 Result<std::shared_ptr<client::TableHandle>> CDCServiceImpl::GetCdcStateTable() {
   bool use_cache = GetAtomicFlag(&FLAGS_enable_cdc_state_table_caching);

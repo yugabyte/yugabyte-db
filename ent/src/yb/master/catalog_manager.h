@@ -216,6 +216,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                        SetUniverseReplicationEnabledResponsePB* resp,
                                        rpc::RpcContext* rpc);
 
+  Status PauseResumeXClusterProducerStreams(
+      const PauseResumeXClusterProducerStreamsRequestPB* req,
+      PauseResumeXClusterProducerStreamsResponsePB* resp,
+      rpc::RpcContext* rpc);
+
   // Get Universe Replication.
   Status GetUniverseReplication(const GetUniverseReplicationRequestPB* req,
                                 GetUniverseReplicationResponsePB* resp,
@@ -289,6 +294,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       std::shared_ptr<yb::client::TableHandle> cdc_state_table_result,
       std::shared_ptr<client::YBSession> session, const TabletId& tablet_id,
       const CDCStreamId& stream_id);
+
+  // Remove deleted xcluster stream IDs from producer stream Id map.
+  Status RemoveStreamFromXClusterProducerConfig(const std::vector<CDCStreamInfo*>& streams);
 
   // Delete specified CDC streams metadata.
   Status CleanUpCDCStreamsMetadata(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);

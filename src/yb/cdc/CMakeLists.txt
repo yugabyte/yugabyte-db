@@ -70,6 +70,25 @@ ADD_YB_LIBRARY(cdc_service_proto
   NONLINK_DEPS ${CDC_YRPC_TGTS})
 
 #########################################
+# xcluster_producer_proto
+#########################################
+
+YRPC_GENERATE(
+  XCLUSTER_PRODUCER_YRPC_SRCS XCLUSTER_PRODUCER_YRPC_HDRS XCLUSTER_PRODUCER_YRPC_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  NO_SERVICE_MESSAGES_PROTO_FILES xcluster_producer.proto)
+
+set(XCLUSTER_PRODUCER_YRPC_LIBS
+  yrpc
+  protobuf)
+
+ADD_YB_LIBRARY(xcluster_producer_proto
+  SRCS ${XCLUSTER_PRODUCER_YRPC_SRCS}
+  DEPS ${XCLUSTER_PRODUCER_YRPC_LIBS}
+  NONLINK_DEPS ${XCLUSTER_PRODUCER_YRPC_TGTS})
+
+#########################################
 # cdc_service
 #########################################
 
