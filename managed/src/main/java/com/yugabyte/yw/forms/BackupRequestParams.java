@@ -3,13 +3,17 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 import org.yb.CommonTypes.TableType;
@@ -110,12 +114,43 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Time unit for backup expiry time")
   public TimeUnit expiryTimeUnit;
 
+  @ApiModelProperty(value = "Parallel DB backups")
+  public int parallelDBBackups = 1;
+
   // Intermediate states to resume ybc backups
   public UUID backupUUID;
 
   public int currentIdx;
 
   public String currentYbcTaskId;
+
+  @ApiModelProperty(hidden = true)
+  public final Map<String, ParallelBackupState> backupDBStates = new ConcurrentHashMap<>();
+
+  @ToString
+  public static class ParallelBackupState {
+    public String nodeIp;
+    public String currentYbcTaskId;
+    public boolean alreadyScheduled = false;
+
+    public void resetOnComplete() {
+      this.nodeIp = null;
+      this.currentYbcTaskId = null;
+      this.alreadyScheduled = true;
+    }
+
+    public void setIntermediate(String nodeIp, String currentYbcTaskId) {
+      this.nodeIp = nodeIp;
+      this.currentYbcTaskId = currentYbcTaskId;
+    }
+  }
+
+  @JsonIgnore
+  public void initializeBackupDBStates(List<BackupTableParams> backupsList) {
+    backupsList
+        .stream()
+        .forEach(bTP -> this.backupDBStates.put(bTP.getKeyspace(), new ParallelBackupState()));
+  }
 
   public BackupRequestParams(BackupRequestParams backupRequestParams) {
     this.storageConfigUUID = backupRequestParams.storageConfigUUID;
@@ -140,6 +175,7 @@ public class BackupRequestParams extends UniverseTaskParams {
     this.minNumBackupsToRetain = backupRequestParams.minNumBackupsToRetain;
     this.expiryTimeUnit = backupRequestParams.expiryTimeUnit;
     this.baseBackupUUID = backupRequestParams.baseBackupUUID;
+    this.parallelDBBackups = backupRequestParams.parallelDBBackups;
     this.incrementalBackupFrequency = backupRequestParams.incrementalBackupFrequency;
     this.incrementalBackupFrequencyTimeUnit =
         backupRequestParams.incrementalBackupFrequencyTimeUnit;

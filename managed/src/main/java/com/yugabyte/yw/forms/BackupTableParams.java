@@ -151,6 +151,9 @@ public class BackupTableParams extends TableManagerParams {
   // For each list item
   public long timeTakenPartial = 0L;
 
+  @ApiModelProperty(hidden = true)
+  public long thisBackupSubTaskStartTime = 0L;
+
   @JsonIgnore
   public BackupTableParams(BackupRequestParams backupRequestParams) {
     this.customerUuid = backupRequestParams.customerUUID;
