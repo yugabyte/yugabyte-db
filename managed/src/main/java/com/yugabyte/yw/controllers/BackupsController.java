@@ -260,7 +260,16 @@ public class BackupsController extends AuthenticatedController {
               taskParams.universeUUID.toString()));
     }
 
+    if ((universe.getLiveTServersInPrimaryCluster().size() < taskParams.parallelDBBackups)
+        || taskParams.parallelDBBackups <= 0) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "invalid parallel backups value provided for universe %s", universe.universeUUID));
+    }
+
     if (taskParams.keyspaceTableList != null) {
+      backupUtil.validateKeyspaces(taskParams.keyspaceTableList);
       for (BackupRequestParams.KeyspaceTable keyspaceTable : taskParams.keyspaceTableList) {
         if (keyspaceTable.tableUUIDList == null) {
           keyspaceTable.tableUUIDList = new ArrayList<UUID>();

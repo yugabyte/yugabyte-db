@@ -55,18 +55,27 @@ import play.libs.Json;
 @Abortable
 public class CreateBackup extends UniverseTaskBase {
 
+  private final CustomerConfigService customerConfigService;
+  private final YbcManager ybcManager;
+
   @Inject
-  protected CreateBackup(BaseTaskDependencies baseTaskDependencies) {
+  protected CreateBackup(
+      BaseTaskDependencies baseTaskDependencies,
+      CustomerConfigService customerConfigService,
+      YbcManager ybcManager) {
     super(baseTaskDependencies);
+    this.customerConfigService = customerConfigService;
+    this.ybcManager = ybcManager;
   }
 
   protected BackupRequestParams params() {
     return (BackupRequestParams) taskParams;
   }
 
-  @Inject CustomerConfigService customerConfigService;
-
-  @Inject YbcManager ybcManager;
+  @Override
+  protected String getExecutorPoolName() {
+    return "backup_task";
+  }
 
   @Override
   public void run() {
@@ -118,7 +127,7 @@ public class CreateBackup extends UniverseTaskBase {
 
         taskInfo = String.join(",", tablesToBackup);
 
-        getRunnableTask().runSubTasks();
+        getRunnableTask().runSubTasks(true);
         unlockUniverseForUpdate();
         isUniverseLocked = false;
 

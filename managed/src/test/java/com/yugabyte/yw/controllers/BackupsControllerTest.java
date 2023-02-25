@@ -95,6 +95,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    defaultUniverse = ModelFactory.addNodesToUniverse(defaultUniverse.universeUUID, 1);
     taskUUID = UUID.randomUUID();
     backupTableParams = new BackupTableParams();
     backupTableParams.universeUUID = defaultUniverse.universeUUID;

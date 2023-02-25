@@ -15,12 +15,15 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.BackupFilter;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import com.yugabyte.yw.models.helpers.TransactionUtil;
 import com.yugabyte.yw.models.paging.BackupPagedApiResponse;
 import com.yugabyte.yw.models.paging.BackupPagedQuery;
 import com.yugabyte.yw.models.paging.BackupPagedResponse;
@@ -36,11 +39,13 @@ import io.ebean.Query;
 import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
+import io.ebean.annotation.Transactional;
 import io.ebean.annotation.UpdatedTimestamp;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -55,8 +60,9 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.IterableUtils;
+import org.apache.commons.collections4.Predicate;
 import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.api.Play;
@@ -68,6 +74,9 @@ import play.api.Play;
 public class Backup extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Backup.class);
   SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+
+  // This is a key lock for Backup by UUID.
+  public static final KeyLock<UUID> BACKUP_KEY_LOCK = new KeyLock<UUID>();
 
   public enum BackupState {
     @EnumValue("In Progress")
@@ -423,10 +432,13 @@ public class Backup extends Model {
     // Full chain size is same as total size for single backup.
     this.backupInfo.fullChainSizeInBytes = this.backupInfo.backupSizeInBytes;
 
-    // Total time is the sum of each keyspace time taken currently.
-    // Will be max when we do parallel backups.
-    long totalTimeTaken =
-        this.backupInfo.backupList.stream().mapToLong(bI -> bI.timeTakenPartial).sum();
+    long totalTimeTaken = 0L;
+    if (this.category.equals(BackupCategory.YB_BACKUP_SCRIPT)) {
+      totalTimeTaken =
+          this.backupInfo.backupList.stream().mapToLong(bI -> bI.timeTakenPartial).sum();
+    } else {
+      totalTimeTaken = BackupUtil.getTimeTakenForParallelBackups(this.backupInfo.backupList);
+    }
     this.completionTime = new Date(totalTimeTaken + this.createTime.getTime());
     this.state = BackupState.Completed;
     this.save();
@@ -436,6 +448,36 @@ public class Backup extends Model {
     this.backupInfo.backupList.get(idx).backupSizeInBytes = totalSizeInBytes;
     this.backupInfo.backupList.get(idx).timeTakenPartial = totalTimeTaken;
     this.save();
+  }
+
+  public static BackupTableParams getBackupTableParamsFromKeyspaceOrNull(
+      Backup backup, String keyspace) {
+    return IterableUtils.find(
+        backup.backupInfo.backupList,
+        new Predicate<BackupTableParams>() {
+          public boolean evaluate(BackupTableParams tableParams) {
+            return tableParams.getKeyspace().equals(keyspace);
+          }
+        });
+  }
+
+  public interface BackupUpdater {
+    void run(Backup backup);
+  }
+
+  public static void saveDetails(UUID customerUUID, UUID backupUUID, BackupUpdater updater) {
+    BACKUP_KEY_LOCK.acquireLock(backupUUID);
+    try {
+      TransactionUtil.doInTxn(
+          () -> {
+            Backup backup = get(customerUUID, backupUUID);
+            updater.run(backup);
+            backup.save();
+          },
+          TransactionUtil.DEFAULT_RETRY_CONFIG);
+    } finally {
+      BACKUP_KEY_LOCK.releaseLock(backupUUID);
+    }
   }
 
   public void unsetExpiry() {
