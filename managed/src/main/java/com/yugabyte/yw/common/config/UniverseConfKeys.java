@@ -131,13 +131,20 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Number Of Cloud Releases To Keep",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  // TODO(): Add correct metadata
   public static final ConfKeyInfo<Integer> dbMemPostgresMaxMemMb =
       new ConfKeyInfo<>(
           "yb.dbmem.postgres.max_mem_mb",
           ScopeType.UNIVERSE,
           "DB Postgres Max Mem",
-          "TODO",
+          "Amount of memory to limit the postgres process to via the ysql cgroup",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> dbMemPostgresReadReplicaMaxMemMb =
+      new ConfKeyInfo<>(
+          "yb.dbmem.postgres.rr_max_mem_mb",
+          ScopeType.UNIVERSE,
+          "DB Postgres Max Mem for read replicas",
+          "Amount of memory to limit the postgres process in read replicas to via the ysql cgroup",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Long> dbMemAvailableLimit =
