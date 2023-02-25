@@ -115,6 +115,7 @@ public class NodeManager extends DevopsBase {
       ImmutableList.of(ServerType.MASTER.name(), ServerType.TSERVER.name());
   static final String SKIP_CERT_VALIDATION = "yb.tls.skip_cert_validation";
   public static final String POSTGRES_MAX_MEM_MB = "yb.dbmem.postgres.max_mem_mb";
+  public static final String POSTGRES_RR_MAX_MEM_MB = "yb.dbmem.postgres.rr_max_mem_mb";
   public static final String YBC_NFS_DIRS = "yb.ybc_flags.nfs_dirs";
   public static final String YBC_ENABLE_VERBOSE = "yb.ybc_flags.enable_verbose";
   public static final String YBC_PACKAGE_REGEX = ".+ybc(.*).tar.gz";
@@ -1606,10 +1607,21 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(localPackagePath);
           }
 
+          Integer postgres_max_mem_mb =
+              confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresMaxMemMb);
+
+          // For read replica clusters, use the read replica value if it is >= 0. -1 means to follow
+          // what the primary cluster has set.
+          Integer rr_max_mem_mb =
+              confGetter.getConfForScope(
+                  universe, UniverseConfKeys.dbMemPostgresReadReplicaMaxMemMb);
+          if (universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid).clusterType
+                  == UniverseDefinitionTaskParams.ClusterType.ASYNC
+              && rr_max_mem_mb >= 0) {
+            postgres_max_mem_mb = rr_max_mem_mb;
+          }
           commandArgs.add("--pg_max_mem_mb");
-          commandArgs.add(
-              Integer.toString(
-                  confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresMaxMemMb)));
+          commandArgs.add(Integer.toString(postgres_max_mem_mb));
 
           if (cloudType.equals(Common.CloudType.azu)) {
             NodeDetails node = universe.getNode(taskParam.nodeName);
@@ -1809,10 +1821,22 @@ public class NodeManager extends DevopsBase {
           commandArgs.add("--instance_type");
           commandArgs.add(taskParam.instanceType);
 
+          Integer postgres_max_mem_mb =
+              confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresMaxMemMb);
+
+          // For read replica clusters, use the read replica value if it is >= 0. -1 means to follow
+          // what the primary cluster has set.
+          Integer rr_max_mem_mb =
+              confGetter.getConfForScope(
+                  universe, UniverseConfKeys.dbMemPostgresReadReplicaMaxMemMb);
+          if (universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid).clusterType
+                  == UniverseDefinitionTaskParams.ClusterType.ASYNC
+              && rr_max_mem_mb >= 0) {
+            postgres_max_mem_mb = rr_max_mem_mb;
+          }
           commandArgs.add("--pg_max_mem_mb");
-          commandArgs.add(
-              Integer.toString(
-                  confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresMaxMemMb)));
+          commandArgs.add(Integer.toString(postgres_max_mem_mb));
+
           if (taskParam.force) {
             commandArgs.add("--force");
           }
