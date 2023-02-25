@@ -170,11 +170,22 @@ public class YbcBackupUtilTest extends FakeDBApplication {
             .type
             .equals(YbcBackupUtil.SnapshotObjectType.TABLE));
     assertTrue(
+        ybcBackupResponse
+            .snapshotObjectDetails
+            .get(2)
+            .type
+            .equals(YbcBackupUtil.SnapshotObjectType.DEFAULT_TYPE));
+
+    assertTrue(
         ybcBackupResponse.snapshotObjectDetails.get(0).data
             instanceof YbcBackupResponse.SnapshotObjectDetails.NamespaceData);
     assertTrue(
         ybcBackupResponse.snapshotObjectDetails.get(1).data
             instanceof YbcBackupResponse.SnapshotObjectDetails.TableData);
+    // Verify custom type does not fail
+    assertTrue(
+        ybcBackupResponse.snapshotObjectDetails.get(2).data
+            instanceof YbcBackupResponse.SnapshotObjectDetails.SnapshotObjectData);
   }
 
   @Test
