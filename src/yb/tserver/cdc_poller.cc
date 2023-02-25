@@ -152,13 +152,18 @@ bool CDCPoller::CheckOffline() { return shutdown_.load(); }
   RETURN_WHEN_OFFLINE(); \
   std::lock_guard<std::mutex> l(data_mutex_);
 
-void CDCPoller::SetSchemaVersion(SchemaVersion cur_version,
-                                 SchemaVersion last_compatible_consumer_schema_version) {
+void CDCPoller::SetSchemaVersion(
+    SchemaVersion cur_version, SchemaVersion last_compatible_consumer_schema_version) {
   RETURN_WHEN_OFFLINE();
-  WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::DoSetSchemaVersion,
-                                                 shared_from_this(), cur_version,
-                                                 last_compatible_consumer_schema_version)),
-              "Could not submit SetSchemaVersion to thread pool");
+
+  if (last_compatible_consumer_schema_version_ < last_compatible_consumer_schema_version ||
+      validated_schema_version_ < cur_version) {
+    WARN_NOT_OK(
+        thread_pool_->SubmitFunc(std::bind(
+            &CDCPoller::DoSetSchemaVersion, shared_from_this(), cur_version,
+            last_compatible_consumer_schema_version)),
+        "Could not submit SetSchemaVersion to thread pool");
+  }
 }
 
 void CDCPoller::DoSetSchemaVersion(SchemaVersion cur_version,
