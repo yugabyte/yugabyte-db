@@ -102,7 +102,7 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 static get_relation_info_hook_type prev_get_relation_info_hook = NULL;
 
 static bool hypo_index_match_table(hypoIndex *entry, Oid relid);
-static bool hypo_query_walker(Node *node);
+static bool hypo_is_simple_explain(Node *node);
 
 void
 _PG_init(void)
@@ -303,14 +303,13 @@ hypo_utility_hook(
 #endif
 				  )
 {
-	isExplain = query_or_expression_tree_walker(
+	isExplain = hypo_is_simple_explain(
 #if PG_VERSION_NUM >= 100000
-												(Node *) pstmt,
+									   (Node *) pstmt
 #else
-												parsetree,
+									   parsetree
 #endif
-												hypo_query_walker,
-												NULL, 0);
+									   );
 
 	if (prev_utility_hook)
 		prev_utility_hook(
@@ -404,7 +403,7 @@ hypo_index_match_table(hypoIndex *entry, Oid relid)
  * i.e. an EXPLAIN, no ANALYZE
  */
 static bool
-hypo_query_walker(Node *parsetree)
+hypo_is_simple_explain(Node *parsetree)
 {
 	if (parsetree == NULL)
 		return false;
@@ -414,6 +413,7 @@ hypo_query_walker(Node *parsetree)
 	if (parsetree == NULL)
 		return false;
 #endif
+
 	switch (nodeTag(parsetree))
 	{
 		case T_ExplainStmt:
