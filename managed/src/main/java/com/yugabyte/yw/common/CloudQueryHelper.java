@@ -152,15 +152,18 @@ public class CloudQueryHelper extends DevopsBase {
     return execAndParseCommandCloud(providerUUID, "ami", commandArgs);
   }
 
-  public JsonNode queryVpcs(UUID regionUUID) {
+  public JsonNode queryVpcs(UUID regionUUID, String arch) {
     List<String> commandArgs = new ArrayList<>();
+    if (arch != null) {
+      commandArgs.add("--architecture");
+      commandArgs.add(arch);
+    }
     return execAndParseCommandRegion(regionUUID, "vpc", commandArgs);
   }
 
-  public String getDefaultImage(Region region) {
+  public String getDefaultImage(Region region, String architecture) {
     String defaultImage = null;
-
-    JsonNode result = queryVpcs(region.uuid);
+    JsonNode result = queryVpcs(region.uuid, architecture);
 
     JsonNode regionInfo = result.get(region.code);
     if (regionInfo != null) {
