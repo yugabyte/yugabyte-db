@@ -317,6 +317,7 @@ Status KvStoreInfo::LoadFromPB(const KvStoreInfoPB& pb,
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
   has_been_fully_compacted = pb.has_been_fully_compacted();
+  last_full_compaction_time = pb.last_full_compaction_time();
 
   for (const auto& schedule_id : pb.snapshot_schedules()) {
     snapshot_schedules.insert(VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule_id)));
@@ -329,6 +330,7 @@ Status KvStoreInfo::MergeWithRestored(const KvStoreInfoPB& pb) {
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
   has_been_fully_compacted = pb.has_been_fully_compacted();
+  last_full_compaction_time = pb.last_full_compaction_time();
   for (const auto& table_pb : pb.tables()) {
     const auto& table_id = table_pb.table_id();
     auto table_it = tables.find(table_id);
@@ -358,6 +360,7 @@ void KvStoreInfo::ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const
     pb->set_upper_bound_key(upper_bound_key);
   }
   pb->set_has_been_fully_compacted(has_been_fully_compacted);
+  pb->set_last_full_compaction_time(last_full_compaction_time);
 
   // Putting primary table first, then all other tables.
   pb->mutable_tables()->Reserve(narrow_cast<int>(tables.size() + 1));
@@ -1327,6 +1330,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   metadata->kv_store_.upper_bound_key = upper_bound_key;
   metadata->kv_store_.rocksdb_dir = GetSubRaftGroupDataDir(raft_group_id);
   metadata->kv_store_.has_been_fully_compacted = false;
+  metadata->kv_store_.last_full_compaction_time = kNoLastFullCompactionTime;
   *metadata->partition_ = partition;
   metadata->state_ = kInitialized;
   metadata->tablet_data_state_ = TABLET_DATA_INIT_STARTED;

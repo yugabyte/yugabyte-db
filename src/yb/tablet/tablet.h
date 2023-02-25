@@ -86,6 +86,9 @@ YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 YB_STRONGLY_TYPED_BOOL(Abortable);
 YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
 
+YB_DEFINE_ENUM(FullCompactionReason, (PostSplit)(Scheduled));
+
+
 inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
   return static_cast<FlushFlags>(to_underlying(lhs) | to_underlying(rhs));
 }
@@ -419,7 +422,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Status AlterSchema(ChangeMetadataOperation* operation);
 
   // Used to update the tablets on the index table that the index has been backfilled.
-  // This means that major compactions can now garbage collect delete markers.
+  // This means that full compactions can now garbage collect delete markers.
   Status MarkBackfillDone(const TableId& table_id = "");
 
   // Change wal_retention_secs in the metadata.
@@ -702,6 +705,26 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // previously by this tablet.
   void TriggerPostSplitCompactionIfNeeded();
 
+  // Triggers a full compaction on this tablet (e.g. post tablet split, scheduled).
+  // It is an error to call this function if it was called previously
+  // and that compaction has not yet finished.
+  Status TriggerFullCompactionIfNeeded(FullCompactionReason reason);
+
+  bool HasActiveFullCompaction();
+
+  bool HasActiveFullCompactionUnlocked() const REQUIRES(full_compaction_token_mutex_) {
+    // Check if there is an active scheduled full compaction.
+    return full_compaction_task_pool_token_ != nullptr ?
+        !full_compaction_task_pool_token_->WaitFor(MonoDelta::kZero) :
+        false;
+  }
+
+  bool HasActiveTTLFileExpiration();
+
+  // Indicates whether this tablet can currently be compacted by any (non-admin) triggered
+  // full compaction.
+  bool IsEligibleForFullCompaction();
+
   // Verifies the data on this tablet for consistency. Returns status OK if checks pass.
   Status VerifyDataIntegrity();
 
@@ -818,7 +841,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Creates a new client::YBMetaDataCache object and atomically assigns it to metadata_cache_.
   void CreateNewYBMetaDataCache();
 
-  void TriggerPostSplitCompactionSync();
+  void TriggerFullCompactionSync(FullCompactionReason reason);
 
   // Opens read-only rocksdb at the specified directory and checks for any file corruption.
   Status OpenDbAndCheckIntegrity(const std::string& db_dir);
@@ -1019,15 +1042,15 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::shared_ptr<TabletRetentionPolicy> retention_policy_;
 
-  // Thread pool token for manually triggering compactions for tablets created from a split. This
-  // member is set when a post-split compaction is triggered on this tablet as the result of a call
-  // to TriggerPostSplitCompactionIfNeeded. It is an error to attempt to trigger another post-split
-  // compaction if this member is already set, as the existence of this member implies that such a
-  // compaction has already been triggered for this instance.
-  std::unique_ptr<ThreadPoolToken> post_split_compaction_task_pool_token_ = nullptr;
+  std::mutex full_compaction_token_mutex_;
 
-  // Pointer to shared thread pool in TsTabletManager. Managed by the TsTabletManager.
-  ThreadPool* post_split_compaction_pool_ = nullptr;
+  // Thread pool token for triggering full compactions for tablets via full compaction manager.
+  // Once set, this token is reused, but only when not active (HasActiveFullCompaction()).
+  std::unique_ptr<ThreadPoolToken> full_compaction_task_pool_token_
+      GUARDED_BY(full_compaction_token_mutex_);
+
+  // Pointer to shared thread pool in TsTabletManager. Managed by the FullCompactionManager.
+  ThreadPool* full_compaction_pool_ = nullptr;
 
   // Gauge to monitor post-split compactions that have been started.
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_post_split_compaction_added_;

@@ -83,6 +83,14 @@ MonoDelta MonoDeltaByMultiplication(V value, int64_t mul) {
   return MonoDelta::FromNanoseconds(delta);
 }
 
+MonoDelta MonoDelta::FromDays(double days) {
+  return MonoDeltaByMultiplication(days, MonoTime::kNanosecondsPerDay);
+}
+
+MonoDelta MonoDelta::FromHours(double hours) {
+  return MonoDeltaByMultiplication(hours, MonoTime::kNanosecondsPerHour);
+}
+
 MonoDelta MonoDelta::FromMinutes(double minutes) {
   return MonoDeltaByMultiplication(minutes, MonoTime::kNanosecondsPerMinute);
 }
@@ -151,6 +159,16 @@ double MonoDelta::ToSeconds() const {
 double MonoDelta::ToMinutes() const {
   auto seconds = ToSeconds();
   return seconds / MonoTime::kSecondsPerMinute;
+}
+
+double MonoDelta::ToHours() const {
+  auto minutes = ToMinutes();
+  return minutes / MonoTime::kMinutesPerHour;
+}
+
+double MonoDelta::ToDays() const {
+  auto hours = ToHours();
+  return hours / MonoTime::kHoursPerDay;
 }
 
 int64_t MonoDelta::ToNanoseconds() const {

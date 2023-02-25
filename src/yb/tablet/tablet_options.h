@@ -78,7 +78,7 @@ struct TabletInitData {
   TabletSplitter* tablet_splitter = nullptr;
   std::function<HybridTime(RaftGroupMetadata*)> allowed_history_cutoff_provider;
   TransactionManagerProvider transaction_manager_provider;
-  ThreadPool* post_split_compaction_pool;
+  ThreadPool* full_compaction_pool;
   scoped_refptr<yb::AtomicGauge<uint64_t>> post_split_compaction_added;
 };
 

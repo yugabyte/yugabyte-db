@@ -238,8 +238,8 @@ DEFINE_test_flag(bool, docdb_log_write_batches, false,
 DEFINE_test_flag(bool, export_intentdb_metrics, false,
                  "Dump intentsdb statistics to prometheus metrics");
 
-DEFINE_test_flag(bool, pause_before_post_split_compaction, false,
-                 "Pause before triggering post split compaction.");
+DEFINE_test_flag(bool, pause_before_full_compaction, false,
+                 "Pause before triggering full compaction.");
 
 DEFINE_test_flag(bool, disable_adding_user_frontier_to_sst, false,
                  "Prevents adding the UserFrontier to SST file in order to mimic older files.");
@@ -254,6 +254,10 @@ DEFINE_test_flag(bool, skip_post_split_compaction, false,
 DEFINE_test_flag(bool, disable_getting_user_frontier_from_mem_table, false,
                  "Prevents checking the MemTable for a UserFrontier for test cases where we are "
                  "generating SST files without UserFrontiers.");
+
+DEFINE_test_flag(bool, disable_adding_last_compaction_to_tablet_metadata, false,
+                 "Prevents adding the last full compaction time to tablet metadata upon "
+                 "full compaction completion.");
 
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_bool(consistent_restore);
@@ -387,10 +391,13 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
   void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo& ci) override {
     auto& metadata = *CHECK_NOTNULL(tablet_.metadata());
     if (ci.is_full_compaction) {
+      if (PREDICT_TRUE(!FLAGS_TEST_disable_adding_last_compaction_to_tablet_metadata)) {
+        metadata.set_last_full_compaction_time(tablet_.clock()->Now().ToUint64());
+      }
       if (!metadata.has_been_fully_compacted()) {
         metadata.set_has_been_fully_compacted(true);
-        ERROR_NOT_OK(metadata.Flush(), log_prefix_);
       }
+      ERROR_NOT_OK(metadata.Flush(), log_prefix_);
     }
     std::unordered_map<Uuid, SchemaVersion, UuidHash> table_id_to_min_schema_version;
     for (const auto& file : db->GetLiveFilesMetaData()) {
@@ -432,7 +439,7 @@ Tablet::Tablet(const TabletInitData& data)
       txns_enabled_(data.txns_enabled),
       retention_policy_(std::make_shared<TabletRetentionPolicy>(
           clock_, data.allowed_history_cutoff_provider, metadata_.get())),
-      post_split_compaction_pool_(data.post_split_compaction_pool),
+      full_compaction_pool_(data.full_compaction_pool),
       ts_post_split_compaction_added_(std::move(data.post_split_compaction_added)) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
@@ -728,9 +735,7 @@ Status Tablet::OpenKeyValueTablet() {
   // Use a function that checks the table TTL before returning a value for max file size
   // for compactions.
   rocksdb_options.max_file_size_for_compaction = MakeMaxFileSizeWithTableTTLFunction([this] {
-    if (FLAGS_rocksdb_max_file_size_for_compaction > 0 &&
-        retention_policy_->GetRetentionDirective().table_ttl !=
-            docdb::ValueControlFields::kMaxTtl) {
+    if (HasActiveTTLFileExpiration()) {
       return FLAGS_rocksdb_max_file_size_for_compaction;
     }
     return std::numeric_limits<uint64_t>::max();
@@ -1044,8 +1049,11 @@ void Tablet::CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown) 
   WARN_NOT_OK(CompleteShutdownRocksDBs(Destroy::kFalse, &(*op_pauses)),
               "Failed to reset rocksdb during shutdown");
 
-  if (post_split_compaction_task_pool_token_) {
-    post_split_compaction_task_pool_token_->Shutdown();
+  {
+    std::lock_guard<std::mutex> lock(full_compaction_token_mutex_);
+    if (full_compaction_task_pool_token_) {
+      full_compaction_task_pool_token_->Shutdown();
+    }
   }
 
   state_ = kShutdown;
@@ -3657,39 +3665,67 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string *partition_spli
   return middle_key;
 }
 
+bool Tablet::HasActiveFullCompaction() {
+  std::lock_guard<std::mutex> lock(full_compaction_token_mutex_);
+  return HasActiveFullCompactionUnlocked();
+}
+
 void Tablet::TriggerPostSplitCompactionIfNeeded() {
   if (PREDICT_FALSE(FLAGS_TEST_skip_post_split_compaction)) {
     LOG(INFO) << "Skipping post split compaction due to FLAGS_TEST_skip_post_split_compaction";
     return;
   }
-  if (!post_split_compaction_pool_ || state_ != State::kOpen) {
+  if (!StillHasOrphanedPostSplitDataAbortable()) {
     return;
   }
-  Status status = Status::OK();
-  if (post_split_compaction_task_pool_token_) {
-    status = STATUS(
-        IllegalState, "Already triggered post split compaction for this tablet instance.");
-  }
-  if (status.ok() && StillHasOrphanedPostSplitDataAbortable()) {
-    post_split_compaction_task_pool_token_ =
-        post_split_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
-    status = post_split_compaction_task_pool_token_->SubmitFunc(
-        std::bind(&Tablet::TriggerPostSplitCompactionSync, this));
-    if (status.ok()) {
-      ts_post_split_compaction_added_->Increment();
-    }
-  }
-  if (!status.ok()) {
+  auto status = TriggerFullCompactionIfNeeded(FullCompactionReason::PostSplit);
+  if (status.ok()) {
+    ts_post_split_compaction_added_->Increment();
+  } else if (!status.IsServiceUnavailable()) {
     LOG_WITH_PREFIX(WARNING) << "Failed to submit compaction for post-split tablet: "
                              << status.ToString();
   }
 }
 
-void Tablet::TriggerPostSplitCompactionSync() {
-  TEST_PAUSE_IF_FLAG(TEST_pause_before_post_split_compaction);
-  LOG_WITH_PREFIX(INFO) << "Beginning post-split compaction on this tablet";
+Status Tablet::TriggerFullCompactionIfNeeded(FullCompactionReason compaction_reason) {
+  if (!full_compaction_pool_ || state_ != State::kOpen) {
+    return STATUS(ServiceUnavailable, "Full compaction thread pool unavailable.");
+  }
+
+  std::lock_guard<std::mutex> lock(full_compaction_token_mutex_);
+  if (HasActiveFullCompactionUnlocked()) {
+    return STATUS(
+        ServiceUnavailable, "Full compaction already running on this tablet.");
+  }
+
+  if (!full_compaction_task_pool_token_) {
+    full_compaction_task_pool_token_ =
+        full_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
+  }
+
+  return full_compaction_task_pool_token_->SubmitFunc(
+      std::bind(&Tablet::TriggerFullCompactionSync, this, compaction_reason));
+}
+
+void Tablet::TriggerFullCompactionSync(FullCompactionReason reason) {
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_full_compaction);
+  LOG_WITH_PREFIX(INFO) << "Beginning full compaction on this tablet. "
+      << "Reason: " << ToString(reason);
   WARN_WITH_PREFIX_NOT_OK(
-      ForceFullRocksDBCompact(), LogPrefix() + "Failed to compact post-split tablet.");
+      ForceFullRocksDBCompact(), LogPrefix() + "Failed tablet full compaction ("
+      + ToString(reason) + ")");
+}
+
+bool Tablet::HasActiveTTLFileExpiration() {
+  return FLAGS_rocksdb_max_file_size_for_compaction > 0
+      && retention_policy_->GetRetentionDirective().table_ttl !=
+            docdb::ValueControlFields::kMaxTtl;
+}
+
+bool Tablet::IsEligibleForFullCompaction() {
+  return !HasActiveFullCompaction()
+      && !HasActiveTTLFileExpiration()
+      && GetCurrentVersionNumSSTFiles() != 0;
 }
 
 Status Tablet::VerifyDataIntegrity() {
