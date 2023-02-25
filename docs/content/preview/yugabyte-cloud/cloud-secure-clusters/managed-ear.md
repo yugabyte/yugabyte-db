@@ -34,9 +34,9 @@ You must be signed in as an Admin user to manage cluster-level EAR.
 
 - CMK created in AWS KMS.
 - Amazon Resource Name (ARN) of the CMK.
-- An access key for an IAM user with permissions for the CMK. An access key consists of an access key ID and a secret access key. For more information, refer to [Managing access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html) in the AWS documentation.
+- An access key for an [IAM identity](https://docs.aws.amazon.com/IAM/latest/UserGuide/id.html) with permissions for the CMK. An access key consists of an access key ID and the secret access key. For more information, refer to [Managing access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html) in the AWS documentation.
 
-To use your own customer managed key (CMK) to encrypt your data, make sure you have created an identity in your AWS IAM, and configured the CMK in AWS KMS. For more information on AWS KMS, refer to [AWS Key Management Service](https://docs.aws.amazon.com/kms/) in the AWS documentation.
+For more information on AWS KMS, refer to [AWS Key Management Service](https://docs.aws.amazon.com/kms/) in the AWS documentation.
 
 ## Encrypt a cluster
 
@@ -45,7 +45,7 @@ You can enable database EAR for clusters deployed in AWS as follows:
 1. On the cluster **Settings** tab, select **Encryption at rest**.
 1. Click **Enable Encryption**.
 1. Enter the ARN of the CMK to use to encrypt the cluster database.
-1. Enter the Access key of an IAM user with permissions for the CMK. An access key consists of an access key ID and a secret access key.
+1. Enter the Access key of an IAM identity with permissions for the CMK. An access key consists of an access key ID and the secret access key.
 1. Click **Encrypt**.
 
 YugabyteDB Managed validates the key and, if successful, starts encrypting the database.
