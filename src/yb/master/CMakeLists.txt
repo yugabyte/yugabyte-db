@@ -54,7 +54,8 @@ set(MASTER_YRPC_LIBS
   rpc_header_proto
   tablet_proto
   tserver_proto
-  cdc_consumer_proto)
+  cdc_consumer_proto
+  xcluster_producer_proto)
 ADD_YB_LIBRARY(master_proto
   SRCS ${MASTER_YRPC_SRCS}
   DEPS ${MASTER_YRPC_LIBS}

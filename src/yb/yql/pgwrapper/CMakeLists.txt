@@ -38,6 +38,7 @@ add_dependencies(
   gen_src_yb_tserver_tserver_proto
   gen_src_yb_tserver_tserver_types_proto
   gen_src_yb_cdc_cdc_consumer_proto
+  gen_src_yb_cdc_xcluster_producer_proto
   gen_src_yb_encryption_encryption_proto
   gen_src_yb_master_master_heartbeat_proto
   gen_src_yb_master_master_types_proto

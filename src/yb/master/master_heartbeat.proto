@@ -17,6 +17,7 @@ package yb.master;
 option java_package = "org.yb.master";
 
 import "yb/cdc/cdc_consumer.proto";
+import "yb/cdc/xcluster_producer.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/encryption/encryption.proto";
@@ -206,6 +207,8 @@ message TSHeartbeatRequestPB {
   repeated TabletReplicationStatusPB replication_state = 16;
 
   optional uint32 auto_flags_config_version = 17;
+
+  optional uint32 xcluster_config_version = 18;
 }
 
 message TSHeartbeatResponsePB {
@@ -271,6 +274,10 @@ message TSHeartbeatResponsePB {
   map<string, fixed64> xcluster_namespace_to_safe_time = 21;
 
   optional AutoFlagsConfigPB auto_flags_config = 22;
+
+  optional xcluster.ProducerRegistryPB xcluster_producer_registry = 23;
+
+  optional uint32 xcluster_config_version = 24;
 }
 
 service MasterHeartbeat {

@@ -240,6 +240,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Currently only used by cdc.
   virtual int32_t cluster_config_version() const;
 
+  Result<uint32_t> XClusterConfigVersion() const;
+
+  Status SetPausedXClusterProducerStreams(
+      const ::google::protobuf::Map<::std::string, bool>& paused_producer_stream_ids,
+      uint32_t xcluster_config_version);
+
   client::TransactionPool& TransactionPool() override;
 
   const std::shared_future<client::YBClient*>& client_future() const override;

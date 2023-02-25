@@ -255,6 +255,15 @@ message SetUniverseReplicationEnabledResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message PauseResumeXClusterProducerStreamsRequestPB {
+  repeated string stream_ids = 1;
+  optional bool is_paused = 2;
+}
+
+message PauseResumeXClusterProducerStreamsResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 message GetUniverseReplicationRequestPB {
   optional string producer_id = 1;
 }
@@ -434,6 +443,8 @@ service MasterReplication {
       returns (AlterUniverseReplicationResponsePB);
   rpc SetUniverseReplicationEnabled(SetUniverseReplicationEnabledRequestPB)
       returns (SetUniverseReplicationEnabledResponsePB);
+  rpc PauseResumeXClusterProducerStreams(PauseResumeXClusterProducerStreamsRequestPB)
+      returns (PauseResumeXClusterProducerStreamsResponsePB);
   rpc GetUniverseReplication(GetUniverseReplicationRequestPB)
       returns (GetUniverseReplicationResponsePB);
   rpc IsSetupUniverseReplicationDone(IsSetupUniverseReplicationDoneRequestPB)

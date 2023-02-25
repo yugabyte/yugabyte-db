@@ -114,6 +114,7 @@ class CDCServiceImpl : public CDCServiceIf {
       const ListTabletsRequestPB* req, ListTabletsResponsePB* resp, rpc::RpcContext rpc) override;
   void GetChanges(
       const GetChangesRequestPB* req, GetChangesResponsePB* resp, rpc::RpcContext rpc) override;
+  bool IsReplicationPausedForStream(const std::string& stream_id) const EXCLUDES(mutex_);
   void GetCheckpoint(
       const GetCheckpointRequestPB* req,
       GetCheckpointResponsePB* resp,
@@ -201,6 +202,13 @@ class CDCServiceImpl : public CDCServiceIf {
   static bool IsCDCSDKSnapshotRequest(const CDCSDKCheckpointPB& req_checkpoint);
 
   static bool IsCDCSDKSnapshotBootstrapRequest(const CDCSDKCheckpointPB& req_checkpoint);
+
+  // Sets paused producer XCluster streams.
+  void SetPausedXClusterProducerStreams(
+      const ::google::protobuf::Map<std::string, bool>& paused_producer_stream_ids,
+      uint32_t xcluster_config_version);
+
+  uint32_t GetXClusterConfigVersion() const;
 
  private:
   FRIEND_TEST(CDCServiceTest, TestMetricsOnDeletedReplication);
@@ -465,6 +473,10 @@ class CDCServiceImpl : public CDCServiceIf {
 
   // True when the server is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};
+
+  std::unordered_set<std::string> paused_xcluster_producer_streams_ GUARDED_BY(mutex_);
+
+  uint32_t xcluster_config_version_ GUARDED_BY(mutex_) = 0;
 };
 
 }  // namespace cdc
