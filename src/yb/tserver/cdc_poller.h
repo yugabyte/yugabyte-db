@@ -106,8 +106,8 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
   std::atomic<bool> shutdown_ = false;
 
   OpIdPB op_id_ GUARDED_BY(data_mutex_);
-  SchemaVersion validated_schema_version_ GUARDED_BY(data_mutex_);
-  SchemaVersion last_compatible_consumer_schema_version_ GUARDED_BY(data_mutex_);
+  std::atomic<SchemaVersion> validated_schema_version_;
+  std::atomic<SchemaVersion> last_compatible_consumer_schema_version_;
 
   Status status_ GUARDED_BY(data_mutex_);
   std::shared_ptr<cdc::GetChangesResponsePB> resp_ GUARDED_BY(data_mutex_);
