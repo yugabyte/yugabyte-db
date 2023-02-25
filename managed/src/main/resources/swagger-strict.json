@@ -1895,6 +1895,11 @@
           "description" : "Node exporter user",
           "type" : "string"
         },
+        "parallelDBBackups" : {
+          "description" : "Parallel DB backups",
+          "format" : "int32",
+          "type" : "integer"
+        },
         "parallelism" : {
           "description" : "Number of concurrent commands to run on nodes over SSH",
           "format" : "int32",

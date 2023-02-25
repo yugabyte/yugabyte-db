@@ -863,15 +863,8 @@ public class Util {
   }
 
   public static String getYbcNodeIp(Universe universe) {
-    HostAndPort hostPort = universe.getMasterLeader();
-    String nodeIp = hostPort.getHost();
-    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes) {
-      List<NodeDetails> nodeList = universe.getLiveTServersInPrimaryCluster();
-      if (CollectionUtils.isNotEmpty(nodeList)) {
-        nodeIp = nodeList.get(0).cloudInfo.private_ip;
-      }
-    }
-    return nodeIp;
+    List<NodeDetails> nodeList = universe.getLiveTServersInPrimaryCluster();
+    return nodeList.get(0).cloudInfo.private_ip;
   }
 
   public static String computeFileChecksum(Path filePath, String checksumAlgorithm)
