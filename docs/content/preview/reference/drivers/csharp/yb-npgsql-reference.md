@@ -40,7 +40,7 @@ For more information on the Yugabyte Npgsql smart driver, see the following:
 - [GitHub repository](https://github.com/yugabyte/npgsql)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 
-### Download the driver dependency
+## Download the driver dependency
 
 If you are using Visual Studio IDE, add the NpgsqlYugabyteDB package to your project as follows:
 

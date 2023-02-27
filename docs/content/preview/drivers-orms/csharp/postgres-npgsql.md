@@ -263,7 +263,13 @@ namespace Yugabyte_CSharp_Demo
 }
 ```
 
-To run the project `Program.cs`, choose _Run -> Start Without Debugging_.
+## Run the application
+
+To run the project `Program.cs` in Visual Studio Code, from the **Run** menu, choose **Start Without Debugging**. If you aren't using an IDE, enter the following command:
+
+```csharp
+dotnet run
+```
 
 You should see output similar to the following if you're using SSL:
 

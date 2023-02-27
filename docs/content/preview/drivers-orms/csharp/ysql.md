@@ -90,7 +90,6 @@ The following table describes the connection parameters required to connect, inc
 | YB Servers Refresh Interval | If Load Balance Hosts is true, the interval in seconds to refresh the servers list | 300 |
 | Topology Keys | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | Null |
 
-
 {{< note title ="Note" >}}
 The behaviour of `Load Balance Hosts` is different in YugabyteDB Npgsql Smart Driver as compared to the upstream driver. The upstream driver balances connections on the list of hosts provided in the `Host` property, whereas the smart driver balances the connections on the list of servers returned by the `yb_servers()` function.
 {{< /note >}}
@@ -179,7 +178,13 @@ namespace Yugabyte_CSharp_Demo
 }
 ```
 
-To run the project `Program.cs`, choose _Run -> Start Without Debugging_.
+## Run the application
+
+To run the project `Program.cs` in Visual Studio Code, from the **Run** menu, choose **Start Without Debugging**. If you aren't using an IDE, enter the following command:
+
+```csharp
+dotnet run
+```
 
 You should see output similar to the following:
 
