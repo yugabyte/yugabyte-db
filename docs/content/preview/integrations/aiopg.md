@@ -67,7 +67,7 @@ loop.run_until_complete(go())
 
 ### Run the application
 
-To use the application, run the following Python script as follows:
+To use the application, run the following Python script:
 
 ```sh
 python yb-sql-helloworld.py
