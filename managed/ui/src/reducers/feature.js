@@ -25,7 +25,7 @@ const initialStateFeatureInTest = {
   enableNotificationTemplates: false,
   enableRestore: false,
   enablePrefillKubeConfig: false,
-  enableNewUI: false
+  enableNewUI: true // feature flag to enable new revamped UI
 };
 
 const initialStateFeatureReleased = {
