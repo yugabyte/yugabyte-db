@@ -299,7 +299,7 @@ You need to perform the following steps:
 
   ![img](/images/yp/docker-image.png)
 
-- Follow the link to use [custom container registry](../install-yugabyte-platform/install-software/kubernetes/#specify-custom-container-registry).
+- Follow the link to use [custom container registry](../../install-software/kubernetes/#specify-custom-container-registry).
 
 - Install YugabyteDB Anywhere Helm chart using the custom container registry, as follows:
 
