@@ -60,7 +60,8 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
       <DropdownButton
         className="actions-btn"
         title="..."
-        id="pitr-actions-dropdown"
+        id={`pitr-actions-dropdown-${row.dbName}-${TableTypeLabel[row.tableType]}`}
+        data-testid={`PitrActionBtn-${row.dbName}-${TableTypeLabel[row.tableType]}`}
         noCaret
         pullRight
         onClick={(e: any) => e.stopPropagation()}
@@ -71,6 +72,7 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
             row.minRecoverTimeInMillis && setRecoveryItem(_.cloneDeep(row));
           }}
           disabled={!row.minRecoverTimeInMillis}
+          data-testid="PitrRecoveryAction"
         >
           Recover to a Point in Time
         </MenuItem>
@@ -81,6 +83,7 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
           }}
           className="action-danger"
           disabled={!row.minRecoverTimeInMillis}
+          data-testid="PitrDisableAction"
         >
           Disable Point-in-time Recovery
         </MenuItem>
@@ -121,6 +124,7 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
               btnClass="btn btn-orange backup-empty-button"
               btnText="Enable Point-In-Time Recovery"
               onClick={() => setShowEnableModal(true)}
+              id="EnablePitrBtn"
             />
           </div>
           <div className="info-text">Databases/Keyspaces with Point-In-Time Recovery Enabled</div>
