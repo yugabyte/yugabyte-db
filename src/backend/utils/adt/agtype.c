@@ -5508,6 +5508,87 @@ Datum age_exists(PG_FUNCTION_ARGS)
     PG_RETURN_BOOL(true);
 }
 
+PG_FUNCTION_INFO_V1(age_isempty);
+/*
+ * Executor function for isEmpty(property).
+ */
+
+Datum age_isempty(PG_FUNCTION_ARGS)
+{
+    Datum *args;
+    Datum arg;
+    bool *nulls;
+    Oid *types;
+    char *string = NULL;
+    Oid type;
+    int64 result;
+
+    /* extract argument values */
+    extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    /*
+     * isEmpty() supports cstring, text, or the agtype string or list input
+     */
+    arg = args[0];
+    type = types[0];
+
+    if (type == CSTRINGOID)
+    {
+        string = DatumGetCString(arg);
+        result = strlen(string);
+    }
+    else if (type == TEXTOID)
+    {
+        string = text_to_cstring(DatumGetTextPP(arg));
+        result = strlen(string);
+    }
+    else if (type == AGTYPEOID)
+    {
+        agtype *agt_arg;
+
+        /* get the agtype argument */
+        agt_arg = DATUM_GET_AGTYPE_P(arg);
+
+        if (AGT_ROOT_IS_SCALAR(agt_arg))
+        {
+            agtype_value *agtv_value;
+
+            agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+            if (agtv_value->type == AGTV_STRING)
+            {
+                result = agtv_value->val.string.len;
+            }
+            else
+            {
+                ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                                        errmsg("isEmpty() unsupported argument, expected a List, Map, or String")));
+            }
+        }
+        else if (AGT_ROOT_IS_ARRAY(agt_arg))
+        {
+            result = AGT_ROOT_COUNT(agt_arg);
+        }
+        else if (AGT_ROOT_IS_OBJECT(agt_arg))
+        {
+            result = AGT_ROOT_COUNT(agt_arg);
+        }
+        else
+        {
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("isEmpty() unsupported argument, expected a List, Map, or String")));
+        }
+    }
+    else
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("isEmpty() unsupported argument, expected a List, Map, or String")));
+    }
+
+    /* build the result */
+    PG_RETURN_BOOL(result == 0);
+}
+
 PG_FUNCTION_INFO_V1(age_label);
 /*
  * Executor function for label(edge/vertex).

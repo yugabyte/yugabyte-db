@@ -416,6 +416,103 @@ SELECT * FROM cypher('cypher_match',
 AS (u agtype);
 
 --
+-- MATCH with WHERE isEmpty(property)
+--
+
+SELECT create_graph('for_isEmpty');
+
+-- Create vertices
+
+SELECT * FROM cypher('for_isEmpty',
+ $$CREATE (u:for_pred {id:1, type: "empty", list: [], map: {}, string: ""}),
+		  (v:for_pred {id:2, type: "filled", list: [1], map: {a:1}, string: "a"}),
+		  (w:for_pred)$$)
+AS (a agtype);
+
+-- Match vertices with empty properties
+
+SELECT * FROM cypher('for_isEmpty',
+ $$MATCH (u:for_pred) WHERE isEmpty(u.list) RETURN properties(u) $$)
+AS (u agtype);
+
+SELECT * FROM cypher('for_isEmpty',
+ $$MATCH (u:for_pred) WHERE isEmpty(u.map) RETURN properties(u) $$)
+AS (u agtype);
+
+SELECT * FROM cypher('for_isEmpty',
+ $$MATCH (u:for_pred) WHERE isEmpty(u.string) RETURN properties(u) $$)
+AS (u agtype);
+
+-- Match vertices with non-empty properties
+
+SELECT * FROM cypher('for_isEmpty',
+ $$MATCH (u:for_pred) WHERE NOT isEmpty(u.list) RETURN properties(u) $$)
+AS (u agtype);
+
+SELECT * FROM cypher('for_isEmpty',
+ $$MATCH (u:for_pred) WHERE NOT isEmpty(u.map) RETURN properties(u) $$)
+AS (u agtype);
+
+SELECT * FROM cypher('for_isEmpty',
+ $$MATCH (u:for_pred) WHERE NOT isEmpty(u.string) RETURN properties(u) $$)
+AS (u agtype);
+
+-- Match vertices with no properties
+
+SELECT * FROM cypher('for_isEmpty',
+ $$MATCH (u:for_pred) WHERE isEmpty(properties(u)) RETURN properties(u) $$)
+AS (u agtype);
+
+-- Match vertices with properties
+
+SELECT * FROM cypher('for_isEmpty',
+ $$MATCH (u:for_pred) WHERE NOT isEmpty(properties(u)) RETURN properties(u) $$)
+AS (u agtype);
+
+-- Match vertices with null property (should return nothing since WHERE null)
+
+SELECT * FROM cypher('for_isEmpty',
+ $$MATCH (u:for_pred) WHERE isEmpty(u.tree) RETURN properties(u) $$)
+AS (u agtype);
+
+-- Match and Return bool
+
+SELECT * FROM cypher('for_isEmpty',
+ $$MATCH (u:for_pred) WHERE isEmpty(u.list) RETURN isEmpty(u.list), u.type $$)
+AS (b agtype, type agtype);
+
+SELECT * FROM cypher('for_isEmpty',
+ $$MATCH (u:for_pred) WHERE NOT isEmpty(u.list) RETURN isEmpty(u.list), u.type $$)
+AS (b agtype, type agtype);
+
+-- Return null on null
+
+SELECT * FROM cypher('for_isEmpty',
+ $$MATCH (u:for_pred) RETURN isEmpty(u.tree) $$)
+AS (b agtype);
+
+-- Should give an error
+
+SELECT * FROM cypher('for_isEmpty',
+ $$MATCH (u:for_pred) WHERE isEmpty(u) RETURN properties(u) $$)
+AS (u agtype);
+
+SELECT * FROM cypher('for_isEmpty',
+ $$MATCH (u:for_pred) WHERE isEmpty(1) RETURN properties(u) $$)
+AS (u agtype);
+
+SELECT * FROM cypher('for_isEmpty',
+ $$MATCH (u:for_pred) WHERE isEmpty(1,2,3) RETURN properties(u) $$)
+AS (u agtype);
+
+SELECT * FROM cypher('for_isEmpty',
+ $$MATCH (u:for_pred) WHERE isEmpty() RETURN properties(u) $$)
+AS (u agtype);
+
+-- clean up
+SELECT drop_graph('for_isEmpty', true);
+
+--
 --Distinct
 --
 SELECT * FROM cypher('cypher_match', $$
