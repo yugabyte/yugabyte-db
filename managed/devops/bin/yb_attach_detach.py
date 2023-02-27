@@ -9,8 +9,10 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 import argparse
 import io
+import json
 import logging
 import mimetypes
+import os.path
 import re
 import shutil
 import urllib.request as urllib_request
@@ -38,13 +40,15 @@ class YBAttachDetach:
         /Users/cwang/Downloads/output.tar.gz -p http://localhost:9000 -c
         f33e3c9b-75ab-4c30-80ad-cba85646ea39 -t ce5dd0f1-3e3f-4334-aa64-28f1c87cb3f2
     """
-    def __init__(self, action, universe_uuid, file, customer_uuid, api_token, platform_host):
+    def __init__(self, action, universe_uuid, file, customer_uuid,
+                 api_token, platform_host, skip_releases):
         self.action = action
         self.universe_uuid = universe_uuid
         self.file = file
         self.customer_uuid = customer_uuid
         self.api_token = api_token
         self.platform_host = platform_host
+        self.skip_releases = skip_releases
         self.set_url_request_variables()
 
     def run(self):
@@ -66,8 +70,12 @@ class YBAttachDetach:
             logging.info("Completed attaching universe.")
         elif self.action == DETACH_ACTION:
             logging.info("Detaching universe...")
+            data = {
+                "skipReleases": self.skip_releases
+            }
             req = urllib_request.Request(
-                url=self.detach_url, method="POST", headers=self.default_headers)
+                url=self.detach_url, method="POST", headers=self.default_headers,
+                data=json.dumps(data).encode())
             with urllib_request.urlopen(req) as response, open(self.file, "wb") as file:
                 shutil.copyfileobj(response, file)
             logging.info("Completed detaching universe.")
@@ -88,6 +96,9 @@ class YBAttachDetach:
                 f"Invalid action passed in. Got {self.action}. "
                 f"Expected one of: {VALID_ACTIONS}")
 
+        if (self.action == DETACH_ACTION and os.path.isfile(self.file)):
+            raise ValueError(f"File {self.file} already exists")
+
     def set_url_request_variables(self):
         """
         Use arguments passed in to generate required urls/headers
@@ -98,7 +109,10 @@ class YBAttachDetach:
                            f"{self.customer_uuid}/universes/{self.universe_uuid}/import")
         self.detach_url = (f"{self.base_url}/customers/"
                            f"{self.customer_uuid}/universes/{self.universe_uuid}/export")
-        self.default_headers = {"X-AUTH-YW-API-TOKEN": self.api_token}
+        self.default_headers = {
+            "X-AUTH-YW-API-TOKEN": self.api_token,
+            "Content-Type": "application/json"
+        }
         logging.debug("Base url: %s", self.base_url)
         logging.debug("Detach url: %s", self.detach_url)
         logging.debug("Attach url: %s", self.attach_url)
@@ -139,6 +153,10 @@ def parse_arguments():
     parser.add_argument(
         "-p", "--platform_host", required=True,
         help="Base endpoint platform requests are sent to")
+    parser.add_argument(
+        "-s", "--skip_releases", action="store_true",
+        required=False, default=False,
+        help="For detach, whether or not do include software and ybc releases")
     args = parser.parse_args()
 
     logging.info("\n")
@@ -149,6 +167,8 @@ def parse_arguments():
     logging.info("Customer: %s", args.customer)
     logging.info("Api token: %s", args.api_token)
     logging.info("Platform host: %s", args.platform_host)
+    if (args.action == "detach_universe"):
+        logging.info("Skip releases: %s", args.skip_releases)
     logging.info("------------------------------------------------------")
     logging.info("\n")
 
@@ -233,5 +253,5 @@ if __name__ == "__main__":
     cmd_args = parse_arguments()
     yb_attach_detach = YBAttachDetach(
         cmd_args.action, cmd_args.univ_uuid, cmd_args.file,
-        cmd_args.customer, cmd_args.api_token, cmd_args.platform_host)
+        cmd_args.customer, cmd_args.api_token, cmd_args.platform_host, cmd_args.skip_releases)
     yb_attach_detach.run()
