@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
@@ -33,7 +34,6 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.nio.file.Paths;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -41,7 +41,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -70,7 +69,7 @@ public class ReleaseManager {
   private static final String YB_PACKAGE_REGEX =
       "yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz";
 
-  private final ConfigHelper configHelper;
+  public final ConfigHelper configHelper;
   private final Configuration appConfig;
   private final GFlagsValidation gFlagsValidation;
   private final Commissioner commissioner;
@@ -292,6 +291,12 @@ public class ReleaseManager {
       }
       List<Package> matched = matchPackages(arch);
       return matched.size() > 0;
+    }
+
+    @ApiModelProperty(value = "local release", hidden = true)
+    @JsonIgnore
+    public boolean isLocalRelease() {
+      return !(s3 != null || gcs != null || http != null);
     }
   }
 
@@ -885,7 +890,7 @@ public class ReleaseManager {
       List<String> missingGFlagsFilesList = gFlagsValidation.getMissingGFlagFileList(version);
       if (missingGFlagsFilesList.size() != 0) {
         String releasesPath = appConfig.getString(Util.YB_RELEASES_PATH);
-        if (isLocalRelease(releaseMetadata)) {
+        if (releaseMetadata.isLocalRelease()) {
           try (InputStream inputStream = getTarGZipDBPackageInputStream(version, releaseMetadata)) {
             gFlagsValidation.fetchGFlagFilesFromTarGZipInputStream(
                 inputStream, version, missingGFlagsFilesList, releasesPath);
@@ -1018,9 +1023,5 @@ public class ReleaseManager {
 
   public boolean getInUse(String version) {
     return Universe.existsRelease(version);
-  }
-
-  private boolean isLocalRelease(ReleaseMetadata rm) {
-    return !(rm.s3 != null || rm.gcs != null || rm.http != null);
   }
 }
