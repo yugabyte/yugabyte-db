@@ -82,6 +82,4 @@ When managing universes with database version 2.16 and later using YBA version 2
     </a>
   </div>
 
-
-
 </div>
