@@ -7,34 +7,59 @@ Below is the complete list of release notes for every version of ``pg_stat_monit
 ### Improvements
 
 [PG-310](https://jira.percona.com/browse/PG-310): Bucket is “Done” vs still being current/last 
+
 [PG-400](https://jira.percona.com/browse/PG-400): Add timezone in datetime columns in pg_stat_monitor view.
+
 [PG-435](https://jira.percona.com/browse/PG-435): PostgreSQL 15 Support by adding newly introduced columns
+
 [PG-488](https://jira.percona.com/browse/PG-488): Update query buffer overflow management to use dynamic shared memory
+
 [PG-543](https://jira.percona.com/browse/PG-543): PostgreSQL's pg_stat_statements compatible view. 
+
 [PG-545](https://jira.percona.com/browse/PG-545): Same query text should generate same queryid
+
 [PG-569](https://jira.percona.com/browse/PG-569): Make all data types of pg_stat_monitor view compatible with pg_stat_statements
+
 [PG-586](https://jira.percona.com/browse/PG-586): CPU and user timing should be captured for utility statements as well
+
 [PG-588](https://jira.percona.com/browse/PG-588): Fix missing query and query normalization issue; rearchitect pg_stat_monitor
+
 [PG-606](https://jira.percona.com/browse/PG-606): New GUC required for enabling/disabling of pgsm_query_id calculation
+
 [PG-607](https://jira.percona.com/browse/PG-607): Allow histogram to track queries in sub-ms time brackets
                                 
 ### Bug Fixes
 
 [PG-265](https://jira.percona.com/browse/PG-265): Make cpu_user_time and cpu_sys_time cumulative.
+
 [PG-306](https://jira.percona.com/browse/PG-306): bucket_start_time - TEXT vs TIMESTAMP? 
+
 [PG-320](https://jira.percona.com/browse/PG-320): Remove state/state_code fields from pg_stat_monitor_view.
+
 [PG-354](https://jira.percona.com/browse/PG-354): Remove pg_stat_monitor_settings view
+
 [PG-373](https://jira.percona.com/browse/PG-373): Remove wal fields for PG12 and below
+
 [PG-518](https://jira.percona.com/browse/PG-518): Internal Functions should NOT be visible in PGSM API. 
+
 [PG-552](https://jira.percona.com/browse/PG-552): Column names not correct for PG-12 & 11 on PGSM main branch. 
+
 [PG-579](https://jira.percona.com/browse/PG-579): Querying pg_stat_monitor view crashes the server when pg_stat_monitor.so is not configured in shared_preload_libraries
+
 [PG-582](https://jira.percona.com/browse/PG-582): blk_read_time and blk_write_time are not being rounded. 
+
 [PG-583](https://jira.percona.com/browse/PG-583): Rounded time based values are not consistent  
+
 [PG-591](https://jira.percona.com/browse/PG-591): cpu_sys_time is not rounded off intermittently. 
+
 [PG-593](https://jira.percona.com/browse/PG-593): min_exec_time should not be 0
+
 [PG-594](https://jira.percona.com/browse/PG-594): PG-13 *_exec_times now being rounded off. 
+
 [PG-597](https://jira.percona.com/browse/PG-597): Remove rounding off for floating point values
+
 [PG-601](https://jira.percona.com/browse/PG-601): Histogram ranges are not correct.
+
 [PG-605](https://jira.percona.com/browse/PG-605): Fix TAP Tests framework crash 
 
 ## 1.1.1
@@ -48,20 +73,28 @@ Below is the complete list of release notes for every version of ``pg_stat_monit
 ### Improvements
 
 [PG-474](https://jira.percona.com/browse/PG-474): Make pg_stat_monitor compiled with CLANG
+
 [PG-159](https://jira.percona.com/browse/PG-159): Change the bucket start time scheme to align with the bucket time size
+
 [PG-293](https://jira.percona.com/browse/PG-293): Add the ability to control features added on top of `pg_stat_monitor` using GUC (Grand Unified Configuration) parameters
+
 [PG-300](https://jira.percona.com/browse/PG-300): Improve compatibility with PMM by making QueryIDs persistent for the same queries across different buckets and regardless of the node / client a query is executed on.
+
 [PG-362](https://jira.percona.com/browse/PG-362): Fix the `pgsm_normalized_query` default value to provide query examples in the `pg_stat_monitor` view by default.
+
 [PG-439](https://jira.percona.com/browse/PG-439): Remove warning of comparison of unsigned enum expression
 
 ### Bugs Fixed
 
 [PG-221](https://jira.percona.com/browse/PG-221): Fixed the issue with pg_stat_monitor crashing when querying JSON with parallel workers enabled
-[PG-289](https://jira.percona.com/browse/PG-289): Fixed the issue with pg_stat_monitor failing to build on C11 compilers by removing 'for' loop initial declarations
-[PG-449](https://jira.percona.com/browse/PG-449): Fix comments visibility by correcting the behavior of the `pgsm_extract_comments` parameter
-[PG-453](https://jira.percona.com/browse/PG-453): Fixed query normalization for INSERT statements in PostgreSQL 13 and earlier versions
-[PG-455](https://jira.percona.com/browse/PG-455): Fixed the issue with data collection for any value specified for `pgsm_bucket_time` parameter within the min / max range
 
+[PG-289](https://jira.percona.com/browse/PG-289): Fixed the issue with pg_stat_monitor failing to build on C11 compilers by removing 'for' loop initial declarations
+
+[PG-449](https://jira.percona.com/browse/PG-449): Fix comments visibility by correcting the behavior of the `pgsm_extract_comments` parameter
+
+[PG-453](https://jira.percona.com/browse/PG-453): Fixed query normalization for INSERT statements in PostgreSQL 13 and earlier versions
+
+[PG-455](https://jira.percona.com/browse/PG-455): Fixed the issue with data collection for any value specified for `pgsm_bucket_time` parameter within the min / max range
 
 ## 1.0.1
 
