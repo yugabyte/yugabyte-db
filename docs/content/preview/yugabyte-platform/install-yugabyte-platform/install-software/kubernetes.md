@@ -148,11 +148,21 @@ If you are looking for a customization which is not listed, you can view all the
 
 ### Specify custom container registry
 
-Follow to use custom container registry. It can be used with a private container registry.
+If you have pushed the container images to a custom registry as mentioned in [Pull and push YugabyteDB Docker images to private container registry](../../prepare-environment/kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry), set the registry address, as follows:
 
 ```yaml
+# yba-values.yaml
 image:
   commonRegistry: "gcr.io/mycustomregistry"
+```
+
+If the registry requires authentication, then create a pull secret and pass the name as follows:
+
+```yaml
+# yba-values.yaml
+image:
+  commonRegistry: "gcr.io/mycustomregistry"
+  pullSecret: "mycustomregistry-pull-secret"
 ```
 
 ### Configure load balancer

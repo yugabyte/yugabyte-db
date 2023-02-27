@@ -215,7 +215,7 @@ You need to perform the following steps:
   yugabytedb/yugaware             2.15.2          2.15.2.1-b1     YugaWare is YugaByte Database's Orchestration a...
   ```
 
-- Fetch images tag from `values.yaml` and tag may vary depending on the version.
+- Fetch images tag from `values.yaml` as tags may vary depending on the version.
 
   ```sh
   helm show values yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}}
@@ -281,8 +281,8 @@ You need to perform the following steps:
 
   ```sh
   docker tag quay.io/yugabyte/yugaware:{{<yb-version version="preview" format="build">}} gcr.io/dataengineeringdemos/yugabyte/yugaware:{{<yb-version version="preview" format="build">}}
-  docker tag nginxinc/nginx-unprivileged:1.23.3 gcr.io/dataengineeringdemos/yugabyte/nginxinc/nginx-unprivileged:1.23.3
-  docker tag postgres:14.4 gcr.io/dataengineeringdemos/yugabyte/postgres:14.4
+  docker tag nginxinc/nginx-unprivileged:1.23.3 gcr.io/dataengineeringdemos/nginxinc/nginx-unprivileged:1.23.3
+  docker tag postgres:14.4 gcr.io/dataengineeringdemos/postgres:14.4
   docker tag tianon/postgres-upgrade:11-to-14 gcr.io/dataengineeringdemos/tianon/postgres-upgrade:11-to-14
   docker tag prom/prometheus:v2.41.0 gcr.io/dataengineeringdemos/prom/prometheus:v2.41.0
   ```
@@ -291,15 +291,15 @@ You need to perform the following steps:
 
   ```sh
   docker push gcr.io/dataengineeringdemos/yugabyte/yugaware:{{<yb-version version="preview" format="build">}}
-  docker push gcr.io/dataengineeringdemos/yugabyte/nginx:1.23.3
-  docker push gcr.io/dataengineeringdemos/yugabyte/postgres:14.4
-  docker push gcr.io/dataengineeringdemos/janeczku/tianon/postgres-upgrade:11-to-14
+  docker push gcr.io/dataengineeringdemos/nginxinc/nginx-unprivileged:1.23.3
+  docker push gcr.io/dataengineeringdemos/postgres:14.4
+  docker push gcr.io/dataengineeringdemos/tianon/postgres-upgrade:11-to-14
   docker push gcr.io/dataengineeringdemos/prom/prometheus:v2.41.0
   ```
 
   ![img](/images/yp/docker-image.png)
 
-- Follow the link to use [custom container registry](../../install-software/kubernetes/#specify-custom-container-registry).
+Follow [Specify custom container registry](../../install-software/kubernetes/#specify-custom-container-registry) to install YugabyteDB Anywhere with the images from your private registry.
 
 - Install YugabyteDB Anywhere Helm chart using the custom container registry, as follows:
 
