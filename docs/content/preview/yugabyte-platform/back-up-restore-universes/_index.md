@@ -13,7 +13,12 @@ weight: 645
 type: indexpage
 ---
 
-YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtual machines, pods, and so on, provided by IaaS), logically grouped together to form one distributed database. Each universe includes one primary cluster and, optionally, one or more read replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance.
+You can use YugabyteDB to schedule and manage backups of your universe data.
+
+When managing universes with database version 2.16 and later using YBA version 2.16 and later, backups are mediated using the yb-controller process, which enables the following:
+
+- [Configurable performance parameters](back-up-universe-data/ysql/#configure-throttle-parameters) for faster backup and restore performance. In most cases, this results in 5x or more speed improvements in backups and restores.
+- [Incremental backups](back-up-universe-data/ysql/#create-incremental-backups). You can create a schedule to take full backups periodically and incremental backups between those full backups.
 
 <div class="row">
 
