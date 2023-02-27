@@ -21,7 +21,7 @@ Before you start using Aiopg, ensure you have the following:
 - [aiopg](https://aiopg.readthedocs.io/en/stable/) package is installed. Install the package using the following command:
 
     ```sh
-    $ pip3 install aiopg
+    pip3 install aiopg
     ```
 
     For details about using this database adapter, see [aiopg documentation](https://aiopg.readthedocs.io/en/stable/).
