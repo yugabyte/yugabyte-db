@@ -191,7 +191,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
 // Second transaction changes value of all rows with value 1 to 0.
 // As outcome we should have rows with the same value.
 //
-// The described prodecure is repeated multiple times to increase probability of catching bug,
+// The described procedure is repeated multiple times to increase probability of catching bug,
 // w/o running test multiple times.
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
   constexpr auto kKeys = RegularBuildVsSanitizers(10, 20);
@@ -256,8 +256,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
 
         auto status = connection.Execute("COMMIT");
         if (!status.ok()) {
-          auto msg = status.message().ToBuffer();
-          ASSERT_TRUE(msg.find("Operation expired") != std::string::npos) << status;
+          ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
           return;
         }
 
