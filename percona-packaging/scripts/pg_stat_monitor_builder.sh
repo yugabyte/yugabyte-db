@@ -84,14 +84,6 @@ check_workdir(){
     return
 }
 
-add_percona_yum_repo(){
-    if [ ! -f /etc/yum.repos.d/percona-dev.repo ]; then
-        curl -o /etc/yum.repos.d/percona-dev.repo https://jenkins.percona.com/yum-repo/percona-dev.repo
-        sed -i 's:$basearch:x86_64:g' /etc/yum.repos.d/percona-dev.repo
-    fi
-    return
-}
-
 set_changelog(){
     if [ -z $1 ]
     then
@@ -209,19 +201,18 @@ install_deps() {
     if [ "$OS" == "rpm" ]
     then
         yum install -y https://repo.percona.com/yum/percona-release-latest.noarch.rpm
-        add_percona_yum_repo
         if [[ ${PG_RELEASE} == "11" ]]; then
             percona-release enable ppg-11 release
         elif [[ $PG_RELEASE == "12" ]]; then
             percona-release enable ppg-12 release
         fi
         yum -y install git wget
-        PKGLIST="percona-postgresql-common percona-postgresql${PG_RELEASE}-devel"
+        PKGLIST="percona-postgresql${PG_RELEASE}-devel"
         PKGLIST+=" clang-devel git clang llvm-devel rpmdevtools vim wget"
         PKGLIST+=" perl binutils gcc gcc-c++"
         PKGLIST+=" clang-devel llvm-devel git rpm-build rpmdevtools wget gcc make autoconf"
-        if [[ "${RHEL}" -eq 8 ]]; then 
-            dnf -y module disable postgresql
+        if [[ "${RHEL}" -ge 8 ]]; then 
+            dnf -y module disable postgresql || true
         elif [[ "${RHEL}" -eq 7 ]]; then
             PKGLIST+=" llvm-toolset-7-clang llvm-toolset-7-llvm-devel llvm5.0-devel"
             until yum -y install epel-release centos-release-scl; do
