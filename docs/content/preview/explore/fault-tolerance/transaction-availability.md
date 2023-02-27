@@ -179,6 +179,10 @@ In your setup, the row with __`k=1`__ could be located on a different node. So, 
 
     The row with `k=1` has the new value of `v=20`, confirming the completion of the transaction.
 
+    The following diagram illustrates the high-level steps that ensure transactions to succeed when a node fails after receiving the write.
+
+    ![failure_node_after_write](/images/explore/transactions/failure_node_after_write.svg)
+
 1. From another terminal of your YugabyteDB home directory, restart the node at `127.0.0.2` using the following procedure.
 
     Identify the master leader using the following command:
@@ -282,6 +286,10 @@ In your setup, the row with __`k=1`__ could be located on a different node. So, 
 
     The row with `k=1` has the new value of `v=30`, confirming the completion of the transaction.
 
+    The following diagram illustrates the high-level steps that ensure transactions to succeed when a node fails before receiving the write.
+
+    ![failure_node_before_write](/images/explore/transactions/failure_node_before_write.svg)
+
 1. From another terminal of your YugabyteDB home directory, restart the node at `127.0.0.2` using the following procedure.
 
     Identify the master leader using the following command:
@@ -379,6 +387,10 @@ For this case, you can connect to any node in the cluster.(`127.0.0.3` has been 
     ```
 
     The transaction fails; the row did not get the intended value of `40`, and still has the old value of `30`. When the transaction manager fails before a commit happens, the transaction is lost. At this point, it's the application's responsibility to restart the transaction.
+
+    The following diagram illustrates the high-level steps that result in transactions to abort when the node that the client has connected to fails.
+
+    ![failure_client_connected_node](/images/explore/transactions/failure_client_connected_node.svg)
 
 ## Clean up
 
