@@ -17,7 +17,7 @@ You can use YugabyteDB to schedule and manage backups of your universe data.
 
 When managing universes with database version 2.16 and later using YBA version 2.16 and later, backups are mediated using the yb-controller process, which enables the following:
 
-- [Configurable performance parameters](back-up-universe-data/ysql/#configure-throttle-parameters) for faster backup and restore performance. In most cases, this results in 5x or more speed improvements in backups and restores.
+- [Configurable performance parameters](back-up-universe-data/ysql/#configure-throttle-parameters). Tune parallelization and buffers for faster backup and restore performance. In most cases, this results in 5x or more speed improvements in backups and restores.
 - [Incremental backups](back-up-universe-data/ysql/#create-incremental-backups). You can create a schedule to take full backups periodically and incremental backups between those full backups.
 
 <div class="row">

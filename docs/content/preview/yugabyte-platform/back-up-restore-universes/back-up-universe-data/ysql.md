@@ -104,9 +104,9 @@ You can delete only the full backup chain which includes a complete backup and i
 
 A failed incremental backup, which you can delete, is reported similarly to any other failed backup operations.
 
-## Configure throttle parameters
+## Configure backup performance parameters
 
-If you are using YBA version 2.16 or later to manage universes with YugabyteDB version 2.16 or later, you can configure throttle parameters to enhance backup and restore performance.
+If you are using YBA version 2.16 or later to manage universes with YugabyteDB version 2.16 or later, you can tune parallelization and buffer parameters to enhance backup and restore performance.
 
 To configure throttle parameters, click **... > Configure Throttle Parameters**, as per the following illustration:
 
