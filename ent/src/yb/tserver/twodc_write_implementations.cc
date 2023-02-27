@@ -41,7 +41,7 @@ DEFINE_RUNTIME_int32(cdc_max_apply_batch_num_records, 0,
     "Max CDC write request batch num records. If set to 0, there is no max num records, which"
     " means batches will be limited only by size.");
 
-DEFINE_RUNTIME_int32(cdc_max_apply_batch_size_bytes, 0,
+DEFINE_RUNTIME_uint32(cdc_max_apply_batch_size_bytes, 0,
     "Max CDC write request batch size in kb. If 0, default to no max batch size.");
 
 DEFINE_test_flag(bool, twodc_write_hybrid_time, false,
@@ -246,13 +246,12 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
 
     auto max_batch_records = FLAGS_cdc_max_apply_batch_num_records != 0 ?
         FLAGS_cdc_max_apply_batch_num_records : std::numeric_limits<uint32_t>::max();
-    auto max_batch_size = FLAGS_cdc_max_apply_batch_size_bytes != 0 ?
-        FLAGS_cdc_max_apply_batch_size_bytes : std::numeric_limits<uint32_t>::max();
+    auto max_batch_size = GetAtomicFlag(&FLAGS_cdc_max_apply_batch_size_bytes);
 
     if (queue.empty() ||
-        implicit_cast<size_t>(queue.back()->write_batch().write_pairs_size())
-            >= max_batch_records ||
-        queue.back()->ByteSizeLong() >= max_batch_size) {
+        implicit_cast<size_t>(queue.back()->write_batch().write_pairs_size()) >=
+            max_batch_records ||
+        (max_batch_size > 0 && queue.back()->ByteSizeLong() >= max_batch_size)) {
       // Create a new batch.
       auto req = std::make_unique<WriteRequestPB>();
       req->set_tablet_id(tablet_id);
