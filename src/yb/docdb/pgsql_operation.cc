@@ -1089,6 +1089,9 @@ Result<size_t> PgsqlReadOperation::Execute(const YQLStorageIf& ql_storage,
   SCHECK(table_iter_ != nullptr, InternalError, "table iterator is invalid");
 
   *restart_read_ht = table_iter_->RestartReadHt();
+  if (index_iter_) {
+    restart_read_ht->MakeAtLeast(index_iter_->RestartReadHt());
+  }
   return fetched_rows;
 }
 
