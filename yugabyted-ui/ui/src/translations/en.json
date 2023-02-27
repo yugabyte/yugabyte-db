@@ -148,7 +148,7 @@
       "MiB": "{{value}} MiB",
       "GB": "{{value}} GB",
       "TB": "{{value}} TB",
-      "percent": "{{value}} %"
+      "percent": "{{value}}%"
     },
     "status": {
       "active": "Active",
@@ -723,6 +723,9 @@
         "bootstrappingNodes": "Bootstrapping Nodes",
         "regions": "Regions",
         "diskUsage": "Disk Usage",
+        "used": "Used",
+        "usage": "Usage",
+        "available": "Available",
         "usedDiskText": "{{usedDiskSizeGb}} GB used",
         "freeDiskText": "{{freeDiskSizeGb}} GB free out of {{totalDiskSizeGb}} GB",
         "nodes": "Nodes",
@@ -1215,6 +1218,7 @@
       "inTransitAtRest": "In-transit/At-rest",
       "inTransit": "In-transit",
       "atRest": "At-rest",
+      "password": "Password",
       "none": "None",
       "storageUsed": "{{used}} of {{total}} GB Used",
       "aCluster": "a cluster",

@@ -92,7 +92,7 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
   const healthyNodes = numNodes - deadNodes.length;
 
   return (
-    <Box>
+    <Box flex={1}>
       <Box display="flex" alignItems="center">
         <Typography variant="body2" className={classes.title}>{t('clusterDetail.overview.nodes')}</Typography>
         <Link>

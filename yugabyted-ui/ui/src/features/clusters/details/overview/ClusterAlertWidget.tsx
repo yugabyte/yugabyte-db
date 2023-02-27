@@ -59,7 +59,7 @@ const date = new Date();
 // Sample alert for now
 const alerts = [
   {
-    alert: "CPU usage exceeds 75% for node xyz",
+    alert: "CPU usage exceeds 75% for node 123",
     at: date.setMinutes(date.getMinutes() - 25),
     status: "Warning"
   }

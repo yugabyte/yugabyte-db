@@ -7,7 +7,7 @@ import { DiskUsageGraph } from './DiskUsageGraph';
 
 const useStyles = makeStyles((theme) => ({
   container: {
-    justifyContent: 'space-between'
+    justifyContent: 'space-between',
   },
   label: {
     color: theme.palette.grey[600],
