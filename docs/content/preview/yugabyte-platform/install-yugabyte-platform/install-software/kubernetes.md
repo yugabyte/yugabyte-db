@@ -146,6 +146,14 @@ You can copy the preceding code block into a file called `yba-values.yaml` and t
 
 If you are looking for a customization which is not listed, you can view all the supported options and their default values by running the `helm show values yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}}` command and copying the specific section to your own values file.
 
+### Specify custom container registry
+
+Follow to use custom container registry. It can be used with a private container registry.
+
+```yaml
+image:
+  commonRegistry: "gcr.io/mycustomregistry"
+```
 
 ### Configure load balancer
 

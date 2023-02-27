@@ -164,24 +164,49 @@ Generally, the process involves the following:
 
 You need to perform the following steps:
 
-1. Login to [quay.io](https://quay.io/) to access the YugabyteDB private registry using the user name and password provided in the secret YAML file. To find the `auth` field, use `base64 -d` to decode the data inside the `yaml` file twice. In this field, the user name and password are separated by a colon. For example, `yugabyte+<user-name>:ZQ66Z9C1K6AHD5A9VU28B06Q7N0AXZAQSR`.
+- Login to [quay.io](https://quay.io/) to access the YugabyteDB private registry using the user name and password provided in the secret YAML file. To find the `auth` field, use `base64 -d` to decode the data inside the `yaml` file twice. In this field, the user name and password are separated by a colon. For example, `yugabyte+<user-name>:ZQ66Z9C1K6AHD5A9VU28B06Q7N0AXZAQSR`.
 
   ```sh
   docker login -u "your_yugabyte_username" -p "yugabyte_provided_password" quay.
   docker search quay.io/yugabyte
   ```
 
-1. Install Helm to fetch the YugabyteDB Anywhere Helm chart on your desktop. Follow to see [Helm Installation](https://helm.sh/docs/intro/install/).
+- Install Helm to fetch the YugabyteDB Anywhere Helm chart on your machine. Follow to see [Helm Installation](https://helm.sh/docs/intro/install/).
 
-1. Add Yugabytedb Anywhere Helm chart repo and check the versions in the Helm repo.
+- Run the following `helm repo add` command to clone the [YugabyteDB charts repository](https://charts.yugabyte.com/).
 
   ```sh
   helm repo add yugabytedb https://charts.yugabyte.com
+  ```
+
+- Run the following `helm repo update` command to fetch the updates from the Chart repo.
+
+  ```sh
   helm repo update
+  ```
+
+- Run the following command to search for the version.
+
+  ```sh
+  helm search repo yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}}
+  ```
+
+  A similar output should appear:
+
+  ```output
+  NAME                            CHART VERSION   APP VERSION     DESCRIPTION
+  yugabytedb/yugaware             {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}    YugaWare is YugaByte Database's Orchestration a...
+  ```
+
+- Run the command to list all the available versions.
+
+  ```sh
   helm search repo yugabytedb/yugaware -l
   ```
 
-  ```sh
+  A similar output should appear:
+
+  ```output
   NAME                            CHART VERSION   APP VERSION     DESCRIPTION
   yugabytedb/yugaware             2.17.0          2.17.0.0-b24    YugaWare is YugaByte Database's Orchestration a...
   yugabytedb/yugaware             2.16.1          2.16.1.0-b50    YugabyteDB Anywhere provides deployment, orches...
@@ -190,16 +215,13 @@ You need to perform the following steps:
   yugabytedb/yugaware             2.15.2          2.15.2.1-b1     YugaWare is YugaByte Database's Orchestration a...
   ```
 
-1. Fetch the YugabyteDB Anywhere Helm chart tar. Since the images in the `values.yaml` file may vary depending on the version, you need to specify the version you want to pull and push, as follows:
+- Fetch images tag from `values.yaml` and tag may vary depending on the version.
 
   ```sh
-  export CHART_VERSION=2.16.1
-  export APP_VERSION=2.16.1.0-b50
-  helm fetch yugabytedb/yugaware --version=${CHART_VERSION}
-  tar zxvf yugaware-${CHART_VERSION}.tgz
-  cd yugaware
-  cat values.yaml
+  helm show values yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}}
   ```
+
+  A similar output should appear:
 
   ```properties
   image:
@@ -234,55 +256,41 @@ You need to perform the following steps:
       registry: ""
       tag: 1.23.3
       name: nginxinc/nginx-unprivileged
+  ...
   ```
 
-1. Pull images to your Docker Desktop, as follows:
+- Pull images to your machine, as follows:
+
+  **Note** - These image tags will vary based on the version.
 
   ```sh
-  docker pull quay.io/yugabyte/yugaware:${APP_VERSION}
-  docker pull quay.io/yugabyte/thirdparty-deps:latest
+  docker pull quay.io/yugabyte/yugaware:{{<yb-version version="preview" format="build">}}
   docker pull postgres:14.4
   docker pull prom/prometheus:v2.41.0
   docker pull tianon/postgres-upgrade:11-to-14
   docker pull nginxinc/nginx-unprivileged:1.23.3
   ```
 
-1. Login to your target container registry, as per the following example that uses Google Container Registry (GCR):
+- Login to your target container registry, as per the following example that uses Google Container Registry (GCR):
 
   ```sh
   docker login -u _json_key --password-stdin https://gcr.io < .ssh/my-service-account-key.json
   ```
 
-1. Tag the local images to your target registry, as follows:
+- Tag the local images to your target registry, as follows:
 
   ```sh
-  docker images
+  docker tag quay.io/yugabyte/yugaware:{{<yb-version version="preview" format="build">}} gcr.io/dataengineeringdemos/yugabyte/yugaware:{{<yb-version version="preview" format="build">}}
+  docker tag nginxinc/nginx-unprivileged:1.23.3 gcr.io/dataengineeringdemos/yugabyte/nginxinc/nginx-unprivileged:1.23.3
+  docker tag postgres:14.4 gcr.io/dataengineeringdemos/yugabyte/postgres:14.4
+  docker tag tianon/postgres-upgrade:11-to-14 gcr.io/dataengineeringdemos/tianon/postgres-upgrade:11-to-14
+  docker tag prom/prometheus:v2.41.0 gcr.io/dataengineeringdemos/prom/prometheus:v2.41.0
   ```
 
-  ```output
-  REPOSITORY                         TAG            IMAGE ID       CREATED        SIZE
-  tianon/postgres-upgrade            11-to-14       e4e13bbe3446   2 days ago     432MB
-  quay.io/yugabyte/yugaware          2.16.1.0-b50   230d619f5c20   2 days ago     2.56GB
-  nginxinc/nginx-unprivileged        1.23.3         63e2b5caa055   3 weeks ago    142MB
-  quay.io/yugabyte/thirdparty-deps   latest         479490b66ad9   4 weeks ago    665MB
-  prom/prometheus                    v2.41.0        932c2dbe7d3e   6 weeks ago    231MB
-  postgres                           14.4           e09e90144645   6 months ago   376MB
-  ```
+- Push images to the private container registry, as follows:
 
   ```sh
-  docker tag 230d619f5c20 gcr.io/dataengineeringdemos/yugabyte/yugaware:2.16.1.0-b50
-  docker tag 479490b66ad9 gcr.io/dataengineeringdemos/yugabyte/thirdparty-deps:latest
-  docker tag 63e2b5caa055 gcr.io/dataengineeringdemos/yugabyte/nginxinc/nginx-unprivileged:1.23.3
-  docker tag e09e90144645 gcr.io/dataengineeringdemos/yugabyte/postgres:14.4
-  docker tag e4e13bbe3446 gcr.io/dataengineeringdemos/tianon/postgres-upgrade:11-to-14
-  docker tag 932c2dbe7d3e gcr.io/dataengineeringdemos/prom/prometheus:v2.41.0
-  ```
-
-1. Push images to the private container registry, as follows:
-
-  ```sh
-  docker push gcr.io/dataengineeringdemos/yugabyte/yugaware:2.16.1.0-b50
-  docker push gcr.io/dataengineeringdemos/yugabyte/thirdparty-deps:latest
+  docker push gcr.io/dataengineeringdemos/yugabyte/yugaware:{{<yb-version version="preview" format="build">}}
   docker push gcr.io/dataengineeringdemos/yugabyte/nginx:1.23.3
   docker push gcr.io/dataengineeringdemos/yugabyte/postgres:14.4
   docker push gcr.io/dataengineeringdemos/janeczku/tianon/postgres-upgrade:11-to-14
@@ -291,45 +299,12 @@ You need to perform the following steps:
 
   ![img](/images/yp/docker-image.png)
 
-1. Modify the Helm chart `values.yaml` file. You can map your private internal repository `gcr.io/dataengineeringdemos` URI to `commonRegistry`.
+- Follow the link to use [custom container registry](../install-yugabyte-platform/install-software/kubernetes/#specify-custom-container-registry).
 
-  ```properties
-  image:
-    commonRegistry: "gcr.io/dataengineeringdemos"
-
-    repository: quay.io/yugabyte/yugaware
-    tag: 2.16.1.0-b50
-    pullPolicy: IfNotPresent
-    pullSecret: yugabyte-k8s-pull-secret
-
-    thirdparty-deps:
-      registry: quay.io
-      tag: latest
-      name: yugabyte/thirdparty-deps
-
-    postgres:
-      registry: ""
-      tag: '14.4'
-      name: postgres
-
-    postgres-upgrade:
-      registry: ""
-      tag: "11-to-14"
-      name: tianon/postgres-upgrade
-
-    prometheus:
-      registry: ""
-      tag: v2.41.0
-      name: prom/prometheus
-
-    nginx:
-      registry: ""
-      tag: 1.23.3
-      name: nginxinc/nginx-unprivileged
-  ```
-
-1. Install Helm chart or specify the container registry in YugabyteDB Anywhere installation, as follows:
+- Install YugabyteDB Anywhere Helm chart using the custom container registry, as follows:
 
   ```sh
-  helm install yugaware ./ -f values.yaml
+  helm install yba yugabytedb/yugaware \
+    --version {{<yb-version version="preview" format="short">}} \
+    --set image.commonRegistry=gcr.io/dataengineeringdemos
   ```
