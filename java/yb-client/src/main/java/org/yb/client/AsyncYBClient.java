@@ -581,6 +581,39 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Get the auto flag config for servers.
+   * @return a deferred object that yields auto flag config for each server.
+   */
+  public Deferred<GetAutoFlagsConfigResponse> autoFlagsConfig() {
+    checkIsClosed();
+    GetAutoFlagsConfigRequest rpc = new GetAutoFlagsConfigRequest(this.masterTable);
+    Deferred<GetAutoFlagsConfigResponse> d = rpc.getDeferred();
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    sendRpcToTablet(rpc);
+    return d;
+  }
+
+  /**
+   * Promotes the auto flag config for each servers.
+   * @param maxFlagClass class category up to which auto flag should be promoted.
+   * @param promoteNonRuntimeFlags promotes auto flag non-runtime flags if true.
+   * @param force promotes auto flag forcefully if true.
+   * @return a deferred object that yields the response to the promote autoFlag config from server.
+   */
+  public Deferred<PromoteAutoFlagsResponse> getPromoteAutoFlagsResponse(
+      String maxFlagClass,
+      boolean promoteNonRuntimeFlags,
+      boolean force) {
+    checkIsClosed();
+    PromoteAutoFlagsRequest rpc = new PromoteAutoFlagsRequest(this.masterTable, maxFlagClass,
+        promoteNonRuntimeFlags, force);
+    Deferred<PromoteAutoFlagsResponse> d = rpc.getDeferred();
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    sendRpcToTablet(rpc);
+    return d;
+  }
+
+  /**
    * Check if the server is ready to serve requests.
    * @param hp host port of the server.
    * @param isTserver true if host/port is for tserver, else its master.

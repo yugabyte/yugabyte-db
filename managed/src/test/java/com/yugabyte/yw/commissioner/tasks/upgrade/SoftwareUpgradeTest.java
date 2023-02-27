@@ -181,7 +181,10 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
       }
       commonNodeTasks.addAll(
           ImmutableList.of(
-              TaskType.UpdateSoftwareVersion, TaskType.RunHooks, TaskType.UniverseUpdateSucceeded));
+              TaskType.PromoteAutoFlags,
+              TaskType.UpdateSoftwareVersion,
+              TaskType.RunHooks,
+              TaskType.UniverseUpdateSucceeded));
     }
     for (TaskType commonNodeTask : commonNodeTasks) {
       assertTaskType(subTasksByPosition.get(position), commonNodeTask);
@@ -322,6 +325,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
     // XCluster gflag set up.
     assertTaskType(subTasksByPosition.get(position++), TaskType.XClusterInfoPersist);
@@ -338,7 +342,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true);
-    assertEquals(122, position);
+    assertEquals(123, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -361,6 +365,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
     // XCluster gflag set up.
     assertTaskType(subTasksByPosition.get(position++), TaskType.XClusterInfoPersist);
@@ -437,6 +442,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
     // XCluster gflag set up.
     assertTaskType(subTasksByPosition.get(position++), TaskType.XClusterInfoPersist);
@@ -453,7 +459,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true);
-    assertEquals(164, position);
+    assertEquals(165, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -477,6 +483,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
     // XCluster gflag set up.
     assertTaskType(subTasksByPosition.get(position++), TaskType.XClusterInfoPersist);
@@ -490,7 +497,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     position = assertSequence(subTasksByPosition, MASTER, position, false, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, false, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE, true, true);
-    assertEquals(22, position);
+    assertEquals(23, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
