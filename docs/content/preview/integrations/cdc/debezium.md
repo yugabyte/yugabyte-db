@@ -156,13 +156,11 @@ Do the following:
 
 For a list of all the configuration options provided with the Debezium YugabyteDB connector, see [Connector configuration properties](../../../explore/change-data-capture/debezium-connector-yugabytedb/#connector-configuration-properties).
 
-{{< warning title="Warning" >}}
+{{< tip title="Enable GFlag to DROP or TRUNCATE" >}}
 
-YugabyteDB's CDC implementation doesn't currently support DROP TABLE and TRUNCATE TABLE, and the behavior of these commands while streaming data from CDC is undefined. If you need to drop or truncate a table, delete the stream ID using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands).
+The YugabyteDB CDC implementation will not let you DROP or TRUNCATE a table while an active CDC stream is present on the namespace. If you need to perform these operations while CDC is enabled, set the value of a [GFlag](../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags) `enable_delete_truncate_cdcsdk_table` to `true` and then you can DROP or TRUNCATE the table.
 
-See [limitations](../../../explore/change-data-capture/#limitations) for more details on upcoming feature support.
-
-{{< /warning >}}
+{{< /tip >}}
 
 ### Start a Kafka Topic console consumer (optional)
 
