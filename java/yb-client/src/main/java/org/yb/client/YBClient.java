@@ -1724,6 +1724,52 @@ public class YBClient implements AutoCloseable {
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
   }
 
+    /**
+   * Get the auto flag config for servers.
+   * @return auto flag config for each server if exists, else a MasterErrorException.
+   */
+  public GetAutoFlagsConfigResponse autoFlagsConfig() throws Exception {
+    Deferred<GetAutoFlagsConfigResponse> d = asyncClient.autoFlagsConfig();
+    d.addErrback(new Callback<Exception, Exception>() {
+      @Override
+      public Exception call(Exception o) throws Exception {
+        o.printStackTrace();
+        throw o;
+      }
+    });
+    d.addCallback(getAutoFlagsConfigResponse -> {
+      return getAutoFlagsConfigResponse;
+    });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+    /**
+   * Promotes the auto flag config for each servers.
+   * @param maxFlagClass class category up to which auto flag should be promoted.
+   * @param promoteNonRuntimeFlags promotes auto flag non-runtime flags if true.
+   * @param force promotes auto flag forcefully if true.
+   * @return response from the server for promoting auto flag config, else a MasterErrorException.
+   */
+  public PromoteAutoFlagsResponse promoteAutoFlags(String maxFlagClass,
+                                                   boolean promoteNonRuntimeFlags,
+                                                   boolean force) throws Exception {
+    Deferred<PromoteAutoFlagsResponse> d = asyncClient.getPromoteAutoFlagsResponse(
+        maxFlagClass,
+        promoteNonRuntimeFlags,
+        force);
+    d.addErrback(new Callback<Exception, Exception>() {
+      @Override
+      public Exception call(Exception o) throws Exception {
+        o.printStackTrace();
+        throw o;
+      }
+    });
+    d.addCallback(promoteAutoFlagsResponse -> {
+      return promoteAutoFlagsResponse;
+    });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
   public SetCheckpointResponse bootstrapTablet(YBTable table, String streamId,
                                                String tabletId,
                                                long term,

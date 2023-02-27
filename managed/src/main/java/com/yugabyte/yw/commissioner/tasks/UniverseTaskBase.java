@@ -57,6 +57,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResetUniverseVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYb;
@@ -93,6 +94,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForYbcServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplication;
@@ -851,6 +853,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  /** Create a task to promote auto flag on the universe */
+  public SubTaskGroup createPromoteAutoFlagTask(String ybSoftwareVersion) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("PromoteAutoFlag", executor);
+    PromoteAutoFlags task = createTask(PromoteAutoFlags.class);
+    PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
+    params.universeUUID = taskParams().universeUUID;
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   /** Create a task to check memory limit on the universe nodes */
   public SubTaskGroup createAvailabeMemoryCheck(
       Collection<NodeDetails> nodes, String memoryType, Long memoryLimitKB) {
@@ -862,6 +876,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.memoryLimitKB = memoryLimitKB;
     params.nodeIpList =
         nodes.stream().map(node -> node.cloudInfo.private_ip).collect(Collectors.toList());
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Create a task to preform pre-check for software upgrade */
+  public SubTaskGroup createCheckUpgradeTask(String ybSoftwareVersion) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("CheckUpgrade", executor);
+    CheckUpgrade task = createTask(CheckUpgrade.class);
+    CheckUpgrade.Params params = new CheckUpgrade.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.ybSoftwareVersion = ybSoftwareVersion;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
