@@ -65,7 +65,6 @@ using namespace std::placeholders;
 
 namespace yb {
 namespace tserver {
-namespace enterprise {
 
 CDCPoller::CDCPoller(
     const cdc::ProducerTabletInfo& producer_tablet_info,
@@ -381,6 +380,5 @@ void CDCPoller::DoHandleApplyChanges(cdc::OutputClientResponse response) {
 #undef ACQUIRE_MUTEX_IF_ONLINE
 #undef RETURN_WHEN_OFFLINE
 
-} // namespace enterprise
 } // namespace tserver
 } // namespace yb

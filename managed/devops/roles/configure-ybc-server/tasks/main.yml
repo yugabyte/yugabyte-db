@@ -129,6 +129,12 @@
       - ybc-install
 
 - block:
+  - set_fact:
+      systemd_unit_dir: "/usr/lib/systemd/system"
+    when:
+      ansible_distribution == "SLES"
+    tags: always
+
   - name: Determine system or user scope
     stat:
       path: /etc/systemd/system/yb-controller.service
@@ -151,7 +157,7 @@
     # User units need to be linked if waiting on system units
     - name: Link network-online.target
       shell:
-        cmd: "systemctl --user link /usr/lib/systemd/system/network-online.target"
+        cmd: "systemctl --user link {{ systemd_unit_dir }}/network-online.target"
 
     - name: Start network-online.target
       systemd:

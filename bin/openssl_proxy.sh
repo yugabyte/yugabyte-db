@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 root_certs_generation=false
 node_certs_generation=false
@@ -12,7 +12,7 @@ hostname=""
 
 show_help() {
   cat >&1 <<-EOT
-gen_certs.sh is to be used to create SSL certificates for secure deployment of YugabyteDB.
+openssl_proxy.sh is to be used to create SSL certificates for secure deployment of YugabyteDB.
 ---------------------------------------------------------------------------------------------------
 Usage: ${0##*/} [<action>] [<flags>]
 

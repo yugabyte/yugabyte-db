@@ -47,7 +47,6 @@ DECLARE_int64(encryption_counter_max);
 DECLARE_bool(TEST_encryption_use_openssl_compatible_counter_overflow);
 
 namespace yb {
-namespace enterprise {
 
 namespace {
 
@@ -196,5 +195,4 @@ TEST_P(EncryptedSSTableTest, CounterOverflow100000Keys) {
   CounterOverflow(100 * 1000, 0xffffff00);
 }
 
-} // namespace enterprise
 } // namespace yb
