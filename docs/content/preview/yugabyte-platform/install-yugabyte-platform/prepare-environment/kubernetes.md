@@ -177,11 +177,6 @@ You need to perform the following steps:
 
   ```sh
   helm repo add yugabytedb https://charts.yugabyte.com
-  ```
-
-- Run the following `helm repo update` command to fetch the updates from the Chart repo.
-
-  ```sh
   helm repo update
   ```
 
@@ -196,23 +191,6 @@ You need to perform the following steps:
   ```output
   NAME                            CHART VERSION   APP VERSION     DESCRIPTION
   yugabytedb/yugaware             {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}    YugaWare is YugaByte Database's Orchestration a...
-  ```
-
-- Run the command to list all the available versions.
-
-  ```sh
-  helm search repo yugabytedb/yugaware -l
-  ```
-
-  A similar output should appear:
-
-  ```output
-  NAME                            CHART VERSION   APP VERSION     DESCRIPTION
-  yugabytedb/yugaware             2.17.0          2.17.0.0-b24    YugaWare is YugaByte Database's Orchestration a...
-  yugabytedb/yugaware             2.16.1          2.16.1.0-b50    YugabyteDB Anywhere provides deployment, orches...
-  yugabytedb/yugaware             2.16.0          2.16.0.1-b7     YugaWare is YugaByte Database's Orchestration a...
-  yugabytedb/yugaware             2.15.3          2.15.3.3-b1     YugaWare is YugaByte Database's Orchestration a...
-  yugabytedb/yugaware             2.15.2          2.15.2.1-b1     YugaWare is YugaByte Database's Orchestration a...
   ```
 
 - Fetch images tag from `values.yaml` as tags may vary depending on the version.
@@ -299,12 +277,4 @@ You need to perform the following steps:
 
   ![img](/images/yp/docker-image.png)
 
-Follow [Specify custom container registry](../../install-software/kubernetes/#specify-custom-container-registry) to install YugabyteDB Anywhere with the images from your private registry.
-
-- Install YugabyteDB Anywhere Helm chart using the custom container registry, as follows:
-
-  ```sh
-  helm install yba yugabytedb/yugaware \
-    --version {{<yb-version version="preview" format="short">}} \
-    --set image.commonRegistry=gcr.io/dataengineeringdemos
-  ```
+- Follow [Specify custom container registry](../../install-software/kubernetes/#specify-custom-container-registry) to install YugabyteDB Anywhere with the images from your private registry.
