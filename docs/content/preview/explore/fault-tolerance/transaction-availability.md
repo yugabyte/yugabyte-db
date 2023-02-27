@@ -30,7 +30,7 @@ The following examples demonstrate how YugabyteDB transactions survive common fa
 
 For the following examples, you need to identify which node holds a specific row, so that you can shut down the correct node to see what is happening. Perform the following steps to identify the row location:
 
-- Connect to your universe using [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh), and create a table using the following command:
+1. Connect to your universe using [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh), and create a table using the following command:
 
     ```sql
     CREATE TABLE txndemo (
@@ -40,13 +40,13 @@ For the following examples, you need to identify which node holds a specific row
     );
     ```
 
-- Insert sample data and determine the hash code of the primary keys using the following command:
+1. Insert sample data and determine the hash code of the primary keys using the following command:
 
     ```sql
     INSERT INTO txndemo SELECT id,10 FROM generate_series(1,5) AS id;
     ```
 
-- Fetch the hash code of the primary key k using the [yb_hash_code()](../../../api/ysql/exprs/func_yb_hash_code/) function, and correlate it with the `yb-admin` output to figure out where that key is located. The examples on this page use the row with `k=1`.
+1. Fetch the hash code of the primary key k using the [yb_hash_code()](../../../api/ysql/exprs/func_yb_hash_code/) function, and correlate it with the `yb-admin` output to figure out where that key is located. The examples on this page use the row with `k=1`.
 
     ```sql
     SELECT id, upper(to_hex(yb_hash_code(id))) AS hash FROM generate_series(1,5) AS id;
@@ -63,7 +63,7 @@ For the following examples, you need to identify which node holds a specific row
     (5 rows)
     ```
 
-- From your YugabyteDB home directory, list the nodes using the following command:
+1. From your YugabyteDB home directory, list the nodes using the following command:
 
     ```sh
     ./bin/yb-admin list_tablets ysql.yugabyte txndemo
@@ -84,11 +84,10 @@ For the following examples, you need to identify which node holds a specific row
     "\252\252" :  0xAAAA
     ```
 
-
 From the hash ranges listed on the [tablet-servers](http://localhost:7000/tablet-servers) page, and the [yb-admin](../../../admin/yb-admin/) output, you can determine that the row with `k=1` whose hash code is `1210` resides on node `127.0.0.2`, as that node has the tablet containing the key range `[0x0000, 0x5554]`.
 
 {{< note title="Note" >}}
-Here, the row with __`k=1`__ was located on node __`127.0.0.2`__. But in your setup it could be on a different node. Make sure to use that node during failure simulation in the examples below.
+For the setup on this page, the row with __`k=1`__ resides on node __`127.0.0.2`__. However, in your setup, it could be on a different node. Make sure to use that node during failure simulation in the following examples .
 {{< /note >}}
 
 ## Failure of a node after receiving a write
@@ -98,7 +97,9 @@ During a transaction, when a row is updated, YugabyteDB sends the modified row (
 Because the row with `k=1` is located on the node `127.0.0.2` (via [Identifying the row location](#identifing-the-location-of-a-row)), connect to node `127.0.0.3` as you have to stop the node `127.0.0.2` before committing the transaction in the following example.
 
 {{< note title="Note" >}}
-You need to pick a node other than the node that the row with __`k=1`__ resides in to connect to. In this setup, we are picking the node __`127.0.0.3`__ to connect to as the row with __`k=1`__ is located at node __`127.0.0.2`__. In your setup, the row with __`k=1`__ could be located on a different node. So choose a node to connect to appropriately.
+For your examples, connect to a node other than the node that the row with __`k=1`__ resides in. For the setup on this page, the node __`127.0.0.3`__ is used to connect to, as the row with __`k=1`__ is located at node __`127.0.0.2`__.
+
+In your setup, the row with __`k=1`__ could be located on a different node. So, choose a node to connect to appropriately.
 {{< /note >}}
 
 1. Connect to `127.0.0.3` using the following ysqlsh command:
@@ -179,16 +180,17 @@ You need to pick a node other than the node that the row with __`k=1`__ resides 
     The row with `k=1` has the new value of `v=20`, confirming the completion of the transaction.
 
 1. From another terminal of your YugabyteDB home directory, restart the node at `127.0.0.2` using the following procedure.
-    
+
     Identify the master leader using the following command:
 
     ```sh
     ./bin/yb-admin -master_addresses 127.0.0.1,127.0.0.2,127.0.0.3 list_all_masters | grep LEADER
     ```
 
-    You would see an output similar to:
+    You should see output similar to the following:
+
     ```output.sh
-    8b6af7ef33f44a13926e6d49ce9186eb 	127.0.0.1:7100       	ALIVE    	LEADER 	127.0.0.1:7100
+    8b6af7ef33f44a13926e6d49ce9186eb  127.0.0.1:7100   ALIVE   LEADER 	127.0.0.1:7100
     ```
 
     Here, `127.0.0.1` is the master leader ip(This might be different in your setup). Start your node again and join the cluster at this ip using the following command:
@@ -204,7 +206,9 @@ As mentioned in the preceding example, when a row is updated during a transactio
 In this example, you can see how a transaction completes when the node that is about to receive a provisional write fails. You will take down node `127.0.0.2` as that node has the row with `k=1`.
 
 {{< note title="Note" >}}
-You need to pick a node other than the node that the row with __`k=1`__ resides in to connect to. In this setup, we are picking the node __`127.0.0.3`__ to connect to as the row with __`k=1`__ is located at node __`127.0.0.2`__. In your setup, the row with __`k=1`__ could be located on a different node. So choose a node to connect to appropriately.
+For your examples, connect to a node other than the node that the row with __`k=1`__ resides in. For the setup on this page, the node __`127.0.0.3`__ is used to connect to, as the row with __`k=1`__ is located at node __`127.0.0.2`__.
+
+In your setup, the row with __`k=1`__ could be located on a different node. So, choose a node to connect to appropriately.
 {{< /note >}}
 
 1. Connect to `127.0.0.3` as follows:
@@ -247,7 +251,7 @@ You need to pick a node other than the node that the row with __`k=1`__ resides 
 
     Notice that the node `127.0.0.2` is gone and a new leader `127.0.0.3` has been elected for the tablet (`7e2dfb66a..`) which was in node `127.0.0.2`.
 
-1. Complete and commit the transaction as follows:
+1. Update and commit the transaction as follows:
 
     ```sql
     UPDATE txndemo set v=30 where k=1;
@@ -279,19 +283,20 @@ You need to pick a node other than the node that the row with __`k=1`__ resides 
     The row with `k=1` has the new value of `v=30`, confirming the completion of the transaction.
 
 1. From another terminal of your YugabyteDB home directory, restart the node at `127.0.0.2` using the following procedure.
-    
+
     Identify the master leader using the following command:
 
     ```sh
     ./bin/yb-admin -master_addresses 127.0.0.1,127.0.0.2,127.0.0.3 list_all_masters | grep LEADER
     ```
 
-    You would see an output similar to:
+    You should see output similar to the following:
+
     ```output.sh
-    8b6af7ef33f44a13926e6d49ce9186eb 	127.0.0.1:7100       	ALIVE    	LEADER 	127.0.0.1:7100
+    8b6af7ef33f44a13926e6d49ce9186eb  127.0.0.1:7100   ALIVE   LEADER 	127.0.0.1:7100
     ```
 
-    Here, `127.0.0.1` is the master leader ip(This might be different in your setup). Start your node again and join the cluster at this ip using the following command:
+    In this example, `127.0.0.1` is the master leader IP (The master leader IP may be different in your setup). Start your node again and join the cluster with the master leader IP using the following command:
 
     ```sh
     ./bin/yugabyted start --base_dir=/tmp/ybd2 --join=127.0.0.1
@@ -301,7 +306,7 @@ You need to pick a node other than the node that the row with __`k=1`__ resides 
 
 The node to which a client connects acts as the manager for the transaction. The transaction manager coordinates the flow of transaction and maintains the corelation between the client and the transaction-id (a unique identifier for each transaction). YugabyteDB is inherently resilient to node failures as mentioned in the previous two scenarios.
 
-In this example, you can see how a transaction will abort when the transaction manager fails. For more details on the role of the transaction manager, see [Transactional I/O](../../../architecture/transactions/transactional-io-path/#client-requests-transaction). 
+In this example, you can see how a transaction will abort when the transaction manager fails. For more details on the role of the transaction manager, see [Transactional I/O](../../../architecture/transactions/transactional-io-path/#client-requests-transaction).
 
 {{< note title="Note" >}}
 For this case, you can connect to any node in the cluster.(`127.0.0.3` has been chosen here).
@@ -345,7 +350,7 @@ For this case, you can connect to any node in the cluster.(`127.0.0.3` has been 
     COMMIT;
     ```
 
-    Note that the client receives an error response from the server:
+    Note that the client receives an error response from the server similar to the following:
 
     ```output
     FATAL:  57P01: terminating connection due to unexpected postmaster exit
