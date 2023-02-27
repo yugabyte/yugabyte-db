@@ -84,7 +84,8 @@ DocRowwiseIterator::DocRowwiseIterator(
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    RWOperationCounter* pending_op_counter)
+    RWOperationCounter* pending_op_counter,
+    boost::optional<size_t> end_referenced_key_column_index)
     : projection_(projection),
       doc_read_context_(doc_read_context),
       txn_op_context_(txn_op_context),
@@ -94,7 +95,9 @@ DocRowwiseIterator::DocRowwiseIterator(
       has_bound_key_(false),
       pending_op_(pending_op_counter),
       done_(false),
-      doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()) {
+      doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()),
+      end_referenced_key_column_index_(end_referenced_key_column_index.get_value_or(
+          doc_read_context_.schema.num_key_columns())) {
   SetupProjectionSubkeys();
 }
 
@@ -105,7 +108,8 @@ DocRowwiseIterator::DocRowwiseIterator(
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    RWOperationCounter* pending_op_counter)
+    RWOperationCounter* pending_op_counter,
+    boost::optional<size_t> end_referenced_key_column_index)
     : projection_owner_(std::move(projection)),
       projection_(*projection_owner_),
       doc_read_context_(doc_read_context),
@@ -116,7 +120,9 @@ DocRowwiseIterator::DocRowwiseIterator(
       has_bound_key_(false),
       pending_op_(pending_op_counter),
       done_(false),
-      doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()) {
+      doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()),
+      end_referenced_key_column_index_(end_referenced_key_column_index.get_value_or(
+          doc_read_context_.schema.num_key_columns())) {
   SetupProjectionSubkeys();
 }
 
@@ -127,7 +133,8 @@ DocRowwiseIterator::DocRowwiseIterator(
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    RWOperationCounter* pending_op_counter)
+    RWOperationCounter* pending_op_counter,
+    boost::optional<size_t> end_referenced_key_column_index)
     : projection_owner_(std::move(projection)),
       projection_(*projection_owner_),
       doc_read_context_holder_(std::move(doc_read_context)),
@@ -139,7 +146,9 @@ DocRowwiseIterator::DocRowwiseIterator(
       has_bound_key_(false),
       pending_op_(pending_op_counter),
       done_(false),
-      doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()) {
+      doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()),
+      end_referenced_key_column_index_(end_referenced_key_column_index.get_value_or(
+          doc_read_context_.schema.num_key_columns())) {
   SetupProjectionSubkeys();
 }
 
@@ -461,22 +470,31 @@ Status SetQLPrimaryKeyColumnValues(const Schema& schema,
                                    const size_t begin_index,
                                    const size_t column_count,
                                    const char* column_type,
+                                   const size_t end_referenced_key_column_index,
                                    DocKeyDecoder* decoder,
                                    QLTableRow* table_row) {
-  if (begin_index + column_count > schema.num_columns()) {
-    return STATUS_SUBSTITUTE(
-        Corruption,
-        "$0 primary key columns between positions $1 and $2 go beyond table columns $3",
-        column_type, begin_index, begin_index + column_count - 1, schema.num_columns());
-  }
+  const auto end_group_index = begin_index + column_count;
+  SCHECK_LE(
+      end_group_index, schema.num_columns(), InvalidArgument,
+      Format(
+          "$0 primary key columns between positions $1 and $2 go beyond table columns $3",
+          column_type, begin_index, begin_index + column_count - 1, schema.num_columns()));
+  SCHECK_LE(
+      end_referenced_key_column_index, schema.num_key_columns(), InvalidArgument,
+      Format(
+          "End reference key column index $0 is higher than num of key columns in schema $1",
+          end_referenced_key_column_index, schema.num_key_columns()));
+
   KeyEntryValue key_entry_value;
-  for (size_t i = 0, j = begin_index; i < column_count; i++, j++) {
-    const auto ql_type = schema.column(j).type();
-    QLTableColumn& column = table_row->AllocColumn(schema.column_id(j));
+  size_t col_idx = begin_index;
+  for (; col_idx < std::min(end_group_index, end_referenced_key_column_index); ++col_idx) {
+    const auto ql_type = schema.column(col_idx).type();
+    QLTableColumn& column = table_row->AllocColumn(schema.column_id(col_idx));
     RETURN_NOT_OK(decoder->DecodeKeyEntryValue(&key_entry_value));
     key_entry_value.ToQLValuePB(ql_type, &column.value);
   }
-  return decoder->ConsumeGroupEnd();
+
+  return col_idx == end_group_index ? decoder->ConsumeGroupEnd() : Status::OK();
 }
 
 } // namespace
@@ -516,23 +534,26 @@ Status DocRowwiseIterator::DoNextRow(
     return STATUS(InternalError, "next row has not be prepared for reading");
   }
 
-  DocKeyDecoder decoder(row_key_);
-  RETURN_NOT_OK(decoder.DecodeCotableId());
-  RETURN_NOT_OK(decoder.DecodeColocationId());
-  bool has_hash_components = VERIFY_RESULT(decoder.DecodeHashCode());
+  if (end_referenced_key_column_index_ > 0) {
+    DocKeyDecoder decoder(row_key_);
+    RETURN_NOT_OK(decoder.DecodeCotableId());
+    RETURN_NOT_OK(decoder.DecodeColocationId());
+    bool has_hash_components = VERIFY_RESULT(decoder.DecodeHashCode());
 
-  // Populate the key column values from the doc key. The key column values in doc key were
-  // written in the same order as in the table schema (see DocKeyFromQLKey). If the range columns
-  // are present, read them also.
-  if (has_hash_components) {
-    RETURN_NOT_OK(SetQLPrimaryKeyColumnValues(
-        doc_read_context_.schema, 0, doc_read_context_.schema.num_hash_key_columns(),
-        "hash", &decoder, table_row));
-  }
-  if (!decoder.GroupEnded()) {
-    RETURN_NOT_OK(SetQLPrimaryKeyColumnValues(
-        doc_read_context_.schema, doc_read_context_.schema.num_hash_key_columns(),
-        doc_read_context_.schema.num_range_key_columns(), "range", &decoder, table_row));
+    // Populate the key column values from the doc key. The key column values in doc key were
+    // written in the same order as in the table schema (see DocKeyFromQLKey). If the range columns
+    // are present, read them also.
+    if (has_hash_components) {
+      RETURN_NOT_OK(SetQLPrimaryKeyColumnValues(
+          doc_read_context_.schema, 0, doc_read_context_.schema.num_hash_key_columns(), "hash",
+          end_referenced_key_column_index_, &decoder, table_row));
+    }
+    if (!decoder.GroupEnded()) {
+      RETURN_NOT_OK(SetQLPrimaryKeyColumnValues(
+          doc_read_context_.schema, doc_read_context_.schema.num_hash_key_columns(),
+          doc_read_context_.schema.num_range_key_columns(), "range",
+          end_referenced_key_column_index_, &decoder, table_row));
+    }
   }
 
   const auto& projection = projection_opt.get_value_or(schema());
