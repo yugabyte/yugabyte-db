@@ -44,7 +44,7 @@ The `ysql_dump` tool can simplify some steps of your schema migration, refer to 
 
 ### Specify `PRIMARY KEY` inline
 
-YugabyteDB supports the PostgreSQL syntax of first declaring a table, and subsequently running an ALTER TABLE command to add the primary key. Note that the ALTER TABLE operation requires a disk re-write and may be resource intensive, hence it is recommended to set the primary key inline as part of the CREATE TABLE operation.
+YugabyteDB supports the PostgreSQL syntax of first declaring a table, and subsequently running an ALTER TABLE command to add the primary key. Note that the ALTER TABLE operation requires a disk re-write and may be resource intensive, so it is recommended to set the primary key inline as part of the CREATE TABLE operation.
 
 ### Use `HASH` sort order
 
