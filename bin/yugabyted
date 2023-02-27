@@ -2035,7 +2035,7 @@ class ControlScript(object):
 
             placementInfoOfEveryNode = {}
             for node in dictOfAllNodes:
-                hostname = re.split('[-:]', node)[0]
+                hostname = node.split(":")[0]
                 cloudLocationOfHost = "{}.{}.{}".format(dictOfAllNodes[node]["cloud"],
                     dictOfAllNodes[node]["region"], dictOfAllNodes[node]["zone"])
                 placementInfoOfEveryNode[hostname] = cloudLocationOfHost
