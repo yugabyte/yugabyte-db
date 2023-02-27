@@ -293,7 +293,7 @@ GET     /customers/:cUUID/universes/:uniUUID/range_hash                        c
 # Import a universe
 POST    /customers/:cUUID/universes/import                                     com.yugabyte.yw.controllers.ImportController.importUniverse(cUUID: java.util.UUID)
 
-# Link/Unlink universe
+# Attach/Detach universe
 POST   /customers/:cUUID/universes/:uniUUID/export                             com.yugabyte.yw.controllers.AttachDetachController.exportUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST   /customers/:cUUID/universes/:uniUUID/import                             com.yugabyte.yw.controllers.AttachDetachController.importUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
