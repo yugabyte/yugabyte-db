@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.models.Customer;
@@ -56,6 +57,8 @@ public class NodeAgentPollerTest extends FakeDBApplication {
   @Mock private PlatformExecutorFactory mockPlatformExecutorFactory;
   @Mock private PlatformScheduler mockPlatformScheduler;
   @Mock private NodeAgentClient mockNodeAgentClient;
+
+  @Mock RuntimeConfGetter mockConfGetter;
   private NodeAgentManager nodeAgentManager;
   private NodeAgentHandler nodeAgentHandler;
   private NodeAgentPoller nodeAgentPoller;
@@ -64,7 +67,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
   @Before
   public void setup() {
     customer = ModelFactory.testCustomer();
-    nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper);
+    nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper, mockConfGetter);
     nodeAgentHandler = new NodeAgentHandler(mockAppConfig, nodeAgentManager, mockNodeAgentClient);
     nodeAgentPoller =
         new NodeAgentPoller(

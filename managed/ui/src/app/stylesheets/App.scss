@@ -1,19 +1,19 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import './modules/leaflet.scss';
-@import './modules/highlightjs.scss';
-@import './modules/react-bs-table.scss';
+@use 'modules/leaflet.scss';
+@use 'modules/highlightjs.scss';
+@use 'modules/react-bs-table.scss';
 
-@import './body.scss';
-@import './layout.scss';
-@import './headings.scss';
-@import './links.scss';
-@import './buttons.scss';
-@import './forms.scss';
-@import './tabs.scss';
-@import './modals.scss';
-@import './spinners.scss';
-@import '../../_style/colors';
+@use 'body.scss';
+@use 'layout.scss';
+@use 'headings.scss';
+@use 'links.scss';
+@use 'buttons.scss';
+@use 'forms.scss';
+@use 'tabs.scss';
+@use 'modals.scss';
+@use 'spinners.scss';
+@use '../../_style/colors';
 
 .progress {
   width: 100%;
@@ -37,35 +37,35 @@
 }
 
 .text-red {
-  color: $YB_FAIL_COLOR;
+  color: colors.$YB_FAIL_COLOR;
 }
 
 .text-green {
-  color: $YB_SUCCESS_COLOR;
+  color: colors.$YB_SUCCESS_COLOR;
 }
 
 .text-dark {
-  color: $YB_TEXT_COLOR;
+  color: colors.$YB_TEXT_COLOR;
 }
 
 .text-lightgray {
-  color: $YB_SUBTITLE_COLOR;
+  color: colors.$YB_SUBTITLE_COLOR;
 }
 
 .btn-primary {
-  background-color: $YB_ORANGE;
-  border-color: $YB_ORANGE;
+  background-color: colors.$YB_ORANGE;
+  border-color: colors.$YB_ORANGE;
 }
 
 .btn-primary:hover {
   background-color: #fff;
   border-color: #ccc;
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
 }
 .btn-primary:active:focus {
   background-color: #fff;
   border-color: #ccc;
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
 }
 
 .no-margin {
@@ -81,15 +81,15 @@
   font-size: 14px;
 
   &--error {
-    background-color: $YB_FAIL_COLOR;
+    background-color: colors.$YB_FAIL_COLOR;
   }
 
   &--success {
-    background-color: $YB_SUCCESS_COLOR;
+    background-color: colors.$YB_SUCCESS_COLOR;
   }
 
   &--warning {
-    background-color: $YB_WARNING_COLOR;
+    background-color: colors.$YB_WARNING_COLOR;
   }
 
   &-container {

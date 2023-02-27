@@ -1,7 +1,7 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../_style/colors.scss';
-@import '../../../_style/icons.scss';
+@use '../../../_style/colors.scss';
+@use '../../../_style/icons.scss';
 
 .task-list-container {
   margin-top: 8px;
@@ -61,7 +61,7 @@
   transition: background-color 0.3s;
 
   &:hover {
-    background-color: $YB_HOVER_BACKGROUND_COLOR;
+    background-color: colors.$YB_HOVER_BACKGROUND_COLOR;
     text-decoration: none;
   }
   .task-name {
@@ -76,7 +76,7 @@
     }
   }
   &a {
-    color: $YB_ORANGE;
+    color: colors.$YB_ORANGE;
   }
 }
 

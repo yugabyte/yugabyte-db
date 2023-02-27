@@ -476,10 +476,10 @@ void TabletServerPathHandlers::HandleOperationsPage(const Webserver::WebRequest&
       arg.c_str(), false) ? Operation::TRACE_TXNS : Operation::NO_TRACE_TXNS;
 
   if (!as_text) {
-    *output << "<h1>Transactions</h1>\n";
+    *output << "<h1>Operations</h1>\n";
     *output << "<table class='table table-striped'>\n";
     *output << "   <tr><th>Tablet id</th><th>Op Id</th>"
-      "<th>Transaction Type</th><th>"
+      "<th>Operation Type</th><th>"
       "Total time in-flight</th><th>Description</th></tr>\n";
   }
 

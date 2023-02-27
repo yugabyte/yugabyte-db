@@ -1,4 +1,4 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .metrics-comparison-modal {
   width: auto;
@@ -16,7 +16,7 @@
   }
 
   .metrics-container {
-    background-color: $YB_BG_WHITE_2;
+    background-color: colors.$YB_BG_WHITE_2;
   }
 
   .metrics-comparison-form {
@@ -43,11 +43,11 @@
     display: inline-block;
 
     &.right {
-      border-left: 2px solid $YB_GRAY_HOVER;
+      border-left: 2px solid colors.$YB_GRAY_HOVER;
     }
 
     &.left {
-      border-right: 2px solid $YB_GRAY_HOVER;
+      border-right: 2px solid colors.$YB_GRAY_HOVER;
     }
 
     .metrics-comparison-panel {
@@ -56,7 +56,7 @@
       padding: 20px;
       box-sizing: border-box;
       display: inline-block;
-      border: 1px solid $YB_GRAY_BORDER;
+      border: 1px solid colors.$YB_GRAY_BORDER;
       border-radius: 5px;
       background-color: white;
 
@@ -139,7 +139,7 @@
       padding: 7px;
       margin: 0 3px;
       display: inline-block;
-      color: $YB_TEXT_BLACK;
+      color: colors.$YB_TEXT_BLACK;
       background-color: rgba(0, 0, 0, 0.08);
       border-radius: 8px;
     }

@@ -597,15 +597,19 @@ uint32_t Master::GetAutoFlagConfigVersion() const {
 AutoFlagsConfigPB Master::GetAutoFlagsConfig() const { return auto_flags_manager_->GetConfig(); }
 
 Status Master::get_ysql_db_oid_to_cat_version_info_map(
-    bool size_only, tserver::GetTserverCatalogVersionInfoResponsePB *resp) const {
+    const tserver::GetTserverCatalogVersionInfoRequestPB& req,
+    tserver::GetTserverCatalogVersionInfoResponsePB *resp) const {
   DCHECK(FLAGS_create_initial_sys_catalog_snapshot);
   DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
   // This function can only be called during initdb time.
   DbOidToCatalogVersionMap versions;
   RETURN_NOT_OK(catalog_manager_->GetYsqlAllDBCatalogVersions(&versions));
-  if (size_only) {
+  if (req.size_only()) {
     resp->set_num_entries(narrow_cast<uint32_t>(versions.size()));
   } else {
+    const auto db_oid = req.db_oid();
+    // If db_oid is kInvalidOid, we ask for catalog version map for all databases. Otherwise
+    // we only ask for catalog version info for given database.
     // We assume that during initdb:
     // (1) we only create databases, not drop databases;
     // (2) databases OIDs are allocated increasingly.
@@ -617,14 +621,19 @@ Status Master::get_ysql_db_oid_to_cat_version_info_map(
     // which is a superset of the result of the first call. This is to ensure that the
     // shm_index assigned to a DB oid remains the same during the lifetime of the DB.
     int shm_index = 0;
-    uint32_t db_oid = kInvalidOid;
+    uint32_t current_db_oid = kInvalidOid;
     for (const auto& it : versions) {
-      auto* entry = resp->add_entries();
-      CHECK_LT(db_oid, it.first);
-      db_oid = it.first;
-      entry->set_db_oid(db_oid);
-      entry->set_current_version(it.second.first);
-      entry->set_shm_index(shm_index++);
+      CHECK_LT(current_db_oid, it.first);
+      current_db_oid = it.first;
+      if (db_oid == kInvalidOid || db_oid == current_db_oid) {
+        auto* entry = resp->add_entries();
+        entry->set_db_oid(current_db_oid);
+        entry->set_shm_index(shm_index);
+        if (db_oid != kInvalidOid) {
+          break;
+        }
+      }
+      shm_index++;
     }
   }
   LOG(INFO) << "resp: " << resp->ShortDebugString();

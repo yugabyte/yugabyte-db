@@ -1,8 +1,8 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .advanced-restore-modal {
   width: 1100px;
-  background: $YB_BG_WHITE_3;
+  background: colors.$YB_BG_WHITE_3;
   border-radius: 8px;
 
   .modal-header {
@@ -43,9 +43,9 @@
   }
 
   .restore-form-controls {
-    background: $YB_BG_WHITE_3;
+    background: colors.$YB_BG_WHITE_3;
 
-    border: 1px solid $YB_GRAY_HOVER;
+    border: 1px solid colors.$YB_GRAY_HOVER;
     border-radius: 8px;
     padding: 16px;
     width: 560px;
@@ -73,7 +73,7 @@
       .disable-keyspace-subtext {
         font-size: 12px;
         line-height: 14px;
-        color: $YB_DARKER_GRAY;
+        color: colors.$YB_DARKER_GRAY;
         margin-top: 8px;
       }
     }

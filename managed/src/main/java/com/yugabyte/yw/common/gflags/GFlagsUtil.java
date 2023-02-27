@@ -8,6 +8,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -81,6 +82,8 @@ public class GFlagsUtil {
   public static final String TXN_TABLE_WAIT_MIN_TS_COUNT = "txn_table_wait_min_ts_count";
   public static final String CALLHOME_COLLECTION_LEVEL = "callhome_collection_level";
   public static final String CALLHOME_ENABLED = "callhome_enabled";
+  public static final String USE_NODE_HOSTNAME_FOR_LOCAL_TSERVER =
+      "use_node_hostname_for_local_tserver";
   public static final String SERVER_BROADCAST_ADDRESSES = "server_broadcast_addresses";
   public static final String RPC_BIND_ADDRESSES = "rpc_bind_addresses";
   public static final String TSERVER_MASTER_ADDRS = "tserver_master_addrs";
@@ -133,6 +136,7 @@ public class GFlagsUtil {
           .add(CLUSTER_UUID)
           .add(REPLICATION_FACTOR)
           .add(TXN_TABLE_WAIT_MIN_TS_COUNT)
+          .add(USE_NODE_HOSTNAME_FOR_LOCAL_TSERVER)
           .add(SERVER_BROADCAST_ADDRESSES)
           .add(RPC_BIND_ADDRESSES)
           .add(TSERVER_MASTER_ADDRS)
@@ -216,6 +220,15 @@ public class GFlagsUtil {
     if (processType == null) {
       extra_gflags.put(MASTER_ADDRESSES, "");
     } else if (processType.equals(UniverseTaskBase.ServerType.TSERVER.name())) {
+      boolean configCgroup = config.getInt(NodeManager.POSTGRES_MAX_MEM_MB) > 0;
+
+      // If the cluster is a read replica, use the read replica max mem value if its >= 0. -1 means
+      // to use the primary cluster value instead.
+      if (universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid).clusterType
+              == UniverseDefinitionTaskParams.ClusterType.ASYNC
+          && config.getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) >= 0) {
+        configCgroup = config.getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) > 0;
+      }
       extra_gflags.putAll(
           getTServerDefaultGflags(
               taskParam,
@@ -224,7 +237,7 @@ public class GFlagsUtil {
               useHostname,
               useSecondaryIp,
               isDualNet,
-              config.getInt(NodeManager.POSTGRES_MAX_MEM_MB) > 0));
+              configCgroup));
     } else {
       extra_gflags.putAll(
           getMasterDefaultGFlags(taskParam, universe, useHostname, useSecondaryIp, isDualNet));
@@ -325,6 +338,7 @@ public class GFlagsUtil {
       gflags.put(
           SERVER_BROADCAST_ADDRESSES,
           String.format("%s:%s", privateIp, Integer.toString(node.tserverRpcPort)));
+      gflags.put(USE_NODE_HOSTNAME_FOR_LOCAL_TSERVER, "true");
     } else {
       gflags.put(SERVER_BROADCAST_ADDRESSES, "");
     }
@@ -478,6 +492,7 @@ public class GFlagsUtil {
       gflags.put(
           SERVER_BROADCAST_ADDRESSES,
           String.format("%s:%s", privateIp, Integer.toString(node.masterRpcPort)));
+      gflags.put(USE_NODE_HOSTNAME_FOR_LOCAL_TSERVER, "true");
     } else {
       gflags.put(SERVER_BROADCAST_ADDRESSES, "");
     }

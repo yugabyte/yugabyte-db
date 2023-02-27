@@ -65,8 +65,8 @@ import io.netty.util.HashedWheelTimer;
 import io.netty.util.Timeout;
 import io.netty.util.TimerTask;
 import io.netty.util.concurrent.FutureListener;
-import java.io.FileInputStream;
-import java.io.FileReader;
+
+import java.io.*;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -3004,13 +3004,25 @@ public class AsyncYBClient implements AutoCloseable {
           }
           String uuid = replica.getTsInfo().getPermanentUuid().toStringUtf8();
           // from meta_cache.cc
-          // TODO: if the TS advertises multiple host/ports, pick the right one
-          // based on some kind of policy. For now just use the first always.
-          try {
-            addTabletClient(uuid, addresses.get(0).getHost(), addresses.get(0).getPort(),
-                replica.getRole().equals(CommonTypes.PeerRole.LEADER));
-          } catch (UnknownHostException ex) {
-            lookupExceptions.add(ex);
+
+          // This code tries to connect to the TS in case it advertises multiple host/ports by
+          // iterating over the list and connecting to the one which is reachable.
+          // TODO: Implement some policy so that the correct TS host/port can be picked.
+          for (CommonNet.HostPortPB address : addresses) {
+            try {
+              if (InetAddress.getByName(address.getHost())
+                      .isReachable((int) defaultOperationTimeoutMs)) {
+                addTabletClient(uuid, address.getHost(), address.getPort(),
+                  replica.getRole().equals(CommonTypes.PeerRole.LEADER));
+
+                // If connection is successful, do not retry on any other host address.
+                break;
+              }
+            } catch (UnknownHostException ex) {
+              lookupExceptions.add(ex);
+            } catch (IOException e) {
+              throw new RuntimeException("Network error occurred while trying to reach host", e);
+            }
           }
         }
         leaderIndex = 0;

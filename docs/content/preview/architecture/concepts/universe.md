@@ -32,7 +32,7 @@ YugabyteDB automatically shards, replicates, and load-balances these tables acro
 
 ### YSQL
 
-A namespaces in YSQL is referred to as a database and is logically identical to a namespace in other RDBMS (such as PostgreSQL).
+A namespace in YSQL is referred to as a database and is logically identical to a namespace in other RDBMS (such as PostgreSQL).
 
 ### YCQL
 

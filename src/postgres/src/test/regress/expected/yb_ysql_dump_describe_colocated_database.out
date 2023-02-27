@@ -1,11 +1,13 @@
-           List of relations
- Schema | Name | Type  |     Owner
---------+------+-------+---------------
- public | tbl  | table | yugabyte_test
- public | tbl2 | table | yugabyte_test
- public | tbl3 | table | yugabyte_test
- public | tbl4 | table | yugabyte_test
-(4 rows)
+            List of relations
+ Schema |  Name   | Type  |     Owner
+--------+---------+-------+---------------
+ public | htest   | table | yugabyte_test
+ public | htest_1 | table | yugabyte_test
+ public | tbl     | table | yugabyte_test
+ public | tbl2    | table | yugabyte_test
+ public | tbl3    | table | yugabyte_test
+ public | tbl4    | table | yugabyte_test
+(6 rows)
 
                              List of tablegroups
   Name   |  Owner   | Access privileges | Description | Tablespace | Options
@@ -20,4 +22,7 @@
  default    | postgres    |                   |                   |                  |               | tbl2        | table | yugabyte_test |                 |
  default    | postgres    |                   |                   |                  |               | tbl_v_idx   | index | yugabyte_test |                 |
  default    | postgres    |                   |                   |                  |               | tbl2_v2_idx | index | yugabyte_test |                 |
-(4 rows)
+ default    | postgres    |                   |                   |                  |               | htest       | table | yugabyte_test |                 |
+ default    | postgres    |                   |                   |                  |               | htest_1     | table | yugabyte_test |                 |
+(6 rows)
+

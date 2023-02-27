@@ -1,3 +1,5 @@
+@use "../../_style/colors";
+
 /* Copyright (c) YugaByte, Inc. */
 
 body {
@@ -14,7 +16,7 @@ html {
     width: 90px;
     height: 10000%;
     margin-top: -100%;
-    background-color: $YB_VIOLET;
+    background-color: colors.$YB_VIOLET;
     content: '';
     z-index: -1;
   }

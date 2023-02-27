@@ -19119,9 +19119,8 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 		/*
 		 * For colocated tables, we need to set the new table to have the same
 		 * colocation_id since we use it as a prefix in our DocKeys.
-		 * Don't include colocation_id in the reloptions array for colocated partitioned tables.
 		 */
-		if (properties->is_colocated && relkind != RELKIND_PARTITIONED_TABLE)
+		if (properties->is_colocated)
 			appendPQExpBuffer(reloptions_buf, "colocation_id=%u", properties->colocation_id);
 
 		/*

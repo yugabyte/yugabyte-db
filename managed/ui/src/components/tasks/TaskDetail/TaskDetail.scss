@@ -1,8 +1,8 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../_style/colors.scss';
-@import '../../../_style/icons.scss';
-@import '../../../_style/mixins.scss';
+@use '../../../_style/colors.scss';
+@use '../../../_style/icons.scss';
+@use '../../../_style/mixins.scss';
 
 .task-detail-title {
   display: inline;
@@ -31,7 +31,7 @@
 
 .task-detail-heading {
   text-align: center;
-  color: $YB_FAIL_COLOR;
+  color: colors.$YB_FAIL_COLOR;
   font-size: 18px;
   font-weight: 400;
   font-stretch: expanded;
@@ -56,6 +56,7 @@
       font-family: 'Rubik', sans-serif;
       text-overflow: ellipsis;
       max-width: 500px;
+      float: none !important;
     }
   }
 
@@ -68,10 +69,10 @@
     font-size: 24px;
     font-weight: 300;
     margin: 30px 0;
-    color: $YB_SUBTITLE_COLOR;
+    color: colors.$YB_SUBTITLE_COLOR;
 
     .failure {
-      color: $YB_FAIL_COLOR;
+      color: colors.$YB_FAIL_COLOR;
     }
   }
 }
@@ -108,7 +109,7 @@
 
 .task-detail-info {
   margin-top: 10px;
-  border-top: 1px solid $YB_GRAY;
+  border-top: 1px solid colors.$YB_GRAY;
   padding-top: 10px;
 
   i {
@@ -122,7 +123,7 @@
 
 pre {
   margin: 15px 0 !important;
-  border: 1px solid $YB_GRAY;
+  border: 1px solid colors.$YB_GRAY;
   padding: 0 !important;
   background: #f7f8f9;
   font-family: inherit;
@@ -143,14 +144,14 @@ pre {
     word-wrap: normal;
     word-break: keep-all;
     min-height: 46px;
-    @include transition(0.3s);
+    @include mixins.transition(0.3s);
   }
 }
 
 .task-detail-view-toggle {
   cursor: pointer;
   display: inline-block;
-  color: $YB_VIOLET_TEXT;
+  color: colors.$YB_VIOLET_TEXT;
   text-align: center;
   vertical-align: middle;
   font-size: 11px;

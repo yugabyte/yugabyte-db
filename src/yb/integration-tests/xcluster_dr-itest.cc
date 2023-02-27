@@ -40,7 +40,6 @@ using namespace std::chrono_literals;
 
 namespace yb {
 using OK = Status::OK;
-namespace enterprise {
 
 const int kMasterCount = 3;
 const int kTServerCount = 3;
@@ -294,5 +293,4 @@ TEST_F(XClusterDRTest, Failover) {
   ASSERT_OK(WaitForTargetRowsToMatchSource());
 }
 
-}  // namespace enterprise
 }  // namespace yb

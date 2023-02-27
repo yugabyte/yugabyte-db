@@ -90,10 +90,13 @@ func createUpgradeDirs() {
 		if err := MkdirAll(dir, os.ModePerm); err != nil {
 			log.Fatal(fmt.Sprintf("failed creating directory %s: %s", dir, err.Error()))
 		}
-		err := Chown(dir, viper.GetString("service_username"), viper.GetString("service_username"), true)
-		if err != nil {
-			log.Fatal("failed to change ownership of " + dir + " to " +
-				viper.GetString("service_username") + ": " + err.Error())
+		if HasSudoAccess() {
+			err := Chown(dir, viper.GetString("service_username"), viper.GetString("service_username"),
+				true)
+			if err != nil {
+				log.Fatal("failed to change ownership of " + dir + " to " +
+					viper.GetString("service_username") + ": " + err.Error())
+			}
 		}
 	}
 }

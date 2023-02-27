@@ -258,8 +258,10 @@ func (handler *PreflightCheckHandler) Handle(ctx context.Context) (any, error) {
 		util.FileLogger().Errorf("Pre-flight checks processing failed - %s", err.Error())
 		return nil, err
 	}
+	data := output.Info.String()
+	util.FileLogger().Debugf("Preflight check output data: %s", data)
 	handler.result = &map[string]model.PreflightCheckVal{}
-	err = json.Unmarshal([]byte(output.Info.String()), handler.result)
+	err = json.Unmarshal([]byte(data), handler.result)
 	if err != nil {
 		util.FileLogger().Errorf("Pre-flight checks unmarshaling error - %s", err.Error())
 		return nil, err

@@ -70,9 +70,7 @@ class AutoFlagsManager;
 
 namespace tserver {
 
-namespace enterprise {
 class CDCConsumer;
-}
 class PgClientServiceImpl;
 
 class TabletServer : public DbServerBase, public TabletServerIf {
@@ -219,7 +217,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   Status get_ysql_db_oid_to_cat_version_info_map(
-      bool size_only, tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
+      const tserver::GetTserverCatalogVersionInfoRequestPB& req,
+      tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
 

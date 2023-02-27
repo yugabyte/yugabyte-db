@@ -53,9 +53,7 @@ namespace yb {
 
 using client::YBClient;
 using client::YBTableName;
-using tserver::enterprise::CDCConsumer;
-
-namespace enterprise {
+using tserver::CDCConsumer;
 
 Status TwoDCTestBase::InitClusters(const MiniClusterOptions& opts) {
   FLAGS_replication_factor = static_cast<int>(opts.num_tablet_servers);
@@ -562,5 +560,4 @@ Status TwoDCTestBase::SetupWaitForReplicationDrainStatus(
   return Status::OK();
 }
 
-} // namespace enterprise
 } // namespace yb

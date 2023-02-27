@@ -1182,9 +1182,9 @@ TEST_F(CqlTest, CheckStateAfterDrop) {
   Result<bool> res_done = check.IsDeleteDone(table_id);
   ASSERT_NOK(res_done);
   LOG(INFO) << "Expected error: " << res_done.status();
-  // Error example: MasterErrorPB::OBJECT_NOT_FOUND:
+  // Error example: MasterErrorPB::INVALID_REQUEST:
   //     IllegalState: The object was NOT deleted: Current schema version=17
-  ASSERT_EQ(master::MasterError(res_done.status()), master::MasterErrorPB::OBJECT_NOT_FOUND);
+  ASSERT_EQ(master::MasterError(res_done.status()), master::MasterErrorPB::INVALID_REQUEST);
   ASSERT_TRUE(res_done.status().IsIllegalState());
   ASSERT_STR_CONTAINS(res_done.status().message().ToBuffer(), "The object was NOT deleted");
 
