@@ -10,11 +10,13 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static java.util.stream.Collectors.joining;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonEnumDefaultValue;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.JsonTypeInfo.As;
 import com.fasterxml.jackson.annotation.JsonTypeInfo.Id;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -98,7 +100,10 @@ public class YbcBackupUtil {
     @EnumValue("NAMESPACE")
     NAMESPACE,
     @EnumValue("TABLE")
-    TABLE;
+    TABLE,
+    @JsonEnumDefaultValue
+    @EnumValue("default_type")
+    DEFAULT_TYPE;
 
     public static class Constants {
       public static final String NAMESPACE = "NAMESPACE";
@@ -159,7 +164,11 @@ public class YbcBackupUtil {
 
       @NotNull
       @Valid
-      @JsonTypeInfo(use = Id.NAME, property = "type", include = As.EXTERNAL_PROPERTY)
+      @JsonTypeInfo(
+          use = Id.NAME,
+          property = "type",
+          include = As.EXTERNAL_PROPERTY,
+          defaultImpl = SnapshotObjectData.class)
       @JsonSubTypes(
           value = {
             @JsonSubTypes.Type(value = TableData.class, name = SnapshotObjectType.Constants.TABLE),
@@ -170,7 +179,7 @@ public class YbcBackupUtil {
       public SnapshotObjectData data;
 
       @JsonIgnoreProperties(ignoreUnknown = true)
-      public abstract static class SnapshotObjectData {
+      public static class SnapshotObjectData {
         @JsonAlias("name")
         @NotNull
         public String snapshotObjectName;
@@ -204,6 +213,8 @@ public class YbcBackupUtil {
    */
   public YbcBackupResponse parseYbcBackupResponse(String metadata) {
     ObjectMapper mapper = new ObjectMapper();
+    // For custom types in Snapshot Info.
+    mapper.enable(DeserializationFeature.READ_UNKNOWN_ENUM_VALUES_USING_DEFAULT_VALUE);
     YbcBackupResponse successMarker = null;
     try {
       successMarker = mapper.readValue(metadata, YbcBackupResponse.class);
