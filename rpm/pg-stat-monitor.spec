@@ -12,7 +12,7 @@ Source0:        percona-pg-stat-monitor%{pgrel}-%{version}.tar.gz
 URL:            https://github.com/Percona-Lab/pg_stat_monitor
 BuildRequires:  percona-postgresql%{pgrel}-devel
 Requires:       postgresql-server
-Provides:	percona-pg-stat-monitor%{pgrel}
+Provides:       percona-pg-stat-monitor%{pgrel}
 Conflicts:      percona-pg-stat-monitor%{pgrel}
 Obsoletes:      percona-pg-stat-monitor%{pgrel}
 Epoch:          1
