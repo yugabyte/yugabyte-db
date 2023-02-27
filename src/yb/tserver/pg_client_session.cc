@@ -206,13 +206,13 @@ Status ProcessUsedReadTime(uint64_t session_id,
     // has been chosen by master. All further reads from catalog must use same read point.
     auto catalog_read_time = op_used_read_time;
 
-    // We set global limit to local limit to avoid read restart errors because they are
+    // We set global limit to read time to avoid read restart errors because they are
     // disruptive to system catalog reads and it is not always possible to handle them there.
     // This might lead to reading slightly outdated state of the system catalog if a recently
     // committed DDL transaction used a transaction status tablet whose leader's clock is skewed
     // and is in the future compared to the master leader's clock.
     // TODO(dmitry) This situation will be handled in context of #7964.
-    catalog_read_time.global_limit = catalog_read_time.local_limit;
+    catalog_read_time.global_limit = catalog_read_time.read;
     catalog_read_time.ToPB(resp->mutable_catalog_read_time());
   }
 
@@ -375,6 +375,11 @@ struct PerformData {
       op_resp.Swap(op->mutable_response());
       if (op->has_sidecar()) {
         op_resp.set_rows_data_sidecar(narrow_cast<int>(op->sidecar_index()));
+      }
+      if (resp->has_catalog_read_time() && op_resp.has_paging_state()) {
+        // Prevent further paging reads from read restart errors.
+        // See the ProcessUsedReadTime(...) function for details.
+        *op_resp.mutable_paging_state()->mutable_read_time() = resp->catalog_read_time();
       }
       op_resp.set_partition_list_version(op->table()->GetPartitionListVersion());
     }
