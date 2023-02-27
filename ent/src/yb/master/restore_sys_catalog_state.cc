@@ -63,7 +63,8 @@ Status ApplyWriteRequest(
       .doc_write_batch = write_batch, .deadline = {}, .read_time = {}, .restart_read_ht = nullptr};
   IndexMap index_map;
   docdb::QLWriteOperation operation(
-      write_request, doc_read_context, index_map, nullptr, TransactionOperationContext());
+      write_request, write_request.schema_version(), doc_read_context, index_map, nullptr,
+      TransactionOperationContext());
   QLResponsePB response;
   RETURN_NOT_OK(operation.Init(&response));
   return operation.Apply(apply_data);

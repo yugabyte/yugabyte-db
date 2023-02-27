@@ -355,6 +355,7 @@ Result<bool> WriteQuery::CqlPrepareExecute() {
     QLResponsePB* resp = response_->add_ql_response_batch();
     auto write_op = std::make_unique<docdb::QLWriteOperation>(
         req,
+        table_info->schema_version,
         table_info->doc_read_context,
         table_info->index_map,
         tablet->unique_index_key_schema(),
