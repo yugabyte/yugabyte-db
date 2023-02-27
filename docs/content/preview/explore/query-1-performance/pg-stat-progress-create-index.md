@@ -20,9 +20,9 @@ YugabyteDB supports the PostgreSQL `pg_stat_progress_create_index` view to repor
 
 The `pg_stat_progress_create_index` view can provide the following details:
 
-- number of rows processed during an index backfill.
-- the current phase of the command with `initializing` or `backfilling` as the possible phases.
-- index progress report for all the different configurations of an index or index build such as non-concurrent index builds, GIN indexes, partial indexes, and include indexes.
+- Number of rows processed during an index backfill.
+- The current phase of the command with `initializing` or `backfilling` as the possible phases.
+- Index progress report for all the different configurations of an index or index build such as non-concurrent index builds, GIN indexes, partial indexes, and include indexes.
 
 The following table describes the view columns:
 
@@ -49,7 +49,6 @@ The `pg_stat_progress_create_index` view includes the following YugabyteDB-speci
 - In YugabyteDB, the `pg_stat_progress_create_index` view is a local view; it only has entries for CREATE INDEX commands issued by local YSQL clients.
 
 - In PostgreSQL, `tuples_done` and `tuples_total` refer to the tuples of the _index_. However, in YugabyteDB, these fields refer to the tuples of the _indexed table_. This applies only to partial indexes, where the reported progress is less than the actual progress. `tuples_total` is an estimate that is retrieved from `pg_class.reltuples`.
-- In YugabyteDB, the values for `tuples_done` and `tuples_total` for temporary indexes are not displayed unlike PostgreSQL, because these columns reflect tuples of the indexed table.
 
 ## Example
 
@@ -61,14 +60,14 @@ Local single-node cluster. See [Set up YugabyteDB universe](../../../explore/#se
 
 {{< /note >}}
 
-- From your local YugabyteDB installation directory, connect to the [YSQL](../../../admin/ysqlsh/) shell, and create an index on an existing table as follows:
+1. From your local YugabyteDB installation directory, connect to the [YSQL](../../../admin/ysqlsh/) shell, and create an index on an existing table as follows:
 
     ```sql
     CREATE TABLE employees (id int, name text, department text);
     CREATE INDEX ON customers(customer_name);
     ```
 
-- On a separate parallel YSQL connection on the same node, select from the view to see the progress of the command as follows:
+1. On a separate parallel YSQL connection on the same node, select from the view to see the progress of the command as follows:
 
     ```sql
     SELECT * FROM pg_stat_progress_create_index;
