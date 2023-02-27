@@ -24,6 +24,8 @@
 
 #include <boost/functional/hash.hpp>
 
+#include "opentelemetry/sdk/version/version.h"
+
 #include "yb/client/table_info.h"
 
 #include "yb/common/pg_types.h"
@@ -432,6 +434,21 @@ Status PgSession::DeleteDBSequences(int64_t db_oid) {
   return pg_client_.DeleteDBSequences(db_oid);
 }
 
+//--------------------------------------------------------------------------------------------------
+
+Status PgSession::StartTraceForQuery() {
+  LOG(INFO) << "Will get a tracer";
+  this->query_tracer_ = trace::Provider::GetTracerProvider()->GetTracer("pg_session", OPENTELEMETRY_SDK_VERSION);
+  LOG(INFO) << "Got tracer. Will get span";
+  this->query_span_ = this->query_tracer_->StartSpan("HandleRequest");
+  LOG(INFO) << "Got a span";
+  return Status::OK();
+}
+
+Status PgSession::StopTraceForQuery() {
+  this->query_span_->End();
+  return Status::OK();
+}
 //--------------------------------------------------------------------------------------------------
 
 Status PgSession::DropTable(const PgObjectId& table_id) {

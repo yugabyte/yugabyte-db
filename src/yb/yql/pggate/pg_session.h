@@ -20,6 +20,8 @@
 #include <utility>
 #include <vector>
 
+#include "opentelemetry/trace/provider.h"
+
 #include "yb/client/client_fwd.h"
 #include "yb/client/tablet_server.h"
 
@@ -42,6 +44,9 @@
 #include "yb/yql/pggate/pg_perform_future.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
+
+namespace trace = opentelemetry::trace;
+namespace nostd = opentelemetry::nostd;
 
 namespace yb {
 namespace pggate {
@@ -182,6 +187,13 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
 
   Status DeleteDBSequences(int64_t db_oid);
+
+  //------------------------------------------------------------------------------------------------
+  // Operations for a query
+  //------------------------------------------------------------------------------------------------
+
+  Status StartTraceForQuery();
+  Status StopTraceForQuery();
 
   //------------------------------------------------------------------------------------------------
   // Operations on Tablegroup.
@@ -415,6 +427,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   const YBCPgCallbacks& pg_callbacks_;
   bool has_write_ops_in_ddl_mode_ = false;
   std::variant<TxnSerialNoPerformInfo> last_perform_on_txn_serial_no_;
+
+  nostd::shared_ptr<trace::Tracer> query_tracer_;
+  nostd::shared_ptr<trace::Span> query_span_;
 };
 
 }  // namespace pggate
