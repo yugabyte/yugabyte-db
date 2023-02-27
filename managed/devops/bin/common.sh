@@ -610,6 +610,9 @@ activate_pex() {
   export SCRIPT_PATH
   mitogen_path=$($PYTHON_EXECUTABLE $PEX_PATH -c \
                 "import sys; print([x for x in sys.path if x.find('mitogen-') >= 0][0])")
+  ansible_module_path=$($PYTHON_EXECUTABLE $PEX_PATH -c \
+                "import sys; print([x for x in sys.path if x.find('ansible-') >= 0][0])")
+  PEX_ANSIBLE_PLAYBOOK_PATH="$ansible_module_path"/.prefix/bin
   SITE_PACKAGES="$yb_devops_home/pex/$mitogen_path"
   export SITE_PACKAGES
   export ANSIBLE_CONFIG="$yb_devops_home/ansible.cfg"

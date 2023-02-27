@@ -308,6 +308,7 @@ public class NodeAgentPoller {
       Set<UUID> nodeUuids = new HashSet<>();
       NodeAgent.getAll()
           .stream()
+          .filter(n -> n.state != State.REGISTERING)
           .peek(n -> nodeUuids.add(n.uuid))
           .map(
               n ->
