@@ -335,7 +335,7 @@ Examples:
 - num_cores - number of vCPUs per node
 - memory_mb - memory (MB) per node
 - disk_size_gb - disk size (GB) per node
-- code - cloud provider (aws or gcp)
+- code - cloud provider (`aws` or `gcp`)
 - region - region in which to deploy the read replica
 - num_nodes - number of nodes for the read replica
 - vpc_name - name of the VPC in which to deploy the read replica
@@ -363,7 +363,7 @@ Examples:
 - num_cores - number of vCPUs per node
 - memory_mb - memory (MB) per node
 - disk_size_gb - disk size (GB) per node
-- code - cloud provider (aws or gcp)
+- code - cloud provider (`aws` or `gcp`)
 - region - region in which to deploy the read replica
 - num_nodes - number of nodes for the read replica
 - vpc_name - name of the VPC in which to deploy the read replica
@@ -424,7 +424,7 @@ Examples:
 
 Use the `vpc-peering` resource to perform operations on VPC peerings, including the following:
 
-- create and delete peerings
+- create and delete VPC peerings
 - get information about a peering
 
 ```text
@@ -686,7 +686,7 @@ Examples:
 
 ### wait flag
 
-For long-running commands such as creating or deleting cluster, you can use the `--wait` flag to wait until the operation is completed. For example:
+For long-running commands such as creating or deleting a cluster, you can use the `--wait` flag to wait until the operation is completed. For example:
 
 ```sh
 ybm cluster delete \
@@ -694,7 +694,7 @@ ybm cluster delete \
     --wait
 ```
 
-If you are using the CLI with the `--wait` flag in your CI system, you can specify the environment variable `YBM_CI` to `true` to avoid generating unnecessary logs lines.
+If you are using ybm-cli with the `--wait` flag in your CI system, you can set the environment variable `YBM_CI` to `true` to avoid generating unnecessary log lines.
 
 ## Environment variables
 
