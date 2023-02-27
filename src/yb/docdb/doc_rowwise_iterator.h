@@ -51,7 +51,8 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
-                     RWOperationCounter* pending_op_counter = nullptr);
+                     RWOperationCounter* pending_op_counter = nullptr,
+                     boost::optional<size_t> end_referenced_key_column_index = boost::none);
 
   DocRowwiseIterator(std::unique_ptr<Schema> projection,
                      std::shared_ptr<DocReadContext> doc_read_context,
@@ -59,7 +60,8 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
-                     RWOperationCounter* pending_op_counter = nullptr);
+                     RWOperationCounter* pending_op_counter = nullptr,
+                     boost::optional<size_t> end_referenced_key_column_index = boost::none);
 
   DocRowwiseIterator(std::unique_ptr<Schema> projection,
                      std::reference_wrapper<const DocReadContext> doc_read_context,
@@ -67,7 +69,8 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
-                     RWOperationCounter* pending_op_counter = nullptr);
+                     RWOperationCounter* pending_op_counter = nullptr,
+                     boost::optional<size_t> end_referenced_key_column_index = boost::none);
 
   void SetupProjectionSubkeys();
 
@@ -190,6 +193,10 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // Reference to object owned by Schema (DocReadContext schema object) for easier access.
   // This is only set when DocKey offsets are present in schema.
   const std::optional<DocKeyOffsets>& doc_key_offsets_;
+
+  // The next index of last referenced key column index. Restricts the number of key columns present
+  // in output row.
+  const size_t end_referenced_key_column_index_;
 
   IsFlatDoc is_flat_doc_ = IsFlatDoc::kFalse;
 

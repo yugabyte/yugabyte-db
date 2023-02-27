@@ -90,7 +90,8 @@ class YQLStorageIf {
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const DocKey& start_doc_key,
-      std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
+      std::unique_ptr<YQLRowwiseIteratorIf>* iter,
+      boost::optional<size_t> end_referenced_key_column_index = boost::none) const = 0;
 
   // Create iterator for querying by ybctid.
   virtual Status GetIterator(

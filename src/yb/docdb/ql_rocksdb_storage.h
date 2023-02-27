@@ -71,7 +71,8 @@ class QLRocksDBStorage : public YQLStorageIf {
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const DocKey& start_doc_key,
-      YQLRowwiseIteratorIf::UniPtr* iter) const override;
+      YQLRowwiseIteratorIf::UniPtr* iter,
+      boost::optional<size_t> end_referenced_key_column_index = boost::none) const override;
 
   Status GetIterator(
       uint64 stmt_id,
