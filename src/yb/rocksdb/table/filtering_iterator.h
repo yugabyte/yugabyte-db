@@ -101,8 +101,8 @@ class FilteringIterator : public InternalIterator {
       const Comparator* user_key_comparator, const Slice& upperbound,
       KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override {
     KeyFilterCallback kf_callback = [this, key_filter_callback](
-                                        const Slice& prefixed_key, size_t shared_bytes,
-                                        const Slice& delta) -> KeyFilterCallbackResult {
+                                        Slice prefixed_key, size_t shared_bytes,
+                                        Slice delta) -> KeyFilterCallbackResult {
       // TODO: add support for shared prefix encoded key filter callback.
       LOG_IF(DFATAL, shared_bytes != 0)
           << "Key filter callback with shared prefix is not supported.";
