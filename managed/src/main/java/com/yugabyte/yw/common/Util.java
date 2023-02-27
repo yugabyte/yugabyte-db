@@ -113,6 +113,8 @@ public class Util {
 
   public static final String YBC_COMPATIBLE_DB_VERSION = "2.15.0.0-b1";
 
+  public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
+
   public static final String LIVE_QUERY_TIMEOUTS = "yb.query_stats.live_queries.ws";
 
   public static final String YB_RELEASES_PATH = "yb.releases.path";

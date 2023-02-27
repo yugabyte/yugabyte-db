@@ -594,4 +594,20 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Timeout used for internal universe-level helm operations like install/upgrade in secs",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> promoteAutoFlag =
+      new ConfKeyInfo<>(
+          "yb.upgrade.promote_auto_flag",
+          ScopeType.UNIVERSE,
+          "Promote AutoFlags",
+          "Promotes Auto flags while upgrading YB-DB",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowUpgradeOnTransitUniverse =
+      new ConfKeyInfo<>(
+          "yb.upgrade.allow_upgrade_on_transit_universe",
+          ScopeType.UNIVERSE,
+          "Allow upgrade on transit universe",
+          "Allow universe upgrade when nodes are in transit mode",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

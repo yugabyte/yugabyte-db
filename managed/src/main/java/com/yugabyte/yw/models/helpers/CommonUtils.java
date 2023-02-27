@@ -81,6 +81,8 @@ public class CommonUtils {
   public static final int DB_IN_CLAUSE_TO_WARN = 50000;
   public static final int DB_OR_CHAIN_TO_WARN = 100;
 
+  public static final String MIN_PROMOTE_AUTO_FLAG_RELEASE = "2.17.0.0";
+
   private static final Configuration JSONPATH_CONFIG =
       Configuration.builder()
           .jsonProvider(new JacksonJsonNodeJsonProvider())
@@ -767,5 +769,9 @@ public class CommonUtils {
   /** Get the user sending the API request from the HTTP context. */
   public static Users getUserFromContext(Http.Context ctx) {
     return ((UserWithFeatures) ctx.args.get("user")).getUser();
+  }
+
+  public static boolean isAutoFlagSupported(String dbVersion) {
+    return isReleaseEqualOrAfter(MIN_PROMOTE_AUTO_FLAG_RELEASE, dbVersion);
   }
 }
