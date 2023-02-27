@@ -117,10 +117,11 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
       CoarseTimePoint deadline,
       const ReadHybridTime &read_time,
       RWOperationCounter *pending_op_counter = nullptr,
-      bool liveness_column_expected = false) {
+      bool liveness_column_expected = false,
+      boost::optional<size_t> end_referenced_key_column_index = boost::none) {
     auto iter = std::make_unique<DocRowwiseIterator>(
         projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
-        pending_op_counter);
+        pending_op_counter, end_referenced_key_column_index);
     RETURN_NOT_OK(iter->Init(YQL_TABLE_TYPE));
     return iter;
   }
@@ -186,6 +187,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   // Restore doesn't use delete tombstones for rows, instead marks all columns
   // as deleted.
   void TestDeletedDocumentUsingLivenessColumnDelete();
+  void TestPartialKeyColumnsProjection();
 
   std::optional<Schema> projection_;
 };
@@ -2007,6 +2009,28 @@ void DocRowwiseIteratorTest::TestUpdatePackedRow() {
       HybridTime::FromMicros(1500));
 }
 
+void DocRowwiseIteratorTest::TestPartialKeyColumnsProjection() {
+  InsertPopulationData();
+
+  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
+
+  Schema projection;
+  ASSERT_OK(population_schema.CreateProjectionByNames({"population"}, &projection));
+
+  for (size_t key_index = 0; key_index < population_schema.num_key_columns(); key_index++) {
+    auto iter = ASSERT_RESULT(CreateIterator(
+        projection, doc_read_context, kNonTransactionalOperationContext,
+        doc_db(), CoarseTimePoint::max(), ReadHybridTime::FromMicros(1000),
+        /*pending_op_counter = */ nullptr, /* liveness_column_expected = */ false, key_index));
+
+    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
+    QLTableRow row;
+    ASSERT_OK(iter->NextRow(&row));
+    // Expected count is non-key column (1) + num of key columns.
+    ASSERT_EQ(key_index + 1, row.ColumnCount());
+  }
+}
+
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterTestRange) {
   TestClusteredFilterRange();
 }
@@ -2117,6 +2141,10 @@ TEST_F(DocRowwiseIteratorTest, UpdatePackedRow) {
 
 TEST_F(DocRowwiseIteratorTest, DeletedDocumentUsingLivenessColumnDeleteTest) {
   TestDeletedDocumentUsingLivenessColumnDelete();
+}
+
+TEST_F(DocRowwiseIteratorTest, PartialKeyColumnsProjection) {
+  TestPartialKeyColumnsProjection();
 }
 
 }  // namespace docdb
