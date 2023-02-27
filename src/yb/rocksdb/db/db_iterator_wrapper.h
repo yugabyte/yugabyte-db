@@ -66,7 +66,7 @@ class DBIteratorWrapper : public Iterator {
   }
 
   bool ScanForward(
-      const Slice& upperbound, KeyFilterCallback* key_filter_callback,
+      Slice upperbound, KeyFilterCallback* key_filter_callback,
       ScanCallback* scan_callback) override {
     return wrapped_->ScanForward(upperbound, key_filter_callback, scan_callback);
   }
