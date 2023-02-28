@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import java.util.ArrayList;
@@ -71,8 +72,8 @@ public class CloudQueryHelper extends DevopsBase {
     if (p.code.equals("gcp")) {
       // TODO: ideally we shouldn't have this hardcoded string present in multiple
       // places.
-      Map<String, String> config = CloudInfoInterface.fetchEnvVars(p);
-      String potentialGcpNetwork = config.get("CUSTOM_GCE_NETWORK");
+      GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(p);
+      String potentialGcpNetwork = gcpCloudInfo.getDestVpcId();
       if (potentialGcpNetwork != null && !potentialGcpNetwork.isEmpty()) {
         commandArgs.add("--network");
         commandArgs.add(potentialGcpNetwork);
