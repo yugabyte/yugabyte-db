@@ -17,6 +17,8 @@ import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadat
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.common.YBADeprecated;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
@@ -246,11 +248,15 @@ public class Provider extends Model {
     this.details.showSetUpChrony = showSetUpChrony;
   }
 
-  @ApiModelProperty public String hostVpcId = null;
+  // Moving below 3 fields back to transient as they were previously.
+  // Migration for these fields is not required as we started persisting
+  // these fields recently only as part of v2 APIs only.
+  // UI only calls passes these values in the bootstrap call.
+  @Deprecated @Transient @ApiModelProperty public String hostVpcId = null;
 
-  @ApiModelProperty public String hostVpcRegion = null;
+  @Deprecated @Transient @ApiModelProperty public String hostVpcRegion = null;
 
-  @ApiModelProperty public String destVpcId = null;
+  @Deprecated @Transient @ApiModelProperty public String destVpcId = null;
 
   // Hosted Zone for the deployment
   @Deprecated
