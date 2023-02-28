@@ -132,8 +132,9 @@ export const GraphTab: FC<MetricsData> = ({
   useEffect(() => {
     setSelectedTabName(type);
     queryMetricsType();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    nodeName, // eslint-disable-line react-hooks/exhaustive-deps
+    nodeName,
     nodePrefix,
     startMoment,
     endMoment,
