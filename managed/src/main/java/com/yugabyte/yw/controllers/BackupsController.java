@@ -807,11 +807,11 @@ public class BackupsController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
     EditBackupParams taskParams = parseJsonAndValidate(EditBackupParams.class);
-    if (taskParams.timeBeforeDeleteFromPresentInMillis <= 0L
+    if (taskParams.timeBeforeDeleteFromPresentInMillis < 0L
         && taskParams.storageConfigUUID == null) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Please provide either a positive expiry time or storage config to edit backup");
+          "Please provide either a non negative expiry time or storage config to edit backup");
     } else if (Backup.IN_PROGRESS_STATES.contains(backup.state)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot edit a backup that is in progress state");
@@ -822,6 +822,7 @@ public class BackupsController extends AuthenticatedController {
     } else if (!backup.backupUUID.equals(backup.baseBackupUUID)) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot edit an incremental backup");
     }
+
     if (taskParams.storageConfigUUID != null) {
       updateBackupStorageConfig(customerUUID, backupUUID, taskParams);
       LOG.info(
@@ -834,6 +835,9 @@ public class BackupsController extends AuthenticatedController {
           "Updated Backup {} expiry time before delete to {} ms",
           backupUUID,
           taskParams.timeBeforeDeleteFromPresentInMillis);
+    } else if (taskParams.timeBeforeDeleteFromPresentInMillis == 0L) {
+      backup.unsetExpiry();
+      LOG.info("Updated Backup {} expiry to never expire", backupUUID);
     }
     auditService()
         .createAuditEntryWithReqBody(

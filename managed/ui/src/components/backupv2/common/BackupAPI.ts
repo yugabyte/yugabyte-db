@@ -20,7 +20,8 @@ import {
   ICommonBackupInfo,
   IStorageConfig,
   ITable,
-  ThrottleParameters
+  ThrottleParameters,
+  IBackupEditParams
 } from './IBackup';
 
 export function getBackupsList(
@@ -141,6 +142,14 @@ export function createBackup(values: Record<string, any>, isIncrementalBackup = 
   }
 
   return axios.post(requestUrl, payload);
+}
+
+export function editBackup(values: IBackupEditParams) {
+  const cUUID = localStorage.getItem('customerId');
+  const backupUUID = values.backupUUID;
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/backups/${backupUUID}`;
+
+  return axios.put(requestUrl, values);
 }
 
 export const prepareBackupCreationPayload = (values: Record<string, any>, cUUID: string | null) => {
