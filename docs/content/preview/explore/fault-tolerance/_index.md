@@ -9,7 +9,7 @@ aliases:
   - /preview/explore/cloud-native/fault-tolerance/
   - /preview/explore/postgresql/fault-tolerance/
   - /preview/explore/fault-tolerance-macos/
-image: /images/section_icons/explore/linear_scalability.png
+image: /images/section_icons/explore/fault_tolerance.png
 menu:
   preview:
     identifier: fault-tolerance
@@ -40,7 +40,7 @@ For more information, see the following:
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="macos/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/explore/zero_downtime.png" aria-hidden="true" />
         <div class="title">Node and zone availability</div>
       </div>
       <div class="body">
@@ -52,7 +52,7 @@ For more information, see the following:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="transaction-availability/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/auto_sharding.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
         <div class="title">Availability of transactions</div>
       </div>
       <div class="body">
