@@ -438,13 +438,13 @@ When YSQL authentication is enabled, you can sign into `ysqlsh` using the defaul
 
 Default: `false`
 
-<!-- ##### --ysql_enable_profile
+##### --ysql_enable_profile
 
 Enables YSQL [login profiles](../../../secure/enable-authentication/ysql-login-profiles/).
 
 When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users.
 
-Default: `false` -->
+Default: `false`
 
 ##### --pgsql_proxy_bind_address
 
