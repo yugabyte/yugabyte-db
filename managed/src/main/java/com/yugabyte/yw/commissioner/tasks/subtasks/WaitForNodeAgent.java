@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
 import javax.inject.Inject;
@@ -36,6 +37,10 @@ public class WaitForNodeAgent extends AbstractTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     NodeDetails node = universe.getNode(taskParams().nodeName);
     NodeAgent.maybeGetByIp(node.cloudInfo.private_ip)
-        .ifPresent(n -> nodeAgentClient.waitForServerReady(n, taskParams().timeout));
+        .ifPresent(
+            n -> {
+              nodeAgentClient.waitForServerReady(n, taskParams().timeout);
+              n.saveState(State.READY);
+            });
   }
 }

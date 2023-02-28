@@ -14,6 +14,14 @@
         },
         "awsHostedZoneName" : {
           "type" : "string"
+        },
+        "hostVpcId" : {
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "hostVpcRegion" : {
+          "readOnly" : true,
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -1239,7 +1247,7 @@
       "properties" : {
         "action" : {
           "description" : "Action",
-          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "Validate", "Acknowledge", "SyncXClusterConfig", "Login", "Promote", "Bootstrap", "Configure", "UpdateOptions", "UpdateLoadBalancerConfig", "RefreshPricing", "UpgradeSoftware", "UpgradeGFlags", "UpgradeKubernetesOverrides", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "RebootUniverse", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "CreateRestrictedUserInDB", "DropUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateBackup", "RestoreBackup", "CreateSingleTableBackup", "CreateMultiTableBackup", "CreateBackupSchedule", "CreatePitrConfig", "RestoreSnapshotSchedule", "DeletePitrConfig", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType", "GetUniverseResources", "ThirdpartySoftwareUpgrade", "CreateTableSpaces", "CreateHook", "DeleteHook", "UpdateHook", "CreateHookScope", "DeleteHookScope", "AddHook", "RemoveHook", "RotateAccessKey", "CreateAndRotateAccessKey", "RunHook", "RunApiTriggeredHooks", "AddNodeAgent", "UpdateNodeAgent", "DeleteNodeAgent", "DisableYbc", "UpgradeYbc", "InstallYbc", "SetThrottleParams" ],
+          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "Validate", "Acknowledge", "SyncXClusterConfig", "Login", "ApiLogin", "Promote", "Bootstrap", "Configure", "UpdateOptions", "UpdateLoadBalancerConfig", "RefreshPricing", "UpgradeSoftware", "UpgradeGFlags", "UpgradeKubernetesOverrides", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "RebootUniverse", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "CreateRestrictedUserInDB", "DropUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateBackup", "RestoreBackup", "CreateSingleTableBackup", "CreateMultiTableBackup", "CreateBackupSchedule", "CreatePitrConfig", "RestoreSnapshotSchedule", "DeletePitrConfig", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType", "GetUniverseResources", "ThirdpartySoftwareUpgrade", "CreateTableSpaces", "CreateHook", "DeleteHook", "UpdateHook", "CreateHookScope", "DeleteHookScope", "AddHook", "RemoveHook", "RotateAccessKey", "CreateAndRotateAccessKey", "RunHook", "RunApiTriggeredHooks", "AddNodeAgent", "UpdateNodeAgent", "DeleteNodeAgent", "DisableYbc", "UpgradeYbc", "InstallYbc", "SetThrottleParams" ],
           "example" : "Create User",
           "readOnly" : true,
           "type" : "string"
@@ -3780,6 +3788,18 @@
       "required" : [ "license", "licenseType" ],
       "type" : "object"
     },
+    "CustomerLoginFormData" : {
+      "properties" : {
+        "email" : {
+          "type" : "string"
+        },
+        "password" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "email", "password" ],
+      "type" : "object"
+    },
     "CustomerRegisterFormData" : {
       "properties" : {
         "code" : {
@@ -4075,7 +4095,7 @@
     },
     "GCPCloudInfo" : {
       "properties" : {
-        "customGceNetwork" : {
+        "destVpcId" : {
           "type" : "string"
         },
         "gceApplicationCredentialsPath" : {
@@ -4083,6 +4103,10 @@
           "type" : "string"
         },
         "gceProject" : {
+          "type" : "string"
+        },
+        "hostVpcId" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "useHostCredentials" : {
@@ -6207,6 +6231,21 @@
         }
       },
       "required" : [ "buildNumber" ],
+      "type" : "object"
+    },
+    "PerProcessFlags" : {
+      "properties" : {
+        "value" : {
+          "additionalProperties" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "type" : "object"
+        }
+      },
+      "required" : [ "value" ],
       "type" : "object"
     },
     "PerfAdvisorSettingsFormData" : {
@@ -8611,6 +8650,24 @@
       "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "upgradeSystemCatalog", "ybSoftwareVersion" ],
       "type" : "object"
     },
+    "SpecificGFlags" : {
+      "properties" : {
+        "inheritFromPrimary" : {
+          "type" : "boolean"
+        },
+        "perAZ" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/PerProcessFlags"
+          },
+          "type" : "object"
+        },
+        "perProcessFlags" : {
+          "$ref" : "#/definitions/PerProcessFlags"
+        }
+      },
+      "required" : [ "inheritFromPrimary", "perAZ", "perProcessFlags" ],
+      "type" : "object"
+    },
     "StateChangeAuditInfo" : {
       "properties" : {
         "customerId" : {
@@ -10855,6 +10912,9 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "specificGFlags" : {
+          "$ref" : "#/definitions/SpecificGFlags"
+        },
         "tserverGFlags" : {
           "additionalProperties" : {
             "type" : "string"
@@ -10966,7 +11026,7 @@
       "description" : "A user with set of features, associated with a customer",
       "properties" : {
         "authTokenIssueDate" : {
-          "description" : "API token creation date",
+          "description" : "UI session token creation date",
           "example" : "2021-06-17T15:00:05-04:00",
           "format" : "date-time",
           "readOnly" : true,
@@ -11026,7 +11086,7 @@
       "description" : "A user associated with a customer",
       "properties" : {
         "authTokenIssueDate" : {
-          "description" : "API token creation date",
+          "description" : "UI session token creation date",
           "example" : "2021-06-17T15:00:05-04:00",
           "format" : "date-time",
           "readOnly" : true,
@@ -11781,6 +11841,30 @@
     "version" : "v1"
   },
   "paths" : {
+    "/api/v1/api_login" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "apiLogin",
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "CustomerLoginFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/CustomerLoginFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SessionInfo"
+            }
+          }
+        },
+        "summary" : "Authenticate user and return api token",
+        "tags" : [ "Session management" ]
+      }
+    },
     "/api/v1/app_version" : {
       "get" : {
         "description" : "",
@@ -17086,84 +17170,6 @@
         "tags" : [ "Backups" ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/cdc_streams" : {
-      "get" : {
-        "description" : "List CDC Streams for a cluster",
-        "operationId" : "listCdcStreams",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "summary" : "List CDC Streams for a cluster"
-      },
-      "post" : {
-        "description" : "Create CDC Stream for a cluster",
-        "operationId" : "createCdcStream",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "summary" : "Create CDC Stream for a cluster"
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/cdc_streams/{streamId}" : {
-      "delete" : {
-        "description" : "Delete a CDC Stream for a cluster",
-        "operationId" : "deleteCdcStream",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "path",
-          "name" : "streamId",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "summary" : "Delete a CDC stream for a cluster"
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/clusters/primary" : {
       "put" : {
         "description" : "This will update primary cluster of existing universe.Use API to GET current universe. Lookup universeDetails attribute of the universe resource returned. Update the necessary field (e.g. numNodes) Use this updated universeDetails as request body. See https://github.com/yugabyte/yugabyte-db/blob/master/managed/api-examples/python-simple/edit-universe.ipynb",
@@ -18266,38 +18272,6 @@
         } ],
         "summary" : "Resume a paused universe",
         "tags" : [ "Universe management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/run_in_shell" : {
-      "post" : {
-        "description" : "This operation is no longer supported, for security reasons.",
-        "operationId" : "runInShell",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPError"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Run a shell command",
-        "tags" : [ "Universe database management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/run_query" : {

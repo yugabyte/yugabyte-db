@@ -93,6 +93,9 @@ ReplicaState::ReplicaState(
   }
 
   CHECK(IsAcceptableAtomicImpl(leader_state_cache_));
+  LeaderStateCache cache;
+  cache.Set(LeaderStatus::NOT_LEADER, 0, CoarseTimePoint::min());
+  leader_state_cache_.store(cache);
 }
 
 ReplicaState::~ReplicaState() {

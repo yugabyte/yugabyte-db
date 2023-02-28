@@ -44,11 +44,11 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SetSecurityFormData;
 import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
-import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
@@ -82,7 +82,6 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.input.ReversedLinesFileReader;
-import org.apache.directory.api.ldap.model.exception.LdapException;
 import org.pac4j.play.java.Secure;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -125,9 +124,9 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private UserService userService;
 
-  @Inject private LdapUtil ldapUtil;
-
   @Inject private TokenAuthenticator tokenAuthenticator;
+
+  @Inject private LoginHandler loginHandler;
 
   private final ApiHelper apiHelper;
 
@@ -298,43 +297,8 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result login() {
-    boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
-    boolean useLdap =
-        runtimeConfigFactory
-            .globalRuntimeConf()
-            .getString("yb.security.ldap.use_ldap")
-            .equals("true");
-
-    CustomerLoginFormData data =
-        formFactory.getFormDataOrBadRequest(CustomerLoginFormData.class).get();
-
-    Users user = null;
-    Users existingUser =
-        Users.find.query().where().eq("email", data.getEmail().toLowerCase()).findOne();
-    if (existingUser != null) {
-      if (existingUser.userType == null || !existingUser.userType.equals(UserType.ldap)) {
-        user = Users.authWithPassword(data.getEmail().toLowerCase(), data.getPassword());
-        if (user == null) {
-          throw new PlatformServiceException(UNAUTHORIZED, "Invalid User Credentials.");
-        }
-      }
-    }
-    if (useLdap && user == null) {
-      try {
-        user = ldapUtil.loginWithLdap(data);
-      } catch (LdapException e) {
-        LOG.error("LDAP error {} authenticating user {}", e.getMessage(), data.getEmail());
-      }
-    }
-
-    if (user == null) {
-      throw new PlatformServiceException(UNAUTHORIZED, "Invalid User Credentials.");
-    }
-
-    if (useOAuth && !user.getRole().equals(Role.SuperAdmin)) {
-      throw new PlatformServiceException(
-          UNAUTHORIZED, "Only SuperAdmin access permitted via normal login when SSO is enabled.");
-    }
+    Users user =
+        loginHandler.login(formFactory.getFormDataOrBadRequest(CustomerLoginFormData.class).get());
 
     Customer cust = Customer.get(user.customerUUID);
 
@@ -363,6 +327,34 @@ public class SessionController extends AbstractPlatformController {
         Audit.TargetType.User,
         user.uuid.toString(),
         Audit.ActionType.Login,
+        null,
+        null,
+        null,
+        request().remoteAddress());
+    return withData(sessionInfo);
+  }
+
+  @ApiOperation(value = "Authenticate user and return api token", response = SessionInfo.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "CustomerLoginFormData",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.CustomerLoginFormData",
+          required = true))
+  public Result apiLogin() {
+    Users user =
+        loginHandler.login(formFactory.getFormDataOrBadRequest(CustomerLoginFormData.class).get());
+    Customer cust = Customer.get(user.customerUUID);
+
+    SessionInfo sessionInfo = new SessionInfo(null, user.getApiToken(), cust.uuid, user.uuid);
+    ctx().args.put("isAudited", true);
+    Audit.create(
+        user,
+        request().path(),
+        request().method(),
+        Audit.TargetType.User,
+        user.uuid.toString(),
+        ActionType.ApiLogin,
         null,
         null,
         null,
