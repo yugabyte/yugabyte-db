@@ -307,7 +307,7 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
 
         ```sh
         sudo bash -c 'sysctl vm.swappiness=0 >> /etc/sysctl.conf'
-        sudo sysctl kernel.core_pattern=/home/yugabyte/cores/core_%e.%p >> /etc/sysctl.conf
+        sudo sysctl kernel.core_pattern=/home/yugabyte/cores/core_%p_%t_%E >> /etc/sysctl.conf
         ```
 
     1. Configure the parameter `vm.max_map_count` as follows:
