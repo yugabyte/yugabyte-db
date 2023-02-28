@@ -98,6 +98,10 @@ void RunningTransaction::RequestStatusAt(const StatusRequest& request,
   DCHECK_LE(request.global_limit_ht, HybridTime::kMax);
   DCHECK_LE(request.read_ht, request.global_limit_ht);
 
+  if (request.status_tablet_id) {
+    *request.status_tablet_id = status_tablet();
+  }
+
   if (last_known_status_hybrid_time_ > HybridTime::kMin) {
     auto transaction_status =
         GetStatusAt(request.global_limit_ht, last_known_status_hybrid_time_, last_known_status_,
