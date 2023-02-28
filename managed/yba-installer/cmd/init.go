@@ -21,8 +21,6 @@ import (
 func cmdsRequireConfigInit() []string {
 	return []string{
 		"yba-ctl install",
-		"yba-ctl license",
-		"yba-ctl license update",
 		"yba-ctl upgrade",
 		"yba-ctl preflight",
 	}
