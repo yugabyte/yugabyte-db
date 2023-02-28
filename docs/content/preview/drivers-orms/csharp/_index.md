@@ -19,8 +19,8 @@ The following projects can be used to implement C# applications using the Yugaby
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | :------ | :----------------------- | :-------------------- | :--------------------------- |
-| YugabyteDB C# Driver for YSQL [Recommended] | [Documentation](ysql/) <br /> [Reference](../../reference/drivers/csharp/yb-npgsql-reference/) | [8.0.0-yb-1-beta](https://www.nuget.org/packages/NpgsqlYugabyteDB/) |
-| PostgreSQL Npgsql Driver | [Documentation](postgres-npgsql/) <br /> [Reference](../../reference/drivers/csharp/postgres-npgsql-reference/) | [6.0.3](https://www.nuget.org/packages/Npgsql/) | 2.6 and above
+| YugabyteDB C# Driver for YSQL [Recommended] | [Documentation](ysql/) <br /> [Reference](../../reference/drivers/csharp/yb-npgsql-reference/) | [8.0.0-yb-1-beta](https://www.nuget.org/packages/NpgsqlYugabyteDB/) | 2.8 and later
+| PostgreSQL Npgsql Driver | [Documentation](postgres-npgsql/) <br /> [Reference](../../reference/drivers/csharp/postgres-npgsql-reference/) | [6.0.3](https://www.nuget.org/packages/Npgsql/) | 2.6 and later
 | YugabyteDB C# Driver for YCQL | [Documentation](ycql/) |
 
 | Project | Documentation and Guides | Example Apps |
@@ -42,7 +42,7 @@ To develop C# applications for YugabyteDB, you need the following:
 - **Create a C# project**\
    For ease-of-use, use an integrated development environment (IDE) such as Visual Studio. To download and install Visual Studio, visit the [Visual Studio Downloads](https://visualstudio.microsoft.com/downloads/) page.
   - To create a C# project in Visual Studio, select [Console Application](https://docs.microsoft.com/en-us/dotnet/core/tutorials/with-visual-studio?pivots=dotnet-6-0) as template when creating a new project.
-  - If you are not using an IDE, use the dotnet command:
+  - If you are not using an IDE, use the following dotnet command:
 
     ```csharp
     dotnet new console -o new_project_name

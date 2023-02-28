@@ -139,20 +139,22 @@ while (reader.Read())
 }
 ```
 
-<!-- ### Configure SSL/TLS
+### Configure SSL/TLS
 
-The following table describes the additional parameters the .NET Npgsql driver requires as part of the connection string when using SSL.
+The following table describes the additional parameters the YugabyteDB Npgsql smart driver requires as part of the connection string when using SSL.
 
-| Npgsql Parameter | Description |
-| :---------- | :---------- |
+| YugabyteDB Npgsql Parameter | Description |
+| :-------------------------- | :---------- |
 | SslMode     | SSL Mode |
 | RootCertificate | Path to the root certificate on your computer |
 | TrustServerCertificate | For use with the Require SSL mode |
 
-Npgsql supports SSL modes in different ways depending on the driver version, as shown in the following table.
+#### SSL modes
+
+YugabyteDB supports SSL modes in different ways depending on the driver version, as shown in the following table.
 
 | SSL mode | Versions before 6.0 | Version 6.0 or later |
-| :------- | :------------------------ | :----|
+| :------- | :------------------ | :------------------- |
 | Disable  | Supported (default) | Supported |
 | Allow    | Not Supported | Supported |
 | Prefer   | Supported | Supported (default) |
@@ -160,7 +162,7 @@ Npgsql supports SSL modes in different ways depending on the driver version, as 
 | VerifyCA | Not Supported - use Require | Supported |
 | VerifyFull | Not Supported - use Require | Supported |
 
-The .NET Npgsql driver validates certificates differently from other PostgreSQL drivers as follows:
+The YugabyteDB Npgsql smart driver validates certificates differently from other PostgreSQL drivers as follows:
 
 - Prior to version 6.0, when you specify SSL mode `Require`, you also need to specify `RootCertificate`, and the driver verifies the certificate by default (like the verify CA or verify full modes on other drivers), and fails for self-signed certificates.
 
@@ -197,4 +199,4 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
     CRUD(connStringBuilder.ConnectionString);
 ```
 
-For more information on TLS/SSL support, see [Security and Encryption](https://www.npgsql.org/doc/security.html?tabs=tabid-1) in the Npgsql documentation. -->
+For more information on TLS/SSL support, see [Security and Encryption](https://www.npgsql.org/doc/security.html?tabs=tabid-1) in the Npgsql documentation.
