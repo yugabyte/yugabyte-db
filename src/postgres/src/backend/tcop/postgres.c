@@ -5218,6 +5218,7 @@ PostgresMain(int argc, char *argv[],
 		if (IsYugaByteEnabled()) {
 			YBCPgResetCatalogReadTime();
 			YBCheckSharedCatalogCacheVersion();
+			yb_run_with_explain_analyze = false;
 		}
 
 		switch (firstchar)

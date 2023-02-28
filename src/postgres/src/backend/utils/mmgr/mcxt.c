@@ -25,6 +25,9 @@
 #include "miscadmin.h"
 #include "utils/memdebug.h"
 #include "utils/memutils.h"
+
+/* YB includes */
+#include "commands/explain.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
@@ -81,8 +84,9 @@ YbPgMemAddConsumption(Size sz)
 	PgMemTracker.pggate_alive = YBCTryMemConsume(
 		PgMemTracker.pggate_alive ? sz : PgMemTracker.pg_cur_mem_bytes);
 
-	/* Only update max memory when memory is increasing */
-	YbPgMemUpdateMax();
+	if (yb_run_with_explain_analyze)
+		/* Only update max memory when memory is increasing */
+		YbPgMemUpdateMax();
 }
 
 void
