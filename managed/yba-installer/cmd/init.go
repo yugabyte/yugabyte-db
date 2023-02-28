@@ -116,7 +116,7 @@ func handleRootCheck(cmdName string) {
 			}
 		}
 	default:
-		if _, err := os.Stat(common.RootInstallDir); !errors.Is(err, fs.ErrNotExist) {
+		if _, err := os.Stat(common.YbactlRootInstallDir); !errors.Is(err, fs.ErrNotExist) {
 			// If /opt/yba-ctl/yba-ctl.yml exists, it was put there be root?
 			if !common.HasSudoAccess() {
 				fmt.Println("Please run yba-ctl as root")
