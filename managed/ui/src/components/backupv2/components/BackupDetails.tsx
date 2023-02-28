@@ -43,6 +43,7 @@ interface BackupDetailsProps {
   storageConfigs: {
     data?: any[];
   };
+  onEdit?: () => void;
   hideRestore?: boolean;
   onAssignStorageConfig?: () => void;
   currentUniverseUUID?: string;
@@ -64,6 +65,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
   storageConfigName,
   onRestore,
   onDelete,
+  onEdit,
   storageConfigs,
   hideRestore = false,
   onAssignStorageConfig,
@@ -160,6 +162,16 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 }
               />
             )}
+            {onEdit &&
+            <YBButton 
+              btnText="Edit Backup"
+              btnIcon="fa fa-pencil"
+              onClick={() => onEdit()}
+              disabled={
+                backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED ||
+                !backupDetails.isStorageConfigPresent
+              }
+            />}
           </Row>
           <Row className="backup-details-info">
             <div className="name-and-status">

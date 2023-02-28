@@ -64,6 +64,7 @@ export interface IBackup {
   commonBackupInfo: ICommonBackupInfo;
   isFullBackup: boolean;
   hasIncrementalBackups: boolean;
+  lastIncrementalBackupTime: number;
   lastBackupState: Backup_States;
   backupType: TableType;
   category: 'YB_BACKUP_SCRIPT' | 'YB_CONTROLLER';
@@ -76,8 +77,17 @@ export interface IBackup {
   onDemand: boolean;
   updateTime: string;
   expiryTime: string;
+  expiryTimeUnit: string;
   fullChainSizeInBytes: number;
   kmsConfigUUID?: null | string;
+  scheduleName: string;
+}
+
+export interface IBackupEditParams {
+  backupUUID: string,
+  timeBeforeDeleteFromPresentInMillis: number;
+  storageConfigUUID: string;
+  expiryTimeUnit: string;
 }
 
 export interface IUniverse {

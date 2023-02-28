@@ -254,6 +254,16 @@ public class Backup extends Model {
     return scheduleUUID;
   }
 
+  @ApiModelProperty(
+      value = "Schedule Policy Name, if this backup is part of a schedule",
+      accessMode = READ_WRITE)
+  @Column
+  private String scheduleName;
+
+  public String getScheduleName() {
+    return scheduleName;
+  }
+
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
       value = "Expiry time (unix timestamp) of the backup",
@@ -372,6 +382,7 @@ public class Backup extends Model {
     backup.version = version;
     if (params.scheduleUUID != null) {
       backup.scheduleUUID = params.scheduleUUID;
+      backup.scheduleName = params.scheduleName;
     }
     if (params.timeBeforeDelete != 0L) {
       backup.expiry = new Date(System.currentTimeMillis() + params.timeBeforeDelete);
