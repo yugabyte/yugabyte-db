@@ -16,12 +16,19 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
+import com.yugabyte.yw.models.AlertChannelTemplates;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertTemplateVariable;
+import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.helpers.EntityOperation;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import io.ebean.annotation.Transactional;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -38,11 +45,25 @@ import org.apache.commons.collections.CollectionUtils;
 @Slf4j
 public class AlertTemplateVariableService {
 
+  public static final Set<String> SYSTEM_LABELS =
+      Arrays.stream(KnownAlertLabels.values())
+          .map(KnownAlertLabels::labelName)
+          .collect(Collectors.toSet());
+
   private final BeanValidator beanValidator;
 
+  private final AlertConfigurationService alertConfigurationService;
+
+  private final AlertChannelTemplateService alertChannelTemplateService;
+
   @Inject
-  public AlertTemplateVariableService(BeanValidator beanValidator) {
+  public AlertTemplateVariableService(
+      BeanValidator beanValidator,
+      AlertConfigurationService alertConfigurationService,
+      AlertChannelTemplateService alertChannelTemplateService) {
     this.beanValidator = beanValidator;
+    this.alertConfigurationService = alertConfigurationService;
+    this.alertChannelTemplateService = alertChannelTemplateService;
   }
 
   @Transactional
@@ -62,7 +83,7 @@ public class AlertTemplateVariableService {
     if (!variableUuids.isEmpty()) {
       beforeVariables = list(variableUuids);
     }
-    Map<UUID, AlertTemplateVariable> beforeConfigMap =
+    Map<UUID, AlertTemplateVariable> beforeVariablesMap =
         beforeVariables
             .stream()
             .collect(Collectors.toMap(AlertTemplateVariable::getUuid, Function.identity()));
@@ -90,7 +111,7 @@ public class AlertTemplateVariableService {
                 configuration ->
                     validate(
                         configuration,
-                        beforeConfigMap.get(configuration.getUuid()),
+                        beforeVariablesMap.get(configuration.getUuid()),
                         existingVariablesWithSameNameMap))
             .collect(
                 Collectors.groupingBy(configuration -> configuration.isNew() ? CREATE : UPDATE));
@@ -106,9 +127,26 @@ public class AlertTemplateVariableService {
       AlertConfiguration.db().saveAll(toCreate);
     }
     if (!CollectionUtils.isEmpty(toUpdate)) {
+      Map<String, Set<String>> removedValues = new HashMap<>();
       AlertConfiguration.db().updateAll(toUpdate);
+
+      toUpdate.forEach(
+          updated -> {
+            AlertTemplateVariable before = beforeVariablesMap.get(updated.getUuid());
+            before
+                .getPossibleValues()
+                .forEach(
+                    value -> {
+                      if (!updated.getPossibleValues().contains(value)) {
+                        removedValues
+                            .computeIfAbsent(updated.getName(), k -> new HashSet<>())
+                            .add(value);
+                      }
+                    });
+          });
+      cleanAffectedConfigs(customerUuid, removedValues);
     }
-    // TODO remove variable values from alert configs
+
     return variables;
   }
 
@@ -145,7 +183,7 @@ public class AlertTemplateVariableService {
   }
 
   public List<AlertTemplateVariable> list(UUID customerUuid) {
-    return AlertTemplateVariable.createQuery().eq("customerUUID", customerUuid).findList();
+    return AlertTemplateVariable.list(customerUuid);
   }
 
   @Transactional
@@ -162,9 +200,24 @@ public class AlertTemplateVariableService {
     Set<UUID> uuidsToDelete =
         variables.stream().map(AlertTemplateVariable::getUuid).collect(Collectors.toSet());
 
-    // TODO check that variable is not used in templates and delete values from configs.
+    Map<ChannelType, Set<String>> alertChannelTemplateVariables =
+        alertChannelTemplateService
+            .list(customerUuid)
+            .stream()
+            .collect(
+                Collectors.toMap(
+                    AlertChannelTemplates::getType, AlertChannelTemplates::getCustomVariablesSet));
+    variables.forEach(variable -> validateVariableRemoval(variable, alertChannelTemplateVariables));
 
     appendInClause(AlertTemplateVariable.createQuery(), "uuid", uuidsToDelete).delete();
+
+    Map<String, Set<String>> removedValues =
+        variables
+            .stream()
+            .collect(
+                Collectors.toMap(
+                    AlertTemplateVariable::getName, AlertTemplateVariable::getPossibleValues));
+    cleanAffectedConfigs(customerUuid, removedValues);
   }
 
   private void validate(
@@ -199,5 +252,63 @@ public class AlertTemplateVariableService {
             .throwError();
       }
     }
+    if (SYSTEM_LABELS.contains(variable.getName())) {
+      beanValidator
+          .error()
+          .forField("name", "variable '" + variable.getName() + "' is a system variable")
+          .throwError();
+    }
+    if (!variable.getPossibleValues().contains(variable.getDefaultValue())) {
+      beanValidator
+          .error()
+          .forField("defaultValue", "default value is missing from possible values list")
+          .throwError();
+    }
+  }
+
+  private void validateVariableRemoval(
+      AlertTemplateVariable variable, Map<ChannelType, Set<String>> alertChannelTemplateVariables) {
+    alertChannelTemplateVariables.forEach(
+        (channelType, variables) -> {
+          if (variables.contains(variable.getName())) {
+            beanValidator
+                .error()
+                .forField(
+                    "",
+                    "variable '"
+                        + variable.getName()
+                        + "' is used in '"
+                        + channelType.name()
+                        + "' template")
+                .throwError();
+          }
+        });
+  }
+
+  private void cleanAffectedConfigs(UUID customerUuid, Map<String, Set<String>> removedValues) {
+    List<AlertConfiguration> alertConfigurations =
+        alertConfigurationService.list(
+            AlertConfigurationFilter.builder().customerUuid(customerUuid).build());
+    List<AlertConfiguration> affectedConfigurations =
+        alertConfigurations
+            .stream()
+            .filter(configuration -> configuration.getLabels() != null)
+            .filter(
+                configuration -> {
+                  boolean affected = false;
+                  for (Map.Entry<String, Set<String>> removedValueEntry :
+                      removedValues.entrySet()) {
+                    if (configuration.getLabels().containsKey(removedValueEntry.getKey())
+                        && removedValueEntry
+                            .getValue()
+                            .contains(configuration.getLabels().get(removedValueEntry.getKey()))) {
+                      affected = true;
+                      configuration.getLabels().remove(removedValueEntry.getKey());
+                    }
+                  }
+                  return affected;
+                })
+            .collect(Collectors.toList());
+    alertConfigurationService.save(customerUuid, affectedConfigurations);
   }
 }

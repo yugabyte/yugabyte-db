@@ -40,7 +40,7 @@ export const UniverseNameField: FC<UniverseNameFieldProps> = ({ disabled }) => {
       setIsValidating(true);
       await api.findUniverseByName(value);
       whenMounted(() => setIsValidating(false));
-    } catch (error) {
+    } catch (error: any) {
       // skip exceptions happened due to canceling previous request
       if (!api.isRequestCancelError(error)) {
         // empty "error.response" usually means network error, so show default message from browser

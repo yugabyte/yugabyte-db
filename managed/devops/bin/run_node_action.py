@@ -49,6 +49,8 @@ def add_rpc_subparser(subparsers, command, parent):
                             required=True)
     rpc_parser.add_argument('--node_agent_auth_token', type=str, help='Auth token for rpc',
                             required=True)
+    rpc_parser.add_argument('--node_agent_home', type=str, help='Node agent home path',
+                            required=False)
     return rpc_parser
 
 

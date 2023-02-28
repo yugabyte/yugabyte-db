@@ -51,6 +51,10 @@ class HostPort;
 
 namespace tserver {
 
+using SetLogAnchorRefreshStatusFunc = void(std::shared_ptr<rpc::RpcController> controller,
+    const std::shared_ptr<UpdateLogAnchorResponsePB>&,
+    const std::shared_ptr<KeepLogAnchorAliveResponsePB>&);
+
 class RemoteBootstrapAnchorClient : public RefCountedThreadSafe<RemoteBootstrapAnchorClient> {
  public:
   RemoteBootstrapAnchorClient(
@@ -69,7 +73,10 @@ class RemoteBootstrapAnchorClient : public RefCountedThreadSafe<RemoteBootstrapA
 
   Status ChangePeerRole();
 
-  void SetLogAnchorRefreshStatus(std::shared_ptr<rpc::RpcController> controller);
+  void SetLogAnchorRefreshStatus(
+      std::shared_ptr<rpc::RpcController> controller,
+      const std::shared_ptr<UpdateLogAnchorResponsePB> &update_anchor_resp,
+      const std::shared_ptr<KeepLogAnchorAliveResponsePB> &keep_anchor_alive_resp);
 
   Status ProcessLogAnchorRefreshStatus();
 

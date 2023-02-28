@@ -35,6 +35,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.commissioner.tasks.params.ScheduledAccessKeyRotateParams;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.AccessManager;
@@ -52,9 +53,7 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Schedule;
@@ -70,7 +69,6 @@ import io.ebean.annotation.Transactional;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Secret;
-import java.io.File;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -127,36 +125,22 @@ public class CloudProviderHandler {
   @Inject private GCPInitializer gcpInitializer;
   @Inject private AZUInitializer azuInitializer;
 
-  public void delete(Customer customer, Provider provider) {
-    providerEditRestrictionManager.tryEditProvider(
-        provider.uuid, () -> doDelete(customer, provider));
-  }
+  public UUID delete(Customer customer, UUID providerUUID) {
+    CloudProviderDelete.Params params = new CloudProviderDelete.Params();
+    params.providerUUID = providerUUID;
+    params.customer = customer;
 
-  private void doDelete(Customer customer, Provider provider) {
-    if (customer.getUniversesForProvider(provider.uuid).size() > 0) {
-      throw new PlatformServiceException(BAD_REQUEST, "Cannot delete Provider with Universes");
-    }
+    UUID taskUUID = commissioner.submit(TaskType.CloudProviderDelete, params);
+    Provider provider = Provider.getOrBadRequest(customer.uuid, providerUUID);
+    CustomerTask.create(
+        customer,
+        providerUUID,
+        taskUUID,
+        CustomerTask.TargetType.Provider,
+        CustomerTask.TaskType.Delete,
+        provider.name);
 
-    // Clear the key files in the DB.
-    String keyFileBasePath = accessManager.getOrCreateKeyFilePath(provider.uuid);
-    // We would delete only the files for k8s provider
-    // others are already taken care off during access key deletion.
-    FileData.deleteFiles(keyFileBasePath, provider.code.equals(CloudType.kubernetes.toString()));
-
-    // TODO: move this to task framework
-    for (AccessKey accessKey : AccessKey.getAll(provider.uuid)) {
-      final String provisionInstanceScript = provider.details.provisionInstanceScript;
-      if (!provisionInstanceScript.isEmpty()) {
-        new File(provisionInstanceScript).delete();
-      }
-      accessManager.deleteKeyByProvider(
-          provider, accessKey.getKeyCode(), accessKey.getKeyInfo().deleteRemote);
-      accessKey.delete();
-    }
-
-    NodeInstance.deleteByProvider(provider.uuid);
-    InstanceType.deleteInstanceTypesForProvider(provider, config, configHelper);
-    provider.delete();
+    return taskUUID;
   }
 
   @Transactional
@@ -173,9 +157,7 @@ public class CloudProviderHandler {
     }
     // TODO: Remove this code once the validators are added for all cloud provider.
     CloudAPI cloudAPI = cloudAPIFactory.get(providerCode.toString());
-    if (validate
-        && cloudAPI != null
-        && !cloudAPI.isValidCreds(reqProvider, getFirstRegionCode(reqProvider))) {
+    if (cloudAPI != null && !cloudAPI.isValidCreds(reqProvider, getFirstRegionCode(reqProvider))) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format("Invalid %s Credentials.", providerCode.toString().toUpperCase()));
@@ -735,6 +717,11 @@ public class CloudProviderHandler {
   private UUID doEditProvider(
       Customer customer, Provider provider, Provider editProviderReq, boolean validate) {
     provider.setVersion(editProviderReq.getVersion());
+    // We cannot change the provider type for the given provider.
+    if (!provider.getCloudCode().equals(editProviderReq.getCloudCode())) {
+      throw new PlatformServiceException(BAD_REQUEST, "Changing provider type is not supported!");
+    }
+    CloudInfoInterface.mergeSensitiveFields(provider, editProviderReq);
     // Check if region edit mode.
     Set<Region> regionsToAdd = checkIfRegionsToAdd(editProviderReq, provider);
     boolean providerDataUpdated =
@@ -760,8 +747,7 @@ public class CloudProviderHandler {
     boolean updatedProviderConfig = false;
     // TODO: Remove this code once the validators are added for all cloud provider.
     CloudAPI cloudAPI = cloudAPIFactory.get(provider.code);
-    if (validate
-        && cloudAPI != null
+    if (cloudAPI != null
         && !cloudAPI.isValidCreds(editProviderReq, getFirstRegionCode(editProviderReq))) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Invalid %s Credentials.", provider.code.toUpperCase()));
@@ -780,7 +766,10 @@ public class CloudProviderHandler {
     boolean updatedKubeConfig = maybeUpdateKubeConfig(provider, providerConfig);
     boolean providerDataUpdated =
         updatedProviderConfig || updatedKubeConfig || updatedProviderDetails;
-    provider.save();
+    if (providerDataUpdated) {
+      // Should not increment the version number in case of no change.
+      provider.save();
+    }
     return providerDataUpdated;
   }
 
@@ -849,22 +838,12 @@ public class CloudProviderHandler {
             throw new IllegalStateException("Cannot use host vpc as there is no vpc");
           }
           String network = currentHostInfo.get("network").asText();
-          provider.hostVpcId = network;
-          // Destination VPC Network if specified by the client we will use that
-          // for provisioning nodes as part of the provider.
-          if (gcpCloudInfo.customGceNetwork != null) {
-            provider.destVpcId = gcpCloudInfo.customGceNetwork;
-          } else {
-            provider.destVpcId = network;
+          gcpCloudInfo.setHostVpcId(network);
+          // If destination VPC network is not specified, then we will use the
+          // host VPC as for both hostVpcId and destVpcId.
+          if (gcpCloudInfo.destVpcId == null) {
+            gcpCloudInfo.setDestVpcId(network);
           }
-          // We need to save the destVpcId into the provider config, because we'll need it during
-          // instance creation. Technically, we could make it a ybcloud parameter,
-          // but we'd still need to
-          // store it somewhere and the config is the easiest place to put it.
-          // As such, since all the
-          // config is loaded up as env vars anyway, might as well use in in devops like that...
-
-          gcpCloudInfo.setCustomGceNetwork(network);
           if (StringUtils.isBlank(gcpCloudInfo.getGceProject())) {
             gcpCloudInfo.setGceProject(currentHostInfo.get("host_project").asText());
           }
@@ -873,9 +852,9 @@ public class CloudProviderHandler {
       case aws:
         JsonNode currentHostInfo = queryHelper.getCurrentHostInfo(provider.getCloudCode());
         if (hasHostInfo(currentHostInfo)) {
-          provider.hostVpcRegion = currentHostInfo.get("region").asText();
-          provider.hostVpcId = currentHostInfo.get("vpc-id").asText();
-          provider.destVpcId = null;
+          AWSCloudInfo awsCloudInfo = CloudInfoInterface.get(provider);
+          awsCloudInfo.setHostVpcRegion(currentHostInfo.get("region").asText());
+          awsCloudInfo.setHostVpcId(currentHostInfo.get("vpc-id").asText());
         }
         break;
       default:

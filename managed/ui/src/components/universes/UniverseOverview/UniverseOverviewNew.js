@@ -2,9 +2,11 @@
 
 import React, { Component, PureComponent, Fragment } from 'react';
 import { Link } from 'react-router';
-
 import { Row, Col } from 'react-bootstrap';
+import moment from 'moment';
+import pluralize from 'pluralize';
 import PropTypes from 'prop-types';
+
 import { FormattedDate, FormattedRelative } from 'react-intl';
 import { ClusterInfoPanelContainer, YBWidget } from '../../panels';
 import {
@@ -28,13 +30,14 @@ import {
   isNonEmptyString,
   isDefinedNotNull
 } from '../../../utils/ObjectUtils';
-import { isKubernetesUniverse, getPrimaryCluster } from '../../../utils/UniverseUtils';
+import {
+  isKubernetesUniverse,
+  getPrimaryCluster,
+  isDedicatedNodePlacement
+} from '../../../utils/UniverseUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
-
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBButton, YBModal } from '../../common/forms/fields';
-import moment from 'moment';
-import pluralize from 'pluralize';
 import { isEnabled, isDisabled } from '../../../utils/LayoutUtils';
 
 class DatabasePanel extends PureComponent {
@@ -59,12 +62,11 @@ class DatabasePanel extends PureComponent {
       }
     };
     return (
-      <Row className={'overview-widget-database'}>
+      <Row className={'overview-database-version'}>
         <Col xs={12} className="centered">
           <YBResourceCount
             className="hidden-costs"
             size={optimizeVersion(userIntent.ybSoftwareVersion.split('-')[0].split('.'))}
-            kind={'Version'}
           />
         </Col>
       </Row>
@@ -435,22 +437,27 @@ export default class UniverseOverviewNew extends Component {
       />
     );
     return (
-      <Col lg={2} md={4} sm={4} xs={6}>
+      <Col lg={4} md={6} sm={8} xs={12}>
         <YBWidget
+          noHeader
           size={1}
           className={'overview-widget-cost'}
-          headerLeft={'Cost'}
           body={
-            <FlexContainer className={'centered'} direction={'column'}>
-              <FlexGrow>
-                <YBResourceCount
-                  className="hidden-costs"
-                  size={costPerDay}
-                  kind="/day"
-                  inline={true}
-                />
-              </FlexGrow>
-              <FlexShrink>{costPerMonth} /month</FlexShrink>
+            <FlexContainer className={'cost-widget centered'} direction={'row'}>
+              <FlexShrink>
+                <i className="fa fa-money cost-widget__image"></i>
+                <span className="cost-widget__label">{'Cost'}</span>
+              </FlexShrink>
+              <FlexShrink>
+                <span className="cost-widget__day">{costPerDay} </span>
+                <span data-testid="CostWidgetDay-Label" className="cost-widget__day-label">
+                  / day
+                </span>
+              </FlexShrink>
+              <FlexShrink>
+                <span className="cost-widget__month">{costPerMonth} </span>
+                <span data-testid="CostWidgetMonth-Label">/ month</span>
+              </FlexShrink>
             </FlexContainer>
           }
         />
@@ -509,10 +516,24 @@ export default class UniverseOverviewNew extends Component {
   };
 
   getPrimaryClusterWidget = (currentUniverse) => {
+    const isDedicatedNodes = isDedicatedNodePlacement(currentUniverse);
+
     if (isNullOrEmpty(currentUniverse)) return;
-    return (
-      <Col lg={2} sm={4} xs={6}>
-        <ClusterInfoPanelContainer type={'primary'} universeInfo={currentUniverse} />
+    return isDedicatedNodes ? (
+      <Col lg={4} sm={8} md={8} xs={12}>
+        <ClusterInfoPanelContainer
+          type={'primary'}
+          universeInfo={currentUniverse}
+          isDedicatedNodes={isDedicatedNodes}
+        />
+      </Col>
+    ) : (
+      <Col lg={2} sm={6} md={4} xs={8}>
+        <ClusterInfoPanelContainer
+          type={'primary'}
+          universeInfo={currentUniverse}
+          isDedicatedNodes={isDedicatedNodes}
+        />
       </Col>
     );
   };
@@ -582,7 +603,8 @@ export default class UniverseOverviewNew extends Component {
   getDiskUsageWidget = (universeInfo) => {
     // For kubernetes the disk usage would be in container tab, rest it would be server tab.
     const isKubernetes = isKubernetesUniverse(universeInfo);
-    const metricTabPath = this.props.enableTopKMetrics ? 'tab' : 'subtab';
+    const isDedicatedNodes = isDedicatedNodePlacement(universeInfo);
+    const metricTabPath = this.props.isTopKMetricsEnabled ? 'tab' : 'subtab';
     const subTab = isKubernetes ? 'container' : 'server';
     const metricKey = isKubernetes ? 'container_volume_stats' : 'disk_usage';
     const secondaryMetric = isKubernetes
@@ -597,6 +619,7 @@ export default class UniverseOverviewNew extends Component {
       <StandaloneMetricsPanelContainer
         metricKey={metricKey}
         additionalMetricKeys={secondaryMetric}
+        isDedicatedNodes={isDedicatedNodes}
         type="overview"
       >
         {(props) => {
@@ -613,7 +636,14 @@ export default class UniverseOverviewNew extends Component {
                 ) : null
               }
               headerLeft={props.metric.layout.title}
-              body={<DiskUsagePanel metric={props.metric} className={'disk-usage-container'} />}
+              body={
+                <DiskUsagePanel
+                  metric={props.metric}
+                  masterMetric={props.masterMetric}
+                  isDedicatedNodes={isDedicatedNodes}
+                  className={'disk-usage-container'}
+                />
+              }
             />
           );
         }}
@@ -624,12 +654,15 @@ export default class UniverseOverviewNew extends Component {
   getCPUWidget = (universeInfo) => {
     // For kubernetes the CPU usage would be in container tab, rest it would be server tab.
     const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
+    const isDedicatedNodes = isDedicatedNodePlacement(universeInfo);
     const subTab = isItKubernetesUniverse ? 'container' : 'server';
-    const metricTabPath = this.props.enableTopKMetrics ? 'tab' : 'subtab';
+    const metricTabPath = this.props.isTopKMetricsEnabled ? 'tab' : 'subtab';
+
     return (
-      <Col lg={2} md={4} sm={4} xs={6}>
+      <Col lg={isDedicatedNodes ? 2 : 4} md={4} sm={4} xs={6}>
         <StandaloneMetricsPanelContainer
           metricKey={isItKubernetesUniverse ? 'container_cpu_usage' : 'cpu_usage'}
+          isDedicatedNodes={isDedicatedNodes}
           type="overview"
         >
           {(props) => {
@@ -647,8 +680,10 @@ export default class UniverseOverviewNew extends Component {
                 body={
                   <CpuUsagePanel
                     metric={props.metric}
+                    masterMetric={props.masterMetric}
                     className={'disk-usage-container'}
                     isKubernetes={isItKubernetesUniverse}
+                    isDedicatedNodes={isDedicatedNodes}
                   />
                 }
               />
@@ -750,7 +785,8 @@ export default class UniverseOverviewNew extends Component {
     };
     const infoWidget = (
       <YBWidget
-        headerLeft={'Info'}
+        className={'overview-widget-database'}
+        headerLeft={'Version'}
         headerRight={showUpdate && !universePaused ? upgradeLink() : null}
         body={
           <FlexContainer className={'centered'} direction={'column'}>
@@ -795,14 +831,22 @@ export default class UniverseOverviewNew extends Component {
     const universeInfo = currentUniverse.data;
     const nodePrefixes = [universeInfo.universeDetails.nodePrefix];
     const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
+    const universeDetails = universeInfo.universeDetails;
+    const clusters = universeDetails?.clusters;
+    const primaryCluster = getPrimaryCluster(clusters);
+    const userIntent = primaryCluster && primaryCluster?.userIntent;
+    const dedicatedNodes = userIntent?.dedicatedNodes;
+
     const isQueryMonitoringEnabled = localStorage.getItem('__yb_query_monitoring__') === 'true';
     return (
       <Fragment>
         <Row>
-          {this.getDatabaseWidget(universeInfo, tasks)}
-          {this.getPrimaryClusterWidget(universeInfo)}
           {isEnabled(currentCustomer.data.features, 'universes.details.overview.costs') &&
             this.getCostWidget(universeInfo)}
+        </Row>
+        <Row>
+          {this.getDatabaseWidget(universeInfo, tasks)}
+          {this.getPrimaryClusterWidget(universeInfo)}
           {isEnabled(
             currentCustomer.data.features,
             'universes.details.overview.demo',
@@ -823,6 +867,8 @@ export default class UniverseOverviewNew extends Component {
               origin={'universe'}
               nodePrefixes={nodePrefixes}
               isKubernetesUniverse={isItKubernetesUniverse}
+              universeDetails={universeDetails}
+              dedicatedNodes={dedicatedNodes}
             />
           </Col>
           <Col lg={4} md={6} sm={6} xs={12}>

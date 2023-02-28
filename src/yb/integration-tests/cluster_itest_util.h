@@ -331,6 +331,11 @@ Status WaitUntilCommittedOpIdIndexIsAtLeast(int64_t* opid_index,
                                             const MonoDelta& timeout,
                                             CommittedEntryType type = CommittedEntryType::ANY);
 
+// Wait until all replicas of tablet_id to have the same committed op id.
+Status WaitForAllPeersToCatchup(const TabletId& tablet_id,
+                                const std::vector<TServerDetails*>& replicas,
+                                const MonoDelta& timeout);
+
 // Returns:
 // Status::OK() if the replica is alive and leader of the consensus configuration.
 // STATUS(NotFound, "") if the replica is not part of the consensus configuration or is dead.
@@ -452,6 +457,9 @@ Status ListTablets(const TServerDetails* ts,
 Status ListRunningTabletIds(const TServerDetails* ts,
                             const MonoDelta& timeout,
                             std::vector<TabletId>* tablet_ids);
+
+// Get the set of tablet ids across the cluster
+std::set<TabletId> GetClusterTabletIds(MiniCluster* cluster);
 
 // Get the list of tablet locations for the specified tablet from the Master.
 Status GetTabletLocations(ExternalMiniCluster* cluster,

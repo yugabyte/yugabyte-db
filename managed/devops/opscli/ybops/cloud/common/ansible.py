@@ -41,7 +41,7 @@ class AnsibleProcess(object):
         self.connection_type = self.DEFAULT_SSH_CONNECTION_TYPE
         self.connection_target = "localhost"
         self.sensitive_data_keywords = ["KEY", "SECRET", "CREDENTIALS", "API", "POLICY",
-                                        "RPC_AUTH_TOKEN"]
+                                        "NODE_AGENT_AUTH_TOKEN"]
 
     def set_connection_params(self, conn_type, target):
         self.connection_type = conn_type

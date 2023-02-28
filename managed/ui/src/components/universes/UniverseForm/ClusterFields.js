@@ -154,7 +154,6 @@ const initialState = {
   enableEncryptionAtRest: false,
   useSystemd: true,
   customizePorts: false,
-  dedicatedNodes: false,
   // Geo-partitioning settings.
   defaultRegion: '',
   mastersInDefaultRegion: true,
@@ -221,7 +220,6 @@ export default class ClusterFields extends Component {
     this.validatePassword = this.validatePassword.bind(this);
     this.validateConfirmPassword = this.validateConfirmPassword.bind(this);
     this.tlsCertChanged = this.tlsCertChanged.bind(this);
-    this.toggleDedicatedNodes = this.toggleDedicatedNodes.bind(this);
 
     this.currentInstanceType =
       this.props.clusterType === 'primary'
@@ -458,8 +456,7 @@ export default class ClusterFields extends Component {
           regionList: userIntent.regionList,
           volumeType: storageType === null ? 'SSD' : 'EBS', //TODO(wesley): fixme - establish volumetype/storagetype relationship
           useSystemd: userIntent.useSystemd,
-          mastersInDefaultRegion: universeDetails.mastersInDefaultRegion,
-          dedicatedNodes: userIntent.dedicatedNodes
+          mastersInDefaultRegion: universeDetails.mastersInDefaultRegion
         });
       }
       this.props.getRegionListItems(providerUUID);
@@ -1077,12 +1074,6 @@ export default class ClusterFields extends Component {
     this.setState({ useTimeSync: event.target.checked });
   }
 
-  toggleDedicatedNodes(event) {
-    const { updateFormField, clusterType } = this.props;
-    updateFormField(`${clusterType}.dedicatedNodes`, event.target.checked);
-    this.setState({ nodeSetViaAZList: false, dedicatedNodes: event.target.checked });
-  }
-
   toggleAssignPublicIP(event) {
     const { updateFormField, clusterType } = this.props;
     // Right now we only let primary cluster to update this flag, and
@@ -1320,15 +1311,14 @@ export default class ClusterFields extends Component {
       }
     } = this.props;
 
-    if(value === null ) return;
+    if (value === null) return;
 
     let valToUpdate = value;
 
-    if(value > ASYNC_MAX_REPLICATION_FACTOR){
+    if (value > ASYNC_MAX_REPLICATION_FACTOR) {
       toast.error(`Max Repilcation factor supported is ${ASYNC_MAX_REPLICATION_FACTOR}`);
       valToUpdate = ASYNC_MAX_REPLICATION_FACTOR;
-    }
-    else if(value < ASYNC_MIN_REPLICATION_FACTOR){
+    } else if (value < ASYNC_MIN_REPLICATION_FACTOR) {
       toast.error(`Min Repilcation factor supported is ${ASYNC_MIN_REPLICATION_FACTOR}`);
       valToUpdate = ASYNC_MIN_REPLICATION_FACTOR;
     }
@@ -2036,7 +2026,6 @@ export default class ClusterFields extends Component {
       }
     }
 
-    let dedicatedNodes = <span />;
     let assignPublicIP = <span />;
     let useTimeSync = <span />;
     let enableYSQL = <span />;
@@ -2053,28 +2042,7 @@ export default class ClusterFields extends Component {
     let selectEncryptionAtRestConfig = <span />;
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
     const disableToggleOnChange = clusterType !== 'primary';
-    const showDedicatedNodesToggle =
-      featureFlags.test['enableDedicatedNodes'] || featureFlags.released['enableDedicatedNodes'];
-    if (
-      isDefinedNotNull(currentProvider) &&
-      (currentProvider.code === 'aws' ||
-        currentProvider.code === 'gcp' ||
-        currentProvider.code === 'azu' ||
-        currentProvider.code === 'onprem') &&
-      clusterType === 'primary' &&
-      showDedicatedNodesToggle
-    ) {
-      dedicatedNodes = (
-        <Field
-          name={`${clusterType}.dedicatedNodes`}
-          component={YBToggle}
-          checkedVal={this.state.dedicatedNodes}
-          onToggle={this.toggleDedicatedNodes}
-          label="Use dedicated nodes for processes"
-          subLabel="Place tserver and master processes on separate nodes."
-        />
-      );
-    }
+
     if (
       isDefinedNotNull(currentProvider) &&
       (currentProvider.code === 'aws' ||
@@ -2688,19 +2656,28 @@ export default class ClusterFields extends Component {
                         maxVal={ASYNC_MAX_REPLICATION_FACTOR}
                         onInputChanged={this.replicationFactorChanged}
                         className={
-                          getPromiseState(this.props.universe.universeConfigTemplate).isLoading() || getPromiseState(cloud.instanceTypes).isLoading()
+                          getPromiseState(this.props.universe.universeConfigTemplate).isLoading() ||
+                          getPromiseState(cloud.instanceTypes).isLoading()
                             ? 'readonly'
                             : ''
                         }
                         input={{
                           name: `${clusterType}.replicationFactor`,
-                          onKeyDown:(e) => {
-                            (getPromiseState(this.props.universe.universeConfigTemplate).isLoading() || getPromiseState(cloud.instanceTypes).isLoading()) && e.preventDefault();
+                          onKeyDown: (e) => {
+                            (getPromiseState(
+                              this.props.universe.universeConfigTemplate
+                            ).isLoading() ||
+                              getPromiseState(cloud.instanceTypes).isLoading()) &&
+                              e.preventDefault();
                           }
                         }}
                         onInputBlur={(e) => {
-                          if (isEmptyString(e.target.value)) { this.replicationFactorChanged(ASYNC_MIN_REPLICATION_FACTOR); }
-                          if (Number(e.target.value) !== this.state.replicationFactor) { this.replicationFactorChanged(e.target.value); }
+                          if (isEmptyString(e.target.value)) {
+                            this.replicationFactorChanged(ASYNC_MIN_REPLICATION_FACTOR);
+                          }
+                          if (Number(e.target.value) !== this.state.replicationFactor) {
+                            this.replicationFactorChanged(e.target.value);
+                          }
                         }}
                         val={Number(this.state.replicationFactor)}
                       />
@@ -2874,12 +2851,6 @@ export default class ClusterFields extends Component {
                 </Col>
               </Col>
             </Row>
-          </Row>
-
-          <Row>
-            <Col sm={12} md={12} lg={6}>
-              <div className="form-right-aligned-labels">{dedicatedNodes}</div>
-            </Col>
           </Row>
 
           <Row>

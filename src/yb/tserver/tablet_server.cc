@@ -605,16 +605,22 @@ uint64_t TabletServer::GetSharedMemoryPostgresAuthKey() {
 }
 
 Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
-    bool size_only, GetTserverCatalogVersionInfoResponsePB *resp) const {
+    const GetTserverCatalogVersionInfoRequestPB& req,
+    GetTserverCatalogVersionInfoResponsePB *resp) const {
   std::lock_guard<simple_spinlock> l(lock_);
-  if (size_only) {
+  if (req.size_only()) {
     resp->set_num_entries(narrow_cast<uint32_t>(ysql_db_catalog_version_map_.size()));
   } else {
+    const auto db_oid = req.db_oid();
     for (const auto it : ysql_db_catalog_version_map_) {
-      auto* entry = resp->add_entries();
-      entry->set_db_oid(it.first);
-      entry->set_shm_index(it.second.shm_index);
-      entry->set_current_version(it.second.current_version);
+      if (db_oid == kInvalidOid || db_oid == it.first) {
+        auto* entry = resp->add_entries();
+        entry->set_db_oid(it.first);
+        entry->set_shm_index(it.second.shm_index);
+        if (db_oid != kInvalidOid) {
+          break;
+        }
+      }
     }
   }
   return Status::OK();
@@ -639,17 +645,14 @@ void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_brea
     LOG_WITH_FUNC(INFO) << "set catalog version: " << new_version << ", breaking version: "
                         << new_breaking_version;
   }
-  auto pg_client_service = pg_client_service_.lock();
-  if (pg_client_service) {
-    LOG(INFO) << "Invalidating PgTableCache cache since catalog version incremented";
-    pg_client_service->InvalidateTableCache();
-  }
+  InvalidatePgTableCache();
 }
 
 void TabletServer::SetYsqlDBCatalogVersions(
   const master::DBCatalogVersionDataPB& db_catalog_version_data) {
   std::lock_guard<simple_spinlock> l(lock_);
 
+  bool catalog_changed = false;
   std::unordered_set<uint32_t> db_oid_set;
   for (int i = 0; i < db_catalog_version_data.db_catalog_versions_size(); i++) {
     const auto& db_catalog_version = db_catalog_version_data.db_catalog_versions(i);
@@ -730,6 +733,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
     }
 
     if (row_inserted || row_updated) {
+      catalog_changed = true;
       // Set the new catalog version in shared memory at slot shm_index.
       shared_object().SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), new_version);
       if (FLAGS_log_ysql_catalog_versions) {
@@ -745,6 +749,8 @@ void TabletServer::SetYsqlDBCatalogVersions(
        it != ysql_db_catalog_version_map_.end();) {
     const uint32_t db_oid = it->first;
     if (db_oid_set.count(db_oid) == 0) {
+      // This means the entry for db_oid no longer exists.
+      catalog_changed = true;
       auto shm_index = it->second.shm_index;
       CHECK(shm_index >= 0 &&
             shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions)) << shm_index;
@@ -758,6 +764,11 @@ void TabletServer::SetYsqlDBCatalogVersions(
     } else {
       ++it;
     }
+  }
+  if (catalog_changed) {
+    // TODO(myang): see how to only invalidate per-database tables.
+    // https://github.com/yugabyte/yugabyte-db/issues/16114.
+    InvalidatePgTableCache();
   }
 }
 
@@ -821,25 +832,35 @@ Status TabletServer::ListMasterServers(const ListMasterServersRequestPB* req,
                                        ListMasterServersResponsePB* resp) const {
   auto master_addresses = options().GetMasterAddresses();
   auto peer_status = resp->mutable_master_server_and_type();
-  std::vector<Endpoint> master_entries;
+  // Keeps the mapping of <resolved_addr, address>.
+  std::map<std::string, std::string> resolved_addr_map;
   for (const auto& list : *master_addresses) {
     for (const auto& master_addr : list) {
-      Status s = master_addr.ResolveAddresses(&master_entries);
+      std::vector<Endpoint> resolved_addresses;
+      Status s = master_addr.ResolveAddresses(&resolved_addresses);
       if (!s.ok()) {
         VLOG(1) << "Could not resolve: " << master_addr.ToString();
+        continue;
+      }
+      for (const auto& resolved_addr : resolved_addresses) {
+        const auto resolved_addr_str = HostPort(resolved_addr).ToString();
+        std::map<std::string, std::string>::iterator it = resolved_addr_map.find(resolved_addr_str);
+        // We want to return dns addresses (if available) and not resolved addresses.
+        // So, insert into the map if it does not have the resolved address or
+        // if the inserted entry has the key (resolved_addr) and value (address) as same.
+        if (it == resolved_addr_map.end()) {
+          resolved_addr_map.insert({resolved_addr_str, master_addr.ToString()});
+        } else if (it->second == resolved_addr_str) {
+          it->second = master_addr.ToString();
+        }
       }
     }
   }
 
-  // de-duplicate master entries.
-  std::sort(master_entries.begin(), master_entries.end());
-  master_entries.erase(
-      std::unique(master_entries.begin(), master_entries.end()), master_entries.end());
-
   std::string leader = heartbeater_->get_leader_master_hostport();
-  for (const auto& master_endpoint : master_entries) {
+  for (const auto& resolved_master_entry : resolved_addr_map) {
     auto master_entry = peer_status->Add();
-    auto master = HostPort(master_endpoint).ToString();
+    auto master = resolved_master_entry.second;
     master_entry->set_master_server(master);
     if (leader.compare(master) == 0) {
       master_entry->set_is_leader(true);
@@ -848,6 +869,14 @@ Status TabletServer::ListMasterServers(const ListMasterServersRequestPB* req,
     }
   }
   return Status::OK();
+}
+
+void TabletServer::InvalidatePgTableCache() {
+  auto pg_client_service = pg_client_service_.lock();
+  if (pg_client_service) {
+    LOG(INFO) << "Invalidating the entire PgTableCache cache since catalog version incremented";
+    pg_client_service->InvalidateTableCache();
+  }
 }
 
 }  // namespace tserver

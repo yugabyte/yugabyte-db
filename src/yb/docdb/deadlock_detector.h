@@ -27,7 +27,7 @@ namespace tablet {
 using BlockerData = std::vector<BlockingTransactionData>;
 struct WaiterData {
     HybridTime wait_start_time;
-    BlockerData blockers;
+    std::shared_ptr<BlockerData> blockers;
 };
 using Waiters = std::unordered_map<TransactionId,
                                    std::shared_ptr<WaiterData>,

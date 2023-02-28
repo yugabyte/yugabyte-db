@@ -63,11 +63,12 @@ class AwsCloud(AbstractCloud):
     def get_vpc_for_subnet(self, region, subnet):
         return get_vpc_for_subnet(get_client(region), subnet)
 
-    def get_image(self, region=None):
+    def get_image(self, region=None, architecture="x86_64"):
         regions = [region] if region is not None else self.get_regions()
+        imageKey = "arm_image" if architecture == "aarch64" else "image"
         output = {}
         for r in regions:
-            output[r] = self.metadata["regions"][r]["image"]
+            output[r] = self.metadata["regions"][r][imageKey]
         return output
 
     def get_image_arch(self, args):
@@ -253,7 +254,7 @@ class AwsCloud(AbstractCloud):
         result = {}
         for region in self._get_all_regions_or_arg(args.region):
             result[region] = query_vpc(region)
-            result[region]["default_image"] = self.get_image(region).get(region)
+            result[region]["default_image"] = self.get_image(region, args.architecture).get(region)
         return result
 
     def get_current_host_info(self, args):
@@ -485,6 +486,8 @@ class AwsCloud(AbstractCloud):
         self.wait_for_server_ports(host_info["private_ip"], host_info["name"], server_ports)
 
     def mount_disk(self, host_info, vol_id, label):
+        logging.info("Mounting volume {} on host {}; label {}".format(
+                     vol_id, host_info['id'], label))
         ec2 = boto3.client('ec2', region_name=host_info['region'])
         ec2.attach_volume(
             Device=label,
@@ -495,6 +498,7 @@ class AwsCloud(AbstractCloud):
         waiter.wait(VolumeIds=[vol_id])
 
     def unmount_disk(self, host_info, vol_id):
+        logging.info("Unmounting volume {} from host {}".format(vol_id, host_info['id']))
         ec2 = boto3.client('ec2', region_name=host_info['region'])
         ec2.detach_volume(VolumeId=vol_id, InstanceId=host_info['id'])
         waiter = ec2.get_waiter('volume_available')

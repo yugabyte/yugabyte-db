@@ -233,10 +233,6 @@ public class Alert extends Model implements AlertLabelsProvider {
   }
 
   public String getLabelValue(String name) {
-    // TODO Remove once notifications sent through AlertManager
-    if (KnownAlertLabels.ALERT_STATE.labelName().equals(name)) {
-      return state.getAction();
-    }
     return labels
         .stream()
         .filter(label -> name.equals(label.getName()))

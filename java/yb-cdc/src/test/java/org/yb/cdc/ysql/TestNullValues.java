@@ -22,14 +22,14 @@ import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.cdc.common.CDCBaseClass;
 import org.yb.cdc.util.CDCSubscriber;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.util.ArrayList;
 import java.util.List;
 
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestNullValues extends CDCBaseClass {
   private final static Logger LOG = LoggerFactory.getLogger(TestNullValues.class);
 

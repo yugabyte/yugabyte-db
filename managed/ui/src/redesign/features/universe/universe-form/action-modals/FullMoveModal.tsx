@@ -4,7 +4,7 @@ import pluralize from 'pluralize';
 import { Box, Theme, Typography, makeStyles } from '@material-ui/core';
 import { YBModal } from '../../../../components';
 import { getPrimaryCluster } from '../utils/helpers';
-import { Cluster, UniverseDetails } from '../utils/dto';
+import { Cluster, MasterPlacementMode, UniverseDetails } from '../utils/dto';
 
 const useStyles = makeStyles((theme: Theme) => ({
   greyText: {
@@ -14,6 +14,11 @@ const useStyles = makeStyles((theme: Theme) => ({
     backgroundColor: '#f7f7f7',
     borderRadius: theme.spacing[0.75],
     padding: theme.spacing(1.5, 2)
+  },
+  configConfirmationBox: {
+    display: 'inline-block',
+    marginTop: theme.spacing(2),
+    width: '100%'
   }
 }));
 
@@ -50,13 +55,21 @@ export const FullMoveModal: FC<FMModalProps> = ({
         <Typography variant="h5">
           {isNew ? t('universeForm.new') : t('universeForm.current')}
         </Typography>
-        <Box mt={2} display="inline-block" width="100%">
+        <Box className={classes.configConfirmationBox}>
           <b>{userIntent?.instanceType}</b>&nbsp;type
           <br />
           <b>{userIntent?.deviceInfo?.numVolumes}Gb</b>{' '}
           {pluralize('volume', userIntent?.deviceInfo?.numVolumes)} of &nbsp;
           {t('universeForm.perInstance')}
           <b>{userIntent?.deviceInfo?.volumeSize}Gb</b> {t('universeForm.perInstance')}
+        </Box>
+        <Box className={classes.configConfirmationBox}>
+          <b>
+            {userIntent?.dedicatedNodes
+              ? `${MasterPlacementMode.DEDICATED}`
+              : `${MasterPlacementMode.COLOCATED}`}
+          </b>
+          &nbsp;mode
         </Box>
         <Box mt={1} display="flex" flexDirection="column">
           {placementInfo?.cloudList[0].regionList?.map((region) => (

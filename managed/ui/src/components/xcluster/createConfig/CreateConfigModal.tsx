@@ -503,7 +503,7 @@ const validateForm = async (
             sourceUniveres.universeUUID,
             values.tableUUIDs.map(adaptTableUUID)
           );
-        } catch (error) {
+        } catch (error: any) {
           toast.error(
             <span className={styles.alertMsg}>
               <div>

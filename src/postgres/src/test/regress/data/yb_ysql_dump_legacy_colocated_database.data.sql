@@ -22,6 +22,50 @@ SET default_tablespace = '';
 SET default_with_oids = false;
 
 --
+-- Name: htest; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16411'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16410'::pg_catalog.oid);
+
+CREATE TABLE public.htest (
+    k1 integer,
+    k2 text,
+    k3 integer,
+    v1 integer,
+    v2 text
+)
+PARTITION BY HASH (k1)
+WITH (colocation_id='123456');
+
+
+ALTER TABLE public.htest OWNER TO yugabyte_test;
+
+--
+-- Name: htest_1; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16414'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16413'::pg_catalog.oid);
+
+CREATE TABLE public.htest_1 PARTITION OF public.htest
+FOR VALUES WITH (modulus 2, remainder 0)
+WITH (colocation_id='234567');
+
+
+ALTER TABLE public.htest_1 OWNER TO yugabyte_test;
+
+--
 -- Name: tbl; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
@@ -112,6 +156,14 @@ SPLIT INTO 3 TABLETS;
 
 
 ALTER TABLE public.tbl4 OWNER TO yugabyte_test;
+
+--
+-- Data for Name: htest_1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.htest_1 (k1, k2, k3, v1, v2) FROM stdin;
+\.
+
 
 --
 -- Data for Name: tbl; Type: TABLE DATA; Schema: public; Owner: yugabyte_test

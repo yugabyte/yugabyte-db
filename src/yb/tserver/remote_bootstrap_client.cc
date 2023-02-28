@@ -258,13 +258,13 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   const TableId table_id = resp.superblock().primary_table_id();
   const bool colocated = resp.superblock().colocated();
   auto& hosted_stateful_services = resp.superblock().hosted_stateful_services();
-  std::vector<StatefulServiceKind> hosted_services;
+  std::unordered_set<StatefulServiceKind> hosted_services;
   hosted_services.reserve(hosted_stateful_services.size());
   for (auto& service_kind : hosted_stateful_services) {
     SCHECK(
         StatefulServiceKind_IsValid(service_kind), InvalidArgument,
         Format("Invalid stateful service kind: $0", service_kind));
-    hosted_services.push_back((StatefulServiceKind)service_kind);
+    hosted_services.insert((StatefulServiceKind)service_kind);
   }
 
   const tablet::TableInfoPB* table_ptr = nullptr;

@@ -51,7 +51,7 @@ export const DeleteClusterModal: FC<DeleteClusterModalProps> = ({
     try {
       await api.deleteCluster(clusterUUID, universeUUID, forceDelete);
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       transitToUniverse(universeUUID);
     }

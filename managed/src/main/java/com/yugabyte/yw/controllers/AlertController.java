@@ -35,9 +35,12 @@ import com.yugabyte.yw.common.alerts.TestAlertTemplateSubstitutor;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertChannelFormData;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.forms.AlertDestinationFormData;
 import com.yugabyte.yw.forms.AlertTemplateSettingsFormData;
+import com.yugabyte.yw.forms.AlertTemplateSystemVariable;
 import com.yugabyte.yw.forms.AlertTemplateVariablesFormData;
+import com.yugabyte.yw.forms.AlertTemplateVariablesList;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
@@ -499,11 +502,12 @@ public class AlertController extends AuthenticatedController {
             .collect(Collectors.toList()));
   }
 
-  @ApiOperation(value = "Get alert channel templates", response = AlertChannelTemplates.class)
+  @ApiOperation(value = "Get alert channel templates", response = AlertChannelTemplatesExt.class)
   public Result getAlertChannelTemplates(UUID customerUUID, String channelTypeStr) {
     Customer.getOrBadRequest(customerUUID);
     ChannelType channelType = parseChannelType(channelTypeStr);
-    return PlatformResults.withData(alertChannelTemplateService.get(customerUUID, channelType));
+    return PlatformResults.withData(
+        alertChannelTemplateService.getWithDefaults(customerUUID, channelType));
   }
 
   @ApiOperation(value = "Set alert channel templates", response = AlertChannelTemplates.class)
@@ -543,11 +547,11 @@ public class AlertController extends AuthenticatedController {
 
   @ApiOperation(
       value = "List all alert channel templates",
-      response = AlertChannelTemplates.class,
+      response = AlertChannelTemplatesExt.class,
       responseContainer = "List")
   public Result listAlertChannelTemplates(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
-    return PlatformResults.withData(alertChannelTemplateService.list(customerUUID));
+    return PlatformResults.withData(alertChannelTemplateService.listWithDefaults(customerUUID));
   }
 
   @ApiOperation(value = "Create an alert destination", response = AlertDestination.class)
@@ -692,18 +696,21 @@ public class AlertController extends AuthenticatedController {
 
   @ApiOperation(
       value = "List alert template variables",
-      response = AlertTemplateVariable.class,
-      responseContainer = "List")
+      response = AlertTemplateVariablesList.class)
   public Result listAlertTemplateVariables(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    List<AlertTemplateVariable> variables = alertTemplateVariableService.list(customerUUID);
+    List<AlertTemplateVariable> customVariables = alertTemplateVariableService.list(customerUUID);
 
-    return PlatformResults.withData(variables);
+    AlertTemplateVariablesList alertTemplateVariablesList =
+        new AlertTemplateVariablesList()
+            .setCustomVariables(customVariables)
+            .setSystemVariables(Arrays.asList(AlertTemplateSystemVariable.values()));
+    return PlatformResults.withData(alertTemplateVariablesList);
   }
 
   @ApiOperation(
-      value = "Crete or update alert template variables",
+      value = "Create or update alert template variables",
       response = AlertTemplateVariable.class,
       responseContainer = "List")
   @ApiImplicitParams(

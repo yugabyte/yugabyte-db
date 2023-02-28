@@ -4,18 +4,23 @@ headerTitle: Build the source code
 linkTitle: Build the source
 description: Build YugabyteDB from source code on macOS.
 image: /images/section_icons/index/quick_start.png
-headcontent: Build the source code on macOS, CentOS, and Ubuntu.
-aliases:
-  - /preview/contribute/core-database/build-from-src
+headcontent: Build the source code.
 menu:
   preview:
-    identifier: build-from-src-1-macos
+    identifier: build-from-src-2-macos
     parent: core-database
     weight: 2912
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="{{< relref "./build-from-src-almalinux.md" >}}" class="nav-link">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      AlmaLinux
+    </a>
+  </li>
 
   <li >
     <a href="{{< relref "./build-from-src-macos.md" >}}" class="nav-link active">
@@ -42,7 +47,7 @@ type: docs
 
 {{< note title="Note" >}}
 
-CentOS 7 is the recommended Linux distribution for development and production platform for YugabyteDB.
+AlmaLinux 8 is the recommended Linux development platform for YugabyteDB.
 
 {{< /note >}}
 
@@ -59,7 +64,7 @@ Install the following packages using Homebrew:
 
 ```sh
 brew install autoconf automake bash ccache cmake coreutils gnu-tar libtool \
-             maven ninja pkg-config pstree wget python
+             ninja pkg-config pstree wget python
 ```
 
 {{< note title="Note" >}}
@@ -72,11 +77,33 @@ YugabyteDB build scripts require at least Bash version 4. Make sure that `bash -
 
 {{% readfile "includes/java.md" %}}
 
+Both requirements can be satisfied by Homebrew:
+
+```sh
+brew install openjdk@11 maven
+```
+
+Don't forget to add JDK binaries to `PATH`, ensuring this version takes precedence.
+For example,
+
+```sh
+# On apple silicon mac.
+echo 'export PATH="/opt/local/homebrew/opt/openjdk@11/bin:$PATH"' >>~/.bashrc
+# On intel mac.
+echo 'export PATH="/usr/local/opt/openjdk@11/bin:$PATH"' >>~/.bashrc
+```
+
+### yugabyted-ui
+
+{{% readfile "includes/yugabyted-ui.md" %}}
+
 ## Build the code
 
 {{% readfile "includes/build-the-code.md" %}}
 
-### Build release package
+### Build release package (optional)
+
+[Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
 
 Run the `yb_release` script to build a release package:
 

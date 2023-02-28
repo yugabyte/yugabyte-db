@@ -304,6 +304,12 @@ export const MetricConsts = {
   PRIMARY: 'PRIMARY'
 } as const;
 
+export const NodeType = {
+  ALL: 'All',
+  MASTER: 'Master',
+  TSERVER: 'TServer'
+} as const;
+
 export enum MetricMeasure {
   OVERALL = 'Overall',
   OUTLIER = 'Outlier',
@@ -313,6 +319,12 @@ export enum MetricMeasure {
 export enum SplitType {
   NODE = 'NODE',
   TABLE = 'TABLE'
+}
+
+export enum NodeAggregation {
+  AVERAGE = 'AVG',
+  MAX = 'MAX',
+  MIN = 'MIN'
 }
 
 export const DEFAULT_OUTLIER_NUM_NODES = 3;

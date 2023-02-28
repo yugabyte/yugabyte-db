@@ -85,6 +85,8 @@ class AbstractMethod(object):
         self.parser.add_argument("--vars_file", default=None)
         self.parser.add_argument("--ssh2_enabled", action='store_true', default=False)
         self.parser.add_argument("--connection_type", default=None, required=False)
+        self.parser.add_argument("--architecture", required=False, help="Architecture for machine "
+                                 + "image. Defaults to x86_64.", default="x86_64")
 
     def preprocess_args(self, args):
         """Hook for pre-processing args before actually executing the callback. Useful for shared
@@ -191,6 +193,8 @@ class AbstractInstancesMethod(AbstractMethod):
                                  help="Node agent cert path")
         self.parser.add_argument("--node_agent_auth_token", required=False,
                                  help="Node agent auth token")
+        self.parser.add_argument("--node_agent_home", required=False,
+                                 help="Node agent home path")
 
         mutex_group = self.parser.add_mutually_exclusive_group()
         mutex_group.add_argument("--num_volumes", type=int, default=0,
@@ -252,6 +256,8 @@ class AbstractInstancesMethod(AbstractMethod):
             updated_args["node_agent_cert_path"] = args.node_agent_cert_path
         if args.node_agent_auth_token:
             updated_args["node_agent_auth_token"] = args.node_agent_auth_token
+        if args.node_agent_home:
+            updated_args["node_agent_home"] = args.node_agent_home
 
         if args.instance_tags:
             updated_args["instance_tags"] = json.loads(args.instance_tags)
@@ -295,7 +301,7 @@ class AbstractInstancesMethod(AbstractMethod):
             host_lookup_count += 1
 
         host_port_user = get_host_port_user(self.extra_vars)
-        raise YBOpsRecoverableError("Timed out waiting for instance: '{0}'. {}@{}:{} using {}"
+        raise YBOpsRecoverableError("Timed out waiting for instance: '{}'. {}@{}:{} using {}"
                                     .format(args.search_pattern, host_port_user["user"],
                                             host_port_user["host"], host_port_user["port"],
                                             host_port_user["connection_type"]))
@@ -554,7 +560,15 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
         except Exception as e:
             logging.exception(e)
             if unmounted:
-                self._mount_root_volume(host_info, current_root_volume)
+                # Note: This doesn't work if VM image upgrade has already been done successfully
+                # at least once before. The boot disk name will no longer correlate directly with
+                # the instance name(id).
+                old_disk_url = os.path.join(
+                    args.replacement_disk[:args.replacement_disk.rfind('/')], id)
+                self._mount_root_volume(host_info, old_disk_url)
+                logging.warning("Mounted the original volume {} on {} before failing".format(
+                                old_disk_url, id))
+            raise e
         finally:
             server_ports = self.get_server_ports_to_check(args)
             self.cloud.start_instance(host_info, server_ports)
@@ -846,12 +860,14 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
     def callback(self, args):
         unique_string = ''.join(random.choice(string.ascii_lowercase) for i in range(6))
         args.search_pattern = "{}-".format(unique_string) + args.search_pattern
-        vid = self.create_master_volume(args)
-        output = [vid]
+        volume_id = self.create_master_volume(args)
+        output = [volume_id]
         num_disks = int(args.num_disks) - 1
 
+        # Now clone and create the remaining disks if any as the machine image is the same
         if num_disks > 0:
-            output.extend(self.cloud.clone_disk(args, vid, num_disks))
+            logging.info("Cloning {} other disks using volume_id {}".format(num_disks, volume_id))
+            output.extend(self.cloud.clone_disk(args, volume_id, num_disks))
 
         logging.info("==> Created volumes {}".format(output))
         print(json.dumps(output))
@@ -1729,9 +1745,9 @@ class RebootInstancesMethod(AbstractInstancesMethod):
         if not host_info:
             raise YBOpsRuntimeError("Could not find host {} to reboot".format(
                 args.search_pattern))
-        if not host_info['is_running']:
+        if not host_info.get('is_running'):
             raise YBOpsRuntimeError("Host must be running to be rebooted, currently in '{}' state"
-                                    .format(host_info['instance_state']))
+                                    .format(host_info.get('instance_state')))
         logging.info("Rebooting instance {}".format(args.search_pattern))
 
         # Get Sudo SSH User
@@ -1811,6 +1827,7 @@ class RunHooks(AbstractInstancesMethod):
             else:
                 ssh_user = DEFAULT_SSH_USER
 
+        self.update_ansible_vars_with_args(args)
         host_info = self.cloud.get_host_info(args)
         self.extra_vars.update(
             self.get_server_host_port(

@@ -57,6 +57,8 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
 
+DECLARE_bool(use_parent_table_id_field);
+
 namespace yb {
 namespace master {
 
@@ -282,6 +284,14 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
     return initiated_election_.compare_exchange_strong(expected, true);
   }
 
+  // The next five methods are getters and setters for the transient, in memory list of table ids
+  // hosted by this tablet. They are only used if the underlying tablet proto's
+  // hosted_tables_mapped_by_parent_id field is set.
+  void SetTableIds(std::vector<TableId>&& table_ids);
+  void AddTableId(const TableId& table_id);
+  std::vector<TableId> GetTableIds() const;
+  void RemoveTableIds(const std::unordered_set<TableId>& tables_to_remove);
+
  private:
   friend class RefCountedThreadSafe<TabletInfo>;
 
@@ -318,6 +328,10 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   std::atomic<bool> initiated_election_{false};
 
   std::unordered_map<CDCStreamId, uint64_t> replication_stream_to_status_bitmask_;
+
+  // Transient, in memory list of table ids hosted by this tablet. This is not persisted.
+  // Only used when FLAGS_use_parent_table_id_field is set.
+  std::vector<TableId> table_ids_ GUARDED_BY(lock_);
 
   DISALLOW_COPY_AND_ASSIGN(TabletInfo);
 };
@@ -461,6 +475,16 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsOperationalForClient() const {
     auto l = LockForRead();
     return !l->started_hiding_or_deleting();
+  }
+
+  // If the table is already hidden then treat it as a duplicate hide request.
+  bool IgnoreHideRequest() {
+    auto l = LockForRead();
+    if (l->started_hiding()) {
+      LOG(INFO) << "Table " << id() << " is already hidden. Duplicate request.";
+      return true;
+    }
+    return false;
   }
 
   std::string ToString() const override;
@@ -656,6 +680,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   void SetMatview();
 
   google::protobuf::RepeatedField<int> GetHostedStatefulServices() const;
+
+  bool AttachedYCQLIndexDeletionInProgress(const std::string& index_table_id) const;
 
  private:
   friend class RefCountedThreadSafe<TableInfo>;

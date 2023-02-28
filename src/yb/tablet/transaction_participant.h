@@ -69,7 +69,7 @@ namespace tablet {
 struct TransactionApplyData {
   int64_t leader_term = -1;
   TransactionId transaction_id = TransactionId::Nil();
-  AbortedSubTransactionSet aborted;
+  SubtxnSet aborted;
   OpId op_id;
   HybridTime commit_ht;
   HybridTime log_ht;

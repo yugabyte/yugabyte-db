@@ -150,7 +150,7 @@ class IntentsWriterContext {
 
  protected:
   void SetApplyState(
-      const Slice& key, IntraTxnWriteId write_id, const AbortedSubTransactionSet& aborted) {
+      const Slice& key, IntraTxnWriteId write_id, const SubtxnSet& aborted) {
     apply_state_.key = key.ToBuffer();
     apply_state_.write_id = write_id;
     apply_state_.aborted = aborted;
@@ -184,7 +184,7 @@ class ApplyIntentsContext : public IntentsWriterContext {
   ApplyIntentsContext(
       const TransactionId& transaction_id,
       const ApplyTransactionState* apply_state,
-      const AbortedSubTransactionSet& aborted,
+      const SubtxnSet& aborted,
       HybridTime commit_ht,
       HybridTime log_ht,
       const KeyBounds* key_bounds,
@@ -206,7 +206,7 @@ class ApplyIntentsContext : public IntentsWriterContext {
   Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler* handler);
 
   const ApplyTransactionState* apply_state_;
-  const AbortedSubTransactionSet& aborted_;
+  const SubtxnSet& aborted_;
   HybridTime commit_ht_;
   HybridTime log_ht_;
   IntraTxnWriteId write_id_;

@@ -30,7 +30,7 @@ public class AWSRegionCloudInfo implements CloudInfoInterface {
       accessMode = AccessMode.READ_WRITE)
   public String ybImage;
 
-  @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
+  @ApiModelProperty(accessMode = AccessMode.READ_WRITE)
   public Architecture arch;
 
   @JsonIgnore
@@ -61,5 +61,10 @@ public class AWSRegionCloudInfo implements CloudInfoInterface {
   @JsonIgnore
   public void withSensitiveDataMasked() {
     // pass
+  }
+
+  @JsonIgnore
+  public void mergeMaskedFields(CloudInfoInterface providerCloudInfo) {
+    // Pass
   }
 }

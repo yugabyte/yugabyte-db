@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -306,6 +307,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (validateGFlagsConsistency) {
         GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
       }
+      if (userIntent.specificGFlags != null) {
+        if (clusterType == ClusterType.PRIMARY
+            && userIntent.specificGFlags.isInheritFromPrimary()) {
+          throw new IllegalStateException("Cannot inherit gflags for primary cluster");
+        }
+        userIntent.specificGFlags.validateConsistency();
+      }
     }
 
     /**
@@ -529,6 +537,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Device info for dedicated master nodes.
     @Nullable @ApiModelProperty public DeviceInfo masterDeviceInfo;
 
+    // New version of gflags. If present - replaces old masterGFlags/tserverGFlags thing
+    @ApiModelProperty public SpecificGFlags specificGFlags;
+
     @Override
     public String toString() {
       return "UserIntent "
@@ -582,6 +593,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.accessKeyCode = accessKeyCode;
       newUserIntent.assignPublicIP = assignPublicIP;
       newUserIntent.assignStaticPublicIP = assignStaticPublicIP;
+      newUserIntent.specificGFlags = specificGFlags == null ? null : specificGFlags.clone();
       newUserIntent.masterGFlags = new HashMap<>(masterGFlags);
       newUserIntent.tserverGFlags = new HashMap<>(tserverGFlags);
       newUserIntent.useTimeSync = useTimeSync;
@@ -1026,11 +1038,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    */
   @JsonIgnore
   public File getSourceRootCertDirPath() {
-    UniverseDefinitionTaskParams.UserIntent userIntent = getPrimaryCluster().userIntent;
+    Map<String, String> masterGflags =
+        GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, getPrimaryCluster(), clusters);
+    Map<String, String> tserverGflags =
+        GFlagsUtil.getBaseGFlags(
+            UniverseTaskBase.ServerType.TSERVER, getPrimaryCluster(), clusters);
     String gflagValueOnMasters =
-        userIntent.masterGFlags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+        masterGflags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
     String gflagValueOnTServers =
-        userIntent.tserverGFlags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+        tserverGflags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
     if (gflagValueOnMasters != null || gflagValueOnTServers != null) {
       if (!Objects.equals(gflagValueOnMasters, gflagValueOnTServers)) {
         throw new IllegalStateException(

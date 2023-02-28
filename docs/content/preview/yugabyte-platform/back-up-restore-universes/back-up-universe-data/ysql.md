@@ -99,6 +99,6 @@ You can create an incremental backup on any complete or incremental backup taken
 
 A successful incremental backup appears in the list of backups. 
 
-You can delete only the full backup chain which includes a complete backup and its incremental backups. You cannot delete a subset of successful incremental bakups.
+You can delete only the full backup chain which includes a complete backup and its incremental backups. You cannot delete a subset of successful incremental backups.
 
 A failed incremental backup, which you can delete, is reported similarly to any other failed backup operations.

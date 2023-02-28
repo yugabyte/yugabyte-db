@@ -108,6 +108,7 @@ YB_STRONGLY_TYPED_BOOL(RegisteredThroughHeartbeat);
 
 YB_STRONGLY_TYPED_BOOL(IncludeInactive);
 YB_STRONGLY_TYPED_BOOL(IncludeDeleted);
+YB_STRONGLY_TYPED_BOOL(IsSystemObject);
 
 YB_DEFINE_ENUM(
     CollectFlag,

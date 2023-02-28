@@ -1,11 +1,11 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .widget-panel {
   margin: 0;
   padding: 0;
-  box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
+  box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07);
   border: none;
   background-color: #fff;
   border-radius: 7px;
@@ -16,13 +16,13 @@
   > .header {
     height: 45px;
     padding: 0 20px;
-    border-bottom: 1px solid $YB_BACKGROUND;
+    border-bottom: 1px solid colors.$YB_BACKGROUND;
     overflow: hidden;
     line-height: 45px;
     font-size: 14px;
 
     .left {
-      color: $YB_TEXT_COLOR;
+      color: colors.$YB_TEXT_COLOR;
       text-align: left;
       font-family: 'Rubik', 'Helvetica Neue', sans-serif;
       font-weight: 500;
@@ -31,7 +31,7 @@
     .right {
       text-align: right;
       font-weight: 300;
-      color: $YB_SUBTITLE_COLOR;
+      color: colors.$YB_SUBTITLE_COLOR;
 
       .fa {
         font-size: 18px;
@@ -49,6 +49,7 @@
     padding: 10px 20px 15px 20px;
     margin: 0;
     min-height: 144px;
+    margin-top: -10px;
 
     &.body-no-margin {
       padding: 0;

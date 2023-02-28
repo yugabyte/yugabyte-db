@@ -86,11 +86,11 @@ extern uint64_t YbGetCatalogCacheVersionForTablePrefetching();
 extern void YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version);
 
 typedef enum GeolocationDistance {
-    ZONE_LOCAL,
-    REGION_LOCAL,
-    CLOUD_LOCAL,
-    INTER_CLOUD,
-    UNKNOWN_DISTANCE
+	ZONE_LOCAL,
+	REGION_LOCAL,
+	CLOUD_LOCAL,
+	INTER_CLOUD,
+	UNKNOWN_DISTANCE
 } GeolocationDistance;
 
 extern GeolocationDistance get_tablespace_distance (Oid tablespaceoid);
@@ -542,10 +542,10 @@ bool YBIsInitDbAlreadyDone();
 int YBGetDdlNestingLevel();
 void YBIncrementDdlNestingLevel();
 void YBDecrementDdlNestingLevel(bool is_catalog_version_increment,
-                                bool is_breaking_catalog_change);
+								bool is_breaking_catalog_change);
 bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
-                                 bool *is_catalog_version_increment,
-                                 bool *is_breaking_catalog_change);
+								 bool *is_catalog_version_increment,
+								 bool *is_breaking_catalog_change);
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();

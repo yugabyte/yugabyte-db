@@ -357,6 +357,7 @@ class PgApiImpl {
                         bool is_unique_index,
                         const bool skip_index_backfill,
                         bool if_not_exist,
+                        bool is_colocated_via_database,
                         const PgObjectId& tablegroup_oid,
                         const YBCPgOid& colocation_id,
                         const PgObjectId& tablespace_oid,
@@ -635,6 +636,8 @@ class PgApiImpl {
   Result<bool> CheckIfPitrActive();
 
   MemTracker &GetMemTracker() { return *mem_tracker_; }
+
+  MemTracker &GetRootMemTracker() { return *MemTracker::GetRootTracker(); }
 
  private:
   class Interrupter;

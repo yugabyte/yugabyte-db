@@ -187,7 +187,7 @@ struct RemoteReplica {
   std::string ToString() const;
 };
 
-typedef std::unordered_map<std::string, std::unique_ptr<RemoteTabletServer>> TabletServerMap;
+typedef std::unordered_map<std::string, std::shared_ptr<RemoteTabletServer>> TabletServerMap;
 
 YB_STRONGLY_TYPED_BOOL(UpdateLocalTsState);
 YB_STRONGLY_TYPED_BOOL(IncludeFailedReplicas);
@@ -574,6 +574,8 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
       boost::optional<PartitionListVersion> table_partition_list_version, LookupRpc* lookup_rpc);
 
   void InvalidateTableCache(const YBTable& table);
+
+  std::shared_ptr<RemoteTabletServer> GetRemoteTabletServer(const std::string& permanent_uuid);
 
   const std::string& LogPrefix() const { return log_prefix_; }
 

@@ -4716,8 +4716,10 @@ create_nestloop_plan(PlannerInfo *root,
 		 */
 		ListCell *l;
 		yb_hashClauseInfos =
-			palloc0(joinrestrictclauses->length * sizeof(YbBNLHashClauseInfo));
-		yb_num_hashClauseInfos = joinrestrictclauses->length;
+			palloc0(joinclauses->length * sizeof(YbBNLHashClauseInfo));
+		
+		/* YB: This length is later adjusted in setrefs.c. */
+		yb_num_hashClauseInfos = joinclauses->length;
 
 		Relids batched_outerrelids =
 			bms_difference(outerrelids,
@@ -4726,12 +4728,10 @@ create_nestloop_plan(PlannerInfo *root,
 		Relids inner_relids = best_path->innerjoinpath->parent->relids;
 
 		YbBNLHashClauseInfo *current_hinfo = yb_hashClauseInfos;
-		foreach(l, joinrestrictclauses)
+		foreach(l, joinclauses)
 		{
 			Oid hashOpno = InvalidOid;
-			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
-			if (!list_member_ptr(joinclauses, rinfo->clause))
-				continue;
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);				
 			if (rinfo->can_join &&
 				OidIsValid(rinfo->hashjoinoperator) &&
 				can_batch_rinfo(rinfo, batched_outerrelids, inner_relids))

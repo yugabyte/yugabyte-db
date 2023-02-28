@@ -18,15 +18,8 @@ string(REPLACE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/ent
     YB_ENT_CURRENT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(TSERVER_SRCS_EXTENSIONS
-  ${YB_ENT_CURRENT_SOURCE_DIR}/backup_service.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/tablet_server_ent.cc
-  ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_consumer.cc
-  ${YB_ENT_CURRENT_SOURCE_DIR}/twodc_output_client.cc 
-  ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_poller.cc
-  ${YB_ENT_CURRENT_SOURCE_DIR}/twodc_write_implementations.cc
   PARENT_SCOPE)
-
-set(TSERVER_LIB_EXTENSIONS cdc cdc_consumer_proto PARENT_SCOPE)
 
 # Additional tests support.
 set(YB_ENT_CURRENT_SOURCE_DIR
@@ -34,7 +27,6 @@ set(YB_ENT_CURRENT_SOURCE_DIR
   PARENT_SCOPE)
 
 set(TSERVER_EXTENSIONS_TESTS
-  backup_service-test
   remote_bootstrap_rocksdb_session-test_ent
   remote_bootstrap_rocksdb_client-test_ent
   PARENT_SCOPE)

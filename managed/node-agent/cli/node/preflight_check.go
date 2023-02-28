@@ -34,14 +34,14 @@ func preFlightCheckHandler(cmd *cobra.Command, args []string) {
 	// Pass empty API token to use JWT.
 	providerHandler := task.NewGetProviderHandler()
 	// Get provider from the platform.
-	err := executor.GetInstance(ctx).ExecuteTask(ctx, providerHandler.Handle)
+	err := executor.GetInstance().ExecuteTask(ctx, providerHandler.Handle)
 	if err != nil {
 		util.ConsoleLogger().Fatalf("Failed fetching provider from the platform - %s", err)
 	}
 	provider := providerHandler.Result()
 	instanceTypeHandler := task.NewGetInstanceTypeHandler()
 	// Get instance type config from the platform.
-	err = executor.GetInstance(ctx).ExecuteTask(ctx, instanceTypeHandler.Handle)
+	err = executor.GetInstance().ExecuteTask(ctx, instanceTypeHandler.Handle)
 	if err != nil {
 		util.ConsoleLogger().Fatalf("Failed fetching instance type from the platform - %s", err)
 	}
@@ -50,7 +50,7 @@ func preFlightCheckHandler(cmd *cobra.Command, args []string) {
 
 	accessKeysHandler := task.NewGetAccessKeysHandler()
 	// Get access key from the platform.
-	err = executor.GetInstance(ctx).ExecuteTask(ctx, accessKeysHandler.Handle)
+	err = executor.GetInstance().ExecuteTask(ctx, accessKeysHandler.Handle)
 	if err != nil {
 		util.ConsoleLogger().Fatalf("Failed fetching config from the platform - %s", err)
 	}
@@ -64,7 +64,7 @@ func preFlightCheckHandler(cmd *cobra.Command, args []string) {
 		instanceTypeData,
 		accessKeyData,
 	)
-	err = executor.GetInstance(ctx).
+	err = executor.GetInstance().
 		ExecuteTask(ctx, preflightCheckHandler.Handle)
 	if err != nil {
 		util.ConsoleLogger().Fatalf("Task execution failed - %s", err.Error())
@@ -72,7 +72,7 @@ func preFlightCheckHandler(cmd *cobra.Command, args []string) {
 	preflightChecksData := *preflightCheckHandler.Result()
 	validationHandler := task.NewValidateNodeInstanceHandler(preflightChecksData)
 	util.ConsoleLogger().Info("Evaluating the preflight checks")
-	err = executor.GetInstance(ctx).ExecuteTask(
+	err = executor.GetInstance().ExecuteTask(
 		ctx,
 		validationHandler.Handle,
 	)
@@ -87,7 +87,7 @@ func preFlightCheckHandler(cmd *cobra.Command, args []string) {
 
 	if isAddNodeInstance {
 		nodeInstanceHandler := task.NewPostNodeInstanceHandler(preflightChecksData)
-		err = executor.GetInstance(ctx).ExecuteTask(
+		err = executor.GetInstance().ExecuteTask(
 			ctx,
 			nodeInstanceHandler.Handle,
 		)

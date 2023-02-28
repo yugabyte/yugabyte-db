@@ -392,7 +392,7 @@ static relopt_oid oidRelOpts[] =
 		{
 			"colocation_id",
 			"Colocation ID to distinguish a table within a colocation group. Used during backup/restore.",
-			RELOPT_KIND_HEAP | RELOPT_KIND_INDEX,
+			RELOPT_KIND_HEAP | RELOPT_KIND_INDEX | RELOPT_KIND_PARTITIONED,
 			AccessExclusiveLock
 		},
 		InvalidOid,

@@ -130,6 +130,7 @@ namespace master {
 
 struct DeferredAssignmentActions;
 class XClusterSafeTimeService;
+struct TemporaryLoadingState;
 
 using PlacementId = std::string;
 
@@ -1049,6 +1050,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       ReportYsqlDdlTxnStatusResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  Status GetStatefulServiceLocation(
+      const GetStatefulServiceLocationRequestPB* req,
+      GetStatefulServiceLocationResponsePB* resp);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -1166,6 +1171,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                              const NamespaceName& namespace_name,
                              const std::vector<Partition>& partitions,
                              bool colocated,
+                             IsSystemObject system_table,
                              IndexInfoPB* index_info,
                              TabletInfos* tablets,
                              CreateTableResponsePB* resp,
@@ -1554,7 +1560,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status RegisterTsFromRaftConfig(const consensus::RaftPeerPB& peer);
 
   template <class Loader>
-  Status Load(const std::string& title, const int64_t term);
+  Status Load(const std::string& title, TemporaryLoadingState* state, const int64_t term);
 
   virtual void Started() {}
 
@@ -1584,11 +1590,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   }
 
   virtual bool IsCdcEnabledUnlocked(const TableInfo& table_info) const REQUIRES_SHARED(mutex_) {
-    // Default value.
-    return false;
-  }
-
-  virtual bool IsCdcSdkEnabled(const TableInfo& table_info) {
     // Default value.
     return false;
   }
@@ -2012,7 +2013,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   TSDescriptorVector GetAllLiveNotBlacklistedTServers() const;
 
-  const YQLPartitionsVTable& GetYqlPartitionsVtable() const;
+  // Get the ycql system.partitions vtable. Note that this has EXCLUDES(mutex_), in order to
+  // maintain lock ordering.
+  const YQLPartitionsVTable& GetYqlPartitionsVtable() const EXCLUDES(mutex_);
 
   void InitializeTableLoadState(
       const TableId& table_id, TSDescriptorVector ts_descs, CMPerTableLoadState* state);
@@ -2039,6 +2042,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       TabletLocationsPB* locs_pb,
       IncludeInactive include_inactive,
       PartitionsOnly partitions_only);
+
+  Status MaybeCreateLocalTransactionTable(
+      const CreateTableRequestPB& request, rpc::RpcContext* rpc);
+
+  int CalculateNumTabletsForTableCreation(
+      const CreateTableRequestPB& request, const Schema& schema,
+      const PlacementInfoPB& placement_info);
+
+  Result<std::pair<PartitionSchema, std::vector<Partition>>> CreatePartitions(
+      const Schema& schema, const PlacementInfoPB& placement_info, bool colocated,
+      CreateTableRequestPB* request, CreateTableResponsePB* resp);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};

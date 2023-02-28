@@ -221,6 +221,7 @@ Database servers need incoming TCP/IP access enabled to the following ports, for
 | TCP | 9300 | Prometheus node exporter |
 | TCP | 12000 | YCQL HTTP (for DB statistics gathering) |
 | TCP | 13000 | YSQL HTTP (for DB statistics gathering) |
+| TCP | 18018 | YB Controller |
 
 The preceding table is based on the information on the [default ports page](/preview/reference/configuration/default-ports/).
 

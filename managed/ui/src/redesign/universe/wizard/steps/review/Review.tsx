@@ -102,7 +102,7 @@ export const Review: FC<ReviewProps> = ({ dispatch }) => {
 
   const { isLoading: isProvidersLoading, data: providersList } = useQuery(
     QUERY_KEY.getProvidersList,
-    api.getProvidersList
+    api.fetchProviderList_Deprecated
   );
 
   const { isLoading: isCertificatesLoading, data: certificatesList } = useQuery(

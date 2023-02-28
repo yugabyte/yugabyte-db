@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.common.alerts.impl.AlertChannelEmail;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
@@ -239,10 +240,12 @@ public class AlertManagerTest extends FakeDBApplication {
         AlertChannelTemplateServiceTest.createTemplates(
             defaultCustomer.getUuid(), ChannelType.Email);
     alertChannelTemplateService.save(templates);
+    AlertChannelTemplatesExt templatesWithDefaults =
+        alertChannelTemplateService.getWithDefaults(defaultCustomer.getUuid(), ChannelType.Email);
 
     am.sendNotificationForState(alert, State.ACTIVE, report, context);
     verify(emailHelper, never()).sendEmail(any(), anyString(), anyString(), any(), any());
-    verify(emailChannel, times(2)).sendNotification(any(), any(), any(), eq(templates));
+    verify(emailChannel, times(2)).sendNotification(any(), any(), any(), eq(templatesWithDefaults));
   }
 
   @Test

@@ -255,15 +255,14 @@ export const mainTheme = createTheme({
     },
     MuiCheckbox: {
       root: {
-        // color: colors.primary[600],
-        '& .MuiSvgIcon-root': {
-          width: 20,
-          height: 20
+      '& .MuiSvgIcon-root': {
+          width: 16,
+          height: 16,
+          color: colors.primary[600]
         }
       },
       colorPrimary: {
-        // color: colors.primary[600],
-        '&&.Mui-checked': {
+        '&.Mui-checked': {
           color: colors.orange[500]
         }
       }
@@ -389,6 +388,7 @@ export const mainTheme = createTheme({
     },
     MuiInputBase: {
       input: {
+        height: 'inherit',
         '&$disabled': {
           cursor: 'not-allowed'
         }
@@ -470,7 +470,8 @@ export const mainTheme = createTheme({
       },
       icon: {
         color: colors.grey[600],
-        right: 2
+        right: 2,
+        top: 'auto'
       }
     },
     MuiPaper: {
@@ -534,9 +535,15 @@ export const mainTheme = createTheme({
         }
       }
     },
+    MuiFormControl: {
+      root: {
+        justifyContent: 'center'
+      }
+    },
     MuiFormControlLabel: {
       root: {
         marginLeft: 0,
+        marginBottom: 0,
 
         '&$disabled': {
           cursor: 'not-allowed',
@@ -548,43 +555,6 @@ export const mainTheme = createTheme({
       paperAnchorDockedLeft: {
         border: 'none',
         boxShadow: `inset -1px 0 0 0 ${colors.grey[200]}`
-      }
-    },
-    MuiTab: {
-      root: {
-        fontSize: 13,
-        fontWeight: 400,
-        textTransform: 'none',
-        minHeight: '56px',
-
-        '&:hover': {
-          boxShadow: `inset 0px -3px 0px 0px ${colors.secondary[400]}`
-        },
-
-        '@media (min-width:600px)': {
-          minWidth: 'fit-content',
-          marginRight: 32,
-          paddingRight: 0,
-          paddingLeft: 0
-        }
-      },
-      textColorPrimary: {
-        color: colors.grey[900],
-        '&$selected': {
-          color: colors.grey[900]
-        }
-      }
-    },
-    MuiTabs: {
-      indicator: {
-        background: colors.secondary[900],
-        height: 3,
-        '&:hover': {
-          backgroundColor: colors.secondary[400]
-        }
-      },
-      fixed: {
-        boxShadow: `inset 0 -1px ${colors.grey[300] ?? ''}`
       }
     },
     MuiDialog: {
@@ -777,7 +747,7 @@ export const mainTheme = createTheme({
       },
       sizeSmall: {
         padding: 0,
-        lineHeight: '32px'
+        lineHeight: '50px'
       },
       head: {
         fontSize: 11.5,

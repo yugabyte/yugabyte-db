@@ -110,9 +110,13 @@ class GcpCloud(AbstractCloud):
         return output
 
     def mount_disk(self, args, body):
+        logging.info("Mounting disk on host {} in zone {}; volume info is {}".format(
+                     args['search_pattern'], args['zone'], body))
         self.get_admin().mount_disk(args['zone'], args['search_pattern'], body)
 
     def unmount_disk(self, args, name):
+        logging.info("Unmounting disk {} from host {} in zone {}".format(
+                     name, args['search_pattern'], args['zone']))
         self.get_admin().unmount_disk(args['zone'], args['search_pattern'], name)
 
     def stop_instance(self, args):
@@ -305,7 +309,9 @@ class GcpCloud(AbstractCloud):
         dest_vpc_id = custom_payload.get("destVpcId")
         host_vpc_id = custom_payload.get("hostVpcId")
         per_region_meta = custom_payload.get("perRegionMetadata")
-        return self.get_admin().network(dest_vpc_id, host_vpc_id, per_region_meta).bootstrap()
+        create_new_vpc = custom_payload.get("createNewVpc")
+        return self.get_admin().network(
+            dest_vpc_id, host_vpc_id, per_region_meta, create_new_vpc).bootstrap()
 
     def network_cleanup(self, args):
         custom_payload = json.loads(args.custom_payload)

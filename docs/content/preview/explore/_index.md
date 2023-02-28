@@ -17,9 +17,7 @@ showRightNav: true
 
 The Explore documentation introduces you to YugabyteDB's features, often through examples.
 
-Most examples demonstrating database features, such as API compatibility, can be run on a single-node universe either on your computer, using the free Sandbox universe (cluster) in YugabyteDB Managed, or using a universe created via YugabyteDB Anywhere.
-
-More advanced scenarios use a multi-node deployment. Refer to [Set up YugabyteDB universe](#set-up-yugabytedb-universe) for instructions on creating universes to run the examples.
+Most examples demonstrating database features, such as API compatibility, can be run on a single-node universe either on your computer, using the free Sandbox universe (cluster) in YugabyteDB Managed, or using a universe created via YugabyteDB Anywhere. More advanced scenarios use a multi-node deployment. Refer to [Set up YugabyteDB universe](#set-up-yugabytedb-universe) for instructions on creating universes to run the examples.
 
 ## Overview
 
@@ -72,9 +70,9 @@ You can run examples using a universe set up on your local machine or in a cloud
     </a>
   </li>
 </ul>
-
 <div class="tab-content">
   <div id="local" class="tab-pane fade show active" role="tabpanel" aria-labelledby="local-tab">
+
 
 To run the examples, you need to create a single- or multi-node universe.
 
@@ -247,7 +245,7 @@ Note that if your Cloud Shell session is idle for more than 5 minutes, your brow
 
   <div id="anywhere" class="tab-pane fade" role="tabpanel" aria-labelledby="anywhere-tab">
 
-To run the examples in YugabyteDB Anywhere, create a single- or multi-node universe by following instructions provided in [Create a multi-zone universe](../yugabyte-platform/create-deployments/create-universe-multi-zone/).
+To run the examples in YugabyteDB Anywhere, [create a universe](../yugabyte-platform/create-deployments/create-universe-multi-zone/).
 
   </div>
 </div>
@@ -342,26 +340,31 @@ The `-Dspring.datasource` flag enables [topology-aware load balancing](../driver
   </div>
 
 <div id="anywhereworkload" class="tab-pane fade" role="tabpanel" aria-labelledby="anywhere-tab">
+<!--You start by moving the YB Workload Simulator JAR file from your local directory to the YugabyteDB Anywhere instance on AWS EC2, as follows:-->
 
-<!-- You start by moving the YB Workload Simulator JAR file from your local directory to the YugabyteDB Anywhere instance on AWS EC2, as follows:
-
+<!--
 ```sh
 scp -i <path_to_your_pem_file> yb-workload-sim-0.0.3.jar ec2-user@<YugabyteDB_Anywhere_instance_IP_address>:/tmp/
 ```
+-->
 
-For example:
+<!-- For example:-->
+<!--
 
 ```sh
 scp -i Documents/Yugabyte/Security-Keys/AWS/AWS-east-1.pem yb-workload-sim-0.0.3.jar ec2-user@123.456.789.2XS:/tmp/
-``` -->
+```
+-->
 
 To start the application against a running YugabyteDB Anywhere universe, use the following command from a local terminal:
+<!-- You can launch the application from your YugabyteDB Anywhere instance by using the terminal, as follows:-->
 
-<!-- You can launch the application from your YugabyteDB Anywhere instance by using the terminal, as follows:
+<!--
 
-1. Navigate to your `tmp` directory and execute `mkdir logs` to create a log file in case there are any errors during the setup. -->
+  1. Navigate to your `tmp` directory and execute `mkdir logs` to create a log file in case there are any errors during the setup.
+    2. Start the application against a running YugabyteDB Anywhere universe by executing the following commands in the terminal:
 
-<!-- 2. Start the application against a running YugabyteDB Anywhere universe by executing the following commands in the terminal: -->
+-->
 
    ```sh
    java -Dnode=<node_ip> \
@@ -378,9 +381,7 @@ To start the application against a running YugabyteDB Anywhere universe, use the
 
    - `<dbname>` - The name of the database you are connecting to (the default is yugabyte).
 
-   - `<dbuser>` and `<dbpassword>` - The user name and password for the YugabyteDB database.
-
-   <!-- - `<port>` - 5433. -->
+   - `<dbuser>` and `<dbpassword>` - The user name and password for the YugabyteDB database. <!-- - `<port>` - 5433. -->
 
    - `<aws.regions.zones>` - The zones in your universe, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Node details are displayed in **Universes > UniverseName > Nodes**. For example, to add topology keys for a single-region multi-zone universe, you would enter the following:
 
@@ -389,8 +390,9 @@ To start the application against a running YugabyteDB Anywhere universe, use the
      ```
 
 <!-- The preceding instructions are applicable to a YSQL workload.
-To run a YCQL workload, add the following parameters before the `-jar ./yb-workload-sim-0.0.3.jar` command:
+To run a YCQL workload, add the following parameters before the `-jar ./yb-workload-sim-0.0.3.jar` command: -->
 
+<!-- 
 ```sh
 -Dworkload=genericCassandraWorkload \
 -Dspring.data.cassandra.contact-points=<host_ip> \
@@ -399,14 +401,17 @@ To run a YCQL workload, add the following parameters before the `-jar ./yb-workl
 -Dspring.data.cassandra.userid=cassandra \
 -Dspring.data.cassandra.password=<cassandra_password> \
 ```
+-->
 
-Replace `<host_ip>`, `<datacenter>`, and `<cassandra_password>` with appropriate values.
+<!-- Replace `<host_ip>`, `<datacenter>`, and `<cassandra_password>` with appropriate values.-->
 
-In the local environment, you would need to execute the following:
+<!--In the local environment, you would need to execute the following: -->
 
+<!--
 ```sh
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
-``` -->
+```
+-->
 
 </div>
 

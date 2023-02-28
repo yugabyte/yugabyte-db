@@ -21,6 +21,7 @@
 
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/pgsql_error.h"
 
 #include "yb/docdb/value_type.h"
@@ -32,7 +33,7 @@
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
-
+#include "yb/master/ts_manager.h"
 #include "yb/rocksdb/db.h"
 
 #include "yb/server/skewed_clock.h"
@@ -149,7 +150,13 @@ std::string RowMarkTypeToPgsqlString(const RowMarkType row_mark_type) {
 YB_DEFINE_ENUM(TestStatement, (kInsert)(kDelete));
 
 Result<int64_t> GetCatalogVersion(PGConn* conn) {
-  return conn->FetchValue<int64_t>("SELECT current_version FROM pg_yb_catalog_version");
+  if (FLAGS_TEST_enable_db_catalog_version_mode) {
+    const auto db_oid = VERIFY_RESULT(conn->FetchValue<int32>(Format(
+        "SELECT oid FROM pg_database WHERE datname = '$0'", PQdb(conn->get()))));
+    return conn->FetchValue<PGUint64>(
+        Format("SELECT current_version FROM pg_yb_catalog_version where db_oid = $0", db_oid));
+  }
+  return conn->FetchValue<PGUint64>("SELECT current_version FROM pg_yb_catalog_version");
 }
 
 Result<bool> IsCatalogVersionChangedDuringDdl(PGConn* conn, const std::string& ddl_query) {
@@ -1000,7 +1007,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     // Weak read + weak write on (1) has no conflicts.
     ASSERT_OK(extra_conn.Execute("COMMIT"));
     auto res = ASSERT_RESULT(
-        conn.template FetchValue<int64_t>("SELECT COUNT(*) FROM pktable WHERE v = 20"));
+        conn.template FetchValue<PGUint64>("SELECT COUNT(*) FROM pktable WHERE v = 20"));
     ASSERT_EQ(res, 1);
   }
 
@@ -1124,7 +1131,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
-    auto res = ASSERT_RESULT(conn.template FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
+    auto res = ASSERT_RESULT(conn.template FetchValue<PGUint64>("SELECT COUNT(*) FROM t"));
     ASSERT_EQ(res, 1);
   }
 
@@ -1242,7 +1249,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     ASSERT_OK(extra_conn.Execute("COMMIT"));
 
     ASSERT_OK(conn.Execute("COMMIT;"));
-    const auto count = ASSERT_RESULT(conn.template FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
+    const auto count = ASSERT_RESULT(conn.template FetchValue<PGUint64>("SELECT COUNT(*) FROM t"));
     ASSERT_EQ(4, count);
   }
 
@@ -1312,7 +1319,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
       ASSERT_NOK(low_pri_txn_commit_status);
     }
     const auto count = ASSERT_RESULT(
-      extra_conn.template FetchValue<int64_t>("SELECT COUNT(*) FROM t WHERE v = 10"));
+      extra_conn.template FetchValue<PGUint64>("SELECT COUNT(*) FROM t WHERE v = 10"));
     ASSERT_EQ(low_pri_txn_succeed ? 2 : 1, count);
   }
 };
@@ -1340,7 +1347,7 @@ class PgMiniTestTxnHelperSerializable
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
-    auto res = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM t WHERE v1 = 20"));
+    auto res = ASSERT_RESULT(conn.FetchValue<PGUint64>("SELECT COUNT(*) FROM t WHERE v1 = 20"));
     ASSERT_EQ(res, 1);
 
     ASSERT_OK(StartTxn(&conn));
@@ -1352,7 +1359,7 @@ class PgMiniTestTxnHelperSerializable
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
-    res = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM t WHERE v2 = 6"));
+    res = ASSERT_RESULT(conn.FetchValue<PGUint64>("SELECT COUNT(*) FROM t WHERE v2 = 6"));
     ASSERT_EQ(res, 1);
   }
 };
@@ -1380,7 +1387,8 @@ class PgMiniTestTxnHelperSnapshot
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
-    const auto res = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM t WHERE v = 20"));
+    const auto res = ASSERT_RESULT(conn.FetchValue<PGUint64>(
+        "SELECT COUNT(*) FROM t WHERE v = 20"));
     ASSERT_EQ(res, 1);
   }
 };
@@ -1799,7 +1807,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigSelect)) {
   }
 
   auto start = MonoTime::Now();
-  auto res = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(DISTINCT(value)) FROM t"));
+  auto res = ASSERT_RESULT(conn.FetchValue<PGUint64>("SELECT COUNT(DISTINCT(value)) FROM t"));
   auto finish = MonoTime::Now();
   LOG(INFO) << "Time: " << finish - start;
   ASSERT_EQ(res, kRows);
@@ -1876,7 +1884,7 @@ void PgMiniTest::SetupColocatedTableAndRunBenchmark(
     int64_t fetched_rows;
     auto start = MonoTime::Now();
     if (aggregate) {
-      fetched_rows = ASSERT_RESULT(conn.FetchValue<int64_t>(select_cmd));
+      fetched_rows = ASSERT_RESULT(conn.FetchValue<PGUint64>(select_cmd));
     } else {
       auto res = ASSERT_RESULT(conn.Fetch(select_cmd));
       fetched_rows = PQntuples(res.get());
@@ -2000,7 +2008,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DDLWithRestart)) {
   LOG(INFO) << "Start masters";
   ASSERT_OK(StartAllMasters(cluster_.get()));
 
-  auto res = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
+  auto res = ASSERT_RESULT(conn.FetchValue<PGUint64>("SELECT COUNT(*) FROM t"));
   ASSERT_EQ(res, 0);
 }
 
@@ -2154,7 +2162,7 @@ class PgMiniBackwardIndexScanTest : public PgMiniSingleTServerTest {
     }
 
     auto count = ASSERT_RESULT(
-        conn.FetchValue<int64_t>("SELECT COUNT(*) FROM events_backwardscan"));
+        conn.FetchValue<PGUint64>("SELECT COUNT(*) FROM events_backwardscan"));
     LOG(INFO) << "Total rows inserted: " << count;
 
     auto select_result = ASSERT_RESULT(conn.Fetch(
@@ -2204,7 +2212,7 @@ void PgMiniTest::TestBigInsert(bool restart) {
       [this, &stop = thread_holder.stop_flag(), &post_insert_reads, &restarted] {
     auto connection = ASSERT_RESULT(Connect());
     while (!stop.load(std::memory_order_acquire)) {
-      auto res = connection.FetchValue<int64_t>("SELECT SUM(a) FROM t");
+      auto res = connection.FetchValue<PGUint64>("SELECT SUM(a) FROM t");
       if (!res.ok()) {
         auto msg = res.status().message().ToBuffer();
         ASSERT_TRUE(msg.find("server closed the connection unexpectedly") != std::string::npos)
@@ -2933,7 +2941,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TablegroupCompactionWithRestart)) {
   conn = ASSERT_RESULT(ConnectToDB("testdb" /* database_name */));
   for (int i = 0; i < num_tables; ++i) {
     auto res =
-        ASSERT_RESULT(conn.template FetchValue<int64_t>(Format("SELECT COUNT(*) FROM test$0", i)));
+        ASSERT_RESULT(conn.template FetchValue<PGUint64>(Format("SELECT COUNT(*) FROM test$0", i)));
     ASSERT_EQ(res, keys);
   }
 }
@@ -2992,6 +3000,11 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMaster),
     }
     return false;
   }, 10s, "Wait leader change"));
+
+  master::TSManager& ts_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->ts_manager();
+  ASSERT_OK(WaitFor([this, &ts_manager]() -> Result<bool> {
+    return ts_manager.GetAllDescriptors().size() == NumTabletServers();
+  }, 10s, "Wait all TServers to be registered"));
 
   ASSERT_OK(tools::RunBackupCommand(
       pg_host_port(), cluster_->GetMasterAddresses(), cluster_->GetTserverHTTPAddresses(),

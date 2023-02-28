@@ -834,6 +834,27 @@ Status WaitUntilCommittedOpIdIndexIsAtLeast(int64_t* index,
   return s;
 }
 
+Status WaitForAllPeersToCatchup(const TabletId& tablet_id,
+                                const std::vector<TServerDetails*>& replicas,
+                                const MonoDelta& timeout) {
+  return WaitFor(
+      [&]() -> Result<bool> {
+        auto op_ids = VERIFY_RESULT(itest::GetLastOpIdForEachReplica(
+            tablet_id, replicas, consensus::OpIdType::COMMITTED_OPID,
+            timeout));
+        SCHECK_EQ(op_ids.size(), replicas.size(), IllegalState,
+                  Format("Expected $0 replicas", replicas.size()));
+        // All replicas should have the same op_id
+        yb::OpId first_op_id = *(op_ids.begin());
+        for (auto op_id : op_ids) {
+            if( op_id != first_op_id)
+              return false;
+        }
+        return true;
+      },
+      timeout, "Waiting for all replicas to have the same committed op id");
+}
+
 Status GetReplicaStatusAndCheckIfLeader(const TServerDetails* replica,
                                         const string& tablet_id,
                                         const MonoDelta& timeout,
@@ -1165,6 +1186,16 @@ Status ListRunningTabletIds(const TServerDetails* ts,
     }
   }
   return Status::OK();
+}
+
+std::set<TabletId> GetClusterTabletIds(MiniCluster* cluster) {
+  std::set<TabletId> tablet_ids;
+  for (size_t i = 0; i < cluster->num_tablet_servers(); ++i) {
+    for (const auto& peer : cluster->GetTabletPeers(i)) {
+      tablet_ids.insert(peer->tablet_id());
+    }
+  }
+  return tablet_ids;
 }
 
 Status GetTabletLocations(ExternalMiniCluster* cluster,

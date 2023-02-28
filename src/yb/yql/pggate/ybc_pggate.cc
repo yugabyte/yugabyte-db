@@ -257,7 +257,7 @@ YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
 
 YBCStatus YbGetActualHeapSizeBytes(int64_t *consumption) {
 #ifdef YB_TCMALLOC_ENABLED
-    *consumption = yb::MemTracker::GetTCMallocActualHeapSizeBytes();
+    *consumption = pgapi ? pgapi->GetRootMemTracker().consumption() : 0;
 #else
     *consumption = 0;
 #endif
@@ -744,6 +744,7 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               bool is_unique_index,
                               const bool skip_index_backfill,
                               bool if_not_exist,
+                              bool is_colocated_via_database,
                               const YBCPgOid tablegroup_oid,
                               const YBCPgOid colocation_id,
                               const YBCPgOid tablespace_oid,
@@ -754,7 +755,8 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
   const PgObjectId tablespace_id(database_oid, tablespace_oid);
   return ToYBCStatus(pgapi->NewCreateIndex(database_name, schema_name, index_name, index_id,
                                            table_id, is_shared_index, is_unique_index,
-                                           skip_index_backfill, if_not_exist, tablegroup_id,
+                                           skip_index_backfill, if_not_exist,
+                                           is_colocated_via_database, tablegroup_id,
                                            colocation_id, tablespace_id, handle));
 }
 
