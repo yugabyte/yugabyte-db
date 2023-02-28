@@ -202,7 +202,7 @@ In your setup, the row with __`k=1`__ could be located on a different node. So, 
     8b6af7ef33f44a13926e6d49ce9186eb  127.0.0.1:7100   ALIVE   LEADER   127.0.0.1:7100
     ```
 
-    Here, `127.0.0.1` is the master leader address (this might be different in your setup). Start your node again and join the cluster at this IP address using the following command:
+    In this example, `127.0.0.1` is the master leader address (this might be different in your setup). Start your node again and join the cluster at this IP address using the following command:
 
     ```sh
     ./bin/yugabyted start --base_dir=/tmp/ybd2 --join=127.0.0.1
@@ -321,7 +321,7 @@ The node to which a client connects acts as the manager for the transaction. The
 
 In this example, you can see how a transaction aborts when the transaction manager fails. For more details on the role of the transaction manager, see [Transactional I/O](../../../architecture/transactions/transactional-io-path/#client-requests-transaction).
 
-For this case, you can connect to any node in the cluster; `127.0.0.3` has been chosen here.
+For this case, you can connect to any node in the cluster; `127.0.0.3` has been chosen in this example.
 
 1. Connect to the node at `127.0.0.3` as follows:
 
@@ -389,7 +389,7 @@ For this case, you can connect to any node in the cluster; `127.0.0.3` has been 
     (1 row)
     ```
 
-    The transaction fails; the row did not get the intended value of `40`, and still has the old value of `30`. When the transaction manager fails before a commit happens, the transaction is lost. At this point, it's the application's responsibility to restart the transaction.
+    The transaction fails; the row does not get the intended value of `40`, and still retains the old value of `30`. When the transaction manager fails before a commit happens, the transaction is lost. At this point, it's the application's responsibility to restart the transaction.
 
     The following diagram illustrates the high-level steps that result in transactions to abort when the node that the client has connected to fails.
 
