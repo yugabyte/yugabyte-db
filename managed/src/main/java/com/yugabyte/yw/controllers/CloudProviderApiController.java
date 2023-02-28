@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.forms.EditAccessKeyRotationScheduleParams;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -54,6 +55,7 @@ import play.mvc.Result;
 public class CloudProviderApiController extends AuthenticatedController {
 
   @Inject private CloudProviderHandler cloudProviderHandler;
+  @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   @ApiOperation(
       value = "List cloud providers",
@@ -123,14 +125,19 @@ public class CloudProviderApiController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
 
-    long universeCount = provider.getUniverseCount();
-    if (universeCount > 0) {
-      throw new PlatformServiceException(
-          FORBIDDEN,
-          String.format(
-              "There %s %d universe%s using this provider, cannot modify",
-              universeCount > 1 ? "are" : "is", universeCount, universeCount > 1 ? "s" : ""));
+    if (!runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
+      // Relaxing the edit provider call for used provider for YBM specific
+      // use case, as they already rely on edit provider flow.
+      long universeCount = provider.getUniverseCount();
+      if (universeCount > 0) {
+        throw new PlatformServiceException(
+            FORBIDDEN,
+            String.format(
+                "There %s %d universe%s using this provider, cannot modify",
+                universeCount > 1 ? "are" : "is", universeCount, universeCount > 1 ? "s" : ""));
+      }
     }
+
     JsonNode requestBody = mayBeMassageRequest(request().body().asJson(), true);
     Provider editProviderReq = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
     UUID taskUUID =
