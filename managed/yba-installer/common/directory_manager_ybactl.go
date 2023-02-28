@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 )
 
-// RootInstallDir is the install directory of yba-ctl for root installs
-const RootInstallDir string = "/opt/yba-ctl"
+// YbactlRootInstallDir is the install directory of yba-ctl for root installs
+const YbactlRootInstallDir string = "/opt/yba-ctl"
 
 var ycp ybaCtlPaths = newYbaCtlPaths()
 
@@ -52,7 +52,7 @@ func newYbaCtlPaths() ybaCtlPaths {
 
 // InstallDir gets the yba-ctl install directory.
 func (ycp ybaCtlPaths) InstallDir() string {
-	return filepath.Join(ycp.installBase, "ybactl")
+	return filepath.Join(ycp.installBase, "yba-ctl")
 }
 
 // LogFile is the yba-ctl log file path.
