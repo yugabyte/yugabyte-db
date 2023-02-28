@@ -18,7 +18,7 @@ menu:
 type: indexpage
 ---
 
-YugabyteDB provides [high availability](../../../architecture/core-functions/high-availability/) (HA) by replicating data across [fault domains](../../../architecture/docdb-replication/replication/#fault-domains). If a fault domain experiences a failure, an active replica is ready to take over as a new leader in a matter of seconds after the failure of the current leader and serve requests.
+YugabyteDB provides [high availability](../../architecture/core-functions/high-availability/) (HA) by replicating data across [fault domains](../../architecture/docdb-replication/replication/#fault-domains). If a fault domain experiences a failure, an active replica is ready to take over as a new leader in a matter of seconds after the failure of the current leader and serve requests.
 
 This is reflected in both the recovery point objective (RPO) and recovery time objective (RTO) for YugabyteDB universes:
 
@@ -34,7 +34,7 @@ The benefits of continuous availability extend to performing maintenance and dat
 For more information, see the following:
 
 - [Continuous Availability with YugabyteDB video](https://www.youtube.com/watch?v=4PpiOMcq-j8)
-- [Synchronous replication](../../../architecture/docdb-replication/replication/)
+- [Synchronous replication](../../architecture/docdb-replication/replication/)
 
 <div class="row">
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
