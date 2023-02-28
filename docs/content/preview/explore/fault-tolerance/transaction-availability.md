@@ -1,32 +1,37 @@
 ---
-title: Availability of Transactions
-headerTitle:  Availability of Transactions
-linkTitle: Availability of Transactions
+title: Availability of transactions
+headerTitle:  Availability of transactions
+linkTitle: Availability of transactions
 description: Simulate fault tolerance and resilience of transactions in a local YugabyteDB database universe.
 headcontent: Highly available and fault tolerant transactions
 menu:
   preview:
     identifier: transaction-availability-local
-    parent: fault-tolerance-1-macos
-    weight: 215
+    parent: fault-tolerance
+    weight: 20
 type: docs
 ---
 
-[Transactions](../../../architecture/transactions/distributed-txns/) are critical to many applications and need to work through different failure scenarios. YugabyteDB provides [high availability](../../../architecture/core-functions/high-availability/) (HA) of transactions by replicating the uncommitted values, also known as [provisional records](../../../architecture/transactions/distributed-txns/#provisional-records) across the [fault domains](../../../architecture/docdb-replication/replication/#fault-domains).
+[Transactions](../../../architecture/transactions/distributed-txns/) are critical to many applications and need to work through different failure scenarios.
 
-The following examples demonstrate how YugabyteDB transactions survive common failure scenarios that could happen when a transaction is being processed. In the examples, we will introduce different node failure scenarios and see how YugabyteDB handles the failures. Some of the scenarios are:
+Replication is a first-class feature in YugabyteDB and YugabyteDB naturally handles node failures during transactions. Only during a transaction manager failure, even though provisional records are replicated, does the client need to restart the transaction as the client is unaware of the transaction ID.
+
+The following examples demonstrate how YugabyteDB transactions survive common failure scenarios that could happen when a transaction is being processed. The examples introduce the following different node failure scenarios to show how YugabyteDB handles the failures:
 
 - The node that has received the provisional write fails (handled by YugabyteDB)
 - The node that is about to receive the provisional write fails (handled by YugabyteDB)
 - The node that the client is connected to fails (retry by client)
 
+For more information on how YugabyteDB handles failures and its impact during transaction processing, refer to [Impact of failures](../../../architecture/transactions/distributed-txns/#impact-of-failures).
+
 ## Prerequisites
 
-### Setup
+<div class="admonition note">
+    <p class="admonition-title">Setup</p>
+    <li>Local three-node YugabyteDB cluster. See <a href="/preview/explore/#set-up-yugabytedb-universe">Set up YugabyteDB universe</a>.</li>
+</div>
 
-- Local three-node YugabyteDB universe. See [Set up YugabyteDB universe](../../#set-up-yugabytedb-universe) to create your multi-node universe.
-
-### Identifying the location of a row
+### Identify the location of a row
 
 For the following examples, you need to identify which node holds a specific row, so that you can shut down the correct node to see what is happening. Perform the following steps to identify the row location:
 
@@ -87,7 +92,7 @@ For the following examples, you need to identify which node holds a specific row
 From the hash ranges listed on the [tablet-servers](http://localhost:7000/tablet-servers) page, and the [yb-admin](../../../admin/yb-admin/) output, you can determine that the row with `k=1` whose hash code is `1210` resides on node `127.0.0.2`, as that node has the tablet containing the key range `[0x0000, 0x5554]`.
 
 {{< note title="Note" >}}
-For the setup on this page, the row with __`k=1`__ resides on node __`127.0.0.2`__. However, in your setup, it could be on a different node. Make sure to use that node during failure simulation in the following examples .
+For the setup on this page, the row with __`k=1`__ resides on node __`127.0.0.2`__. However, in your setup, it could be on a different node. Make sure to use that node during failure simulation in the following examples.
 {{< /note >}}
 
 ## Failure of a node after receiving a write
@@ -181,7 +186,7 @@ In your setup, the row with __`k=1`__ could be located on a different node. So, 
 
     The following diagram illustrates the high-level steps that ensure transactions to succeed when a node fails after receiving the write.
 
-    ![failure_node_after_write](/images/explore/transactions/failure_node_after_write.svg)
+    ![Failure of a node after write](/images/explore/transactions/failure_node_after_write.svg)
 
 1. From another terminal of your YugabyteDB home directory, restart the node at `127.0.0.2` using the following procedure.
 
@@ -194,10 +199,10 @@ In your setup, the row with __`k=1`__ could be located on a different node. So, 
     You should see output similar to the following:
 
     ```output.sh
-    8b6af7ef33f44a13926e6d49ce9186eb  127.0.0.1:7100   ALIVE   LEADER 	127.0.0.1:7100
+    8b6af7ef33f44a13926e6d49ce9186eb  127.0.0.1:7100   ALIVE   LEADER   127.0.0.1:7100
     ```
 
-    Here, `127.0.0.1` is the master leader ip(This might be different in your setup). Start your node again and join the cluster at this ip using the following command:
+    Here, `127.0.0.1` is the master leader address (this might be different in your setup). Start your node again and join the cluster at this IP address using the following command:
 
     ```sh
     ./bin/yugabyted start --base_dir=/tmp/ybd2 --join=127.0.0.1
@@ -288,7 +293,7 @@ In your setup, the row with __`k=1`__ could be located on a different node. So, 
 
     The following diagram illustrates the high-level steps that ensure transactions to succeed when a node fails before receiving the write.
 
-    ![failure_node_before_write](/images/explore/transactions/failure_node_before_write.svg)
+    ![Failure of a node before write](/images/explore/transactions/failure_node_before_write.svg)
 
 1. From another terminal of your YugabyteDB home directory, restart the node at `127.0.0.2` using the following procedure.
 
@@ -301,10 +306,10 @@ In your setup, the row with __`k=1`__ could be located on a different node. So, 
     You should see output similar to the following:
 
     ```output.sh
-    8b6af7ef33f44a13926e6d49ce9186eb  127.0.0.1:7100   ALIVE   LEADER 	127.0.0.1:7100
+    8b6af7ef33f44a13926e6d49ce9186eb  127.0.0.1:7100   ALIVE   LEADER   127.0.0.1:7100
     ```
 
-    In this example, `127.0.0.1` is the master leader IP (The master leader IP may be different in your setup). Start your node again and join the cluster with the master leader IP using the following command:
+    In this example, `127.0.0.1` is the master leader address (the master leader address may be different in your setup). Start your node again and join the cluster with the master leader IP address using the following command:
 
     ```sh
     ./bin/yugabyted start --base_dir=/tmp/ybd2 --join=127.0.0.1
@@ -390,7 +395,7 @@ For this case, you can connect to any node in the cluster.(`127.0.0.3` has been 
 
     The following diagram illustrates the high-level steps that result in transactions to abort when the node that the client has connected to fails.
 
-    ![failure_client_connected_node](/images/explore/transactions/failure_client_connected_node.svg)
+    ![Failure of a node the client is connected to](/images/explore/transactions/failure_client_connected_node.svg)
 
 ## Clean up
 
@@ -401,9 +406,3 @@ You can shut down the local cluster that you created as follows:
 ./bin/yugabyted destroy --base_dir=/tmp/ybd2
 ./bin/yugabyted destroy --base_dir=/tmp/ybd3
 ```
-
-## Conclusion
-
-Replication is a first-class feature in YugabyteDB and naturally handles node failures during transactions. Only during a transaction manager failure, even though provisional records are replicated, the client has to restart the transaction as it is unaware of the transaction ID.
-
-To better understand how YugabyteDB handles failures and its impact during transaction processing, refer to the [Impact of failures](../../../architecture/transactions/distributed-txns/#impact-of-failures).
