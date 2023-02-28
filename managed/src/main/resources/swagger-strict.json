@@ -1580,6 +1580,10 @@
         "parentBackup" : {
           "type" : "boolean"
         },
+        "scheduleName" : {
+          "description" : "Schedule Policy Name, if this backup is part of a schedule",
+          "type" : "string"
+        },
         "scheduleUUID" : {
           "description" : "Schedule UUID, if this backup is part of a schedule",
           "format" : "uuid",
@@ -2012,6 +2016,10 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "expiryTimeUnit" : {
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
+        },
         "fullChainSizeInBytes" : {
           "format" : "int64",
           "type" : "integer"
@@ -2041,6 +2049,9 @@
         "onDemand" : {
           "type" : "boolean"
         },
+        "scheduleName" : {
+          "type" : "string"
+        },
         "scheduleUUID" : {
           "format" : "uuid",
           "type" : "string"
@@ -2057,7 +2068,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupType", "category", "commonBackupInfo", "customerUUID", "fullChainSizeInBytes", "hasIncrementalBackups", "isFullBackup", "isStorageConfigPresent", "isUniversePresent", "lastBackupState", "onDemand", "scheduleUUID", "storageConfigType", "universeName", "universeUUID" ],
+      "required" : [ "backupType", "category", "commonBackupInfo", "customerUUID", "expiryTimeUnit", "fullChainSizeInBytes", "hasIncrementalBackups", "isFullBackup", "isStorageConfigPresent", "isUniversePresent", "lastBackupState", "onDemand", "scheduleName", "scheduleUUID", "storageConfigType", "universeName", "universeUUID" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
@@ -2281,6 +2292,10 @@
         },
         "restoreTimeStamp" : {
           "description" : "Restore TimeStamp",
+          "type" : "string"
+        },
+        "scheduleName" : {
+          "description" : "Schedule Name",
           "type" : "string"
         },
         "scheduleUUID" : {
@@ -5682,6 +5697,10 @@
         },
         "restoreTimeStamp" : {
           "description" : "Restore TimeStamp",
+          "type" : "string"
+        },
+        "scheduleName" : {
+          "description" : "Schedule Name",
           "type" : "string"
         },
         "scheduleUUID" : {

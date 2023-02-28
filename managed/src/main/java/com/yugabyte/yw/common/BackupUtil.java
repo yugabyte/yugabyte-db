@@ -271,6 +271,7 @@ public class BackupUtil {
     BackupRespBuilder builder =
         BackupResp.builder()
             .expiryTime(backup.getExpiry())
+            .expiryTimeUnit(backup.getExpiryTimeUnit())
             .onDemand(onDemand)
             .isFullBackup(backup.getBackupInfo().isFullBackup)
             .universeName(backup.universeName)
@@ -286,7 +287,8 @@ public class BackupUtil {
             .commonBackupInfo(getCommonBackupInfo(backup))
             .hasIncrementalBackups(hasIncrements)
             .lastIncrementalBackupTime(lastIncrementDate)
-            .lastBackupState(lastBackupState);
+            .lastBackupState(lastBackupState)
+            .scheduleName(backup.getScheduleName());
     return builder.build();
   }
 
