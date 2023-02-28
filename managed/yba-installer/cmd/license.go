@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/licensing/license"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/licensing/pubkey"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
@@ -39,7 +38,7 @@ var validateLicenseCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		if !pubkey.Validate(lic.Sha256Data(), lic.Signature) {
+		if !lic.Validate() {
 			fmt.Println("Found an invalid license for YugabyteDB Anywhere")
 			os.Exit(1)
 		}
@@ -64,7 +63,7 @@ func InstallLicense() {
 	if err != nil {
 		log.Fatal("invalid license file given: " + err.Error())
 	}
-	if !pubkey.Validate(lic.Sha256Data(), lic.Signature) {
+	if !lic.Validate() {
 		log.Fatal("invalid license")
 	}
 	if err := lic.WriteToLocation(common.LicenseFile()); err != nil {
@@ -75,7 +74,10 @@ func InstallLicense() {
 func init() {
 	updateLicenseCmd.Flags().StringVarP(&licensePath, "license-path", "l", "", "path to license file")
 	updateLicenseCmd.MarkFlagRequired("license-path")
+	validateLicenseCmd.Flags().StringVarP(&licensePath, "license-path", "l", "",
+		"path to license file")
 	baseLicenseCmd.AddCommand(updateLicenseCmd)
+	baseLicenseCmd.AddCommand(validateLicenseCmd)
 	baseLicenseCmd.Flags().StringVarP(&licensePath, "license-path", "l", "",
 		"validate given license instead of installed license")
 	rootCmd.AddCommand(baseLicenseCmd)
