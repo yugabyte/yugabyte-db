@@ -112,10 +112,6 @@ class WriteQuery {
   // Cancel query even before sending underlying operation to the Raft.
   void Cancel(const Status& status);
 
-  const ReadHybridTime& read_time() const {
-    return read_time_;
-  }
-
   const tserver::WriteRequestPB* client_request() {
     return client_request_;
   }
@@ -226,7 +222,6 @@ class WriteQuery {
   ExecuteMode execute_mode_;
   IsolationLevel isolation_level_;
   docdb::PrepareDocWriteOperationResult prepare_result_;
-  RequestScope request_scope_;
   std::unique_ptr<WriteQuery> self_; // Keep self while Execute is performed.
 };
 

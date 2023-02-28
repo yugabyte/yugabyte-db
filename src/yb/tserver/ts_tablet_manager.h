@@ -630,7 +630,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Used for cleaning up old metrics.
   std::unique_ptr<rpc::Poller> metrics_cleaner_;
 
-  std::unique_ptr<tablet::LocalWaitingTxnRegistry> waiting_txn_registry_;
+  std::unique_ptr<docdb::LocalWaitingTxnRegistry> waiting_txn_registry_;
 
   std::unique_ptr<rpc::Poller> waiting_txn_registry_poller_;
 

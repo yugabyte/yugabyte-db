@@ -519,7 +519,7 @@ Status TSTabletManager::Init() {
                                                                       local_peer_pb_.cloud_info());
 
   if (FLAGS_enable_wait_queues) {
-    waiting_txn_registry_ = std::make_unique<tablet::LocalWaitingTxnRegistry>(
+    waiting_txn_registry_ = std::make_unique<docdb::LocalWaitingTxnRegistry>(
         client_future(), scoped_refptr<server::Clock>(server_->clock()));
   }
 
