@@ -27,9 +27,9 @@ This is reflected in both the recovery point objective (RPO) and recovery time o
 
 <img src="/images/architecture/replication/rpo-vs-rto-zone-outage.png"/>
 
-YugabyteDB also provides HA of transactions by replicating the uncommitted values, also known as [provisional records](../../../architecture/transactions/distributed-txns/#provisional-records), across the fault domains.
+YugabyteDB also provides HA of transactions by replicating the uncommitted values, also known as [provisional records](../../architecture/transactions/distributed-txns/#provisional-records), across the fault domains.
 
-The benefits of continuous availability extend to performing maintenance and database upgrades. You can maintain and [upgrade your universe](../../../manage/upgrade-deployment/) to a newer version of YugabyteDB by performing a rolling upgrade; that is, stopping each node, upgrading the software, and restarting the node, with zero downtime for the universe as a whole.
+The benefits of continuous availability extend to performing maintenance and database upgrades. You can maintain and [upgrade your universe](../../manage/upgrade-deployment/) to a newer version of YugabyteDB by performing a rolling upgrade; that is, stopping each node, upgrading the software, and restarting the node, with zero downtime for the universe as a whole.
 
 For more information, see the following:
 
