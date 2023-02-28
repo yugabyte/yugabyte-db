@@ -24,10 +24,11 @@ var generateCmd = &cobra.Command{
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		log.Print("generating license for " + customer)
-		licData := license.Data{
-			CustomerEmail: customer,
-		}
-		licData.SetTime()
+		licData := license.NewDataBuilder().
+			Time().
+			CustomerEmail(customer).
+			Build()
+
 		encoded, err := licData.Encode()
 		if err != nil {
 			log.Fatal(err)
