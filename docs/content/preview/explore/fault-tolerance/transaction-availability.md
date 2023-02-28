@@ -97,7 +97,7 @@ For the setup on this page, the row with __`k=1`__ resides on node __`127.0.0.2`
 
 ## Failure of a node after receiving a write
 
-During a transaction, when a row is updated, YugabyteDB sends the modified row (also known as [Provisional Records](../../../architecture/transactions/distributed-txns/#provisional-records)) to the node containing the row that is being modified. In this example, you can see how a transaction completes when the node that has just received a provisional write fails.
+During a transaction, when a row is updated, YugabyteDB sends the modified row (also known as [provisional records](../../../architecture/transactions/distributed-txns/#provisional-records)) to the node containing the row that is being modified. In this example, you can see how a transaction completes when the node that has just received a provisional write fails.
 
 Because the row with `k=1` is located on the node `127.0.0.2` (via [Identifying the row location](#identifing-the-location-of-a-row)), connect to node `127.0.0.3` as you have to stop the node `127.0.0.2` before committing the transaction in the following example.
 
@@ -133,7 +133,7 @@ In your setup, the row with __`k=1`__ could be located on a different node. So, 
     Time: 51.513 ms
     ```
 
-    The update will succeed. This means that the updated row with value `v=20` has been sent to node `127.0.0.2`, but not yet committed.
+    The update succeeds. This means that the updated row with value `v=20` has been sent to node `127.0.0.2`, but not yet committed.
 
 1. From another terminal of your YugabyteDB home directory, stop the node at `127.0.0.2`, as this is the node that has received the modified row.
 
@@ -167,7 +167,7 @@ In your setup, the row with __`k=1`__ could be located on a different node. So, 
     Time: 6.243 ms
     ```
 
-    The transaction succeeds even though the node at `127.0.0.2` failed after receiving the provisional write, and the row value updates to `20`. This is because, the provisional writes were replicated to the follower tablets and when the leader failed, a new leader that was quickly elected already had the provisional writes, which enabled the transaction to continue further without disruption.
+    The transaction succeeds even though the node at `127.0.0.2` failed after receiving the provisional write, and the row value updates to `20`. This is because the provisional writes were replicated to the follower tablets and when the leader failed, the newly elected leader already had the provisional writes, which enabled the transaction to continue further without disruption.
 
 1. Check the value of the row at `k=1` using the following command:
 
@@ -210,9 +210,9 @@ In your setup, the row with __`k=1`__ could be located on a different node. So, 
 
 ## Failure of a node before receiving a write
 
-As mentioned in the preceding example, when a row is updated during a transaction, YugabyteDB sends the modified row to the node the row that is being modified.
+As mentioned in the preceding example, when a row is updated during a transaction, YugabyteDB sends the modified row to the node with the row that is being modified.
 
-In this example, you can see how a transaction completes when the node that is about to receive a provisional write fails. You will take down node `127.0.0.2` as that node has the row with `k=1`.
+In this example, you can see how a transaction completes when the node that is about to receive a provisional write fails by taking down node `127.0.0.2`, as that node has the row with `k=1`.
 
 {{< note title="Note" >}}
 For your examples, connect to a node other than the node that the row with __`k=1`__ resides in. For the setup on this page, the node __`127.0.0.3`__ is used to connect to, as the row with __`k=1`__ is located at node __`127.0.0.2`__.
@@ -239,7 +239,7 @@ In your setup, the row with __`k=1`__ could be located on a different node. So, 
 
     The transaction is started, but you have not yet modified the row. So at this point, no provisional records have been sent to node `127.0.0.2`.
 
-1. From another terminal of your YugabyteDB home directory, stop the node at `127.0.0.2`, which has the row with `k=1` (This is the node from [Identifying the row location](#identifing-the-location-of-a-row)).
+1. From another terminal of your YugabyteDB home directory, stop the node at `127.0.0.2`, which has the row with `k=1` (that is, the row you [identified](#identifing-the-location-of-a-row)).
 
     ```sh
     ./bin/yugabyted stop --base_dir=/tmp/ybd2
@@ -317,13 +317,11 @@ In your setup, the row with __`k=1`__ could be located on a different node. So, 
 
 ## Failure of the node to which a client has connected
 
-The node to which a client connects acts as the manager for the transaction. The transaction manager coordinates the flow of transaction and maintains the corelation between the client and the transaction-id (a unique identifier for each transaction). YugabyteDB is inherently resilient to node failures as mentioned in the previous two scenarios.
+The node to which a client connects acts as the manager for the transaction. The transaction manager coordinates the flow of transactions and maintains the correlation between the client and the transaction-id (a unique identifier for each transaction). YugabyteDB is inherently resilient to node failures as mentioned in the previous two scenarios.
 
-In this example, you can see how a transaction will abort when the transaction manager fails. For more details on the role of the transaction manager, see [Transactional I/O](../../../architecture/transactions/transactional-io-path/#client-requests-transaction).
+In this example, you can see how a transaction aborts when the transaction manager fails. For more details on the role of the transaction manager, see [Transactional I/O](../../../architecture/transactions/transactional-io-path/#client-requests-transaction).
 
-{{< note title="Note" >}}
-For this case, you can connect to any node in the cluster.(`127.0.0.3` has been chosen here).
-{{< /note >}}
+For this case, you can connect to any node in the cluster; `127.0.0.3` has been chosen here.
 
 1. Connect to the node at `127.0.0.3` as follows:
 
