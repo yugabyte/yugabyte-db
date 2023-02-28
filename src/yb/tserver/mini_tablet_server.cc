@@ -145,7 +145,7 @@ Result<std::unique_ptr<MiniTabletServer>> MiniTabletServer::CreateMiniTabletServ
 Status MiniTabletServer::Start() {
   CHECK(!started_);
 
-  std::unique_ptr<TabletServer> server(new enterprise::TabletServer(opts_));
+  std::unique_ptr<TabletServer> server(new TabletServer(opts_));
   RETURN_NOT_OK(server->Init());
 
   RETURN_NOT_OK(server->Start());

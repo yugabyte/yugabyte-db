@@ -506,17 +506,17 @@ Status Heartbeater::Thread::TryHeartbeat() {
       } else {
         cluster_config_version = resp.cluster_config_version();
       }
-      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->
-          SetConfigVersionAndConsumerRegistry(cluster_config_version, &resp.consumer_registry()));
+      RETURN_NOT_OK(server_->SetConfigVersionAndConsumerRegistry(
+          cluster_config_version, &resp.consumer_registry()));
     } else if (resp.has_cluster_config_version()) {
-      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->
-          SetConfigVersionAndConsumerRegistry(resp.cluster_config_version(), nullptr));
+      RETURN_NOT_OK(
+          server_->SetConfigVersionAndConsumerRegistry(resp.cluster_config_version(), nullptr));
     }
 
     // Check whether the cluster is a producer of a CDC stream.
     if (resp.has_xcluster_enabled_on_producer() &&
         resp.xcluster_enabled_on_producer()) {
-      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->SetCDCServiceEnabled());
+      RETURN_NOT_OK(server_->SetCDCServiceEnabled());
     }
 
     // At this point we know resp is a successful heartbeat response from the master so set it as

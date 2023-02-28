@@ -63,21 +63,26 @@ class CQLServer : public server::RpcAndWebServerBase {
             boost::asio::io_service* io,
             tserver::TabletServerIf* tserver);
 
-  Status Start();
+  Status Start() override;
 
-  void Shutdown();
+  void Shutdown() override;
 
   tserver::TabletServerIf* tserver() const { return tserver_; }
+
+  Status ReloadKeysAndCertificates() override;
 
  private:
   CQLServerOptions opts_;
   void CQLNodeListRefresh(const boost::system::error_code &e);
   void RescheduleTimer();
+  std::unique_ptr<ql::CQLServerEvent> BuildTopologyChangeEvent(
+      const std::string& event_type, const Endpoint& addr);
+  Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
+
   boost::asio::deadline_timer timer_;
   tserver::TabletServerIf* const tserver_;
 
-  std::unique_ptr<ql::CQLServerEvent> BuildTopologyChangeEvent(const std::string& event_type,
-                                                               const Endpoint& addr);
+  std::unique_ptr<rpc::SecureContext> secure_context_;
 
   DISALLOW_COPY_AND_ASSIGN(CQLServer);
 };

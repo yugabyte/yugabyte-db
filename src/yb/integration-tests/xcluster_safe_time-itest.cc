@@ -423,7 +423,7 @@ class XClusterConsistencyTest : public XClusterYsqlTest {
   void StoreReadTimes() {
     uint32_t count = 0;
     for (const auto& mini_tserver : producer_cluster()->mini_tablet_servers()) {
-      auto* tserver = dynamic_cast<tserver::enterprise::TabletServer*>(mini_tserver->server());
+      auto* tserver = mini_tserver->server();
       auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
           tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
 
@@ -448,7 +448,7 @@ class XClusterConsistencyTest : public XClusterYsqlTest {
   uint32_t CountTabletsWithNewReadTimes() {
     uint32_t count = 0;
     for (const auto& mini_tserver : producer_cluster()->mini_tablet_servers()) {
-      auto* tserver = dynamic_cast<tserver::enterprise::TabletServer*>(mini_tserver->server());
+      auto* tserver = mini_tserver->server();
       auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
           tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
 
