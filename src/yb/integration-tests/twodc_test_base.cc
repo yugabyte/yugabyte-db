@@ -441,7 +441,7 @@ Status TwoDCTestBase::GetCDCStreamForTable(
 uint32_t TwoDCTestBase::GetSuccessfulWriteOps(MiniCluster* cluster) {
   uint32_t size = 0;
   for (const auto& mini_tserver : cluster->mini_tablet_servers()) {
-    auto* tserver = dynamic_cast<tserver::enterprise::TabletServer*>(mini_tserver->server());
+    auto* tserver = mini_tserver->server();
     CDCConsumer* cdc_consumer;
     if (tserver && (cdc_consumer = tserver->GetCDCConsumer())) {
       size += cdc_consumer->GetNumSuccessfulWriteRpcs();

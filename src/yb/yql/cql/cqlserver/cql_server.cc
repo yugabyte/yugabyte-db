@@ -27,6 +27,9 @@
 
 #include "yb/tserver/tablet_server_interface.h"
 
+#include "yb/server/secure.h"
+#include "yb/rpc/secure_stream.h"
+
 #include "yb/util/flags.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/result.h"
@@ -195,5 +198,31 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &ec) {
   RescheduleTimer();
 }
 
+Status CQLServer::ReloadKeysAndCertificates() {
+  if (!secure_context_) {
+    return Status::OK();
+  }
+
+  return server::ReloadSecureContextKeysAndCertificates(
+      secure_context_.get(),
+      fs_manager_->GetDefaultRootDir(),
+      server::SecureContextType::kExternal,
+      options_.HostsString());
+}
+
+Status CQLServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
+  RETURN_NOT_OK(RpcAndWebServerBase::SetupMessengerBuilder(builder));
+  if (!FLAGS_cert_node_filename.empty()) {
+    secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
+        fs_manager_->GetDefaultRootDir(),
+        FLAGS_cert_node_filename,
+        server::SecureContextType::kExternal,
+        builder));
+  } else {
+    secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
+        options_.HostsString(), *fs_manager_, server::SecureContextType::kExternal, builder));
+  }
+  return Status::OK();
+}
 }  // namespace cqlserver
 }  // namespace yb

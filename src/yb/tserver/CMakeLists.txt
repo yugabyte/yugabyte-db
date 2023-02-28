@@ -33,8 +33,6 @@
 set(YB_PCH_PREFIX tserver)
 set(YB_PCH_DEP_LIBS opid_proto yb_test_util)
 
-YB_INCLUDE_EXTENSIONS()
-
 #########################################
 # tserver_proto
 #########################################
@@ -204,8 +202,7 @@ set(TSERVER_SRCS
   cdc_consumer.cc
   cdc_poller.cc
   twodc_output_client.cc
-  twodc_write_implementations.cc
-  ${TSERVER_SRCS_EXTENSIONS})
+  twodc_write_implementations.cc)
 
 set(TSERVER_DEPS
   protobuf
@@ -313,15 +310,6 @@ ADD_YB_TEST(backup_service-test)
 ADD_YB_TEST(encrypted_sstable-test)
 YB_TEST_TARGET_LINK_LIBRARIES(encrypted_sstable-test encryption_test_util tserver_test_util tserver)
 
-# -------------------------------------------------------------------------------------------------
-# Tests in the "ent" directory
-# -------------------------------------------------------------------------------------------------
 
-if(YB_ENT_CURRENT_SOURCE_DIR)
-  # Set the test source file folder.
-  set(CMAKE_CURRENT_LIST_DIR ${YB_ENT_CURRENT_SOURCE_DIR})
-
-  foreach(test ${TSERVER_EXTENSIONS_TESTS})
-    ADD_YB_TEST(${test})
-  endforeach()
-endif()
+ADD_YB_TEST(remote_bootstrap_rocksdb_session-test_ent)
+ADD_YB_TEST(remote_bootstrap_rocksdb_client-test_ent)

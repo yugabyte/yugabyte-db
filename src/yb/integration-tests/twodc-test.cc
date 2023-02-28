@@ -2574,7 +2574,7 @@ TEST_P(TwoDCTest, TestAlterDDLWithRestarts) {
     ASSERT_NE(old_ts, new_ts);
 
     // Verify that the new Consumer poller had read the ALTER DDL and stopped polling.
-    auto* tserver = dynamic_cast<tserver::enterprise::TabletServer*>(new_ts->server());
+    auto* tserver = new_ts->server();
     CDCConsumer* cdc_consumer;
     ASSERT_TRUE(tserver && (cdc_consumer = tserver->GetCDCConsumer()));
     ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
