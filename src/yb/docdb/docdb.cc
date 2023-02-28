@@ -92,21 +92,7 @@ Status ApplyIntent(RefCntPrefix key,
                    LockBatchEntries *keys_locked) {
   // Have to strip kGroupEnd from end of key, because when only hash key is specified, we will
   // get two kGroupEnd at end of strong intent.
-  size_t size = key.size();
-  if (size > 0) {
-    if (key.data()[0] == KeyEntryTypeAsChar::kGroupEnd) {
-      if (size != 1) {
-        return STATUS_FORMAT(Corruption, "Key starting with group end: $0",
-            key.as_slice().ToDebugHexString());
-      }
-      size = 0;
-    } else {
-      while (key.data()[size - 1] == KeyEntryTypeAsChar::kGroupEnd) {
-        --size;
-      }
-    }
-  }
-  key.Resize(size);
+  RETURN_NOT_OK(RemoveGroupEndSuffix(&key));
   keys_locked->push_back({key, intent_types});
   return Status::OK();
 }
