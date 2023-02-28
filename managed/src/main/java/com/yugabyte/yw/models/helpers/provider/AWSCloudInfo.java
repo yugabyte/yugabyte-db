@@ -13,6 +13,7 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiParam;
+import io.swagger.annotations.ApiModelProperty.AccessMode;
 import lombok.Data;
 
 @Data
@@ -47,6 +48,12 @@ public class AWSCloudInfo implements CloudInfoInterface {
   @JsonAlias("HOSTED_ZONE_NAME")
   @ApiModelProperty
   public String awsHostedZoneName;
+
+  @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
+  public String hostVpcRegion;
+
+  @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
+  public String hostVpcId;
 
   @JsonIgnore
   public Map<String, String> getEnvVars() {
