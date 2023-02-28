@@ -1,7 +1,7 @@
 ---
-title: Node and zone availability
-headerTitle: Node and zone availability
-linkTitle: Node and zone availability
+title: High availability on node and zone failures
+headerTitle: High availability on node and zone failures
+linkTitle: HA on node and zone failures
 description: Simulate fault tolerance and resilience in a local YugabyteDB database universe.
 headcontent: Keep serving requests through node, zone, and region failures
 menu:
@@ -11,8 +11,6 @@ menu:
     weight: 10
 type: docs
 ---
-
-YugabyteDB can continuously serve requests in the event of planned or unplanned outages, such as system upgrades and outages related to a node, availability zone, or region.
 
 The following example demonstrates how YugabyteDB can continue to perform reads and writes even in case of node failures. In this scenario, you create a universe with a replication factor (RF) of 3, which allows a [fault tolerance](../../../architecture/docdb-replication/replication/#fault-tolerance) of 1. This means the universe remains available for both reads and writes even if a fault domain fails. However, if another were to fail (bringing the number of failures to two), writes would become unavailable on the universe to preserve data consistency.
 
@@ -33,7 +31,7 @@ The examples are based on the YB Workload Simulator application, which uses the 
   </li>
 </ul>
 
-{{% explore-setup-multi %}}
+### Set up a cluster
 
 Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a single region three-node universe, connect the [YB Workload Simulator](../../#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as latency and throughput charts for the running workload.
 
@@ -49,13 +47,15 @@ To view the latency and throughput on the universe while the workload is running
 
 ![Latency and throughput with 3 nodes](/images/ce/fault-tolerance-latency-throughput.png)
 
-### Stop node and observe continuous write availability
+### Simulate a node failure
 
 Stop one of the nodes to simulate the loss of a zone, as follows:
 
 ```sh
 ./bin/yugabyted stop --base_dir=/tmp/ybd2
 ```
+
+### Observe workload remains available
 
 Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the statistics update.
 

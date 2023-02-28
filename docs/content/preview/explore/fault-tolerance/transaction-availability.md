@@ -1,7 +1,7 @@
 ---
-title: Availability of transactions
-headerTitle:  Availability of transactions
-linkTitle: Availability of transactions
+title: High availability transactions
+headerTitle:  High availability transactions
+linkTitle: High availability transactions
 description: Simulate fault tolerance and resilience of transactions in a local YugabyteDB database universe.
 headcontent: Highly available and fault tolerant transactions
 menu:
@@ -12,28 +12,27 @@ menu:
 type: docs
 ---
 
-[Transactions](../../../architecture/transactions/distributed-txns/) are critical to many applications and need to work through different failure scenarios.
+[Transactions](../../../architecture/transactions/distributed-txns/) and resilience are both critical features of YugabyteDB, and they are designed to work together. This means that transactions can make progress even under some failure scenarios.
 
-Replication is a first-class feature in YugabyteDB and YugabyteDB naturally handles node failures during transactions. Only during a transaction manager failure, even though provisional records are replicated, does the client need to restart the transaction as the client is unaware of the transaction ID.
+The following examples demonstrate how YugabyteDB transactions survive common failure scenarios that could happen when a transaction is being processed. In the examples, you execute a client-driven transaction that updates a single row, with failure scenarios as shown in the following table.
 
-The following examples demonstrate how YugabyteDB transactions survive common failure scenarios that could happen when a transaction is being processed. The examples introduce the following different node failure scenarios to show how YugabyteDB handles the failures:
-
-- The node that has received the provisional write fails (handled by YugabyteDB)
-- The node that is about to receive the provisional write fails (handled by YugabyteDB)
-- The node that the client is connected to fails (retry by client)
+| Scenario | Description | Handled By |
+| :--- | :--- | :--- |
+| Node failure just before transaction execution | The node to which the update is made fails just before the transaction is executed. | YugabyteDB |
+| Node failure just before transaction commit | The node to which the update is made fails after the update but before the commit. | YugabyteDB |
+| Failure of the node to which a client has connected | The node to which the client is connected fails after the update but before the commit. | Client retry |
 
 For more information on how YugabyteDB handles failures and its impact during transaction processing, refer to [Impact of failures](../../../architecture/transactions/distributed-txns/#impact-of-failures).
 
 ## Prerequisites
 
-<div class="admonition note">
-    <p class="admonition-title">Setup</p>
-    <li>Local three-node YugabyteDB cluster. See <a href="/preview/explore/#set-up-yugabytedb-universe">Set up YugabyteDB universe</a>.</li>
-</div>
+### Set up a cluster
 
-### Identify the location of a row
+Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a local single region three-node universe.
 
-For the following examples, you need to identify which node holds a specific row, so that you can shut down the correct node to see what is happening. Perform the following steps to identify the row location:
+### Create a table
+
+Create a table and add some data as follows:
 
 1. Connect to your universe using [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh), and create a table using the following command:
 
@@ -50,6 +49,10 @@ For the following examples, you need to identify which node holds a specific row
     ```sql
     INSERT INTO txndemo SELECT id,10 FROM generate_series(1,5) AS id;
     ```
+
+### Identify the location of a row
+
+For the following examples, you need to identify which node holds a specific row, so that you can shut down the correct node to see what is happening. Perform the following steps to identify the row location:
 
 1. Fetch the hash code of the primary key k using the [yb_hash_code()](../../../api/ysql/exprs/func_yb_hash_code/) function, and correlate it with the `yb-admin` output to figure out where that key is located. The examples on this page use the row with `k=1`.
 
@@ -95,7 +98,114 @@ From the hash ranges listed on the [tablet-servers](http://localhost:7000/tablet
 For the setup on this page, the row with __`k=1`__ resides on node __`127.0.0.2`__. However, in your setup, it could be on a different node. Make sure to use that node during failure simulation in the following examples.
 {{< /note >}}
 
-## Failure of a node after receiving a write
+## Node failure just before transaction execution
+
+As mentioned in the preceding example, when a row is updated during a transaction, YugabyteDB sends the modified row to the node with the row that is being modified.
+
+In this example, you can see how a transaction completes when the node that is about to receive a provisional write fails by taking down node `127.0.0.2`, as that node has the row with `k=1`.
+
+{{< note title="Note" >}}
+For your examples, connect to a node other than the node that the row with __`k=1`__ resides in. For the setup on this page, the node __`127.0.0.3`__ is used to connect to, as the row with __`k=1`__ is located at node __`127.0.0.2`__.
+
+In your setup, the row with __`k=1`__ could be located on a different node. So, choose a node to connect to appropriately.
+{{< /note >}}
+
+1. Connect to `127.0.0.3` as follows:
+
+    ```sh
+    ./bin/ysqlsh -h 127.0.0.3  -U yugabyte -d yugabyte
+    ```
+
+1. Start a transaction as follows:
+
+    ```sql
+    BEGIN;
+    ```
+
+    ```output.sql
+    BEGIN
+    Time: 2.047 ms
+    ```
+
+    The transaction is started, but you have not yet modified the row. So at this point, no provisional records have been sent to node `127.0.0.2`.
+
+1. From another terminal of your YugabyteDB home directory, stop the node at `127.0.0.2`, which has the row with `k=1` (that is, the row you [identified](#identifing-the-location-of-a-row)).
+
+    ```sh
+    ./bin/yugabyted stop --base_dir=/tmp/ybd2
+    ```
+
+1. List the nodes to verify the node at `127.0.0.2` is gone from the tablet list using the following command:
+
+    ```sh
+    ./bin/yb-admin -master_addresses 127.0.0.1,127.0.0.2,127.0.0.3 list_tablets ysql.yugabyte txndemo
+    ```
+
+    ```output.sh
+    Tablet-UUID                        Key Range         Leader-IP       Leader-UUID
+    7e2dfb66a4654aa5b2fb133b446aaabc   [0x0000, 0x5554]  127.0.0.3:9100  7402fbc9c6384d80bb7bcd09b89dbca9
+    a9b4675fdaaa4d4b949adc5e53d183bf   [0x5555, 0xAAA9]  127.0.0.3:9100  7402fbc9c6384d80bb7bcd09b89dbca9
+    a8c50129f63642459a02ed4ee492a1f3   [0xAAAA, 0xFFFF]  127.0.0.1:9100  6789e52b1c334844a66078fe9fdf95fa
+    ```
+
+    Notice that the node `127.0.0.2` is gone and a new leader `127.0.0.3` has been elected for the tablet (`7e2dfb66a..`) which was in node `127.0.0.2`.
+
+1. Update and commit the transaction as follows:
+
+    ```sql
+    UPDATE txndemo set v=30 where k=1;
+    COMMIT;
+    ```
+
+    ```output.sql
+    UPDATE 1
+    Time: 1728.246 ms (00:01.728)
+    COMMIT
+    Time: 2.964 ms
+    ```
+
+    The transaction succeeds even though the node at `127.0.0.2` failed before receiving the provisional write, and the value updates to `30`. The transaction succeeds because a new leader (the node at `127.0.0.3`) gets quickly elected.
+
+1. Check the value of the row at `k=1` using the following command:
+
+    ```sql
+    SELECT * from txndemo where k=1;
+    ```
+
+    ```output
+      k | v
+    ----+----
+      1 | 30
+    (1 row)
+    ```
+
+    The row with `k=1` has the new value of `v=30`, confirming the completion of the transaction.
+
+    The following diagram illustrates the high-level steps that ensure transactions to succeed when a node fails before receiving the write.
+
+    ![Failure of a node before write](/images/explore/transactions/failure_node_before_write.svg)
+
+1. From another terminal of your YugabyteDB home directory, restart the node at `127.0.0.2` using the following procedure.
+
+    Identify the master leader using the following command:
+
+    ```sh
+    ./bin/yb-admin -master_addresses 127.0.0.1,127.0.0.2,127.0.0.3 list_all_masters | grep LEADER
+    ```
+
+    You should see output similar to the following:
+
+    ```output.sh
+    8b6af7ef33f44a13926e6d49ce9186eb  127.0.0.1:7100   ALIVE   LEADER   127.0.0.1:7100
+    ```
+
+    In this example, `127.0.0.1` is the master leader address (the master leader address may be different in your setup). Start your node again and join the cluster with the master leader IP address using the following command:
+
+    ```sh
+    ./bin/yugabyted start --base_dir=/tmp/ybd2 --join=127.0.0.1
+    ```
+
+## Node failure just before transaction commit
 
 During a transaction, when a row is updated, YugabyteDB sends the modified row (also known as [provisional records](../../../architecture/transactions/distributed-txns/#provisional-records)) to the node containing the row that is being modified. In this example, you can see how a transaction completes when the node that has just received a provisional write fails.
 
@@ -208,113 +318,6 @@ In your setup, the row with __`k=1`__ could be located on a different node. So, 
     ./bin/yugabyted start --base_dir=/tmp/ybd2 --join=127.0.0.1
     ```
 
-## Failure of a node before receiving a write
-
-As mentioned in the preceding example, when a row is updated during a transaction, YugabyteDB sends the modified row to the node with the row that is being modified.
-
-In this example, you can see how a transaction completes when the node that is about to receive a provisional write fails by taking down node `127.0.0.2`, as that node has the row with `k=1`.
-
-{{< note title="Note" >}}
-For your examples, connect to a node other than the node that the row with __`k=1`__ resides in. For the setup on this page, the node __`127.0.0.3`__ is used to connect to, as the row with __`k=1`__ is located at node __`127.0.0.2`__.
-
-In your setup, the row with __`k=1`__ could be located on a different node. So, choose a node to connect to appropriately.
-{{< /note >}}
-
-1. Connect to `127.0.0.3` as follows:
-
-    ```sh
-    ./bin/ysqlsh -h 127.0.0.3  -U yugabyte -d yugabyte
-    ```
-
-1. Start a transaction as follows:
-
-    ```sql
-    BEGIN;
-    ```
-
-    ```output.sql
-    BEGIN
-    Time: 2.047 ms
-    ```
-
-    The transaction is started, but you have not yet modified the row. So at this point, no provisional records have been sent to node `127.0.0.2`.
-
-1. From another terminal of your YugabyteDB home directory, stop the node at `127.0.0.2`, which has the row with `k=1` (that is, the row you [identified](#identifing-the-location-of-a-row)).
-
-    ```sh
-    ./bin/yugabyted stop --base_dir=/tmp/ybd2
-    ```
-
-1. List the nodes to verify the node at `127.0.0.2` is gone from the tablet list using the following command:
-
-    ```sh
-    ./bin/yb-admin -master_addresses 127.0.0.1,127.0.0.2,127.0.0.3 list_tablets ysql.yugabyte txndemo
-    ```
-
-    ```output.sh
-    Tablet-UUID                        Key Range         Leader-IP       Leader-UUID
-    7e2dfb66a4654aa5b2fb133b446aaabc   [0x0000, 0x5554]  127.0.0.3:9100  7402fbc9c6384d80bb7bcd09b89dbca9
-    a9b4675fdaaa4d4b949adc5e53d183bf   [0x5555, 0xAAA9]  127.0.0.3:9100  7402fbc9c6384d80bb7bcd09b89dbca9
-    a8c50129f63642459a02ed4ee492a1f3   [0xAAAA, 0xFFFF]  127.0.0.1:9100  6789e52b1c334844a66078fe9fdf95fa
-    ```
-
-    Notice that the node `127.0.0.2` is gone and a new leader `127.0.0.3` has been elected for the tablet (`7e2dfb66a..`) which was in node `127.0.0.2`.
-
-1. Update and commit the transaction as follows:
-
-    ```sql
-    UPDATE txndemo set v=30 where k=1;
-    COMMIT;
-    ```
-
-    ```output.sql
-    UPDATE 1
-    Time: 1728.246 ms (00:01.728)
-    COMMIT
-    Time: 2.964 ms
-    ```
-
-    The transaction succeeds even though the node at `127.0.0.2` failed before receiving the provisional write, and the value updates to `30`. The transaction succeeds because a new leader (the node at `127.0.0.3`) gets quickly elected.
-
-1. Check the value of the row at `k=1` using the following command:
-
-    ```sql
-    SELECT * from txndemo where k=1;
-    ```
-
-    ```output
-      k | v
-    ----+----
-      1 | 30
-    (1 row)
-    ```
-
-    The row with `k=1` has the new value of `v=30`, confirming the completion of the transaction.
-
-    The following diagram illustrates the high-level steps that ensure transactions to succeed when a node fails before receiving the write.
-
-    ![Failure of a node before write](/images/explore/transactions/failure_node_before_write.svg)
-
-1. From another terminal of your YugabyteDB home directory, restart the node at `127.0.0.2` using the following procedure.
-
-    Identify the master leader using the following command:
-
-    ```sh
-    ./bin/yb-admin -master_addresses 127.0.0.1,127.0.0.2,127.0.0.3 list_all_masters | grep LEADER
-    ```
-
-    You should see output similar to the following:
-
-    ```output.sh
-    8b6af7ef33f44a13926e6d49ce9186eb  127.0.0.1:7100   ALIVE   LEADER   127.0.0.1:7100
-    ```
-
-    In this example, `127.0.0.1` is the master leader address (the master leader address may be different in your setup). Start your node again and join the cluster with the master leader IP address using the following command:
-
-    ```sh
-    ./bin/yugabyted start --base_dir=/tmp/ybd2 --join=127.0.0.1
-    ```
-
 ## Failure of the node to which a client has connected
 
 The node to which a client connects acts as the manager for the transaction. The transaction manager coordinates the flow of transactions and maintains the correlation between the client and the transaction-id (a unique identifier for each transaction). YugabyteDB is inherently resilient to node failures as mentioned in the previous two scenarios.
@@ -372,6 +375,8 @@ For this case, you can connect to any node in the cluster; `127.0.0.3` has been 
     Time: 2.499 ms
     ```
 
+    The transaction failed with a 57P01 error code, which is a [standard PostgreSQL error code](https://www.postgresql.org/docs/11/errcodes-appendix.html) to indicate that the database server was restarted or your connection killed by the administrator. In such cases, the application should be programmed so that it automatically reconnects to the database when the connection fails.
+
 1. From another terminal of your YugabyteDB home directory, connect to a different node and check the value as follows:
 
     ```sh
@@ -391,9 +396,9 @@ For this case, you can connect to any node in the cluster; `127.0.0.3` has been 
 
     The transaction fails; the row does not get the intended value of `40`, and still retains the old value of `30`. When the transaction manager fails before a commit happens, the transaction is lost. At this point, it's the application's responsibility to restart the transaction.
 
-    The following diagram illustrates the high-level steps that result in transactions to abort when the node that the client has connected to fails.
+The following diagram illustrates the high-level steps that result in transactions to abort when the node that the client has connected to fails.
 
-    ![Failure of a node the client is connected to](/images/explore/transactions/failure_client_connected_node.svg)
+![Failure of a node the client is connected to](/images/explore/transactions/failure_client_connected_node.svg)
 
 ## Clean up
 

@@ -18,6 +18,8 @@ menu:
 type: indexpage
 ---
 
+YugabyteDB can continuously serve requests in the event of planned or unplanned outages, such as system upgrades and outages related to a node, availability zone, or region.
+
 YugabyteDB provides [high availability](../../architecture/core-functions/high-availability/) (HA) by replicating data across [fault domains](../../architecture/docdb-replication/replication/#fault-domains). If a fault domain experiences a failure, an active replica is ready to take over as a new leader in a matter of seconds after the failure of the current leader and serve requests.
 
 This is reflected in both the recovery point objective (RPO) and recovery time objective (RTO) for YugabyteDB universes:
@@ -41,10 +43,10 @@ For more information, see the following:
     <a class="section-link icon-offset" href="macos/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/zero_downtime.png" aria-hidden="true" />
-        <div class="title">Node and zone availability</div>
+        <div class="title">High availability on node and zone failures</div>
       </div>
       <div class="body">
-        Continuously serve requests in the event of planned or unplanned outages.
+        Continuously serve requests in the event of unplanned outages.
       </div>
     </a>
   </div>
@@ -53,10 +55,10 @@ For more information, see the following:
     <a class="section-link icon-offset" href="transaction-availability/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
-        <div class="title">Availability of transactions</div>
+        <div class="title">High availability transactions</div>
       </div>
       <div class="body">
-        High availability of transactions.
+        YugabyteDB transactions survive common failure scenarios.
       </div>
     </a>
   </div>

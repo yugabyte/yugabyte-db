@@ -1,7 +1,7 @@
 ---
-title: Node and zone availability
-headerTitle: Node and zone availability
-linkTitle: Node and zone availability
+title: High availability on node and zone failures
+headerTitle: High availability on node and zone failures
+linkTitle: HA on node and zone failures
 description: Simulate fault tolerance and resilience in a universe created via YugabyteDB Anywhere.
 headcontent: Keep serving requests through node, zone, and region failures
 menu:
@@ -11,8 +11,6 @@ menu:
     weight: 10
 type: docs
 ---
-
-YugabyteDB can continuously serve requests in the event of planned or unplanned outages, such as system upgrades and outages related to a node, availability zone, or region.
 
 The following example demonstrates how YugabyteDB can continue to perform reads and writes even in case of node failures. In this scenario, you create a universe with a replication factor (RF) of 3, which allows a [fault tolerance](../../../architecture/docdb-replication/replication/#fault-tolerance) of 1. This means the universe remains available for both reads and writes even if a fault domain fails. However, if another were to fail (bringing the number of failures to two), writes would become unavailable on the universe to preserve data consistency.
 
@@ -32,6 +30,8 @@ The examples are based on the YB Workload Simulator application, which uses the 
     </a>
   </li>
 </ul>
+
+### Set up a cluster
 
 Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a single region three-node universe in YugabyteDB Anywhere, connect the [YB Workload Simulator](../../#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as latency and throughput charts for the running workload.
 
@@ -55,7 +55,7 @@ You can use YugabyteDB Anywhere to view per-node statistics for the universe, as
 
    ![Latency and throughput with 3 nodes](/images/ce/simulation-graph-cloud.png)
 
-### Stop node and observe continuous write availability
+### Simulate a node failure
 
 You can stop one of the nodes to simulate the loss of a zone, as follows:
 
@@ -63,7 +63,9 @@ You can stop one of the nodes to simulate the loss of a zone, as follows:
 
 1. Select **Nodes**, find the node to be removed, and then click its corresponding **Actions > Stop Processes**.
 
-1. Verify that the details by selecting **Nodes**. Expect to see that the load has been moved off the stopped node and redistributed to the remaining nodes, as shown in the following illustration:
+### Observe workload remains available
+
+1. Verify the details by selecting **Nodes**. Expect to see that the load has been moved off the stopped node and redistributed to the remaining nodes, as shown in the following illustration:
 
    ![Read and write IOPS with one node stopped](/images/ce/stop-node-yba.png)
 
