@@ -35,7 +35,7 @@ For information on how to schedule backups for a later time or as a recurring ta
 
 Note that non-transactional backups are not supported.
 
-If you are using YBA version 2.16 or later to manage universes using database version 2.16 or later, in addition to actions such as deleting and restoring the backup, as well as restoring and copying the database location, you can add an [incremental backup](../ysql/#create-incremental-backups) and [configure performance parameteers](../ysql/#configure-backup-performance-parameters).
+If you are using YBA version 2.16 or later to manage universes using database version 2.16 or later, in addition to actions such as deleting and restoring the backup, as well as restoring and copying the database location, you can add an [incremental backup](../ysql/#create-incremental-backups) and [configure performance parameters](../ysql/#configure-backup-performance-parameters).
 
 To view, [restore](../../restore-universe-data/ycql/), or delete existing backups for your universe, navigate to that universe and select **Backups**, as per the following illustration:
 

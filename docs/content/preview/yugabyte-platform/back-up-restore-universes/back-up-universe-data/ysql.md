@@ -36,7 +36,7 @@ type: docs
 
 You can use YugabyteDB Anywhere to back up your YugabyteDB universe YSQL data.
 
-If you are using YBA version 2.16 or later to manage universes using database version 2.16 or later, in addition to actions such as deleting and restoring the backup, as well as restoring and copying the database location, you can add an [incremental backup](#create-incremental-backups) and [configure throttle parameteers](#configure-throttle-parameters).
+If you are using YBA version 2.16 or later to manage universes using database version 2.16 or later, in addition to actions such as deleting and restoring the backup, as well as restoring and copying the database location, you can add an [incremental backup](#create-incremental-backups) and [configure throttle parameters](#configure-throttle-parameters).
 
 For information on how to schedule backups for a later time or as a recurring task, see [Schedule universe YSQL data backups](../../schedule-data-backups/ysql/).
 
