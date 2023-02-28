@@ -2365,6 +2365,7 @@ string MasterPathHandlers::RaftConfigToHtml(const std::vector<TabletReplica>& lo
       html << Substitute("  <li>$0: $1</li>\n",
                          PeerRole_Name(location.role), location_html);
     }
+    html << Substitute("UUID: $0\n", location.ts_desc->permanent_uuid());
   }
   html << "</ul>\n";
   return html.str();

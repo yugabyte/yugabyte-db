@@ -3180,6 +3180,18 @@ void RaftConsensus::DumpStatusHtml(std::ostream& out) const {
     out << "<hr/>" << std::endl;
     out << "<h2>Queue details</h2>" << std::endl;
     queue_->DumpToHtml(out);
+  } else if (role == PeerRole::FOLLOWER) {
+    out << "<hr/>" << std::endl;
+    out << "<h2>Raft Config</h2>" << std::endl;
+    RaftConfigPB config = CommittedConfig();
+    out << "<ul>\n";
+    for (const RaftPeerPB& peer : config.peers()) {
+      out << "<li>Peer:\n<ul>\n";
+      out << Format("  <li>Host: $0</li>\n", peer.last_known_private_addr()[0].host());
+      out << Format("  <li>UUID: $0</li>\n", peer.permanent_uuid());
+      out << "</ul>\n";
+    }
+    out << "</ul>\n";
   }
 }
 
