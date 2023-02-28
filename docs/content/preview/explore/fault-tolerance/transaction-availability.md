@@ -1,7 +1,7 @@
 ---
-title: High availability transactions
-headerTitle:  High availability transactions
-linkTitle: High availability transactions
+title: High availability of transactions
+headerTitle:  High availability of transactions
+linkTitle: HA of transactions
 description: Simulate fault tolerance and resilience of transactions in a local YugabyteDB database universe.
 headcontent: Highly available and fault tolerant transactions
 menu:
@@ -18,7 +18,7 @@ The following examples demonstrate how YugabyteDB transactions survive common fa
 
 | Scenario | Description | Handled By |
 | :--- | :--- | :--- |
-| Node failure just before transaction execution | The node to which the update is made fails just before the transaction is executed. | YugabyteDB |
+| Node failure just before a transaction executes a statement | The node to which the update is made fails just before the transaction is executed. | YugabyteDB |
 | Node failure just before transaction commit | The node to which the update is made fails after the update but before the commit. | YugabyteDB |
 | Failure of the node to which a client has connected | The node to which the client is connected fails after the update but before the commit. | Client retry |
 
@@ -98,7 +98,7 @@ From the hash ranges listed on the [tablet-servers](http://localhost:7000/tablet
 For the setup on this page, the row with __`k=1`__ resides on node __`127.0.0.2`__. However, in your setup, it could be on a different node. Make sure to use that node during failure simulation in the following examples.
 {{< /note >}}
 
-## Node failure just before transaction execution
+## Node failure just before a transaction executes a statement
 
 As mentioned in the preceding example, when a row is updated during a transaction, YugabyteDB sends the modified row to the node with the row that is being modified.
 

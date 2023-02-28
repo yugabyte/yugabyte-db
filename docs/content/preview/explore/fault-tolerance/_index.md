@@ -55,7 +55,7 @@ For more information, see the following:
     <a class="section-link icon-offset" href="transaction-availability/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
-        <div class="title">High availability transactions</div>
+        <div class="title">High availability of transactions</div>
       </div>
       <div class="body">
         YugabyteDB transactions survive common failure scenarios.
