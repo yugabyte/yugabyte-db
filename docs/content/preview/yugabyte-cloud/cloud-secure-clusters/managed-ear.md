@@ -2,7 +2,7 @@
 title: Encryption at rest
 linkTitle: Encryption at rest
 description: YugabyteDB Managed cluster encryption at rest.
-headcontent: Encrypt your cluster database
+headcontent: Encrypt your YugabyteDB cluster
 menu:
   preview_yugabyte-cloud:
     identifier: managed-ear
