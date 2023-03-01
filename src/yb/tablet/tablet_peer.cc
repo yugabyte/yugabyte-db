@@ -988,7 +988,7 @@ yb::OpId TabletPeer::GetLatestLogEntryOpId() const {
 }
 
 Status TabletPeer::set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index) {
-  LOG_WITH_PREFIX(INFO) << "Setting cdc min replicated index to " << cdc_min_replicated_index;
+  VLOG(1) << "Setting cdc min replicated index to " << cdc_min_replicated_index;
   RETURN_NOT_OK(meta_->set_cdc_min_replicated_index(cdc_min_replicated_index));
   Log* log = log_atomic_.load(std::memory_order_acquire);
   if (log) {
@@ -1017,8 +1017,7 @@ Status TabletPeer::reset_cdc_min_replicated_index_if_stale() {
 }
 
 Status TabletPeer::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_checkpoint_op_id) {
-  LOG_WITH_PREFIX(INFO) << "Setting CDCSDK min checkpoint opId to "
-                        << cdc_sdk_min_checkpoint_op_id.ToString();
+  VLOG(1) << "Setting CDCSDK min checkpoint opId to " << cdc_sdk_min_checkpoint_op_id.ToString();
   RETURN_NOT_OK(meta_->set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_min_checkpoint_op_id));
   return Status::OK();
 }
