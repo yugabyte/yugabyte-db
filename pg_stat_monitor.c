@@ -1556,6 +1556,8 @@ pgsm_store_error(const char *query, ErrorData *edata)
 	entry = pgsm_create_hash_entry(0, queryid, NULL);
 	entry->query_text.query_pointer = pnstrdup(query, len);
 
+	entry->pgsm_query_id = get_pgsm_query_id_hash(query, len);
+
 	entry->counters.error.elevel = edata->elevel;
 	snprintf(entry->counters.error.message, ERROR_MESSAGE_LEN, "%s", edata->message);
 	snprintf(entry->counters.error.sqlcode, SQLCODE_LEN, "%s", unpack_sql_state(edata->sqlerrcode));
