@@ -11,11 +11,11 @@
 // under the License.
 //
 
-#include "yb/tserver/cdc_poller.h"
+#include "yb/tserver/xcluster_poller.h"
 #include "yb/client/client_fwd.h"
 #include "yb/gutil/strings/split.h"
-#include "yb/tserver/cdc_consumer.h"
-#include "yb/tserver/twodc_output_client.h"
+#include "yb/tserver/xcluster_consumer.h"
+#include "yb/tserver/xcluster_output_client.h"
 
 #include "yb/cdc/cdc_rpc.h"
 #include "yb/cdc/cdc_service.pb.h"
@@ -66,14 +66,14 @@ using namespace std::placeholders;
 namespace yb {
 namespace tserver {
 
-CDCPoller::CDCPoller(
+XClusterPoller::XClusterPoller(
     const cdc::ProducerTabletInfo& producer_tablet_info,
     const cdc::ConsumerTabletInfo& consumer_tablet_info,
     ThreadPool* thread_pool,
     rpc::Rpcs* rpcs,
-    const std::shared_ptr<CDCClient>& local_client,
-    const std::shared_ptr<CDCClient>& producer_client,
-    CDCConsumer* cdc_consumer,
+    const std::shared_ptr<XClusterClient>& local_client,
+    const std::shared_ptr<XClusterClient>& producer_client,
+    XClusterConsumer* xcluster_consumer,
     bool use_local_tserver,
     client::YBTablePtr global_transaction_status_table,
     bool enable_replicate_transaction_status_table,
@@ -84,14 +84,14 @@ CDCPoller::CDCPoller(
       validated_schema_version_(0),
       last_compatible_consumer_schema_version_(last_compatible_consumer_schema_version),
       resp_(std::make_unique<cdc::GetChangesResponsePB>()),
-      output_client_(CreateTwoDCOutputClient(
-          cdc_consumer,
+      output_client_(CreateXClusterOutputClient(
+          xcluster_consumer,
           consumer_tablet_info,
           producer_tablet_info,
           local_client,
           thread_pool,
           rpcs,
-          std::bind(&CDCPoller::HandleApplyChanges, this, _1),
+          std::bind(&XClusterPoller::HandleApplyChanges, this, _1),
           use_local_tserver,
           global_transaction_status_table,
           enable_replicate_transaction_status_table)),
@@ -99,19 +99,21 @@ CDCPoller::CDCPoller(
       thread_pool_(thread_pool),
       rpcs_(rpcs),
       poll_handle_(rpcs_->InvalidHandle()),
-      cdc_consumer_(cdc_consumer),
+      xcluster_consumer_(xcluster_consumer),
       producer_safe_time_(HybridTime::kInvalid) {}
 
-CDCPoller::~CDCPoller() {
-  VLOG(1) << "Destroying CDCPoller";
+XClusterPoller::~XClusterPoller() {
+  VLOG(1) << "Destroying XClusterPoller";
   DCHECK(shutdown_);
 }
 
-void CDCPoller::Shutdown() {
+void XClusterPoller::Shutdown() {
   // The poller is shutdown in two cases:
-  // 1. The regular case where the poller is deleted via CDCConsumer's TriggerDeletionOfOldPollers.
+  // 1. The regular case where the poller is deleted via XClusterConsumer's
+  // TriggerDeletionOfOldPollers.
   //    This happens when the stream is deleted or the consumer tablet leader changes.
-  // 2. During CDCConsumer::Shutdown(). Note that in this scenario, we may still be processing a
+  // 2. During XClusterConsumer::Shutdown(). Note that in this scenario, we may still be processing
+  // a
   //    GetChanges request / handle callback, so we shutdown what we can here (note that
   //    thread_pool_ is shutdown before we shutdown the pollers, so that will force most
   //    codepaths to exit early), and then using shared_from_this, destroy the object once all
@@ -132,7 +134,7 @@ void CDCPoller::Shutdown() {
   }
 }
 
-std::string CDCPoller::LogPrefixUnlocked() const {
+std::string XClusterPoller::LogPrefixUnlocked() const {
   return strings::Substitute("P [$0:$1] C [$2:$3]: ",
                              producer_tablet_info_.stream_id,
                              producer_tablet_info_.tablet_id,
@@ -140,7 +142,7 @@ std::string CDCPoller::LogPrefixUnlocked() const {
                              consumer_tablet_info_.tablet_id);
 }
 
-bool CDCPoller::CheckOffline() { return shutdown_.load(); }
+bool XClusterPoller::CheckOffline() { return shutdown_.load(); }
 
 #define RETURN_WHEN_OFFLINE() \
   if (CheckOffline()) { \
@@ -152,7 +154,7 @@ bool CDCPoller::CheckOffline() { return shutdown_.load(); }
   RETURN_WHEN_OFFLINE(); \
   std::lock_guard<std::mutex> l(data_mutex_);
 
-void CDCPoller::SetSchemaVersion(
+void XClusterPoller::SetSchemaVersion(
     SchemaVersion cur_version, SchemaVersion last_compatible_consumer_schema_version) {
   RETURN_WHEN_OFFLINE();
 
@@ -160,14 +162,14 @@ void CDCPoller::SetSchemaVersion(
       validated_schema_version_ < cur_version) {
     WARN_NOT_OK(
         thread_pool_->SubmitFunc(std::bind(
-            &CDCPoller::DoSetSchemaVersion, shared_from_this(), cur_version,
+            &XClusterPoller::DoSetSchemaVersion, shared_from_this(), cur_version,
             last_compatible_consumer_schema_version)),
         "Could not submit SetSchemaVersion to thread pool");
   }
 }
 
-void CDCPoller::DoSetSchemaVersion(SchemaVersion cur_version,
-                                   SchemaVersion current_consumer_schema_version) {
+void XClusterPoller::DoSetSchemaVersion(
+    SchemaVersion cur_version, SchemaVersion current_consumer_schema_version) {
   ACQUIRE_MUTEX_IF_ONLINE();
 
   if (last_compatible_consumer_schema_version_ < current_consumer_schema_version) {
@@ -182,20 +184,23 @@ void CDCPoller::DoSetSchemaVersion(SchemaVersion cur_version,
       LOG(INFO) << "Restarting polling on " << producer_tablet_info_.tablet_id
                 << " Producer schema version : " << validated_schema_version_
                 << " Consumer schema version : " << last_compatible_consumer_schema_version_;
-      WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::DoPoll, shared_from_this())),
-                  "Could not submit Poll to thread pool");
+      WARN_NOT_OK(
+          thread_pool_->SubmitFunc(std::bind(&XClusterPoller::DoPoll, shared_from_this())),
+          "Could not submit Poll to thread pool");
     }
   }
 }
 
-HybridTime CDCPoller::GetSafeTime() const {
+HybridTime XClusterPoller::GetSafeTime() const {
   SharedLock lock(safe_time_lock_);
   return producer_safe_time_;
 }
 
-cdc::ConsumerTabletInfo CDCPoller::GetConsumerTabletInfo() const { return consumer_tablet_info_; }
+cdc::ConsumerTabletInfo XClusterPoller::GetConsumerTabletInfo() const {
+  return consumer_tablet_info_;
+}
 
-void CDCPoller::UpdateSafeTime(int64 new_time) {
+void XClusterPoller::UpdateSafeTime(int64 new_time) {
   HybridTime new_hybrid_time(new_time);
   if (!new_hybrid_time.is_special()) {
     std::lock_guard l(safe_time_lock_);
@@ -205,13 +210,14 @@ void CDCPoller::UpdateSafeTime(int64 new_time) {
   }
 }
 
-void CDCPoller::Poll() {
+void XClusterPoller::Poll() {
   RETURN_WHEN_OFFLINE();
-  WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::DoPoll, shared_from_this())),
-              "Could not submit Poll to thread pool");
+  WARN_NOT_OK(
+      thread_pool_->SubmitFunc(std::bind(&XClusterPoller::DoPoll, shared_from_this())),
+      "Could not submit Poll to thread pool");
 }
 
-void CDCPoller::DoPoll() {
+void XClusterPoller::DoPoll() {
   ACQUIRE_MUTEX_IF_ONLINE();
 
   if (PREDICT_FALSE(FLAGS_TEST_cdc_skip_replication_poll)) {
@@ -284,11 +290,11 @@ void CDCPoller::DoPoll() {
       nullptr, /* RemoteTablet: will get this from 'req' */
       producer_client_->client.get(),
       &req,
-      std::bind(&CDCPoller::HandlePoll, shared_from_this(), _1, _2));
+      std::bind(&XClusterPoller::HandlePoll, shared_from_this(), _1, _2));
   (**poll_handle_).SendRpc();
 }
 
-void CDCPoller::HandlePoll(const Status& status, cdc::GetChangesResponsePB&& resp) {
+void XClusterPoller::HandlePoll(const Status& status, cdc::GetChangesResponsePB&& resp) {
   rpc::RpcCommandPtr retained;
   {
     std::lock_guard<std::mutex> l(data_mutex_);
@@ -298,11 +304,11 @@ void CDCPoller::HandlePoll(const Status& status, cdc::GetChangesResponsePB&& res
   auto new_resp = std::make_shared<cdc::GetChangesResponsePB>(std::move(resp));
   WARN_NOT_OK(
       thread_pool_->SubmitFunc(
-          std::bind(&CDCPoller::DoHandlePoll, shared_from_this(), status, new_resp)),
+          std::bind(&XClusterPoller::DoHandlePoll, shared_from_this(), status, new_resp)),
       "Could not submit HandlePoll to thread pool");
 }
 
-void CDCPoller::DoHandlePoll(Status status, std::shared_ptr<cdc::GetChangesResponsePB> resp) {
+void XClusterPoller::DoHandlePoll(Status status, std::shared_ptr<cdc::GetChangesResponsePB> resp) {
   ACQUIRE_MUTEX_IF_ONLINE();
 
   status_ = status;
@@ -310,23 +316,23 @@ void CDCPoller::DoHandlePoll(Status status, std::shared_ptr<cdc::GetChangesRespo
 
   bool failed = false;
   if (!status_.ok()) {
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << "CDCPoller failure: " << status_.ToString();
+    LOG_WITH_PREFIX_UNLOCKED(INFO) << "XClusterPoller failure: " << status_.ToString();
     failed = true;
   } else if (resp_->has_error()) {
-    LOG_WITH_PREFIX_UNLOCKED(WARNING) << "CDCPoller failure response: code="
-                                      << resp_->error().code()
-                                      << ", status=" << resp->error().status().DebugString();
+    LOG_WITH_PREFIX_UNLOCKED(WARNING)
+        << "XClusterPoller failure response: code=" << resp_->error().code()
+        << ", status=" << resp->error().status().DebugString();
     failed = true;
 
     if (resp_->error().code() == cdc::CDCErrorPB::CHECKPOINT_TOO_OLD) {
-      cdc_consumer_->StoreReplicationError(
-        consumer_tablet_info_.tablet_id,
-        producer_tablet_info_.stream_id,
-        ReplicationErrorPb::REPLICATION_MISSING_OP_ID,
-        "Unable to find expected op id on the producer");
+      xcluster_consumer_->StoreReplicationError(
+          consumer_tablet_info_.tablet_id,
+          producer_tablet_info_.stream_id,
+          ReplicationErrorPb::REPLICATION_MISSING_OP_ID,
+          "Unable to find expected op id on the producer");
     }
   } else if (!resp_->has_checkpoint()) {
-    LOG_WITH_PREFIX_UNLOCKED(ERROR) << "CDCPoller failure: no checkpoint";
+    LOG_WITH_PREFIX_UNLOCKED(ERROR) << "XClusterPoller failure: no checkpoint";
     failed = true;
   }
   if (failed) {
@@ -342,14 +348,15 @@ void CDCPoller::DoHandlePoll(Status status, std::shared_ptr<cdc::GetChangesRespo
   WARN_NOT_OK(output_client_->ApplyChanges(resp_.get()), "Could not ApplyChanges");
 }
 
-void CDCPoller::HandleApplyChanges(cdc::OutputClientResponse response) {
+void XClusterPoller::HandleApplyChanges(XClusterOutputClientResponse response) {
   RETURN_WHEN_OFFLINE();
-  WARN_NOT_OK(thread_pool_->SubmitFunc(
-              std::bind(&CDCPoller::DoHandleApplyChanges, shared_from_this(), response)),
-              "Could not submit HandleApplyChanges to thread pool");
+  WARN_NOT_OK(
+      thread_pool_->SubmitFunc(
+          std::bind(&XClusterPoller::DoHandleApplyChanges, shared_from_this(), response)),
+      "Could not submit HandleApplyChanges to thread pool");
 }
 
-void CDCPoller::DoHandleApplyChanges(cdc::OutputClientResponse response) {
+void XClusterPoller::DoHandleApplyChanges(XClusterOutputClientResponse response) {
   ACQUIRE_MUTEX_IF_ONLINE();
 
   if (!response.status.ok()) {

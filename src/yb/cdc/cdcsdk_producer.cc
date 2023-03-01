@@ -1248,7 +1248,7 @@ bool VerifyTabletSplitOnParentTablet(
   return (children_tablet_count == 2);
 }
 
-// CDC get changes is different from 2DC as it doesn't need
+// CDC get changes is different from xCluster as it doesn't need
 // to read intents from WAL.
 
 Status GetChangesForCDCSDK(

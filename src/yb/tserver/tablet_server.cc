@@ -81,7 +81,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/tserver_service.proxy.h"
-#include "yb/tserver/cdc_consumer.h"
+#include "yb/tserver/xcluster_consumer.h"
 #include "yb/tserver/backup_service.h"
 
 #include "yb/cdc/cdc_service.h"
@@ -558,9 +558,9 @@ void TabletServer::Shutdown() {
 
   bool expected = true;
   if (initted_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
-    auto cdc_consumer = GetCDCConsumer();
-    if (cdc_consumer) {
-      cdc_consumer->Shutdown();
+    auto xcluster_consumer = GetXClusterConsumer();
+    if (xcluster_consumer) {
+      xcluster_consumer->Shutdown();
     }
 
     maintenance_manager_->Shutdown();
@@ -971,9 +971,9 @@ Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   return Status::OK();
 }
 
-CDCConsumer* TabletServer::GetCDCConsumer() {
+XClusterConsumer* TabletServer::GetXClusterConsumer() {
   std::lock_guard<decltype(cdc_consumer_mutex_)> l(cdc_consumer_mutex_);
-  return cdc_consumer_.get();
+  return xcluster_consumer_.get();
 }
 
 encryption::UniverseKeyManager* TabletServer::GetUniverseKeyManager() {
@@ -995,8 +995,8 @@ Status TabletServer::CreateCDCConsumer() {
     return tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
   };
 
-  cdc_consumer_ =
-      VERIFY_RESULT(CDCConsumer::Create(std::move(is_leader_clbk), proxy_cache_.get(), this));
+  xcluster_consumer_ =
+      VERIFY_RESULT(XClusterConsumer::Create(std::move(is_leader_clbk), proxy_cache_.get(), this));
   return Status::OK();
 }
 
@@ -1005,11 +1005,11 @@ Status TabletServer::SetConfigVersionAndConsumerRegistry(
   std::lock_guard<decltype(cdc_consumer_mutex_)> l(cdc_consumer_mutex_);
 
   // Only create a cdc consumer if consumer_registry is not null.
-  if (!cdc_consumer_ && consumer_registry) {
+  if (!xcluster_consumer_ && consumer_registry) {
     RETURN_NOT_OK(CreateCDCConsumer());
   }
-  if (cdc_consumer_) {
-    cdc_consumer_->RefreshWithNewRegistryFromMaster(consumer_registry, cluster_config_version);
+  if (xcluster_consumer_) {
+    xcluster_consumer_->RefreshWithNewRegistryFromMaster(consumer_registry, cluster_config_version);
   }
   return Status::OK();
 }
@@ -1019,10 +1019,10 @@ int32_t TabletServer::cluster_config_version() const {
   // If no CDC consumer, we will return -1, which will force the master to send the consumer
   // registry if one exists. If we receive one, we will create a new CDC consumer in
   // SetConsumerRegistry.
-  if (!cdc_consumer_) {
+  if (!xcluster_consumer_) {
     return -1;
   }
-  return cdc_consumer_->cluster_config_version();
+  return xcluster_consumer_->cluster_config_version();
 }
 
 Status TabletServer::ReloadKeysAndCertificates() {
@@ -1037,8 +1037,8 @@ Status TabletServer::ReloadKeysAndCertificates() {
       options_.HostsString()));
 
   std::lock_guard<decltype(cdc_consumer_mutex_)> l(cdc_consumer_mutex_);
-  if (cdc_consumer_) {
-    RETURN_NOT_OK(cdc_consumer_->ReloadCertificates());
+  if (xcluster_consumer_) {
+    RETURN_NOT_OK(xcluster_consumer_->ReloadCertificates());
   }
 
   for (const auto& reloader : certificate_reloaders_) {

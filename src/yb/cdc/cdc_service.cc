@@ -2804,7 +2804,7 @@ void CDCServiceImpl::TabletLeaderGetCheckpoint(
   auto cdc_proxy = GetCDCServiceProxy(*ts_leader);
   rpc::RpcController rpc;
   rpc.set_deadline(GetDeadline(*context, client()));
-  // TODO(NIC): Change to GetCheckpointAsync like CDCPoller::DoPoll.
+  // TODO(NIC): Change to GetCheckpointAsync like XClusterPoller::DoPoll.
   auto status = cdc_proxy->GetCheckpoint(*req, resp, &rpc);
   RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, *context);
   context->RespondSuccess();

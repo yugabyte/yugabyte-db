@@ -23,7 +23,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
-#include "yb/tserver/cdc_consumer.h"
+#include "yb/tserver/xcluster_consumer.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.service.h"
@@ -95,10 +95,10 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
       }
     }
 
-    // Report replication errors from the CDC consumer.
-    auto consumer = server().GetCDCConsumer();
-    if (consumer != nullptr && should_add_replication_status) {
-      const auto tablet_replication_error_map = consumer->GetReplicationErrors();
+    // Report replication errors from the xCluster consumer.
+    auto xcluster_consumer = server().GetXClusterConsumer();
+    if (xcluster_consumer != nullptr && should_add_replication_status) {
+      const auto tablet_replication_error_map = xcluster_consumer->GetReplicationErrors();
       for (const auto& tablet_kv : tablet_replication_error_map) {
         const TabletId& tablet_id = tablet_kv.first;
 

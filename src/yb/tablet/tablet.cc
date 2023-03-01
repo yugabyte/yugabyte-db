@@ -880,7 +880,7 @@ void Tablet::CleanupIntentFiles() {
 }
 
 void Tablet::DoCleanupIntentFiles() {
-  if (metadata_->is_under_twodc_replication()) {
+  if (metadata_->IsUnderXClusterReplication()) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Exit because of TwoDC replication";
     return;
   }
@@ -1387,10 +1387,10 @@ Status Tablet::ApplyKeyValueRowOperations(
 
     // See comments for PrepareExternalWriteBatch.
     if (put_batch.enable_replicate_transaction_status_table()) {
-      if (!metadata_->is_under_twodc_replication()) {
+      if (!metadata_->IsUnderXClusterReplication()) {
         // The first time the consumer tablet sees an external write batch, set
-        // is_under_twodc_replication to true.
-        RETURN_NOT_OK(metadata_->SetIsUnderTwodcReplicationAndFlush(true));
+        // is_under_xcluster_replication to true.
+        RETURN_NOT_OK(metadata_->SetIsUnderXClusterReplicationAndFlush(true));
       }
       ThreadSafeArena arena;
       auto batches_by_transaction = SplitExternalBatchIntoTransactionBatches(put_batch, &arena);
@@ -1412,8 +1412,8 @@ Status Tablet::ApplyKeyValueRowOperations(
         external_txn_intents_state_.get());
 
     if (intents_write_batch.Count() != 0) {
-      if (!metadata_->is_under_twodc_replication()) {
-        RETURN_NOT_OK(metadata_->SetIsUnderTwodcReplicationAndFlush(true));
+      if (!metadata_->IsUnderXClusterReplication()) {
+        RETURN_NOT_OK(metadata_->SetIsUnderXClusterReplicationAndFlush(true));
       }
       WriteToRocksDB(frontiers, &intents_write_batch, StorageDbType::kIntents);
     }
