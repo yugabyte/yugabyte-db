@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.JsonParser.Feature;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
@@ -91,7 +92,10 @@ public class ShellKubernetesManager extends KubernetesManager {
 
   private <T> T deserialize(String json, Class<T> type) {
     try {
-      return new ObjectMapper().configure(Feature.ALLOW_SINGLE_QUOTES, true).readValue(json, type);
+      return new ObjectMapper()
+          .configure(Feature.ALLOW_SINGLE_QUOTES, true)
+          .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+          .readValue(json, type);
     } catch (Exception e) {
       throw new RuntimeException("Error deserializing response from kubectl command: ", e);
     }
@@ -161,6 +165,9 @@ public class ShellKubernetesManager extends KubernetesManager {
 
   @Override
   public Pod getPodObject(Map<String, String> config, String namespace, String podName) {
+    if (namespace == null) {
+      namespace = "";
+    }
     List<String> commandList =
         ImmutableList.of("kubectl", "get", "pod", "--namespace", namespace, "-o", "json", podName);
     ShellResponse response =
