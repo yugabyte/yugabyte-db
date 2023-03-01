@@ -16,7 +16,7 @@ You can add a new index to an existing table using the YSQL [CREATE INDEX](../..
 
 ### pg_stat_progress_create_index
 
-YugabyteDB supports the PostgreSQL `pg_stat_progress_create_index` view to report the progress of the CREATE INDEX command execution. Whenever CREATE INDEX is running, the `pg_stat_progress_create_index` view contains one row for each client connection that is currently running a CREATE INDEX command, and the row entry is cleared after the completion of command execution.
+YugabyteDB supports the PostgreSQL `pg_stat_progress_create_index` view to report the progress of the CREATE INDEX command execution. The view contains one row for each backend connection that is currently running a CREATE INDEX command, and the row entry is cleared after the completion of command execution.
 
 The `pg_stat_progress_create_index` view can provide the following details:
 
@@ -28,17 +28,17 @@ The following table describes the view columns:
 
 | Column | Type | Description |
 | :----- | :--- | :---------- |
-| pid | integer | Process ID of backend that is running the CREATE INDEX. |
+| pid | integer | Process ID of backend that is running the `CREATE INDEX`. |
 | datid | OID | Object ID of the database to which this backend is connected. |
 | datname | name | Name of the database to which this backend is connected. |
 | relid | OID | Object ID of the indexed relation.|
 | index_relid | OID | Object ID of the index. |
-| command | text | The command that is running CREATE INDEX CONCURRENTLY, or CREATE INDEX NONCONCURRENTLY. |
+| command | text | The command that is running `CREATE INDEX CONCURRENTLY`, or `CREATE INDEX NONCONCURRENTLY`. |
 | phase | text | The current phase of the command. The possible phases are _initializing_, or _backfilling_. |
 | tuples_total | bigint | Number of indexed table tuples already processed. |
 | tuples_done | bigint | Estimate of total number of tuples (in the indexed table). This value is retrieved from `pg_class.reltuples`. |
-| partitions_total | bigint | If the ongoing CREATE INDEX is for a partitioned table, this refers to the total number of partitions in the table. Set to 0 otherwise. |
-| partitions_done | bigint | If the ongoing CREATE INDEX is for a partitioned table, this refers to the number of partitions the index has been created for. Set to 0 otherwise. |
+| partitions_total | bigint | If the ongoing `CREATE INDEX` is for a partitioned table, this refers to the total number of partitions in the table. Set to 0 otherwise. |
+| partitions_done | bigint | If the ongoing `CREATE INDEX` is for a partitioned table, this refers to the number of partitions the index has been created for. Set to 0 otherwise. |
 
 Columns such as `lockers_total`, `lockers_done`, `current_locker_pid`, `blocks_total`, and `blocks_done` are not applicable to YugabyteDB and always have null values.
 
@@ -48,7 +48,9 @@ The `pg_stat_progress_create_index` view includes the following YugabyteDB-speci
 
 - In YugabyteDB, the `pg_stat_progress_create_index` view is a local view; it only has entries for CREATE INDEX commands issued by local YSQL clients.
 
-- In PostgreSQL, `tuples_done` and `tuples_total` refer to the tuples of the _index_. However, in YugabyteDB, these fields refer to the tuples of the _indexed table_. This applies only to partial indexes, where the reported progress is less than the actual progress. `tuples_total` is an estimate that is retrieved from `pg_class.reltuples`.
+- In PostgreSQL, `tuples_done` and `tuples_total` refer to the tuples of the _index_. However, in YugabyteDB, these fields refer to the tuples of the _indexed table_. This discrepancy is only observed for partial indexes, where the reported progress is less than the actual progress. `tuples_total` is an estimate that is retrieved from `pg_class.reltuples`.
+
+- In YugabyteDB, `tuples_done` and `tuples_total` are not displayed (set to null) for temporary indexes.
 
 ## Example
 
@@ -63,7 +65,7 @@ Local single-node cluster. See [Set up YugabyteDB universe](../../../explore/#se
 1. From your local YugabyteDB installation directory, connect to the [YSQL](../../../admin/ysqlsh/) shell, and create an index on an existing table as follows:
 
     ```sql
-    CREATE TABLE employees (id int, name text, department text);
+    CREATE TABLE customers (id int, customer_name text);
     CREATE INDEX ON customers(customer_name);
     ```
 
