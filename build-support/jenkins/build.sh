@@ -131,13 +131,6 @@ build_cpp_code() {
   set_yb_src_root "$old_yb_src_root"
 }
 
-cleanup() {
-  if [[ -n ${BUILD_ROOT:-} && ${DONT_DELETE_BUILD_ROOT} == "0" ]]; then
-    log "Running the script to clean up build artifacts..."
-    "$YB_BUILD_SUPPORT_DIR/jenkins/post-build-clean.sh"
-  fi
-}
-
 # =================================================================================================
 # Main script
 # =================================================================================================
@@ -159,64 +152,7 @@ log "Removing old JSON-based test report files"
 activate_virtualenv
 set_pythonpath
 
-# We change YB_RUN_JAVA_TEST_METHODS_SEPARATELY in a subshell in a few places and that is OK.
-# shellcheck disable=SC2031
-export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
-
-export TSAN_OPTIONS=""
-
-if is_mac; then
-  # This is needed to make sure we're using Homebrew-installed CMake on Mac OS X.
-  export PATH=/usr/local/bin:$PATH
-fi
-
-# gather core dumps
-ulimit -c unlimited
-
-detect_architecture
-
-BUILD_TYPE=${BUILD_TYPE:-debug}
-build_type=$BUILD_TYPE
-normalize_build_type
-readonly build_type
-
-BUILD_TYPE=$build_type
-readonly BUILD_TYPE
-export BUILD_TYPE
-
-export YB_USE_NINJA=1
-
-set_cmake_build_type_and_compiler_type
-
-if [[ ${YB_DOWNLOAD_THIRDPARTY:-auto} == "auto" ]]; then
-  log "Setting YB_DOWNLOAD_THIRDPARTY=1 automatically"
-  export YB_DOWNLOAD_THIRDPARTY=1
-fi
-log "YB_DOWNLOAD_THIRDPARTY=$YB_DOWNLOAD_THIRDPARTY"
-
-# This is normally done in set_build_root, but we need to decide earlier because this is factored
-# into the decision of whether to use LTO.
-decide_whether_to_use_linuxbrew
-
-if [[ -z ${YB_LINKING_TYPE:-} ]]; then
-  if ! is_mac && [[
-        ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
-        ${BUILD_TYPE} == "release"
-      ]]; then
-    export YB_LINKING_TYPE=full-lto
-  else
-    export YB_LINKING_TYPE=dynamic
-  fi
-  log "Automatically decided to set YB_LINKING_TYPE to ${YB_LINKING_TYPE} based on:" \
-      "YB_COMPILER_TYPE=${YB_COMPILER_TYPE}," \
-      "BUILD_TYPE=${BUILD_TYPE}," \
-      "YB_USE_LINUXBREW=${YB_USE_LINUXBREW}," \
-      "YB_LINUXBREW_DIR=${YB_LINUXBREW_DIR:-undefined}."
-else
-  log "YB_LINKING_TYPE is already set to ${YB_LINKING_TYPE}"
-fi
-log "YB_LINKING_TYPE=${YB_LINKING_TYPE}"
-export YB_LINKING_TYPE
+. "${BASH_SOURCE%/*}/common-lto.sh"
 
 # -------------------------------------------------------------------------------------------------
 # Build root setup and build directory cleanup
@@ -353,12 +289,6 @@ CTEST_FULL_OUTPUT_PATH="${BUILD_ROOT}"/ctest-full.log
 
 TEST_LOG_DIR="${BUILD_ROOT}/test-logs"
 
-# If we're running inside Jenkins (the BUILD_ID is set), then install an exit handler which will
-# clean up all of our build results.
-if is_jenkins; then
-  trap cleanup EXIT
-fi
-
 configure_remote_compilation
 
 export NO_REBUILD_THIRDPARTY=1
@@ -367,7 +297,6 @@ THIRDPARTY_BIN=$YB_SRC_ROOT/thirdparty/installed/bin
 export PPROF_PATH=$THIRDPARTY_BIN/pprof
 
 # Configure the build
-#
 
 cd "$BUILD_ROOT"
 
@@ -489,31 +418,6 @@ if [[ ${BUILD_TYPE} != "tsan" ]]; then
   fi
 fi
 
-# -------------------------------------------------------------------------------------------------
-# Dependency graph analysis allowing to determine what tests to run.
-# -------------------------------------------------------------------------------------------------
-
-if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
-  if ! ( set -x
-         "${YB_SRC_ROOT}/python/yb/dependency_graph.py" \
-           --build-root "${BUILD_ROOT}" \
-           self-test \
-           --rebuild-graph ); then
-    # Trying to diagnose this error:
-    # https://gist.githubusercontent.com/mbautin/c5c6f14714f7655c10620d8e658e1f5b/raw
-    log "dependency_graph.py failed, listing all pb.{h,cc} files in the build directory"
-    ( set -x; find "$BUILD_ROOT" -name "*.pb.h" -or -name "*.pb.cc" )
-    fatal "Dependency graph construction failed"
-  fi
-fi
-
-# Save the current HEAD commit in case we build Java below and add a new commit. This is used for
-# the following purposes:
-# - So we can upload the release under the correct commit, from Jenkins, to then be picked up from
-#   itest, from the snapshots bucket.
-# - For picking up the changeset corresponding the the current diff being tested and detecting what
-#   tests to run in Phabricator builds. If we just diff with origin/master, we'll always pick up
-#   pom.xml changes we've just made, forcing us to always run Java tests.
 current_git_commit=$(git rev-parse HEAD)
 
 # -------------------------------------------------------------------------------------------------
@@ -701,128 +605,6 @@ else
   # building package.
   log "Building yugabyted-ui"
   time "${YB_SRC_ROOT}/yb_build.sh" "${BUILD_TYPE}" --build-yugabyted-ui --skip-java
-fi
-
-# -------------------------------------------------------------------------------------------------
-# Run tests, either on Spark or locally.
-# If YB_COMPILE_ONLY is set to 1, we skip running all tests (Java and C++).
-
-set_sanitizer_runtime_options
-
-# To reduce Jenkins archive size, let's gzip Java logs and delete per-test-method logs in case
-# of no test failures.
-export YB_GZIP_PER_TEST_METHOD_LOGS=1
-export YB_GZIP_TEST_LOGS=1
-export YB_DELETE_SUCCESSFUL_PER_TEST_METHOD_LOGS=1
-
-if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
-  if spark_available; then
-    if [[ ${YB_BUILD_CPP} == "1" || ${YB_BUILD_JAVA} == "1" ]]; then
-      log "Will run tests on Spark"
-      run_tests_extra_args=()
-      if [[ ${YB_BUILD_JAVA} == "1" ]]; then
-        run_tests_extra_args+=( "--java" )
-      fi
-      if [[ ${YB_BUILD_CPP} == "1" ]]; then
-        run_tests_extra_args+=( "--cpp" )
-      fi
-      if [[ ${YB_RUN_AFFECTED_TESTS_ONLY} == "1" ]]; then
-        test_conf_path="${BUILD_ROOT}/test_conf.json"
-        # YB_GIT_COMMIT_FOR_DETECTING_TESTS allows overriding the commit to use to detect the set
-        # of tests to run. Useful when testing this script.
-        (
-          set -x
-          "${YB_SRC_ROOT}/python/yb/dependency_graph.py" \
-              --build-root "${BUILD_ROOT}" \
-              --git-commit "${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
-              --output-test-config "${test_conf_path}" \
-              affected
-        )
-        run_tests_extra_args+=( "--test_conf" "${test_conf_path}" )
-        unset test_conf_path
-      fi
-      if is_linux || (is_mac && ! is_src_root_on_nfs); then
-        log "Will create an archive for Spark workers with all the code instead of using NFS."
-        run_tests_extra_args+=( "--send_archive_to_workers" )
-      fi
-      # Workers use /private path, which caused mis-match when check is done by yb_dist_tests that
-      # YB_MVN_LOCAL_REPO is in source tree. So unsetting value here to allow default.
-      if is_mac; then
-        unset YB_MVN_LOCAL_REPO
-      fi
-
-      NUM_REPETITIONS="${YB_NUM_REPETITIONS:-1}"
-      log "NUM_REPETITIONS is set to ${NUM_REPETITIONS}"
-      if [[ ${NUM_REPETITIONS} -gt 1 ]]; then
-        log "Repeating each test ${NUM_REPETITIONS} times"
-        run_tests_extra_args+=( "--num_repetitions" "${NUM_REPETITIONS}" )
-      fi
-
-      set +u  # because extra_args can be empty
-      if ! run_tests_on_spark "${run_tests_extra_args[@]}"; then
-        set -u
-        EXIT_STATUS=1
-        FAILURES+=$'Distributed tests on Spark (C++ and/or Java) failed\n'
-        log "Some tests that were run on Spark failed"
-      fi
-      set -u
-      unset extra_args
-    else
-      log "Neither C++ or Java tests are enabled, nothing to run on Spark."
-    fi
-  else
-    # A single-node way of running tests (without Spark).
-
-    if [[ ${YB_BUILD_CPP} == "1" ]]; then
-      log "Run C++ tests in a non-distributed way"
-      export GTEST_OUTPUT="xml:${TEST_LOG_DIR}/" # Enable JUnit-compatible XML output.
-
-      if ! spark_available; then
-        log "Did not find Spark on the system, falling back to a ctest-based way of running tests"
-        set +e
-        # We don't double-quote EXTRA_TEST_FLAGS on purpose, to allow specifying multiple flags.
-        # shellcheck disable=SC2086
-        time ctest "-j${NUM_PARALLEL_TESTS}" ${EXTRA_TEST_FLAGS:-} \
-            --output-log "${CTEST_FULL_OUTPUT_PATH}" \
-            --output-on-failure 2>&1 | tee "${CTEST_OUTPUT_PATH}"
-        ctest_exit_code=$?
-        set -e
-        if [[ $ctest_exit_code -ne 0 ]]; then
-          EXIT_STATUS=1
-          FAILURES+=$'C++ tests failed with exit code ${ctest_exit_code}\n'
-        fi
-      fi
-      log "Finished running C++ tests (see timing information above)"
-    fi
-
-    if [[ ${YB_BUILD_JAVA} == "1" ]]; then
-      set_test_invocation_id
-      log "Running Java tests in a non-distributed way"
-      if ! time run_all_java_test_methods_separately; then
-        EXIT_STATUS=1
-        FAILURES+=$'Java tests failed\n'
-      fi
-      log "Finished running Java tests (see timing information above)"
-      # shellcheck disable=SC2119
-      kill_stuck_processes
-    fi
-  fi
-fi
-
-# Finished running tests.
-remove_latest_symlink
-
-log "Aggregating test reports"
-"$YB_SRC_ROOT/python/yb/aggregate_test_reports.py" \
-      --yb-src-root "${YB_SRC_ROOT}" \
-      --output-dir "${YB_SRC_ROOT}" \
-      --build-type "${build_type}" \
-      --compiler-type "${YB_COMPILER_TYPE}" \
-      --build-root "${BUILD_ROOT}"
-
-if [[ -n ${FAILURES} ]]; then
-  heading "Failure summary"
-  echo >&2 "${FAILURES}"
 fi
 
 exit ${EXIT_STATUS}

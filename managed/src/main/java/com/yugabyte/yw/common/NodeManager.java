@@ -52,6 +52,7 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
+import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -1270,11 +1271,21 @@ public class NodeManager extends DevopsBase {
     InstanceType instanceType = InstanceType.get(provider.uuid, nodeTaskParam.getInstanceType());
     commandArgs.add("--mount_points");
     commandArgs.add(instanceType.instanceTypeDetails.volumeDetailsList.get(0).mountPath);
-
+    NodeInstance nodeInstance = NodeInstance.getOrBadRequest(nodeTaskParam.getNodeUuid());
+    NodeInstanceData instanceData = nodeInstance.getDetails();
+    if (StringUtils.isNotBlank(instanceData.ip)) {
+      getNodeAgentClient()
+          .maybeGetNodeAgent(instanceData.ip, provider)
+          .ifPresent(
+              nodeAgent -> {
+                commandArgs.add("--connection_type");
+                commandArgs.add("node_agent_rpc");
+                NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs);
+              });
+    }
     commandArgs.add(nodeTaskParam.getNodeName());
 
-    NodeInstance nodeInstance = NodeInstance.getOrBadRequest(nodeTaskParam.getNodeUuid());
-    JsonNode nodeDetails = Json.toJson(nodeInstance.getDetails());
+    JsonNode nodeDetails = Json.toJson(instanceData);
     ((ObjectNode) nodeDetails).put("nodeName", DetachedNodeTaskParams.DEFAULT_NODE_NAME);
 
     List<String> cloudArgs = Arrays.asList("--node_metadata", Json.stringify(nodeDetails));
@@ -1379,7 +1390,7 @@ public class NodeManager extends DevopsBase {
     if (StringUtils.isNotBlank(nodeIp) && StringUtils.isNotBlank(userIntent.provider)) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
       getNodeAgentClient()
-          .maybeGetNodeAgentClient(nodeIp, provider)
+          .maybeGetNodeAgent(nodeIp, provider)
           .ifPresent(
               nodeAgent -> {
                 commandArgs.add("--connection_type");

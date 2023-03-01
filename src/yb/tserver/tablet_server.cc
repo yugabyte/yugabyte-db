@@ -86,6 +86,7 @@
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service_context.h"
+#include "yb/tserver/stateful_services/test_echo_service.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -174,6 +175,9 @@ constexpr int kTServerYbClientDefaultTimeoutMs = 60 * 1000;
 DEFINE_UNKNOWN_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeoutMs,
              "Default timeout for the YBClient embedded into the tablet server that is used "
              "for distributed transactions.");
+
+DEFINE_test_flag(bool, echo_service_enabled, false, "Enable the Test Echo service");
+DEFINE_test_flag(int32, echo_svc_queue_length, 50, "RPC queue length for the Test Echo service");
 
 DEFINE_test_flag(bool, select_all_status_tablets, false, "");
 
@@ -512,6 +516,16 @@ Status TabletServer::RegisterServices() {
   LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
       FLAGS_pg_client_svc_queue_length, std::move(pg_client_service)));
+
+  if (FLAGS_TEST_echo_service_enabled) {
+    auto test_echo_service =
+        std::make_shared<stateful_service::TestEchoService>(permanent_uuid(), metric_entity());
+    LOG(INFO) << "yb::tserver::stateful_service::TestEchoService created at "
+              << test_echo_service.get();
+    RETURN_NOT_OK(test_echo_service->Init(tablet_manager_.get()));
+    RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+        FLAGS_TEST_echo_svc_queue_length, std::move(test_echo_service)));
+  }
 
   return Status::OK();
 }

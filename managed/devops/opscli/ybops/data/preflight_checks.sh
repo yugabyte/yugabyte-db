@@ -21,6 +21,7 @@ YB_SUDO_PASS=""
 ports_to_check=""
 PROMETHEUS_FREE_SPACE_MB=100
 HOME_FREE_SPACE_MB=2048
+VM_MAX_MAP_COUNT=262144
 PYTHON_EXECUTABLES=('python3.6' 'python3' 'python3.7' 'python3.8' 'python')
 
 preflight_provision_check() {
@@ -160,6 +161,11 @@ preflight_configure_check() {
 
   # Check home directory exists.
   check_filepath "Home Directory" "$yb_home_dir" false
+
+  # Check virtual memory max map limit.
+  vm_max_map_count=$(cat /proc/sys/vm/max_map_count 2> /dev/null)
+  test ${vm_max_map_count:-0} -ge $VM_MAX_MAP_COUNT
+  update_result_json_with_rc "vm_max_map_count" "$?"
 }
 
 # Checks for an available python executable

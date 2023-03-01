@@ -142,7 +142,9 @@ public class NodeConfig {
 
     YSQL_SERVER_HTTP_PORT("YSQL server http port is open"),
 
-    YSQL_SERVER_RPC_PORT("YSQL server rpc port is open");
+    YSQL_SERVER_RPC_PORT("YSQL server rpc port is open"),
+
+    VM_MAX_MAP_COUNT("VM max memory map count");
 
     private final String description;
 
