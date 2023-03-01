@@ -1273,9 +1273,7 @@ class NodeChecker():
         self.kill_spawned_postgres_workers()
 
         metric.add_value(0)
-        # It's metric-only check, hence we do set has_error=False to avoid retries -
-        # - as we retried in the check itself
-        return e.fill_and_return_entry([output], has_error=False, metrics=[metric])
+        return e.fill_and_return_entry([output], has_error=True, metrics=[metric])
 
     def check_clock_skew(self):
         logging.info("Checking clock synchronization on node {}".format(self.node))
