@@ -777,7 +777,19 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
       tombstone_last_logged_opid_ = OpId();
     }
     cdc_min_replicated_index_ = superblock.cdc_min_replicated_index();
-    cdc_sdk_min_checkpoint_op_id_ = OpId::FromPB(superblock.cdc_sdk_min_checkpoint_op_id());
+
+    {
+      if (superblock.has_cdc_sdk_min_checkpoint_op_id()) {
+        cdc_sdk_min_checkpoint_op_id_ = OpId::FromPB(superblock.cdc_sdk_min_checkpoint_op_id());
+      } else {
+        // If a cluster is upgraded from any version lesser than 2.14,
+        // 'cdc_sdk_min_checkpoint_op_id' would be absent from the superblock, and we need to set
+        // 'cdc_sdk_min_checkpoint_op_id_' to OpId::Invalid() as this indicates that there are no
+        // active CDC streams on this tablet.
+        cdc_sdk_min_checkpoint_op_id_ = OpId::Invalid();
+      }
+    }
+
     cdc_sdk_safe_time_ = HybridTime::FromPB(superblock.cdc_sdk_safe_time());
     is_under_twodc_replication_ = superblock.is_under_twodc_replication();
     hidden_ = superblock.hidden();
@@ -1078,44 +1090,40 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
   }
   std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
-  auto[iter, inserted] = tables.emplace(table_id, new_table_info);
-  if (!inserted) {
-    const auto& existing_table = *iter->second;
-    VLOG_WITH_PREFIX(1) << "Updating to Schema version " << schema_version
-                        << " from\n" << AsString(existing_table)
-                        << "\nto\n" << AsString(new_table_info);
-
-    if (!existing_table.schema().table_properties().is_ysql_catalog_table() &&
-        schema.table_properties().is_ysql_catalog_table()) {
-      // This must be the one-time migration with transactional DDL being turned on for the first
-      // time on this cluster.
-    } else {
-      LOG_WITH_PREFIX(DFATAL)
-          << "Table " << table_id << " already exists. New table info: "
-          << new_table_info->ToString() << ", old table info: " << existing_table.ToString();
-
-      // We never expect colocation IDs to mismatch.
-      const auto& existing_schema = existing_table.schema();
-      CHECK(existing_schema.has_colocation_id() == schema.has_colocation_id())
-              << "Attempted to change colocation state for table " << table_id
-              << " from " << existing_schema.has_colocation_id()
-              << " to " << schema.has_colocation_id();
-
-      CHECK(!existing_schema.has_colocation_id() ||
-            existing_schema.colocation_id() == schema.colocation_id())
-              << "Attempted to change colocation ID for table " << table_id
-              << " from " << existing_schema.colocation_id()
-              << " to " << schema.colocation_id();
-
-      CHECK(!schema.colocation_id() || kv_store_.colocation_to_table.count(schema.colocation_id()))
-          << "Missing entry in colocation table: " << schema.colocation_id() << ", "
-          << AsString(kv_store_.colocation_to_table);
-    }
-  } else {
-    VLOG_WITH_PREFIX(1) << "Added table with schema version " << schema_version
-                        << "\n" << AsString(new_table_info);
+  auto [iter, inserted] = tables.emplace(table_id, new_table_info);
+  if (inserted) {
+    VLOG_WITH_PREFIX(1) << "Added table with schema version " << schema_version << "\n"
+                        << AsString(new_table_info);
     kv_store_.UpdateColocationMap(new_table_info);
+    return;
   }
+  const auto& existing_table = *iter->second;
+  VLOG_WITH_PREFIX(1) << "Updating to Schema version " << schema_version << " from\n"
+                      << AsString(existing_table) << "\nto\n"
+                      << AsString(new_table_info);
+
+  if (!existing_table.schema().table_properties().is_ysql_catalog_table() &&
+      schema.table_properties().is_ysql_catalog_table()) {
+    // This must be the one-time migration with transactional DDL being turned on for the first
+    // time on this cluster.
+    return;
+  }
+
+  // We never expect colocation IDs to mismatch.
+  const auto& existing_schema = existing_table.schema();
+  CHECK(existing_schema.has_colocation_id() == schema.has_colocation_id())
+      << "Attempted to change colocation state for table " << table_id << " from "
+      << existing_schema.has_colocation_id() << " to " << schema.has_colocation_id();
+
+  CHECK(
+      !existing_schema.has_colocation_id() ||
+      existing_schema.colocation_id() == schema.colocation_id())
+      << "Attempted to change colocation ID for table " << table_id << " from "
+      << existing_schema.colocation_id() << " to " << schema.colocation_id();
+
+  CHECK(!schema.colocation_id() || kv_store_.colocation_to_table.count(schema.colocation_id()))
+      << "Missing entry in colocation table: " << schema.colocation_id() << ", "
+      << AsString(kv_store_.colocation_to_table);
 }
 
 void RaftGroupMetadata::RemoveTable(const TableId& table_id) {

@@ -1,10 +1,10 @@
 import React, { ReactElement } from 'react';
-import { useController, UseControllerProps } from 'react-hook-form';
+import { FieldValues, useController, UseControllerProps } from 'react-hook-form';
 import { YBInput, YBInputProps } from './YBInput';
 
-export type YBInputFieldProps<T> = UseControllerProps<T> & YBInputProps;
+export type YBInputFieldProps<T extends FieldValues> = UseControllerProps<T> & YBInputProps;
 
-export const YBInputField = <T,>(props: YBInputFieldProps<T>): ReactElement => {
+export const YBInputField = <T extends FieldValues>(props: YBInputFieldProps<T>): ReactElement => {
   const { name, rules, defaultValue, control, shouldUnregister, ...ybInputProps } = props;
   const {
     field: { ref, ...fieldProps },
@@ -14,6 +14,9 @@ export const YBInputField = <T,>(props: YBInputFieldProps<T>): ReactElement => {
   return (
     <YBInput
       {...fieldProps}
+      inputProps={{
+        'data-testid': `YBInputField-${name}`
+      }}
       {...ybInputProps}
       inputRef={ref}
       error={!!fieldState.error}

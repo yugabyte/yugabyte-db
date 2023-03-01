@@ -80,20 +80,20 @@ public class AnsibleDestroyServer extends NodeTaskBase {
   }
 
   private void deleteNodeAgent(NodeDetails nodeDetails) {
-    if (nodeAgentManager.isServerToBeInstalled()
-        && nodeDetails.cloudInfo != null
-        && nodeDetails.cloudInfo.private_ip != null) {
+    if (nodeDetails.cloudInfo != null && nodeDetails.cloudInfo.private_ip != null) {
       Cluster cluster = getUniverse().getCluster(nodeDetails.placementUuid);
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-      if (provider.getCloudCode() == CloudType.onprem) {
-        AccessKey accessKey =
-            AccessKey.getOrBadRequest(provider.uuid, cluster.userIntent.accessKeyCode);
-        if (accessKey.getKeyInfo().skipProvisioning) {
-          return;
+      if (nodeAgentManager.isServerToBeInstalled(provider)) {
+        if (provider.getCloudCode() == CloudType.onprem) {
+          AccessKey accessKey =
+              AccessKey.getOrBadRequest(provider.uuid, cluster.userIntent.accessKeyCode);
+          if (accessKey.getKeyInfo().skipProvisioning) {
+            return;
+          }
         }
+        NodeAgent.maybeGetByIp(nodeDetails.cloudInfo.private_ip)
+            .ifPresent(n -> nodeAgentManager.purge(n));
       }
-      NodeAgent.maybeGetByIp(nodeDetails.cloudInfo.private_ip)
-          .ifPresent(n -> nodeAgentManager.purge(n));
     }
   }
 

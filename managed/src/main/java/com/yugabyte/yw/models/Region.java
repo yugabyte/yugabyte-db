@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.common.YBADeprecated;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
@@ -82,10 +83,11 @@ public class Region extends Model {
       accessMode = READ_ONLY)
   public String name;
 
-  @Deprecated
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(
-      hidden = true,
-      value = "The AMI to be used in this region.",
+      value =
+          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
+              + "Moved to details.cloudInfo aws/gcp/azure ybImage property",
       example = "TODO",
       accessMode = READ_WRITE)
   public String ybImage;
@@ -148,7 +150,7 @@ public class Region extends Model {
   @JsonProperty("securityGroupId")
   public void setSecurityGroupId(String securityGroupId) {
     Provider p = this.provider;
-    CloudType cloudType = null;
+    CloudType cloudType = CloudType.other;
     // v2 API version 1 backward compatiblity support.
     if (p != null) {
       cloudType = p.getCloudCode();
@@ -164,7 +166,12 @@ public class Region extends Model {
     }
   }
 
-  @JsonIgnore
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
+  @ApiModelProperty(
+      required = false,
+      value =
+          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
+              + "Moved to regionDetails.cloudInfo aws/azure securityGroupId property")
   public String getSecurityGroupId() {
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);
     String sgNode = "";
@@ -177,7 +184,7 @@ public class Region extends Model {
   @JsonProperty("vnetName")
   public void setVnetName(String vnetName) {
     Provider p = this.provider;
-    CloudType cloudType = null;
+    CloudType cloudType = CloudType.other;
     // v2 API version 1 backward compatiblity support.
     if (p != null) {
       cloudType = p.getCloudCode();
@@ -193,7 +200,12 @@ public class Region extends Model {
     }
   }
 
-  @JsonIgnore
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
+  @ApiModelProperty(
+      required = false,
+      value =
+          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
+              + "Moved to regionDetails.cloudInfo aws/azure vnet property")
   public String getVnetName() {
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);
     String vnetNode = "";
@@ -205,7 +217,7 @@ public class Region extends Model {
 
   public void setArchitecture(Architecture arch) {
     Provider p = this.provider;
-    CloudType cloudType = null;
+    CloudType cloudType = CloudType.other;
     // v2 API version 1 backward compatiblity support.
     if (p != null) {
       cloudType = p.getCloudCode();
@@ -228,7 +240,6 @@ public class Region extends Model {
     return null;
   }
 
-  @JsonIgnore
   public String getYbImage() {
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);
     if (envVars.containsKey("ybImage")) {
@@ -239,7 +250,7 @@ public class Region extends Model {
 
   public void setYbImage(String ybImage) {
     Provider p = this.provider;
-    CloudType cloudType = null;
+    CloudType cloudType = CloudType.other;
     // v2 API version 1 backward compatiblity support.
     if (p != null) {
       cloudType = p.getCloudCode();
@@ -364,6 +375,9 @@ public class Region extends Model {
     if (metadata.has("ybImage")) {
       region.setYbImage(metadata.get("ybImage").textValue());
     }
+    if (metadata.has("architecture")) {
+      region.setArchitecture(Architecture.valueOf(metadata.get("architecture").textValue()));
+    }
     region.save();
     return region;
   }
@@ -443,7 +457,7 @@ public class Region extends Model {
   public static List<Region> fetchValidRegions(
       UUID customerUUID, UUID providerUUID, int minZoneCount) {
     String regionQuery =
-        " select r.uuid, r.code, r.name"
+        " select r.uuid, r.code, r.name, r.provider_uuid"
             + "   from region r join provider p on p.uuid = r.provider_uuid "
             + "   left outer join availability_zone zone on zone.region_uuid = r.uuid "
             + "  where p.uuid = :p_UUID and p.customer_uuid = :c_UUID"
@@ -451,7 +465,8 @@ public class Region extends Model {
             + " having count(zone.uuid) >= "
             + minZoneCount;
 
-    RawSql rawSql = RawSqlBuilder.parse(regionQuery).create();
+    RawSql rawSql =
+        RawSqlBuilder.parse(regionQuery).columnMapping("r.provider_uuid", "provider.uuid").create();
     Query<Region> query = Ebean.find(Region.class);
     query.setRawSql(rawSql);
     query.setParameter("p_UUID", providerUUID);

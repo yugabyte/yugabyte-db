@@ -63,7 +63,8 @@ Status ApplyWriteRequest(
       .doc_write_batch = write_batch, .deadline = {}, .read_time = {}, .restart_read_ht = nullptr};
   IndexMap index_map;
   docdb::QLWriteOperation operation(
-      write_request, doc_read_context, index_map, nullptr, TransactionOperationContext());
+      write_request, write_request.schema_version(), doc_read_context, index_map, nullptr,
+      TransactionOperationContext());
   QLResponsePB response;
   RETURN_NOT_OK(operation.Init(&response));
   return operation.Apply(apply_data);
@@ -404,6 +405,16 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
   return true;
 }
 
+bool RestoreSysCatalogState::IsNonSystemObsoleteTable(const TableId& table_id) {
+  std::pair<TableId, SysTablesEntryPB> search_table;
+  search_table.first = table_id;
+  return std::binary_search(
+      restoration_.non_system_obsolete_tables.begin(),
+      restoration_.non_system_obsolete_tables.end(),
+      search_table,
+      [](const auto& t1, const auto& t2) { return t1.first < t2.first; });
+}
+
 Status RestoreSysCatalogState::PatchColocatedTablet(
     const std::string& id, SysTabletsEntryPB* pb) {
   if (!pb->colocated()) {
@@ -414,30 +425,37 @@ Status RestoreSysCatalogState::PatchColocatedTablet(
     return Status::OK();
   }
 
-  bool colocated_table_deleted = false;
-  TableId found_table_id;
-  for (const auto& table_id : it->second.table_ids()) {
-    std::pair<TableId, SysTablesEntryPB> search_table;
-    search_table.first = table_id;
-    bool found = std::binary_search(
-        restoration_.non_system_obsolete_tables.begin(),
-        restoration_.non_system_obsolete_tables.end(),
-        search_table,
-        [](const auto& t1, const auto& t2) {
-          return t1.first < t2.first;
-        });
-    if (found) {
-      // Add this table to the tablet list of the restoring tablet.
-      LOG(INFO) << "PITR: Appending colocated table " << table_id
-                << " to the colocated list of tablet " << id;
-      pb->add_table_ids(table_id);
-      found_table_id = table_id;
-      colocated_table_deleted = true;
+  std::optional<TableId> obsolete_user_table_id;
+  if (pb->hosted_tables_mapped_by_parent_id()) {
+    auto child_tables_it = restoration_.parent_to_child_tables.find(pb->table_id());
+    if (child_tables_it != restoration_.parent_to_child_tables.end()) {
+      const auto& hosted_tables = child_tables_it->second;
+      auto obsolete_table_it = std::find_if(hosted_tables.begin(), hosted_tables.end(),
+                                            [this] (const TableId& table_id) {
+                                              return IsNonSystemObsoleteTable(table_id);
+                                            });
+      if (obsolete_table_it != hosted_tables.end()) {
+        obsolete_user_table_id = *obsolete_table_it;
+      }
+    } else {
+      LOG(WARNING) << Format(
+          "Using new schema for colocated tables but failed to find child tables of parent table "
+          "$0 on tablet $1",
+          pb->table_id(), id);
+    }
+  } else {
+    for (const auto& table_id : it->second.table_ids()) {
+      if (IsNonSystemObsoleteTable(table_id)) {
+        LOG(INFO) << "PITR: Appending colocated table " << table_id
+                  << " to the colocated list of tablet " << id;
+        pb->add_table_ids(table_id);
+        obsolete_user_table_id = table_id;
+      }
     }
   }
-  if (colocated_table_deleted) {
+  if (obsolete_user_table_id) {
     // Set schedules that retain.
-    FillHideInformation(found_table_id, pb, false /* set_hide_time */);
+    FillHideInformation(*obsolete_user_table_id, pb, false /* set_hide_time */);
   }
   return Status::OK();
 }
@@ -777,6 +795,9 @@ Status RestoreSysCatalogState::CheckExistingEntry(
 Status RestoreSysCatalogState::CheckExistingEntry(
     const std::string& id, const SysTablesEntryPB& pb) {
   VLOG_WITH_FUNC(4) << "Table: " << id << ", " << pb.ShortDebugString();
+  if (pb.has_parent_table_id()) {
+    restoration_.parent_to_child_tables[pb.parent_table_id()].push_back(id);
+  }
   if (pb.schema().table_properties().is_ysql_catalog_table()) {
     LOG(INFO) << "PITR: Adding " << pb.name() << " for restoring. ID: " << id;
     restoration_.existing_system_tables.emplace(id, pb.name());

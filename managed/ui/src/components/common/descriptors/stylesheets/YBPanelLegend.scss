@@ -1,9 +1,9 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../../_style/colors.scss';
+@use '../../../../_style/colors.scss';
 
 .panel-legend {
-  color: $YB_TEXT_COLOR;
+  color: colors.$YB_TEXT_COLOR;
 
   .panel-legend-item {
     display: inline;

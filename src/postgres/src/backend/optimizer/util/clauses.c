@@ -5435,8 +5435,11 @@ typedef struct replace_varnos_context
 } replace_varnos_context;
 
 static Node *yb_copy_replace_varnos_mutator(Node *node,
-							   replace_varnos_context *context)
+							   				replace_varnos_context *context)
 {
+	if (node == NULL)
+		return NULL;
+
 	if (IsA(node, Var))
 	{
 		Var *var = (Var *) node;

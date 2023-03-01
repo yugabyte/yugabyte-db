@@ -13,7 +13,7 @@ import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
-import com.yugabyte.yw.commissioner.RecommendationGarbageCollector;
+import com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector;
 import com.yugabyte.yw.commissioner.RefreshKmsService;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
@@ -90,7 +90,7 @@ public class AppInit {
       SupportBundleCleanup supportBundleCleanup,
       NodeAgentPoller nodeAgentPoller,
       YbcUpgrade ybcUpgrade,
-      RecommendationGarbageCollector perfRecGC,
+      PerfAdvisorGarbageCollector perfRecGC,
       SnapshotCleanup snapshotCleanup,
       @Named("AppStartupTimeMs") Long startupTime)
       throws ReflectiveOperationException {
@@ -171,6 +171,19 @@ public class AppInit {
       // Import new local releases into release metadata
       releaseManager.importLocalReleases();
       releaseManager.updateCurrentReleases();
+      // Background thread to query for latest ARM release version.
+      Thread armReleaseThread =
+          new Thread(
+              () -> {
+                try {
+                  Logger.info("Attempting to query latest ARM release link.");
+                  releaseManager.findLatestArmRelease(configHelper.getCurrentVersion(application));
+                  Logger.info("Imported ARM release download link.");
+                } catch (Exception e) {
+                  Logger.warn("Error importing ARM release download link", e);
+                }
+              });
+      armReleaseThread.start();
 
       // initialize prometheus exports
       DefaultExports.initialize();

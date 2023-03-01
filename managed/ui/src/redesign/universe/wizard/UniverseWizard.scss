@@ -1,9 +1,9 @@
-@import '../../uikit/common';
+@use '../../uikit/common';
 
 .universe-wizard {
   padding: 35px 0;
   width: 100%;
-  font-family: $YB_FONT_FAMILY;
+  font-family: common.$YB_FONT_FAMILY;
 
   &__header {
     margin-left: 50px;
@@ -18,14 +18,14 @@
   &__title {
     font-size: 30px;
     font-weight: 600;
-    color: $YB_TEXT_1;
+    color: common.$YB_TEXT_1;
   }
 
   &__beta {
     display: inline-block;
     font-size: 30px;
-    background-color: $YB_CTA;
-    color: $YB_PAGE_BACKGROUND;
+    background-color: common.$YB_CTA;
+    color: common.$YB_PAGE_BACKGROUND;
     padding: 2px 10px;
     border-radius: 5px;
     margin-left: 15px;

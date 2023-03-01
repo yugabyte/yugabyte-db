@@ -131,13 +131,20 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Number Of Cloud Releases To Keep",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  // TODO(): Add correct metadata
   public static final ConfKeyInfo<Integer> dbMemPostgresMaxMemMb =
       new ConfKeyInfo<>(
           "yb.dbmem.postgres.max_mem_mb",
           ScopeType.UNIVERSE,
           "DB Postgres Max Mem",
-          "TODO",
+          "Amount of memory to limit the postgres process to via the ysql cgroup",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> dbMemPostgresReadReplicaMaxMemMb =
+      new ConfKeyInfo<>(
+          "yb.dbmem.postgres.rr_max_mem_mb",
+          ScopeType.UNIVERSE,
+          "DB Postgres Max Mem for read replicas",
+          "Amount of memory to limit the postgres process in read replicas to via the ysql cgroup",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Long> dbMemAvailableLimit =
@@ -566,5 +573,21 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Clean Orphan snapshots",
           "Clean orphan(non-scheduled) snapshots on Yugaware startup/restart",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> nodeUIHttpsEnabled =
+      new ConfKeyInfo<>(
+          "yb.node_ui.https.enabled",
+          ScopeType.UNIVERSE,
+          "Enable https on Master/TServer UI",
+          "Allow https on Master/TServer UI for a universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> helmTimeoutSecs =
+      new ConfKeyInfo<>(
+          "yb.helm.timeout_secs",
+          ScopeType.UNIVERSE,
+          "Helm Timeout in Seconds",
+          "Timeout used for internal universe-level helm operations like install/upgrade in secs",
+          ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

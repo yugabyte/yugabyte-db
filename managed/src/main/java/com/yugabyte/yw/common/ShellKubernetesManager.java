@@ -11,6 +11,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.SupportBundleUtil.KubernetesResourceType;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
@@ -50,13 +51,27 @@ import org.yaml.snakeyaml.Yaml;
 @Slf4j
 public class ShellKubernetesManager extends KubernetesManager {
 
-  @Inject ReleaseManager releaseManager;
+  private final ReleaseManager releaseManager;
 
-  @Inject ShellProcessHandler shellProcessHandler;
+  private final ShellProcessHandler shellProcessHandler;
 
-  @Inject play.Configuration appConfig;
+  private final RuntimeConfGetter confGetter;
+
+  private final play.Configuration appConfig;
 
   public static final Logger LOG = LoggerFactory.getLogger(ShellKubernetesManager.class);
+
+  @Inject
+  public ShellKubernetesManager(
+      ReleaseManager releaseManager,
+      ShellProcessHandler shellProcessHandler,
+      RuntimeConfGetter confGetter,
+      play.Configuration appConfig) {
+    this.releaseManager = releaseManager;
+    this.shellProcessHandler = shellProcessHandler;
+    this.confGetter = confGetter;
+    this.appConfig = appConfig;
+  }
 
   private ShellResponse execCommand(Map<String, String> config, List<String> command) {
     return execCommand(config, command, true /*logCmdOutput*/);
@@ -317,6 +332,7 @@ public class ShellKubernetesManager extends KubernetesManager {
 
   @Override
   public boolean expandPVC(
+      UUID universeUUID,
       Map<String, String> config,
       String namespace,
       String helmReleaseName,
@@ -343,14 +359,16 @@ public class ShellKubernetesManager extends KubernetesManager {
       commandList =
           ImmutableList.of("kubectl", "--namespace", namespace, "patch", pvcName, "-p", patchStr);
       response = execCommand(config, commandList, false).processErrors("Unable to patch PVC");
-      patchSuccess &= response.isSuccess() && waitForPVCExpand(config, namespace, pvcName);
+      patchSuccess &=
+          response.isSuccess() && waitForPVCExpand(universeUUID, config, namespace, pvcName);
     }
     return patchSuccess;
   }
 
   // Ref: https://kubernetes.io/blog/2022/05/05/volume-expansion-ga/
   // The PVC status condition is cleared once PVC resize is done.
-  private boolean waitForPVCExpand(Map<String, String> config, String namespace, String pvcName) {
+  private boolean waitForPVCExpand(
+      UUID universeUUID, Map<String, String> config, String namespace, String pvcName) {
     RetryTaskUntilCondition<List<PersistentVolumeClaimCondition>> waitForExpand =
         new RetryTaskUntilCondition<>(
             // task
@@ -380,7 +398,7 @@ public class ShellKubernetesManager extends KubernetesManager {
             // delay between retry of task
             2,
             // timeout for retry in secs
-            getTimeoutSecs());
+            getTimeoutSecs(universeUUID));
     return waitForExpand.retryUntilCond();
   }
 

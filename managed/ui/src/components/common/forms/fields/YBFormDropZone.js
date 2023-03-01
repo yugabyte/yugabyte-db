@@ -40,6 +40,7 @@ export default class YBFormDropZone extends Component {
             name={name}
             accept={accept}
             onDrop={this.onDrop}
+            disableClick={!!this.props.disableClick}
           >
             {title && <p>{title}</p>}
           </Dropzone>

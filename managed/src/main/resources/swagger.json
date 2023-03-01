@@ -14,6 +14,14 @@
         },
         "awsHostedZoneName" : {
           "type" : "string"
+        },
+        "hostVpcId" : {
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "hostVpcRegion" : {
+          "readOnly" : true,
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -22,7 +30,6 @@
       "properties" : {
         "arch" : {
           "enum" : [ "x86_64", "aarch64" ],
-          "readOnly" : true,
           "type" : "string"
         },
         "securityGroupId" : {
@@ -100,6 +107,21 @@
         },
         "providerUUID" : {
           "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "Admin notification" : {
+      "properties" : {
+        "code" : {
+          "description" : "Notification code",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "htmlMessage" : {
+          "description" : "Notification message with HTML markup",
+          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -233,6 +255,39 @@
         }
       },
       "required" : [ "configurationType", "configurationUuid", "createTime", "customerUUID", "definitionUuid", "labels", "message", "name", "severity", "severityIndex", "sourceName", "sourceUUID", "state", "stateIndex" ],
+      "type" : "object"
+    },
+    "Alert channel templates with defaults" : {
+      "properties" : {
+        "customerUUID" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "defaultTextTemplate" : {
+          "description" : "Default text template",
+          "type" : "string"
+        },
+        "defaultTitleTemplate" : {
+          "description" : "Default title template",
+          "type" : "string"
+        },
+        "textTemplate" : {
+          "description" : "Notification text template",
+          "type" : "string"
+        },
+        "titleTemplate" : {
+          "description" : "Notification title template",
+          "type" : "string"
+        },
+        "type" : {
+          "description" : "Channel type",
+          "enum" : [ "Email", "Slack", "PagerDuty", "WebHook" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "customerUUID", "textTemplate", "type" ],
       "type" : "object"
     },
     "AlertApiFilter" : {
@@ -504,6 +559,13 @@
           "minimum" : 0,
           "type" : "integer"
         },
+        "labels" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "description" : "Labels",
+          "type" : "object"
+        },
         "maintenanceWindowUuids" : {
           "description" : "Maintenance window UUIDs, applied to this alert config",
           "items" : {
@@ -709,6 +771,13 @@
           "format" : "int32",
           "minimum" : 0,
           "type" : "integer"
+        },
+        "labels" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "description" : "Labels",
+          "type" : "object"
         },
         "maintenanceWindowUuids" : {
           "description" : "Maintenance window UUIDs, applied to this alert config",
@@ -1120,6 +1189,25 @@
       "required" : [ "variables" ],
       "type" : "object"
     },
+    "AlertTemplateVariablesList" : {
+      "properties" : {
+        "customVariables" : {
+          "items" : {
+            "$ref" : "#/definitions/AlertTemplateVariable"
+          },
+          "type" : "array"
+        },
+        "systemVariables" : {
+          "items" : {
+            "enum" : [ "YUGABYTE_ALERT_STATUS", "YUGABYTE_ALERT_SEVERITY", "YUGABYTE_ALERT_TYPE", "YUGABYTE_ALERT_EXPRESSION", "YUGABYTE_CUSTOMER_CODE", "YUGABYTE_CUSTOMER_NAME", "YUGABYTE_CUSTOMER_UUID", "YUGABYTE_ALERT_SOURCE_UUID", "YUGABYTE_ALERT_SOURCE_TYPE", "YUGABYTE_ALERT_SOURCE_NAME", "YUGABYTE_ALERT_POLICY_TYPE", "YUGABYTE_ALERT_POLICY_NAME", "YUGABYTE_ALERT_POLICY_UUID", "YUGABYTE_ALERT_MESSAGE", "YUGABYTE_ALERT_START_TIME", "YUGABYTE_ALERT_END_TIME", "YUGABYTE_ALERT_CHANNEL_NAME", "YUGABYTE_ALERT_LABELS_JSON" ],
+            "type" : "string"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [ "customVariables", "systemVariables" ],
+      "type" : "object"
+    },
     "AlertingData" : {
       "description" : "Alerting configuration",
       "properties" : {
@@ -1159,7 +1247,7 @@
       "properties" : {
         "action" : {
           "description" : "Action",
-          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "Validate", "Acknowledge", "SyncXClusterConfig", "Login", "Promote", "Bootstrap", "Configure", "UpdateOptions", "UpdateLoadBalancerConfig", "RefreshPricing", "UpgradeSoftware", "UpgradeGFlags", "UpgradeKubernetesOverrides", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "RebootUniverse", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "CreateRestrictedUserInDB", "DropUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateBackup", "RestoreBackup", "CreateSingleTableBackup", "CreateMultiTableBackup", "CreateBackupSchedule", "CreatePitrConfig", "RestoreSnapshotSchedule", "DeletePitrConfig", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType", "GetUniverseResources", "ThirdpartySoftwareUpgrade", "CreateTableSpaces", "CreateHook", "DeleteHook", "UpdateHook", "CreateHookScope", "DeleteHookScope", "AddHook", "RemoveHook", "RotateAccessKey", "CreateAndRotateAccessKey", "RunHook", "RunApiTriggeredHooks", "AddNodeAgent", "UpdateNodeAgent", "DeleteNodeAgent", "DisableYbc", "UpgradeYbc", "InstallYbc", "SetThrottleParams" ],
+          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "Validate", "Acknowledge", "SyncXClusterConfig", "Login", "ApiLogin", "Promote", "Bootstrap", "Configure", "UpdateOptions", "UpdateLoadBalancerConfig", "RefreshPricing", "UpgradeSoftware", "UpgradeGFlags", "UpgradeKubernetesOverrides", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "RebootUniverse", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "CreateRestrictedUserInDB", "DropUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateBackup", "RestoreBackup", "CreateSingleTableBackup", "CreateMultiTableBackup", "CreateBackupSchedule", "CreatePitrConfig", "RestoreSnapshotSchedule", "DeletePitrConfig", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType", "GetUniverseResources", "ThirdpartySoftwareUpgrade", "CreateTableSpaces", "CreateHook", "DeleteHook", "UpdateHook", "CreateHookScope", "DeleteHookScope", "AddHook", "RemoveHook", "RotateAccessKey", "CreateAndRotateAccessKey", "RunHook", "RunApiTriggeredHooks", "AddNodeAgent", "UpdateNodeAgent", "DeleteNodeAgent", "DisableYbc", "UpgradeYbc", "InstallYbc", "SetThrottleParams" ],
           "example" : "Create User",
           "readOnly" : true,
           "type" : "string"
@@ -3339,6 +3427,19 @@
       "required" : [ "tablespaceInfos" ],
       "type" : "object"
     },
+    "Current admin notification messages" : {
+      "properties" : {
+        "messages" : {
+          "description" : "Messages",
+          "items" : {
+            "$ref" : "#/definitions/Admin notification"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        }
+      },
+      "type" : "object"
+    },
     "CustomCertInfo" : {
       "properties" : {
         "clientCertPath" : {
@@ -3687,6 +3788,18 @@
       "required" : [ "license", "licenseType" ],
       "type" : "object"
     },
+    "CustomerLoginFormData" : {
+      "properties" : {
+        "email" : {
+          "type" : "string"
+        },
+        "password" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "email", "password" ],
+      "type" : "object"
+    },
     "CustomerRegisterFormData" : {
       "properties" : {
         "code" : {
@@ -3982,7 +4095,7 @@
     },
     "GCPCloudInfo" : {
       "properties" : {
-        "customGceNetwork" : {
+        "destVpcId" : {
           "type" : "string"
         },
         "gceApplicationCredentialsPath" : {
@@ -3990,6 +4103,10 @@
           "type" : "string"
         },
         "gceProject" : {
+          "type" : "string"
+        },
+        "hostVpcId" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "useHostCredentials" : {
@@ -6080,7 +6197,7 @@
           "description" : "Path to x86_64 package",
           "type" : "string"
         },
-        "x86_64Checksum" : {
+        "x86_64_checksum" : {
           "description" : "Checksum for x86_64 package",
           "type" : "string"
         }
@@ -6114,6 +6231,21 @@
         }
       },
       "required" : [ "buildNumber" ],
+      "type" : "object"
+    },
+    "PerProcessFlags" : {
+      "properties" : {
+        "value" : {
+          "additionalProperties" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "type" : "object"
+        }
+      },
+      "required" : [ "value" ],
       "type" : "object"
     },
     "PerfAdvisorSettingsFormData" : {
@@ -6634,6 +6766,10 @@
           "readOnly" : true,
           "type" : "boolean"
         },
+        "airGapInstall" : {
+          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Use details.airGapInstall",
+          "type" : "boolean"
+        },
         "allAccessKeys" : {
           "items" : {
             "$ref" : "#/definitions/AccessKey"
@@ -6648,6 +6784,7 @@
           "additionalProperties" : {
             "type" : "string"
           },
+          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Use details.metadata instead",
           "type" : "object"
         },
         "customerUUID" : {
@@ -6669,7 +6806,7 @@
           "type" : "string"
         },
         "keyPairName" : {
-          "description" : "Transient property - only present in mutate API request",
+          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Use allAccessKeys[0].keyInfo.keyPairName instead",
           "type" : "string"
         },
         "name" : {
@@ -6682,8 +6819,17 @@
           },
           "type" : "array"
         },
+        "sshPort" : {
+          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Use details.SshPort instead",
+          "format" : "int32",
+          "type" : "integer"
+        },
         "sshPrivateKeyContent" : {
-          "description" : "Transient property - only present in mutate API request",
+          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Use allAccessKeys[0].keyInfo.sshPrivateKeyContent instead",
+          "type" : "string"
+        },
+        "sshUser" : {
+          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Use details.SshUser instead",
           "type" : "string"
         },
         "uuid" : {
@@ -6819,10 +6965,23 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "securityGroupId" : {
+          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Moved to regionDetails.cloudInfo aws/azure securityGroupId property",
+          "type" : "string"
+        },
         "uuid" : {
           "description" : "Region UUID",
           "format" : "uuid",
           "readOnly" : true,
+          "type" : "string"
+        },
+        "vnetName" : {
+          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Moved to regionDetails.cloudInfo aws/azure vnet property",
+          "type" : "string"
+        },
+        "ybImage" : {
+          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Moved to details.cloudInfo aws/gcp/azure ybImage property",
+          "example" : "TODO",
           "type" : "string"
         },
         "zones" : {
@@ -8489,6 +8648,24 @@
         }
       },
       "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "upgradeSystemCatalog", "ybSoftwareVersion" ],
+      "type" : "object"
+    },
+    "SpecificGFlags" : {
+      "properties" : {
+        "inheritFromPrimary" : {
+          "type" : "boolean"
+        },
+        "perAZ" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/PerProcessFlags"
+          },
+          "type" : "object"
+        },
+        "perProcessFlags" : {
+          "$ref" : "#/definitions/PerProcessFlags"
+        }
+      },
+      "required" : [ "inheritFromPrimary", "perAZ", "perProcessFlags" ],
       "type" : "object"
     },
     "StateChangeAuditInfo" : {
@@ -10735,6 +10912,9 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "specificGFlags" : {
+          "$ref" : "#/definitions/SpecificGFlags"
+        },
         "tserverGFlags" : {
           "additionalProperties" : {
             "type" : "string"
@@ -10846,7 +11026,7 @@
       "description" : "A user with set of features, associated with a customer",
       "properties" : {
         "authTokenIssueDate" : {
-          "description" : "API token creation date",
+          "description" : "UI session token creation date",
           "example" : "2021-06-17T15:00:05-04:00",
           "format" : "date-time",
           "readOnly" : true,
@@ -10906,7 +11086,7 @@
       "description" : "A user associated with a customer",
       "properties" : {
         "authTokenIssueDate" : {
-          "description" : "API token creation date",
+          "description" : "UI session token creation date",
           "example" : "2021-06-17T15:00:05-04:00",
           "format" : "date-time",
           "readOnly" : true,
@@ -11661,6 +11841,30 @@
     "version" : "v1"
   },
   "paths" : {
+    "/api/v1/api_login" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "apiLogin",
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "CustomerLoginFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/CustomerLoginFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SessionInfo"
+            }
+          }
+        },
+        "summary" : "Authenticate user and return api token",
+        "tags" : [ "Session management" ]
+      }
+    },
     "/api/v1/app_version" : {
       "get" : {
         "description" : "",
@@ -11860,6 +12064,29 @@
         "tags" : [ "Access Keys" ]
       }
     },
+    "/api/v1/customers/{cUUID}/admin_notifications" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getAdminNotifications",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Current admin notification messages"
+            }
+          }
+        },
+        "summary" : "getAdminNotifications",
+        "tags" : [ "Session management" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/alert_channel_templates" : {
       "get" : {
         "description" : "",
@@ -11876,7 +12103,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/AlertChannelTemplates"
+                "$ref" : "#/definitions/Alert channel templates with defaults"
               },
               "type" : "array"
             }
@@ -11938,7 +12165,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/AlertChannelTemplates"
+              "$ref" : "#/definitions/Alert channel templates with defaults"
             }
           }
         },
@@ -12646,10 +12873,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/AlertTemplateVariable"
-              },
-              "type" : "array"
+              "$ref" : "#/definitions/AlertTemplateVariablesList"
             }
           }
         },
@@ -12690,7 +12914,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Crete or update alert template variables",
+        "summary" : "Create or update alert template variables",
         "tags" : [ "Alerts" ]
       }
     },
@@ -16946,84 +17170,6 @@
         "tags" : [ "Backups" ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/cdc_streams" : {
-      "get" : {
-        "description" : "List CDC Streams for a cluster",
-        "operationId" : "listCdcStreams",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "summary" : "List CDC Streams for a cluster"
-      },
-      "post" : {
-        "description" : "Create CDC Stream for a cluster",
-        "operationId" : "createCdcStream",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "summary" : "Create CDC Stream for a cluster"
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/cdc_streams/{streamId}" : {
-      "delete" : {
-        "description" : "Delete a CDC Stream for a cluster",
-        "operationId" : "deleteCdcStream",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "path",
-          "name" : "streamId",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "summary" : "Delete a CDC stream for a cluster"
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/clusters/primary" : {
       "put" : {
         "description" : "This will update primary cluster of existing universe.Use API to GET current universe. Lookup universeDetails attribute of the universe resource returned. Update the necessary field (e.g. numNodes) Use this updated universeDetails as request body. See https://github.com/yugabyte/yugabyte-db/blob/master/managed/api-examples/python-simple/edit-universe.ipynb",
@@ -17500,6 +17646,38 @@
         } ],
         "summary" : "Get a universe's key reference",
         "tags" : [ "Encryption at rest" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/last_run" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getLatestRun",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get last performance advisor run details",
+        "tags" : [ "Performance Advisor" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/leader" : {
@@ -18094,38 +18272,6 @@
         } ],
         "summary" : "Resume a paused universe",
         "tags" : [ "Universe management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/run_in_shell" : {
-      "post" : {
-        "description" : "This operation is no longer supported, for security reasons.",
-        "operationId" : "runInShell",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPError"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Run a shell command",
-        "tags" : [ "Universe database management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/run_query" : {

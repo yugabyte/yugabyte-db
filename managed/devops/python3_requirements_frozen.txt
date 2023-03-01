@@ -12,7 +12,7 @@ boto==2.49.0
 boto3==1.17.73
 botocore==1.20.73
 cachetools==4.2.2
-certifi==2021.5.30
+certifi==2022.12.7
 cffi==1.14.6
 chardet==4.0.0
 colorama==0.4.3
@@ -48,7 +48,7 @@ pyasn1==0.4.8
 pyasn1-modules==0.2.8
 pycparser==2.20
 pycryptodome==3.10.1
-PyJWT==2.1.0
+PyJWT==2.4.0
 PyNaCl==1.4.0
 pyparsing==2.4.7
 python-dateutil==2.5.3

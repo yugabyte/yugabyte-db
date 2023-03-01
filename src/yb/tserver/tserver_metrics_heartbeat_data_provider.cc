@@ -96,7 +96,7 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
     }
 
     // Report replication errors from the CDC consumer.
-    auto consumer = down_cast<enterprise::TabletServer&>(server()).GetCDCConsumer();
+    auto consumer = server().GetCDCConsumer();
     if (consumer != nullptr && should_add_replication_status) {
       const auto tablet_replication_error_map = consumer->GetReplicationErrors();
       for (const auto& tablet_kv : tablet_replication_error_map) {

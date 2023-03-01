@@ -110,8 +110,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
     return result;
   }
 
-  protected abstract byte[] retrieveKeyWithService(
-      UUID universeUUID, UUID configUUID, byte[] keyRef, EncryptionAtRestConfig config);
+  public abstract byte[] retrieveKeyWithService(UUID configUUID, byte[] keyRef);
 
   public byte[] retrieveKey(
       UUID universeUUID, UUID configUUID, byte[] keyRef, EncryptionAtRestConfig config) {
@@ -128,7 +127,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
     // Retrieve through KMS provider if no cache entry exists
     if (keyVal == null) {
       LOG.debug("Universe key cache entry empty. Retrieving key from service");
-      keyVal = retrieveKeyWithService(universeUUID, configUUID, keyRef, config);
+      keyVal = retrieveKeyWithService(configUUID, keyRef);
       // Update the cache entry
       if (keyVal != null) {
         EncryptionAtRestUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
@@ -157,12 +156,28 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
     return key;
   }
 
+  /**
+   * Verifies if the config UUID can decrypt the given key ref (encrypted universe key).
+   *
+   * @param configUUID the KMS config UUID.
+   * @param keyRef the encrypted universe key.
+   * @return true if it can be decrypted, else false.
+   */
+  public boolean verifyKmsConfigAndKeyRef(UUID configUUID, byte[] keyRef) {
+    byte[] decryptedUniverseKey = null;
+    try {
+      decryptedUniverseKey = retrieveKeyWithService(configUUID, keyRef);
+    } catch (Exception e) {
+      // Throws an error when decrypting wrong encrypted text,
+      // because the key ref stores the master key metadata (managed by the KMS provider).
+      // This means it is the wrong KMS config to decrypt with - return false.
+      return false;
+    }
+    return decryptedUniverseKey != null ? true : false;
+  }
+
   protected abstract byte[] validateRetrieveKeyWithService(
-      UUID universeUUID,
-      UUID configUUID,
-      byte[] keyRef,
-      EncryptionAtRestConfig config,
-      ObjectNode authConfig);
+      UUID configUUID, byte[] keyRef, ObjectNode authConfig);
 
   public byte[] validateConfigForUpdate(
       UUID universeUUID,
@@ -178,8 +193,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
       return null;
     }
     // LOG.debug("DO_NOT_PRINT::config dictionary is : {}", authConfig.toString());
-    byte[] keyVal =
-        validateRetrieveKeyWithService(universeUUID, configUUID, keyRef, config, authConfig);
+    byte[] keyVal = validateRetrieveKeyWithService(configUUID, keyRef, authConfig);
     return keyVal;
   }
 
@@ -310,4 +324,6 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
   public void refreshService(UUID configUUID) {
     // Do Nothing - optionally override sub classes when required.
   }
+
+  public abstract ObjectNode getKeyMetadata(UUID configUUID);
 }

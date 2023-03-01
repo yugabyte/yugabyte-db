@@ -265,6 +265,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetYsqlCatalogConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, RedisConfigGet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, RedisConfigSet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, ReservePgsqlOids);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetStatefulServiceLocation);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, GetAutoFlagsConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, IsLoadBalanced);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, IsLoadBalancerIdle);
@@ -653,16 +654,8 @@ Status YBClient::Data::IsDeleteTableInProgress(YBClient* client,
   IsDeleteTableDoneResponsePB resp;
   req.set_table_id(table_id);
 
-  auto status = SyncLeaderMasterRpc(
-      deadline, req, &resp, "IsDeleteTableDone",
-      &master::MasterDdlProxy::IsDeleteTableDoneAsync);
-  if (resp.has_error()) {
-    if (resp.error().code() == MasterErrorPB::OBJECT_NOT_FOUND) {
-      *delete_in_progress = false;
-      return Status::OK();
-    }
-  }
-  RETURN_NOT_OK(status);
+  RETURN_NOT_OK(SyncLeaderMasterRpc(
+      deadline, req, &resp, "IsDeleteTableDone", &master::MasterDdlProxy::IsDeleteTableDoneAsync));
   *delete_in_progress = !resp.done();
   return Status::OK();
 }

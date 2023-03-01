@@ -62,8 +62,10 @@ public class ResizeNode extends UpgradeTaskBase {
 
           UserIntent userIntentForFlags = getUserIntent();
 
+          // TODO: support specific gflags
           boolean updateMasterFlags;
           boolean updateTserverFlags;
+          // TODO: Support specific gflags here
           if (taskParams().flagsProvided()) {
             boolean changedByMasterFlags =
                 GFlagsUtil.syncGflagsToIntent(taskParams().masterGFlags, userIntentForFlags);

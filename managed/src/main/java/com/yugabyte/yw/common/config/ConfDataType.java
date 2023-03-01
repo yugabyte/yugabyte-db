@@ -14,6 +14,8 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.google.common.collect.ImmutableSetMultimap;
+import com.google.common.collect.SetMultimap;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.VersionCheckMode;
@@ -27,6 +29,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.Getter;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 @Getter
@@ -114,6 +117,14 @@ public class ConfDataType<T> {
                   .map(s -> ConfKeyTags.valueOf(s))
                   .collect(Collectors.toList()),
           ConfDataType::parseTagsList);
+
+  static ConfDataType<SetMultimap> KeyValuesSetMultimapType =
+      new ConfDataType<>(
+          "Key Value SetMultimap",
+          SetMultimap.class,
+          (config, path) -> getSetMultimap(config.getStringList(path)),
+          ConfDataType::parseSetMultimap);
+
   static ConfDataType<VersionCheckMode> VersionCheckModeEnum =
       new ConfDataType<>(
           "VersionCheckMode",
@@ -186,6 +197,32 @@ public class ConfDataType<T> {
               + "All possible tags are "
               + "PUBLIC, UIDriven, BETA, INTERNAL, YBM");
     }
+  }
+
+  public static SetMultimap<String, String> parseSetMultimap(String s) {
+    List<String> tagsValues = parseStringAndApply(s, Config::getStringList);
+    if (tagsValues
+        .stream()
+        .map(tagAndValue -> tagAndValue.split(":"))
+        .anyMatch(
+            tagAndValue ->
+                tagAndValue.length != 2
+                    || StringUtils.isBlank(tagAndValue[0])
+                    || StringUtils.isBlank(tagAndValue[1])))
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Not a valid list of user tags and accepted values. "
+              + "Accepts a list of enforced_tag:accepted_value pairs.");
+    return getSetMultimap(tagsValues);
+  }
+
+  private static SetMultimap<String, String> getSetMultimap(List<String> tagValuesList) {
+    return tagValuesList
+        .stream()
+        .map(s -> s.split(":"))
+        .collect(
+            ImmutableSetMultimap.toImmutableSetMultimap(
+                tagAndValue -> tagAndValue[0].trim(), tagAndValue -> tagAndValue[1].trim()));
   }
 
   private static <K> K parseStringAndApply(String s, BiFunction<Config, String, K> parser) {

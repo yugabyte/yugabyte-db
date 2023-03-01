@@ -1,6 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .on-prem-provider-container {
   width: 100%;
@@ -156,13 +156,13 @@
 .add-list-action {
   padding-top: 4px;
   font-size: 16px;
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
   float: right;
   cursor: pointer;
 }
 
 .add-host-list-action {
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
   margin-top: 10px;
   cursor: pointer;
 }
@@ -173,7 +173,7 @@
 }
 
 .config-action-btn {
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
   padding: 4px 1px;
   line-height: 12px;
   text-align: center;
@@ -200,7 +200,7 @@
 }
 
 .data-item-active {
-  background-color: $YB_ORANGE;
+  background-color: colors.$YB_ORANGE;
   color: white;
 }
 

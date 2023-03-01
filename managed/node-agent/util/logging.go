@@ -50,22 +50,18 @@ func FileLogger() *AppLogger {
 		if err != nil {
 			panic("Unable to create logs dir.")
 		}
-		logFile := config.String(NodeLoggerKey)
-		if logFile == "" {
-			logFile = NodeAgentDefaultLog
-		}
-		logFilepath := filepath.Join(LogsDir(), logFile)
+		logFilepath := filepath.Join(LogsDir(), config.String(NodeLoggerKey))
 		writer := &lumberjack.Logger{
 			Filename:   logFilepath,
-			MaxSize:    500, // MB
-			MaxBackups: 5,
-			MaxAge:     15, // Days
+			MaxSize:    config.Int(NodeAgentLogMaxMbKey),
+			MaxBackups: config.Int(NodeAgentLogMaxBackupsKey),
+			MaxAge:     config.Int(NodeAgentLogMaxDaysKey),
 			Compress:   true,
 		}
 		fileLogger = &AppLogger{
 			logger: &log.Logger{
 				Handler: logfmt.New(writer),
-				Level:   1,
+				Level:   log.Level(config.Int(NodeAgentLogLevelKey)),
 			},
 			enableDebug: true,
 		}
@@ -132,4 +128,19 @@ func (l *AppLogger) Fatal(msg string, v ...interface{}) {
 
 func (l *AppLogger) Fatalf(msg string, v ...interface{}) {
 	l.getEntry().Fatalf(msg, v...)
+}
+
+// IsDebugEnabled returns true only if debug is enabled.
+func (l *AppLogger) IsDebugEnabled() bool {
+	return l.IsLevelEnabled(log.DebugLevel)
+}
+
+// IsInfoEnabled returns true only if info is enabled.
+func (l *AppLogger) IsInfoEnabled() bool {
+	return l.IsLevelEnabled(log.InfoLevel)
+}
+
+// IsLevelEnabled returns true only if the given level is enabled.
+func (l *AppLogger) IsLevelEnabled(level log.Level) bool {
+	return int(l.logger.Level) <= int(level)
 }

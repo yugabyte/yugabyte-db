@@ -16,12 +16,12 @@ import (
 var (
 	instance *Scheduler
 	once     = &sync.Once{}
-	tasks    = &sync.Map{}
 )
 
 type Scheduler struct {
 	ctx      context.Context
 	executor *executor.TaskExecutor
+	tasks    *sync.Map
 }
 
 type taskInfo struct {
@@ -29,6 +29,7 @@ type taskInfo struct {
 	id        uuid.UUID
 	handler   util.Handler
 	interval  time.Duration
+	ticker    *time.Ticker
 	isRunning bool
 }
 
@@ -42,15 +43,22 @@ func (t *taskInfo) compareAndSetRunning(state bool) bool {
 	return true
 }
 
-func GetInstance(ctx context.Context) *Scheduler {
+func Init(ctx context.Context) *Scheduler {
 	once.Do(func() {
-		instance = &Scheduler{ctx: ctx, executor: executor.GetInstance(ctx)}
+		instance = &Scheduler{ctx: ctx, tasks: &sync.Map{}, executor: executor.GetInstance()}
 	})
 	return instance
 }
 
+func GetInstance() *Scheduler {
+	if instance == nil {
+		util.FileLogger().Fatal("Scheduler is not initialized")
+	}
+	return instance
+}
+
 func (s *Scheduler) executeTask(ctx context.Context, taskID uuid.UUID) error {
-	value, ok := tasks.Load(taskID)
+	value, ok := s.tasks.Load(taskID)
 	if !ok {
 		err := fmt.Errorf("Invalid state for task %s. Exiting...", taskID)
 		util.FileLogger().Errorf(err.Error())
@@ -64,7 +72,7 @@ func (s *Scheduler) executeTask(ctx context.Context, taskID uuid.UUID) error {
 	defer func() {
 		info.compareAndSetRunning(false)
 	}()
-	err := executor.GetInstance(s.ctx).ExecuteTask(ctx, info.handler)
+	err := executor.GetInstance().ExecuteTask(ctx, info.handler)
 	if err != nil {
 		err := fmt.Errorf("Failed to submit job %s. Error: %s", taskID, err)
 		util.FileLogger().Errorf(err.Error())
@@ -79,19 +87,19 @@ func (s *Scheduler) Schedule(
 	handler util.Handler,
 ) uuid.UUID {
 	taskID := util.NewUUID()
-	tasks.Store(
-		taskID,
-		&taskInfo{mutex: &sync.Mutex{}, id: taskID, interval: interval, handler: handler},
-	)
+	taskInfo := &taskInfo{mutex: &sync.Mutex{}, id: taskID, interval: interval, handler: handler}
+	s.tasks.Store(taskID, taskInfo)
 	go func() {
-		ticker := time.NewTicker(interval)
+		taskInfo.ticker = time.NewTicker(interval)
+		defer s.tasks.Delete(taskID)
+		defer taskInfo.ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-s.ctx.Done():
 				return
-			case <-ticker.C:
+			case <-taskInfo.ticker.C:
 				err := s.executeTask(ctx, taskID)
 				if err != nil {
 					util.FileLogger().Errorf("Exiting scheduled task %s", taskID)

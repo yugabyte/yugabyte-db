@@ -63,11 +63,12 @@ class AwsCloud(AbstractCloud):
     def get_vpc_for_subnet(self, region, subnet):
         return get_vpc_for_subnet(get_client(region), subnet)
 
-    def get_image(self, region=None):
+    def get_image(self, region=None, architecture="x86_64"):
         regions = [region] if region is not None else self.get_regions()
+        imageKey = "arm_image" if architecture == "aarch64" else "image"
         output = {}
         for r in regions:
-            output[r] = self.metadata["regions"][r]["image"]
+            output[r] = self.metadata["regions"][r][imageKey]
         return output
 
     def get_image_arch(self, args):
@@ -207,7 +208,6 @@ class AwsCloud(AbstractCloud):
         return output
 
     def network_bootstrap(self, args):
-        result = {}
         # Generate region subset, based on passed in JSON.
         custom_payload = json.loads(args.custom_payload)
         per_region_meta = custom_payload.get("perRegionMetadata")
@@ -229,11 +229,13 @@ class AwsCloud(AbstractCloud):
         # per-item creation and x-region connectivity/glue.
         #
         # For now, let's leave it as a top-level knob to "do everything" vs "do nothing"...
-        user_provided_vpc_ids = 0
-        for r in per_region_meta.values():
-            if r.get("vpcId") is not None:
-                user_provided_vpc_ids += 1
-        if user_provided_vpc_ids > 0 and user_provided_vpc_ids != len(per_region_meta):
+        added_region_codes = custom_payload.get("addedRegionCodes")
+        if added_region_codes is None:
+            added_region_codes = per_region_meta.keys()
+
+        user_provided_vpc_ids = len([r for k, r in per_region_meta.items()
+                                    if k in added_region_codes and r.get("vpcId") is not None])
+        if user_provided_vpc_ids > 0 and user_provided_vpc_ids != len(added_region_codes):
             raise YBOpsRuntimeError("Either no regions or all regions must have vpcId specified.")
 
         components = {}
@@ -244,16 +246,20 @@ class AwsCloud(AbstractCloud):
         else:
             # Bootstrap the individual region items standalone (vpc, subnet, sg, RT, etc).
             for region in metadata_subset:
-                components[region] = client.bootstrap_individual_region(region)
+                if region in added_region_codes:
+                    components[region] = client.bootstrap_individual_region(region)
+                else:
+                    components[region] = YbVpcComponents.from_user_json(
+                        region, per_region_meta.get(region))
             # Cross link all the regions together.
-            client.cross_link_regions(components)
+            client.cross_link_regions(components, added_region_codes)
         return {region: c.as_json() for region, c in components.items()}
 
     def query_vpc(self, args):
         result = {}
         for region in self._get_all_regions_or_arg(args.region):
             result[region] = query_vpc(region)
-            result[region]["default_image"] = self.get_image(region).get(region)
+            result[region]["default_image"] = self.get_image(region, args.architecture).get(region)
         return result
 
     def get_current_host_info(self, args):

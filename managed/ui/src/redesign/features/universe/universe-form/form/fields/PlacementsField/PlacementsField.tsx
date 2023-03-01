@@ -1,17 +1,18 @@
 import React, { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useFieldArray, useWatch, Controller } from 'react-hook-form';
-import { Box, Typography, MenuItem } from '@material-ui/core';
+import { Box, Typography, MenuItem, makeStyles } from '@material-ui/core';
 import { YBButton, YBSelect, YBLabel, YBCheckbox, YBInput } from '../../../../../../components';
 import { YBLoadingCircleIcon } from '../../../../../../../components/common/indicators';
 import { PlacementStatus } from './PlacementStatus';
 import { useGetAllZones, useGetUnusedZones, useNodePlacements } from './PlacementsFieldHelper';
-import { Placement, UniverseFormData, CloudType } from '../../../utils/dto';
+import { Placement, UniverseFormData, CloudType, MasterPlacementMode } from '../../../utils/dto';
 import {
   REPLICATION_FACTOR_FIELD,
   PLACEMENTS_FIELD,
   PROVIDER_FIELD,
-  RESET_AZ_FIELD
+  RESET_AZ_FIELD,
+  MASTER_PLACEMENT_FIELD
 } from '../../../utils/constants';
 import { useFormFieldStyles } from '../../../universeMainStyle';
 
@@ -19,6 +20,16 @@ interface PlacementsFieldProps {
   disabled: boolean;
   isPrimary: boolean;
 }
+
+// Override MuiFormControl style to ensure flexDirection is inherited
+// and this ensures all the columns are aligned at the same level
+const useStyles = makeStyles((theme) => ({
+  overrideMuiFormControl: {
+    '& .MuiFormControl-root': {
+      flexDirection: 'inherit'
+    }
+  }
+}));
 
 //Extended for useFieldArray
 export type PlacementWithId = Placement & { id: any };
@@ -28,10 +39,12 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
   const { control, setValue, getValues } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
   const classes = useFormFieldStyles();
+  const helperClasses = useStyles();
 
   //watchers
   const replicationFactor = useWatch({ name: REPLICATION_FACTOR_FIELD });
   const provider = useWatch({ name: PROVIDER_FIELD });
+  const masterPlacement = useWatch({ name: MASTER_PLACEMENT_FIELD });
 
   //custom hooks
   const allZones = useGetAllZones(); //returns all AZ
@@ -42,9 +55,16 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
     control,
     name: PLACEMENTS_FIELD
   });
+  const isDedicatedNodes = masterPlacement === MasterPlacementMode.DEDICATED;
 
   const renderHeader = (
-    <Box flex={1} mt={1} display="flex" flexDirection="row" data-testid="PlacementsField-Container">
+    <Box
+      flex={1}
+      mt="3px"
+      display="flex"
+      flexDirection="row"
+      data-testid="PlacementsField-Container"
+    >
       <Box flex={2}>
         <YBLabel dataTestId="PlacementsField-AZNameLabel">
           {t('universeForm.cloudConfig.azNameLabel')}
@@ -54,11 +74,13 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
         <YBLabel dataTestId="PlacementsField-IndividualUnitLabel">
           {provider?.code === CloudType.kubernetes
             ? t('universeForm.cloudConfig.azPodsLabel')
+            : isDedicatedNodes
+            ? t('universeForm.cloudConfig.azTServerNodesLabel')
             : t('universeForm.cloudConfig.azNodesLabel')}
         </YBLabel>
       </Box>
       {isPrimary && (
-        <Box flexShrink={1} width="76px">
+        <Box flexShrink={1} width="42px">
           <YBLabel dataTestId="PlacementsField-PreferredLabel">
             {t('universeForm.cloudConfig.preferredAZLabel')}
           </YBLabel>
@@ -89,7 +111,12 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
 
       return (
         <Box flex={1} display="flex" mb={2} flexDirection="row" key={field.id}>
-          <Box flex={2} mr={1} flexShrink={1} className={classes.defaultTextBox}>
+          <Box
+            flex={2}
+            mr={1}
+            flexShrink={1}
+            className={`${helperClasses.overrideMuiFormControl} ${classes.defaultTextBox}`}
+          >
             <YBSelect
               fullWidth
               disabled={isLoading}
@@ -155,7 +182,12 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
 
   if (fields.length) {
     return (
-      <Box display="flex" width="100%" flexDirection="column">
+      <Box
+        display="flex"
+        width="100%"
+        flexDirection="column"
+        data-testid="PlacementsField-Container"
+      >
         <Box width="100%" display="flex" flexDirection="row" alignItems={'center'}>
           <Box flexShrink={1} mr={3}>
             <Typography variant="h5">{t('universeForm.cloudConfig.azHeader')}</Typography>
@@ -199,6 +231,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
         alignItems={'center'}
         height="100%"
         flexDirection={'column'}
+        data-testid="PlacementsField-Loader"
       >
         <YBLoadingCircleIcon size="small" />
         Loading placements

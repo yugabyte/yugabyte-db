@@ -77,6 +77,11 @@ extern int ysql_max_in_flight_ops;
 extern bool yb_binary_restore;
 
 /*
+ * Set to true only for runs with EXPLAIN ANALYZE
+ */
+extern bool yb_run_with_explain_analyze;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0

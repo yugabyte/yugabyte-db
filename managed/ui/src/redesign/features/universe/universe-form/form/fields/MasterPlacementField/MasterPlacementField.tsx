@@ -3,14 +3,13 @@ import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { Box, Typography, makeStyles } from '@material-ui/core';
 import {
-  RadioOrientation,
   YBRadioGroupField,
   YBLabel,
-  YBTooltip
+  YBTooltip,
+  RadioGroupOrientation
 } from '../../../../../../components';
 import { UniverseFormData, MasterPlacementMode, CloudType } from '../../../utils/dto';
 import { MASTER_PLACEMENT_FIELD, PROVIDER_FIELD } from '../../../utils/constants';
-import InfoMessageIcon from '../../../../../../assets/info-message.svg';
 
 interface MasterPlacementFieldProps {
   isPrimary: boolean;
@@ -47,48 +46,54 @@ export const MasterPlacementField = ({ isPrimary }: MasterPlacementFieldProps): 
     }
   }, [isPrimary]);
 
-  if (isPrimary && provider?.code !== CloudType.kubernetes) {
-    return (
-      <Box display="flex" width="100%" data-testid="MasterPlacement-Container">
-        <Box>
-          <YBLabel dataTestId="MasterPlacement-Label">
-            {t('universeForm.cloudConfig.masterPlacement')}
-            &nbsp;
-            <img alt="More" src={InfoMessageIcon} />
-          </YBLabel>
+  return (
+    <>
+      {isPrimary && provider?.code !== CloudType.kubernetes ? (
+        <Box display="flex" width="100%" data-testid="MasterPlacement-Container">
+          <Box>
+            <YBLabel dataTestId="MasterPlacement-Label">
+              {t('universeForm.cloudConfig.masterPlacement')}
+            </YBLabel>
+          </Box>
+          <Box flex={1}>
+            <YBRadioGroupField
+              name={MASTER_PLACEMENT_FIELD}
+              control={control}
+              value={masterPlacement}
+              orientation={RadioGroupOrientation.VERTICAL}
+              onChange={(e) => {
+                setValue(MASTER_PLACEMENT_FIELD, e.target.value as MasterPlacementMode);
+              }}
+              options={[
+                {
+                  value: MasterPlacementMode.COLOCATED,
+                  label: (
+                    <Box display="flex">{t('universeForm.cloudConfig.colocatedModeHelper')}</Box>
+                  )
+                },
+                {
+                  value: MasterPlacementMode.DEDICATED,
+                  label: (
+                    <Box display="flex">
+                      {t('universeForm.cloudConfig.dedicatedModeHelper')}
+                      <YBTooltip
+                        title={masterPlacementTooltipText}
+                        className={classes.tooltipLabel}
+                      >
+                        <Typography display="inline">
+                          {t('universeForm.cloudConfig.whenToUseDedicatedHelper')}
+                        </Typography>
+                      </YBTooltip>
+                    </Box>
+                  )
+                }
+              ]}
+            />
+          </Box>
         </Box>
-        <Box flex={1}>
-          <YBRadioGroupField
-            name={MASTER_PLACEMENT_FIELD}
-            control={control}
-            value={masterPlacement}
-            orientation={RadioOrientation.Vertical}
-            onChange={(e) => {
-              setValue(MASTER_PLACEMENT_FIELD, e.target.value as MasterPlacementMode);
-            }}
-            options={[
-              {
-                value: MasterPlacementMode.COLOCATED,
-                label: <Box display="flex">{t('universeForm.cloudConfig.colocatedModeHelper')}</Box>
-              },
-              {
-                value: MasterPlacementMode.DEDICATED,
-                label: (
-                  <Box display="flex">
-                    {t('universeForm.cloudConfig.dedicatedModeHelper')}
-                    <YBTooltip title={masterPlacementTooltipText} className={classes.tooltipLabel}>
-                      <Typography display="inline">
-                        {t('universeForm.cloudConfig.whenToUseDedicatedHelper')}
-                      </Typography>
-                    </YBTooltip>
-                  </Box>
-                )
-              }
-            ]}
-          />
-        </Box>
-      </Box>
-    );
-  }
-  return <Box mb={2}></Box>;
+      ) : (
+        <Box mb={2}></Box>
+      )}
+    </>
+  );
 };

@@ -1,4 +1,4 @@
-@import '../../_style/colors.scss';
+@use '../../_style/colors.scss';
 
 .replication-status-text {
   margin-left: 10px;
@@ -15,7 +15,7 @@
     color: #f00000;
   }
   &.paused {
-    color: $YB_WARNING_COLOR;
+    color: colors.$YB_WARNING_COLOR;
   }
 }
 .replication-lag-value{
@@ -28,5 +28,5 @@
 }
 
 .yb-spinner {
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
 }

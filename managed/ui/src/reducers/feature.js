@@ -20,12 +20,12 @@ const initialStateFeatureInTest = {
   enableMultiRegionConfig: false,
   enableGcpKMS: true,
   enableAzuKMS: true,
-  enableRunTimeConfig: false,
+  enableRunTimeConfig: true,
   enablePITR: true,
   enableNotificationTemplates: false,
   enableRestore: false,
   enablePrefillKubeConfig: false,
-  enableNewUI: false
+  enableNewUI: true // feature flag to enable new revamped UI
 };
 
 const initialStateFeatureReleased = {
@@ -45,10 +45,10 @@ const initialStateFeatureReleased = {
   supportBundle: true,
   enableThirdpartyUpgrade: false,
   enableYbc: true,
-  enableMultiRegionConfig: true,
+  enableMultiRegionConfig: false,
   enableGcpKMS: true,
   enableAzuKMS: true,
-  enableRunTimeConfig: false,
+  enableRunTimeConfig: true,
   enablePITR: true,
   enableNotificationTemplates: false,
   enableRestore: false,

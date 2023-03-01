@@ -7,13 +7,20 @@ image: /images/section_icons/index/quick_start.png
 headcontent: Build the source code.
 menu:
   preview:
-    identifier: build-from-src-2-centos
+    identifier: build-from-src-3-centos
     parent: core-database
     weight: 2912
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="{{< relref "./build-from-src-almalinux.md" >}}" class="nav-link">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      AlmaLinux
+    </a>
+  </li>
 
   <li >
     <a href="{{< relref "./build-from-src-macos.md" >}}" class="nav-link">
@@ -40,9 +47,11 @@ type: docs
 
 {{< note title="Note" >}}
 
-CentOS 7 is the recommended Linux development and production platform for YugabyteDB.
+AlmaLinux 8 is the recommended Linux development platform for YugabyteDB.
 
 {{< /note >}}
+
+The following instructions are for CentOS 7.
 
 ## Install necessary packages
 
@@ -56,7 +65,8 @@ sudo yum install -y centos-release-scl epel-release git libatomic rsync which
 
 ### Python 3
 
-Python 3.7 or higher is required.
+{{% readfile "includes/python.md" %}}
+
 The following example installs Python 3.8.
 
 ```sh
@@ -67,7 +77,8 @@ source /opt/rh/rh-python38/enable
 
 ### CMake 3
 
-[CMake][cmake] 3.17.3 or higher is required.
+{{% readfile "includes/cmake.md" %}}
+
 The package manager has that, but we still need to link the name `cmake` to `cmake3`.
 Do similarly for `ctest`.
 
@@ -77,25 +88,9 @@ sudo ln -s /usr/bin/cmake3 /usr/local/bin/cmake
 sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
 ```
 
-[cmake]: https://cmake.org
-
 ### /opt/yb-build
 
-By default, when running build, third-party libraries are not built, and pre-built libraries are downloaded.
-We also use [Linuxbrew][linuxbrew] to provide some of the third-party dependencies on CentOS.
-The build scripts automatically install these in directories under `/opt/yb-build`.
-In order for the build script to write under those directories, it needs proper permissions.
-One way to do that is as follows:
-
-```sh
-sudo mkdir /opt/yb-build
-sudo chown "$(whoami)" /opt/yb-build
-```
-
-Alternatively, specify the build options `--no-download-thirdparty` and/or `--no-linuxbrew`.
-Note that those options may require additional, undocumented steps.
-
-[linuxbrew]: https://github.com/linuxbrew/brew
+{{% readfile "includes/opt-yb-build.md" %}}
 
 ### Ninja (optional)
 
@@ -139,26 +134,21 @@ sudo yum install -y java-1.8.0-openjdk rh-maven35
 source /opt/rh/rh-maven35/enable
 ```
 
+### yugabyted-ui
+
+{{% readfile "includes/yugabyted-ui.md" %}}
+
+```sh
+sudo yum install -y npm golang
+```
+
 ## Build the code
 
 {{% readfile "includes/build-the-code.md" %}}
 
 ### Build release package (optional)
 
-Install the following additional packages to build yugabyted-ui:
-
-```sh
-sudo yum install -y npm golang
-```
-
-The build may fail with "too many open files".
-In that case, increase the nofile limit in `/etc/security/limits.conf`:
-
-```sh
-echo '* - nofile 1048576' | sudo tee -a /etc/security/limits.conf
-```
-
-Start a new shell session, and check the limit increase with `ulimit -n`.
+[Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
 
 Run the `yb_release` script to build a release package:
 
@@ -167,3 +157,5 @@ $ ./yb_release
 ......
 2023-02-10 23:19:46,459 [yb_release.py:299 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.17.2.0-44b735cc69998d068d561f4b6f337b318fbc2424-release-clang15-centos-x86_64.tar.gz'
 ```
+
+{{% readfile "includes/ulimit.md" %}}

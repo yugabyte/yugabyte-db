@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static junit.framework.TestCase.fail;
 import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
@@ -24,7 +25,10 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.Lists;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.swagger.PlatformModelConverter;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Users;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -32,9 +36,13 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Stream;
 import org.apache.commons.io.IOUtils;
 import org.junit.Test;
 import play.api.routing.Router;
@@ -89,9 +97,53 @@ public class SwaggerGenTest extends FakeDBApplication {
     }
   }
 
+  @Test
+  public void genMd() throws IOException{
+    String expectedFlags= expectedFlags();
+    String currentFlags=currentFlags();
+    if(!expectedFlags.equals(currentFlags)){
+      fail("==============================================================================\n"+
+      "Flags defination changed.Run $sbt swaggenGen\n"+
+      "\n==========================================================================\n");
+    }
+  }
+
   private String getSwaggerSpec() throws JsonProcessingException {
     Result result = route(Helpers.fakeRequest("GET", "/docs/dynamic_swagger.json"));
     return sort(contentAsString(result, mat));
+  }
+
+  private String expectedFlags(){
+    Customer defaultCustomer=ModelFactory.testCustomer();
+    Users user = ModelFactory.testUser(defaultCustomer, Users.Role.SuperAdmin);
+    String authToken = user.createAuthToken();
+    Result result =
+              doRequestWithAuthToken("GET", "/api/runtime_config/mutable_key_info", authToken);
+    String res="# <u>List of supported Runtime Configuration Flags</u>\n";
+    res += "### These are all the public runtime flags in YBA.\n";
+    res += "| Name | Key | Scope | Help Text | Data Type |\n";
+    res += "| :----: | :----: | :----: | :----: | :----: |\n";
+    for(JsonNode j:Json.parse(contentAsString(result))){
+      if(!j.get("tags").toString().contains("PUBLIC")) continue;
+      res+="| "+j.get("displayName")+" | ";
+      res+=j.get("key")+" | ";
+      res+=j.get("scope")+" | ";
+      res+=j.get("helpTxt")+" | ";
+      res+=j.get("dataType").get("name")+" |\n";
+    }
+    return res;
+  }
+
+  private String currentFlags(){
+    Path p=Paths.get("").toAbsolutePath().getParent().resolve("RUNTIME-FLAGS.md");
+    StringBuilder contentBuilder = new StringBuilder();
+    try (Stream<String> stream = Files.lines(p, StandardCharsets.UTF_8)) {
+      stream.forEach(S -> contentBuilder.append(S).append("\n"));
+    }
+    catch(Exception e){
+      fail("failed to fetch file. path= "+p.toString());
+    }
+    return contentBuilder.toString();
   }
 
   // we will deserialize and serialize back using this mapper so as to generate deterministic
@@ -133,6 +185,18 @@ public class SwaggerGenTest extends FakeDBApplication {
     SwaggerGenTest swaggerGenTest = new SwaggerGenTest();
     try {
       swaggerGenTest.startPlay();
+      String expectedFlags = swaggerGenTest.expectedFlags();
+      String actualFlags = swaggerGenTest.currentFlags();
+      if(!actualFlags.equals(expectedFlags)){
+        Path p=Paths.get("").toAbsolutePath().getParent().resolve("RUNTIME-FLAGS.md");
+        try(FileWriter fw=new FileWriter(p.toFile())){
+            fw.write(expectedFlags);
+          }
+        System.out.println("New flags doc generated...");
+      }
+      else{
+        System.out.println("Runtime flags haven't changed");
+      }
       System.out.println("Generating swagger spec:" + Arrays.toString(args));
       String swaggerSpec = swaggerGenTest.getSwaggerSpec();
       if (expectedSwagger.length() == swaggerSpec.length()) {

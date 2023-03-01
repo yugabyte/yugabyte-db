@@ -5,6 +5,7 @@ import { Box } from '@material-ui/core';
 import { YBLabel, YBToggleField } from '../../../../../../components';
 import { UniverseFormData } from '../../../utils/dto';
 import { SYSTEMD_FIELD } from '../../../utils/constants';
+import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface SystemDFieldProps {
   disabled: boolean;
@@ -13,10 +14,11 @@ interface SystemDFieldProps {
 export const SystemDField = ({ disabled }: SystemDFieldProps): ReactElement => {
   const { control } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
+  const classes = useFormFieldStyles();
 
   return (
     <Box display="flex" width="100%" data-testid="SystemDField-Container">
-      <YBLabel dataTestId="SystemDField-Label" width="224px">
+      <YBLabel dataTestId="SystemDField-Label" className={classes.advancedConfigLabel}>
         {t('universeForm.advancedConfig.enableSystemD')}
       </YBLabel>
       <Box flex={1}>

@@ -169,6 +169,11 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   void ListMasterServers(const ListMasterServersRequestPB* req,
                          ListMasterServersResponsePB* resp,
                          rpc::RpcContext context) override;
+
+  void GetLockStatus(const GetLockStatusRequestPB* req,
+                     GetLockStatusResponsePB* resp,
+                     rpc::RpcContext context) override;
+
   void Shutdown() override;
 
  private:

@@ -394,14 +394,30 @@ class ControlScript(object):
 
         self.start_processes()
 
+    # Kills all processes related to yugabyted
+    def kill_all_procs(self):
+        pid = self.script.get_pid()
+        if pid:
+            pgid = os.getpgid(pid)
+            if not pgid:
+                Output.log("PGID could not be found for {} process".format(SCRIPT_NAME) +
+                    "with PID {}. Is {} running?".format(pid, SCRIPT_NAME))
+                return ("No PGID", pid)
+            else:
+                try:
+                    os.killpg(pgid, SIGTERM)
+                except OSError as err:
+                    return (err, pid)
+        self.script.delete_pidfile()
+        return (None, pid)
+
     # Kills currently running yugabyted process if it exists.
     def stop(self, *args):
-        (err, pid) = self.script.kill()
+        (err, pid) = self.kill_all_procs()
         if err:
-            Output.print_out(
+            Output.log_error_and_exit(
                 "Failed to shut down {}: {}. Please check PID in {}".format(
                     SCRIPT_NAME, err, self.script.pidfile))
-            sys.exit(1)
         elif pid:
             self.script.wait_until_stop(pid)
             Output.print_out("Stopped {} using config {}.".format(SCRIPT_NAME, self.conf_file))
@@ -416,7 +432,7 @@ class ControlScript(object):
 
     # Destroy the YugabyteDB cluster.
     def destroy(self):
-        (err, pid) = self.script.kill()
+        (err, pid) = self.kill_all_procs()
         if err:
             Output.log_error_and_exit(
                 "Failed to shut down {}: {}. Please check PID in {}".format(
@@ -1360,6 +1376,9 @@ class ControlScript(object):
         if self.configs.saved_data.get("use_cassandra_authentication"):
             yb_tserver_cmd.extend(["--use_cassandra_authentication=true"])
 
+        if self.configs.saved_data.get("dns_enabled"):
+            yb_tserver_cmd.extend(["--use_node_hostname_for_local_tserver=true"])
+
         self.processes = {
             "master": YBProcessManager(
                 "master", yb_master_cmd, self.configs.saved_data.get("log_dir"),
@@ -1368,15 +1387,6 @@ class ControlScript(object):
                 "tserver", yb_tserver_cmd, self.configs.saved_data.get("log_dir"),
                 self.configs.saved_data.get("data_dir")),
         }
-
-        # if self.configs.temp_data.get("ui"):
-        #     yugabyted_ui_cmd = [ find_binary_location("yugabyted-ui")] + \
-        #         [
-        #             "-database_host={}".format(bind_ip)
-        #         ]
-        #     self.processes["yugabyted-ui"] = ProcessManager(
-        #         "yugabyted-ui", yugabyted_ui_cmd, self.configs.saved_data.get("log_dir"),
-        #         self.configs.saved_data.get("data_dir"))
 
         for p in self.processes.values():
             pid = p.get_pid()
@@ -2025,7 +2035,7 @@ class ControlScript(object):
 
             placementInfoOfEveryNode = {}
             for node in dictOfAllNodes:
-                hostname = re.split('[-:]', node)[0]
+                hostname = node.split(":")[0]
                 cloudLocationOfHost = "{}.{}.{}".format(dictOfAllNodes[node]["cloud"],
                     dictOfAllNodes[node]["region"], dictOfAllNodes[node]["zone"])
                 placementInfoOfEveryNode[hostname] = cloudLocationOfHost
@@ -2636,12 +2646,21 @@ class ControlScript(object):
         # Regex expression for validating IPv6
         ipv6_regex = "((([0-9a-fA-F]){1,4})\\:){7}([0-9a-fA-F]){1,4}"
 
+        # Regex expression for validating DNS names
+        dns_regex = "^((?!-)[A-Za-z0-9-]" + "{1,63}(?<!-)\\.)" +"+[A-Za-z]{2,6}"
+
         ipv4_pattern = re.compile(ipv4_regex)
         ipv6_pattern = re.compile(ipv6_regex)
+        dns_pattern = re.compile(dns_regex)
 
         # Checking if it is not a valid IPv4 or IPv6 addresses
-        if not (re.search(ipv4_pattern, ip) or re.search(ipv6_pattern, ip)):
+        if not (re.search(ipv4_pattern, ip) or
+                re.search(ipv6_pattern, ip) or
+                re.search(dns_pattern, ip)):
             return False
+
+        if re.search(dns_pattern, ip):
+            self.configs.saved_data["dns_enabled"] = True
 
         return True
 
@@ -3135,8 +3154,12 @@ class ControlScript(object):
                     self.configs.saved_data["ca_cert_file_path"] = os.path.join(args.certs_dir,
                                                                                     "ca.crt")
 
-            args.ui = self.parse_bool(args.ui)
             args.background = self.parse_bool(args.background)
+            if args.ui is not None:
+                args.ui = self.parse_bool(args.ui)
+            else:
+                args.ui = self.configs.saved_data.get("ui")
+
             if args.callhome is not None:
                 args.callhome = self.parse_bool(args.callhome)
             elif os.environ.get("YB_DISABLE_CALLHOME") is not None:
@@ -3161,15 +3184,6 @@ class ControlScript(object):
                 if self.setup_env_init.is_exists('YCQL_USER') or \
                         self.setup_env_init.is_exists('YCQL_PASSWORD'):
                     args.use_cassandra_authentication = True
-
-            # Output.log("Downloading the Yugabyted UI Binaries.")
-            # if args.ui and not self.download_extract_yugabyted_ui_binary():
-            #     Output.print_out('WARNING: UI disabled - Unable to download ui binaries.')
-            #     args.ui = False
-
-            # if args.ui and not self.java_installed():
-            #     Output.print_out('WARNING: UI disabled - Java 1.8 or higher is required.')
-            #     args.ui = False
 
             self.configs.temp_data["background"] = args.background
             self.configs.saved_data["ui"] = args.ui
@@ -3392,7 +3406,7 @@ class ControlScript(object):
                 "--callhome", choices=BOOL_CHOICES,
                 help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--ui", choices=BOOL_CHOICES, default="true", metavar="",
+                "--ui", choices=BOOL_CHOICES, metavar="",
                 help="Toggle enabling or disabling webserver UI. Default true.")
             cur_parser.add_argument(
                 "--ysql_enable_auth", choices=BOOL_CHOICES,
@@ -3560,6 +3574,7 @@ class Configs(object):
             "database_password": None,
             "current_masters": "",
             "ui": True,
+            "dns_enabled": False,
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
@@ -3743,7 +3758,6 @@ class ProcessManager(object):
         def temp_func():
             return self.is_proc_running(pid)
         retry_op(temp_func, timeout=60)
-        time.sleep(2)
         return
 
     # Delete corresponding pidfile for this process.
@@ -4142,7 +4156,12 @@ class YsqlProxy(object):
         env_var = os.environ.copy()
         env_var["PGUSER"] = self.username
         shell = subprocess.Popen(cmd, env=env_var)
-        shell.communicate()
+        while True:
+            try:
+                shell.communicate()
+            except KeyboardInterrupt:
+                continue
+            break
 
     # Checks if db exists.
     # Note that this will return false if ysqlsh can't connect, even if db exists.
@@ -4256,7 +4275,12 @@ class YcqlProxy(object):
         if self.keyspace is not None:
             cmd.extend(["-k", self.keyspace])
         shell = subprocess.Popen(cmd)
-        shell.communicate()
+        while True:
+            try:
+                shell.communicate()
+            except KeyboardInterrupt:
+                continue
+            break
 
     # Check user exists
     # Note that this will return false if ycqlsh can't connect, even if user exists.

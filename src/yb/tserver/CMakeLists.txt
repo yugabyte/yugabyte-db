@@ -33,8 +33,6 @@
 set(YB_PCH_PREFIX tserver)
 set(YB_PCH_DEP_LIBS opid_proto yb_test_util)
 
-YB_INCLUDE_EXTENSIONS()
-
 #########################################
 # tserver_proto
 #########################################
@@ -173,6 +171,7 @@ add_dependencies(tserver_util gen_proto)
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 
 set(TSERVER_SRCS
+  backup_service.cc
   db_server_base.cc
   full_compaction_manager.cc
   heartbeater.cc
@@ -200,7 +199,10 @@ set(TSERVER_SRCS
   tserver_metrics_heartbeat_data_provider.cc
   server_main_util.cc
   xcluster_safe_time_map.cc
-  ${TSERVER_SRCS_EXTENSIONS})
+  cdc_consumer.cc
+  cdc_poller.cc
+  twodc_output_client.cc
+  twodc_write_implementations.cc)
 
 set(TSERVER_DEPS
   protobuf
@@ -222,7 +224,8 @@ set(TSERVER_DEPS
   yb_client
   yb_pggate_flags
   ysql_upgrade
-  ${TSERVER_LIB_EXTENSIONS})
+  cdc
+  cdc_consumer_proto)
 
 ADD_YB_LIBRARY(tserver
   SRCS ${TSERVER_SRCS}
@@ -302,19 +305,11 @@ ADD_YB_TEST(tablet_server-test)
 ADD_YB_TEST(tablet_server-stress-test RUN_SERIAL true)
 ADD_YB_TEST(ts_tablet_manager-test)
 ADD_YB_TEST(header_manager_impl-test)
+ADD_YB_TEST(backup_service-test)
 
 ADD_YB_TEST(encrypted_sstable-test)
 YB_TEST_TARGET_LINK_LIBRARIES(encrypted_sstable-test encryption_test_util tserver_test_util tserver)
 
-# -------------------------------------------------------------------------------------------------
-# Tests in the "ent" directory
-# -------------------------------------------------------------------------------------------------
 
-if(YB_ENT_CURRENT_SOURCE_DIR)
-  # Set the test source file folder.
-  set(CMAKE_CURRENT_LIST_DIR ${YB_ENT_CURRENT_SOURCE_DIR})
-
-  foreach(test ${TSERVER_EXTENSIONS_TESTS})
-    ADD_YB_TEST(${test})
-  endforeach()
-endif()
+ADD_YB_TEST(remote_bootstrap_rocksdb_session-test_ent)
+ADD_YB_TEST(remote_bootstrap_rocksdb_client-test_ent)

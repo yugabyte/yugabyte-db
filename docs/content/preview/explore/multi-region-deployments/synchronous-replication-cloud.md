@@ -1,9 +1,9 @@
 ---
-title: Synchronous replication (3+ regions)
-headerTitle: Synchronous replication (3+ regions)
+title: Synchronous multi region (3+ regions)
+headerTitle: Synchronous multi region (3+ regions)
 linkTitle: Synchronous (3+ regions)
 description: Global data distributed using synchronous replication across regions.
-headcontent: Distribute data across regions
+headcontent: Distribute data synchronously across regions
 menu:
   preview:
     identifier: explore-multi-region-deployments-sync-replication-2-cloud
@@ -30,6 +30,12 @@ This deployment provides the following advantages:
     <a href="../synchronous-replication-cloud/" class="nav-link active">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
       YugabyteDB Managed
+    </a>
+  </li>
+  <li>
+    <a href="../synchronous-replication-yba/" class="nav-link">
+      <img src="/icons/server.svg" alt="Server Icon">
+      YugabyteDB Anywhere
     </a>
   </li>
 </ul>

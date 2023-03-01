@@ -18,11 +18,14 @@
 #include <unordered_set>
 #include <vector>
 
+#include <boost/none.hpp>
 #include <boost/optional/optional_io.hpp>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/partition.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/row_mark.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_path.h"
@@ -143,17 +146,20 @@ Status CreateProjection(
 }
 
 void AddIntent(
-    const std::string& encoded_key, WaitPolicy wait_policy, LWKeyValueWriteBatchPB *out) {
+    const std::string& encoded_key, boost::optional<WaitPolicy> wait_policy,
+    LWKeyValueWriteBatchPB *out) {
   auto* pair = out->add_read_pairs();
   pair->dup_key(encoded_key);
   pair->dup_value(Slice(&ValueEntryTypeAsChar::kNullLow, 1));
-  // Since we don't batch read RPCs that lock rows, we can get away with using a singular
-  // wait_policy field. Once we start batching read requests (issue #2495), we will need a repeated
-  // wait policies field.
-  out->set_wait_policy(wait_policy);
+  if (wait_policy) {
+    // Since we don't batch read RPCs that lock rows, we can get away with using a singular
+    // wait_policy field. Once we start batching read requests (issue #2495), we will need a
+    // repeated wait policies field.
+    out->set_wait_policy(wait_policy.value());
+  }
 }
 
-Status AddIntent(const PgsqlExpressionPB& ybctid, WaitPolicy wait_policy,
+Status AddIntent(const PgsqlExpressionPB& ybctid, boost::optional<WaitPolicy> wait_policy,
                  LWKeyValueWriteBatchPB* out) {
   const auto &val = ybctid.value().binary_value();
   SCHECK(!val.empty(), InternalError, "empty ybctid");
@@ -208,8 +214,7 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
 
   YQLRowwiseIteratorIf::UniPtr result;
   // TODO(neil) Remove the following IF block when it is completely obsolete.
-  // The following IF block has not been used since 2.1 release.
-  // We keep it here only for rolling upgrade purpose.
+  // The following IF block gets used in the CREATE INDEX codepath.
   if (request.has_ybctid_column_value()) {
     SCHECK(!request.has_paging_state(),
            InternalError,
@@ -217,7 +222,8 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
            "is only used for multi-row queries.");
     RETURN_NOT_OK(ql_storage.GetIterator(
         request.stmt_id(), projection, doc_read_context, txn_op_context,
-        deadline, read_time, request.ybctid_column_value().value(), &result));
+        deadline, read_time, request.ybctid_column_value().value(),
+        request.ybctid_column_value().value(), &result));
   } else {
     SubDocKey start_sub_doc_key;
     auto actual_read_time = read_time;
@@ -1460,18 +1466,38 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const YQLStorageIf& ql_sto
     VLOG(1) << "Added where expression to the executor";
   }
 
-  for (const PgsqlBatchArgumentPB& batch_argument : request_.batch_arguments()) {
-    SCHECK(batch_argument.has_ybctid(),
-           InternalError,
-           "ybctid arguments can be batched only");
-    // Get the row.
-    RETURN_NOT_OK(ql_storage.GetIterator(
-        request_.stmt_id(), projection, doc_read_context, txn_op_context_,
-        deadline, read_time, batch_argument.ybctid().value(), &table_iter_));
 
-    if (VERIFY_RESULT(table_iter_->HasNext())) {
+  const auto &batch_args = request_.batch_arguments();
+  auto min_arg = batch_args.begin();
+  auto max_arg = batch_args.begin();
+  for(auto batch_arg_it = batch_args.begin() + 1;
+      batch_arg_it != batch_args.end(); batch_arg_it++) {
+    SCHECK(batch_arg_it->has_ybctid(), InternalError, "ybctid arguments can be batched only");
+    if (min_arg->ybctid().value() > batch_arg_it->ybctid().value()) {
+      min_arg = batch_arg_it;
+    } else if (max_arg->ybctid().value() < batch_arg_it->ybctid().value()) {
+      max_arg = batch_arg_it;
+    }
+  }
+
+  bool iter_valid = false;
+  for(const PgsqlBatchArgumentPB& batch_argument : batch_args) {
+    if (!iter_valid) {
+      // It can be the case like when there is a tablet split that we still want
+      // to continue seeking through all the given batch arguments even though one
+      // of them wasn't found. If it wasn't found, table_iter_ becomes invalid
+      // and we have to make a new iterator.
+      RETURN_NOT_OK(ql_storage.GetIterator(
+          request_.stmt_id(), projection, doc_read_context, txn_op_context_,
+          deadline, read_time, min_arg->ybctid().value(),
+          max_arg->ybctid().value(), &table_iter_));
+    }
+    // Get the row.
+    auto &tuple_id = batch_argument.ybctid().value();
+    iter_valid = VERIFY_RESULT(table_iter_->SeekTuple(tuple_id.binary_value()));
+    if (iter_valid) {
       row.Clear();
-      RETURN_NOT_OK(table_iter_->NextRow(&row));
+      RETURN_NOT_OK(table_iter_->NextRow(projection, &row));
       bool is_match = true;
       RETURN_NOT_OK(expr_exec.Exec(row, nullptr, &is_match));
       if (is_match) {
@@ -1572,14 +1598,20 @@ Status PgsqlReadOperation::PopulateAggregate(WriteBuffer *result_buffer) {
 }
 
 Status PgsqlReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out) {
+  boost::optional<WaitPolicy> wait_policy = boost::none;
+  if (request_.has_row_mark_type() && IsValidRowMarkType(request_.row_mark_type())) {
+    DCHECK(request_.has_wait_policy());
+    wait_policy = request_.wait_policy();
+  }
+
   if (request_.batch_arguments_size() > 0) {
     for (const auto& batch_argument : request_.batch_arguments()) {
       SCHECK(batch_argument.has_ybctid(), InternalError, "ybctid batch argument is expected");
-      RETURN_NOT_OK(AddIntent(batch_argument.ybctid(), request_.wait_policy(), out));
+      RETURN_NOT_OK(AddIntent(batch_argument.ybctid(), wait_policy, out));
     }
   } else {
     auto doc_key = VERIFY_RESULT(FetchDocKey(schema, request_));
-    AddIntent(doc_key.Encode().ToStringBuffer(), request_.wait_policy(), out);
+    AddIntent(doc_key.Encode().ToStringBuffer(), wait_policy, out);
   }
   return Status::OK();
 }

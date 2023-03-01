@@ -1,3 +1,3 @@
 // Copyright (c) YugaByte, Inc.
 
-export const specialChars = /^[a-zA-Z0-9_-]+$/;
+export const ACCEPTABLE_CHARS = /^[a-zA-Z0-9_-]+$/;

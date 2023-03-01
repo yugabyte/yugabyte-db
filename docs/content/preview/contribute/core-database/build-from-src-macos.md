@@ -4,18 +4,23 @@ headerTitle: Build the source code
 linkTitle: Build the source
 description: Build YugabyteDB from source code on macOS.
 image: /images/section_icons/index/quick_start.png
-headcontent: Build the source code on macOS, CentOS, and Ubuntu.
-aliases:
-  - /preview/contribute/core-database/build-from-src
+headcontent: Build the source code.
 menu:
   preview:
-    identifier: build-from-src-1-macos
+    identifier: build-from-src-2-macos
     parent: core-database
     weight: 2912
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="{{< relref "./build-from-src-almalinux.md" >}}" class="nav-link">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      AlmaLinux
+    </a>
+  </li>
 
   <li >
     <a href="{{< relref "./build-from-src-macos.md" >}}" class="nav-link active">
@@ -42,7 +47,7 @@ type: docs
 
 {{< note title="Note" >}}
 
-CentOS 7 is the recommended Linux distribution for development and production platform for YugabyteDB.
+AlmaLinux 8 is the recommended Linux development platform for YugabyteDB.
 
 {{< /note >}}
 
@@ -88,11 +93,17 @@ echo 'export PATH="/opt/local/homebrew/opt/openjdk@11/bin:$PATH"' >>~/.bashrc
 echo 'export PATH="/usr/local/opt/openjdk@11/bin:$PATH"' >>~/.bashrc
 ```
 
+### yugabyted-ui
+
+{{% readfile "includes/yugabyted-ui.md" %}}
+
 ## Build the code
 
 {{% readfile "includes/build-the-code.md" %}}
 
-### Build release package
+### Build release package (optional)
+
+[Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
 
 Run the `yb_release` script to build a release package:
 

@@ -16211,7 +16211,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 								  fmtId(index->dobj.name));
 
 				bool doing_hash = false;
-				for (int n = 0; n < index->indnattrs; n++)
+				for (int n = 0; n < index->indnkeyattrs; n++)
 				{
 					char *col_name = tbinfo->attnames[index->indkeys[n] - 1];
 					int indoption = index->indoptions[n];
@@ -16239,6 +16239,18 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				}
 				if (doing_hash)
 					appendPQExpBuffer(q, ") HASH");
+
+				/* PRIMARY KEY INDEX has included columns. */
+				if (index->indnkeyattrs < index->indnattrs)
+					appendPQExpBuffer(q, ") INCLUDE (");
+
+				for (int n = index->indnkeyattrs; n < index->indnattrs; ++n)
+				{
+					if (n > index->indnkeyattrs)
+						appendPQExpBuffer(q, ", ");
+					char *col_name = tbinfo->attnames[index->indkeys[n] - 1];
+					appendPQExpBuffer(q, "%s", fmtId(col_name));
+				}
 
 				appendPQExpBuffer(q, ")");
 
@@ -19107,9 +19119,8 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 		/*
 		 * For colocated tables, we need to set the new table to have the same
 		 * colocation_id since we use it as a prefix in our DocKeys.
-		 * Don't include colocation_id in the reloptions array for colocated partitioned tables.
 		 */
-		if (properties->is_colocated && relkind != RELKIND_PARTITIONED_TABLE)
+		if (properties->is_colocated)
 			appendPQExpBuffer(reloptions_buf, "colocation_id=%u", properties->colocation_id);
 
 		/*

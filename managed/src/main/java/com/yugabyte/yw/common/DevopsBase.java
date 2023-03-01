@@ -25,6 +25,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.Builder;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
@@ -48,84 +49,33 @@ public abstract class DevopsBase {
     return nodeAgentClient;
   }
 
-  protected JsonNode parseShellResponse(ShellResponse response, String command) {
+  protected JsonNode execAndParseShellResponse(DevopsCommand devopsCommand) {
+    ShellResponse response = execCommand(devopsCommand);
     if (response.code == 0) {
       return Json.parse(response.message);
     } else {
       String errorMsg =
           String.format(
               "YBCloud command %s (%s) failed to execute. %s",
-              getCommandType(), command, response.message);
+              getCommandType(), devopsCommand.command, response.message);
       log.error(errorMsg);
       return ApiResponse.errorJSON(errorMsg);
     }
   }
 
-  protected JsonNode execAndParseCommandCloud(
-      UUID providerUUID, String command, List<String> commandArgs) {
-    ShellResponse response =
-        execCommand(null, providerUUID, null, command, commandArgs, Collections.emptyList());
-    return parseShellResponse(response, command);
-  }
-
-  protected JsonNode execAndParseCommandRegion(
-      UUID regionUUID, String command, List<String> commandArgs) {
-    ShellResponse response =
-        execCommand(regionUUID, null, null, command, commandArgs, Collections.emptyList());
-    return parseShellResponse(response, command);
-  }
-
-  protected ShellResponse execCommand(
-      UUID regionUUID,
-      UUID providerUUID,
-      String command,
-      List<String> commandArgs,
-      List<String> cloudArgs) {
-    return execCommand(
-        regionUUID, providerUUID, null /*cloudType*/, command, commandArgs, cloudArgs);
-  }
-
-  protected ShellResponse execCommand(
-      UUID regionUUID,
-      UUID providerUUID,
-      Common.CloudType cloudType,
-      String command,
-      List<String> commandArgs,
-      List<String> cloudArgs) {
-    return execCommand(regionUUID, providerUUID, cloudType, command, commandArgs, cloudArgs, null);
-  }
-
-  protected ShellResponse execCommand(
-      UUID regionUUID,
-      UUID providerUUID,
-      Common.CloudType cloudType,
-      String command,
-      List<String> commandArgs,
-      List<String> cloudArgs,
-      Map<String, String> envVars) {
-    return execCommand(
-        regionUUID, providerUUID, cloudType, command, commandArgs, cloudArgs, envVars, null);
-  }
-
-  protected ShellResponse execCommand(
-      UUID regionUUID,
-      UUID providerUUID,
-      Common.CloudType cloudType,
-      String command,
-      List<String> commandArgs,
-      List<String> cloudArgs,
-      Map<String, String> envVars,
-      Map<String, String> sensitiveData) {
+  protected ShellResponse execCommand(DevopsCommand devopsCommand) {
     List<String> commandList = new ArrayList<>();
     commandList.add(YBCLOUD_SCRIPT);
     Map<String, String> extraVars = new HashMap<>();
-    if (envVars != null) {
-      extraVars.putAll(envVars);
+    if (devopsCommand.envVars != null) {
+      extraVars.putAll(devopsCommand.envVars);
     }
     Region region = null;
-    if (regionUUID != null) {
-      region = Region.get(regionUUID);
+    if (devopsCommand.regionUUID != null) {
+      region = Region.get(devopsCommand.regionUUID);
     }
+
+    List<String> commandArgs = devopsCommand.commandArgs;
 
     if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
       commandArgs.add("--ssh2_enabled");
@@ -142,8 +92,8 @@ public abstract class DevopsBase {
       } catch (Exception e) {
         throw new RuntimeException("Failed to retrieve env variables for the provider!", e);
       }
-    } else if (providerUUID != null) {
-      provider = Provider.get(providerUUID);
+    } else if (devopsCommand.providerUUID != null) {
+      provider = Provider.get(devopsCommand.providerUUID);
       commandList.add(provider.code);
       try {
         Map<String, String> envConfig = CloudInfoInterface.fetchEnvVars(provider);
@@ -151,24 +101,36 @@ public abstract class DevopsBase {
       } catch (Exception e) {
         throw new RuntimeException("Failed to retrieve env variables for the provider!", e);
       }
-    } else if (cloudType != null) {
-      commandList.add(cloudType.toString());
+    } else if (devopsCommand.cloudType != null) {
+      commandList.add(devopsCommand.cloudType.toString());
     } else {
       throw new RuntimeException(
           "Invalid args provided for execCommand: region, provider or cloudType required!");
     }
 
     String description = String.join(" ", commandList);
-    description += (" " + getCommandType().toLowerCase() + " " + command);
+    description += (" " + getCommandType().toLowerCase() + " " + devopsCommand.command);
     if (commandArgs.size() >= 1) {
       description += (" " + commandArgs.get(commandArgs.size() - 1));
     }
-    commandList.addAll(cloudArgs);
+    commandList.addAll(devopsCommand.cloudArgs);
     commandList.add(getCommandType().toLowerCase());
-    commandList.add(command);
+    commandList.add(devopsCommand.command);
     commandList.addAll(commandArgs);
-    return (sensitiveData != null && !sensitiveData.isEmpty())
-        ? shellProcessHandler.run(commandList, extraVars, description, sensitiveData)
+    return (devopsCommand.sensitiveData != null && !devopsCommand.sensitiveData.isEmpty())
+        ? shellProcessHandler.run(commandList, extraVars, description, devopsCommand.sensitiveData)
         : shellProcessHandler.run(commandList, extraVars, description);
+  }
+
+  @Builder
+  public static class DevopsCommand {
+    UUID regionUUID;
+    UUID providerUUID;
+    Common.CloudType cloudType;
+    String command;
+    List<String> commandArgs;
+    @Builder.Default List<String> cloudArgs = Collections.emptyList();
+    Map<String, String> envVars;
+    Map<String, String> sensitiveData;
   }
 }

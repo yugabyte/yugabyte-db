@@ -57,6 +57,7 @@
 #include "yb/tserver/tserver_call_home.h"
 #include "yb/rpc/io_thread_pool.h"
 #include "yb/rpc/scheduler.h"
+#include "yb/rpc/secure_stream.h"
 #include "yb/server/skewed_clock.h"
 #include "yb/server/secure.h"
 #include "yb/tserver/factory.h"
@@ -211,7 +212,7 @@ int TabletServerMain(int argc, char** argv) {
   tablet_server_options->env = env.get();
   tablet_server_options->rocksdb_env = rocksdb_env.get();
   tablet_server_options->universe_key_manager = universe_key_manager.get();
-  enterprise::Factory factory;
+  Factory factory;
 
   auto server = factory.CreateTabletServer(*tablet_server_options);
 

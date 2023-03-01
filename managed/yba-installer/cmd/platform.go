@@ -245,8 +245,9 @@ func (plat Platform) Start() {
 		restartSeconds := config.GetYamlPathData("platform.restartSeconds")
 
 		command1 := "bash"
-		arg1 := []string{"-c", plat.cronScript + " " + common.GetInstallerSoftwareDir() + " " +
-			containerExposedPort + " " + restartSeconds + " > /dev/null 2>&1 &"}
+		arg1 := []string{"-c", plat.cronScript + " " + common.GetSoftwareRoot() + " " +
+			common.GetDataRoot() + " " + containerExposedPort + " " + restartSeconds +
+			" > /dev/null 2>&1 &"}
 
 		common.RunBash(command1, arg1)
 
@@ -281,6 +282,7 @@ func (plat Platform) Stop() {
 			pids := strings.Split(string(out0), "\n")
 			for _, pid := range pids {
 				if strings.Contains(pid, "java") {
+					log.Debug("kill platform pid: " + pid)
 					argStop := []string{"-c", "kill -9 " + strings.TrimSuffix(pid, "\n")}
 					common.RunBash(commandCheck0, argStop)
 				}
@@ -308,6 +310,8 @@ func (plat Platform) Restart() {
 
 // Uninstall the YBA platform service and optionally clean out data.
 func (plat Platform) Uninstall(removeData bool) {
+	log.Info("Uninstalling yb-platform")
+
 	// Stop running platform service
 	plat.Stop()
 
@@ -437,6 +441,6 @@ func (plat Platform) CreateCronJob() {
 	restartSeconds := config.GetYamlPathData("platform.restartSeconds")
 	common.RunBash("bash", []string{"-c",
 		"(crontab -l 2>/dev/null; echo \"@reboot " + plat.cronScript + " " +
-			common.GetInstallerSoftwareDir() + " " + containerExposedPort + " " + restartSeconds +
-			"\") | sort - | uniq - | crontab - "})
+			common.GetSoftwareRoot() + " " + common.GetDataRoot() + " " + containerExposedPort + " " +
+			restartSeconds + "\") | sort - | uniq - | crontab - "})
 }

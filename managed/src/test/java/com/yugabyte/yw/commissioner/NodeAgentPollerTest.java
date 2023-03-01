@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.models.Customer;
@@ -56,6 +57,8 @@ public class NodeAgentPollerTest extends FakeDBApplication {
   @Mock private PlatformExecutorFactory mockPlatformExecutorFactory;
   @Mock private PlatformScheduler mockPlatformScheduler;
   @Mock private NodeAgentClient mockNodeAgentClient;
+
+  @Mock RuntimeConfGetter mockConfGetter;
   private NodeAgentManager nodeAgentManager;
   private NodeAgentHandler nodeAgentHandler;
   private NodeAgentPoller nodeAgentPoller;
@@ -64,7 +67,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
   @Before
   public void setup() {
     customer = ModelFactory.testCustomer();
-    nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper);
+    nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper, mockConfGetter);
     nodeAgentHandler = new NodeAgentHandler(mockAppConfig, nodeAgentManager, mockNodeAgentClient);
     nodeAgentPoller =
         new NodeAgentPoller(
@@ -96,6 +99,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     payload.ip = "10.20.30.40";
     payload.osType = OSType.LINUX.name();
     payload.archType = ArchType.AMD64.name();
+    payload.home = "/home/yugabyte/node-agent";
     NodeAgent nodeAgent = register(payload);
     UUID nodeAgentUuid = nodeAgent.uuid;
     Date time1 = nodeAgent.updatedAt;
@@ -135,6 +139,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     payload.ip = "10.20.30.40";
     payload.osType = OSType.LINUX.name();
     payload.archType = ArchType.AMD64.name();
+    payload.home = "/home/yugabyte/node-agent";
     NodeAgent nodeAgent = register(payload);
     UUID nodeAgentUuid = nodeAgent.uuid;
     Date time1 = nodeAgent.updatedAt;
@@ -170,6 +175,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
         .thenReturn(pingResponse2 /* heartbeat call */)
         .thenReturn(pingResponse1 /* after upgrade */)
         .thenReturn(pingResponse2 /* after restart */);
+    when(mockNodeAgentClient.finalizeUpgrade(any())).thenReturn("/home/yugabyte/node-agent");
     when(mockConfigHelper.getConfig(eq(ConfigType.SoftwareVersion)))
         .thenReturn(ImmutableMap.of("version", "2.13.0.0"));
     when(mockAppConfig.getString(eq(NodeAgentManager.NODE_AGENT_RELEASES_PATH_PROPERTY)))
@@ -180,6 +186,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     payload.ip = "10.20.30.40";
     payload.osType = OSType.LINUX.name();
     payload.archType = ArchType.AMD64.name();
+    payload.home = "/home/yugabyte/node-agent";
     NodeAgent nodeAgent = register(payload);
     Path certDir = nodeAgent.getCertDirPath();
     PollerTaskParam param =

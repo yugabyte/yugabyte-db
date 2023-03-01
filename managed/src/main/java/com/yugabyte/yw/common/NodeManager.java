@@ -115,6 +115,7 @@ public class NodeManager extends DevopsBase {
       ImmutableList.of(ServerType.MASTER.name(), ServerType.TSERVER.name());
   static final String SKIP_CERT_VALIDATION = "yb.tls.skip_cert_validation";
   public static final String POSTGRES_MAX_MEM_MB = "yb.dbmem.postgres.max_mem_mb";
+  public static final String POSTGRES_RR_MAX_MEM_MB = "yb.dbmem.postgres.rr_max_mem_mb";
   public static final String YBC_NFS_DIRS = "yb.ybc_flags.nfs_dirs";
   public static final String YBC_ENABLE_VERBOSE = "yb.ybc_flags.enable_verbose";
   public static final String YBC_PACKAGE_REGEX = ".+ybc(.*).tar.gz";
@@ -697,8 +698,10 @@ public class NodeManager extends DevopsBase {
         } else if (releaseMetadata.http != null) {
           subcommand.add("--http_remote_download");
           ybServerPackage = releaseMetadata.http.paths.x86_64;
-          subcommand.add("--http_package_checksum");
-          subcommand.add(releaseMetadata.http.paths.x86_64Checksum.toLowerCase());
+          if (StringUtils.isNotBlank(releaseMetadata.http.paths.x86_64_checksum)) {
+            subcommand.add("--http_package_checksum");
+            subcommand.add(releaseMetadata.http.paths.x86_64_checksum.toLowerCase());
+          }
         } else {
           ybServerPackage = releaseMetadata.getFilePath(taskParam.getRegion());
         }
@@ -1205,6 +1208,14 @@ public class NodeManager extends DevopsBase {
       skipHostValidation =
           GFlagsUtil.shouldSkipServerEndpointVerification(userIntent.masterGFlags)
               || GFlagsUtil.shouldSkipServerEndpointVerification(userIntent.tserverGFlags);
+      if (userIntent.specificGFlags != null) {
+        skipHostValidation =
+            skipHostValidation
+                || GFlagsUtil.shouldSkipServerEndpointVerification(
+                    userIntent.specificGFlags.getGFlags(null, ServerType.MASTER))
+                || GFlagsUtil.shouldSkipServerEndpointVerification(
+                    userIntent.specificGFlags.getGFlags(null, ServerType.TSERVER));
+      }
     }
     return skipHostValidation ? SkipCertValidationType.HOSTNAME : SkipCertValidationType.NONE;
   }
@@ -1269,13 +1280,12 @@ public class NodeManager extends DevopsBase {
     List<String> cloudArgs = Arrays.asList("--node_metadata", Json.stringify(nodeDetails));
 
     return execCommand(
-        nodeTaskParam.getRegion().uuid,
-        null,
-        null,
-        type.toString().toLowerCase(),
-        commandArgs,
-        cloudArgs,
-        Collections.emptyMap());
+        DevopsCommand.builder()
+            .regionUUID(nodeTaskParam.getRegion().uuid)
+            .command(type.toString().toLowerCase())
+            .commandArgs(commandArgs)
+            .cloudArgs(cloudArgs)
+            .build());
   }
 
   private Path addBootscript(
@@ -1366,9 +1376,10 @@ public class NodeManager extends DevopsBase {
         nodeIp = nodeDetails.cloudInfo.private_ip;
       }
     }
-    if (StringUtils.isNotBlank(nodeIp)) {
+    if (StringUtils.isNotBlank(nodeIp) && StringUtils.isNotBlank(userIntent.provider)) {
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
       getNodeAgentClient()
-          .maybeGetNodeAgentClient(nodeIp)
+          .maybeGetNodeAgentClient(nodeIp, provider)
           .ifPresent(
               nodeAgent -> {
                 commandArgs.add("--connection_type");
@@ -1606,10 +1617,21 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(localPackagePath);
           }
 
+          Integer postgres_max_mem_mb =
+              confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresMaxMemMb);
+
+          // For read replica clusters, use the read replica value if it is >= 0. -1 means to follow
+          // what the primary cluster has set.
+          Integer rr_max_mem_mb =
+              confGetter.getConfForScope(
+                  universe, UniverseConfKeys.dbMemPostgresReadReplicaMaxMemMb);
+          if (universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid).clusterType
+                  == UniverseDefinitionTaskParams.ClusterType.ASYNC
+              && rr_max_mem_mb >= 0) {
+            postgres_max_mem_mb = rr_max_mem_mb;
+          }
           commandArgs.add("--pg_max_mem_mb");
-          commandArgs.add(
-              Integer.toString(
-                  confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresMaxMemMb)));
+          commandArgs.add(Integer.toString(postgres_max_mem_mb));
 
           if (cloudType.equals(Common.CloudType.azu)) {
             NodeDetails node = universe.getNode(taskParam.nodeName);
@@ -1809,10 +1831,22 @@ public class NodeManager extends DevopsBase {
           commandArgs.add("--instance_type");
           commandArgs.add(taskParam.instanceType);
 
+          Integer postgres_max_mem_mb =
+              confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresMaxMemMb);
+
+          // For read replica clusters, use the read replica value if it is >= 0. -1 means to follow
+          // what the primary cluster has set.
+          Integer rr_max_mem_mb =
+              confGetter.getConfForScope(
+                  universe, UniverseConfKeys.dbMemPostgresReadReplicaMaxMemMb);
+          if (universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid).clusterType
+                  == UniverseDefinitionTaskParams.ClusterType.ASYNC
+              && rr_max_mem_mb >= 0) {
+            postgres_max_mem_mb = rr_max_mem_mb;
+          }
           commandArgs.add("--pg_max_mem_mb");
-          commandArgs.add(
-              Integer.toString(
-                  confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresMaxMemMb)));
+          commandArgs.add(Integer.toString(postgres_max_mem_mb));
+
           if (taskParam.force) {
             commandArgs.add("--force");
           }
@@ -2003,14 +2037,14 @@ public class NodeManager extends DevopsBase {
     commandArgs.add(nodeTaskParam.nodeName);
     try {
       return execCommand(
-          nodeTaskParam.getRegion().uuid,
-          null,
-          null,
-          type.toString().toLowerCase(),
-          commandArgs,
-          getCloudArgs(nodeTaskParam),
-          getAnsibleEnvVars(nodeTaskParam.universeUUID),
-          sensitiveData);
+          DevopsCommand.builder()
+              .regionUUID(nodeTaskParam.getRegion().uuid)
+              .command(type.toString().toLowerCase())
+              .commandArgs(commandArgs)
+              .cloudArgs(getCloudArgs(nodeTaskParam))
+              .envVars(getAnsibleEnvVars(nodeTaskParam.universeUUID))
+              .sensitiveData(sensitiveData)
+              .build());
     } finally {
       if (bootScriptFile != null) {
         try {

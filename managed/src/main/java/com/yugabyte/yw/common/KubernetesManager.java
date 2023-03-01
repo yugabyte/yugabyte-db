@@ -6,7 +6,13 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.helm.HelmUtils;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.models.Universe;
 import io.fabric8.kubernetes.api.model.LoadBalancerIngress;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -32,7 +38,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
-import javax.inject.Inject;
+import com.google.inject.Inject;
+import com.google.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
@@ -42,6 +49,8 @@ public abstract class KubernetesManager {
   @Inject ReleaseManager releaseManager;
 
   @Inject ShellProcessHandler shellProcessHandler;
+
+  @Inject RuntimeConfGetter confGetter;
 
   @Inject play.Configuration appConfig;
 
@@ -56,13 +65,13 @@ public abstract class KubernetesManager {
   /* helm interface */
 
   public void helmInstall(
+      UUID universeUUID,
       String ybSoftwareVersion,
       Map<String, String> config,
       UUID providerUUID,
       String helmReleaseName,
       String namespace,
       String overridesFile) {
-
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
     List<String> commandList =
         ImmutableList.of(
@@ -76,7 +85,7 @@ public abstract class KubernetesManager {
             "-f",
             overridesFile,
             "--timeout",
-            getTimeout(),
+            getTimeout(universeUUID),
             "--wait");
     ShellResponse response = execCommand(config, commandList);
     processHelmResponse(config, helmReleaseName, namespace, response);
@@ -92,12 +101,14 @@ public abstract class KubernetesManager {
   }
 
   public String helmTemplate(
+      UUID universeUuid,
       String ybSoftwareVersion,
       Map<String, String> config,
       String helmReleaseName,
       String namespace,
       String overridesFile) {
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
+
     Path tempOutputFile;
     try {
       tempOutputFile = Files.createTempFile("helm-template", ".output");
@@ -117,7 +128,7 @@ public abstract class KubernetesManager {
             "--namespace",
             namespace,
             "--timeout",
-            getTimeout(),
+            getTimeout(universeUuid),
             "--is-upgrade",
             "--no-hooks",
             "--skip-crds",
@@ -141,6 +152,7 @@ public abstract class KubernetesManager {
   }
 
   public void helmUpgrade(
+      UUID universeUuid,
       String ybSoftwareVersion,
       Map<String, String> config,
       String helmReleaseName,
@@ -150,7 +162,8 @@ public abstract class KubernetesManager {
 
     // Capture the diff what is going to be upgraded.
     String helmTemplatePath =
-        helmTemplate(ybSoftwareVersion, config, helmReleaseName, namespace, overridesFile);
+        helmTemplate(
+            universeUuid, ybSoftwareVersion, config, helmReleaseName, namespace, overridesFile);
     if (helmTemplatePath != null) {
       diff(config, helmTemplatePath);
     } else {
@@ -169,7 +182,7 @@ public abstract class KubernetesManager {
             "--namespace",
             namespace,
             "--timeout",
-            getTimeout(),
+            getTimeout(universeUuid),
             "--wait");
     ShellResponse response = execCommand(config, commandList);
     processHelmResponse(config, helmReleaseName, namespace, response);
@@ -391,16 +404,18 @@ public abstract class KubernetesManager {
     }
   }
 
-  public Long getTimeoutSecs() {
-    Long timeout = appConfig.getLong("yb.helm.timeout_secs");
+  public Long getTimeoutSecs(UUID universeUuid) {
+    Long timeout =
+        confGetter.getConfForScope(
+            Universe.getOrBadRequest(universeUuid), UniverseConfKeys.helmTimeoutSecs);
     if (timeout == null || timeout == 0) {
       timeout = DEFAULT_TIMEOUT_SECS;
     }
     return timeout;
   }
 
-  public String getTimeout() {
-    return String.valueOf(getTimeoutSecs()) + "s";
+  public String getTimeout(UUID universeUuid) {
+    return String.valueOf(getTimeoutSecs(universeUuid)) + "s";
   }
 
   private ShellResponse execCommand(
@@ -533,6 +548,7 @@ public abstract class KubernetesManager {
       Map<String, String> config, String namespace, String stsName);
 
   public abstract boolean expandPVC(
+      UUID universeUUID,
       Map<String, String> config,
       String namespace,
       String helmReleaseName,

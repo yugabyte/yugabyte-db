@@ -77,12 +77,7 @@ export const InstanceConfiguration: FC = () => {
     return (
       <Box className={helperClasses.settingsContainer}>
         <Box m={2}>
-          <Typography className={classes.subsectionHeaderFont}>
-            {t(instanceLabel)}
-            {instanceLabel === 'universeForm.master' ? (
-              <img alt="More" src={InfoMessageIcon} className={helperClasses.infoTooltipIcon} />
-            ) : null}
-          </Typography>
+          <Typography className={classes.subsectionHeaderFont}>{t(instanceLabel)}</Typography>
           {getInstanceMetadataElement(isDedicatedMasterField)}
         </Box>
       </Box>

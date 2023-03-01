@@ -49,6 +49,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.MaintenanceWindow;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
@@ -154,6 +155,11 @@ public class ModelFactory {
   public static Provider newProvider(
       Customer customer, Common.CloudType cloud, Map<String, String> config) {
     return Provider.create(customer.uuid, cloud, cloud.toString(), config);
+  }
+
+  public static Provider newProvider(
+      Customer customer, Common.CloudType cloud, ProviderDetails details) {
+    return Provider.create(customer.uuid, cloud, cloud.toString(), details);
   }
 
   /*
