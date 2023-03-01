@@ -135,7 +135,11 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "yb.dbmem.postgres.rr_max_mem_mb",
           ScopeType.UNIVERSE,
           "DB Postgres Max Mem for read replicas",
-          "Amount of memory to limit the postgres process in read replicas to via the ysql cgroup",
+          "The amount of memory in MB to limit the postgres process in read replicas to via the "
+              + "ysql cgroup. "
+              + "If the value is -1, it will default to the 'yb.dbmem.postgres.max_mem_mb' value. "
+              + "0 will not set any cgroup limits. "
+              + ">0 set max memory of postgres to this value for read replicas",
           ConfDataType.IntegerType);
   public static final ConfKeyInfo<Long> dbMemAvailableLimit =
       new ConfKeyInfo<>(
