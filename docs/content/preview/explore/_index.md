@@ -81,7 +81,7 @@ For testing and learning YugabyteDB on your computer, use the [yugabyted](../ref
 
   {{% tab header="Single-node universe" lang="Single-node universe" %}}
 
-If a local universe is currently running, first [destroy it](#destroy-a-universe).
+If a local universe is currently running, first [destroy it](../reference/configuration/yugabyted/#destroy-a-local-cluster).
 
 You can create a single-node local universe with a replication factor (RF) of 1 by running the following command:
 
@@ -104,7 +104,7 @@ For more information, refer to [Quick Start](../quick-start/linux/#create-a-loca
 
 The following instructions show how to simulate a multi-node universe on a single computer. To deploy a true multi-node universe, follow the instructions in [Deploy](../deploy/).
 
-If a local universe is currently running, first [destroy it](#destroy-a-universe).
+If a local universe is currently running, first [destroy it](../reference/configuration/yugabyted/#destroy-a-local-cluster).
 
 Start a local three-node universe with an RF of `3` by first creating a single node universe, as follows:
 
@@ -232,26 +232,6 @@ To run the examples in YugabyteDB Anywhere, [create a universe](../yugabyte-plat
 
   </div>
 </div>
-
-### Destroy a universe
-
-If you are running YugabyteDB on your local computer, you can't run more than one universe at a time. To set up a new local YugabyteDB universe, first destroy the currently running universe.
-
-To destroy a local single-node universe, execute the following:
-
-```sh
-./bin/yugabyted destroy
-```
-
-To destroy a local multi-node universe, execute the following:
-
-```sh
-./bin/yugabyted destroy --base_dir=/tmp/ybd1
-./bin/yugabyted destroy --base_dir=/tmp/ybd2
-./bin/yugabyted destroy --base_dir=/tmp/ybd3
-```
-
-If the universe has more than three nodes, use the `destroy` command with the `--base_dir` flag set to the directory path of the additional nodes.
 
 ## Set up YB Workload Simulator
 
