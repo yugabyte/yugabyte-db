@@ -111,7 +111,7 @@ struct TableInfo {
   uint32_t wal_retention_secs = 0;
 
   // Public ctor with private argument to allow std::make_shared, but prevent public usage.
-  TableInfo(const std::string& log_prefix, PrivateTag);
+  TableInfo(const std::string& log_prefix, TableType table_type, PrivateTag);
   TableInfo(const std::string& tablet_log_prefix,
             Primary primary,
             std::string table_id,

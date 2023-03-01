@@ -391,7 +391,7 @@ Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
 // Check if a duplicate value is inserted into a unique index.
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(const DocOperationApplyData& data) {
   VLOG(3) << "Looking for collisions in\n" << docdb::DocDBDebugDumpToStr(
-      data.doc_write_batch->doc_db(), SchemaPackingStorage());
+      data.doc_write_batch->doc_db(), SchemaPackingStorage(TableType::PGSQL_TABLE_TYPE));
   // We need to check backwards only for backfilled entries.
   bool ret =
       VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kForward)) ||
@@ -480,12 +480,12 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
               << " vs New: " << yb::ToString(new_value)
               << "\nUsed read time as " << yb::ToString(data.read_time);
       DVLOG(3) << "DocDB is now:\n" << docdb::DocDBDebugDumpToStr(
-          data.doc_write_batch->doc_db(), SchemaPackingStorage());
+          data.doc_write_batch->doc_db(), SchemaPackingStorage(TableType::PGSQL_TABLE_TYPE));
       return true;
     }
   }
 
-  VLOG(2) << "No collision while checking at " << yb::ToString(read_time);
+  VLOG(2) << "No collision while checking at " << AsString(read_time);
   return false;
 }
 

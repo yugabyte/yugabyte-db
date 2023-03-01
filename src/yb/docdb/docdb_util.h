@@ -47,8 +47,7 @@ struct ExternalIntent {
 // compacting the history until a certain point. This is used in the bulk load tool. This is also
 // convenient base class for GTest test classes, because it exposes member functions such as
 // rocksdb() and write_options().
-class DocDBRocksDBUtil {
-
+class DocDBRocksDBUtil : public SchemaPackingProvider {
  public:
   DocDBRocksDBUtil();
   explicit DocDBRocksDBUtil(InitMarkerBehavior init_marker_behavior);
@@ -60,6 +59,7 @@ class DocDBRocksDBUtil {
   // function BlockCacheSize.
   virtual Status InitRocksDBOptions() = 0;
   virtual std::string tablet_id() = 0;
+  virtual Schema CreateSchema() = 0;
 
   // Size of block cache for RocksDB, 0 means don't use block cache.
   virtual size_t block_cache_size() const { return 16 * 1024 * 1024; }
@@ -179,8 +179,7 @@ class DocDBRocksDBUtil {
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
-  void DocDBDebugDumpToConsole(
-      const SchemaPackingStorage& schema_packing_storage = SchemaPackingStorage());
+  void DocDBDebugDumpToConsole();
 
   Status FlushRocksDbAndWait();
 
@@ -219,6 +218,8 @@ class DocDBRocksDBUtil {
   // Could be used when single DocWriteBatch is enough.
   DocWriteBatch& DefaultDocWriteBatch();
 
+  DocReadContext& doc_read_context();
+
  protected:
   std::string IntentsDBDir();
 
@@ -239,7 +240,6 @@ class DocDBRocksDBUtil {
   std::shared_ptr<std::function<uint64_t()>> max_file_size_for_compaction_;
 
   rocksdb::WriteOptions write_options_;
-  DocReadContext doc_read_context_;
   boost::optional<TransactionId> current_txn_id_;
   mutable IntraTxnWriteId intra_txn_write_id_ = 0;
   IsolationLevel txn_isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
@@ -247,8 +247,15 @@ class DocDBRocksDBUtil {
   HybridTime delete_marker_retention_time_ = HybridTime::kMax;
 
  private:
+  Result<CompactionSchemaInfo> CotablePacking(
+      const Uuid& table_id, uint32_t schema_version, HybridTime history_cutoff) override;
+
+  Result<CompactionSchemaInfo> ColocationPacking(
+      ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) override;
+
   std::atomic<int64_t> monotonic_counter_{0};
-  boost::optional<DocWriteBatch> doc_write_batch_;
+  std::optional<DocWriteBatch> doc_write_batch_;
+  std::shared_ptr<DocReadContext> doc_read_context_;
 };
 
 }  // namespace docdb

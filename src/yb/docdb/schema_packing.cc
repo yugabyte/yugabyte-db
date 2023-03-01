@@ -32,8 +32,10 @@ namespace {
 // Used to mark column as skipped by packer. For instance in case of collection column.
 constexpr int64_t kSkippedColumnIdx = -1;
 
-bool IsVarlenColumn(const ColumnSchema& column_schema) {
-  return column_schema.is_nullable() || column_schema.type_info()->var_length();
+bool IsVarlenColumn(TableType table_type, const ColumnSchema& column_schema) {
+  // CQL columns could have individual TTL.
+  return table_type == TableType::YQL_TABLE_TYPE ||
+         column_schema.is_nullable() || column_schema.type_info()->var_length();
 }
 
 size_t EncodedColumnSize(const ColumnSchema& column_schema) {
@@ -69,7 +71,7 @@ std::string ColumnPackingData::ToString() const {
       id, num_varlen_columns_before, offset_after_prev_varlen_column, size, nullable);
 }
 
-SchemaPacking::SchemaPacking(const Schema& schema) {
+SchemaPacking::SchemaPacking(TableType table_type, const Schema& schema) {
   varlen_columns_count_ = 0;
   size_t offset_after_prev_varlen_column = 0;
   columns_.reserve(schema.num_columns() - schema.num_key_columns());
@@ -81,7 +83,7 @@ SchemaPacking::SchemaPacking(const Schema& schema) {
       continue;
     }
     column_to_idx_.emplace(column_id, columns_.size());
-    bool varlen = IsVarlenColumn(column_schema);
+    bool varlen = IsVarlenColumn(table_type, column_schema);
     columns_.emplace_back(ColumnPackingData {
       .id = schema.column_id(i),
       .num_varlen_columns_before = varlen_columns_count_,
@@ -169,10 +171,11 @@ bool SchemaPacking::CouldPack(
   return true;
 }
 
-SchemaPackingStorage::SchemaPackingStorage() = default;
+SchemaPackingStorage::SchemaPackingStorage(TableType table_type) : table_type_(table_type) {}
 
 SchemaPackingStorage::SchemaPackingStorage(
-    const SchemaPackingStorage& rhs, SchemaVersion min_schema_version) {
+    const SchemaPackingStorage& rhs, SchemaVersion min_schema_version)
+    : table_type_(rhs.table_type_) {
   for (const auto& [version, packing] : rhs.version_to_schema_packing_) {
     if (version < min_schema_version) {
       continue;
@@ -200,7 +203,7 @@ void SchemaPackingStorage::AddSchema(SchemaVersion version, const Schema& schema
   auto inserted = version_to_schema_packing_.emplace(
       std::piecewise_construct,
       std::forward_as_tuple(version),
-      std::forward_as_tuple(schema)).second;
+      std::forward_as_tuple(table_type_, schema)).second;
   LOG_IF(DFATAL, !inserted)
       << "Duplicate schema version: " << version << ", " << AsString(version_to_schema_packing_);
 }
