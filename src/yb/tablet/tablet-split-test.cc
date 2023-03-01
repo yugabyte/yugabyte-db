@@ -128,8 +128,9 @@ TEST_F(TabletSplitTest, SplitTablet) {
   }
 
   VLOG(1) << "Source tablet:" << std::endl
-          << docdb::DocDBDebugDumpToStr(tablet()->doc_db(), docdb::SchemaPackingStorage(),
-                                        docdb::IncludeBinary::kTrue);
+          << docdb::DocDBDebugDumpToStr(
+                 tablet()->doc_db(), docdb::SchemaPackingStorage(tablet()->table_type()),
+                 docdb::IncludeBinary::kTrue);
   const auto source_docdb_dump_str = tablet()->TEST_DocDBDumpStr(IncludeIntents::kTrue);
   std::unordered_set<std::string> source_docdb_dump;
   tablet()->TEST_DocDBDumpToContainer(IncludeIntents::kTrue, &source_docdb_dump);

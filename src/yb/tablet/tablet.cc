@@ -3687,7 +3687,7 @@ Status Tablet::ReadIntents(std::vector<std::string>* intents) {
   auto intent_iter = std::unique_ptr<rocksdb::Iterator>(
       intents_db_->NewIterator(read_options));
   intent_iter->SeekToFirst();
-  docdb::SchemaPackingStorage schema_packing_storage;
+  docdb::SchemaPackingStorage schema_packing_storage(table_type());
 
   for (; intent_iter->Valid(); intent_iter->Next()) {
     auto item = EntryToString(intent_iter->key(), intent_iter->value(),
