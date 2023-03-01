@@ -232,7 +232,10 @@ because functions like oracle.add_months,oracle.last_day,oracle.next_day,oracle.
 == Table dual
 
 PostgreSQL does not need Oracle's table 'dual', but since it is intensively
-used by Oracle users, it has been added in orafce.
+used by Oracle users, it has been added in orafce. This table is in schema
+`oracle`. Usually you want allow unqualified access - so you should to add
+this schema to `search_path` configuration (like `search_path = 'oracle, pg_catalog, "$user", public'`
+in `postgresql.conf`).
 
 == Package dbms_output
 
