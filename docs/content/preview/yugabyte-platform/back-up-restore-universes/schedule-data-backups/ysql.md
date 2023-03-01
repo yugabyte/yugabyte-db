@@ -63,7 +63,7 @@ Before scheduling a backup of your universe YSQL data, create a policy, as follo
 
 1. Specify the interval between backups or select **Use cron expression (UTC)**.
 
-1. Enable **Take incremental backups within full backup intervals** to instruct the schedule policy to take full backups periodically and incremental backups between those full backups (YBA version 2.16 or later, and YugabyteDB version 2.16 or layer only). The incremental backups intervals must be shorter than the full scheduled backup frequency:
+1. Enable **Take incremental backups within full backup intervals** to instruct the schedule policy to take full backups periodically and incremental backups between those full backups (YBA version 2.16 or later, and YugabyteDB version 2.16 or later only). The incremental backups intervals must be shorter than the full scheduled backup frequency:
 
     ![Incremental Backup](/images/yp/scheduled-backup-ycql-incremental.png)
 
