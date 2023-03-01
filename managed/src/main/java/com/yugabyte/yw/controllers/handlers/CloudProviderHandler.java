@@ -69,6 +69,11 @@ import io.ebean.annotation.Transactional;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Secret;
+import java.util.ArrayList;
+import io.fabric8.kubernetes.client.utils.Serialization;
+import java.io.IOException;
+import java.io.File;
+import java.io.InputStream;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -85,11 +90,20 @@ import org.slf4j.LoggerFactory;
 import play.Configuration;
 import play.Environment;
 import play.libs.Json;
+import scala.reflect.internal.tpe.TypeMaps.ContainsCollector;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodSpec;
+import io.fabric8.kubernetes.api.model.Container;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
+
+import play.Application;
+import play.Play;
 
 public class CloudProviderHandler {
   public static final String YB_FIREWALL_TAGS = "YB_FIREWALL_TAGS";
   public static final String SKIP_KEYPAIR_VALIDATION_KEY = "yb.provider.skip_keypair_validation";
-
   private static final Logger LOG = LoggerFactory.getLogger(CloudProviderHandler.class);
   private static final JsonNode KUBERNETES_CLOUD_INSTANCE_TYPE =
       Json.parse("{\"instanceTypeCode\": \"cloud\", \"numCores\": 0.5, \"memSizeGB\": 1.5}");
@@ -503,22 +517,32 @@ public class CloudProviderHandler {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, "Required configuration is missing.");
       }
-      String pullSecretContent = getKubernetesPullSecretContent(pullSecretName);
+      Secret pullSecret = getKubernetesPullSecret(pullSecretName);
 
       KubernetesProviderFormData formData = new KubernetesProviderFormData();
       formData.code = kubernetes;
-      if (pullSecretContent != null) {
+      if (pullSecret != null) {
         formData.config =
             ImmutableMap.of(
-                "KUBECONFIG_IMAGE_PULL_SECRET_NAME", pullSecretName,
-                "KUBECONFIG_PULL_SECRET_NAME", pullSecretName, // filename
-                "KUBECONFIG_PULL_SECRET_CONTENT", pullSecretContent);
+                "KUBECONFIG_IMAGE_PULL_SECRET_NAME",
+                pullSecretName,
+                "KUBECONFIG_PULL_SECRET_NAME",
+                pullSecretName, // filename
+                "KUBECONFIG_PULL_SECRET_CONTENT",
+                Serialization.asYaml(pullSecret), // Yaml formatted
+                "KUBECONFIG_IMAGE_REGISTRY",
+                getKubernetesImageRepository()); // Location of the registry
       }
 
       for (String region : regionToAZ.keySet()) {
         KubernetesProviderFormData.RegionData regionData =
             new KubernetesProviderFormData.RegionData();
         regionData.code = region;
+        String regName = getRegionNameFromCode(region);
+        if (regName == null) {
+          regName = region;
+        }
+        regionData.name = regName;
         for (String az : regionToAZ.get(region)) {
           KubernetesProviderFormData.RegionData.ZoneData zoneData =
               new KubernetesProviderFormData.RegionData.ZoneData();
@@ -532,7 +556,15 @@ public class CloudProviderHandler {
 
       return formData;
     } catch (RuntimeException e) {
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+      LOG.error(
+          e.getClass()
+              + ": "
+              + e.getMessage()
+              + ": "
+              + e.getCause()
+              + "\n"
+              + e.getStackTrace().toString());
+      throw e; // new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
   } // Performs region and zone discovery based on
 
@@ -566,9 +598,9 @@ public class CloudProviderHandler {
     return regionToAZ;
   } // Fetches the secret secretName from current namespace, removes
 
-  // extra metadata and returns the secret as JSON string. Returns
-  // null if the secret is not present.
-  private String getKubernetesPullSecretContent(String secretName) {
+  // Extra metadata and returns the secret object.
+  // Returns null if the secret is not present.
+  private Secret getKubernetesPullSecret(String secretName) {
     Secret pullSecret;
     try {
       pullSecret = kubernetesManagerFactory.getManager().getSecret(null, secretName, null);
@@ -593,11 +625,65 @@ public class CloudProviderHandler {
     metadata.setSelfLink(null);
     metadata.setCreationTimestamp(null);
     metadata.setResourceVersion(null);
+    metadata.setManagedFields(null);
 
     if (metadata.getAnnotations() != null) {
       metadata.getAnnotations().remove("kubectl.kubernetes.io/last-applied-configuration");
     }
-    return pullSecret.toString();
+    return pullSecret;
+  }
+
+  public String getKubernetesImageRepository() {
+    String podName = System.getenv("HOSTNAME");
+    if (podName == null) {
+      podName = "yugaware-0";
+    }
+
+    String containerName = System.getenv("container");
+    if (containerName == null) {
+      containerName = "yugaware";
+    }
+    // Container Name can change between yugaware and yugaware-docker.
+    containerName = containerName.split("-")[0];
+
+    Pod podObject = kubernetesManagerFactory.getManager().getPodObject(null, null, podName);
+    if (podObject == null) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Error while fetching pod details for yugaware");
+    }
+    String imageName = null;
+    List<Container> containers = podObject.getSpec().getContainers();
+    for (Container c : containers) {
+      if (containerName.equals(c.getName())) {
+        imageName = c.getImage();
+      }
+    }
+    if (imageName == null) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Error while fetching image details for yugaware");
+    }
+    String[] parsed = imageName.split("/");
+    /* Algorithm Used
+    Take last element, split it with ":", take the 0th element of that list.
+    in that element replace string yugaware with yugabyte.
+    gcr.io/yugabyte/dev-ci-yugaware:2.17.2.0-b9999480 -> gcr.io/yugabyte/dev-ci-yugabyte */
+    parsed[parsed.length - 1] = parsed[parsed.length - 1].split(":")[0];
+    parsed[parsed.length - 1] = parsed[parsed.length - 1].replace("yugaware", "yugabyte");
+    return String.join("/", parsed);
+  }
+
+  public String getRegionNameFromCode(String code) {
+    LOG.info("Code is:", code);
+    String regionFile = "k8s_regions.json";
+    Application app = play.Play.application();
+    InputStream inputStream = app.resourceAsStream(regionFile);
+    JsonNode jsonNode = Json.parse(inputStream);
+    JsonNode nameNode = jsonNode.get(code);
+    if (nameNode == null || nameNode.isMissingNode()) {
+      LOG.info("Could not find code in file, sending it back as name");
+      return code;
+    }
+    return jsonNode.get(code).asText();
   }
 
   public Provider setupNewDockerProvider(Customer customer) {
