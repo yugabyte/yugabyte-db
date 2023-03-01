@@ -166,7 +166,7 @@ WebserverOptions& ServerBaseOptions::CompleteWebserverOptions() {
   return webserver_opts;
 }
 
-std::string ServerBaseOptions::HostsString() {
+std::string ServerBaseOptions::HostsString() const {
   return !server_broadcast_addresses.empty() ? server_broadcast_addresses
                                              : rpc_opts.rpc_bind_addresses;
 }
