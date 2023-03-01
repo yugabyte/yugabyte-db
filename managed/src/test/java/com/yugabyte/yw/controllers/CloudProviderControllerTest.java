@@ -64,9 +64,17 @@ import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodList;
+import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.Secret;
+import io.fabric8.kubernetes.client.utils.Serialization;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import org.yaml.snakeyaml.Yaml;
+
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.file.Files;
@@ -489,6 +497,15 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   private void testGetK8sSuggestedConfigBase(boolean noPullSecret) {
+    Pod testPod = null;
+    try {
+      File jsonFile = new File("src/test/resources/testYugaware.json");
+      InputStream jsonStream = new FileInputStream(jsonFile);
+
+      testPod = Serialization.unmarshal(jsonStream, Pod.class);
+      when(mockKubernetesManager.getPodObject(any(), any(), any())).thenReturn(testPod);
+    } catch (Exception e) {
+    }
     String pullSecretName = "pull-sec";
     String storageClassName = "ssd-class";
     // Was not able to get this working after trying various
@@ -541,18 +558,13 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     if (noPullSecret) {
       assertTrue(Json.fromJson(json.path("config"), Map.class).isEmpty());
     } else {
-      String parsedSecretString =
-          "{\"metadata\":{"
-              + "\"annotations\":{},"
-              + "\"name\":\""
-              + pullSecretName
-              + "\"},"
-              + "\"data\":{\".dockerconfigjson\":\"sec-key\"}}";
-      Secret parsedSecret = TestUtils.deserialize(parsedSecretString, Secret.class);
-
       assertValueAtPath(json, "/config/KUBECONFIG_IMAGE_PULL_SECRET_NAME", pullSecretName);
       assertValueAtPath(json, "/config/KUBECONFIG_PULL_SECRET_NAME", pullSecretName);
-      assertValueAtPath(json, "/config/KUBECONFIG_PULL_SECRET_CONTENT", parsedSecret.toString());
+      Yaml ya = new Yaml();
+      String one = ya.dump(ya.load(json.at("/config/KUBECONFIG_PULL_SECRET_CONTENT").toString()));
+      assertTrue(one.trim().endsWith("\".dockerconfigjson\": \"sec-key\""));
+      String registryPath = "quay.io/yugabyte/yugabyte-itest";
+      assertValueAtPath(json, "/config/KUBECONFIG_IMAGE_REGISTRY", registryPath);
     }
 
     assertValues(
