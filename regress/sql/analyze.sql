@@ -52,6 +52,10 @@ SELECT * FROM cypher(NULL, NULL) AS (result agtype);
 SELECT * FROM age_prepare_cypher('analyze', '$$ $$');
 SELECT * FROM cypher(NULL, NULL) AS (result agtype);
 
+-- should return errors
+SELECT * FROM cypher() AS (result agtype);
+SELECT * FROM cypher(NULL) AS (result agtype);
+
 -- drop graphs
 SELECT * FROM drop_graph('analyze', true);
 

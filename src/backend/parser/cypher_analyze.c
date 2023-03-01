@@ -331,6 +331,15 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
                  parser_errposition(pstate, exprLocation((Node *)funcexpr))));
     }
 
+    /* verify that we have 2 input parameters as it is possible to get 1 or 0 */
+    if (funcexpr->args == NULL || list_length(funcexpr->args) < 2)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_SYNTAX_ERROR),
+                 errmsg("cypher function requires a minimum of 2 arguments"),
+                 parser_errposition(pstate, -1)));
+    }
+
     /* get our first 2 arguments */
     arg1 = linitial(funcexpr->args);
     arg2 = lsecond(funcexpr->args);
