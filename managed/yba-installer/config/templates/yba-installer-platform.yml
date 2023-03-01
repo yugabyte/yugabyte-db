@@ -105,6 +105,10 @@ services:
         docker.release = "{{ .DataDir }}/ybc/release"
       }
 
+      node_agent {
+        releases.path = "{{ .DataDir }}/node-agent/releases"
+      }
+
       play.filters {
         # CSRF config
         csrf {

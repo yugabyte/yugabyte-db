@@ -96,6 +96,7 @@ func (plat Platform) Install() {
 	plat.untarDevopsAndYugawarePackages()
 	plat.copyYugabyteReleaseFile()
 	plat.copyYbcPackages()
+	plat.copyNodeAgentPackages()
 	plat.renameAndCreateSymlinks()
 	convertCertsToKeyStoreFormat()
 
@@ -122,6 +123,7 @@ func (plat Platform) createNecessaryDirectories() {
 	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/releases/"+plat.version, os.ModePerm)
 	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/ybc/release", os.ModePerm)
 	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/ybc/releases", os.ModePerm)
+	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/node-agent/releases", os.ModePerm)
 
 	common.MkdirAll(plat.devopsDir(), os.ModePerm)
 	common.MkdirAll(plat.yugawareDir(), os.ModePerm)
@@ -214,6 +216,38 @@ func (plat Platform) copyYbcPackages() {
 		_, fileName := filepath.Split(f)
 		// TODO: Check if file does not already exist?
 		common.CopyFile(f, common.GetBaseInstall()+"/data/yb-platform/ybc/release/"+fileName)
+	}
+
+}
+
+func (plat Platform) deleteNodeAgentPackages() {
+	// It deletes existing node-agent packages on upgrade.
+	// Even if it fails, it is ok.
+	releasesFolderPath := common.GetBaseInstall() + "/data/yb-platform/node-agent/releases"
+	nodeAgentPattern := releasesFolderPath + "/node_agent-*.tar.gz"
+	matches, err := filepath.Glob(nodeAgentPattern)
+	if err == nil {
+		for _, f := range matches {
+			os.Remove(f)
+		}
+	}
+}
+
+func (plat Platform) copyNodeAgentPackages() {
+	// Node-agent package is under yugabundle folder.
+	packageFolderPath := common.GetInstallerSoftwareDir() + "/packages/yugabyte-" + plat.version
+	nodeAgentPattern := packageFolderPath + "/node_agent-*.tar.gz"
+
+	matches, err := filepath.Glob(nodeAgentPattern)
+	if err != nil {
+		log.Fatal(
+			fmt.Sprintf("Could not find node-agent components in %s. Failed with err %s",
+				packageFolderPath, err.Error()))
+	}
+
+	for _, f := range matches {
+		_, fileName := filepath.Split(f)
+		common.CopyFile(f, common.GetBaseInstall()+"/data/yb-platform/node-agent/releases/"+fileName)
 	}
 
 }
@@ -393,6 +427,8 @@ func (plat Platform) Upgrade() {
 	plat.untarDevopsAndYugawarePackages()
 	plat.copyYugabyteReleaseFile()
 	plat.copyYbcPackages()
+	plat.deleteNodeAgentPackages()
+	plat.copyNodeAgentPackages()
 	plat.renameAndCreateSymlinks()
 
 	//Create the platform.log file so that we can start platform as
