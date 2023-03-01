@@ -45,3 +45,30 @@ SELECT * FROM create_complete_graph(NULL,NULL,NULL);
 SELECT drop_graph('gp1', true);
 SELECT drop_graph('gp2', true);
 
+
+-- Tests for barbell graph generation
+SELECT * FROM age_create_barbell_graph('gp1',5,0,'vertices',NULL,'edges',NULL);
+
+SELECT COUNT(*) FROM gp1."edges";
+SELECT COUNT(*) FROM gp1."vertices";
+
+SELECT * FROM cypher('gp1', $$MATCH (a)-[e]->(b) RETURN e$$) as (n agtype);
+
+SELECT * FROM age_create_barbell_graph('gp1',5,0,'vertices',NULL,'edges',NULL);
+
+SELECT COUNT(*) FROM gp1."edges";
+SELECT COUNT(*) FROM gp1."vertices";
+
+SELECT * FROM age_create_barbell_graph('gp2',5,10,'vertices',NULL,'edges',NULL);
+
+-- SHOULD FAIL
+SELECT * FROM age_create_barbell_graph(NULL,NULL,NULL,NULL,NULL,NULL,NULL);
+SELECT * FROM age_create_barbell_graph('gp2',NULL,0,'vertices',NULL,'edges',NULL); 
+SELECT * FROM age_create_barbell_graph('gp3',5,NULL,'vertices',NULL,'edges',NULL);
+SELECT * FROM age_create_barbell_graph('gp4',NULL,0,'vertices',NULL,'edges',NULL);
+SELECT * FROM age_create_barbell_graph('gp5',5,0,'vertices',NULL,NULL,NULL);
+
+-- DROPPING GRAPHS
+SELECT drop_graph('gp1', true);
+SELECT drop_graph('gp2', true);
+

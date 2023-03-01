@@ -109,3 +109,114 @@ NOTICE:  graph "gp2" has been dropped
  
 (1 row)
 
+-- Tests for barbell graph generation
+SELECT * FROM age_create_barbell_graph('gp1',5,0,'vertices',NULL,'edges',NULL);
+NOTICE:  graph "gp1" has been created
+NOTICE:  VLabel "vertices" has been created
+NOTICE:  ELabel "edges" has been created
+ age_create_barbell_graph 
+--------------------------
+ 
+(1 row)
+
+SELECT COUNT(*) FROM gp1."edges";
+ count 
+-------
+    21
+(1 row)
+
+SELECT COUNT(*) FROM gp1."vertices";
+ count 
+-------
+    10
+(1 row)
+
+SELECT * FROM cypher('gp1', $$MATCH (a)-[e]->(b) RETURN e$$) as (n agtype);
+                                                             n                                                              
+----------------------------------------------------------------------------------------------------------------------------
+ {"id": 1125899906842625, "label": "edges", "end_id": 844424930131970, "start_id": 844424930131969, "properties": {}}::edge
+ {"id": 1125899906842629, "label": "edges", "end_id": 844424930131971, "start_id": 844424930131970, "properties": {}}::edge
+ {"id": 1125899906842626, "label": "edges", "end_id": 844424930131971, "start_id": 844424930131969, "properties": {}}::edge
+ {"id": 1125899906842627, "label": "edges", "end_id": 844424930131972, "start_id": 844424930131969, "properties": {}}::edge
+ {"id": 1125899906842632, "label": "edges", "end_id": 844424930131972, "start_id": 844424930131971, "properties": {}}::edge
+ {"id": 1125899906842630, "label": "edges", "end_id": 844424930131972, "start_id": 844424930131970, "properties": {}}::edge
+ {"id": 1125899906842634, "label": "edges", "end_id": 844424930131973, "start_id": 844424930131972, "properties": {}}::edge
+ {"id": 1125899906842628, "label": "edges", "end_id": 844424930131973, "start_id": 844424930131969, "properties": {}}::edge
+ {"id": 1125899906842631, "label": "edges", "end_id": 844424930131973, "start_id": 844424930131970, "properties": {}}::edge
+ {"id": 1125899906842633, "label": "edges", "end_id": 844424930131973, "start_id": 844424930131971, "properties": {}}::edge
+ {"id": 1125899906842635, "label": "edges", "end_id": 844424930131975, "start_id": 844424930131974, "properties": {}}::edge
+ {"id": 1125899906842639, "label": "edges", "end_id": 844424930131976, "start_id": 844424930131975, "properties": {}}::edge
+ {"id": 1125899906842636, "label": "edges", "end_id": 844424930131976, "start_id": 844424930131974, "properties": {}}::edge
+ {"id": 1125899906842637, "label": "edges", "end_id": 844424930131977, "start_id": 844424930131974, "properties": {}}::edge
+ {"id": 1125899906842642, "label": "edges", "end_id": 844424930131977, "start_id": 844424930131976, "properties": {}}::edge
+ {"id": 1125899906842640, "label": "edges", "end_id": 844424930131977, "start_id": 844424930131975, "properties": {}}::edge
+ {"id": 1125899906842644, "label": "edges", "end_id": 844424930131978, "start_id": 844424930131977, "properties": {}}::edge
+ {"id": 1125899906842638, "label": "edges", "end_id": 844424930131978, "start_id": 844424930131974, "properties": {}}::edge
+ {"id": 1125899906842641, "label": "edges", "end_id": 844424930131978, "start_id": 844424930131975, "properties": {}}::edge
+ {"id": 1125899906842643, "label": "edges", "end_id": 844424930131978, "start_id": 844424930131976, "properties": {}}::edge
+ {"id": 1125899906842645, "label": "edges", "end_id": 844424930131978, "start_id": 844424930131969, "properties": {}}::edge
+(21 rows)
+
+SELECT * FROM age_create_barbell_graph('gp1',5,0,'vertices',NULL,'edges',NULL);
+ age_create_barbell_graph 
+--------------------------
+ 
+(1 row)
+
+SELECT COUNT(*) FROM gp1."edges";
+ count 
+-------
+    42
+(1 row)
+
+SELECT COUNT(*) FROM gp1."vertices";
+ count 
+-------
+    20
+(1 row)
+
+SELECT * FROM age_create_barbell_graph('gp2',5,10,'vertices',NULL,'edges',NULL);
+NOTICE:  graph "gp2" has been created
+NOTICE:  VLabel "vertices" has been created
+NOTICE:  ELabel "edges" has been created
+ age_create_barbell_graph 
+--------------------------
+ 
+(1 row)
+
+-- SHOULD FAIL
+SELECT * FROM age_create_barbell_graph(NULL,NULL,NULL,NULL,NULL,NULL,NULL);
+ERROR:  Graph name cannot be NULL
+SELECT * FROM age_create_barbell_graph('gp2',NULL,0,'vertices',NULL,'edges',NULL); 
+ERROR:  Graph size cannot be NULL or lower than 3
+SELECT * FROM age_create_barbell_graph('gp3',5,NULL,'vertices',NULL,'edges',NULL);
+ERROR:  Bridge size cannot be NULL or lower than 0
+SELECT * FROM age_create_barbell_graph('gp4',NULL,0,'vertices',NULL,'edges',NULL);
+ERROR:  Graph size cannot be NULL or lower than 3
+SELECT * FROM age_create_barbell_graph('gp5',5,0,'vertices',NULL,NULL,NULL);
+ERROR:  edge label can not be NULL
+-- DROPPING GRAPHS
+SELECT drop_graph('gp1', true);
+NOTICE:  drop cascades to 4 other objects
+DETAIL:  drop cascades to table gp1._ag_label_vertex
+drop cascades to table gp1._ag_label_edge
+drop cascades to table gp1.vertices
+drop cascades to table gp1.edges
+NOTICE:  graph "gp1" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('gp2', true);
+NOTICE:  drop cascades to 4 other objects
+DETAIL:  drop cascades to table gp2._ag_label_vertex
+drop cascades to table gp2._ag_label_edge
+drop cascades to table gp2.vertices
+drop cascades to table gp2.edges
+NOTICE:  graph "gp2" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+

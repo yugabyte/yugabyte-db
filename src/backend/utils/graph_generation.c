@@ -273,25 +273,23 @@ Datum age_create_barbell_graph(PG_FUNCTION_ARGS)
 
     arguments = fcinfo;
 
-    // create two separate complete graphs
-    DirectFunctionCall4(create_complete_graph, arguments->arg[0], 
-                                               arguments->arg[1],
-                                               arguments->arg[5], 
-                                               arguments->arg[3]);
-    DirectFunctionCall4(create_complete_graph, arguments->arg[0], 
-                                               arguments->arg[1],
-                                               arguments->arg[5], 
-                                               arguments->arg[3]);
-
-    // Handling remaining arguments 
-    /*
-     * graph_name: doesn't need to validate, since the create_complete_graph
-     * function already does that. 
-    */ 
+    // Checking for possible NULL arguments 
+    // Name graph_name
+    if (PG_ARGISNULL(0))
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("Graph name cannot be NULL")));
+    }
     graph_name = PG_GETARG_NAME(0);
     graph_name_str = NameStr(*graph_name);
-    graph_oid = get_graph_oid(graph_name_str);
 
+    // int graph size (number of nodes in each complete graph)
+    if (PG_ARGISNULL(1) && PG_GETARG_INT32(1) < 3)
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                errmsg("Graph size cannot be NULL or lower than 3")));
+    }
+    
     /*
      * int64 bridge_size: currently only stays at zero.
      * to do: implement bridge with variable number of nodes.
@@ -299,7 +297,7 @@ Datum age_create_barbell_graph(PG_FUNCTION_ARGS)
     if (PG_ARGISNULL(2) || PG_GETARG_INT32(2) < 0 )
     {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                errmsg("Bridge size must not be NULL or lower than 0")));
+                errmsg("Bridge size cannot be NULL or lower than 0")));
     }
 
     // node label: if null, gets default label, which is "_ag_label_vertex"
@@ -312,14 +310,31 @@ Datum age_create_barbell_graph(PG_FUNCTION_ARGS)
         node_label_name = PG_GETARG_NAME(3);
     }
     node_label_str = NameStr(*node_label_name);
-    node_label_id = get_label_id(node_label_str, graph_oid);
 
     /* 
-     * edge_label: doesn't need to validate, since the create_complete_graph
-     * function already does that. 
-     */
+    * Name edge_label 
+    */
+    if (PG_ARGISNULL(5))
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                errmsg("edge label can not be NULL")));
+    }
     edge_label_name = PG_GETARG_NAME(5);
     edge_label_str = NameStr(*edge_label_name);
+
+
+    // create two separate complete graphs
+    DirectFunctionCall4(create_complete_graph, arguments->arg[0], 
+                                               arguments->arg[1],
+                                               arguments->arg[5], 
+                                               arguments->arg[3]);
+    DirectFunctionCall4(create_complete_graph, arguments->arg[0], 
+                                               arguments->arg[1],
+                                               arguments->arg[5], 
+                                               arguments->arg[3]);
+
+    graph_oid = get_graph_oid(graph_name_str);
+    node_label_id = get_label_id(node_label_str, graph_oid);
     edge_label_id = get_label_id(edge_label_str, graph_oid);
 
     /*
