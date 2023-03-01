@@ -260,4 +260,12 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Max count of memory-mapped regions allowed in the system.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Boolean> enableAnsibleOffloading =
+      new ConfKeyInfo<>(
+          "yb.node_agent.ansible_offloading.enabled",
+          ScopeType.PROVIDER,
+          "Enable Ansible Offloading",
+          "Offload ansible tasks to the DB nodes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
