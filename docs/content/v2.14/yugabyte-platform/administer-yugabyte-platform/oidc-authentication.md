@@ -35,7 +35,7 @@ You can create an OIDC configuration as follows:
 
 - Select **OIDC Configuration** and complete the fields shown in the following illustration:<br><br>
 
-  ![OIDC authentication](/images/yp/oidc-auth-1.png)<br><br>
+  ![OIDC authentication](/images/yp/oidc-auth.png)<br><br>
 
   - In the **Client ID** field, enter the unique identifier that you provided when you manually created the client application in the identity provider.
   - In the **Client Secret** field, enter the password or secret for authenticating your Yugabyte client application with your identity provider.
