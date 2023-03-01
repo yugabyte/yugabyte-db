@@ -8651,6 +8651,7 @@
       "type" : "object"
     },
     "SpecificGFlags" : {
+      "description" : "GFlags for current cluster",
       "properties" : {
         "inheritFromPrimary" : {
           "type" : "boolean"
@@ -8659,13 +8660,14 @@
           "additionalProperties" : {
             "$ref" : "#/definitions/PerProcessFlags"
           },
+          "description" : "Overrides for gflags per availability zone",
           "type" : "object"
         },
         "perProcessFlags" : {
-          "$ref" : "#/definitions/PerProcessFlags"
+          "$ref" : "#/definitions/PerProcessFlags",
+          "description" : "Gflags grouped by procces"
         }
       },
-      "required" : [ "inheritFromPrimary", "perAZ", "perProcessFlags" ],
       "type" : "object"
     },
     "StateChangeAuditInfo" : {
