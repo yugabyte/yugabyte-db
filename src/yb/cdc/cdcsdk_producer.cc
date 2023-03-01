@@ -227,7 +227,7 @@ Status PopulateBeforeImage(
   auto docdb = tablet->doc_db();
 
   const auto log_prefix = tablet->LogPrefix();
-  docdb::DocReadContext doc_read_context(log_prefix, schema, schema_version);
+  docdb::DocReadContext doc_read_context(log_prefix, tablet->table_type(), schema, schema_version);
   docdb::DocRowwiseIterator iter(
       schema, doc_read_context, TransactionOperationContext(), docdb,
       CoarseTimePoint::max() /* deadline */, read_time);
@@ -351,7 +351,7 @@ Status PopulateCDCSDKIntentRecord(
   bool colocated = tablet->metadata()->colocated();
   Schema& schema = *old_schema;
   std::string table_name = tablet->metadata()->table_name();
-  SchemaPackingStorage schema_packing_storage;
+  SchemaPackingStorage schema_packing_storage(tablet->table_type());
   schema_packing_storage.AddSchema(schema_version, schema);
   Slice prev_key;
   CDCSDKProtoRecordPB proto_record;
@@ -461,7 +461,7 @@ Status PopulateCDCSDKIntentRecord(
         schema = *tablet->metadata()->schema("", colocation_id);
         schema_version = tablet->metadata()->schema_version("", colocation_id);
         table_name = tablet->metadata()->table_name("", colocation_id);
-        schema_packing_storage = SchemaPackingStorage();
+        schema_packing_storage = SchemaPackingStorage(tablet->table_type());
         schema_packing_storage.AddSchema(schema_version, schema);
       }
 
@@ -691,7 +691,7 @@ Status PopulateCDCSDKWriteRecord(
   Schema schema = current_schema;
   SchemaVersion schema_version = current_schema_version;
   std::string table_name = tablet_ptr->metadata()->table_name();
-  SchemaPackingStorage schema_packing_storage;
+  SchemaPackingStorage schema_packing_storage(tablet_ptr->table_type());
   schema_packing_storage.AddSchema(schema_version, schema);
   // TODO: This function and PopulateCDCSDKIntentRecord have a lot of code in common. They should
   // be refactored to use some common row-column iterator.
@@ -722,7 +722,7 @@ Status PopulateCDCSDKWriteRecord(
         schema = *tablet_ptr->metadata()->schema("", colocation_id);
         schema_version = tablet_ptr->metadata()->schema_version("", colocation_id);
         table_name = tablet_ptr->metadata()->table_name("", colocation_id);
-        schema_packing_storage = SchemaPackingStorage();
+        schema_packing_storage = SchemaPackingStorage(tablet_ptr->table_type());
         schema_packing_storage.AddSchema(schema_version, schema);
       }
 

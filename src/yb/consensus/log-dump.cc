@@ -177,10 +177,9 @@ Status PrintDecodedWriteRequestPB(const string& indent,
         cout << indent << indent << indent << indent << "Key: " << formatted_key << endl;
       }
       if (kv.has_value()) {
-        static ::yb::docdb::SchemaPackingStorage schema_packing_storage;
-        Result<std::string> formatted_value =
-          DocDBValueToDebugStr(kv.key(), ::yb::docdb::StorageDbType::kRegular,
-                               kv.value(), schema_packing_storage);
+        static docdb::SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE);
+        Result<std::string> formatted_value = DocDBValueToDebugStr(
+            kv.key(), ::yb::docdb::StorageDbType::kRegular, kv.value(), schema_packing_storage);
         cout << indent << indent << indent << indent << "Value: " << formatted_value << endl;
       }
       cout << indent << indent << indent << "}" << endl;  // write_pairs {

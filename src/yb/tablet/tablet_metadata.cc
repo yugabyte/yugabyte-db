@@ -111,9 +111,9 @@ const std::string kSnapshotsDirSuffix = ".snapshots";
 //  Raft group metadata
 // ============================================================================
 
-TableInfo::TableInfo(const std::string& log_prefix_, PrivateTag)
+TableInfo::TableInfo(const std::string& log_prefix_, TableType table_type, PrivateTag)
     : log_prefix(log_prefix_),
-      doc_read_context(new docdb::DocReadContext(log_prefix)),
+      doc_read_context(new docdb::DocReadContext(log_prefix, table_type)),
       index_map(std::make_shared<IndexMap>()) {
 }
 
@@ -134,7 +134,8 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
       table_type(table_type),
       cotable_id(CHECK_RESULT(ParseCotableId(primary, table_id))),
       log_prefix(MakeTableInfoLogPrefix(tablet_log_prefix, primary, table_id)),
-      doc_read_context(std::make_shared<docdb::DocReadContext>(log_prefix, schema, schema_version)),
+      doc_read_context(std::make_shared<docdb::DocReadContext>(
+          log_prefix, table_type, schema, schema_version)),
       index_map(std::make_shared<IndexMap>(index_map)),
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),
@@ -186,7 +187,7 @@ Result<TableInfoPtr> TableInfo::LoadFromPB(
     const std::string& tablet_log_prefix, const TableId& primary_table_id, const TableInfoPB& pb) {
   Primary primary(primary_table_id == pb.table_id());
   auto log_prefix = MakeTableInfoLogPrefix(tablet_log_prefix, primary, pb.table_id());
-  auto result = std::make_shared<TableInfo>(log_prefix, PrivateTag());
+  auto result = std::make_shared<TableInfo>(log_prefix, pb.table_type(), PrivateTag());
   RETURN_NOT_OK(result->DoLoadFromPB(primary, pb));
   return result;
 }
@@ -238,7 +239,8 @@ Status TableInfo::MergeWithRestored(
   // the latest schema.
   const docdb::SchemaPacking& latest_packing = VERIFY_RESULT(
       doc_read_context->schema_packing_storage.GetPacking(schema_version));
-  LOG_IF_WITH_PREFIX(DFATAL, !latest_packing.SchemaContainsPacking(doc_read_context->schema))
+  LOG_IF_WITH_PREFIX(DFATAL,
+                     !latest_packing.SchemaContainsPacking(table_type, doc_read_context->schema))
       << "After merging schema packings during restore, latest schema does not"
       << " have the same packing as the corresponding latest packing for table "
       << table_id;
