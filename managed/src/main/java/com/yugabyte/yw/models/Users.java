@@ -334,7 +334,7 @@ public class Users extends Model {
     return authToken;
   }
 
-  public void setAuthToken(String authToken) {
+  public void updateAuthToken(String authToken) {
     this.authToken = authToken;
     save();
   }
