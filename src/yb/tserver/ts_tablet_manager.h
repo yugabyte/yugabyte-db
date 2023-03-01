@@ -52,6 +52,7 @@
 
 #include "yb/docdb/local_waiting_txn_registry.h"
 
+#include "yb/gutil/callback.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stl_util.h"
@@ -108,6 +109,8 @@ struct TabletCreationMetaData;
 typedef boost::container::static_vector<TabletCreationMetaData, kNumSplitParts>
     SplitTabletsCreationMetaData;
 
+typedef Callback<void(tablet::TabletPeerPtr)> ConsensusChangeCallback;
+
 // If 'expr' fails, log a message, tombstone the given tablet, and return the
 // error status.
 #define TOMBSTONE_NOT_OK(expr, meta, uuid, msg, ts_manager_ptr) \
@@ -145,6 +148,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // the bootstrap is performed asynchronously.
   Status Init();
   Status Start();
+
+  Status RegisterServiceCallback(
+      StatefulServiceKind service_kind, ConsensusChangeCallback callback);
 
   // Waits for all the bootstraps to complete.
   // Returns Status::OK if all tablets bootstrapped successfully. If
@@ -282,6 +288,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // role change. They are applied asynchronously internally.
   void ApplyChange(const TabletId& tablet_id,
                    std::shared_ptr<consensus::StateChangeContext> context);
+
+  void NotifyConfigChangeToStatefulServices(const TabletId& tablet_id) EXCLUDES(mutex_);
 
   // Marks tablet with 'tablet_id' dirty.
   // Used for state changes outside of the control of TsTabletManager, such as consensus role
@@ -660,6 +668,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::unique_ptr<BackgroundTask> scheduled_full_compaction_bg_task_;
 
   std::unique_ptr<FullCompactionManager> full_compaction_manager_;
+
+  std::shared_mutex service_registration_mutex_;
+  std::unordered_map<StatefulServiceKind, ConsensusChangeCallback> service_consensus_change_cb_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };
