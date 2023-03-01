@@ -55,13 +55,13 @@ Before scheduling a backup of your universe YCQL data, create a policy, as follo
 
 1. Select the database to back up.
 
-1. Specify whether you want to back up all tables in the keyspace to which the database belongs or only  certain tables. If you choose **Select a subset of tables**, a **Select Tables** dialog opens allowing you to select one or more tables to back up.
+1. Specify whether you want to back up all tables in the keyspace to which the database belongs or only certain tables. If you choose **Select a subset of tables**, a **Select Tables** dialog opens allowing you to select one or more tables to back up.
 
 1. Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
 
 1. Specify the interval between backups or select **Use cron expression (UTC)**.
 
-1. Enable **Take incremental backups within full backup intervals** to instruct the schedule policy to take full backups periodically and incremental backups between those full backups (YBA version 2.16 or later, and YugabyteDB version 2.16 or layer only). The incremental backups intervals must be shorter than the full scheduled backup frequency:
+1. Enable **Take incremental backups within full backup intervals** to instruct the schedule policy to take full backups periodically and incremental backups between those full backups (YBA version 2.16 or later, and YugabyteDB version 2.16 or later only). The incremental backups intervals must be shorter than the full scheduled backup frequency:
 
     ![Incremental Backup](/images/yp/scheduled-backup-ycql-incremental.png)
 

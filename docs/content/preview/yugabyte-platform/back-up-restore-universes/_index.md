@@ -22,7 +22,7 @@ You can use YugabyteDB to schedule and manage backups of your universe data. Thi
 - [Point-in-time recovery](pitr/). Recover universe data from a specific point in time.
 
 {{< note title="Note" >}}
-Configurable performance parameters and incremental backups are mediated using the yb-controller process, which is only available in YBA 2.16 or later for universes with database version 2.16 or later.
+Configurable performance parameters and incremental backups are mediated using the yb-controller process, which is only available in YBA 2.16 or later for universes with YugabyteDB version 2.16 or later.
 {{< /note >}}
 
 <div class="row">
