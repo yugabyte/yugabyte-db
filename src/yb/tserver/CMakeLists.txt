@@ -219,10 +219,10 @@ set(TSERVER_SRCS
   stateful_services/stateful_service_base.cc
   stateful_services/test_echo_service.cc
   xcluster_safe_time_map.cc
-  cdc_consumer.cc
-  cdc_poller.cc
-  twodc_output_client.cc
-  twodc_write_implementations.cc)
+  xcluster_consumer.cc
+  xcluster_poller.cc
+  xcluster_output_client.cc
+  xcluster_write_implementations.cc)
 
 set(TSERVER_DEPS
   protobuf

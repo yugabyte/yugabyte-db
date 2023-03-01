@@ -358,9 +358,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   HybridTime cdc_sdk_safe_time() const;
 
-  Status SetIsUnderTwodcReplicationAndFlush(bool is_under_twodc_replication);
+  Status SetIsUnderXClusterReplicationAndFlush(bool is_under_xcluster_replication);
 
-  bool is_under_twodc_replication() const;
+  bool IsUnderXClusterReplication() const;
 
   bool has_been_fully_compacted() const {
     std::lock_guard<MutexType> lock(data_mutex_);
@@ -668,7 +668,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // The minimum hybrid time based on which data is retained for before image
   HybridTime cdc_sdk_safe_time_ GUARDED_BY(data_mutex_);
 
-  bool is_under_twodc_replication_ GUARDED_BY(data_mutex_) = false;
+  bool is_under_xcluster_replication_ GUARDED_BY(data_mutex_) = false;
 
   bool hidden_ GUARDED_BY(data_mutex_) = false;
 

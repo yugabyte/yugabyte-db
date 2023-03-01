@@ -24,7 +24,7 @@
 #include "yb/docdb/packed_row.h"
 #include "yb/docdb/rocksdb_writer.h"
 
-#include "yb/tserver/twodc_write_interface.h"
+#include "yb/tserver/xcluster_write_interface.h"
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/cdc/cdc_service.pb.h"
@@ -44,8 +44,9 @@ DEFINE_RUNTIME_int32(cdc_max_apply_batch_num_records, 0,
 DEFINE_RUNTIME_uint32(cdc_max_apply_batch_size_bytes, 0,
     "Max CDC write request batch size in kb. If 0, default to no max batch size.");
 
-DEFINE_test_flag(bool, twodc_write_hybrid_time, false,
-                 "Override external_hybrid_time with initialHybridTimeValue for testing.");
+DEFINE_test_flag(
+    bool, xcluster_write_hybrid_time, false,
+    "Override external_hybrid_time with initialHybridTimeValue for testing.");
 
 DECLARE_uint64(consensus_max_batch_size_bytes);
 
@@ -203,7 +204,7 @@ Status AddRecord(const ProcessRecordInfo& process_record_info,
     const Slice& updated_value_slice = updated_value.AsSlice();
     write_pair->set_value(updated_value_slice.cdata(), updated_value_slice.size());
 
-    if (PREDICT_FALSE(FLAGS_TEST_twodc_write_hybrid_time)) {
+    if (PREDICT_FALSE(FLAGS_TEST_xcluster_write_hybrid_time)) {
       // Used only for testing external hybrid time.
       write_pair->set_external_hybrid_time(yb::kInitialHybridTimeValue);
     } else {
@@ -229,7 +230,7 @@ Status AddRecord(const ProcessRecordInfo& process_record_info,
 // is cdc_max_apply_batch_size_kb. Batches are not sent by opid order, since a GetChangesResponse
 // can contain interleaved records to multiple tablets. Rather, we send batches to each tablet
 // in order for that tablet, before moving on to the next tablet.
-class BatchedWriteImplementation : public TwoDCWriteInterface {
+class BatchedWriteImplementation : public XClusterWriteInterface {
   ~BatchedWriteImplementation() = default;
 
   Status ProcessRecord(
@@ -318,7 +319,7 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
   std::vector<client::ExternalTransactionMetadata> transaction_metadatas_;
 };
 
-void ResetWriteInterface(std::unique_ptr<TwoDCWriteInterface>* write_strategy) {
+void ResetWriteInterface(std::unique_ptr<XClusterWriteInterface>* write_strategy) {
   write_strategy->reset(new BatchedWriteImplementation());
 }
 
