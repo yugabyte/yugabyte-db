@@ -55,7 +55,9 @@ import org.slf4j.LoggerFactory;
 public class GFlagsUtil {
   private static final Logger LOG = LoggerFactory.getLogger(GFlagsUtil.class);
 
-  public static final String YSQL_CGROUP_PATH = "/sys/fs/cgroup/memory/ysql";
+  // This is not the full path to the cgroup. That is determined by ansible, allowing seamless
+  // handling of both cgroup v1 and v2.
+  public static final String YSQL_CGROUP_PATH = "ysql";
 
   private static final int DEFAULT_MAX_MEMORY_USAGE_PCT_FOR_DEDICATED = 90;
 
