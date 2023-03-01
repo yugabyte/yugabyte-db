@@ -26,20 +26,18 @@ namespace client {
 
 class YBTableName;
 
-} // namespace client
+}  // namespace client
 
-namespace cdc {
-
-struct OutputClientResponse {
+struct XClusterOutputClientResponse {
   Status status;
   OpIdPB last_applied_op_id;
   uint32_t processed_record_count;
-  uint32_t wait_for_version { 0 };
+  uint32_t wait_for_version{0};
 };
 
-class CDCOutputClient : public std::enable_shared_from_this<CDCOutputClient> {
+class XClusterOutputClientIf : public std::enable_shared_from_this<XClusterOutputClientIf> {
  public:
-  virtual ~CDCOutputClient() {}
+  virtual ~XClusterOutputClientIf() {}
   virtual void Shutdown() {}
 
   // Sets the last compatible consumer schema version
@@ -49,5 +47,4 @@ class CDCOutputClient : public std::enable_shared_from_this<CDCOutputClient> {
   virtual Status ApplyChanges(const cdc::GetChangesResponsePB* resp) = 0;
 };
 
-} // namespace cdc
-} // namespace yb
+}  // namespace yb

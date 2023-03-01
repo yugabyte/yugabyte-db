@@ -28,10 +28,10 @@
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/secure_stream.h"
-#include "yb/tserver/cdc_consumer.h"
-#include "yb/tserver/twodc_output_client.h"
+#include "yb/tserver/xcluster_consumer.h"
+#include "yb/tserver/xcluster_output_client.h"
 #include "yb/tserver/tablet_server.h"
-#include "yb/tserver/cdc_poller.h"
+#include "yb/tserver/xcluster_poller.h"
 
 #include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/cdc/cdc_util.h"
@@ -51,9 +51,9 @@
 using std::string;
 
 DEFINE_UNKNOWN_int32(cdc_consumer_handler_thread_pool_size, 0,
-             "Override the max thread pool size for CDCConsumerHandler, which is used by "
-             "CDCPollers. If set to 0, then the thread pool will use the default size (number of "
-             "cpus on the system).");
+    "Override the max thread pool size for CDCConsumerHandler, which is used by "
+    "CDCPollers. If set to 0, then the thread pool will use the default size (number of "
+    "cpus on the system).");
 TAG_FLAG(cdc_consumer_handler_thread_pool_size, advanced);
 
 DEFINE_RUNTIME_int32(xcluster_safe_time_update_interval_secs, 1,
@@ -83,13 +83,13 @@ namespace yb {
 namespace tserver {
 using cdc::ProducerTabletInfo;
 
-CDCClient::~CDCClient() {
+XClusterClient::~XClusterClient() {
   if (messenger) {
     messenger->Shutdown();
   }
 }
 
-void CDCClient::Shutdown() {
+void XClusterClient::Shutdown() {
   if (client) {
     client->Shutdown();
   }
@@ -98,7 +98,7 @@ void CDCClient::Shutdown() {
   }
 }
 
-Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
+Result<std::unique_ptr<XClusterConsumer>> XClusterConsumer::Create(
     std::function<bool(const std::string&)> is_leader_for_tablet,
     rpc::ProxyCache* proxy_cache,
     TabletServer* tserver) {
@@ -109,7 +109,7 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
     hostport_strs.push_back(HostPort::ToCommaSeparatedString(hp));
   }
 
-  auto local_client = std::make_unique<CDCClient>();
+  auto local_client = std::make_unique<XClusterClient>();
   if (FLAGS_use_node_to_node_encryption) {
     rpc::MessengerBuilder messenger_builder("cdc-consumer");
 
@@ -119,34 +119,36 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
     local_client->messenger = VERIFY_RESULT(messenger_builder.Build());
   }
 
-  local_client->client = VERIFY_RESULT(client::YBClientBuilder()
-      .master_server_addrs(hostport_strs)
-      .set_client_name("CDCConsumerLocal")
-      .default_rpc_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms))
-      .Build(local_client->messenger.get()));
+  local_client->client = VERIFY_RESULT(
+      client::YBClientBuilder()
+          .master_server_addrs(hostport_strs)
+          .set_client_name("CDCConsumerLocal")
+          .default_rpc_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms))
+          .Build(local_client->messenger.get()));
 
   local_client->client->SetLocalTabletServer(tserver->permanent_uuid(), tserver->proxy(), tserver);
-  auto cdc_consumer = std::make_unique<CDCConsumer>(std::move(is_leader_for_tablet), proxy_cache,
-      tserver->permanent_uuid(), std::move(local_client), &tserver->TransactionManager());
+  auto xcluster_consumer = std::make_unique<XClusterConsumer>(
+      std::move(is_leader_for_tablet), proxy_cache, tserver->permanent_uuid(),
+      std::move(local_client), &tserver->TransactionManager());
 
-  // TODO(NIC): Unify cdc_consumer thread_pool & remote_client_ threadpools
+  // TODO(NIC): Unify xcluster_consumer thread_pool & remote_client_ threadpools
   RETURN_NOT_OK(yb::Thread::Create(
-      "CDCConsumer", "Poll", &CDCConsumer::RunThread, cdc_consumer.get(),
-      &cdc_consumer->run_trigger_poll_thread_));
+      "XClusterConsumer", "Poll", &XClusterConsumer::RunThread, xcluster_consumer.get(),
+      &xcluster_consumer->run_trigger_poll_thread_));
   ThreadPoolBuilder cdc_consumer_thread_pool_builder("CDCConsumerHandler");
   if (FLAGS_cdc_consumer_handler_thread_pool_size > 0) {
     cdc_consumer_thread_pool_builder.set_max_threads(FLAGS_cdc_consumer_handler_thread_pool_size);
   }
-  RETURN_NOT_OK(cdc_consumer_thread_pool_builder.Build(&cdc_consumer->thread_pool_));
+  RETURN_NOT_OK(cdc_consumer_thread_pool_builder.Build(&xcluster_consumer->thread_pool_));
 
-  return cdc_consumer;
+  return xcluster_consumer;
 }
 
-CDCConsumer::CDCConsumer(
+XClusterConsumer::XClusterConsumer(
     std::function<bool(const std::string&)> is_leader_for_tablet,
     rpc::ProxyCache* proxy_cache,
     const string& ts_uuid,
-    std::unique_ptr<CDCClient>
+    std::unique_ptr<XClusterClient>
         local_client,
     client::TransactionManager* transaction_manager)
     : is_leader_for_tablet_(std::move(is_leader_for_tablet)),
@@ -156,13 +158,13 @@ CDCConsumer::CDCConsumer(
       last_safe_time_published_at_(MonoTime::Now()),
       transaction_manager_(transaction_manager) {}
 
-CDCConsumer::~CDCConsumer() {
+XClusterConsumer::~XClusterConsumer() {
   Shutdown();
   SharedLock<rw_spinlock> read_lock(producer_pollers_map_mutex_);
   DCHECK(producer_pollers_map_.empty());
 }
 
-void CDCConsumer::Shutdown() {
+void XClusterConsumer::Shutdown() {
   LOG_WITH_PREFIX(INFO) << "Shutting down CDC Consumer";
   {
     std::lock_guard<std::mutex> l(should_run_mutex_);
@@ -175,7 +177,7 @@ void CDCConsumer::Shutdown() {
   }
 
   // Shutdown the pollers outside of the master_data_mutex lock to keep lock ordering the same.
-  std::vector<std::shared_ptr<CDCPoller>> pollers_to_shutdown;
+  std::vector<std::shared_ptr<XClusterPoller>> pollers_to_shutdown;
   {
     std::lock_guard<rw_spinlock> write_lock(master_data_mutex_);
     producer_consumer_tablet_map_from_master_.clear();
@@ -183,7 +185,7 @@ void CDCConsumer::Shutdown() {
     {
       std::lock_guard<rw_spinlock> producer_pollers_map_write_lock(producer_pollers_map_mutex_);
       // Shutdown the remote and local clients, and abort any of their ongoing rpcs.
-      for (auto &uuid_and_client : remote_clients_) {
+      for (auto& uuid_and_client : remote_clients_) {
         uuid_and_client.second->Shutdown();
       }
 
@@ -207,7 +209,7 @@ void CDCConsumer::Shutdown() {
   }
 }
 
-void CDCConsumer::RunThread() {
+void XClusterConsumer::RunThread() {
   while (true) {
     {
       std::unique_lock<std::mutex> l(should_run_mutex_);
@@ -228,13 +230,13 @@ void CDCConsumer::RunThread() {
   }
 }
 
-void CDCConsumer::RefreshWithNewRegistryFromMaster(const cdc::ConsumerRegistryPB* consumer_registry,
-                                                   int32_t cluster_config_version) {
+void XClusterConsumer::RefreshWithNewRegistryFromMaster(
+    const cdc::ConsumerRegistryPB* consumer_registry, int32_t cluster_config_version) {
   UpdateInMemoryState(consumer_registry, cluster_config_version);
   cond_.notify_all();
 }
 
-std::vector<std::string> CDCConsumer::TEST_producer_tablets_running() {
+std::vector<std::string> XClusterConsumer::TEST_producer_tablets_running() {
   SharedLock<rw_spinlock> read_lock(producer_pollers_map_mutex_);
 
   std::vector<string> tablets;
@@ -244,8 +246,8 @@ std::vector<std::string> CDCConsumer::TEST_producer_tablets_running() {
   return tablets;
 }
 
-std::vector<std::shared_ptr<CDCPoller>> CDCConsumer::TEST_ListPollers() {
-  std::vector<std::shared_ptr<CDCPoller>> ret;
+std::vector<std::shared_ptr<XClusterPoller>> XClusterConsumer::TEST_ListPollers() {
+  std::vector<std::shared_ptr<XClusterPoller>> ret;
   {
     SharedLock<rw_spinlock> read_lock(producer_pollers_map_mutex_);
     for (const auto& producer : producer_pollers_map_) {
@@ -256,11 +258,11 @@ std::vector<std::shared_ptr<CDCPoller>> CDCConsumer::TEST_ListPollers() {
 }
 
 // NOTE: This happens on TS.heartbeat, so it needs to finish quickly
-void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_registry,
-                                      int32_t cluster_config_version) {
+void XClusterConsumer::UpdateInMemoryState(
+    const cdc::ConsumerRegistryPB* consumer_registry, int32_t cluster_config_version) {
   {
     std::lock_guard<std::mutex> l(should_run_mutex_);
-    if(!should_run_) {
+    if (!should_run_) {
       return;
     }
   }
@@ -274,7 +276,7 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
   if (consumer_registry->enable_replicate_transaction_status_table() &&
       !global_transaction_status_table_) {
     auto global_transaction_status_table_name = client::YBTableName(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+        YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
     auto global_transaction_status_table_res =
         local_client_->client->OpenTable(global_transaction_status_table_name);
     if (!global_transaction_status_table_res.ok()) {
@@ -323,8 +325,8 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
     for (const auto& stream_entry : producer_entry_pb.stream_map()) {
       const auto& stream_entry_pb = stream_entry.second;
       if (stream_entry_pb.local_tserver_optimized()) {
-        LOG_WITH_PREFIX(INFO) << Format("Stream $0 will use local tserver optimization",
-                                        stream_entry.first);
+        LOG_WITH_PREFIX(INFO) << Format(
+            "Stream $0 will use local tserver optimization", stream_entry.first);
         streams_with_local_tserver_optimization_.insert(stream_entry.first);
       }
       if (stream_entry_pb.has_producer_schema()) {
@@ -339,11 +341,10 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
               {producer_map.first, stream_entry.first, producer_tablet_id});
           cdc::ConsumerTabletInfo consumer_tablet_info(
               {consumer_tablet_id, stream_entry_pb.consumer_table_id()});
-          auto xCluster_tablet_info = cdc::XClusterTabletInfo {
-            .producer_tablet_info = producer_tablet_info,
-            .consumer_tablet_info = consumer_tablet_info,
-            .disable_stream = producer_entry_pb.disable_stream()
-          };
+          auto xCluster_tablet_info = cdc::XClusterTabletInfo{
+              .producer_tablet_info = producer_tablet_info,
+              .consumer_tablet_info = consumer_tablet_info,
+              .disable_stream = producer_entry_pb.disable_stream()};
           producer_consumer_tablet_map_from_master_.emplace(xCluster_tablet_info);
         }
       }
@@ -354,7 +355,7 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
   cond_.notify_all();
 }
 
-Result<cdc::ConsumerTabletInfo> CDCConsumer::GetConsumerTableInfo(
+Result<cdc::ConsumerTabletInfo> XClusterConsumer::GetConsumerTableInfo(
     const TabletId& producer_tablet_id) {
   SharedLock<rw_spinlock> lock(master_data_mutex_);
   const auto& index_by_tablet = producer_consumer_tablet_map_from_master_.get<TabletTag>();
@@ -374,7 +375,7 @@ Result<cdc::ConsumerTabletInfo> CDCConsumer::GetConsumerTableInfo(
   return it->consumer_tablet_info;
 }
 
-void CDCConsumer::TriggerPollForNewTablets() {
+void XClusterConsumer::TriggerPollForNewTablets() {
   std::lock_guard<rw_spinlock> write_lock_master(master_data_mutex_);
 
   for (const auto& entry : producer_consumer_tablet_map_from_master_) {
@@ -399,13 +400,13 @@ void CDCConsumer::TriggerPollForNewTablets() {
         if (status.ok()) {
           changed_master_addrs_.erase(uuid);
         } else {
-          LOG_WITH_PREFIX(WARNING) << "Problem Setting Master Addresses for " << uuid
-                                   << ": " << status.ToString();
+          LOG_WITH_PREFIX(WARNING)
+              << "Problem Setting Master Addresses for " << uuid << ": " << status.ToString();
         }
       }
     }
     if (start_polling) {
-      std::lock_guard <rw_spinlock> write_lock_pollers(producer_pollers_map_mutex_);
+      std::lock_guard<rw_spinlock> write_lock_pollers(producer_pollers_map_mutex_);
 
       // Check again, since we unlocked.
       start_polling =
@@ -417,43 +418,44 @@ void CDCConsumer::TriggerPollForNewTablets() {
         if (!ContainsKey(remote_clients_, uuid)) {
           CHECK(ContainsKey(uuid_master_addrs_, uuid));
 
-          auto remote_client = std::make_unique<CDCClient>();
+          auto remote_client = std::make_unique<XClusterClient>();
           std::string dir;
           if (FLAGS_use_node_to_node_encryption) {
             rpc::MessengerBuilder messenger_builder("cdc-consumer");
             if (!FLAGS_certs_for_cdc_dir.empty()) {
-              dir = JoinPathSegments(FLAGS_certs_for_cdc_dir,
-                                     cdc::GetOriginalReplicationUniverseId(uuid));
+              dir = JoinPathSegments(
+                  FLAGS_certs_for_cdc_dir, cdc::GetOriginalReplicationUniverseId(uuid));
             }
 
             auto secure_context_result = server::SetupSecureContext(
                 dir, "", "", server::SecureContextType::kInternal, &messenger_builder);
             if (!secure_context_result.ok()) {
-              LOG(WARNING) << "Could not create secure context for " << uuid
-                         << ": " << secure_context_result.status().ToString();
-              return; // Don't finish creation.  Try again on the next heartbeat.
+              LOG(WARNING) << "Could not create secure context for " << uuid << ": "
+                           << secure_context_result.status().ToString();
+              return;  // Don't finish creation.  Try again on the next heartbeat.
             }
             remote_client->secure_context = std::move(*secure_context_result);
 
             auto messenger_result = messenger_builder.Build();
             if (!messenger_result.ok()) {
-              LOG(WARNING) << "Could not build messenger for " << uuid
-                         << ": " << secure_context_result.status().ToString();
-              return; // Don't finish creation.  Try again on the next heartbeat.
+              LOG(WARNING) << "Could not build messenger for " << uuid << ": "
+                           << secure_context_result.status().ToString();
+              return;  // Don't finish creation.  Try again on the next heartbeat.
             }
             remote_client->messenger = std::move(*messenger_result);
           }
 
-          auto client_result = yb::client::YBClientBuilder()
-              .set_client_name("CDCConsumerRemote")
-              .add_master_server_addr(uuid_master_addrs_[uuid])
-              .skip_master_flagfile()
-              .default_rpc_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms))
-              .Build(remote_client->messenger.get());
+          auto client_result =
+              yb::client::YBClientBuilder()
+                  .set_client_name("CDCConsumerRemote")
+                  .add_master_server_addr(uuid_master_addrs_[uuid])
+                  .skip_master_flagfile()
+                  .default_rpc_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms))
+                  .Build(remote_client->messenger.get());
           if (!client_result.ok()) {
-            LOG(WARNING) << "Could not create a new YBClient for " << uuid
-                         << ": " << client_result.status().ToString();
-            return; // Don't finish creation.  Try again on the next heartbeat.
+            LOG(WARNING) << "Could not create a new YBClient for " << uuid << ": "
+                         << client_result.status().ToString();
+            return;  // Don't finish creation.  Try again on the next heartbeat.
           }
 
           remote_client->client = std::move(*client_result);
@@ -470,7 +472,7 @@ void CDCConsumer::TriggerPollForNewTablets() {
         bool use_local_tserver =
             streams_with_local_tserver_optimization_.find(producer_tablet_info.stream_id) !=
             streams_with_local_tserver_optimization_.end();
-        auto cdc_poller = std::make_shared<CDCPoller>(
+        auto xcluster_poller = std::make_shared<XClusterPoller>(
             producer_tablet_info, consumer_tablet_info, thread_pool_.get(), rpcs_.get(),
             local_client_, remote_clients_[uuid], this, use_local_tserver,
             global_transaction_status_table_, enable_replicate_transaction_status_table_,
@@ -478,26 +480,26 @@ void CDCConsumer::TriggerPollForNewTablets() {
         LOG_WITH_PREFIX(INFO) << Format(
             "Start polling for producer tablet $0, consumer tablet $1", producer_tablet_info,
             consumer_tablet_info.tablet_id);
-        producer_pollers_map_[producer_tablet_info] = cdc_poller;
-        cdc_poller->Poll();
+        producer_pollers_map_[producer_tablet_info] = xcluster_poller;
+        xcluster_poller->Poll();
       }
     }
     auto schema_version_iter = stream_to_schema_version_.find(producer_tablet_info.stream_id);
     if (schema_version_iter != stream_to_schema_version_.end()) {
       SharedLock<rw_spinlock> read_lock_pollers(producer_pollers_map_mutex_);
-      auto cdc_poller_iter = producer_pollers_map_.find(producer_tablet_info);
-      if (cdc_poller_iter != producer_pollers_map_.end()) {
-        cdc_poller_iter->second->SetSchemaVersion(schema_version_iter->second.first,
-                                                  schema_version_iter->second.second);
+      auto xcluster_poller_iter = producer_pollers_map_.find(producer_tablet_info);
+      if (xcluster_poller_iter != producer_pollers_map_.end()) {
+        xcluster_poller_iter->second->SetSchemaVersion(
+            schema_version_iter->second.first, schema_version_iter->second.second);
       }
     }
   }
 }
 
-void CDCConsumer::TriggerDeletionOfOldPollers() {
+void XClusterConsumer::TriggerDeletionOfOldPollers() {
   // Shutdown outside of master_data_mutex_ lock, to not block any heartbeats.
-  std::vector<std::shared_ptr<CDCClient>> clients_to_delete;
-  std::vector<std::shared_ptr<CDCPoller>> pollers_to_shutdown;
+  std::vector<std::shared_ptr<XClusterClient>> clients_to_delete;
+  std::vector<std::shared_ptr<XClusterPoller>> pollers_to_shutdown;
   {
     SharedLock<rw_spinlock> read_lock_master(master_data_mutex_);
     std::lock_guard<rw_spinlock> write_lock_pollers(producer_pollers_map_mutex_);
@@ -534,34 +536,29 @@ void CDCConsumer::TriggerDeletionOfOldPollers() {
   }
 }
 
-bool CDCConsumer::ShouldContinuePolling(
+bool XClusterConsumer::ShouldContinuePolling(
     const ProducerTabletInfo producer_tablet_info,
     const cdc::ConsumerTabletInfo consumer_tablet_info) {
   const auto& it = producer_consumer_tablet_map_from_master_.find(producer_tablet_info);
   // We either no longer need to poll for this tablet, or a different tablet should be polling
   // for it now instead of this one (due to a local tablet split).
   if (it == producer_consumer_tablet_map_from_master_.end() ||
-      it->consumer_tablet_info.tablet_id != consumer_tablet_info.tablet_id ||
-      it->disable_stream) {
+      it->consumer_tablet_info.tablet_id != consumer_tablet_info.tablet_id || it->disable_stream) {
     // We no longer want to poll for this tablet, abort the cycle.
     return false;
   }
   return is_leader_for_tablet_(it->consumer_tablet_info.tablet_id);
 }
 
-std::string CDCConsumer::LogPrefix() {
-  return log_prefix_;
-}
+std::string XClusterConsumer::LogPrefix() { return log_prefix_; }
 
-int32_t CDCConsumer::cluster_config_version() const {
+int32_t XClusterConsumer::cluster_config_version() const {
   return cluster_config_version_.load(std::memory_order_acquire);
 }
 
-client::TransactionManager* CDCConsumer::TransactionManager() {
-  return transaction_manager_;
-}
+client::TransactionManager* XClusterConsumer::TransactionManager() { return transaction_manager_; }
 
-Status CDCConsumer::ReloadCertificates() {
+Status XClusterConsumer::ReloadCertificates() {
   if (local_client_->secure_context) {
     RETURN_NOT_OK(server::ReloadSecureContextKeysAndCertificates(
         local_client_->secure_context.get(), "" /* node_name */, "" /* root_dir*/,
@@ -577,8 +574,8 @@ Status CDCConsumer::ReloadCertificates() {
 
     std::string cert_dir;
     if (!FLAGS_certs_for_cdc_dir.empty()) {
-      cert_dir = JoinPathSegments(FLAGS_certs_for_cdc_dir,
-                                  cdc::GetOriginalReplicationUniverseId(entry.first));
+      cert_dir = JoinPathSegments(
+          FLAGS_certs_for_cdc_dir, cdc::GetOriginalReplicationUniverseId(entry.first));
     }
     RETURN_NOT_OK(server::ReloadSecureContextKeysAndCertificates(
         client->secure_context.get(), cert_dir, "" /* node_name */));
@@ -587,7 +584,7 @@ Status CDCConsumer::ReloadCertificates() {
   return Status::OK();
 }
 
-Status CDCConsumer::PublishXClusterSafeTime() {
+Status XClusterConsumer::PublishXClusterSafeTime() {
   if (consumer_role_ == cdc::XClusterRole::ACTIVE) {
     return Status::OK();
   }
@@ -657,20 +654,19 @@ Status CDCConsumer::PublishXClusterSafeTime() {
   return Status::OK();
 }
 
-void CDCConsumer::StoreReplicationError(
+void XClusterConsumer::StoreReplicationError(
     const TabletId& tablet_id,
     const CDCStreamId& stream_id,
     const ReplicationErrorPb error,
     const std::string& detail) {
-
   std::lock_guard<simple_spinlock> lock(tablet_replication_error_map_lock_);
   tablet_replication_error_map_[tablet_id][stream_id][error] = detail;
 }
 
-cdc::TabletReplicationErrorMap CDCConsumer::GetReplicationErrors() const {
+cdc::TabletReplicationErrorMap XClusterConsumer::GetReplicationErrors() const {
   std::lock_guard<simple_spinlock> lock(tablet_replication_error_map_lock_);
   return tablet_replication_error_map_;
 }
 
-} // namespace tserver
-} // namespace yb
+}  // namespace tserver
+}  // namespace yb

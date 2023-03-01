@@ -791,7 +791,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     }
 
     cdc_sdk_safe_time_ = HybridTime::FromPB(superblock.cdc_sdk_safe_time());
-    is_under_twodc_replication_ = superblock.is_under_twodc_replication();
+    is_under_xcluster_replication_ = superblock.is_under_twodc_replication();
     hidden_ = superblock.hidden();
     auto restoration_hybrid_time = HybridTime::FromPB(superblock.restoration_hybrid_time());
     if (restoration_hybrid_time) {
@@ -934,7 +934,7 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   pb.set_cdc_min_replicated_index(cdc_min_replicated_index_);
   cdc_sdk_min_checkpoint_op_id_.ToPB(pb.mutable_cdc_sdk_min_checkpoint_op_id());
   pb.set_cdc_sdk_safe_time(cdc_sdk_safe_time_.ToUint64());
-  pb.set_is_under_twodc_replication(is_under_twodc_replication_);
+  pb.set_is_under_twodc_replication(is_under_xcluster_replication_);
   pb.set_hidden(hidden_);
   if (restoration_hybrid_time_) {
     pb.set_restoration_hybrid_time(restoration_hybrid_time_.ToUint64());
@@ -1235,17 +1235,18 @@ Status RaftGroupMetadata::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_t
   return Flush();
 }
 
-Status RaftGroupMetadata::SetIsUnderTwodcReplicationAndFlush(bool is_under_twodc_replication) {
+Status RaftGroupMetadata::SetIsUnderXClusterReplicationAndFlush(
+    bool is_under_xcluster_replication) {
   {
     std::lock_guard<MutexType> lock(data_mutex_);
-    is_under_twodc_replication_ = is_under_twodc_replication;
+    is_under_xcluster_replication_ = is_under_xcluster_replication;
   }
   return Flush();
 }
 
-bool RaftGroupMetadata::is_under_twodc_replication() const {
+bool RaftGroupMetadata::IsUnderXClusterReplication() const {
   std::lock_guard<MutexType> lock(data_mutex_);
-  return is_under_twodc_replication_;
+  return is_under_xcluster_replication_;
 }
 
 void RaftGroupMetadata::SetHidden(bool value) {

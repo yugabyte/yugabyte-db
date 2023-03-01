@@ -72,7 +72,7 @@ class AutoFlagsManager;
 
 namespace tserver {
 
-class CDCConsumer;
+class XClusterConsumer;
 class PgClientServiceImpl;
 
 class TabletServer : public DbServerBase, public TabletServerIf {
@@ -269,7 +269,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status SetConfigVersionAndConsumerRegistry(
       int32_t cluster_config_version, const cdc::ConsumerRegistryPB* consumer_registry);
 
-  CDCConsumer* GetCDCConsumer();
+  XClusterConsumer* GetXClusterConsumer();
 
   // Mark the CDC service as enabled via heartbeat.
   Status SetCDCServiceEnabled();
@@ -382,7 +382,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // CDC consumer.
   mutable std::mutex cdc_consumer_mutex_;
-  std::unique_ptr<CDCConsumer> cdc_consumer_ GUARDED_BY(cdc_consumer_mutex_);
+  std::unique_ptr<XClusterConsumer> xcluster_consumer_ GUARDED_BY(cdc_consumer_mutex_);
 
   // CDC service.
   std::shared_ptr<cdc::CDCServiceImpl> cdc_service_;
