@@ -66,16 +66,13 @@
 
 /* XXX: Should USAGE_EXEC reflect execution time and/or buffer usage? */
 #define USAGE_EXEC(duration)	(1.0)
-#define USAGE_INIT				(1.0)	/* including initial
-							 * planning */
-#define ASSUMED_LENGTH_INIT		1024	/* initial assumed mean query
-						 * length */
+#define USAGE_INIT				(1.0)	/* including initial planning */
+#define ASSUMED_LENGTH_INIT		1024	/* initial assumed mean query length */
 #define USAGE_DECREASE_FACTOR	(0.99)	/* decreased every entry_dealloc */
 #define STICKY_DECREASE_FACTOR	(0.50)	/* factor for sticky entries */
 #define USAGE_DEALLOC_PERCENT	5	/* free this % of entries at once */
 
-#define JUMBLE_SIZE				1024	/* query serialization
-							 * buffer size */
+#define JUMBLE_SIZE				1024	/* query serialization buffer size */
 
 #define HISTOGRAM_MAX_TIME		50000000
 #define MAX_RESPONSE_BUCKET 50
@@ -85,10 +82,9 @@
 #define ERROR_MESSAGE_LEN	100
 #define REL_TYPENAME_LEN	64
 #define REL_LST				10
-#define REL_LEN				132	/* REL_TYPENAME_LEN * 2
-						 * (relname + schema) + 1 (for
-						 * view indication) + 1 and
-						 * dot and string terminator */
+#define REL_LEN				132 /* REL_TYPENAME_LEN * 2 (relname + schema) + 1
+								 * (for view indication) + 1 and dot and
+								 * string terminator */
 #define CMD_LST				10
 #define CMD_LEN				20
 #define APPLICATIONNAME_LEN	NAMEDATALEN
@@ -175,30 +171,32 @@ extern volatile bool __pgsm_do_not_capture_error;
 
 
 #if PG_VERSION_NUM < 130000
-typedef struct WalUsage {
-    long	wal_records;	/* # of WAL records produced */
-    long	wal_fpi;	/* # of WAL full page images produced */
-    uint64	wal_bytes;	/* size of WAL records produced */
-}	    WalUsage;
+typedef struct WalUsage
+{
+	long		wal_records;	/* # of WAL records produced */
+	long		wal_fpi;		/* # of WAL full page images produced */
+	uint64		wal_bytes;		/* size of WAL records produced */
+} WalUsage;
 #endif
 
 
-typedef enum pgsmStoreKind {
-    PGSM_INVALID = -1,
+typedef enum pgsmStoreKind
+{
+	PGSM_INVALID = -1,
 
-    /*
-     * PGSM_PLAN and PGSM_EXEC must be respectively 0 and 1 as they're used to
-     * reference the underlying values in the arrays in the Counters struct,
-     * and this order is required in pg_stat_monitor_internal().
-     */
-    PGSM_PARSE = 0,
-    PGSM_PLAN,
-    PGSM_EXEC,
-    PGSM_STORE,
-    PGSM_ERROR,
+	/*
+	 * PGSM_PLAN and PGSM_EXEC must be respectively 0 and 1 as they're used to
+	 * reference the underlying values in the arrays in the Counters struct,
+	 * and this order is required in pg_stat_monitor_internal().
+	 */
+	PGSM_PARSE = 0,
+	PGSM_PLAN,
+	PGSM_EXEC,
+	PGSM_STORE,
+	PGSM_ERROR,
 
-    PGSM_NUMKIND		/* Must be last value of this enum */
-}	    pgsmStoreKind;
+	PGSM_NUMKIND				/* Must be last value of this enum */
+}			pgsmStoreKind;
 
 /* the assumption of query max nested level */
 #define DEFAULT_MAX_NESTED_LEVEL	10
@@ -206,297 +204,316 @@ typedef enum pgsmStoreKind {
 /*
  * Type of aggregate keys
  */
-typedef enum AGG_KEY {
-    AGG_KEY_DATABASE = 0,
-    AGG_KEY_USER,
-    AGG_KEY_HOST
-}	    AGG_KEY;
+typedef enum AGG_KEY
+{
+	AGG_KEY_DATABASE = 0,
+	AGG_KEY_USER,
+	AGG_KEY_HOST
+}			AGG_KEY;
 
 #define MAX_QUERY_LEN 1024
 
 /* shared memory storage for the query */
-typedef struct CallTime {
-    double	total_time;	/* total execution time, in msec */
-    double	min_time;	/* minimum execution time in msec */
-    double	max_time;	/* maximum execution time in msec */
-    double	mean_time;	/* mean execution time in msec */
-    double	sum_var_time;	/* sum of variances in execution time in msec */
-}	    CallTime;
+typedef struct CallTime
+{
+	double		total_time;		/* total execution time, in msec */
+	double		min_time;		/* minimum execution time in msec */
+	double		max_time;		/* maximum execution time in msec */
+	double		mean_time;		/* mean execution time in msec */
+	double		sum_var_time;	/* sum of variances in execution time in msec */
+}			CallTime;
 
 
-typedef struct PlanInfo {
-    uint64	planid;		/* plan identifier */
-    char	plan_text[PLAN_TEXT_LEN];	/* plan text */
-    size_t	plan_len;	/* strlen(plan_text) */
-}	    PlanInfo;
+typedef struct PlanInfo
+{
+	uint64		planid;			/* plan identifier */
+	char		plan_text[PLAN_TEXT_LEN];	/* plan text */
+	size_t		plan_len;		/* strlen(plan_text) */
+}			PlanInfo;
 
-typedef struct pgsmHashKey {
-    uint64	bucket_id;	/* bucket number */
-    uint64	queryid;	/* query identifier */
-    uint64	planid;		/* plan identifier */
-    uint64	appid;		/* hash of application name */
-    Oid		userid;		/* user OID */
-    Oid		dbid;		/* database OID */
-    uint32	ip;		/* client ip address */
-    bool	toplevel;	/* query executed at top level */
-}	    pgsmHashKey;
+typedef struct pgsmHashKey
+{
+	uint64		bucket_id;		/* bucket number */
+	uint64		queryid;		/* query identifier */
+	uint64		planid;			/* plan identifier */
+	uint64		appid;			/* hash of application name */
+	Oid			userid;			/* user OID */
+	Oid			dbid;			/* database OID */
+	uint32		ip;				/* client ip address */
+	bool		toplevel;		/* query executed at top level */
+}			pgsmHashKey;
 
-typedef struct QueryInfo {
-    uint64	parentid;	/* parent queryid of current query */
-    dsa_pointer	parent_query;
-    int64	type;		/* type of query, options are query, info,
-				 * warning, error, fatal */
-    char	application_name[APPLICATIONNAME_LEN];
-    char	comments[COMMENTS_LEN];
-    char	relations[REL_LST][REL_LEN];	/* List of relation involved
-						 * in the query */
-    int		num_relations;	/* Number of relation in the query */
-    CmdType	cmd_type;	/* query command type
-				 * SELECT/UPDATE/DELETE/INSERT */
-}	    QueryInfo;
+typedef struct QueryInfo
+{
+	uint64		parentid;		/* parent queryid of current query */
+	dsa_pointer parent_query;
+	int64		type;			/* type of query, options are query, info,
+								 * warning, error, fatal */
+	char		application_name[APPLICATIONNAME_LEN];
+	char		comments[COMMENTS_LEN];
+	char		relations[REL_LST][REL_LEN];	/* List of relation involved
+												 * in the query */
+	int			num_relations;	/* Number of relation in the query */
+	CmdType		cmd_type;		/* query command type
+								 * SELECT/UPDATE/DELETE/INSERT */
+} QueryInfo;
 
-typedef struct ErrorInfo {
-    int64	elevel;		/* error elevel */
-    char	sqlcode[SQLCODE_LEN];	/* error sqlcode  */
-    char	message[ERROR_MESSAGE_LEN];	/* error message text */
-}	    ErrorInfo;
+typedef struct ErrorInfo
+{
+	int64		elevel;			/* error elevel */
+	char		sqlcode[SQLCODE_LEN];	/* error sqlcode  */
+	char		message[ERROR_MESSAGE_LEN]; /* error message text */
+}			ErrorInfo;
 
-typedef struct Calls {
-    int64	calls;		/* # of times executed */
-    int64	rows;		/* total # of retrieved or affected rows */
-    double	usage;		/* usage factor */
-}	    Calls;
+typedef struct Calls
+{
+	int64		calls;			/* # of times executed */
+	int64		rows;			/* total # of retrieved or affected rows */
+	double		usage;			/* usage factor */
+}			Calls;
 
 
-typedef struct Blocks {
-    int64	shared_blks_hit;	/* # of shared buffer hits */
-    int64	shared_blks_read;	/* # of shared disk blocks read */
-    int64	shared_blks_dirtied;	/* # of shared disk blocks dirtied */
-    int64	shared_blks_written;	/* # of shared disk blocks written */
-    int64	local_blks_hit;	/* # of local buffer hits */
-    int64	local_blks_read;	/* # of local disk blocks read */
-    int64	local_blks_dirtied;	/* # of local disk blocks dirtied */
-    int64	local_blks_written;	/* # of local disk blocks written */
-    int64	temp_blks_read;	/* # of temp blocks read */
-    int64	temp_blks_written;	/* # of temp blocks written */
-    double	blk_read_time;	/* time spent reading, in msec */
-    double	blk_write_time;	/* time spent writing, in msec */
+typedef struct Blocks
+{
+	int64		shared_blks_hit;	/* # of shared buffer hits */
+	int64		shared_blks_read;	/* # of shared disk blocks read */
+	int64		shared_blks_dirtied;	/* # of shared disk blocks dirtied */
+	int64		shared_blks_written;	/* # of shared disk blocks written */
+	int64		local_blks_hit; /* # of local buffer hits */
+	int64		local_blks_read;	/* # of local disk blocks read */
+	int64		local_blks_dirtied; /* # of local disk blocks dirtied */
+	int64		local_blks_written; /* # of local disk blocks written */
+	int64		temp_blks_read; /* # of temp blocks read */
+	int64		temp_blks_written;	/* # of temp blocks written */
+	double		blk_read_time;	/* time spent reading, in msec */
+	double		blk_write_time; /* time spent writing, in msec */
 
-    double	temp_blk_read_time;	/* time spent reading temp blocks, in
-					 * msec */
-    double	temp_blk_write_time;	/* time spent writing temp blocks, in
-					 * msec */
+	double		temp_blk_read_time; /* time spent reading temp blocks, in msec */
+	double		temp_blk_write_time;	/* time spent writing temp blocks, in
+										 * msec */
 
-    /*
-     * Variables for local entry. The values to be passed to pgsm_update_entry
-     * from pgsm_store.
-     */
-    instr_time	instr_blk_read_time;	/* time spent reading blocks */
-    instr_time	instr_blk_write_time;	/* time spent writing blocks */
-    instr_time	instr_temp_blk_read_time;	/* time spent reading temp
-						 * blocks */
-    instr_time	instr_temp_blk_write_time;	/* time spent writing temp
-						 * blocks */
-}	    Blocks;
+	/*
+	 * Variables for local entry. The values to be passed to pgsm_update_entry
+	 * from pgsm_store.
+	 */
+	instr_time	instr_blk_read_time;	/* time spent reading blocks */
+	instr_time	instr_blk_write_time;	/* time spent writing blocks */
+	instr_time	instr_temp_blk_read_time;	/* time spent reading temp blocks */
+	instr_time	instr_temp_blk_write_time;	/* time spent writing temp blocks */
+}			Blocks;
 
-typedef struct JitInfo {
-    int64	jit_functions;	/* total number of JIT functions emitted */
-    double	jit_generation_time;	/* total time to generate jit code */
-    int64	jit_inlining_count;	/* number of times inlining time has
-					 * been > 0 */
-    double	jit_inlining_time;	/* total time to inline jit code */
-    int64	jit_optimization_count;	/* number of times optimization time
-					 * has been > 0 */
-    double	jit_optimization_time;	/* total time to optimize jit code */
-    int64	jit_emission_count;	/* number of times emission time has
-					 * been > 0 */
-    double	jit_emission_time;	/* total time to emit jit code */
+typedef struct JitInfo
+{
+	int64		jit_functions;	/* total number of JIT functions emitted */
+	double		jit_generation_time;	/* total time to generate jit code */
+	int64		jit_inlining_count; /* number of times inlining time has been
+									 * > 0 */
+	double		jit_inlining_time;	/* total time to inline jit code */
+	int64		jit_optimization_count; /* number of times optimization time
+										 * has been > 0 */
+	double		jit_optimization_time;	/* total time to optimize jit code */
+	int64		jit_emission_count; /* number of times emission time has been
+									 * > 0 */
+	double		jit_emission_time;	/* total time to emit jit code */
 
-    /*
-     * Variables for local entry. The values to be passed to pgsm_update_entry
-     * from pgsm_store.
-     */
-    instr_time	instr_generation_counter;	/* generation counter */
-    instr_time	instr_inlining_counter;	/* inlining counter */
-    instr_time	instr_optimization_counter;	/* optimization counter */
-    instr_time	instr_emission_counter;	/* emission counter */
-}	    JitInfo;
+	/*
+	 * Variables for local entry. The values to be passed to pgsm_update_entry
+	 * from pgsm_store.
+	 */
+	instr_time	instr_generation_counter;	/* generation counter */
+	instr_time	instr_inlining_counter; /* inlining counter */
+	instr_time	instr_optimization_counter; /* optimization counter */
+	instr_time	instr_emission_counter; /* emission counter */
+}			JitInfo;
 
-typedef struct SysInfo {
-    double	utime;		/* user cpu time */
-    double	stime;		/* system cpu time */
-}	    SysInfo;
+typedef struct SysInfo
+{
+	double		utime;			/* user cpu time */
+	double		stime;			/* system cpu time */
+}			SysInfo;
 
-typedef struct Wal_Usage {
-    int64	wal_records;	/* # of WAL records generated */
-    int64	wal_fpi;	/* # of WAL full page images generated */
-    uint64	wal_bytes;	/* total amount of WAL bytes generated */
-}	    Wal_Usage;
+typedef struct Wal_Usage
+{
+	int64		wal_records;	/* # of WAL records generated */
+	int64		wal_fpi;		/* # of WAL full page images generated */
+	uint64		wal_bytes;		/* total amount of WAL bytes generated */
+}			Wal_Usage;
 
-typedef struct Counters {
-    Calls	calls;
-    QueryInfo	info;
-    CallTime	time;
+typedef struct Counters
+{
+	Calls		calls;
+	QueryInfo	info;
+	CallTime	time;
 
-    Calls	plancalls;
-    CallTime	plantime;
-    PlanInfo	planinfo;
+	Calls		plancalls;
+	CallTime	plantime;
+	PlanInfo	planinfo;
 
-    Blocks	blocks;
-    SysInfo	sysinfo;
-    JitInfo	jitinfo;
-    ErrorInfo	error;
-    Wal_Usage	walusage;
-    int		resp_calls[MAX_RESPONSE_BUCKET];	/* execution time's in
-							 * msec */
-}	    Counters;
+	Blocks		blocks;
+	SysInfo		sysinfo;
+	JitInfo		jitinfo;
+	ErrorInfo	error;
+	Wal_Usage	walusage;
+	int			resp_calls[MAX_RESPONSE_BUCKET];	/* execution time's in
+													 * msec */
+} Counters;
 
 /* Some global structure to get the cpu usage, really don't like the idea of global variable */
 
 /*
  * Statistics per statement
  */
-typedef struct pgsmEntry {
-    pgsmHashKey	key;		/* hash key of entry - MUST BE FIRST */
-    uint64	pgsm_query_id;	/* pgsm generate normalized query hash */
-    char	datname[NAMEDATALEN];	/* database name */
-    char	username[NAMEDATALEN];	/* user name */
-    Counters	counters;	/* the statistics for this query */
-    int		encoding;	/* query text encoding */
-    slock_t	mutex;		/* protects the counters only */
-    union {
-	dsa_pointer query_pos;	/* query location within query buffer */
-	char	   *query_pointer;
-    }		query_text;
-}	    pgsmEntry;
+typedef struct pgsmEntry
+{
+	pgsmHashKey key;			/* hash key of entry - MUST BE FIRST */
+	uint64		pgsm_query_id;	/* pgsm generate normalized query hash */
+	char		datname[NAMEDATALEN];	/* database name */
+	char		username[NAMEDATALEN];	/* user name */
+	Counters	counters;		/* the statistics for this query */
+	int			encoding;		/* query text encoding */
+	slock_t		mutex;			/* protects the counters only */
+	union
+	{
+		dsa_pointer query_pos;	/* query location within query buffer */
+		char	   *query_pointer;
+	}			query_text;
+}			pgsmEntry;
 
 /*
  * Global shared state
  */
-typedef struct pgsmSharedState {
-    LWLock     *lock;		/* protects hashtable search/modification */
-    slock_t	mutex;		/* protects following fields only: */
-    pg_atomic_uint64 current_wbucket;
-    pg_atomic_uint64 prev_bucket_sec;
-    uint64	bucket_entry[MAX_BUCKETS];
-    TimestampTz	bucket_start_time[MAX_BUCKETS];	/* start time of the bucket */
-    int		hash_tranche_id;
-    void       *raw_dsa_area;	/* DSA area pointer to store query texts.
-				 * dshash also lives in this memory when
-				 * USE_DYNAMIC_HASH is enabled */
-    PGSM_HASH_TABLE_HANDLE hash_handle;
-    /*
-     * hash table handle. can be either classic shared memory hash or dshash
-     * (if we are using USE_DYNAMIC_HASH)
-     */
-    MemoryContext pgsm_mem_cxt;
-    /*
-     * context to store stats in local memory until they are pushed to shared
-     * hash
-     */
-    int		resp_calls[MAX_RESPONSE_BUCKET + 2];	/* execution time's in
-							 * msec; including 2
-							 * outlier buckets */
-    bool	pgsm_oom;
-}	    pgsmSharedState;
+typedef struct pgsmSharedState
+{
+	LWLock	   *lock;			/* protects hashtable search/modification */
+	slock_t		mutex;			/* protects following fields only: */
+	pg_atomic_uint64 current_wbucket;
+	pg_atomic_uint64 prev_bucket_sec;
+	uint64		bucket_entry[MAX_BUCKETS];
+	TimestampTz bucket_start_time[MAX_BUCKETS]; /* start time of the bucket */
+	int			hash_tranche_id;
+	void	   *raw_dsa_area;	/* DSA area pointer to store query texts.
+								 * dshash also lives in this memory when
+								 * USE_DYNAMIC_HASH is enabled */
+	PGSM_HASH_TABLE_HANDLE hash_handle;
 
-typedef struct pgsmLocalState {
-    pgsmSharedState *shared_pgsmState;
-    dsa_area   *dsa;		/* local dsa area for backend attached to the
-				 * dsa area created by postmaster at startup. */
-    PGSM_HASH_TABLE *shared_hash;
-}	    pgsmLocalState;
+	/*
+	 * hash table handle. can be either classic shared memory hash or dshash
+	 * (if we are using USE_DYNAMIC_HASH)
+	 */
+	MemoryContext pgsm_mem_cxt;
+
+	/*
+	 * context to store stats in local memory until they are pushed to shared
+	 * hash
+	 */
+	int			resp_calls[MAX_RESPONSE_BUCKET + 2];	/* execution time's in
+														 * msec; including 2
+														 * outlier buckets */
+	bool		pgsm_oom;
+}			pgsmSharedState;
+
+typedef struct pgsmLocalState
+{
+	pgsmSharedState *shared_pgsmState;
+	dsa_area   *dsa;			/* local dsa area for backend attached to the
+								 * dsa area created by postmaster at startup. */
+	PGSM_HASH_TABLE *shared_hash;
+}			pgsmLocalState;
 
 #if PG_VERSION_NUM < 140000
 /*
  * Struct for tracking locations/lengths of constants during normalization
  */
-typedef struct LocationLen {
-    int		location;	/* start offset in query text */
-    int		length;		/* length in bytes, or -1 to ignore */
-}	    LocationLen;
+typedef struct LocationLen
+{
+	int			location;		/* start offset in query text */
+	int			length;			/* length in bytes, or -1 to ignore */
+} LocationLen;
 
 /*
  * Working state for computing a query jumble and producing a normalized
  * query string
  */
-typedef struct JumbleState {
-    /* Jumble of current query tree */
-    unsigned char *jumble;
+typedef struct JumbleState
+{
+	/* Jumble of current query tree */
+	unsigned char *jumble;
 
-    /* Number of bytes used in jumble[] */
-    Size	jumble_len;
+	/* Number of bytes used in jumble[] */
+	Size		jumble_len;
 
-    /* Array of locations of constants that should be removed */
-    LocationLen *clocations;
+	/* Array of locations of constants that should be removed */
+	LocationLen *clocations;
 
-    /* Allocated length of clocations array */
-    int		clocations_buf_size;
+	/* Allocated length of clocations array */
+	int			clocations_buf_size;
 
-    /* Current number of valid entries in clocations array */
-    int		clocations_count;
+	/* Current number of valid entries in clocations array */
+	int			clocations_count;
 
-    /* highest Param id we've seen, in order to start normalization correctly */
-    int		highest_extern_param_id;
-}	    JumbleState;
+	/* highest Param id we've seen, in order to start normalization correctly */
+	int			highest_extern_param_id;
+} JumbleState;
 #endif
 
 /* guc.c */
-void	    init_guc(void);
+void		init_guc(void);
 
 /* hash_create.c */
 dsa_area   *get_dsa_area_for_query_text(void);
 PGSM_HASH_TABLE *get_pgsmHash(void);
 
-void	    pgsm_attach_shmem(void);
-bool	    IsHashInitialize(void);
-bool	    IsSystemOOM(void);
-void	    pgsm_shmem_startup(void);
-void	    pgsm_shmem_shutdown(int code, Datum arg);
-int	    pgsm_get_bucket_size(void);
+void		pgsm_attach_shmem(void);
+bool		IsHashInitialize(void);
+bool		IsSystemOOM(void);
+void		pgsm_shmem_startup(void);
+void		pgsm_shmem_shutdown(int code, Datum arg);
+int			pgsm_get_bucket_size(void);
 pgsmSharedState *pgsm_get_ss(void);
-void	    hash_query_entries();
-void	    hash_query_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_buffer[]);
-void	    hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_buffer);
+void		hash_query_entries();
+void		hash_query_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_buffer[]);
+void		hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_buffer);
 pgsmEntry  *hash_entry_alloc(pgsmSharedState * pgsm, pgsmHashKey * key, int encoding);
-Size	    pgsm_ShmemSize(void);
-void	    pgsm_startup(void);
+Size		pgsm_ShmemSize(void);
+void		pgsm_startup(void);
 
 /* hash_query.c */
-void	    pgsm_startup(void);
+void		pgsm_startup(void);
 
 /* guc.c */
-void	    init_guc(void);
+void		init_guc(void);
 
 /* GUC variables*/
 /*---- GUC variables ----*/
-typedef enum {
-    PSGM_TRACK_NONE = 0,	/* track no statements */
-    PGSM_TRACK_TOP,		/* only top level statements */
-    PGSM_TRACK_ALL		/* all statements, including nested ones */
-}	    PGSMTrackLevel;
+typedef enum
+{
+	PSGM_TRACK_NONE = 0,		/* track no statements */
+	PGSM_TRACK_TOP,				/* only top level statements */
+	PGSM_TRACK_ALL				/* all statements, including nested ones */
+}			PGSMTrackLevel;
 static const struct config_enum_entry track_options[] =
 {
-    {"none", PSGM_TRACK_NONE, false},
-    {"top", PGSM_TRACK_TOP, false},
-    {"all", PGSM_TRACK_ALL, false},
-    {NULL, 0, false}
+	{"none", PSGM_TRACK_NONE, false},
+	{"top", PGSM_TRACK_TOP, false},
+	{"all", PGSM_TRACK_ALL, false},
+	{NULL, 0, false}
 };
 
-typedef enum {
-    HISTOGRAM_START,
-    HISTOGRAM_END,
-    HISTOGRAM_COUNT
-}	    HistogramTimingType;
+typedef enum
+{
+	HISTOGRAM_START,
+	HISTOGRAM_END,
+	HISTOGRAM_COUNT
+}			HistogramTimingType;
 
-extern int  pgsm_max;
-extern int  pgsm_query_max_len;
-extern int  pgsm_bucket_time;
-extern int  pgsm_max_buckets;
-extern int  pgsm_histogram_buckets;
+extern int	pgsm_max;
+extern int	pgsm_query_max_len;
+extern int	pgsm_bucket_time;
+extern int	pgsm_max_buckets;
+extern int	pgsm_histogram_buckets;
 extern double pgsm_histogram_min;
 extern double pgsm_histogram_max;
-extern int  pgsm_query_shared_buffer;
+extern int	pgsm_query_shared_buffer;
 extern bool pgsm_track_planning;
 extern bool pgsm_extract_comments;
 extern bool pgsm_enable_query_plan;
@@ -504,7 +521,7 @@ extern bool pgsm_enable_overflow;
 extern bool pgsm_normalized_query;
 extern bool pgsm_track_utility;
 extern bool pgsm_enable_pgsm_query_id;
-extern int  pgsm_track;
+extern int	pgsm_track;
 
 #define DECLARE_HOOK(hook, ...) \
         static hook(__VA_ARGS__);
@@ -514,7 +531,7 @@ extern int  pgsm_track;
 
 void	   *pgsm_hash_find_or_insert(PGSM_HASH_TABLE * shared_hash, pgsmHashKey * key, bool *found);
 void	   *pgsm_hash_find(PGSM_HASH_TABLE * shared_hash, pgsmHashKey * key, bool *found);
-void	    pgsm_hash_seq_init(PGSM_HASH_SEQ_STATUS * hstat, PGSM_HASH_TABLE * shared_hash, bool lock);
+void		pgsm_hash_seq_init(PGSM_HASH_SEQ_STATUS * hstat, PGSM_HASH_TABLE * shared_hash, bool lock);
 void	   *pgsm_hash_seq_next(PGSM_HASH_SEQ_STATUS * hstat);
-void	    pgsm_hash_seq_term(PGSM_HASH_SEQ_STATUS * hstat);
-void	    pgsm_hash_delete_current(PGSM_HASH_SEQ_STATUS * hstat, PGSM_HASH_TABLE * shared_hash, void *key);
+void		pgsm_hash_seq_term(PGSM_HASH_SEQ_STATUS * hstat);
+void		pgsm_hash_delete_current(PGSM_HASH_SEQ_STATUS * hstat, PGSM_HASH_TABLE * shared_hash, void *key);
