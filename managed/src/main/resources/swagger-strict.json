@@ -6233,6 +6233,21 @@
       "required" : [ "buildNumber" ],
       "type" : "object"
     },
+    "PerProcessFlags" : {
+      "properties" : {
+        "value" : {
+          "additionalProperties" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "type" : "object"
+        }
+      },
+      "required" : [ "value" ],
+      "type" : "object"
+    },
     "PerfAdvisorSettingsFormData" : {
       "properties" : {
         "connection_skew_interval_mins" : {
@@ -8594,6 +8609,26 @@
       "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "upgradeSystemCatalog", "ybSoftwareVersion" ],
       "type" : "object"
     },
+    "SpecificGFlags" : {
+      "description" : "GFlags for current cluster",
+      "properties" : {
+        "inheritFromPrimary" : {
+          "type" : "boolean"
+        },
+        "perAZ" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/PerProcessFlags"
+          },
+          "description" : "Overrides for gflags per availability zone",
+          "type" : "object"
+        },
+        "perProcessFlags" : {
+          "$ref" : "#/definitions/PerProcessFlags",
+          "description" : "Gflags grouped by procces"
+        }
+      },
+      "type" : "object"
+    },
     "StateChangeAuditInfo" : {
       "properties" : {
         "customerId" : {
@@ -10837,6 +10872,9 @@
         "replicationFactor" : {
           "format" : "int32",
           "type" : "integer"
+        },
+        "specificGFlags" : {
+          "$ref" : "#/definitions/SpecificGFlags"
         },
         "tserverGFlags" : {
           "additionalProperties" : {
