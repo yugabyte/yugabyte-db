@@ -182,8 +182,9 @@ class DocOperationTest : public DocDBTestBase {
                    kNonTransactionalOperationContext) {
     IndexMap index_map;
     QLWriteOperation ql_write_op(
-        ql_writereq_pb, std::make_shared<DocReadContext>(DocReadContext::TEST_Create(schema)),
-        index_map, nullptr /* unique_index_key_schema */, txn_op_context);
+        ql_writereq_pb, ql_writereq_pb.schema_version(),
+        std::make_shared<DocReadContext>(DocReadContext::TEST_Create(schema)), index_map,
+        nullptr /* unique_index_key_schema */, txn_op_context);
     ASSERT_OK(ql_write_op.Init(ql_writeresp_pb));
     auto doc_write_batch = MakeDocWriteBatch();
     HybridTime restart_read_ht;

@@ -6,8 +6,8 @@ import static com.yugabyte.yw.common.NodeActionType.HARD_REBOOT;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
@@ -16,7 +16,6 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.NodeActionFormData;

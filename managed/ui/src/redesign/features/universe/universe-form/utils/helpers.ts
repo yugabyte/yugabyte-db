@@ -19,7 +19,7 @@ import { UniverseFormContextState } from '../UniverseFormContainer';
 import {
   ASYNC_FIELDS,
   PRIMARY_FIELDS,
-  ASYNC_COPY_FIELDS,
+  INHERITED_FIELDS_FROM_PRIMARY,
   TOAST_AUTO_DISMISS_INTERVAL
 } from './constants';
 import { api } from './api';
@@ -49,8 +49,8 @@ export const getAsyncFormData = (universeData: UniverseDetails) =>
   getFormData(universeData, ClusterType.ASYNC);
 
 //returns fields needs to be copied from Primary to Async in Create+RR flow
-export const getAsyncCopyFields = (formData: UniverseFormData) =>
-  _.pick(formData, ASYNC_COPY_FIELDS);
+export const getPrimaryInheritedValues = (formData: UniverseFormData) =>
+  _.pick(formData, INHERITED_FIELDS_FROM_PRIMARY);
 
 //create error msg from reponse payload
 export const createErrorMessage = (payload: any) => {
@@ -134,8 +134,10 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
       numNodes: userIntent.numNodes,
       replicationFactor: userIntent.replicationFactor,
       placements: getPlacementsFromCluster(cluster),
-      masterPlacement: userIntent.dedicatedNodes ? MasterPlacementMode.DEDICATED : MasterPlacementMode.COLOCATED,
-      autoPlacement: true, //** */,
+      masterPlacement: userIntent.dedicatedNodes
+        ? MasterPlacementMode.DEDICATED
+        : MasterPlacementMode.COLOCATED,
+      autoPlacement: true //** */,
     },
     instanceConfig: {
       instanceType: userIntent.instanceType,

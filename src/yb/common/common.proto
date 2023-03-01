@@ -558,3 +558,8 @@ message DeletePlanPB {
   optional string filter = 4;
   optional int32 output_width = 5;
 }
+
+message TServerDBCatalogVersionInfo {
+  optional uint32 db_oid = 1;
+  optional int32 shm_index = 2;
+}

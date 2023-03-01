@@ -1,4 +1,4 @@
-import React, { ReactElement } from 'react';
+import React, { FocusEvent, ReactElement } from 'react';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
@@ -41,6 +41,17 @@ export const TotalNodesField = ({ disabled }: TotalNodesFieldProps): ReactElemen
   const placements = useWatch({ name: PLACEMENTS_FIELD });
   const currentTotalNodes = getValues(TOTAL_NODES_FIELD);
 
+  const fieldLabel = provider?.code === CloudType.kubernetes
+  ? t('universeForm.cloudConfig.totalPodsField')
+  : t('universeForm.cloudConfig.totalNodesField');
+
+  const handleChange = (e:FocusEvent<HTMLInputElement>) => {
+    //reset field value to replication factor if field is empty or less than RF
+    const fieldValue = e.target.value as unknown as number;
+    if(!fieldValue || fieldValue < replicationFactor) setValue(TOTAL_NODES_FIELD, replicationFactor, {shouldValidate:true});
+    else setValue(TOTAL_NODES_FIELD, fieldValue, {shouldValidate:true});
+  }
+
   //set TotalNodes to RF Value when totalNodes < RF
   useUpdateEffect(() => {
     if (replicationFactor > currentTotalNodes) setValue(TOTAL_NODES_FIELD, replicationFactor);
@@ -71,10 +82,14 @@ export const TotalNodesField = ({ disabled }: TotalNodesFieldProps): ReactElemen
           name={TOTAL_NODES_FIELD}
           type="number"
           disabled={disabled}
+          rules={{
+            required: !disabled ? (t('universeForm.validation.required', {field: fieldLabel}) as string) : ''
+          }}
           inputProps={{
             'data-testid': 'TotalNodesField-TServer-Input',
             min: replicationFactor
           }}
+          onChange={handleChange}
         />
       </Box>
 
@@ -107,9 +122,7 @@ export const TotalNodesField = ({ disabled }: TotalNodesFieldProps): ReactElemen
   return (
     <Box display="flex" width="100%" data-testid="TotalNodesField-Container">
       <YBLabel dataTestId="TotalNodesField-Label">
-        {provider?.code === CloudType.kubernetes
-          ? t('universeForm.cloudConfig.totalPodsField')
-          : t('universeForm.cloudConfig.totalNodesField')}
+        {fieldLabel}
       </YBLabel>
       {numNodesElement}
     </Box>

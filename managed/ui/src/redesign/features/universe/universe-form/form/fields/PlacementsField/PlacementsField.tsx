@@ -182,7 +182,12 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
 
   if (fields.length) {
     return (
-      <Box display="flex" width="100%" flexDirection="column">
+      <Box
+        display="flex"
+        width="100%"
+        flexDirection="column"
+        data-testid="PlacementsField-Container"
+      >
         <Box width="100%" display="flex" flexDirection="row" alignItems={'center'}>
           <Box flexShrink={1} mr={3}>
             <Typography variant="h5">{t('universeForm.cloudConfig.azHeader')}</Typography>
@@ -226,6 +231,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
         alignItems={'center'}
         height="100%"
         flexDirection={'column'}
+        data-testid="PlacementsField-Loader"
       >
         <YBLoadingCircleIcon size="small" />
         Loading placements

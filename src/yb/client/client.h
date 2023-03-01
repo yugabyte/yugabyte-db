@@ -813,6 +813,11 @@ class YBClient {
 
   std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
 
+  // Get a RemoteTabletServer pointer from this client's meta_cache, if there is one present. Return
+  // null if none is found.
+  Result<std::shared_ptr<internal::RemoteTabletServer>> GetRemoteTabletServer(
+      const std::string& permanent_uuid);
+
   void RequestsFinished(const std::set<RetryableRequestId>& request_ids);
 
   void Shutdown();

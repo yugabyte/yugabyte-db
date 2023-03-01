@@ -258,7 +258,6 @@ class DocDBTableReader::GetHelperBase {
     RETURN_NOT_OK(Scan(CheckExistOnly::kTrue));
     if (Found()) {
       EmptyDocFound();
-      reader_.iter_->SeekOutOfSubDoc(root_doc_key_);
       return true;
     }
 
@@ -374,7 +373,6 @@ class DocDBTableReader::GetHelperBase {
     }
     ++column_index_;
     if (column_index_ == reader_.projection_->size()) {
-      reader_.iter_->SeekOutOfSubDoc(root_doc_key_);
       return false;
     }
     UpdatePackedColumnData();

@@ -24,7 +24,8 @@ from ybops.node_agent.server_pb2_grpc import NodeAgentStub
 SERVER_READY_RETRY_LIMIT = 60
 PING_TIMEOUT_SEC = 10
 COMMAND_EXECUTION_TIMEOUT_SEC = 300
-FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC = 600
+FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC = 1800
+FILE_UPLOAD_CHUNK_BYTES = 8192
 
 
 class RpcShellOutput(object):
@@ -69,7 +70,8 @@ class RpcShellClient(object):
         :return: None
         """
 
-        root_certs = open(self.cert_path, mode='rb').read()
+        with open(self.cert_path, mode='rb') as file:
+            root_certs = file.read()
         cert_creds = ssl_channel_credentials(root_certificates=root_certs)
         auth_creds = metadata_call_credentials(
                 AuthTokenCallback(self.auth_token), name='auth_creds')
@@ -199,7 +201,7 @@ class RpcShellClient(object):
             # Ignore error.
             logging.error("Failed to abort remote task {}".format(task_id))
 
-    def read_iterfile(self, user, in_path, out_path, chmod=0, chunk_size=1024):
+    def read_iterfile(self, user, in_path, out_path, chmod=0, chunk_size=FILE_UPLOAD_CHUNK_BYTES):
         file_info = FileInfo()
         file_info.filename = out_path
         yield UploadFileRequest(chmod=chmod, user=user, fileInfo=file_info)
@@ -259,7 +261,7 @@ class RpcShellClient(object):
         stub = NodeAgentStub(self.channel)
         try:
             timeout_sec = kwargs.get('timeout', PING_TIMEOUT_SEC)
-            stub.Ping(PingRequest(data="connection-test"), timeout=timeout_sec)
+            stub.Ping(PingRequest(), timeout=timeout_sec)
             return True
         except Exception as e:
             return False

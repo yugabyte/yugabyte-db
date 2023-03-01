@@ -22,6 +22,7 @@
 #include <boost/multi_index_container.hpp>
 
 #include "yb/client/client.h"
+#include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
@@ -33,6 +34,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
@@ -44,6 +46,7 @@
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
@@ -306,6 +309,33 @@ class PgClientServiceImpl::Impl {
     return tserver::CreateSequencesDataTable(&client(), context->GetClientDeadline());
   }
 
+  Status GetLockStatus(
+      const PgGetLockStatusRequestPB& req, PgGetLockStatusResponsePB* resp,
+      rpc::RpcContext* context) {
+    std::vector<master::TSInformationPB> live_tservers;
+    RETURN_NOT_OK(tablet_server_.GetLiveTServers(&live_tservers));
+
+    // TODO(pglocks): Make use of req.table_id()
+    // TODO(pglocks): parallelize RPCs
+    rpc::RpcController controller;
+    for (const auto& live_ts : live_tservers) {
+      const auto& permanent_uuid = live_ts.tserver_instance().permanent_uuid();
+      auto remote_tserver = VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid));
+      auto proxy = remote_tserver->proxy();
+      GetLockStatusRequestPB node_req;
+      node_req.set_transaction_id(req.transaction_id());
+      GetLockStatusResponsePB node_resp;
+      controller.Reset();
+      RETURN_NOT_OK(proxy->GetLockStatus(node_req, &node_resp, &controller));
+
+      auto* node_locks = resp->add_node_locks();
+      node_locks->set_permanent_uuid(permanent_uuid);
+      node_locks->mutable_tablet_lock_infos()->Swap(node_resp.mutable_tablet_lock_infos());
+    }
+
+    return Status::OK();
+  }
+
   Status TabletServerCount(
       const PgTabletServerCountRequestPB& req, PgTabletServerCountResponsePB* resp,
       rpc::RpcContext* context) {
@@ -403,8 +433,13 @@ class PgClientServiceImpl::Impl {
       const PgGetTserverCatalogVersionInfoRequestPB& req,
       PgGetTserverCatalogVersionInfoResponsePB* resp,
       rpc::RpcContext* context) {
+    GetTserverCatalogVersionInfoRequestPB request;
     GetTserverCatalogVersionInfoResponsePB info;
-    RETURN_NOT_OK(tablet_server_.get_ysql_db_oid_to_cat_version_info_map(req.size_only(), &info));
+    const auto db_oid = req.db_oid();
+    request.set_size_only(req.size_only());
+    request.set_db_oid(db_oid);
+    RETURN_NOT_OK(tablet_server_.get_ysql_db_oid_to_cat_version_info_map(
+        request, &info));
     if (req.size_only()) {
       // We only ask for the size of catalog version map in tserver and should not need to
       // populate any entries.
@@ -412,13 +447,15 @@ class PgClientServiceImpl::Impl {
       resp->set_num_entries(info.num_entries());
       return Status::OK();
     }
-    resp->mutable_entries()->Reserve(info.entries_size());
-    for (const auto& src : info.entries()) {
-      auto* dst = resp->add_entries();
-      dst->set_db_oid(src.db_oid());
-      dst->set_shm_index(src.shm_index());
-      dst->set_current_version(src.current_version());
+    // If db_oid is kPgInvalidOid, we ask for the catalog version map of all databases.
+    // Otherwise, we only ask for the catalog version info for the given database.
+    if (db_oid != kPgInvalidOid) {
+      // In a race condition it is possible that the database db_oid is already
+      // dropped from another node even through we are still connecting to
+      // db_oid. When that happens info.entries_size() can be 0.
+      DCHECK_LE(info.entries_size(), 1);
     }
+    resp->mutable_entries()->Swap(info.mutable_entries());
     return Status::OK();
   }
 

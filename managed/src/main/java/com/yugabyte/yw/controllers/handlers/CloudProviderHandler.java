@@ -13,6 +13,7 @@ package com.yugabyte.yw.controllers.handlers;
 import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
 import static com.yugabyte.yw.commissioner.Common.CloudType.gcp;
 import static com.yugabyte.yw.commissioner.Common.CloudType.kubernetes;
+import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerInstanceTypeMetadata;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadata;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -20,7 +21,6 @@ import static play.mvc.Http.Status.CONFLICT;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.base.Strings;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multimap;
@@ -69,6 +69,7 @@ import io.ebean.annotation.Transactional;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Secret;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -654,55 +655,14 @@ public class CloudProviderHandler {
     Set<Region> regionsToAdd = new HashSet<>();
     if (provider.getCloudCode().canAddRegions()) {
       if (editProviderReq.regions != null && !editProviderReq.regions.isEmpty()) {
-        Set<String> newRegionCodes =
-            editProviderReq.regions.stream().map(region -> region.code).collect(Collectors.toSet());
+        Map<String, Region> newRegions =
+            editProviderReq.regions.stream().collect(Collectors.toMap(r -> r.code, r -> r));
         Set<String> existingRegionCodes =
             provider.regions.stream().map(region -> region.code).collect(Collectors.toSet());
-        newRegionCodes.removeAll(existingRegionCodes);
-        if (!newRegionCodes.isEmpty()) {
-          regionsToAdd =
-              editProviderReq
-                  .regions
-                  .stream()
-                  .filter(region -> newRegionCodes.contains(region.code))
-                  .collect(Collectors.toSet());
+        newRegions.keySet().removeAll(existingRegionCodes);
+        if (!newRegions.isEmpty()) {
+          regionsToAdd = new HashSet<>(newRegions.values());
         }
-      }
-      if (!regionsToAdd.isEmpty()) {
-        // Perform validation for necessary fields
-        if (provider.getCloudCode() == gcp) {
-          if (editProviderReq.destVpcId == null) {
-            throw new PlatformServiceException(BAD_REQUEST, "Required field dest vpc id for GCP");
-          }
-        }
-        // Verify access key exists. If no value provided, we use the default keycode.
-        String accessKeyCode;
-        if (Strings.isNullOrEmpty(editProviderReq.keyPairName)) {
-          LOG.debug("Access key not specified, using default key code...");
-          accessKeyCode = AccessKey.getDefaultKeyCode(provider);
-        } else {
-          accessKeyCode = editProviderReq.keyPairName;
-        }
-        AccessKey.getOrBadRequest(provider.uuid, accessKeyCode);
-
-        regionsToAdd.forEach(
-            region -> {
-              if (region.getVnetName() == null && provider.getCloudCode() == aws) {
-                throw new PlatformServiceException(
-                    BAD_REQUEST, "Required field vnet name (VPC ID) for region: " + region.code);
-              }
-              if (region.zones == null || region.zones.isEmpty()) {
-                throw new PlatformServiceException(
-                    BAD_REQUEST, "Zone info needs to be specified for region: " + region.code);
-              }
-              region.zones.forEach(
-                  zone -> {
-                    if (zone.subnet == null) {
-                      throw new PlatformServiceException(
-                          BAD_REQUEST, "Required field subnet for zone: " + zone.code);
-                    }
-                  });
-            });
       }
     }
     return regionsToAdd;
@@ -724,9 +684,12 @@ public class CloudProviderHandler {
     CloudInfoInterface.mergeSensitiveFields(provider, editProviderReq);
     // Check if region edit mode.
     Set<Region> regionsToAdd = checkIfRegionsToAdd(editProviderReq, provider);
-    boolean providerDataUpdated =
-        updateProviderData(customer, provider, editProviderReq, regionsToAdd, validate);
-    UUID taskUUID = maybeAddRegions(customer, editProviderReq, provider, regionsToAdd);
+    UUID taskUUID = null;
+    if (!regionsToAdd.isEmpty()) {
+      // TODO: PLAT-7258 allow adding region for auto-creating VPC case
+      taskUUID = addRegions(customer, provider, regionsToAdd, true);
+    }
+    boolean providerDataUpdated = updateProviderData(customer, provider, editProviderReq, validate);
     if (!providerDataUpdated && taskUUID == null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "No changes to be made for provider type: " + provider.code);
@@ -736,11 +699,7 @@ public class CloudProviderHandler {
 
   @Transactional
   private boolean updateProviderData(
-      Customer customer,
-      Provider provider,
-      Provider editProviderReq,
-      Set<Region> regionsToAdd,
-      boolean validate) {
+      Customer customer, Provider provider, Provider editProviderReq, boolean validate) {
     Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(editProviderReq);
     Map<String, String> existingConfigMap = CloudInfoInterface.fetchEnvVars(provider);
     boolean updatedProviderDetails = false;
@@ -773,40 +732,66 @@ public class CloudProviderHandler {
     return providerDataUpdated;
   }
 
-  private UUID maybeAddRegions(
-      Customer customer, Provider editProviderReq, Provider provider, Set<Region> regionsToAdd) {
-    if (!regionsToAdd.isEmpty()) {
-      // Validate regions to add. We only support providing custom VPCs for now.
-      // So the user must have entered the VPC Info for the regions, as well as
-      // the zone info.
-      CloudBootstrap.Params taskParams = new CloudBootstrap.Params();
-      taskParams.keyPairName =
-          Strings.isNullOrEmpty(editProviderReq.keyPairName)
-              ? AccessKey.getDefaultKeyCode(provider)
-              : editProviderReq.keyPairName;
-      taskParams.skipKeyPairValidate =
-          runtimeConfigFactory.forProvider(provider).getBoolean(SKIP_KEYPAIR_VALIDATION_KEY);
-      taskParams.providerUUID = provider.uuid;
-      taskParams.destVpcId = editProviderReq.destVpcId;
-      taskParams.perRegionMetadata =
-          regionsToAdd
-              .stream()
-              .collect(
-                  Collectors.toMap(
-                      region -> region.name, CloudBootstrap.Params.PerRegionMetadata::fromRegion));
-      // Only adding new regions in the bootstrap task.
-      taskParams.regionAddOnly = true;
-      UUID taskUUID = commissioner.submit(TaskType.CloudBootstrap, taskParams);
-      CustomerTask.create(
-          customer,
-          provider.uuid,
-          taskUUID,
-          CustomerTask.TargetType.Provider,
-          CustomerTask.TaskType.Update,
-          provider.name);
-      return taskUUID;
+  public UUID addRegions(
+      Customer customer, Provider provider, Set<Region> regionsToAdd, boolean skipBootstrap) {
+    // Perform validation for necessary fields
+    if (provider.getCloudCode() == gcp) {
+      // TODO: Remove once we allow vpc creation for added regions
+      if (skipBootstrap && provider.destVpcId == null) {
+        throw new PlatformServiceException(BAD_REQUEST, "Required field dest vpc id for GCP");
+      }
     }
-    return null;
+    regionsToAdd.forEach(
+        region -> {
+          // TODO: Remove once we allow vpc creation for added regions
+          if (skipBootstrap && region.getVnetName() == null && provider.getCloudCode() == aws) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Required field vnet name (VPC ID) for region: " + region.code);
+          }
+          if (region.zones == null || region.zones.isEmpty()) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Zone info needs to be specified for region: " + region.code);
+          }
+          region.zones.forEach(
+              zone -> {
+                if (zone.subnet == null && provider.getCloudCode() != onprem) {
+                  throw new PlatformServiceException(
+                      BAD_REQUEST, "Required field subnet for zone: " + zone.code);
+                }
+              });
+        });
+
+    // Validate regions to add. We only support providing custom VPCs for now.
+    // So the user must have entered the VPC Info for the regions, as well as
+    // the zone info.
+    CloudBootstrap.Params taskParams = new CloudBootstrap.Params();
+    // Assuming that at that point we already have at least one AccessKey.
+    // And we can use actual one.
+    taskParams.keyPairName = AccessKey.getLatestKey(provider.uuid).getKeyCode();
+    taskParams.skipKeyPairValidate =
+        runtimeConfigFactory.forProvider(provider).getBoolean(SKIP_KEYPAIR_VALIDATION_KEY);
+    taskParams.providerUUID = provider.uuid;
+    taskParams.destVpcId = provider.destVpcId;
+    List<Region> allRegions = new ArrayList<>(provider.regions);
+    allRegions.addAll(regionsToAdd);
+    taskParams.perRegionMetadata =
+        allRegions
+            .stream()
+            .collect(
+                Collectors.toMap(
+                    region -> region.name, CloudBootstrap.Params.PerRegionMetadata::fromRegion));
+    taskParams.addedRegionCodes =
+        regionsToAdd.stream().map(r -> r.code).collect(Collectors.toSet());
+    taskParams.skipBootstrapRegion = skipBootstrap;
+    UUID taskUUID = commissioner.submit(TaskType.CloudBootstrap, taskParams);
+    CustomerTask.create(
+        customer,
+        provider.uuid,
+        taskUUID,
+        CustomerTask.TargetType.Provider,
+        CustomerTask.TaskType.Update,
+        provider.name);
+    return taskUUID;
   }
 
   private boolean maybeUpdateKubeConfig(Provider provider, Map<String, String> providerConfig) {
@@ -838,22 +823,12 @@ public class CloudProviderHandler {
             throw new IllegalStateException("Cannot use host vpc as there is no vpc");
           }
           String network = currentHostInfo.get("network").asText();
-          provider.hostVpcId = network;
-          // Destination VPC Network if specified by the client we will use that
-          // for provisioning nodes as part of the provider.
-          if (gcpCloudInfo.customGceNetwork != null) {
-            provider.destVpcId = gcpCloudInfo.customGceNetwork;
-          } else {
-            provider.destVpcId = network;
+          gcpCloudInfo.setHostVpcId(network);
+          // If destination VPC network is not specified, then we will use the
+          // host VPC as for both hostVpcId and destVpcId.
+          if (gcpCloudInfo.destVpcId == null) {
+            gcpCloudInfo.setDestVpcId(network);
           }
-          // We need to save the destVpcId into the provider config, because we'll need it during
-          // instance creation. Technically, we could make it a ybcloud parameter,
-          // but we'd still need to
-          // store it somewhere and the config is the easiest place to put it.
-          // As such, since all the
-          // config is loaded up as env vars anyway, might as well use in in devops like that...
-
-          gcpCloudInfo.setCustomGceNetwork(network);
           if (StringUtils.isBlank(gcpCloudInfo.getGceProject())) {
             gcpCloudInfo.setGceProject(currentHostInfo.get("host_project").asText());
           }
@@ -862,9 +837,9 @@ public class CloudProviderHandler {
       case aws:
         JsonNode currentHostInfo = queryHelper.getCurrentHostInfo(provider.getCloudCode());
         if (hasHostInfo(currentHostInfo)) {
-          provider.hostVpcRegion = currentHostInfo.get("region").asText();
-          provider.hostVpcId = currentHostInfo.get("vpc-id").asText();
-          provider.destVpcId = null;
+          AWSCloudInfo awsCloudInfo = CloudInfoInterface.get(provider);
+          awsCloudInfo.setHostVpcRegion(currentHostInfo.get("region").asText());
+          awsCloudInfo.setHostVpcId(currentHostInfo.get("vpc-id").asText());
         }
         break;
       default:

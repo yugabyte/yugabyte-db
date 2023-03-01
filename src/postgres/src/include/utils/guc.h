@@ -248,6 +248,7 @@ extern bool log_btree_build_stats;
 extern PGDLLIMPORT bool check_function_bodies;
 extern bool default_with_oids;
 extern bool session_auth_is_superuser;
+extern bool yb_enable_memory_tracking;
 
 extern int	log_min_error_statement;
 extern PGDLLIMPORT int log_min_messages;

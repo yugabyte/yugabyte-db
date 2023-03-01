@@ -8,9 +8,11 @@ import { USER_TAGS_FIELD } from '../../../utils/constants';
 //Icons
 import { ReactComponent as CloseIcon } from '../../../../../../assets/close.svg';
 
-interface UserTagsFieldProps {}
+interface UserTagsFieldProps {
+  disabled: boolean;
+}
 
-export const UserTagsField = (_: UserTagsFieldProps): ReactElement => {
+export const UserTagsField = ({ disabled }: UserTagsFieldProps): ReactElement => {
   const { t } = useTranslation();
 
   const { control } = useFormContext<UniverseFormData>();
@@ -24,13 +26,13 @@ export const UserTagsField = (_: UserTagsFieldProps): ReactElement => {
       <Box display="flex" flexDirection="column" mb={fields?.length ? 2 : 0} gridGap="8px">
         {fields.map((field, index) => {
           return (
-            <Box>
-              <Grid container key={field.id} spacing={1} alignItems="center">
+              <Grid key={field.id} container spacing={1} alignItems="center">
                 <Grid item xs>
                   <YBInputField
                     name={`${USER_TAGS_FIELD}.${index}.name` as FieldArrayPath<InstanceTag>}
                     control={control}
                     fullWidth
+                    disabled={disabled}
                     inputProps={{
                       'data-testid': `UniverseNameField-NameInput${index}`
                     }}
@@ -41,35 +43,40 @@ export const UserTagsField = (_: UserTagsFieldProps): ReactElement => {
                     name={`${USER_TAGS_FIELD}.${index}.value` as FieldArrayPath<InstanceTag>}
                     control={control}
                     fullWidth
+                    disabled={disabled}
                     inputProps={{
                       'data-testid': `UniverseNameField-ValueInput${index}`
                     }}
                   />
                 </Grid>
-                <Grid item>
-                  <IconButton
-                    color="primary"
-                    data-testid={`UniverseNameField-RemoveButton${index}`}
-                    onClick={() => remove(index)}
-                  >
-                    <CloseIcon />
-                  </IconButton>
-                </Grid>
+                {!disabled && (
+                  <Grid item>
+                    <IconButton
+                      color="primary"
+                      data-testid={`UniverseNameField-RemoveButton${index}`}
+                      onClick={() => remove(index)}
+                    >
+                      <CloseIcon />
+                    </IconButton>
+                  </Grid>
+                )}
               </Grid>
-            </Box>
           );
         })}
       </Box>
-      <Box>
-        <YBButton
-          variant="primary"
-          data-testid={`UniverseNameField-AddTagsButton`}
-          onClick={() => append({ name: '', value: '' })}
-        >
-          <span className="fa fa-plus" />
-          {t('universeForm.userTags.addRow')}
-        </YBButton>
-      </Box>
+      {!disabled && (
+        <Box>
+          <YBButton
+            variant="primary"
+            data-testid={`UniverseNameField-AddTagsButton`}
+            onClick={() => append({ name: '', value: '' })}
+            disabled={disabled}
+          >
+            <span className="fa fa-plus" />
+            {t('universeForm.userTags.addRow')}
+          </YBButton>
+        </Box>
+      )}
     </Grid>
   );
 };

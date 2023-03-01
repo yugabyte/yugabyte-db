@@ -1,8 +1,8 @@
-@import '../../../../uikit/common';
+@use '../../../../uikit/common';
 
 .availability-zones {
-  @include wizard-form-row();
-  @include wizard-form-text-label();
+  @include common.wizard-form-row();
+  @include common.wizard-form-text-label();
 
   &__nodes-col {
     position: relative;
@@ -29,18 +29,18 @@
     }
 
     &--success {
-      color: $YB_TEXT_SUCCESS;
-      fill: $YB_TEXT_SUCCESS;
+      color: common.$YB_TEXT_SUCCESS;
+      fill: common.$YB_TEXT_SUCCESS;
     }
 
     &--warning {
-      color: $YB_WARNING;
-      fill: $YB_WARNING;
+      color: common.$YB_WARNING;
+      fill: common.$YB_WARNING;
     }
 
     &--error {
-      color: $YB_ERROR;
-      fill: $YB_ERROR;
+      color: common.$YB_ERROR;
+      fill: common.$YB_ERROR;
     }
   }
 }

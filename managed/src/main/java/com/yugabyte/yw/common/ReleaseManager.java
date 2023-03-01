@@ -4,12 +4,15 @@ package com.yugabyte.yw.common;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.AddGFlagMetadata;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.common.utils.Version;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -33,8 +36,10 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -617,11 +622,8 @@ public class ReleaseManager {
 
       // If there is an error for one release, there is still a possibility that the user has
       // imported multiple
-      // releases locally, and that the other ones have been named properly. We err on the cautious
-      // side, and
-      // immediately throw a Runtime Exception. The user will be able to import local releases only
-      // if all of
-      // them are properly formatted, and none otherwise.
+      // releases locally, and that the other ones have been named properly. We skip the release
+      // with the error, and continue with the other releases.
 
       if (!localReleases.isEmpty()) {
 
@@ -631,8 +633,10 @@ public class ReleaseManager {
         Pattern ybVersionPatternRequired =
             Pattern.compile("^(\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)|(\\w+)))?$");
 
-        for (String version : localReleases.keySet()) {
+        Map<String, ReleaseMetadata> successfullyAddedReleases =
+            new HashMap<String, ReleaseMetadata>();
 
+        for (String version : localReleases.keySet()) {
           String associatedFilePath = localReleases.get(version).filePath;
 
           String associatedChartPath = localReleases.get(version).chartPath;
@@ -656,61 +660,75 @@ public class ReleaseManager {
           Matcher versionPatternMatcherInPackageNameChartPath =
               ybVersionPattern.matcher(chartPackageName);
 
-          if (!versionPatternMatcher.find()) {
-
-            throw new RuntimeException(
-                "The version name in the folder of the imported local release is improperly "
-                    + "formatted. Please check to make sure that the folder with the version name "
-                    + "is named correctly.");
-          }
-
-          if (!versionPatternMatcherInPackageNameFilePath.find()) {
-
-            throw new RuntimeException(
-                "In the file path, the version of DB in your package name in the imported "
-                    + "local release is improperly formatted. Please "
-                    + " check to make sure that you have named the .tar.gz file with "
-                    + " the appropriate DB version.");
-          }
-
-          if (!filePackageName.contains(version)) {
-
-            throw new RuntimeException(
-                "The version of DB that you have specified in the folder name in the "
-                    + "imported local release does not match the version of DB in the "
-                    + "package name in the imported local release (specifed through the "
-                    + "file path). Please make sure that you have named the directory and "
-                    + ".tar.gz file appropriately so that the DB version in the package "
-                    + "name matches the DB version in the folder name.");
-          }
-
-          if (!associatedChartPath.equals("")) {
-
-            if (!versionPatternMatcherInPackageNameChartPath.find()) {
+          try {
+            if (!versionPatternMatcher.find()) {
 
               throw new RuntimeException(
-                  "In the chart path, the version of DB in your package name in the imported "
+                  "The version name in the folder of the imported local release is improperly "
+                      + "formatted. Please check to make sure that the folder with the version"
+                      + " name is named correctly.");
+            }
+
+            if (!versionPatternMatcherInPackageNameFilePath.find()) {
+
+              throw new RuntimeException(
+                  "In the file path, the version of DB in your package name in the imported "
                       + "local release is improperly formatted. Please "
                       + " check to make sure that you have named the .tar.gz file with "
                       + " the appropriate DB version.");
             }
 
-            if (!chartPackageName.contains(version)) {
+            if (!filePackageName.contains(version)) {
 
               throw new RuntimeException(
                   "The version of DB that you have specified in the folder name in the "
                       + "imported local release does not match the version of DB in the "
                       + "package name in the imported local release (specifed through the "
-                      + "chart path). Please make sure that you have named the directory and "
+                      + "file path). Please make sure that you have named the directory and "
                       + ".tar.gz file appropriately so that the DB version in the package "
                       + "name matches the DB version in the folder name.");
             }
+
+            if (!associatedChartPath.equals("")) {
+
+              if (!versionPatternMatcherInPackageNameChartPath.find()) {
+
+                throw new RuntimeException(
+                    "In the chart path, the version of DB in your package name in the imported "
+                        + "local release is improperly formatted. Please "
+                        + " check to make sure that you have named the .tar.gz file with "
+                        + " the appropriate DB version.");
+              }
+
+              if (!chartPackageName.contains(version)) {
+
+                throw new RuntimeException(
+                    "The version of DB that you have specified in the folder name in the "
+                        + "imported local release does not match the version of DB in the "
+                        + "package name in the imported local release (specifed through the "
+                        + "chart path). Please make sure that you have named the directory and "
+                        + ".tar.gz file appropriately so that the DB version in the package "
+                        + "name matches the DB version in the folder name.");
+              }
+            }
+          } catch (RuntimeException e) {
+            log.error(
+                "Error verifying file and directory names for local release, "
+                    + "skipping this release: [ {} ]",
+                version,
+                e);
+            continue;
           }
+
           // Add gFlag metadata for newly added release.
           addGFlagsMetadataFiles(version, localReleases.get(version));
+
+          // Release has been added successfully.
+          successfullyAddedReleases.put(version, localReleases.get(version));
         }
-        log.info("Importing local releases: [ {} ]", Json.toJson(localReleases));
-        localReleases.forEach(currentReleases::put);
+
+        log.info("Importing local releases: [ {} ]", Json.toJson(successfullyAddedReleases));
+        successfullyAddedReleases.forEach(currentReleases::put);
         configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
       }
     }
@@ -745,6 +763,87 @@ public class ReleaseManager {
             ybcReleasesPath);
       }
     }
+  }
+
+  public void findLatestArmRelease(String currentVersion) {
+    // currentVersion - 2.17.2.0-PRE_RELEASE
+    JsonNode releaseTree;
+    try {
+      URL dockerUrl =
+          new URL("https://registry.hub.docker.com/v2/repositories/yugabytedb/yugabyte/tags");
+      ObjectMapper mapper = new ObjectMapper();
+      releaseTree = mapper.readTree(dockerUrl);
+    } catch (Exception e) {
+      log.warn(
+          String.format(
+              "Error reading release tags from URL. Skipping ARM http release import. %s",
+              e.getMessage()));
+      return;
+    }
+
+    Comparator<JsonNode> releaseNameComparator =
+        new Comparator<JsonNode>() {
+          @Override
+          public int compare(JsonNode r1, JsonNode r2) {
+            // Compare r2 to r1 because we want latest elements first.
+            return Util.compareYbVersions(r2.get("name").asText(), r1.get("name").asText());
+          }
+        };
+
+    if (releaseTree != null && releaseTree.has("results")) {
+      List<JsonNode> releases = releaseTree.findParents("name");
+      if (releases == null || releases.isEmpty()) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST, "Could not find versions in response JSON.");
+      }
+      JsonNode latestRelease =
+          releases
+              .stream()
+              .filter(r -> Util.isYbVersionFormatValid(r.get("name").asText()))
+              .filter(r -> Util.compareYbVersions(currentVersion, r.get("name").asText()) >= 0)
+              .sorted(releaseNameComparator)
+              .findFirst()
+              .get();
+      if (latestRelease.isNull() || latestRelease == null) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST, "Could not find latest release in response JSON.");
+      }
+      // version format - 2.17.1.0-b439
+      String version = latestRelease.get("name").asText();
+      String httpsUrl =
+          String.format(
+              "https://downloads.yugabyte.com/releases/%s/yugabyte-%s-el8-aarch64.tar.gz",
+              version.split("-")[0], version);
+      addHttpsRelease(version, httpsUrl, Architecture.aarch64, "%s-https-aarch64");
+    }
+  }
+
+  public synchronized void addHttpsRelease(
+      String version, String url, Architecture arch, String versionFormatString) {
+    Map<String, Object> currentReleases = getReleaseMetadata();
+    ReleaseMetadata rm;
+    if (currentReleases.containsKey(version)) {
+      // merge https URL with existing metadata
+      rm = metadataFromObject(currentReleases.get(version));
+      if (rm.http == null) {
+        ReleaseMetadata.PackagePaths httpsPaths = new ReleaseMetadata.PackagePaths();
+        httpsPaths.x86_64 = url;
+        verifyPackageNameFormat(version, httpsPaths);
+        rm.http = new ReleaseMetadata.HttpLocation();
+        rm.http.paths = httpsPaths;
+        rm = rm.withPackage(url, arch);
+      }
+    } else {
+      // create new release with only https ARM URL
+      verifyPackageNameFormat(version, url);
+      version = String.format(versionFormatString, version);
+      rm = ReleaseMetadata.create(version).withFilePath(url).withPackage(url, arch);
+      ReleaseMetadata.PackagePaths httpsPaths = new ReleaseMetadata.PackagePaths();
+      httpsPaths.x86_64 = url;
+      rm.http = new ReleaseMetadata.HttpLocation();
+      rm.http.paths = httpsPaths;
+    }
+    updateReleaseMetadata(version, rm);
   }
 
   /** Idempotent method to update all releases with packages if possible. */
@@ -835,12 +934,11 @@ public class ReleaseManager {
     }
   }
 
+  // Adds metadata to releases is version does not exist. Updates existing value if key present.
   public synchronized void updateReleaseMetadata(String version, ReleaseMetadata newData) {
     Map<String, Object> currentReleases = getReleaseMetadata();
-    if (currentReleases.containsKey(version)) {
-      currentReleases.put(version, newData);
-      configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
-    }
+    currentReleases.put(version, newData);
+    configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
   }
 
   /**

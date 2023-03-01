@@ -87,6 +87,8 @@ class SchemaPacking {
   std::optional<Slice> GetValue(ColumnId column_id, const Slice& packed) const;
   void ToPB(SchemaPackingPB* out) const;
 
+  bool CouldPack(const google::protobuf::RepeatedPtrField<QLColumnValuePB>& values) const;
+
   std::string ToString() const;
 
   bool operator==(const SchemaPacking&) const = default;

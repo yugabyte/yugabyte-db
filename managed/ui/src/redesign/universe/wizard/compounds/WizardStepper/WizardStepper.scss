@@ -1,14 +1,14 @@
-@import '../../../../uikit/common';
+@use '../../../../uikit/common';
 
 .wizard-stepper {
   display: flex;
   align-items: center;
 
   &__item {
-    font-family: $YB_FONT_FAMILY;
+    font-family: common.$YB_FONT_FAMILY;
     font-weight: 600;
     font-size: 20px;
-    color: $YB_BORDER_1;
+    color: common.$YB_BORDER_1;
     user-select: none;
     margin-right: 50px;
 
@@ -23,13 +23,13 @@
 
     &--active {
       font-size: 22px;
-      color: $YB_WIZARD_STEPPER_ACTIVE;
+      color: common.$YB_WIZARD_STEPPER_ACTIVE;
     }
 
     &--clickable {
       cursor: pointer;
       &:hover {
-        color: $YB_CTA;
+        color: common.$YB_CTA;
       }
     }
   }

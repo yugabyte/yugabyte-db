@@ -6,12 +6,15 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.JWTVerifier;
 import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
+import com.yugabyte.yw.models.Provider;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import java.io.BufferedInputStream;
@@ -72,6 +75,7 @@ public class NodeAgentManager {
   public static final String NODE_AGENT_RELEASES_PATH_PROPERTY = "yb.node_agent.releases.path";
   public static final String NODE_AGENT_SERVER_INSTALL_PROPERTY = "yb.node_agent.server.install";
   public static final int CERT_EXPIRY_YEARS = 5;
+  public static final int NODE_AGENT_JWT_EXPIRY_SECS = 1800;
 
   private static final String NODE_AGENT_INSTALLER_FILE = "node-agent-installer.sh";
   private static final String NODE_AGENT_FILE_FILTER_FORMAT = "node_agent-%s*-%s-%s.tar.gz";
@@ -79,11 +83,14 @@ public class NodeAgentManager {
 
   private final Config appConfig;
   private final ConfigHelper configHelper;
+  private final RuntimeConfGetter confGetter;
 
   @Inject
-  public NodeAgentManager(Config appConfig, ConfigHelper configHelper) {
+  public NodeAgentManager(
+      Config appConfig, ConfigHelper configHelper, RuntimeConfGetter confGetter) {
     this.appConfig = appConfig;
     this.configHelper = configHelper;
+    this.confGetter = confGetter;
   }
 
   @Getter
@@ -261,8 +268,8 @@ public class NodeAgentManager {
    *
    * @return true if yes, false otherwise.
    */
-  public boolean isServerToBeInstalled() {
-    return appConfig.getBoolean(NODE_AGENT_SERVER_INSTALL_PROPERTY);
+  public boolean isServerToBeInstalled(Provider provider) {
+    return confGetter.getConfForScope(provider, ProviderConfKeys.installNodeAgentServer);
   }
 
   /**
@@ -305,7 +312,7 @@ public class NodeAgentManager {
         .setIssuer("https://www.yugabyte.com")
         .setSubject(ClientType.NODE_AGENT.name())
         .setIssuedAt(Date.from(Instant.now()))
-        .setExpiration(Date.from(Instant.now().plusSeconds(600)))
+        .setExpiration(Date.from(Instant.now().plusSeconds(NODE_AGENT_JWT_EXPIRY_SECS)))
         .claim(JWTVerifier.CLIENT_ID_CLAIM, nodeAgentUuid.toString())
         .claim(JWTVerifier.USER_ID_CLAIM, userUuid.toString())
         .signWith(SignatureAlgorithm.RS256, privateKey)
@@ -363,14 +370,16 @@ public class NodeAgentManager {
       // Search for a pattern like node_agent-2.15.3.0*-linux-amd64.tar.gz.
       FileFilter fileFilter = new WildcardFileFilter(pkgFileFilter);
       File[] files = releasesPath.toFile().listFiles(fileFilter);
-      for (File file : files) {
-        matcher = filePattern.matcher(file.getName());
-        if (matcher.find()) {
-          // Extract the version with build number e.g. 2.15.3.0-b1372.
-          String version = matcher.group(1);
-          // Compare the full versions. The comparison ignores non-numeric build numbers.
-          if (Util.compareYbVersions(softwareVersion, version, true) == 0) {
-            return file.toPath();
+      if (files != null) {
+        for (File file : files) {
+          matcher = filePattern.matcher(file.getName());
+          if (matcher.find()) {
+            // Extract the version with build number e.g. 2.15.3.0-b1372.
+            String version = matcher.group(1);
+            // Compare the full versions. The comparison ignores non-numeric build numbers.
+            if (Util.compareYbVersions(softwareVersion, version, true) == 0) {
+              return file.toPath();
+            }
           }
         }
       }

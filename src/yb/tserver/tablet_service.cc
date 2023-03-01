@@ -2468,7 +2468,7 @@ void TabletServiceImpl::GetTserverCatalogVersionInfo(
     const GetTserverCatalogVersionInfoRequestPB* req,
     GetTserverCatalogVersionInfoResponsePB* resp,
     rpc::RpcContext context) {
-  auto status = server_->get_ysql_db_oid_to_cat_version_info_map(req->size_only(), resp);
+  auto status = server_->get_ysql_db_oid_to_cat_version_info_map(*req, resp);
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), status, &context);
     return;
@@ -2485,6 +2485,50 @@ void TabletServiceImpl::ListMasterServers(const ListMasterServersRequestPB* req,
                          TabletServerErrorPB::UNKNOWN_ERROR,
                          &context);
     return;
+  }
+  context.RespondSuccess();
+}
+
+void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
+                                      GetLockStatusResponsePB* resp,
+                                      rpc::RpcContext context) {
+  TransactionId txn_id = TransactionId::Nil();
+  if (req->has_transaction_id() && !req->transaction_id().empty()) {
+    auto id_or_status = FullyDecodeTransactionId(req->transaction_id());
+    if (!id_or_status.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), id_or_status.status(), &context);
+      return;
+    }
+    txn_id = *id_or_status;
+  }
+  if (req->has_tablet_id() && !req->tablet_id().empty()) {
+    PerformAtLeader(req, resp, &context,
+      [req, resp, &txn_id](const LeaderTabletPeer& tablet_peer) -> Status {
+        const auto& tablet = tablet_peer.tablet;
+        return tablet->GetLockStatus(
+            txn_id, req->subtransaction_id(), resp->add_tablet_lock_infos());
+        return Status::OK();
+      });
+    return;
+  }
+
+  auto tablet_peers = server_->tablet_manager()->GetTabletPeers();
+  for (const auto& tablet_peer : tablet_peers) {
+    auto leader_term = tablet_peer->LeaderTerm();
+    if (leader_term != OpId::kUnknownTerm &&
+        tablet_peer->tablet_metadata()->table_type() == PGSQL_TABLE_TYPE) {
+      // TODO(pglocks): https://github.com/yugabyte/yugabyte-db/issues/15647
+      // Include leader_term in response so client may pick only the latest leader if multiple
+      // tablets respond.
+      const auto& tablet = tablet_peer->shared_tablet();
+      auto s = tablet->GetLockStatus(
+          txn_id, req->subtransaction_id(), resp->add_tablet_lock_infos());
+      if (!s.ok()) {
+        resp->Clear();
+        SetupErrorAndRespond(resp->mutable_error(), s, &context);
+        return;
+      }
+    }
   }
   context.RespondSuccess();
 }

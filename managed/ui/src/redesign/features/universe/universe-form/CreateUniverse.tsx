@@ -10,7 +10,7 @@ import { getPlacements } from './form/fields/PlacementsField/PlacementsFieldHelp
 import {
   createUniverse,
   filterFormDataByClusterType,
-  getAsyncCopyFields,
+  getPrimaryInheritedValues,
   getUserIntent
 } from './utils/helpers';
 import {
@@ -155,7 +155,9 @@ export const CreateUniverse: FC = () => {
         onFormSubmit={(data: UniverseFormData) =>
           onSubmit(
             data,
-            asyncFormData ? { ...asyncFormData, ...getAsyncCopyFields(primaryFormData) } : null
+            asyncFormData
+              ? { ...asyncFormData, ...getPrimaryInheritedValues(primaryFormData) }
+              : null
           )
         }
         submitLabel={t('common.create')}
@@ -174,7 +176,7 @@ export const CreateUniverse: FC = () => {
       <UniverseForm
         defaultFormData={
           asyncFormData
-            ? { ...asyncFormData, ...getAsyncCopyFields(primaryFormData) } //Not all the fields needs to be copied from primary -> async
+            ? { ...asyncFormData, ...getPrimaryInheritedValues(primaryFormData) } //Not all the fields needs to be copied from primary -> async
             : filterFormDataByClusterType(primaryFormData, ClusterType.ASYNC)
         }
         onFormSubmit={(data: UniverseFormData) => onSubmit(primaryFormData, data)}

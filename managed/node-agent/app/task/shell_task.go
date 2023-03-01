@@ -39,6 +39,7 @@ var (
 		"api_token": true,
 		"password":  true,
 	}
+	userVariables = []string{"LOGNAME", "USER", "LNAME", "USERNAME"}
 )
 
 // ShellTask handles command execution.
@@ -121,8 +122,10 @@ func (s *ShellTask) command(ctx context.Context, name string, arg ...string) (*e
 		pwd = "/tmp"
 	}
 	os.Setenv("PWD", pwd)
-	os.Setenv("USER", userAcc.Username)
 	os.Setenv("HOME", pwd)
+	for _, userVar := range userVariables {
+		os.Setenv(userVar, userAcc.Username)
+	}
 	cmd.Dir = pwd
 	return cmd, nil
 }
@@ -169,7 +172,7 @@ func (s *ShellTask) Command(ctx context.Context, name string, arg ...string) (*e
 // Process runs the the command Task.
 func (s *ShellTask) Process(ctx context.Context) (*TaskStatus, error) {
 	util.FileLogger().Debugf("Starting the command - %s", s.name)
-	taskStatus := &TaskStatus{Info: s.stdout, ExitStatus: &ExitStatus{Code: 1}}
+	taskStatus := &TaskStatus{Info: s.stdout, ExitStatus: &ExitStatus{Code: 1, Error: s.stderr}}
 	cmd, err := s.Command(ctx, s.cmd, s.args...)
 	if err != nil {
 		util.FileLogger().Errorf("Command creation for %s failed - %s", s.name, err.Error())
@@ -177,8 +180,10 @@ func (s *ShellTask) Process(ctx context.Context) (*TaskStatus, error) {
 	}
 	cmd.Stdout = s.stdout
 	cmd.Stderr = s.stderr
-	redactedArgs := s.redactCommandArgs(s.args...)
-	util.FileLogger().Infof("Running command %s with args %v", s.cmd, redactedArgs)
+	if util.FileLogger().IsDebugEnabled() {
+		redactedArgs := s.redactCommandArgs(s.args...)
+		util.FileLogger().Infof("Running command %s with args %v", s.cmd, redactedArgs)
+	}
 	err = cmd.Run()
 	if err == nil {
 		taskStatus.Info = s.stdout
@@ -258,8 +263,10 @@ func (handler *PreflightCheckHandler) Handle(ctx context.Context) (any, error) {
 		util.FileLogger().Errorf("Pre-flight checks processing failed - %s", err.Error())
 		return nil, err
 	}
+	data := output.Info.String()
+	util.FileLogger().Debugf("Preflight check output data: %s", data)
 	handler.result = &map[string]model.PreflightCheckVal{}
-	err = json.Unmarshal([]byte(output.Info.String()), handler.result)
+	err = json.Unmarshal([]byte(data), handler.result)
 	if err != nil {
 		util.FileLogger().Errorf("Pre-flight checks unmarshaling error - %s", err.Error())
 		return nil, err

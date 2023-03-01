@@ -93,11 +93,17 @@ echo 'export PATH="/opt/local/homebrew/opt/openjdk@11/bin:$PATH"' >>~/.bashrc
 echo 'export PATH="/usr/local/opt/openjdk@11/bin:$PATH"' >>~/.bashrc
 ```
 
+### yugabyted-ui
+
+{{% readfile "includes/yugabyted-ui.md" %}}
+
 ## Build the code
 
 {{% readfile "includes/build-the-code.md" %}}
 
-### Build release package
+### Build release package (optional)
+
+[Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
 
 Run the `yb_release` script to build a release package:
 

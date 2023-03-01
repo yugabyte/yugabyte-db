@@ -608,6 +608,7 @@ MonitoredTaskState BackfillTableJob::AbortAndReturnPrevState(const Status& statu
   while (!IsStateTerminal(old_state)) {
     if (state_.compare_exchange_strong(old_state,
                                        MonitoredTaskState::kAborted)) {
+      MarkDone();
       return old_state;
     }
     old_state = state();
@@ -623,6 +624,15 @@ void BackfillTableJob::SetState(MonitoredTaskState new_state) {
     }
   }
 }
+
+void BackfillTableJob::MarkDone() {
+  completion_timestamp_ = MonoTime::Now();
+  if (backfill_table_) {
+    backfill_table_->table()->RemoveTask(shared_from_this());
+    backfill_table_.reset();
+  }
+}
+
 // -----------------------------------------------------------------------------------------------
 // BackfillTable
 // -----------------------------------------------------------------------------------------------
@@ -720,6 +730,7 @@ const std::unordered_set<TableId> BackfillTable::indexes_to_build() const {
 Status BackfillTable::Launch() {
   backfill_job_ = std::make_shared<BackfillTableJob>(shared_from_this());
   backfill_job_->SetState(MonitoredTaskState::kRunning);
+  table()->AddTask(backfill_job_);
   master_->catalog_manager_impl()->jobs_tracker_->AddTask(backfill_job_);
 
   {

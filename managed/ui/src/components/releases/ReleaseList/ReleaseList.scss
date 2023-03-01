@@ -1,6 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .release-list-table {
   .storage-cell {
@@ -17,7 +17,7 @@
   tbody {
     .td-column-imported {
       color: white;
-      background-color: $YB_WARNING_COLOR;
+      background-color: colors.$YB_WARNING_COLOR;
     }
 
     > tr > td {

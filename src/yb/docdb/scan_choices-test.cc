@@ -239,18 +239,37 @@ void ScanChoicesTest::AdjustForRangeConstraints() {
 
   // Size of the dockey we have read so far
   size_t prev_size = 0;
+  auto cur_opts = choices_->TEST_GetCurrentOptions();
   for (size_t i = 0; i < current_schema_->num_range_key_columns(); i++) {
-    EXPECT_OK(decoder.DecodeKeyEntryValue(&cur_val));
-    if (cur_val.IsInfinity()) {
+    if (i < cur_opts.size()) {
+      EXPECT_OK(decoder.DecodeKeyEntryValue(&cur_val));
+    }
+
+    if (i == cur_opts.size() || cur_val.IsInfinity()) {
       KeyBytes new_target;
       new_target.Reset(Slice(cur_target.data().AsSlice().data(),
           cur_target.data().AsSlice().data() + valid_size));
       ASSERT_GE(i, 1);
 
-      auto cur_opts = choices_->TEST_GetCurrentOptions();
       auto is_inclusive = cur_opts[i - 1].upper_inclusive();
-      for (size_t j = i - 1; j < current_schema_->num_range_key_columns(); j++) {
-        cur_opts[j].upper().AppendToKey(&new_target);
+      auto sorttype = current_schema_->column(i - 1).sorting_type();
+      auto sortorder = (sorttype == SortingType::kAscending ||
+          sorttype == SortingType::kAscendingNullsLast) ? SortOrder::kAscending :
+          SortOrder::kDescending;
+
+      auto j = i - 1;
+      if (is_inclusive) {
+        // If column i - 1 was inclusive, we move that column up by one to move
+        // the previous OptionRange for column i - 1.
+        KeyEntryValue::Int32(cur_opts[j].upper().GetInt32() + 1,
+            sortorder).AppendToKey(&new_target);
+        j++;
+      }
+
+      for (; j < current_schema_->num_range_key_columns(); j++) {
+        auto upper =
+            j < cur_opts.size() ? cur_opts[j].upper() : KeyEntryValue(KeyEntryType::kHighest);
+        upper.AppendToKey(&new_target);
       }
 
       EXPECT_OK(choices_->SkipTargetsUpTo(new_target));
@@ -360,7 +379,7 @@ TEST_F(ScanChoicesTest, SimplePartialFilterHybridScan) {
     {{{10_ColId}, QL_OP_IN, {{5}, {6}}}};
   const Schema &schema = test_range_schema;
 
-  TestOptionIteration(schema, conds, {{{5}, {}}, {{6}, {}}});
+  TestOptionIteration(schema, conds, {{{5}}, {{6}}});
 }
 
 TEST_F(ScanChoicesTest, SimpleMixedFilterHybridScan) {

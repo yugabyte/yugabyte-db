@@ -29,6 +29,22 @@ func setDefaultConfigs() {
 	if err != nil {
 		panic(err)
 	}
+	_, err = config.CompareAndUpdate(util.NodeAgentLogLevelKey, nil, "1" /* Info */)
+	if err != nil {
+		panic(err)
+	}
+	_, err = config.CompareAndUpdate(util.NodeAgentLogMaxMbKey, nil, "100")
+	if err != nil {
+		panic(err)
+	}
+	_, err = config.CompareAndUpdate(util.NodeAgentLogMaxBackupsKey, nil, "5")
+	if err != nil {
+		panic(err)
+	}
+	_, err = config.CompareAndUpdate(util.NodeAgentLogMaxDaysKey, nil, "15")
+	if err != nil {
+		panic(err)
+	}
 }
 
 // Entry for all commands.

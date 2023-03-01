@@ -106,10 +106,6 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     Fail();
   }
 
-  void FillStatusTablets(std::vector<BlockingTransactionData>* inout) override {
-    Fail();
-  }
-
   boost::optional<TabletId> FindStatusTablet(const TransactionId& id) override {
     return boost::none;
   }
