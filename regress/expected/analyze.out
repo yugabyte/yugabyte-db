@@ -119,6 +119,11 @@ SELECT * FROM cypher(NULL, NULL) AS (result agtype);
 ERROR:  unexpected character at or near "$"
 LINE 1: SELECT * FROM cypher(NULL, NULL) AS (result agtype);
         ^
+-- should return errors
+SELECT * FROM cypher() AS (result agtype);
+ERROR:  cypher function requires a minimum of 2 arguments
+SELECT * FROM cypher(NULL) AS (result agtype);
+ERROR:  cypher function requires a minimum of 2 arguments
 -- drop graphs
 SELECT * FROM drop_graph('analyze', true);
 NOTICE:  drop cascades to 2 other objects
