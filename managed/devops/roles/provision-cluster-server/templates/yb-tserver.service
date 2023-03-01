@@ -4,6 +4,7 @@ Requires=network-online.target
 After=network.target network-online.target multi-user.target
 StartLimitInterval=100
 StartLimitBurst=10
+Wants=yb-ysql-cgroup.service
 
 [Path]
 PathExists={{yb_home_dir}}/tserver/bin/yb-tserver
