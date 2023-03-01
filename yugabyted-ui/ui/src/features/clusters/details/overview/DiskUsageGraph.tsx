@@ -1,10 +1,10 @@
 import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Box, Grid, Link, makeStyles, Typography } from '@material-ui/core';
+import { Grid, makeStyles, Typography } from '@material-ui/core';
 import { roundDecimal } from '@app/helpers';
 import { YBProgress } from '@app/components';
 import clsx from 'clsx';
-import { ChevronRight } from '@material-ui/icons';
+import type { ClusterData } from '@app/api/src';
 
 const useStyles = makeStyles((theme) => ({
   container: {
@@ -12,19 +12,15 @@ const useStyles = makeStyles((theme) => ({
   },
   mainContent: {
     marginTop: theme.spacing(6),
-    marginBottom: theme.spacing(9),
+    marginBottom: theme.spacing(7),
   },
   title: {
     color: theme.palette.grey[900],
     fontWeight: theme.typography.fontWeightRegular as number,
     flexGrow: 1,
   },
-  arrow: {
-    color: theme.palette.grey[600],
-    marginTop: theme.spacing(0.5)
-  },
   label: {
-    color: theme.palette.grey[700],
+    color: theme.palette.grey[600],
     fontWeight: theme.typography.fontWeightRegular as number,
     marginTop: theme.spacing(0.2),
     textTransform: 'uppercase',
@@ -52,14 +48,17 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 interface DiskUsageGraphProps {
-  totalDiskSize: number;
-  usedDiskSize: number;
+  cluster: ClusterData,
 }
 
-export const DiskUsageGraph: FC<DiskUsageGraphProps> = ({ totalDiskSize, usedDiskSize }) => {
+export const DiskUsageGraph: FC<DiskUsageGraphProps> = ({ cluster }) => {
   const classes = useStyles();
   const { t } = useTranslation();
   // const context = useContext(ClusterContext);
+
+  const clusterSpec = cluster?.spec;
+  const totalDiskSize = clusterSpec?.cluster_info?.node_info.disk_size_gb ?? 0;
+  const usedDiskSize = clusterSpec?.cluster_info?.node_info.disk_size_used_gb ?? 0;
 
   var usedPercentage = usedDiskSize / totalDiskSize;
   if (isNaN(usedPercentage)) {
@@ -74,12 +73,6 @@ export const DiskUsageGraph: FC<DiskUsageGraphProps> = ({ totalDiskSize, usedDis
 
   return (
     <div className={classes.container}>
-      <Box display="flex" alignItems="center">
-        <Typography variant="body2" className={classes.title}>{t('clusterDetail.overview.diskUsage')}</Typography>
-        <Link>
-          <ChevronRight className={classes.arrow} />
-        </Link>
-      </Box>
       <div className={classes.mainContent}>
         <Grid container className={clsx(classes.flex, classes.graphLabel)}>
           <Grid item>

@@ -29,7 +29,7 @@ const tabList: ITabListItem[] = [
   {
     name: 'tabNodes',
     component: NodesTab,
-    testId: 'ClusterTabList-Overview'
+    testId: 'ClusterTabList-Nodes'
   },
   // {
   //   name: 'tabActivity',

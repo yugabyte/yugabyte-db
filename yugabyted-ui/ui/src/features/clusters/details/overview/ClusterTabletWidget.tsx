@@ -12,14 +12,16 @@ const useStyles = makeStyles((theme) => ({
   container: {
     flexWrap: "nowrap",
     marginTop: theme.spacing(1.5),
+    justifyContent: 'space-between',
   },
   section: {
     marginRight: theme.spacing(2),
   },
+  sectionInvisible: {
+    marginRight: theme.spacing(4),
+  },
   sectionBorder: {
     paddingLeft: theme.spacing(2),
-    marginLeft: theme.spacing(11.75),
-    marginRight: theme.spacing(8),
     borderLeft: `1px solid ${theme.palette.grey[300]}`
   },
   title: {
@@ -95,6 +97,7 @@ export const ClusterTabletWidget: FC<ClusterTabletWidgetProps> = ({ health }) =>
             {t('clusterDetail.overview.unavailable')}
           </Typography>
         </div>
+        <div className={classes.sectionInvisible}></div>
       </Grid>
     </Box>
   );

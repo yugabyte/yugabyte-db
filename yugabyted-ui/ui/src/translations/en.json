@@ -641,6 +641,8 @@
       "underUpgradeInfo": "This cluster is upgrading database version. Note that certain operations are not available while the upgrade is in progress.",
       "resumeBtnText": "Resume",
       "keyMetrics": "Key Metrics",
+      "tabvCpu": "vCPU",
+      "tabDisk": "Disk",
       "lastHour": "Last Hour",
       "last6hours": "Last 6 Hours",
       "last12hours": "Last 12 Hours",

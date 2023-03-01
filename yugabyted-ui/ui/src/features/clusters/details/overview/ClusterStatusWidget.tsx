@@ -4,7 +4,7 @@ import { Divider, makeStyles, Paper } from '@material-ui/core';
 // Local imports
 import type { ClusterData, HealthCheckInfo } from '@app/api/src';
 import { ClusterNodeWidget } from './ClusterNodeWidget';
-import { ClusterDiskWidget } from './ClusterDiskWidget';
+import { ClusterResourceWidget } from './ClusterResourceWidget';
 import { ClusterActivityWidget } from './ClusterActivityWidget';
 
 const useStyles = makeStyles((theme) => ({
@@ -13,7 +13,7 @@ const useStyles = makeStyles((theme) => ({
     gap: theme.spacing(2),
     padding: theme.spacing(2),
     flexGrow: 1,
-    flexBasis: 0,
+    overflow: 'auto',
     border: `1px solid ${theme.palette.grey[200]}`
   },
 }));
@@ -31,7 +31,7 @@ export const ClusterStatusWidget: FC<ClusterStatusWidgetProps> = ({ cluster, hea
         <Divider orientation="vertical" />
         <ClusterActivityWidget />
         <Divider orientation="vertical" />
-        <ClusterDiskWidget cluster={cluster} />
+        <ClusterResourceWidget cluster={cluster} />
       </Paper>
   );
 };
