@@ -30,11 +30,11 @@ Below is the complete list of release notes for every version of ``pg_stat_monit
                                 
 ### Bug Fixes
 
-[PG-265](https://jira.percona.com/browse/PG-265): Make cpu_user_time and cpu_sys_time cumulative.
-
 [PG-306](https://jira.percona.com/browse/PG-306): bucket_start_time - TEXT vs TIMESTAMP? 
 
 [PG-320](https://jira.percona.com/browse/PG-320): Remove state/state_code fields from pg_stat_monitor_view.
+
+[PG-321](https://jira.percona.com/browse/PG-321): Remove redundant `cmd_type`/`cmd_type_text` columns in `pg_stat_monitor` view.
 
 [PG-354](https://jira.percona.com/browse/PG-354): Remove pg_stat_monitor_settings view
 
@@ -42,25 +42,15 @@ Below is the complete list of release notes for every version of ``pg_stat_monit
 
 [PG-518](https://jira.percona.com/browse/PG-518): Internal Functions should NOT be visible in PGSM API. 
 
-[PG-552](https://jira.percona.com/browse/PG-552): Column names not correct for PG-12 & 11 on PGSM main branch. 
-
 [PG-579](https://jira.percona.com/browse/PG-579): Querying pg_stat_monitor view crashes the server when pg_stat_monitor.so is not configured in shared_preload_libraries
 
 [PG-582](https://jira.percona.com/browse/PG-582): blk_read_time and blk_write_time are not being rounded. 
 
 [PG-583](https://jira.percona.com/browse/PG-583): Rounded time based values are not consistent  
 
-[PG-591](https://jira.percona.com/browse/PG-591): cpu_sys_time is not rounded off intermittently. 
-
-[PG-593](https://jira.percona.com/browse/PG-593): min_exec_time should not be 0
-
-[PG-594](https://jira.percona.com/browse/PG-594): PG-13 *_exec_times now being rounded off. 
-
 [PG-597](https://jira.percona.com/browse/PG-597): Remove rounding off for floating point values
 
-[PG-601](https://jira.percona.com/browse/PG-601): Histogram ranges are not correct.
-
-[PG-605](https://jira.percona.com/browse/PG-605): Fix TAP Tests framework crash 
+[PG-569](https://jira.percona.com/browse/PG-569): Make all data types of pg_stat_monitor view compatible with pg_stat_statements
 
 ## 1.1.1
 
