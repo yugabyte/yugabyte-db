@@ -33,7 +33,7 @@ In addition to the two key requirements, there is an extra YSQL-specific require
 * The node `N1` might collect data from many shards on different physical YB-TServers. In this pursuit, it will issue requests to many other nodes to read data.
 * Assuming that node `N1` reads from node `N2`, it could be the case that there exists some data written on node `N2` with a write timestamp `T2` (> `T1`) but it had been written before the read was issued. This can happen because of clock skew where the physical clock on node `N2` might be running ahead of node `M`, and hence the write which was actually done in the past, still has a write timestamp higher than `T1`.
 
-  Note that the clock skew between all nodes in the cluster is always in a [max_clock_skew_usec](/preview/reference/configuration/yb-tserver/#max-clock-skew-usec) bound due to clock synchronization algorithms.
+  Note that the clock skew between all nodes in the cluster is always in a [max_clock_skew_usec](../../../reference/configuration/yb-tserver/#max-clock-skew-usec) bound due to clock synchronization algorithms.
 * For writes with a write timestamp higher than `T1` + `max_clock_skew`, the database can be sure that they were done after the read timestamp was chosen. But for writes at a time between `T1` and `T1` + `max_clock_skew`, node `N2` can find itself in an ambiguous situation such as the following:
 
   * It should return the data even if the client issued the read from a different node after writing the data, because the following guarantee needs to be maintained: the database always returns data that was committed in the past (past refers to the user-perceived past, and not based on machine clocks).
