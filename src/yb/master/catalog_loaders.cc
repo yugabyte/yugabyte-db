@@ -132,11 +132,11 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
       LOG(INFO) << "Enqueuing table for Transaction Verification: " << table->ToString();
       std::function<Status(bool)> when_done =
           std::bind(&CatalogManager::VerifyTablePgLayer, catalog_manager_, table, _1);
-      WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
+      state_->AddPostLoadTask(
           std::bind(&YsqlTransactionDdl::VerifyTransaction,
                     catalog_manager_->ysql_transaction_.get(),
-                    txn, table, false /* has_ysql_ddl_txn_state */, when_done)),
-          "Could not submit VerifyTransaction to thread pool");
+                    txn, table, false /* has_ysql_ddl_txn_state */, when_done),
+          "VerifyTransaction");
     }
   }
 
@@ -179,6 +179,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
   std::map<ColocationId, TableInfoPtr> tablet_colocation_map;
   bool tablet_deleted;
   bool listed_as_hidden;
+  bool needs_async_write_to_sys_catalog = false;
   TabletInfoPtr tablet(new TabletInfo(first_table, tablet_id));
   {
     auto l = tablet->LockForWrite();
@@ -203,14 +204,12 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       // list contains the first table that created the tablet. If the table_ids field
       // was empty, we "upgrade" the master to support this new invariant.
       if (metadata.table_ids_size() == 0) {
+        LOG(INFO) << Format("Updating table_ids field in-memory for tablet $0 to include table_id "
+            "field ($1). Sys catalog will be updated asynchronously.", tablet->id(),
+            metadata.table_id());
         l.mutable_data()->pb.add_table_ids(metadata.table_id());
-        Status s =
-            catalog_manager_->sys_catalog_->Upsert(catalog_manager_->leader_ready_term(), tablet);
-        if (PREDICT_FALSE(!s.ok())) {
-          return STATUS_FORMAT(
-              IllegalState, "An error occurred while inserting to sys-tablets: $0", s);
-        }
         table_ids.push_back(metadata.table_id());
+        needs_async_write_to_sys_catalog = true;
       }
     }
 
@@ -288,18 +287,23 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       }
     }
 
-
     if (should_delete_tablet) {
-      LOG(WARNING)
-          << "Deleting tablet " << tablet->id() << " for table " << first_table->ToString();
+      LOG(INFO) << Format("Marking tablet $0 for table $1 as DELETED in-memory. Sys catalog will "
+          "be updated asynchronously.", tablet->id(), first_table->ToString());
       string deletion_msg = "Tablet deleted at " + LocalTimeAsString();
       l.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
-      RETURN_NOT_OK_PREPEND(catalog_manager_->sys_catalog()->Upsert(term_, tablet),
-                            Format("Error deleting tablet $0", tablet->id()));
+      needs_async_write_to_sys_catalog = true;
     }
 
     l.Commit();
   }
+
+  if (needs_async_write_to_sys_catalog) {
+    state_->AddPostLoadTask(
+      std::bind(&CatalogManager::WriteTabletToSysCatalog, catalog_manager_, tablet->tablet_id()),
+      "WriteTabletToSysCatalog");
+  }
+
   if (metadata.hosted_tables_mapped_by_parent_id()) {
     tablet->SetTableIds(std::move(table_ids));
   }
@@ -409,14 +413,14 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
             TransactionMetadata::FromPB(metadata.transaction()));
         std::function<Status(bool)> when_done =
             std::bind(&CatalogManager::VerifyNamespacePgLayer, catalog_manager_, ns, _1);
-        WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
+        state_->AddPostLoadTask(
             std::bind(&YsqlTransactionDdl::VerifyTransaction,
                       catalog_manager_->ysql_transaction_.get(),
                       txn,
                       nullptr /* table */,
                       false /* has_ysql_ddl_state */,
-                      when_done)),
-          "Could not submit VerifyTransaction to thread pool");
+                      when_done),
+          "VerifyTransaction");
       }
       break;
     case SysNamespaceEntryPB::PREPARING:
@@ -438,13 +442,13 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
       l.Commit();
       LOG(INFO) << "Loaded metadata to DELETE namespace " << ns->ToString();
       if (ns->database_type() != YQL_DATABASE_PGSQL) {
-        WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
-          std::bind(&CatalogManager::DeleteYcqlDatabaseAsync, catalog_manager_, ns)),
-          "Could not submit DeleteYcqlDatabaseAsync to thread pool");
+        state_->AddPostLoadTask(
+            std::bind(&CatalogManager::DeleteYcqlDatabaseAsync, catalog_manager_, ns),
+            "DeleteYcqlDatabaseAsync");
       } else {
-        WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
-          std::bind(&CatalogManager::DeleteYsqlDatabaseAsync, catalog_manager_, ns)),
-          "Could not submit DeleteYsqlDatabaseAsync to thread pool");
+        state_->AddPostLoadTask(
+            std::bind(&CatalogManager::DeleteYsqlDatabaseAsync, catalog_manager_, ns),
+            "DeleteYsqlDatabaseAsync");
       }
       break;
     case SysNamespaceEntryPB::DELETED:
@@ -452,9 +456,9 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
                 << "): " << ns->ToString();
       // Garbage collection.  Async remove the Namespace from the SysCatalog.
       // No in-memory state needed since tablet deletes have already been processed.
-      WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
-          std::bind(&CatalogManager::DeleteYsqlDatabaseAsync, catalog_manager_, ns)),
-          "Could not submit DeleteYsqlDatabaseAsync to thread pool");
+      state_->AddPostLoadTask(
+          std::bind(&CatalogManager::DeleteYsqlDatabaseAsync, catalog_manager_, ns),
+          "DeleteYsqlDatabaseAsync");
       break;
     default:
       FATAL_INVALID_ENUM_VALUE(SysNamespaceEntryPB_State, state);

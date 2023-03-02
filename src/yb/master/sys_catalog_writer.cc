@@ -69,10 +69,11 @@ Status SysCatalogWriter::DoMutateItem(
     const std::string& item_id,
     const google::protobuf::Message& prev_pb,
     const google::protobuf::Message& new_pb,
-    QLWriteRequestPB::QLStmtType op_type) {
+    QLWriteRequestPB::QLStmtType op_type,
+    bool skip_if_clean) {
   const bool is_write = IsWrite(op_type);
 
-  if (is_write) {
+  if (is_write && skip_if_clean) {
     std::string diff;
 
     if (pb_util::ArePBsEqual(prev_pb, new_pb, VLOG_IS_ON(2) ? &diff : nullptr)) {
