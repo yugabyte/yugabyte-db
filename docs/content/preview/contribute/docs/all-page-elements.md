@@ -20,13 +20,13 @@ This page demonstrates styles and widgets used for the YugabyteDB Documentation 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li class="active">
     <a href="../all-page-elements/" class="nav-link">
-      <img src="/icons/cloud-icon.svg" alt="Icon">
+      <img src="/icons/cloud.svg" alt="Icon">
       Top-level Tab Widget
     </a>
   </li>
   <li>
     <a href="../all-page-elements/" class="nav-link">
-      <img src="/icons/server-iconsvg.svg" alt="Icon">
+      <img src="/icons/server.svg" alt="Icon">
       Tab 2
     </a>
   </li>
