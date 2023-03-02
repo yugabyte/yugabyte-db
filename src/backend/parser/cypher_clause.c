@@ -5142,6 +5142,7 @@ transform_cypher_clause_as_subquery(cypher_parsestate *cpstate,
     Assert(pstate->p_expr_kind == EXPR_KIND_NONE ||
            pstate->p_expr_kind == EXPR_KIND_OTHER ||
            pstate->p_expr_kind == EXPR_KIND_WHERE ||
+           pstate->p_expr_kind == EXPR_KIND_SELECT_TARGET ||
            pstate->p_expr_kind == EXPR_KIND_FROM_SUBSELECT);
 
     /*

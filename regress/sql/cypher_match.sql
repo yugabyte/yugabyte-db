@@ -372,6 +372,20 @@ SELECT * FROM cypher('cypher_match',
  $$MATCH (u)-[e]->(v) WHERE EXISTS((u)-[e]->(u)) AND EXISTS((v)-[e]->(v)) RETURN u, e, v $$)
 AS (u agtype, e agtype, v agtype);
 
+-- Return exists(pattern)
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) RETURN EXISTS((u)-[]->()) $$)
+AS (exists agtype);
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH p=(u)-[e]->(v) RETURN EXISTS((p)) $$)
+AS (exists agtype);
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) RETURN EXISTS((u)-[e]->(v)-[e]->(u))$$)
+AS (exists agtype);
+
 -- These should error
 -- Bad pattern
 SELECT * FROM cypher('cypher_match',
@@ -409,6 +423,15 @@ AS (u agtype);
 SELECT * FROM cypher('cypher_match',
  $$MATCH (u) WHERE EXISTS(u.id) AND EXISTS((u)-[]->(u)) RETURN u$$)
 AS (u agtype);
+
+-- Return exists(property)
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) RETURN EXISTS(u.id), properties(u) $$)
+AS (exists agtype, properties agtype);
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) RETURN EXISTS(u.name), properties(u) $$)
+AS (exists agtype, properties agtype);
 
 -- should give an error
 SELECT * FROM cypher('cypher_match',

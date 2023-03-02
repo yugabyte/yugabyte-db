@@ -720,6 +720,57 @@ AS (u agtype, e agtype, v agtype);
  {"id": 2814749767106561, "label": "loop", "properties": {"id": "initial"}}::vertex | {"id": 3096224743817217, "label": "self", "end_id": 2814749767106561, "start_id": 2814749767106561, "properties": {}}::edge | {"id": 2814749767106561, "label": "loop", "properties": {"id": "initial"}}::vertex
 (1 row)
 
+-- Return exists(pattern)
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) RETURN EXISTS((u)-[]->()) $$)
+AS (exists agtype);
+ exists 
+--------
+ false
+ false
+ false
+ false
+ false
+ true
+ true
+ false
+ false
+ true
+ false
+ true
+ false
+ true
+ true
+(15 rows)
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH p=(u)-[e]->(v) RETURN EXISTS((p)) $$)
+AS (exists agtype);
+ exists 
+--------
+ true
+ true
+ true
+ true
+ true
+ true
+ true
+(7 rows)
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u)-[e]->(v) RETURN EXISTS((u)-[e]->(v)-[e]->(u))$$)
+AS (exists agtype);
+ exists 
+--------
+ false
+ false
+ false
+ false
+ false
+ false
+ false
+(7 rows)
+
 -- These should error
 -- Bad pattern
 SELECT * FROM cypher('cypher_match',
@@ -808,6 +859,51 @@ AS (u agtype);
 ------------------------------------------------------------------------------------
  {"id": 2814749767106561, "label": "loop", "properties": {"id": "initial"}}::vertex
 (1 row)
+
+-- Return exists(property)
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) RETURN EXISTS(u.id), properties(u) $$)
+AS (exists agtype, properties agtype);
+ exists |                                                 properties                                                  
+--------+-------------------------------------------------------------------------------------------------------------
+ false  | {"int_key": 1, "map_key": {"key": "value"}, "list_key": [1, 2, 3], "float_key": 3.14, "string_key": "test"}
+ false  | {"lst": [1, null, 3.14, "string", {"key": "value"}, []]}
+ false  | {}
+ false  | {"i": 0}
+ false  | {"i": 1}
+ true   | {"id": "initial"}
+ true   | {"id": "middle"}
+ true   | {"id": "end"}
+ true   | {"id": "initial"}
+ true   | {"id": "middle"}
+ true   | {"id": "end"}
+ true   | {"id": "initial"}
+ true   | {"id": "middle"}
+ true   | {"id": "end"}
+ true   | {"id": "initial"}
+(15 rows)
+
+SELECT * FROM cypher('cypher_match',
+ $$MATCH (u) RETURN EXISTS(u.name), properties(u) $$)
+AS (exists agtype, properties agtype);
+ exists |                                                 properties                                                  
+--------+-------------------------------------------------------------------------------------------------------------
+ false  | {"int_key": 1, "map_key": {"key": "value"}, "list_key": [1, 2, 3], "float_key": 3.14, "string_key": "test"}
+ false  | {"lst": [1, null, 3.14, "string", {"key": "value"}, []]}
+ false  | {}
+ false  | {"i": 0}
+ false  | {"i": 1}
+ false  | {"id": "initial"}
+ false  | {"id": "middle"}
+ false  | {"id": "end"}
+ false  | {"id": "initial"}
+ false  | {"id": "middle"}
+ false  | {"id": "end"}
+ false  | {"id": "initial"}
+ false  | {"id": "middle"}
+ false  | {"id": "end"}
+ false  | {"id": "initial"}
+(15 rows)
 
 -- should give an error
 SELECT * FROM cypher('cypher_match',
