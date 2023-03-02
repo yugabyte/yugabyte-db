@@ -25,9 +25,6 @@ import signal
 import sys
 
 from argparse import RawDescriptionHelpFormatter
-from boto.utils import get_instance_metadata
-from botocore.session import get_session
-from botocore.credentials import get_credentials
 from datetime import timedelta
 from multiprocessing.pool import ThreadPool
 from contextlib import contextmanager
@@ -710,6 +707,12 @@ class KubernetesDetails():
 
 
 def get_instance_profile_credentials():
+    # The version of boto we use conflicts with later versions of python3.  Hide the boto imports
+    # inside the sole function that uses boto so unit tests are not affected.
+    # This function is only used by the s3 code path which unit tests do not use.
+    from boto.utils import get_instance_metadata
+    from botocore.session import get_session
+    from botocore.credentials import get_credentials
     result = ()
     iam_credentials_endpoint = 'meta-data/iam/security-credentials/'
     metadata = get_instance_metadata(timeout=1, num_retries=1, data=iam_credentials_endpoint)
