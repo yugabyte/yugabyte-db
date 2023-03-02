@@ -1,5 +1,4 @@
 import React, { ChangeEvent, ReactElement } from 'react';
-import { useSelector } from 'react-redux';
 import pluralize from 'pluralize';
 import { useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';

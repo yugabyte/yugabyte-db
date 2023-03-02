@@ -6,7 +6,6 @@ import { Row, Col } from 'react-bootstrap';
 import moment from 'moment';
 import pluralize from 'pluralize';
 import PropTypes from 'prop-types';
-
 import { FormattedDate, FormattedRelative } from 'react-intl';
 import { ClusterInfoPanelContainer, YBWidget } from '../../panels';
 import {

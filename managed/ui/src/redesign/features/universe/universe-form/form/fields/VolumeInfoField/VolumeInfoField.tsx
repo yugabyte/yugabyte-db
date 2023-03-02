@@ -165,7 +165,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   //render
   if (!instance) return null;
 
-  const { volumeDetailsList } = instance.instanceTypeDetails;
+  const { volumeDetailsList } = instance?.instanceTypeDetails;
   const { volumeType } = volumeDetailsList[0];
 
   if (![VolumeType.EBS, VolumeType.SSD, VolumeType.NVME].includes(volumeType)) return null;
