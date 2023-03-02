@@ -32,38 +32,38 @@ This page demonstrates styles and widgets used for the YugabyteDB Documentation 
   </li>
 </ul>
 
-This is a top-level tab widget, that uses different files for each tab. Everything that follows is in this tab's file. If you change tabs, you get a whole new page. This style is possibly only used for the quick start.
+This is a top-level tab widget, that uses different files for each tab. Everything that follows is in this tab's file. If you change tabs, you get a whole new page.
 
 ### Second tab widget style
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li class="active">
     <a href="../all-page-elements/" class="nav-link">
-      <i class="fab fa-apple" aria-hidden="true"></i>
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
   <li>
     <a href="../all-page-elements/" class="nav-link">
-      <i class="fab fa-linux" aria-hidden="true"></i>
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
   <li>
     <a href="../all-page-elements/" class="nav-link">
-      <i class="fab fa-docker" aria-hidden="true"></i>
+      <i class="fa-brands fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
   <li>
     <a href="../all-page-elements/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 </ul>
 
-This is a second-level tab widget, that uses different files for each tab - same as the one above, just styled differently. We should be using this style instead of the buttons for this type of tab. Many pages need to be changed to do that.
+This is a second-level tab widget, that uses different files for each tab - same as the one above, just styled differently.
 
 Everything that follows is in this tab's file. If you change tabs, you get a whole new page.
 
@@ -73,7 +73,7 @@ This tab widget doesn't use separate files to fill in the content and then link 
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Java" lang="java" %}}
+  {{% tab header="Tab" lang="java" %}}
 
 Another tab style; here all the tab contents are in-page.
 
@@ -98,17 +98,11 @@ To build and run the application, do the following:
 
     - Save the file.
 
-1. Start the application.
-
-    ```sh
-    $ java -cp target/yugabyte-simple-java-app-1.0-SNAPSHOT.jar SampleApp
-    ```
-
 The end of this tab.
 
   {{% /tab %}}
 
-  {{% tab header="Go" lang="go" %}}
+  {{% tab header="Another tab" lang="go" %}}
 
 The contents of the next tab. You can keep adding tabs in similar fashion.
 
@@ -171,8 +165,8 @@ The following is a basic markdown table.
 | Table | A column |
 | :---- | :------- |
 | A row | Another column in a table. Maybe to describe stuff. Might have bulleted lists etc, but that all has to be done using HTML. |
-| Another row | Another row in a table. Maybe to describe stuff. Might have bulleted lists etc, but that all has to be done using HTML. |
-| Another row | Another column in a table. Maybe to describe stuff. Might have bulleted lists etc, but that all has to be done using HTML. |
+| Another row | Another row in a table. |
+| Another row | Another column in a table. |
 
 ## Notes and blockquote
 
@@ -254,8 +248,6 @@ Bulleted lists with levels of indent:
 
 #### Heading 4
 
-Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). The tutorials in this section show how to connect applications to YugabyteDB Managed clusters using your favorite programming language.
-
 Some bullets:
 
 - a cluster deployed in YugabyteDB Managed.
@@ -282,7 +274,7 @@ Glossary term
 The details HTML tag is used to create an interactive widget that the user can open and close. By default, the widget is closed. When open, it expands, and displays the contents.
 
 <details>
-  <summary>Tiresomely long code block</summary>
+  <summary>Long code block</summary>
 
 These contents might be a very long bit of code or somesuch.
 
@@ -310,84 +302,21 @@ Once in awhile, there is a horizontal rule.
 
 ## Flags
 
-Flags are documented often using these heading 5
+Flags are documented often using a heading 5.
 
 ##### heading 5
 
-The heading 5 doesn't show up in right navigation. We probably wouldn't want it to, as there can be dozens of these flags on some pages.
+Heading 5 doesn't show up in right navigation. We probably wouldn't want it to, as there can be dozens of these flags on some pages.
 
-Heading 5 is probably used so that we can still deep-link to the flag.
+Heading 5 is used so that we can deep-link to the flag.
 
 ##### -F, --this-is-a-flag
 
-This documentation isn't that easy to scan, as the headings for the option don't look much different from the explanatory text in the paragraphs that follow the heading 5.
-
-##### -b, --echo-errors
-
-Maybe if we had a style to indent the content under the heading.
-
-##### -c *command*, --command=*command*
-
-Specifies that `ysqlsh` is to execute the given command string, *command*. This flag can be repeated and combined in any order with the `-f` flag. When either `-c` or `-f` is specified, `ysqlsh` doesn't read commands from standard input; instead it terminates after processing all the `-c` and `-f` flags in sequence.
-
-The command (*command*) must be either a command string that is completely parsable by the server (that is, it contains no `ysqlsh`-specific features), or a single backslash (`\`) command. Thus, you cannot mix SQL and `ysqlsh` meta-commands in a `-c` flag. To achieve that, you could use repeated `-c` flags or pipe the string into `ysqlsh`, for example:
-
-```plpgsql
-ysqlsh -c '\x' -c 'SELECT * FROM foo;'
-```
-
-or
-
-```plpgsql
-echo '\x \\ SELECT * FROM foo;' | ./bin/ysqlsh
-```
-
-(`\\` is the separator meta-command.)
-
-Because of this behavior, putting more than one SQL statement in a single `-c` string often has unexpected results. It's better to use repeated `-c` commands or feed multiple commands to `ysqlsh`'s standard input, either using `echo` as illustrated above, or using a shell here-document, for example:
-
-```plpgsql
-./bin/ysqlsh<<EOF
-\x
-SELECT * FROM foo;
-EOF
-```
-
-## Meta-commands
-
-Like the Flags, there are dozens of Meta-commands, so again heading 5 is employed.
-
-Documentation of some Meta-commands can go on for paragraphs and be very involved. One command has a separate set of options that is documented in a separate section, with its own set of heading 5s.
-
-### Reference
-
-The following meta-commands are available.
-
-##### \a
-
-If the current table output format is unaligned, it is switched to aligned. If it isn't unaligned, it is set to unaligned. This command is kept for backwards compatibility. See [\pset](#pset-option-value) for a more general solution.
-
-##### \c, \connect [ -reuse-previous=on|off ] [ *dbname* [ *username* ] [ *host* ] [ *port* ] | *conninfo* ]
-
-Establishes a new connection to a YugabyteDB server. The connection parameters to use can be specified either using a positional syntax, or using *conninfo* connection strings.
-
-If the new connection is successfully made, the previous connection is closed. If the connection attempt failed (wrong user name, access denied, etc.), the previous connection is only kept if `ysqlsh` is in interactive mode. When executing a non-interactive script, processing immediately stops with an error. This distinction was chosen as a user convenience against typos on the one hand, and a safety mechanism that scripts aren't accidentally acting on the wrong database on the other hand.
-
-Examples:
-
-```plpgsql
-=> \c mydb myuser host.dom 6432
-=> \c service=foo
-=> \c "host=localhost port=5432 dbname=mydb connect_timeout=10 sslmode=disable"
-=> \c postgresql://tom@localhost/mydb?application_name=myapp
-\C [ title ]
-```
-
-Sets the title of any tables being printed as the result of a query or unset any such title. This command is equivalent to [\pset title](#title-or-c). (The name of this command derives from "caption", as it was previously only used to set the caption in an HTML table.)
+This is a paragraph.
 
 ## API Syntax
 
-API docs have these Grammar/Diagram pairs. They use includeMarkdown codes to fetch the contents from a markdown file in another location.
+API docs have Grammar/Diagram pairs. They use includeMarkdown codes to fetch the contents from a markdown file in another location.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
