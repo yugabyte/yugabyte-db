@@ -24,8 +24,8 @@ const config = {
   user: 'postgres',
   host: '127.0.0.1',
   database: 'postgres',
-  password: 'postgres',
-  port: 25432
+  password: 'agens',
+  port: 5432
 }
 
 const testGraphName = 'age-test'
@@ -59,25 +59,44 @@ describe('Pre-connected Connection', () => {
             $$) as (a agtype);
         `)!
     expect(results.rows).toStrictEqual(
-      [{
-        a: {
-          id: 844424930131969,
-          label: 'Part',
-          properties: { part_num: '123' }
+      [
+        {
+          a : new Map(Object.entries({
+            id: 844424930131969,
+            label: 'Part',
+            properties: new Map(Object.entries({
+              part_num: '123'
+            }))
+          })),
+        },
+        {
+          a : new Map(Object.entries({
+            id: 844424930131970,
+            label: 'Part',
+            properties: new Map(Object.entries({
+              part_num: '345'
+            }))
+          })),
+        },
+        {
+          a : new Map(Object.entries({
+            id: 844424930131971,
+            label: 'Part',
+            properties: new Map(Object.entries({
+              part_num: '456'
+            }))
+          })),
+        },
+        {
+          a : new Map(Object.entries({
+            id: 844424930131972,
+            label: 'Part',
+            properties: new Map(Object.entries({
+              part_num: '789'
+            }))
+          })),
         }
-      }, {
-        a: {
-          id: 844424930131970,
-          label: 'Part',
-          properties: { part_num: '345' }
-        }
-      }, {
-        a: {
-          id: 844424930131971,
-          label: 'Part',
-          properties: { part_num: '456' }
-        }
-      }, { a: { id: 844424930131972, label: 'Part', properties: { part_num: '789' } } }]
+      ]
     )
   })
 })

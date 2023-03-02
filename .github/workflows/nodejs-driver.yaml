@@ -1,0 +1,36 @@
+name: Nodejs Driver Tests
+
+on:
+  push:
+    branches: [ "master", "PG11" ]
+
+  pull_request:
+    branches: [ "master", "PG11" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: drivers/nodejs/
+  
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Run apache/age docker image
+      run: docker-compose up -d
+
+    - name: Set up Node
+      uses: actions/setup-node@v3
+      with:
+        node-version: latest
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Build
+      run: npm run build
+
+    - name: Test
+      run: npm test

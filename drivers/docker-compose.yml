@@ -1,7 +1,7 @@
 version: "3.3"
 services:
   db:
-    image: apache/age
+    image: apache/age:latest
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=agens
