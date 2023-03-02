@@ -4,6 +4,7 @@
 package util
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -160,18 +161,19 @@ func (config *Config) Remove(key string) error {
 }
 
 func (config *Config) StoreCommandFlagBool(
+	ctx context.Context,
 	cmd *cobra.Command,
 	flagName, configKey string) (bool, error) {
 	isPassed := cmd.Flags().Changed(flagName)
 	if isPassed {
 		value, err := cmd.Flags().GetBool(flagName)
 		if err != nil {
-			FileLogger().Errorf("Unable to get %s - %s", flagName, err.Error())
+			FileLogger().Errorf(ctx, "Unable to get %s - %s", flagName, err.Error())
 			return value, err
 		}
 		err = config.Update(configKey, value)
 		if err != nil {
-			FileLogger().Errorf("Unable to save %s - %s", configKey, err.Error())
+			FileLogger().Errorf(ctx, "Unable to save %s - %s", configKey, err.Error())
 			return value, err
 		}
 		return value, nil
@@ -180,6 +182,7 @@ func (config *Config) StoreCommandFlagBool(
 }
 
 func (config *Config) StoreCommandFlagString(
+	ctx context.Context,
 	cmd *cobra.Command,
 	flagName, configKey string,
 	isRequired bool,
@@ -187,20 +190,20 @@ func (config *Config) StoreCommandFlagString(
 ) (string, error) {
 	value, err := cmd.Flags().GetString(flagName)
 	if err != nil {
-		FileLogger().Errorf("Unable to get %s - %s", flagName, err.Error())
+		FileLogger().Errorf(ctx, "Unable to get %s - %s", flagName, err.Error())
 		return value, err
 	}
 	if value != "" {
 		if validator != nil {
 			value, err = validator(value)
 			if err != nil {
-				FileLogger().Errorf("Error in validating value for %s - %s", flagName, err.Error())
+				FileLogger().Errorf(ctx, "Error in validating value for %s - %s", flagName, err.Error())
 				return value, err
 			}
 		}
 		err = config.Update(configKey, value)
 		if err != nil {
-			FileLogger().Errorf("Unable to save %s - %s", configKey, err.Error())
+			FileLogger().Errorf(ctx, "Unable to save %s - %s", configKey, err.Error())
 			return value, err
 		}
 		return value, nil
@@ -209,7 +212,7 @@ func (config *Config) StoreCommandFlagString(
 		value = config.String(configKey)
 		if value == "" {
 			err = fmt.Errorf("Unable to get %s from config", configKey)
-			FileLogger().Error(err.Error())
+			FileLogger().Error(ctx, err.Error())
 			return value, err
 		}
 	}
@@ -219,7 +222,7 @@ func (config *Config) StoreCommandFlagString(
 func MustVersion() string {
 	version, err := Version()
 	if err != nil {
-		FileLogger().Fatalf("Error in getting version - %s", err.Error())
+		FileLogger().Fatalf(nil, "Error in getting version - %s", err.Error())
 	}
 	return version
 }

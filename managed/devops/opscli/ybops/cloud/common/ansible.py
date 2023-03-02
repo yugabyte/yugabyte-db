@@ -18,7 +18,7 @@ import sys
 from ybops.common.exceptions import YBOpsRuntimeError, YBOpsRecoverableError
 import ybops.utils as ybutils
 from ybops.utils.ssh import SSH, SSH2, parse_private_key, check_ssh2_bin_present
-from ybops.utils.remote_shell import RemoteShell
+from ybops.utils.remote_shell import copy_to_tmp, RemoteShell
 
 
 class AnsibleProcess(object):
@@ -166,17 +166,24 @@ class AnsibleProcess(object):
                 "yb_server_ssh_user": ssh_user
             })
             if offload:
-                # Vault password and Vars file are not
-                # required when offloaded to the DB node.
-                vault_password_file = None
-                vars_file = None
+                if vars_file is not None:
+                    copy_to_tmp(extra_vars, vars_file)
+                    vars_file = os.path.join("/tmp", os.path.basename(vars_file))
+                if vault_password_file is not None:
+                    copy_to_tmp(extra_vars, vault_password_file)
+                    vault_password_file = os.path.join(
+                        "/tmp", os.path.basename(vault_password_file))
+
                 devops_path = os.path.join(node_agent_home, "pkg", "devops")
                 thirdparty_path = os.path.join(node_agent_home, "pkg", "thirdparty")
                 process_args = [os.path.join(devops_path, "bin", "ansible-playbook.sh"),
                                 os.path.join(devops_path, os.path.basename(filename))]
                 if local_package_path is not None:
                     local_package_path = thirdparty_path
-                playbook_args["ansible_remote_tmp"] = "/tmp"
+                playbook_args.update({
+                    "ansible_remote_tmp": "/tmp",
+                    "yb_ansible_host": "localhost"
+                })
                 process_args.extend(["--limit", "localhost"])
                 inventory_target = "localhost,"
                 connection_type = "local"
@@ -256,7 +263,16 @@ class AnsibleProcess(object):
                          .format(os.path.basename(filename)))
             remote_shell_args = {"async": True}
             remote_shell = RemoteShell(extra_vars)
-            rc, stdout, stderr = remote_shell.exec_command(process_args, **remote_shell_args)
+            try:
+                rc, stdout, stderr = remote_shell.exec_command(process_args, **remote_shell_args)
+            finally:
+                delete_files = []
+                if vars_file is not None:
+                    delete_files.extend(vars_file)
+                if vault_password_file is not None:
+                    delete_files.extend(vault_password_file)
+                if delete_files:
+                    remote_shell.exec_command("rm -rf ".format(' '.join(delete_files)))
         else:
             logging.info("Running ansible playbook {} on platform"
                          .format(os.path.basename(filename)))
