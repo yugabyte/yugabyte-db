@@ -282,7 +282,7 @@ export const mainTheme = createTheme({
       },
       inputRoot: {
         minHeight: variables.inputHeight,
-        height: 'auto',
+        height: 'auto !important',
         padding: 4
       },
       tag: {
