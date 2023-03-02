@@ -94,8 +94,8 @@ function CpuSankeyNode(props: any) {
           stroke="#888"
           strokeOpacity="0.5"
         >
-          {payload.value < 10 && <>&nbsp;&nbsp;</>}
-          {payload.value}% &nbsp;&nbsp;&nbsp; {payload.name}
+          <tspan dx={payload.value < 10 ? 6 : 0}>{payload.value}%</tspan>
+          <tspan dx={16}>{payload.name}</tspan>
         </text>
         :
         <>
@@ -107,11 +107,8 @@ function CpuSankeyNode(props: any) {
             fontWeight={500}
           >
             
-            <tspan fill="#97A5B0">
-              {t(payload.translateKey + ".usage").toUpperCase()}
-              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-            </tspan>
-            <tspan fill="#000" fontWeight={700} fontSize="15">{nodeCount} </tspan>
+            <tspan fill="#97A5B0">{t(payload.translateKey + ".usage").toUpperCase()}</tspan>
+            <tspan dx={42} fill="#000" fontWeight={700} fontSize="15">{nodeCount} </tspan>
             <tspan fill="#444" fillOpacity={1}>{payload.name}</tspan>
           </text>
           <text
@@ -122,8 +119,8 @@ function CpuSankeyNode(props: any) {
             fontWeight={500}
           >
             
-            <tspan fill="#97A5B0">{t(payload.translateKey + ".available").toUpperCase()} &nbsp;&nbsp;</tspan>
-            <tspan fill="#444" fillOpacity={1}>{totalCores} {payload.name}</tspan>
+            <tspan fill="#97A5B0">{t(payload.translateKey + ".available").toUpperCase()}</tspan>
+            <tspan dx={14} fill="#444" fillOpacity={1}>{totalCores} {payload.name}</tspan>
           </text>
         </>
       }
