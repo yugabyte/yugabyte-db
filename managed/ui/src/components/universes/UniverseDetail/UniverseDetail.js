@@ -344,6 +344,7 @@ class UniverseDetail extends Component {
               updateAvailable={updateAvailable}
               showSoftwareUpgradesModal={showSoftwareUpgradesModal}
               tabRef={this.ybTabPanel}
+              isTopKMetricsEnabled={isTopKMetricsEnabled}
             />
           </Tab.Pane>
         ),
