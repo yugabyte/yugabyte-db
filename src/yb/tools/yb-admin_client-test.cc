@@ -12,6 +12,7 @@
 
 #include <gmock/gmock.h>
 
+#include "yb/master/master_backup.pb.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/pb_util.h"
@@ -25,13 +26,12 @@ DECLARE_bool(TEST_hang_on_namespace_transition);
 
 namespace yb {
 namespace tools {
-namespace enterprise {
 
 // Tests for the client. Used to verify behaviour that cannot be verified by using yb-admin as an
 // external process.
 class ClusterAdminClientTest : public pgwrapper::PgCommandTestBase {
  public:
-  std::unique_ptr<enterprise::ClusterAdminClient> cluster_admin_client_;
+  std::unique_ptr<ClusterAdminClient> cluster_admin_client_;
 
  protected:
   ClusterAdminClientTest() : pgwrapper::PgCommandTestBase(false, false) {}
@@ -39,7 +39,7 @@ class ClusterAdminClientTest : public pgwrapper::PgCommandTestBase {
   void SetUp() override {
     pgwrapper::PgCommandTestBase::SetUp();
     ASSERT_OK(CreateClient());
-    cluster_admin_client_ = std::make_unique<enterprise::ClusterAdminClient>(
+    cluster_admin_client_ = std::make_unique<ClusterAdminClient>(
         cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(60));
     ASSERT_OK(cluster_admin_client_->Init());
   }
@@ -147,6 +147,5 @@ TEST_F(
   ASSERT_OK(cluster_admin_client_->CreateNamespaceSnapshot(database));
 }
 
-}  // namespace enterprise
 }  // namespace tools
 }  // namespace yb

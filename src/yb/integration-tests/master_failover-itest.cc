@@ -612,7 +612,7 @@ class MasterFailoverTestWithPlacement : public MasterFailoverTest {
     opts_.extra_tserver_flags.push_back("--placement_uuid=" + kLivePlacementUuid);
     opts_.extra_master_flags.push_back("--enable_register_ts_from_raft=true");
     MasterFailoverTest::SetUp();
-    yb_admin_client_ = std::make_unique<tools::enterprise::ClusterAdminClient>(
+    yb_admin_client_ = std::make_unique<tools::ClusterAdminClient>(
         cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(30));
     ASSERT_OK(yb_admin_client_->Init());
     ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, kLivePlacementUuid));
@@ -636,7 +636,7 @@ class MasterFailoverTestWithPlacement : public MasterFailoverTest {
  protected:
   const string kReadReplicaPlacementUuid = "read_replica";
   const string kLivePlacementUuid = "live";
-  std::unique_ptr<tools::enterprise::ClusterAdminClient> yb_admin_client_;
+  std::unique_ptr<tools::ClusterAdminClient> yb_admin_client_;
 };
 
 TEST_F_EX(MasterFailoverTest, TestFailoverWithReadReplicas, MasterFailoverTestWithPlacement) {

@@ -9,32 +9,14 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
+//
 
 #pragma once
 
 namespace yb {
 namespace tools {
-namespace enterprise {
 
 class ClusterAdminClient;
 
-}  // namespace enterprise
-}  // namespace tools
-}  // namespace yb
-
-#include "../../../../src/yb/tools/yb-admin_cli.h"
-
-namespace yb {
-namespace tools {
-namespace enterprise {
-
-class ClusterAdminCli : public yb::tools::ClusterAdminCli {
-  typedef yb::tools::ClusterAdminCli super;
-
- private:
-  void RegisterCommandHandlers(ClusterAdminClientClass* client) override;
-};
-
-}  // namespace enterprise
 }  // namespace tools
 }  // namespace yb
