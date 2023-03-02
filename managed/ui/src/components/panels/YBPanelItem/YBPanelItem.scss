@@ -1,6 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .content-panel {
   margin: 0;
@@ -12,7 +12,7 @@
   .container > .body {
     position: relative;
     margin: 0;
-    box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
+    box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07);
     border: none;
     background-color: #fff;
     padding: 20px 25px 25px 25px;

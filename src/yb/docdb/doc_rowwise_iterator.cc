@@ -66,6 +66,14 @@ using std::string;
 DEFINE_RUNTIME_bool(ysql_use_flat_doc_reader, true,
     "Use DocDBTableReader optimization that relies on having at most 1 subkey for YSQL.");
 
+// Primary key update in table group creates copy of existing data
+// in same tablet (which uses a single RocksDB instance). During this
+// update, we are updating the source schema as well (which is not required).
+// Until we figure out the correct approach to handle it, we are disabling
+// offset based key decoding by default.
+DEFINE_RUNTIME_bool(
+    use_offset_based_key_decoding, false, "Use Offset based key decoding for reader.");
+
 namespace yb {
 namespace docdb {
 
@@ -85,7 +93,8 @@ DocRowwiseIterator::DocRowwiseIterator(
       doc_db_(doc_db),
       has_bound_key_(false),
       pending_op_(pending_op_counter),
-      done_(false) {
+      done_(false),
+      doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()) {
   SetupProjectionSubkeys();
 }
 
@@ -106,7 +115,8 @@ DocRowwiseIterator::DocRowwiseIterator(
       doc_db_(doc_db),
       has_bound_key_(false),
       pending_op_(pending_op_counter),
-      done_(false) {
+      done_(false),
+      doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()) {
   SetupProjectionSubkeys();
 }
 
@@ -128,7 +138,8 @@ DocRowwiseIterator::DocRowwiseIterator(
       doc_db_(doc_db),
       has_bound_key_(false),
       pending_op_(pending_op_counter),
-      done_(false) {
+      done_(false),
+      doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()) {
   SetupProjectionSubkeys();
 }
 
@@ -295,11 +306,12 @@ Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow() const {
         && !scan_choices_->CurrentTargetMatchesKey(row_key_)) {
       return scan_choices_->SeekToCurrentTarget(db_iter_.get());
     }
+  }
+  if (!is_forward_scan_) {
+    VLOG(4) << __PRETTY_FUNCTION__ << " setting as PrevDocKey";
+    db_iter_->PrevDocKey(row_key_);
   } else {
-    if (!is_forward_scan_) {
-      VLOG(4) << __PRETTY_FUNCTION__ << " setting as PrevDocKey";
-      db_iter_->PrevDocKey(row_key_);
-    }
+    db_iter_->SeekOutOfSubDoc(row_key_);
   }
 
   return Status::OK();
@@ -356,17 +368,29 @@ Result<bool> DocRowwiseIterator::HasNext() {
     iter_key_.Reset(key_data->key);
     VLOG(4) << " Current iter_key_ is " << iter_key_;
 
-    const auto dockey_sizes = DocKey::EncodedHashPartAndDocKeySizes(iter_key_);
-    if (!dockey_sizes.ok()) {
-      has_next_status_ = dockey_sizes.status();
-      return has_next_status_;
+    // e.g in cotable, row may point outside table bounds.
+    if (!DocKeyBelongsTo(iter_key_, doc_read_context_.schema)) {
+      done_ = true;
+      return false;
     }
-    row_hash_key_ = iter_key_.AsSlice().Prefix(dockey_sizes->hash_part_size);
-    row_key_ = iter_key_.AsSlice().Prefix(dockey_sizes->doc_key_size);
 
-    // e.g in cotable, row may point outside table bounds
-    if (!DocKeyBelongsTo(row_key_, doc_read_context_.schema) ||
-        (has_bound_key_ && is_forward_scan_ == (row_key_.compare(bound_key_) >= 0))) {
+    if (FLAGS_use_offset_based_key_decoding && doc_key_offsets_.has_value() &&
+        iter_key_.size() >= doc_key_offsets_->doc_key_size) {
+      row_hash_key_ = iter_key_.AsSlice().Prefix(doc_key_offsets_->hash_part_size);
+      row_key_ = iter_key_.AsSlice().Prefix(doc_key_offsets_->doc_key_size);
+
+      DCHECK(ValidateDocKeyOffsets(iter_key_));
+    } else {
+      const auto dockey_sizes = DocKey::EncodedHashPartAndDocKeySizes(iter_key_);
+      if (!dockey_sizes.ok()) {
+        has_next_status_ = dockey_sizes.status();
+        return has_next_status_;
+      }
+      row_hash_key_ = iter_key_.AsSlice().Prefix(dockey_sizes->hash_part_size);
+      row_key_ = iter_key_.AsSlice().Prefix(dockey_sizes->doc_key_size);
+    }
+
+    if (has_bound_key_ && is_forward_scan_ == (row_key_.compare(bound_key_) >= 0)) {
       done_ = true;
       return false;
     }
@@ -678,6 +702,19 @@ Result<bool> DocRowwiseIterator::SeekTuple(const Slice& tuple_id) {
   row_ready_ = false;
 
   return VERIFY_RESULT(HasNext()) && VERIFY_RESULT(GetTupleId()) == tuple_id;
+}
+
+bool DocRowwiseIterator::ValidateDocKeyOffsets(const Slice& iter_key) {
+  const auto dockey_sizes = DocKey::EncodedHashPartAndDocKeySizes(iter_key_);
+  if (!dockey_sizes.ok()) {
+    LOG(INFO) << "Failed to decode the DocKey: " << dockey_sizes.status();
+    return false;
+  }
+
+  DCHECK_EQ(dockey_sizes->hash_part_size, doc_key_offsets_->hash_part_size);
+  DCHECK_EQ(dockey_sizes->doc_key_size, doc_key_offsets_->doc_key_size);
+
+  return true;
 }
 
 }  // namespace docdb

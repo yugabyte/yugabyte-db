@@ -169,24 +169,46 @@ Result<size_t> PgTableDesc::FindPartitionIndex(const Slice& ybctid) const {
   return client::FindPartitionStartIndex(table_partition_list_.keys, partition_key);
 }
 
-Status PgTableDesc::SetScanBoundary(LWPgsqlReadRequestPB *req,
-                                    const string& partition_lower_bound,
-                                    bool lower_bound_is_inclusive,
-                                    const string& partition_upper_bound,
-                                    bool upper_bound_is_inclusive) {
-  // Setup lower boundary.
+Result<bool> PgTableDesc::CheckScanBoundary(LWPgsqlReadRequestPB* req) {
+  if (req->has_lower_bound() && req->has_upper_bound() &&
+      ((req->lower_bound().key() > req->upper_bound().key()) ||
+       (req->lower_bound().key() == req->upper_bound().key() &&
+          !(req->lower_bound().is_inclusive() && req->upper_bound().is_inclusive())))) {
+    return false;
+  }
+  return true;
+}
+
+Result<bool> PgTableDesc::SetScanBoundary(LWPgsqlReadRequestPB* req,
+                                          const std::string& partition_lower_bound,
+                                          bool lower_bound_is_inclusive,
+                                          const std::string& partition_upper_bound,
+                                          bool upper_bound_is_inclusive) {
+  // Update lower boundary if necessary.
   if (!partition_lower_bound.empty()) {
-    req->mutable_lower_bound()->dup_key(partition_lower_bound);
-    req->mutable_lower_bound()->set_is_inclusive(lower_bound_is_inclusive);
+    if (!req->has_lower_bound() ||
+        req->lower_bound().key() < partition_lower_bound) {
+      req->mutable_lower_bound()->dup_key(partition_lower_bound);
+      req->mutable_lower_bound()->set_is_inclusive(lower_bound_is_inclusive);
+    } else if (req->lower_bound().key() == partition_lower_bound &&
+               req->lower_bound().is_inclusive() && !lower_bound_is_inclusive) {
+      req->mutable_lower_bound()->set_is_inclusive(false);
+    }
   }
 
-  // Setup upper boundary.
+  // Update upper boundary if necessary.
   if (!partition_upper_bound.empty()) {
-    req->mutable_upper_bound()->dup_key(partition_upper_bound);
-    req->mutable_upper_bound()->set_is_inclusive(upper_bound_is_inclusive);
+    if (!req->has_upper_bound() ||
+        req->upper_bound().key() > partition_upper_bound) {
+      req->mutable_upper_bound()->dup_key(partition_upper_bound);
+      req->mutable_upper_bound()->set_is_inclusive(upper_bound_is_inclusive);
+    } else if (req->upper_bound().key() == partition_upper_bound &&
+               req->upper_bound().is_inclusive() && !upper_bound_is_inclusive) {
+      req->mutable_upper_bound()->set_is_inclusive(false);
+    }
   }
 
-  return Status::OK();
+  return CheckScanBoundary(req);
 }
 
 const client::YBTableName& PgTableDesc::table_name() const {

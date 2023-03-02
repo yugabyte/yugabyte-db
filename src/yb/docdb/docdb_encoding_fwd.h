@@ -22,6 +22,9 @@
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+
+struct DocKeyOffsets;
+
 namespace docdb {
 
 class KeyBytes;

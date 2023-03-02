@@ -107,7 +107,12 @@ public class TemplateManager extends DevopsBase {
     }
 
     JsonNode result =
-        execAndParseCommandCloud(accessKey.getProviderUUID(), "template", commandArgs);
+        execAndParseShellResponse(
+            DevopsCommand.builder()
+                .providerUUID(accessKey.getProviderUUID())
+                .command("template")
+                .commandArgs(commandArgs)
+                .build());
 
     if (result.get("error") == null) {
       details.passwordlessSudoAccess = passwordlessSudoAccess;

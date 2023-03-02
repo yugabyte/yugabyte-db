@@ -262,6 +262,15 @@ public class NodeUniverseManager extends DevopsBase {
     return provider.getYbHome();
   }
 
+  /**
+   * Placeholder method to get tmp directory for node
+   *
+   * @return tmp directory
+   */
+  public String getYbTmpDir() {
+    return "/tmp";
+  }
+
   private void addConnectionParams(
       Universe universe, NodeDetails node, ShellProcessContext context, List<String> commandArgs) {
     UniverseDefinitionTaskParams.Cluster cluster =
@@ -281,11 +290,12 @@ public class NodeUniverseManager extends DevopsBase {
       commandArgs.add(Json.stringify(Json.toJson(k8sConfig)));
     } else if (cloudType != Common.CloudType.unknown) {
       UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
-      ProviderDetails providerDetails = Provider.getOrBadRequest(providerUUID).details;
+      Provider provider = Provider.getOrBadRequest(providerUUID);
+      ProviderDetails providerDetails = provider.details;
       AccessKey accessKey =
           AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
       Optional<NodeAgent> optional =
-          getNodeAgentClient().maybeGetNodeAgentClient(node.cloudInfo.private_ip);
+          getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider);
       if (optional.isPresent()) {
         commandArgs.add("rpc");
         NodeAgentClient.addNodeAgentClientParams(optional.get(), commandArgs);

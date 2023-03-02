@@ -188,11 +188,24 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                   AlterUniverseReplicationResponsePB* resp,
                                   rpc::RpcContext* rpc);
 
+  Status UpdateProducerAddress(
+      scoped_refptr<UniverseReplicationInfo> universe,
+      const AlterUniverseReplicationRequestPB* req);
+
+  Status RemoveTablesFromReplication(
+      scoped_refptr<UniverseReplicationInfo> universe,
+      const AlterUniverseReplicationRequestPB* req);
+
+  Status AddTablesToReplication(
+      scoped_refptr<UniverseReplicationInfo> universe,
+      const AlterUniverseReplicationRequestPB* req,
+      AlterUniverseReplicationResponsePB* resp,
+      rpc::RpcContext* rpc);
+
   // Rename an existing Universe Replication.
-  Status RenameUniverseReplication(scoped_refptr<UniverseReplicationInfo> universe,
-                                   const AlterUniverseReplicationRequestPB* req,
-                                   AlterUniverseReplicationResponsePB* resp,
-                                   rpc::RpcContext* rpc);
+  Status RenameUniverseReplication(
+      scoped_refptr<UniverseReplicationInfo> universe,
+      const AlterUniverseReplicationRequestPB* req);
 
   Status ChangeXClusterRole(const ChangeXClusterRoleRequestPB* req,
                             ChangeXClusterRoleResponsePB* resp,
@@ -290,8 +303,6 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   bool IsCdcEnabled(const TableInfo& table_info) const override EXCLUDES(mutex_);
   bool IsCdcEnabledUnlocked(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
-
-  bool IsCdcSdkEnabled(const TableInfo& table_info) override;
 
   bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const override
     EXCLUDES(mutex_);

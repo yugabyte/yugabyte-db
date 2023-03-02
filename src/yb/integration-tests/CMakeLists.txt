@@ -57,6 +57,9 @@ set(INTEGRATION_TESTS_SRCS
   ts_itest-base.cc
   yb_mini_cluster_test_base.cc
   yb_table_test_base.cc
+  twodc_test_base.cc
+  cdcsdk_test_base.cc
+  xcluster_ysql_test_base.cc
   ${INTEGRATION_TESTS_SRCS_EXTENSIONS}
 )
 
@@ -77,6 +80,8 @@ target_link_libraries(integration-tests
   yb-redis
   yb_pgwrapper
   master_proto
+  cdc_test_util
+  test_echo_service_proto
   ${INTEGRATION_TESTS_LIB_EXTENSIONS})
 
 add_dependencies(integration-tests
@@ -175,6 +180,16 @@ ADD_YB_TEST_DEPENDENCIES(yb-ts-cli-itest
   yb-ts-cli)
 ADD_YB_TEST(cql-backup-test)
 ADD_YB_TEST(snapshot-test)
+ADD_YB_TEST(cdc_service-int-test)
+ADD_YB_TEST(cdc_service-txn-test)
+ADD_YB_TEST(cdcsdk_stream-test)
+ADD_YB_TEST(cdcsdk_ysql-test)
+ADD_YB_TEST(cdcsdk_before_image-test)
+ADD_YB_TEST(cdcsdk_tablet_split-test)
+ADD_YB_TEST(twodc_ysql-test)
+ADD_YB_TEST(twodc-test)
+ADD_YB_TEST(xcluster_safe_time-itest)
+ADD_YB_TEST(xcluster_dr-itest)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)

@@ -23,11 +23,13 @@ import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.DetachUniverseFormData;
-import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.PriceComponent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -38,7 +40,9 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.api.libs.Files.TemporaryFile;
 import play.mvc.Http;
@@ -94,6 +98,17 @@ public class AttachDetachController extends AbstractPlatformController {
 
     List<CertificateInfo> certificateInfoList = CertificateInfo.getCertificateInfoList(universe);
 
+    List<KmsHistory> kmsHistoryList =
+        EncryptionAtRestUtil.getAllUniverseKeys(universe.universeUUID);
+    kmsHistoryList.sort((h1, h2) -> h1.timestamp.compareTo(h2.timestamp));
+    List<KmsConfig> kmsConfigs =
+        kmsHistoryList
+            .stream()
+            .map(kmsHistory -> kmsHistory.configUuid)
+            .distinct()
+            .map(c -> KmsConfig.get(c))
+            .collect(Collectors.toList());
+
     // Non-local releases will no be populated by importLocalReleases, so we need to add it
     // ourselves.
     ReleaseMetadata ybReleaseMetadata =
@@ -124,6 +139,8 @@ public class AttachDetachController extends AbstractPlatformController {
             .instanceTypes(instanceTypes)
             .priceComponents(priceComponents)
             .certificateInfoList(certificateInfoList)
+            .kmsHistoryList(kmsHistoryList)
+            .kmsConfigs(kmsConfigs)
             .ybReleaseMetadata(ybReleaseMetadata)
             .oldPlatformPaths(platformPaths)
             .skipReleases(detachUniverseFormData.skipReleases)
@@ -139,6 +156,12 @@ public class AttachDetachController extends AbstractPlatformController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Http.MultipartFormData<TemporaryFile> body = request().body().asMultipartFormData();
     Http.MultipartFormData.FilePart<TemporaryFile> tempSpecFile = body.getFile("spec");
+
+    if (Universe.maybeGet(universeUUID).isPresent()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("Universe with uuid %s already exists", universeUUID.toString()));
+    }
 
     if (tempSpecFile == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Failed to get uploaded spec file");

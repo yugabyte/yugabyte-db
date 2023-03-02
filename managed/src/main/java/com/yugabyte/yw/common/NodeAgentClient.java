@@ -10,8 +10,11 @@ import com.google.inject.Inject;
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentBlockingStub;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentStub;
@@ -86,13 +89,17 @@ public class NodeAgentClient {
   private final Config appConfig;
   private final ChannelFactory channelFactory;
 
+  private final RuntimeConfGetter confGetter;
+
   @Inject
-  public NodeAgentClient(Config appConfig) {
-    this(appConfig, null);
+  public NodeAgentClient(Config appConfig, RuntimeConfGetter confGetter) {
+    this(appConfig, confGetter, null);
   }
 
-  public NodeAgentClient(Config appConfig, ChannelFactory channelFactory) {
+  public NodeAgentClient(
+      Config appConfig, RuntimeConfGetter confGetter, ChannelFactory channelFactory) {
     this.appConfig = appConfig;
+    this.confGetter = confGetter;
     this.channelFactory =
         channelFactory == null
             ? config -> ChannelFactory.getDefaultChannel(config)
@@ -368,8 +375,8 @@ public class NodeAgentClient {
     }
   }
 
-  public Optional<NodeAgent> maybeGetNodeAgentClient(String ip) {
-    if (isClientEnabled()) {
+  public Optional<NodeAgent> maybeGetNodeAgent(String ip, Provider provider) {
+    if (isClientEnabled(provider)) {
       Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(ip);
       if (optional.isPresent() && optional.get().state != State.REGISTERING) {
         return optional;
@@ -378,8 +385,8 @@ public class NodeAgentClient {
     return Optional.empty();
   }
 
-  public boolean isClientEnabled() {
-    return appConfig.getBoolean(NODE_AGENT_CLIENT_ENABLED_PROPERTY);
+  public boolean isClientEnabled(Provider provider) {
+    return confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient);
   }
 
   private ManagedChannel getManagedChannel(NodeAgent nodeAgent, boolean enableTls) {

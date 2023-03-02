@@ -5246,6 +5246,7 @@ PostgresMain(int argc, char *argv[],
 			yb_pgstat_set_has_catalog_version(true);
 			YBCPgResetCatalogReadTime();
 			YBCheckSharedCatalogCacheVersion();
+			yb_run_with_explain_analyze = false;
 		}
 
 		switch (firstchar)

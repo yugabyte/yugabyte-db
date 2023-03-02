@@ -30,7 +30,7 @@ public class GCPCloudInfo implements CloudInfoInterface {
       ImmutableMap.of(
           "gceProject", "project_id",
           "gceApplicationCredentialsPath", "GOOGLE_APPLICATION_CREDENTIALS",
-          "customGceNetwork", "network",
+          "destVpcId", "network",
           "ybFirewallTags", CloudProviderHandler.YB_FIREWALL_TAGS,
           "useHostVPC", "use_host_vpc");
 
@@ -68,7 +68,7 @@ public class GCPCloudInfo implements CloudInfoInterface {
 
   @JsonAlias({"network", GCPCloudImpl.CUSTOM_GCE_NETWORK_PROPERTY})
   @ApiModelProperty
-  public String customGceNetwork;
+  public String destVpcId;
 
   @JsonAlias(CloudProviderHandler.YB_FIREWALL_TAGS)
   @ApiModelProperty
@@ -81,6 +81,9 @@ public class GCPCloudInfo implements CloudInfoInterface {
   @JsonAlias("use_host_credentials")
   @ApiModelProperty
   public Boolean useHostCredentials;
+
+  @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
+  public String hostVpcId;
 
   @JsonIgnore
   public Map<String, String> getEnvVars() {
@@ -96,8 +99,8 @@ public class GCPCloudInfo implements CloudInfoInterface {
       envVars.put(
           GCPCloudImpl.GOOGLE_APPLICATION_CREDENTIALS_PROPERTY, gceApplicationCredentialsPath);
     }
-    if (customGceNetwork != null) {
-      envVars.put(GCPCloudImpl.CUSTOM_GCE_NETWORK_PROPERTY, customGceNetwork);
+    if (destVpcId != null) {
+      envVars.put("destVpcId", destVpcId);
     }
 
     return envVars;

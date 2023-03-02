@@ -106,10 +106,6 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     Fail();
   }
 
-  void FillStatusTablets(std::vector<BlockingTransactionData>* inout) override {
-    Fail();
-  }
-
   boost::optional<TabletId> FindStatusTablet(const TransactionId& id) override {
     return boost::none;
   }
@@ -345,7 +341,8 @@ void LogicalRocksDBDebugSnapshot::Capture(rocksdb::DB* rocksdb) {
   }
   // Save the DocDB debug dump as a string so we can check that we've properly restored the snapshot
   // in RestoreTo.
-  docdb_debug_dump_str = DocDBDebugDumpToStr(rocksdb, SchemaPackingStorage());
+  docdb_debug_dump_str = DocDBDebugDumpToStr(
+      rocksdb, SchemaPackingStorage(TableType::YQL_TABLE_TYPE));
 }
 
 void LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB *rocksdb) const {
@@ -361,7 +358,8 @@ void LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB *rocksdb) const {
     ASSERT_OK(rocksdb->Put(write_options, kv.first, kv.second));
   }
   ASSERT_OK(FullyCompactDB(rocksdb));
-  ASSERT_EQ(docdb_debug_dump_str, DocDBDebugDumpToStr(rocksdb, SchemaPackingStorage()));
+  ASSERT_EQ(docdb_debug_dump_str,
+            DocDBDebugDumpToStr(rocksdb, SchemaPackingStorage(TableType::YQL_TABLE_TYPE)));
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -455,7 +453,8 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
     ASSERT_OK(in_mem_docdb_.SetPrimitive(doc_path, pv));
     const auto set_primitive_status = dwb.SetPrimitive(doc_path, value);
     if (!set_primitive_status.ok()) {
-      DocDBDebugDump(rocksdb(), std::cerr, SchemaPackingStorage(), StorageDbType::kRegular);
+      DocDBDebugDump(rocksdb(), std::cerr, SchemaPackingStorage(TableType::YQL_TABLE_TYPE),
+                     StorageDbType::kRegular);
       LOG(INFO) << "doc_path=" << doc_path.ToString();
     }
     ASSERT_OK(set_primitive_status);

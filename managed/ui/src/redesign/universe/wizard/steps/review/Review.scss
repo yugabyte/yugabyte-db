@@ -1,8 +1,8 @@
-@import '../../../../uikit/common';
+@use '../../../../uikit/common';
 
 .review-step {
-  @include wizard-step-form();
-  @include wizard-form-footer();
+  @include common.wizard-step-form();
+  @include common.wizard-form-footer();
 
   max-height: calc(100vh - 290px);
   overflow: auto;

@@ -54,11 +54,15 @@ DEFINE_UNKNOWN_int32(pgsql_proxy_webserver_port, 13000, "Webserver port for PGSQ
 DEFINE_test_flag(bool, pg_collation_enabled, true,
                  "True to enable collation support in YugaByte PostgreSQL.");
 // Default to 5MB
-DEFINE_UNKNOWN_int64(
-    pg_mem_tracker_tcmalloc_gc_release_bytes, 5 * 1024 * 1024,
+DEFINE_UNKNOWN_string(
+    pg_mem_tracker_tcmalloc_gc_release_bytes, std::to_string(5 * 1024 * 1024),
     "Overriding the gflag mem_tracker_tcmalloc_gc_release_bytes "
     "defined in mem_tracker.cc. The overriding value is specifically "
     "set for Postgres backends");
+
+DEFINE_RUNTIME_string(pg_mem_tracker_update_consumption_interval_us, std::to_string(50 * 1000),
+    "Interval that is used to update memory consumption from external source. "
+    "For instance from tcmalloc statistics. This interval is for Postgres backends only");
 
 DECLARE_string(metric_node_name);
 TAG_FLAG(pg_transactions_enabled, advanced);
@@ -135,6 +139,10 @@ DEFINE_RUNTIME_PG_FLAG(int32, log_min_duration_statement, -1,
     "Sets the duration of each completed ysql statement to be logged if the statement ran for at "
     "least the specified number of milliseconds. Zero prints all queries. -1 turns this feature "
     "off.");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_memory_tracking, true,
+    "Enables tracking of memory consumption of the PostgreSQL process. This enhances garbage "
+    "collection behaviour and memory usage observability.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_expression_pushdown, kLocalVolatile, false, true,
     "Push supported expressions from ysql down to DocDB for evaluation.");
@@ -531,14 +539,17 @@ Status PgWrapper::Start() {
   pg_proc_->SetEnv("FLAGS_yb_pg_terminate_child_backend",
                     FLAGS_yb_pg_terminate_child_backend ? "true" : "false");
   pg_proc_->SetEnv("FLAGS_yb_backend_oom_score_adj", FLAGS_yb_backend_oom_score_adj);
-  pg_proc_->SetEnv(
-      "FLAGS_pg_mem_tracker_tcmalloc_gc_release_bytes",
-      std::to_string(FLAGS_pg_mem_tracker_tcmalloc_gc_release_bytes));
 
   // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
   pg_proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
   pg_proc_->InheritNonstandardFd(conf_.tserver_shm_fd);
   SetCommonEnv(&*pg_proc_, /* yb_enabled */ true);
+
+  pg_proc_->SetEnv("FLAGS_mem_tracker_tcmalloc_gc_release_bytes",
+                FLAGS_pg_mem_tracker_tcmalloc_gc_release_bytes);
+  pg_proc_->SetEnv("FLAGS_mem_tracker_update_consumption_interval_us",
+                FLAGS_pg_mem_tracker_update_consumption_interval_us);
+
   RETURN_NOT_OK(pg_proc_->Start());
   if (!FLAGS_postmaster_cgroup.empty()) {
     std::string path = FLAGS_postmaster_cgroup + "/cgroup.procs";
@@ -709,7 +720,9 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
     static const std::vector<string> explicit_flags{"pggate_master_addresses",
                                                     "pggate_tserver_shm_fd",
                                                     "certs_dir",
-                                                    "certs_for_client_dir"};
+                                                    "certs_for_client_dir",
+                                                    "mem_tracker_tcmalloc_gc_release_bytes",
+                                                    "mem_tracker_update_consumption_interval_us"};
     std::vector<google::CommandLineFlagInfo> flag_infos;
     google::GetAllFlags(&flag_infos);
     for (const auto& flag_info : flag_infos) {

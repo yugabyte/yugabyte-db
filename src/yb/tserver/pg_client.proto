@@ -604,15 +604,13 @@ message PgCheckIfPitrActiveResponsePB {
 message PgGetTserverCatalogVersionInfoRequestPB {
   // True if we only want to return the size of the catalog version map from tserver.
   bool size_only = 1;
+  // If > 0, we ask for the catalog version of the given database from the tserver.
+  // If == 0, we ask for the catalog version map of all databases from the tserver.
+  uint32 db_oid = 2;
 }
 
 message PgGetTserverCatalogVersionInfoResponsePB {
   AppStatusPB status = 1;
-  message Entry {
-    uint32 db_oid = 1;
-    int32 shm_index = 2;
-    uint64 current_version = 3;
-  }
-  repeated Entry entries = 2;
+  repeated TServerDBCatalogVersionInfo entries = 2;
   uint32 num_entries = 3;
 }

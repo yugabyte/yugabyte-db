@@ -39,7 +39,7 @@ type: docs
   </li>
 </ul>
 
-The [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) is a distributed Python driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional [connection load balancing](../../smart-drivers/) features.
+The [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) is a Python driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional [connection load balancing](../../smart-drivers/) features.
 
 {{< note title="YugabyteDB Managed" >}}
 
@@ -112,7 +112,13 @@ After the driver establishes the initial connection, it fetches the list of avai
 
 #### Use multiple addresses
 
-You can specify multiple hosts in the connection string to provide alternative options during the initial connection in case the primary address fails. Delimit the addresses using commas, as follows:
+You can specify multiple hosts in the connection string to provide alternative options during the initial connection in case the primary address fails.
+
+{{< tip title="Tip">}}
+To obtain a list of available hosts, you can connect to any cluster node and use the `yb_servers()` YSQL function.
+{{< /tip >}}
+
+Delimit the addresses using commas, as follows:
 
 ```python
 conn = psycopg2.connect(dbname='yugabyte',host='host1,host2,host3',port='5433',user='yugabyte',password='yugabyte',load_balance='true')

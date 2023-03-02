@@ -1,4 +1,4 @@
-@import '../../../../uikit/common';
+@use '../../../../uikit/common';
 
 .master-flags-field {
   &__head {
@@ -8,12 +8,12 @@
 
   &__title {
     font-size: 16px;
-    color: $YB_TEXT_2;
+    color: common.$YB_TEXT_2;
     margin-right: 10px;
   }
 
   &__line {
-    border-top: 1px solid $YB_BORDER_1;
+    border-top: 1px solid common.$YB_BORDER_1;
     width: 742px;
   }
 }

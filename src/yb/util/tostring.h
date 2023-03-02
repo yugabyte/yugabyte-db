@@ -168,6 +168,11 @@ typename std::enable_if<IsPointerLike<Pointer>::value, std::string>::type
   return PointerToString<CleanedT>::Apply(value);
 }
 
+template <class Value>
+auto ToString(std::reference_wrapper<Value> value) {
+  return ToString(value.get());
+}
+
 inline const std::string& ToString(const std::string& str) { return str; }
 inline std::string ToString(const char* str) { return str; }
 

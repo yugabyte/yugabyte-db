@@ -38,8 +38,10 @@
 #include <vector>
 
 #include "yb/consensus/metadata.pb.h"
+#include "yb/cdc/cdc_fwd.h"
 #include "yb/cdc/cdc_consumer.fwd.h"
 #include "yb/client/client_fwd.h"
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/encryption/encryption_fwd.h"
 
@@ -70,9 +72,7 @@ class AutoFlagsManager;
 
 namespace tserver {
 
-namespace enterprise {
-class CDCConsumer;
-}
+class XClusterConsumer;
 class PgClientServiceImpl;
 
 class TabletServer : public DbServerBase, public TabletServerIf {
@@ -219,7 +219,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   Status get_ysql_db_oid_to_cat_version_info_map(
-      bool size_only, tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
+      const tserver::GetTserverCatalogVersionInfoRequestPB& req,
+      tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
@@ -237,9 +238,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   uint64_t GetSharedMemoryPostgresAuthKey();
 
   // Currently only used by cdc.
-  virtual int32_t cluster_config_version() const {
-    return std::numeric_limits<int32_t>::max();
-  }
+  virtual int32_t cluster_config_version() const;
 
   client::TransactionPool& TransactionPool() override;
 
@@ -253,7 +252,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   client::LocalTabletFilter CreateLocalTabletFilter() override;
 
-  void RegisterCertificateReloader(CertificateReloader reloader) override {}
+  void RegisterCertificateReloader(CertificateReloader reloader) override;
 
   const XClusterSafeTimeMap& GetXClusterSafeTimeMap() const;
 
@@ -264,6 +263,19 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status ListMasterServers(const ListMasterServersRequestPB* req,
                            ListMasterServersResponsePB* resp) const;
+
+  encryption::UniverseKeyManager* GetUniverseKeyManager();
+
+  Status SetConfigVersionAndConsumerRegistry(
+      int32_t cluster_config_version, const cdc::ConsumerRegistryPB* consumer_registry);
+
+  XClusterConsumer* GetXClusterConsumer();
+
+  // Mark the CDC service as enabled via heartbeat.
+  Status SetCDCServiceEnabled();
+
+  Status ReloadKeysAndCertificates() override;
+  std::string GetCertificateDetails() override;
 
  protected:
   virtual Status RegisterServices();
@@ -276,6 +288,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   MonoDelta default_client_timeout() override;
   void SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) override;
+
+  Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
 
   std::atomic<bool> initted_{false};
 
@@ -360,6 +374,18 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   XClusterSafeTimeMap xcluster_safe_time_map_;
 
   PgConfigReloader pg_config_reloader_;
+
+  Status CreateCDCConsumer() REQUIRES(cdc_consumer_mutex_);
+
+  std::unique_ptr<rpc::SecureContext> secure_context_;
+  std::vector<CertificateReloader> certificate_reloaders_;
+
+  // CDC consumer.
+  mutable std::mutex cdc_consumer_mutex_;
+  std::unique_ptr<XClusterConsumer> xcluster_consumer_ GUARDED_BY(cdc_consumer_mutex_);
+
+  // CDC service.
+  std::shared_ptr<cdc::CDCServiceImpl> cdc_service_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

@@ -135,7 +135,7 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
   DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", sub_doc_key.ToDebugHexString(),
                   iter->read_time().ToString());
   iter->SeekToLastDocKey();
-  SchemaPackingStorage schema_packing_storage;
+  SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE);
   DocDBTableReader doc_reader(
       iter.get(), deadline, projection, TableType::YQL_TABLE_TYPE, schema_packing_storage);
   RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(sub_doc_key));
@@ -258,7 +258,6 @@ class DocDBTableReader::GetHelperBase {
     RETURN_NOT_OK(Scan(CheckExistOnly::kTrue));
     if (Found()) {
       EmptyDocFound();
-      reader_.iter_->SeekOutOfSubDoc(root_doc_key_);
       return true;
     }
 
@@ -374,7 +373,6 @@ class DocDBTableReader::GetHelperBase {
     }
     ++column_index_;
     if (column_index_ == reader_.projection_->size()) {
-      reader_.iter_->SeekOutOfSubDoc(root_doc_key_);
       return false;
     }
     UpdatePackedColumnData();

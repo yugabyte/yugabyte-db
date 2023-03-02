@@ -228,6 +228,9 @@ public class Audit extends Model {
     @EnumValue("Login")
     Login,
 
+    @EnumValue("ApiLogin")
+    ApiLogin,
+
     @EnumValue("Promote")
     Promote,
 

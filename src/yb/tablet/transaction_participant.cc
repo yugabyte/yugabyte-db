@@ -105,6 +105,10 @@ METRIC_DEFINE_simple_counter(
 METRIC_DEFINE_simple_gauge_uint64(
     tablet, transactions_running, "Total number of transactions running in participant",
     yb::MetricUnit::kTransactions);
+METRIC_DEFINE_simple_gauge_uint64(
+    tablet, aborted_transactions_pending_cleanup,
+    "Total number of aborted transactions running in participant",
+    yb::MetricUnit::kTransactions);
 
 DEFINE_test_flag(int32, txn_participant_inject_latency_on_apply_update_txn_ms, 0,
                  "How much latency to inject when a update txn operation is applied.");
@@ -136,6 +140,8 @@ class TransactionParticipant::Impl
     LOG_WITH_PREFIX(INFO) << "Create";
     metric_transactions_running_ = METRIC_transactions_running.Instantiate(entity, 0);
     metric_transaction_not_found_ = METRIC_transaction_not_found.Instantiate(entity);
+    metric_aborted_transactions_pending_cleanup_ =
+        METRIC_aborted_transactions_pending_cleanup.Instantiate(entity, 0);
   }
 
   ~Impl() {
@@ -481,6 +487,11 @@ class TransactionParticipant::Impl
     }
   }
 
+  void NotifyAborted (const TransactionId& id) override {
+    VLOG_WITH_PREFIX(4) << "Transaction: " << id << " is aborted" << GetStackTrace();
+    metric_aborted_transactions_pending_cleanup_->Increment();
+  }
+
   void Abort(const TransactionId& id, TransactionStatusCallback callback) {
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents of not.
@@ -520,14 +531,6 @@ class TransactionParticipant::Impl
       } else {
         pair.second = lock_and_iterator.transaction().metadata().priority;
       }
-    }
-  }
-
-  void FillStatusTablets(std::vector<BlockingTransactionData>* inout) {
-    // TODO(wait-queues) optimize locking
-    std::vector<boost::optional<TabletId>> status_tablet_opts;
-    for (auto& blocker : *inout) {
-      blocker.status_tablet = GetStatusTablet(blocker.id).get_value_or("");
     }
   }
 
@@ -1472,6 +1475,9 @@ class TransactionParticipant::Impl
     recently_removed_transactions_cleanup_queue_.push_back({transaction.id(), now + 15s});
     LOG_IF_WITH_PREFIX(DFATAL, !recently_removed_transactions_.insert(transaction.id()).second)
         << "Transaction removed twice: " << transaction.id();
+    if (transaction.WasAborted()) {
+      metric_aborted_transactions_pending_cleanup_->Decrement();
+    }
     transactions_.erase(it);
     TransactionsModifiedUnlocked(min_running_notifier);
   }
@@ -1510,6 +1516,7 @@ class TransactionParticipant::Impl
       }
       if ((**it).UpdateStatus(
           info.status, info.status_ht, info.coordinator_safe_time, info.aborted_subtxn_set)) {
+        NotifyAborted(info.transaction_id);
         EnqueueRemoveUnlocked(
             info.transaction_id, RemoveReason::kStatusReceived, &min_running_notifier);
       } else {
@@ -1760,6 +1767,7 @@ class TransactionParticipant::Impl
   std::deque<TransactionStatusResolver> status_resolvers_ GUARDED_BY(status_resolvers_mutex_);
 
   scoped_refptr<AtomicGauge<uint64_t>> metric_transactions_running_;
+  scoped_refptr<AtomicGauge<uint64_t>> metric_aborted_transactions_pending_cleanup_;
   scoped_refptr<Counter> metric_transaction_not_found_;
 
   TransactionLoader loader_;
@@ -1878,11 +1886,6 @@ Status TransactionParticipant::CheckAborted(const TransactionId& id) {
 void TransactionParticipant::FillPriorities(
     boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) {
   return impl_->FillPriorities(inout);
-}
-
-void TransactionParticipant::FillStatusTablets(
-      std::vector<BlockingTransactionData>* inout) {
-  return impl_->FillStatusTablets(inout);
 }
 
 boost::optional<TabletId> TransactionParticipant::FindStatusTablet(const TransactionId& id) {

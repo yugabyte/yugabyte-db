@@ -19,6 +19,7 @@ import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
+import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -95,6 +96,7 @@ public class AlertChannel extends Model {
     @JsonSubTypes.Type(value = AlertChannelWebHookParams.class, name = "WebHook")
   })
   @ApiModelProperty(value = "Channel params", accessMode = READ_WRITE)
+  @Encrypted
   private AlertChannelParams params;
 
   @JsonIgnore

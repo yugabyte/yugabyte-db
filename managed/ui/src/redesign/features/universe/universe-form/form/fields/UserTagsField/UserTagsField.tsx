@@ -26,8 +26,7 @@ export const UserTagsField = ({ disabled }: UserTagsFieldProps): ReactElement =>
       <Box display="flex" flexDirection="column" mb={fields?.length ? 2 : 0} gridGap="8px">
         {fields.map((field, index) => {
           return (
-            <Box>
-              <Grid container key={field.id} spacing={1} alignItems="center">
+              <Grid key={field.id} container spacing={1} alignItems="center">
                 <Grid item xs>
                   <YBInputField
                     name={`${USER_TAGS_FIELD}.${index}.name` as FieldArrayPath<InstanceTag>}
@@ -62,7 +61,6 @@ export const UserTagsField = ({ disabled }: UserTagsFieldProps): ReactElement =>
                   </Grid>
                 )}
               </Grid>
-            </Box>
           );
         })}
       </Box>

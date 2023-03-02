@@ -29,7 +29,7 @@ type: docs
 
 </ul>
 
-<br>You can use YugabyteDB Anywhere to perform regularly scheduled backups of YugabyteDB universe data for all YSQL tables in a namespace.
+You can use YugabyteDB Anywhere to perform regularly scheduled backups of YugabyteDB universe data for all YSQL tables in a namespace.
 
 To back up your universe YSQL data immediately, see [Back up universe YSQL data](../../back-up-universe-data/ysql/).
 
@@ -45,9 +45,9 @@ Before scheduling a backup of your universe YSQL data, create a policy, as follo
 
 1. Select the **Backups** tab and then select **Scheduled Backup Policies**.
 
-1. Click **Create Scheduled Backup Policy** to open the dialog shown in the following illustration:
+1. Click **Create Scheduled Backup Policy**.
 
-   ![Create Backup form](/images/yp/scheduled-backup-ysql.png)<br>
+    <!--    ![Create Backup form](/images/yp/scheduled-backup-ysql-1.png)-->
 
 1. Provide the backup policy name.
 

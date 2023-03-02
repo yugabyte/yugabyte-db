@@ -116,6 +116,9 @@ DEFINE_UNKNOWN_int32(wait_queue_poll_interval_ms, 1000,
     "The interval duration between wait queue polls to fetch transaction statuses of "
     "active blockers.");
 
+DEFINE_RUNTIME_bool(abort_active_txns_during_xcluster_bootstrap, true,
+    "Abort active transactions during bootstrapping.");
+
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
 DECLARE_int64(cdc_intent_retention_ms);
@@ -1028,7 +1031,7 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
   return min_index;
 }
 
-Result<OpId> TabletPeer::GetCdcBootstrapOpIdByTableType() const {
+Result<OpId> TabletPeer::GetCdcBootstrapOpIdByTableType() {
   if (VERIFY_RESULT(shared_tablet_safe())->table_type() ==
       TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     // Transaction status tables do not have backup/restores, instead we need to bootstrap from the
@@ -1042,7 +1045,11 @@ Result<OpId> TabletPeer::GetCdcBootstrapOpIdByTableType() const {
     return OpId(0, index);
   }
 
-  return GetLatestLogEntryOpId();
+  auto index = GetLatestLogEntryOpId();
+  if (GetAtomicFlag(&FLAGS_abort_active_txns_during_xcluster_bootstrap)) {
+    RETURN_NOT_OK(AbortSQLTransactions());
+  }
+  return index;
 }
 
 Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
@@ -1067,7 +1074,7 @@ yb::OpId TabletPeer::GetLatestLogEntryOpId() const {
 }
 
 Status TabletPeer::set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index) {
-  LOG_WITH_PREFIX(INFO) << "Setting cdc min replicated index to " << cdc_min_replicated_index;
+  VLOG(1) << "Setting cdc min replicated index to " << cdc_min_replicated_index;
   RETURN_NOT_OK(meta_->set_cdc_min_replicated_index(cdc_min_replicated_index));
   Log* log = log_atomic_.load(std::memory_order_acquire);
   if (log) {
@@ -1100,14 +1107,13 @@ int64_t TabletPeer::get_cdc_min_replicated_index() {
 }
 
 Status TabletPeer::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_checkpoint_op_id) {
-  LOG_WITH_PREFIX(INFO) << "Setting CDCSDK min checkpoint opId to "
-                        << cdc_sdk_min_checkpoint_op_id.ToString();
+  VLOG(1) << "Setting CDCSDK min checkpoint opId to " << cdc_sdk_min_checkpoint_op_id.ToString();
   RETURN_NOT_OK(meta_->set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_min_checkpoint_op_id));
   return Status::OK();
 }
 
 Status TabletPeer::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time) {
-  LOG_WITH_PREFIX(INFO) << "Setting CDCSDK safe time to " << cdc_sdk_safe_time;
+  VLOG(1) << "Setting CDCSDK safe time to " << cdc_sdk_safe_time;
   RETURN_NOT_OK(meta_->set_cdc_sdk_safe_time(cdc_sdk_safe_time));
   return Status::OK();
 }
