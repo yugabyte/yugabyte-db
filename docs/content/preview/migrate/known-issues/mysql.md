@@ -267,28 +267,29 @@ CREATE OR REPLACE VIEW v1 AS SELECT foo(bar.id::int) AS p_name FROM bar;
 An example schema on the source database is as follows:
 
 ```sql
-/* procedure definition */
+/* function definition */
 delimiter //
-CREATE PROCEDURE foo(p_id int)
-deterministic
+CREATE FUNCTION func (p_id int)
+RETURNS VARCHAR(20)
+READS SQL DATA
   BEGIN
     DROP TEMPORARY TABLE IF EXISTS temp;
     CREATE TEMPORARY TABLE temp(id int, name text);
     INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
     SELECT name FROM temp;
-  END//
+END//
 delimiter;
 ```
 
 The exported schema is as follows:
 
 ```sql
-CREATE OR REPLACE PROCEDURE foo (p_id integer) AS $body$
+CREATE OR REPLACE FUNCTION func (p_id integer) RETURNS varchar AS $body$
   BEGIN
     DROP TEMPORARY TABLE IF EXISTS temp;
     CREATE TEMPORARY TABLE temp(id int, name text);
     INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
-    SELECT name FROM temp;
+    RETURN(SELECT name FROM temp);
   END;
 $body$
 LANGUAGE PLPGSQL
