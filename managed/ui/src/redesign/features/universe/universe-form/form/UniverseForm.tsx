@@ -1,6 +1,8 @@
 import React, { useContext, FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useForm, FormProvider } from 'react-hook-form';
+import { useQuery } from 'react-query';
+import { useSelector } from 'react-redux';
 import { Typography, Grid, Box, Link } from '@material-ui/core';
 import { YBButton } from '../../../../components';
 import {
@@ -14,6 +16,7 @@ import {
   UniverseResourceContainer
 } from './sections';
 import { UniverseFormContext } from '../UniverseFormContainer';
+import { api, QUERY_KEY } from '../utils/api';
 import { UniverseFormData, ClusterType, ClusterModes } from '../utils/dto';
 import { UNIVERSE_NAME_FIELD } from '../utils/constants';
 import { useFormMainStyles } from '../universeMainStyle';
@@ -60,6 +63,13 @@ export const UniverseForm: FC<UniverseFormProps> = ({
   const isPrimary = clusterType === ClusterType.PRIMARY;
   const isEditMode = mode === ClusterModes.EDIT;
   const isEditRR = isEditMode && !isPrimary;
+
+  // Get customer scope runtime configs
+  const currentCustomer = useSelector((state: any) => state.customer.currentCustomer);
+  const customerUUID = currentCustomer?.data?.uuid;
+  const { data: runtimeConfigs } = useQuery(QUERY_KEY.fetchCustomerRunTimeConfigs, () =>
+    api.fetchRunTimeConfigs(true, customerUUID)
+  );
 
   //init form
   const formMethods = useForm<UniverseFormData>({
@@ -208,11 +218,11 @@ export const UniverseForm: FC<UniverseFormProps> = ({
   const renderSections = () => {
     return (
       <>
-        <CloudConfiguration />
-        <InstanceConfiguration />
+        <CloudConfiguration runtimeConfigs={runtimeConfigs} />
+        <InstanceConfiguration runtimeConfigs={runtimeConfigs} />
         {isPrimary && (
           <>
-            <SecurityConfiguration />
+            <SecurityConfiguration runtimeConfigs={runtimeConfigs} />
             <AdvancedConfiguration />
             <GFlags />
             <HelmOverrides />

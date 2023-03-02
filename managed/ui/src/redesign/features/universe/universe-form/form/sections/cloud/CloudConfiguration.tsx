@@ -1,5 +1,4 @@
-import React, { FC, useContext } from 'react';
-import { useQuery } from 'react-query';
+import React, { useContext } from 'react';
 import _ from 'lodash';
 import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
@@ -15,9 +14,13 @@ import {
   UniverseNameField
 } from '../../fields';
 import { UniverseFormContext } from '../../../UniverseFormContainer';
-import { api, QUERY_KEY } from '../../../utils/api';
 import { getPrimaryCluster } from '../../../utils/helpers';
-import { ClusterModes, ClusterType, RunTimeConfigEntry } from '../../../utils/dto';
+import {
+  ClusterModes,
+  ClusterType,
+  RunTimeConfigEntry,
+  UniverseFormConfigurationProps
+} from '../../../utils/dto';
 import { useSectionStyles } from '../../../universeMainStyle';
 
 const useStyles = makeStyles((theme) => ({
@@ -26,26 +29,24 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const CloudConfiguration: FC = () => {
+export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfigurationProps) => {
   const classes = useSectionStyles();
   const helperClasses = useStyles();
   const { t } = useTranslation();
-  const currentCustomer = useSelector((state: any) => state.customer.currentCustomer);
-  const customerUUID = currentCustomer?.data?.uuid;
 
   //feature flagging
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const isGeoPartitionEnabled =
     featureFlags.test.enableGeoPartitioning || featureFlags.released.enableGeoPartitioning;
 
-  //fetch run time configs
-  const { data: runtimeConfigs } = useQuery(QUERY_KEY.fetchCustomerRunTimeConfigs, () =>
-    api.fetchRunTimeConfigs(true, customerUUID)
-  );
-
+  // Value of runtime config key
   const enableDedicatedNodesObject = runtimeConfigs?.configEntries?.find(
     (c: RunTimeConfigEntry) => c.key === 'yb.ui.enable_dedicated_nodes'
   );
+  const useK8CustomResourcesObject = runtimeConfigs?.configEntries?.find(
+    (c: RunTimeConfigEntry) => c.key === 'yb.ui.feature_flags.k8s_custom_resources'
+  );
+  const useK8CustomResources = !!(useK8CustomResourcesObject?.value === 'true');
   const isDedicatedNodesEnabled = !!(enableDedicatedNodesObject?.value === 'true');
 
   //form context
@@ -87,7 +88,10 @@ export const CloudConfiguration: FC = () => {
               </Box>
               {isDedicatedNodesEnabled && (
                 <Box mt={2}>
-                  <MasterPlacementField isPrimary={isPrimary} />
+                  <MasterPlacementField
+                    isPrimary={isPrimary}
+                    useK8CustomResources={useK8CustomResources}
+                  />
                 </Box>
               )}
               <Box mt={2}>
