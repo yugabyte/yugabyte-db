@@ -51,34 +51,36 @@ class ConsumerRegistryPB;
 } // namespace cdc
 
 namespace tserver {
-class CDCPoller;
+class XClusterPoller;
 class TabletServer;
 
-struct CDCClient {
+struct XClusterClient {
   std::unique_ptr<rpc::Messenger> messenger;
   std::unique_ptr<rpc::SecureContext> secure_context;
   std::shared_ptr<client::YBClient> client;
 
-  ~CDCClient();
+  ~XClusterClient();
   void Shutdown();
 };
 
 typedef std::pair<SchemaVersion, SchemaVersion> SchemaVersionMapping;
 
-class CDCConsumer {
+class XClusterConsumer {
  public:
-  static Result<std::unique_ptr<CDCConsumer>> Create(
+  static Result<std::unique_ptr<XClusterConsumer>> Create(
       std::function<bool(const std::string&)> is_leader_for_tablet,
       rpc::ProxyCache* proxy_cache,
      TabletServer* tserver);
 
-  CDCConsumer(std::function<bool(const std::string&)> is_leader_for_tablet,
+  XClusterConsumer(
+      std::function<bool(const std::string&)> is_leader_for_tablet,
       rpc::ProxyCache* proxy_cache,
       const std::string& ts_uuid,
-      std::unique_ptr<CDCClient> local_client,
+      std::unique_ptr<XClusterClient>
+          local_client,
       client::TransactionManager* transaction_manager);
 
-  ~CDCConsumer();
+  ~XClusterConsumer();
   void Shutdown() EXCLUDES(should_run_mutex_);
 
   // Refreshes the in memory state when we receive a new registry from master.
@@ -87,7 +89,7 @@ class CDCConsumer {
 
   std::vector<std::string> TEST_producer_tablets_running();
 
-  std::vector<std::shared_ptr<CDCPoller>> TEST_ListPollers();
+  std::vector<std::shared_ptr<XClusterPoller>> TEST_ListPollers();
 
   std::string LogPrefix();
 
@@ -183,7 +185,7 @@ class CDCConsumer {
 
   scoped_refptr<Thread> run_trigger_poll_thread_;
 
-  std::unordered_map<cdc::ProducerTabletInfo, std::shared_ptr<CDCPoller>,
+  std::unordered_map<cdc::ProducerTabletInfo, std::shared_ptr<XClusterPoller>,
                      cdc::ProducerTabletInfo::Hash> producer_pollers_map_
                      GUARDED_BY(producer_pollers_map_mutex_);
 
@@ -191,11 +193,11 @@ class CDCConsumer {
   std::unique_ptr<rpc::Rpcs> rpcs_;
 
   std::string log_prefix_;
-  std::shared_ptr<CDCClient> local_client_;
+  std::shared_ptr<XClusterClient> local_client_;
 
   // map: {universe_uuid : ...}.
-  std::unordered_map<std::string, std::shared_ptr<CDCClient>> remote_clients_
-    GUARDED_BY(producer_pollers_map_mutex_);
+  std::unordered_map<std::string, std::shared_ptr<XClusterClient>> remote_clients_
+      GUARDED_BY(producer_pollers_map_mutex_);
   std::unordered_map<std::string, std::string> uuid_master_addrs_
     GUARDED_BY(master_data_mutex_);
   std::unordered_set<std::string> changed_master_addrs_ GUARDED_BY(master_data_mutex_);

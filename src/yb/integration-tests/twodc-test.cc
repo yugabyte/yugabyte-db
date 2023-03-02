@@ -60,8 +60,8 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tserver/cdc_consumer.h"
-#include "yb/tserver/cdc_poller.h"
+#include "yb/tserver/xcluster_consumer.h"
+#include "yb/tserver/xcluster_poller.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -81,7 +81,7 @@ using std::string;
 using namespace std::literals;
 
 DECLARE_bool(enable_ysql);
-DECLARE_bool(TEST_twodc_write_hybrid_time);
+DECLARE_bool(TEST_xcluster_write_hybrid_time);
 DECLARE_int32(cdc_wal_retention_time_secs);
 DECLARE_int32(replication_failure_delay_exponent);
 DECLARE_double(TEST_respond_write_failed_probability);
@@ -136,11 +136,11 @@ using client::YBSession;
 using client::YBTable;
 using client::YBTableAlterer;
 using client::YBTableCreator;
-using client::YBTableType;
 using client::YBTableName;
+using client::YBTableType;
 using master::MiniMaster;
 using tserver::MiniTabletServer;
-using tserver::CDCConsumer;
+using tserver::XClusterConsumer;
 
 using SessionTransactionPair = std::pair<client::YBSessionPtr, client::YBTransactionPtr>;
 
@@ -1936,7 +1936,7 @@ TEST_P(TwoDCTest, TestExternalWriteHybridTime) {
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 
   // Delete 2nd record but replicate at a low timestamp (timestamp lower than insertion timestamp).
-  FLAGS_TEST_twodc_write_hybrid_time = true;
+  FLAGS_TEST_xcluster_write_hybrid_time = true;
   DeleteWorkload(1, 2, producer_client(), tables[0]->name());
 
   // Verify that record exists on consumer universe, but is deleted from producer universe.
@@ -2575,10 +2575,10 @@ TEST_P(TwoDCTest, TestAlterDDLWithRestarts) {
 
     // Verify that the new Consumer poller had read the ALTER DDL and stopped polling.
     auto* tserver = new_ts->server();
-    CDCConsumer* cdc_consumer;
-    ASSERT_TRUE(tserver && (cdc_consumer = tserver->GetCDCConsumer()));
+    XClusterConsumer* xcluster_consumer;
+    ASSERT_TRUE(tserver && (xcluster_consumer = tserver->GetXClusterConsumer()));
     ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-      auto pollers = tserver->GetCDCConsumer()->TEST_ListPollers();
+      auto pollers = xcluster_consumer->TEST_ListPollers();
       return pollers.size() == 1 && !pollers[0]->IsPolling();
     }, MonoDelta::FromSeconds(10), "ConsumerNotPolling"));
   }

@@ -9,6 +9,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -19,6 +20,7 @@ import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.CertificateParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -33,6 +35,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -349,6 +352,16 @@ public class CertificateInfo extends Model {
     return find.byId(certUUID);
   }
 
+  public static Optional<CertificateInfo> maybeGet(UUID certUUID) {
+    // Find the CertificateInfo.
+    CertificateInfo certificateInfo = find.byId(certUUID);
+    if (certificateInfo == null) {
+      LOG.trace("Cannot find certificateInfo {}", certUUID);
+      return Optional.empty();
+    }
+    return Optional.of(certificateInfo);
+  }
+
   public static CertificateInfo getOrBadRequest(UUID certUUID, UUID customerUUID) {
     CertificateInfo certificateInfo = get(certUUID);
     if (certificateInfo == null) {
@@ -451,6 +464,7 @@ public class CertificateInfo extends Model {
   @ApiModelProperty(
       value = "Associated universe details for the certificate",
       accessMode = READ_ONLY)
+  @JsonProperty
   public List<UniverseDetailSubset> getUniverseDetails() {
     if (universeDetailSubsets == null) {
       Set<Universe> universes = Universe.universeDetailsIfCertsExists(this.uuid, this.customerUUID);
@@ -460,6 +474,7 @@ public class CertificateInfo extends Model {
     }
   }
 
+  @JsonIgnore
   public void setUniverseDetails(List<UniverseDetailSubset> universeDetailSubsets) {
     this.universeDetailSubsets = universeDetailSubsets;
   }
@@ -529,5 +544,33 @@ public class CertificateInfo extends Model {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot edit pre-customized cert. Create a new one.");
     }
+  }
+
+  public static List<CertificateInfo> getCertificateInfoList(Universe universe) {
+    List<CertificateInfo> certificateInfoList = new ArrayList<CertificateInfo>();
+    UUID rootCA = null;
+    UUID clientRootCA = null;
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    if (EncryptionInTransitUtil.isRootCARequired(universeDetails)) {
+      rootCA = universeDetails.rootCA;
+      if (rootCA == null) {
+        throw new RuntimeException("No valid RootCA found for " + universeDetails.universeUUID);
+      }
+      certificateInfoList.add(CertificateInfo.get(rootCA));
+    }
+
+    if (EncryptionInTransitUtil.isClientRootCARequired(universeDetails)) {
+      clientRootCA = universeDetails.getClientRootCA();
+      if (clientRootCA == null) {
+        throw new RuntimeException(
+            "No valid clientRootCA found for " + universeDetails.universeUUID);
+      }
+
+      // check against the root to see if need to export
+      if (!clientRootCA.equals(rootCA)) {
+        certificateInfoList.add(CertificateInfo.get(clientRootCA));
+      }
+    }
+    return certificateInfoList;
   }
 }

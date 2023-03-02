@@ -38,15 +38,14 @@ struct ProcessRecordInfo {
   SchemaVersion last_compatible_consumer_schema_version;
 };
 
-class TwoDCWriteInterface {
+class XClusterWriteInterface {
  public:
-  virtual ~TwoDCWriteInterface() {}
+  virtual ~XClusterWriteInterface() {}
   virtual std::unique_ptr<WriteRequestPB> GetNextWriteRequest() = 0;
   virtual Status ProcessRecord(
       const ProcessRecordInfo& process_record_info, const cdc::CDCRecordPB& record) = 0;
   virtual Status ProcessCreateRecord(
-      const std::string& status_tablet,
-      const cdc::CDCRecordPB& record) = 0;
+      const std::string& status_tablet, const cdc::CDCRecordPB& record) = 0;
   virtual Status ProcessCommitRecord(
       const std::string& status_tablet,
       const std::vector<std::string>& involved_target_tablet_ids,
@@ -54,7 +53,7 @@ class TwoDCWriteInterface {
   virtual std::vector<client::ExternalTransactionMetadata>& GetTransactionMetadatas() = 0;
 };
 
-void ResetWriteInterface(std::unique_ptr<TwoDCWriteInterface>* write_strategy);
+void ResetWriteInterface(std::unique_ptr<XClusterWriteInterface>* write_strategy);
 
-} // namespace tserver
-} // namespace yb
+}  // namespace tserver
+}  // namespace yb

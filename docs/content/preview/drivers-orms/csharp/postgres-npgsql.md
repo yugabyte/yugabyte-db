@@ -7,13 +7,13 @@ menu:
   preview:
     identifier: postgres-npgsql-driver
     parent: csharp-drivers
-    weight: 400
+    weight: 420
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li class="active">
-    <a href="../postgres-npgsql/" class="nav-link">
+    <a href="../ysql/" class="nav-link">
       YSQL
     </a>
   </li>
@@ -25,6 +25,13 @@ type: docs
 </ul>
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="../ysql/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YugabyteDB Npgsql Smart Driver
+    </a>
+  </li>
 
   <li >
     <a href="../postgres-npgsql/" class="nav-link active">
@@ -256,7 +263,13 @@ namespace Yugabyte_CSharp_Demo
 }
 ```
 
-To run the project `Program.cs`, choose _Run -> Start Without Debugging_.
+## Run the application
+
+To run the project `Program.cs` in Visual Studio Code, from the **Run** menu, choose **Start Without Debugging**. If you aren't using an IDE, enter the following command:
+
+```csharp
+dotnet run
+```
 
 You should see output similar to the following if you're using SSL:
 

@@ -91,14 +91,16 @@ public class InstallThirdPartySoftwareK8s extends AbstractTaskBase {
             .timeoutSecs(UPLOAD_XXSUM_PACKAGE_TIMEOUT_SEC)
             .build();
     for (NodeDetails node : universe.getNodes()) {
-      String xxhsumTargetPath = nodeUniverseManager.getYbHomeDir(node, universe) + "/bin";
+      String xxhsumTargetPathParent = nodeUniverseManager.getYbTmpDir();
+      String xxhsumTargetPath = xxhsumTargetPathParent + "/xxhash.tar.gz";
       nodeUniverseManager
           .uploadFileToNode(
               node, universe, xxhsumPackagePath, xxhsumTargetPath, PACKAGE_PERMISSIONS, context)
           .processErrors();
 
       String extractxxhSumBinaryCmd =
-          String.format("cd %s && tar -xvf xxhash.tar.gz && rm xxhash.tar.gz", xxhsumTargetPath);
+          String.format(
+              "cd %s && tar -xvf xxhash.tar.gz && rm xxhash.tar.gz", xxhsumTargetPathParent);
       List<String> unTarxxhSumBinariesCmd = Arrays.asList("bash", "-c", extractxxhSumBinaryCmd);
       nodeUniverseManager
           .runCommand(node, universe, unTarxxhSumBinariesCmd, context)

@@ -32,7 +32,7 @@
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/rpc_controller.h"
-#include "yb/tserver/cdc_consumer.h"
+#include "yb/tserver/xcluster_consumer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/backoff_waiter.h"
@@ -53,7 +53,7 @@ namespace yb {
 
 using client::YBClient;
 using client::YBTableName;
-using tserver::CDCConsumer;
+using tserver::XClusterConsumer;
 
 Status TwoDCTestBase::InitClusters(const MiniClusterOptions& opts) {
   FLAGS_replication_factor = static_cast<int>(opts.num_tablet_servers);
@@ -442,9 +442,9 @@ uint32_t TwoDCTestBase::GetSuccessfulWriteOps(MiniCluster* cluster) {
   uint32_t size = 0;
   for (const auto& mini_tserver : cluster->mini_tablet_servers()) {
     auto* tserver = mini_tserver->server();
-    CDCConsumer* cdc_consumer;
-    if (tserver && (cdc_consumer = tserver->GetCDCConsumer())) {
-      size += cdc_consumer->GetNumSuccessfulWriteRpcs();
+    XClusterConsumer* xcluster_consumer;
+    if (tserver && (xcluster_consumer = tserver->GetXClusterConsumer())) {
+      size += xcluster_consumer->GetNumSuccessfulWriteRpcs();
     }
   }
   return size;

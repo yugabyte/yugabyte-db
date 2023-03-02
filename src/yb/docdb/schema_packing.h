@@ -20,6 +20,7 @@
 #include <google/protobuf/repeated_field.h>
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/column_id.h"
 
 #include "yb/docdb/docdb.fwd.h"
@@ -62,7 +63,7 @@ struct ColumnPackingData {
 
 class SchemaPacking {
  public:
-  explicit SchemaPacking(const Schema& schema);
+  SchemaPacking(TableType table_type, const Schema& schema);
   explicit SchemaPacking(const SchemaPackingPB& pb);
 
   size_t columns() const {
@@ -93,8 +94,8 @@ class SchemaPacking {
 
   bool operator==(const SchemaPacking&) const = default;
 
-  bool SchemaContainsPacking(const Schema& schema) const {
-    SchemaPacking packing(schema);
+  bool SchemaContainsPacking(TableType table_type, const Schema& schema) const {
+    SchemaPacking packing(table_type, schema);
     return packing == *this;
   }
 
@@ -106,8 +107,8 @@ class SchemaPacking {
 
 class SchemaPackingStorage {
  public:
-  SchemaPackingStorage();
-  explicit SchemaPackingStorage(const SchemaPackingStorage& rhs, SchemaVersion min_schema_version);
+  explicit SchemaPackingStorage(TableType table_type);
+  SchemaPackingStorage(const SchemaPackingStorage& rhs, SchemaVersion min_schema_version);
 
   Result<const SchemaPacking&> GetPacking(SchemaVersion schema_version) const;
   Result<const SchemaPacking&> GetPacking(Slice* packed_row) const;
@@ -141,6 +142,7 @@ class SchemaPackingStorage {
       const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas,
       bool could_present, OverwriteSchemaPacking overwrite);
 
+  TableType table_type_;
   std::unordered_map<SchemaVersion, SchemaPacking> version_to_schema_packing_;
 };
 

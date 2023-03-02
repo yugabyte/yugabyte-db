@@ -44,7 +44,7 @@ QLValuePB RandomQLValue(DataType type) {
 void TestRowPacking(const Schema& schema, const std::vector<QLValuePB>& values) {
   ASSERT_EQ(schema.num_columns() - schema.num_key_columns(), values.size());
   constexpr int kVersion = 1;
-  SchemaPacking schema_packing(schema);
+  SchemaPacking schema_packing(TableType::PGSQL_TABLE_TYPE, schema);
   RowPacker packer(
       kVersion, schema_packing, /* packed_size_limit= */ std::numeric_limits<int64_t>::max(),
       /* value_control_fields= */ Slice());

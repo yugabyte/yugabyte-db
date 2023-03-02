@@ -523,14 +523,6 @@ class TransactionParticipant::Impl
     }
   }
 
-  void FillStatusTablets(std::vector<BlockingTransactionData>* inout) {
-    // TODO(wait-queues) optimize locking
-    std::vector<boost::optional<TabletId>> status_tablet_opts;
-    for (auto& blocker : *inout) {
-      blocker.status_tablet = GetStatusTablet(blocker.id).get_value_or("");
-    }
-  }
-
   boost::optional<TabletId> GetStatusTablet(const TransactionId& id) {
     auto lock_and_iterator = LockAndFind(id, "get status tablet"s, TransactionLoadFlags{});
     if (!lock_and_iterator.found() || lock_and_iterator.transaction().WasAborted()) {
@@ -1878,11 +1870,6 @@ Status TransactionParticipant::CheckAborted(const TransactionId& id) {
 void TransactionParticipant::FillPriorities(
     boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) {
   return impl_->FillPriorities(inout);
-}
-
-void TransactionParticipant::FillStatusTablets(
-      std::vector<BlockingTransactionData>* inout) {
-  return impl_->FillStatusTablets(inout);
 }
 
 boost::optional<TabletId> TransactionParticipant::FindStatusTablet(const TransactionId& id) {

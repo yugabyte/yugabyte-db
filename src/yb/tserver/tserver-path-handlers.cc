@@ -241,7 +241,8 @@ void HandleTabletPage(
       {"tablet-consensus-status", "Consensus Status"},
       {"log-anchors", "Tablet Log Anchors"},
       {"transactions", "Transactions"},
-      {"rocksdb", "RocksDB" }};
+      {"rocksdb", "RocksDB" },
+      {"waitqueue", "Wait Queue"}};
 
   auto encoded_tablet_id = UrlEncodeToString(tablet_id);
   for (const auto& entry : entries) {
@@ -387,6 +388,25 @@ void HandleRocksDBPage(
   DumpRocksDB("Intents", doc_db.intents, output);
 }
 
+void HandleWaitQueuePage(
+    const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *out = &resp->output;
+  *out << "<h1>Waiters for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
+
+  auto tablet_result = peer->shared_tablet_safe();
+  if (!tablet_result.ok()) {
+    *out << tablet_result.status();
+    return;
+  }
+  auto* wq = (*tablet_result)->wait_queue();
+  if (wq) {
+    wq->DumpStatusHtml(*out);
+  } else {
+    *out << "<h3>" << "No wait queue found" << "</h3>" << std::endl;
+  }
+}
+
 template<class F>
 void RegisterTabletPathHandler(
     Webserver* web_server, TabletServer* tserver, const std::string& path, const F& f) {
@@ -423,6 +443,7 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
   RegisterTabletPathHandler(server, tserver_, "/log-anchors", &HandleLogAnchorsPage);
   RegisterTabletPathHandler(server, tserver_, "/transactions", &HandleTransactionsPage);
   RegisterTabletPathHandler(server, tserver_, "/rocksdb", &HandleRocksDBPage);
+  RegisterTabletPathHandler(server, tserver_, "/waitqueue", &HandleWaitQueuePage);
   server->RegisterPathHandler(
       "/", "Dashboards",
       std::bind(&TabletServerPathHandlers::HandleDashboardsPage, this, _1, _2), true /* styled */,

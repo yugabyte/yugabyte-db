@@ -152,6 +152,7 @@ log "Removing old JSON-based test report files"
 activate_virtualenv
 set_pythonpath
 
+# shellcheck source=build-support/jenkins/common-lto.sh
 . "${BASH_SOURCE%/*}/common-lto.sh"
 
 # -------------------------------------------------------------------------------------------------
@@ -283,11 +284,6 @@ fi
 
 YB_SKIP_CPP_COMPILATION=${YB_SKIP_CPP_COMPILATION:-0}
 YB_COMPILE_ONLY=${YB_COMPILE_ONLY:-0}
-
-CTEST_OUTPUT_PATH="${BUILD_ROOT}"/ctest.log
-CTEST_FULL_OUTPUT_PATH="${BUILD_ROOT}"/ctest-full.log
-
-TEST_LOG_DIR="${BUILD_ROOT}/test-logs"
 
 configure_remote_compilation
 

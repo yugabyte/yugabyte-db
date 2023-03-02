@@ -73,9 +73,9 @@ using rocksdb::WriteOptions;
 
 using namespace std::literals;
 
+DECLARE_bool(TEST_docdb_sort_weak_intents);
 DECLARE_bool(use_docdb_aware_bloom_filter);
 DECLARE_int32(max_nexts_to_avoid_seek);
-DECLARE_bool(TEST_docdb_sort_weak_intents);
 
 #define ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(str) ASSERT_NO_FATALS(AssertDocDbDebugDumpStrEq(str))
 
@@ -120,6 +120,10 @@ class DocDBTest : public DocDBTestBase {
   }
 
   ~DocDBTest() override {
+  }
+
+  Schema CreateSchema() override {
+    return Schema();
   }
 
   virtual void GetSubDoc(

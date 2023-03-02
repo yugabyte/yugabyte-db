@@ -501,9 +501,6 @@ Status WriteQuery::DoExecute() {
   TEST_SYNC_POINT("WriteQuery::DoExecute::PreparedDocWriteOps");
 
   auto* transaction_participant = tablet->transaction_participant();
-  if (transaction_participant) {
-    request_scope_ = VERIFY_RESULT(RequestScope::Create(transaction_participant));
-  }
 
   if (!tablet->txns_enabled() || !transactional_table) {
     CompleteExecute();
