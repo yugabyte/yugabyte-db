@@ -71,7 +71,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Ebean;
-import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -85,6 +84,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -177,7 +177,10 @@ public class UniverseCRUDHandler {
         smartResizePossible = false;
       }
     } else {
-      if (hasChangedNodes || !cluster.areTagsSame(currentCluster)) {
+      if (hasChangedNodes
+          || !cluster.areTagsSame(currentCluster)
+          || PlacementInfoUtil.didAffinitizedLeadersChange(
+              currentCluster.placementInfo, cluster.placementInfo)) {
         result.add(UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
       } else if (GFlagsUtil.checkGFlagsByIntentChange(
           currentCluster.userIntent, cluster.userIntent)) {
@@ -191,7 +194,7 @@ public class UniverseCRUDHandler {
       if (cluster.userIntent.instanceType == null
           || cluster.userIntent.instanceType.equals(currentCluster.userIntent.instanceType)) {
         result.add(UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE_NON_RESTART);
-      } else {
+      } else if (cluster.userIntent.providerType != Common.CloudType.kubernetes) {
         result.add(UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE);
       }
     }
@@ -226,31 +229,21 @@ public class UniverseCRUDHandler {
     // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster
     //  uuid.
     Cluster cluster = getClusterFromTaskParams(taskParams);
-    UniverseDefinitionTaskParams.UserIntent primaryIntent = cluster.userIntent;
+    UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CONFIGURE);
 
-    primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
-    primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
-    if (StringUtils.isEmpty(primaryIntent.accessKeyCode)) {
-      primaryIntent.accessKeyCode = appConfig.getString("yb.security.default.access.key");
+    userIntent.masterGFlags = trimFlags(userIntent.masterGFlags);
+    userIntent.tserverGFlags = trimFlags(userIntent.tserverGFlags);
+    if (StringUtils.isEmpty(userIntent.accessKeyCode)) {
+      userIntent.accessKeyCode = appConfig.getString("yb.security.default.access.key");
     }
     try {
       Universe universe = PlacementInfoUtil.getUniverseForParams(taskParams);
       PlacementInfoUtil.updateUniverseDefinition(
           taskParams, universe, customer.getCustomerId(), cluster.uuid);
       try {
-        if (taskParams
-            .getPrimaryCluster()
-            .userIntent
-            .providerType
-            .equals(Common.CloudType.kubernetes)) {
-          taskParams.updateOptions =
-              Collections.singleton(
-                  UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE_NON_RESTART);
-        } else {
-          taskParams.updateOptions = getUpdateOptions(taskParams, cluster, universe);
-        }
+        taskParams.updateOptions = getUpdateOptions(taskParams, cluster, universe);
       } catch (Exception e) {
         LOG.error("Failed to calculate update options", e);
       }
@@ -1080,6 +1073,8 @@ public class UniverseCRUDHandler {
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     taskParams.clusters.add(primaryCluster);
     validateConsistency(primaryCluster, readOnlyCluster);
+
+    boolean isCloud = runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
 
     // Set the provider code.
     Provider provider =

@@ -66,6 +66,7 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/bind.h"
+#include "yb/gutil/callback.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
@@ -518,7 +519,7 @@ Status TSTabletManager::Init() {
                                                                       local_peer_pb_.cloud_info());
 
   if (FLAGS_enable_wait_queues) {
-    waiting_txn_registry_ = std::make_unique<tablet::LocalWaitingTxnRegistry>(
+    waiting_txn_registry_ = std::make_unique<docdb::LocalWaitingTxnRegistry>(
         client_future(), scoped_refptr<server::Clock>(server_->clock()));
   }
 
@@ -596,6 +597,18 @@ Status TSTabletManager::Init() {
 
   waiting_txn_registry_poller_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::PollWaitingTxnRegistry, this));
+
+  return Status::OK();
+}
+
+Status TSTabletManager::RegisterServiceCallback(
+    StatefulServiceKind service_kind, ConsensusChangeCallback callback) {
+  std::lock_guard lock(service_registration_mutex_);
+  SCHECK(
+      !service_consensus_change_cb_.contains(service_kind), AlreadyPresent,
+      "Service of kind $0 is already registered", StatefulServiceKind_Name(service_kind));
+
+  service_consensus_change_cb_[service_kind] = callback;
 
   return Status::OK();
 }
@@ -1676,6 +1689,11 @@ void TSTabletManager::StartShutdown() {
     }
   }
 
+  {
+    std::lock_guard lock(service_registration_mutex_);
+    service_consensus_change_cb_.clear();
+  }
+
   tablets_cleaner_->Shutdown();
 
   verify_tablet_data_poller_->Shutdown();
@@ -1954,8 +1972,29 @@ void TSTabletManager::ApplyChange(const string& tablet_id,
 
 void TSTabletManager::MarkTabletDirty(const TabletId& tablet_id,
                                       std::shared_ptr<consensus::StateChangeContext> context) {
-  std::lock_guard<RWMutex> lock(mutex_);
-  MarkDirtyUnlocked(tablet_id, context);
+  {
+    std::lock_guard<RWMutex> lock(mutex_);
+    MarkDirtyUnlocked(tablet_id, context);
+  }
+  NotifyConfigChangeToStatefulServices(tablet_id);
+}
+
+void TSTabletManager::NotifyConfigChangeToStatefulServices(const TabletId& tablet_id) {
+  auto tablet_peer = GetServingTablet(tablet_id);
+  if (!tablet_peer.ok()) {
+    VLOG_WITH_FUNC(1) << "Received notification of tablet config change "
+                      << "but tablet peer is not ready. Tablet ID: " << tablet_id
+                      << " Error: " << tablet_peer.status();
+    return;
+  }
+
+  const auto service_list = tablet_peer.get()->tablet_metadata()->GetHostedServiceList();
+  for (auto& service_kind : service_list) {
+    std::shared_lock lock(service_registration_mutex_);
+    if (service_consensus_change_cb_.contains(service_kind)) {
+      service_consensus_change_cb_[service_kind].Run(tablet_peer.get());
+    }
+  }
 }
 
 void TSTabletManager::MarkTabletBeingRemoteBootstrapped(

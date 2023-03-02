@@ -184,6 +184,7 @@ The following libraries are officially supported by YugabyteDB.
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
+| [YugabyteDB C# Smart Driver for YSQL](csharp/ysql/) | Full | [CRUD](csharp/ysql/) |
 | [PostgreSQL Npgsql Driver](csharp/postgres-npgsql/) | Full | [CRUD](csharp/postgres-npgsql/) |
 | [YugabyteDB C# Driver for YCQL](csharp/ycql/) | Full | [CRUD](csharp/ycql/) |
 | [Entity Framework](csharp/entityframework/) | Full | [CRUD](csharp/entityframework/) |

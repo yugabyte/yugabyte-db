@@ -196,9 +196,11 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
       onFormSubmit={handleSubmit}
       showCancelButton
       dialogClassName="pitr-recovery-modal"
+      submitTestId="PitrRecoverySubmitBtn"
+      cancelTestId="PitrRecoveryCancelBtn"
       initialValues={initialValues}
       validate={validateForm}
-      render={({ values, setFieldValue, errors }: FormikProps<Form_Values>) => {
+      render={({ values, setFieldValue }: FormikProps<Form_Values>) => {
         const error = validateForm(values)?.recovery_time_mode;
 
         return (
@@ -218,8 +220,9 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
                 <Field
                   name="recovery_time_mode"
                   checked={values['recovery_time_mode'] === RECOVERY_MODE.RELATIVE}
-                  component={() => {
-                    return (
+                  type="radio"
+                >
+                  {() => (
                       <div
                         className={clsx('pitr-custom-radio center-align', {
                           active: values['recovery_time_mode'] === RECOVERY_MODE.RELATIVE
@@ -231,6 +234,7 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
                           onClick={() => {
                             setFieldValue('recovery_time_mode', RECOVERY_MODE.RELATIVE, true);
                           }}
+                          id="PitrRelativeRecovery"
                         />
                         <div className="relative-time-mode">
                           <Field
@@ -239,7 +243,8 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
                             input={{
                               onChange: (val: number) =>
                                 setFieldValue('recovery_interval', val, true),
-                              value: values['recovery_interval']
+                              value: values['recovery_interval'],
+                              id:"PitrRecoveryInterval"
                             }}
                             minwidth="80px"
                             minVal={1}
@@ -250,6 +255,7 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
                             options={DURATION_OPTIONS}
                             width={140}
                             name="recovery_duration"
+                            id="PitrRecoveryDuration"
                           />
                           <span>Ago</span>
                           <div className="break" />
@@ -272,18 +278,20 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
                           )}
                         </div>
                       </div>
-                    );
-                  }}
-                  type="radio"
-                />
+                    )}
+                  </Field>
               </Col>
             </Row>
             <Row>
               <Col lg={6} className="no-padding">
                 <Field
                   name="recovery_time_mode"
-                  component={() => {
-                    return (
+                  onChange={() =>
+                    setFieldValue('recovery_time_mode' as never, RECOVERY_MODE.EXACT, false)
+                  }
+                  type="radio"
+                >
+                   {() => (
                       <div
                         className={clsx('pitr-custom-radio center-align', {
                           active: values['recovery_time_mode'] === RECOVERY_MODE.EXACT
@@ -297,6 +305,7 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
                             !values.customDate && setFieldValue('customDate', new Date());
                             !values.customTime && setFieldValue('customTime', new Date());
                           }}
+                          id="PitrAbsoluteRecovery"
                         />
                         <div className="exact-time-mode">
                           <Row>
@@ -311,6 +320,7 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
                                 onChange={(dt: Date) =>
                                   setFieldValue('customDate' as never, dt, true)
                                 }
+                                id="PitrRecoveryDateSelector"
                               />
                             </Col>
 
@@ -322,6 +332,7 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
                                 onChange={(time: Date) =>
                                   setFieldValue('customTime' as never, time, true)
                                 }
+                                id="PitrRecoveryTimeSelector"
                               />
                             </Col>
                           </Row>
@@ -337,13 +348,8 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
                           </Row>
                         </div>
                       </div>
-                    );
-                  }}
-                  onChange={() =>
-                    setFieldValue('recovery_time_mode' as never, RECOVERY_MODE.EXACT, false)
-                  }
-                  type="radio"
-                />
+                    )}
+                  </Field>
               </Col>
             </Row>
             <Row></Row>

@@ -75,6 +75,10 @@ class KeyEntryValue {
   void AppendToKey(KeyBytes* key_bytes) const;
   KeyBytes ToKeyBytes() const;
 
+  // Return non-zero encoded value size if provided datatype has fixed encoded value size, otherwise
+  // return 0.
+  static size_t GetEncodedKeyEntryValueSize(const DataType& data_type);
+
   std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
 
   int CompareTo(const KeyEntryValue& other) const;

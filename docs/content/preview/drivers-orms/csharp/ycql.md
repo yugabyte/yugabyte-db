@@ -13,7 +13,7 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="../postgres-npgsql/" class="nav-link">
+    <a href="../ysql/" class="nav-link">
       YSQL
     </a>
   </li>

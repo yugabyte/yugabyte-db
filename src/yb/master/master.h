@@ -183,7 +183,8 @@ class Master : public tserver::DbServerBase {
   }
 
   Status get_ysql_db_oid_to_cat_version_info_map(
-      bool size_only, tserver::GetTserverCatalogVersionInfoResponsePB *resp) const;
+      const tserver::GetTserverCatalogVersionInfoRequestPB& req,
+      tserver::GetTserverCatalogVersionInfoResponsePB *resp) const;
 
  protected:
   virtual Status RegisterServices();

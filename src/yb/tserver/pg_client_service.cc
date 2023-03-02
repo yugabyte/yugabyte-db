@@ -433,8 +433,13 @@ class PgClientServiceImpl::Impl {
       const PgGetTserverCatalogVersionInfoRequestPB& req,
       PgGetTserverCatalogVersionInfoResponsePB* resp,
       rpc::RpcContext* context) {
+    GetTserverCatalogVersionInfoRequestPB request;
     GetTserverCatalogVersionInfoResponsePB info;
-    RETURN_NOT_OK(tablet_server_.get_ysql_db_oid_to_cat_version_info_map(req.size_only(), &info));
+    const auto db_oid = req.db_oid();
+    request.set_size_only(req.size_only());
+    request.set_db_oid(db_oid);
+    RETURN_NOT_OK(tablet_server_.get_ysql_db_oid_to_cat_version_info_map(
+        request, &info));
     if (req.size_only()) {
       // We only ask for the size of catalog version map in tserver and should not need to
       // populate any entries.
@@ -442,13 +447,15 @@ class PgClientServiceImpl::Impl {
       resp->set_num_entries(info.num_entries());
       return Status::OK();
     }
-    resp->mutable_entries()->Reserve(info.entries_size());
-    for (const auto& src : info.entries()) {
-      auto* dst = resp->add_entries();
-      dst->set_db_oid(src.db_oid());
-      dst->set_shm_index(src.shm_index());
-      dst->set_current_version(src.current_version());
+    // If db_oid is kPgInvalidOid, we ask for the catalog version map of all databases.
+    // Otherwise, we only ask for the catalog version info for the given database.
+    if (db_oid != kPgInvalidOid) {
+      // In a race condition it is possible that the database db_oid is already
+      // dropped from another node even through we are still connecting to
+      // db_oid. When that happens info.entries_size() can be 0.
+      DCHECK_LE(info.entries_size(), 1);
     }
+    resp->mutable_entries()->Swap(info.mutable_entries());
     return Status::OK();
   }
 

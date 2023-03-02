@@ -2171,10 +2171,13 @@ run_shellcheck() {
     build-support/common-build-env.sh
     build-support/common-cli-env.sh
     build-support/common-test-env.sh
+    build-support/jenkins/common-lto.sh
     build-support/compiler-wrappers/compiler-wrapper.sh
     build-support/find_linuxbrew.sh
-    build-support/jenkins/build-and-test.sh
+    build-support/jenkins/build.sh
+    build-support/jenkins/test.sh
     build-support/jenkins/yb-jenkins-build.sh
+    build-support/jenkins/yb-jenkins-test.sh
     build-support/run-test.sh
     yb_build.sh
   )

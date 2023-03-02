@@ -1,11 +1,11 @@
-@import '../../../_style/colors.scss';
-@import '../../../_style/mixins.scss';
+@use '../../../_style/colors.scss';
+@use '../../../_style/mixins.scss';
 
 .graph-filter-custom {
   display: inline-block;
   padding-right: 15px;
   margin-right: 15px;
-  border-right: 1px solid $YB_GRAY;
+  border-right: 1px solid colors.$YB_GRAY;
 
   .hidden {
     display: none;
@@ -29,15 +29,15 @@ div.rw-datetime-picker {
 
   & > .rw-widget-container {
     border-radius: 7px;
-    border-color: $YB_GRAY;
+    border-color: colors.$YB_GRAY;
     height: 42px;
     right: auto;
     min-width: 240px;
   }
 
   &.rw-state-focus > .rw-widget-container {
-    border-color: rgba($YB_ORANGE, 0.5);
-    box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075), 0 0 8px rgba($YB_ORANGE, 0.2);
+    border-color: rgba(colors.$YB_ORANGE, 0.5);
+    box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075), 0 0 8px rgba(colors.$YB_ORANGE, 0.2);
   }
 
   &.rw-has-both {
@@ -59,7 +59,7 @@ div.rw-datetime-picker {
 
     .rw-btn {
       width: 1.9em;
-      color: $YB_VIOLET_TEXT;
+      color: colors.$YB_VIOLET_TEXT;
     }
   }
 
@@ -79,7 +79,7 @@ div.rw-datetime-picker {
         padding: 3px 10px;
 
         &:hover {
-          background-color: $YB_GRAY;
+          background-color: colors.$YB_GRAY;
         }
       }
     }
@@ -94,7 +94,7 @@ div.rw-datetime-picker {
       }
 
       .rw-btn {
-        color: $YB_VIOLET_TEXT;
+        color: colors.$YB_VIOLET_TEXT;
       }
 
       .rw-btn[disabled],
@@ -129,7 +129,7 @@ div.rw-datetime-picker {
       .rw-calendar-btn-left,
       .rw-calendar-btn-right {
         &:not(:disabled):hover {
-          background-color: $YB_VIOLET_TEXT;
+          background-color: colors.$YB_VIOLET_TEXT;
           color: #fff;
         }
 
@@ -163,16 +163,16 @@ div.rw-datetime-picker {
             }
 
             &.rw-now {
-              color: $YB_ORANGE;
+              color: colors.$YB_ORANGE;
             }
 
             &.rw-state-selected {
-              background-color: $YB_SIDEBAR_ACTIVE;
+              background-color: colors.$YB_SIDEBAR_ACTIVE;
               border: none;
               color: #fff;
 
               &:hover {
-                background-color: $YB_VIOLET_TEXT;
+                background-color: colors.$YB_VIOLET_TEXT;
               }
             }
           }

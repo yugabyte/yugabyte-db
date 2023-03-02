@@ -125,6 +125,9 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
     debug_dump_ = value;
   }
 
+  // Used only in debug mode to ensure that generated key offsets are correct for provided key.
+  bool ValidateDocKeyOffsets(const Slice& iter_key);
+
   static bool is_hybrid_scan_enabled();
 
  private:
@@ -186,6 +189,10 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
 
   // Indicates whether we've already finished iterating.
   bool done_;
+
+  // Reference to object owned by Schema (DocReadContext schema object) for easier access.
+  // This is only set when DocKey offsets are present in schema.
+  const std::optional<DocKeyOffsets>& doc_key_offsets_;
 
   IsFlatDoc is_flat_doc_ = IsFlatDoc::kFalse;
 

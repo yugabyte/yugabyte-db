@@ -507,7 +507,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 1. Enable the `yugabyte` user to run the following commands as sudo or root:
 
    ```sh
-   yugabyte ALL=(ALL:ALL) NOPASSWD: 
+   yugabyte ALL=(ALL:ALL) NOPASSWD:
    /bin/systemctl start yb-master, \
    /bin/systemctl stop yb-master, \
    /bin/systemctl restart yb-master, \
@@ -743,9 +743,9 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Install]
    WantedBy=timers.target
    ```
-   
+
    `yb-bind_check.service`
-   
+
    ```properties
    [Unit]
    Description=Yugabyte IP bind check
@@ -754,11 +754,11 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    Before=yb-controller.service yb-tserver.service yb-master.service yb-collect_metrics.timer
    StartLimitInterval=100
    StartLimitBurst=10
-   
+
    [Path]
    PathExists=/home/yugabyte/controller/bin/yb-controller-server
    PathExists=/home/yugabyte/controller/conf/server.conf
-   
+
    [Service]
    # Start
    ExecStart=/home/yugabyte/controller/bin/yb-controller-server \
@@ -771,7 +771,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    # Logs
    StandardOutput=syslog
    StandardError=syslog
-   
+
    [Install]
    WantedBy=default.target
    ```
@@ -975,7 +975,7 @@ docker stop replicated-statsd
 ```
 
 ```sh
-docker rm -f replicated replicated-ui replicated-operator \ replicated-premkit replicated-statsd retraced-api retraced-processor \ retraced-cron retraced-nsqd retraced-postgres
+docker rm -f replicated replicated-ui replicated-operator replicated-premkit replicated-statsd retraced-api retraced-processor retraced-cron retraced-nsqd retraced-postgres
 ```
 
 ```sh
@@ -991,7 +991,7 @@ yum remove -y replicated replicated-ui replicated-operator
 ```
 
 ```sh
-rm -rf /var/lib/replicated* /etc/replicated* /etc/init/replicated* \ /etc/default/replicated* /etc/systemd/system/replicated* \ /etc/sysconfig/replicated* \ /etc/systemd/system/multi-user.target.wants/replicated* \ /run/replicated*
+rm -rf /var/lib/replicated* /etc/replicated* /etc/init/replicated*  /etc/default/replicated* /etc/systemd/system/replicated* /etc/sysconfig/replicated* /etc/systemd/system/multi-user.target.wants/replicated* /run/replicated*
 ```
 
 ```sh
@@ -999,4 +999,13 @@ rpm -qa | grep -i docker
 yum remove docker-ce
 rpm -qa | grep -i docker
 yum remove docker-ce-cli
+```
+
+Finally, execute the following commands to delete the `/opt/yugabyte` directory on the node to prevent failure if later you decide to install YugabyteDB Anywhere on a node that was previously removed using the preceding instructions:
+
+```sh
+rm -rf /var/lib/containerd
+rm -rf /home/replicated
+rm -rf /opt/containerd
+rm -rf /opt/yugabyte
 ```

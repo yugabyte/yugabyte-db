@@ -14,7 +14,12 @@ type: docs
 
 If your user base is geographically distributed, you can add [read replicas](../../cloud-basics/create-clusters-topology/#read-replicas) to improve read latency in regions that are far from your primary region.
 
-Read Replicas are a read-only extension to the primary cluster. With read replicas, the primary data of the cluster is copied across one or more nodes in a different region. Read replicas do not add to write latencies because writes aren't synchronously replicated to replicas - the data is replicated to read replicas asynchronously.
+Read Replicas are a read-only extension to the primary cluster. With read replicas, the primary data of the cluster is copied across one or more nodes in a different region. Read replicas do not add to write latencies because writes aren't synchronously replicated to replicas - the data is replicated to read replicas asynchronously. To read data from a read replica, you need to enable follower reads for the cluster.
+
+For more information on read replicas and follower reads in YugabyteDB, see the following:
+
+- [Read replicas](../../../architecture/docdb-replication/read-replicas/)
+- [Follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/)
 
 Each read replica cluster can have its own [replication factor](../../../architecture/docdb-replication/replication/#replication-factor). The replication factor determines how many copies of your primary data the replica has; multiple copies ensure the availability of the replica in case of a node outage. Replicas do not participate in the primary cluster [RAFT](../../../architecture/docdb-replication/replication/#raft-replication) consensus, and do not affect the fault tolerance of the primary cluster or contribute to failover.
 

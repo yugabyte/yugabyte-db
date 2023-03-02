@@ -109,6 +109,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -153,6 +154,7 @@ import java.io.File;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -1036,14 +1038,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup(InstallNodeAgent.class.getSimpleName(), executor);
     NodeAgentManager nodeAgentManager = application.injector().instanceOf(NodeAgentManager.class);
-    if (nodeAgentManager.isServerToBeInstalled()) {
-      Universe universe = getUniverse();
-      for (NodeDetails node : nodes) {
-        if (node.cloudInfo == null) {
-          continue;
-        }
-        Cluster cluster = getUniverse().getCluster(node.placementUuid);
-        Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    boolean createSubTaskGroup = false;
+    Universe universe = getUniverse();
+    for (NodeDetails node : nodes) {
+      if (node.cloudInfo == null) {
+        continue;
+      }
+      Cluster cluster = getUniverse().getCluster(node.placementUuid);
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      if (nodeAgentManager.isServerToBeInstalled(provider)) {
+        createSubTaskGroup = true;
         if (provider.getCloudCode() == CloudType.onprem) {
           AccessKey accessKey =
               AccessKey.getOrBadRequest(provider.uuid, cluster.userIntent.accessKeyCode);
@@ -1065,6 +1069,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         task.initialize(params);
         subTaskGroup.addSubTask(task);
       }
+    }
+    if (createSubTaskGroup) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
     return subTaskGroup;
@@ -1074,11 +1080,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup(WaitForNodeAgent.class.getSimpleName(), executor);
     NodeAgentClient nodeAgentClient = application.injector().instanceOf(NodeAgentClient.class);
-    if (nodeAgentClient.isClientEnabled()) {
-      for (NodeDetails node : nodes) {
-        if (node.cloudInfo == null) {
-          continue;
-        }
+    boolean createSubTaskGroup = false;
+    for (NodeDetails node : nodes) {
+      if (node.cloudInfo == null) {
+        continue;
+      }
+      Cluster cluster = getUniverse().getCluster(node.placementUuid);
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      if (nodeAgentClient.isClientEnabled(provider)) {
+        createSubTaskGroup = true;
         WaitForNodeAgent.Params params = new WaitForNodeAgent.Params();
         params.nodeName = node.nodeName;
         params.azUuid = node.azUuid;
@@ -1088,6 +1098,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         task.initialize(params);
         subTaskGroup.addSubTask(task);
       }
+    }
+    if (createSubTaskGroup) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
     return subTaskGroup;
@@ -1654,15 +1666,27 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  /** Creates a task to persist customized gflags to be used by server processes. */
   public SubTaskGroup updateGFlagsPersistTasks(
       Map<String, String> masterGFlags, Map<String, String> tserverGFlags) {
+    return updateGFlagsPersistTasks(null, masterGFlags, tserverGFlags, null);
+  }
+
+  /** Creates a task to persist customized gflags to be used by server processes. */
+  public SubTaskGroup updateGFlagsPersistTasks(
+      @Nullable Cluster cluster,
+      Map<String, String> masterGFlags,
+      Map<String, String> tserverGFlags,
+      @Nullable SpecificGFlags specificGFlags) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("UpdateAndPersistGFlags", executor);
     UpdateAndPersistGFlags.Params params = new UpdateAndPersistGFlags.Params();
     params.universeUUID = taskParams().universeUUID;
     params.masterGFlags = masterGFlags;
     params.tserverGFlags = tserverGFlags;
+    params.specificGFlags = specificGFlags;
+    if (cluster != null) {
+      params.clusterUUIDs = Collections.singletonList(cluster.uuid);
+    }
     UpdateAndPersistGFlags task = createTask(UpdateAndPersistGFlags.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);

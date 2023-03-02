@@ -1,7 +1,7 @@
-@import '../../../../uikit/common';
+@use '../../../../uikit/common';
 
 .communication-ports-editor {
-  @include wizard-form-text-label();
+  @include common.wizard-form-text-label();
 
   display: flex;
   flex-wrap: wrap;

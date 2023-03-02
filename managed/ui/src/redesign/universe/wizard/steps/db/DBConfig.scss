@@ -1,11 +1,11 @@
-@import '../../../../uikit/common';
+@use '../../../../uikit/common';
 
 .db-config {
-  @include wizard-step-form();
-  @include wizard-form-section-title();
-  @include wizard-form-row();
-  @include wizard-form-text-label();
-  @include wizard-form-footer();
+  @include common.wizard-step-form();
+  @include common.wizard-form-section-title();
+  @include common.wizard-form-row();
+  @include common.wizard-form-text-label();
+  @include common.wizard-form-footer();
 
   max-height: calc(100vh - 290px);
   overflow: auto;

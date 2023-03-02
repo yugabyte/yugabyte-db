@@ -775,7 +775,8 @@ Result<bool> ClusterLoadBalancer::HandleAddIfMissingPlacement(
       // that we can use this tablet server.
       if (placement_info.placement_blocks().empty()) {
         // No need to check placement info, as there is none.
-        can_choose_ts = VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, ts_uuid));
+        can_choose_ts = VERIFY_RESULT(
+            state_->CanAddTabletToTabletServer(tablet_id, ts_uuid, nullptr /* placement_info */));
       } else {
         // We added a tablet to the set with missing replicas both if it is under-replicated, and we
         // added a placement to the tablet_meta under_replicated_placements if the num replicas in
@@ -1396,7 +1397,7 @@ Result<bool> ClusterLoadBalancer::HandleLeaderMoves(
 
 Status ClusterLoadBalancer::MoveReplica(
     const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts) {
-  LOG(INFO) << Substitute("Moving tablet $0 from $1 to $2", tablet_id, from_ts, to_ts);
+  LOG(INFO) << Substitute("Moving replica $0 from $1 to $2", tablet_id, from_ts, to_ts);
   RETURN_NOT_OK(SendReplicaChanges(GetTabletMap().at(tablet_id), to_ts, true /* is_add */,
                                    true /* should_remove_leader */));
   RETURN_NOT_OK(state_->AddReplica(tablet_id, to_ts));
@@ -1405,7 +1406,7 @@ Status ClusterLoadBalancer::MoveReplica(
 }
 
 Status ClusterLoadBalancer::AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts) {
-  LOG(INFO) << Substitute("Adding tablet $0 to $1", tablet_id, to_ts);
+  LOG(INFO) << Substitute("Adding replica $0 to $1", tablet_id, to_ts);
   // This is an add operation, so the "should_remove_leader" flag is irrelevant.
   RETURN_NOT_OK(SendReplicaChanges(GetTabletMap().at(tablet_id), to_ts, true /* is_add */,
                                    true /* should_remove_leader */));

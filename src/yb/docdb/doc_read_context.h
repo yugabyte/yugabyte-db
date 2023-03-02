@@ -21,10 +21,11 @@ namespace yb {
 namespace docdb {
 
 struct DocReadContext {
-  explicit DocReadContext(const std::string& log_prefix);
+  explicit DocReadContext(const std::string& log_prefix, TableType table_type);
 
   DocReadContext(
-      const std::string& log_prefix, const Schema& schema_, SchemaVersion schema_version);
+      const std::string& log_prefix, TableType table_type, const Schema& schema_,
+      SchemaVersion schema_version);
 
   DocReadContext(const DocReadContext& rhs, const Schema& schema_, SchemaVersion schema_version);
 
@@ -61,7 +62,7 @@ struct DocReadContext {
   }
 
   static DocReadContext TEST_Create(const Schema& schema) {
-    return DocReadContext("TEST: ", schema, 1);
+    return DocReadContext("TEST: ", TableType::YQL_TABLE_TYPE, schema, 0);
   }
 
   Schema schema;

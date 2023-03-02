@@ -161,7 +161,7 @@ class PgClient {
   Result<bool> CheckIfPitrActive();
 
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
-      bool size_only);
+      bool size_only, uint32_t db_oid);
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DECLARE(r, data, method) \
   Status method(                             \

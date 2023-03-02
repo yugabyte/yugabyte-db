@@ -2062,6 +2062,9 @@ pg_stat_get_archiver(PG_FUNCTION_ARGS)
 Datum
 yb_pg_stat_get_backend_allocated_mem_bytes(PG_FUNCTION_ARGS)
 {
+	if (!yb_enable_memory_tracking)
+		PG_RETURN_NULL();
+
 	int32		beid = PG_GETARG_INT32(0);
 	int64		result;
 	PgBackendStatus *beentry;
@@ -2078,6 +2081,9 @@ yb_pg_stat_get_backend_allocated_mem_bytes(PG_FUNCTION_ARGS)
 Datum
 yb_pg_stat_get_backend_rss_mem_bytes(PG_FUNCTION_ARGS)
 {
+	if (!yb_enable_memory_tracking)
+		PG_RETURN_NULL();
+
 	int32		beid = PG_GETARG_INT32(0);
 	int64		result;
 	LocalPgBackendStatus *local_beentry;

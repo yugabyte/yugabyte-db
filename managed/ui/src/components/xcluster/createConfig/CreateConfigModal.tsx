@@ -1,7 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
-import _ from 'lodash';
 import { FormikActions, FormikErrors, FormikProps } from 'formik';
 import axios, { AxiosError } from 'axios';
 
@@ -474,14 +473,6 @@ const validateForm = async (
       ) {
         errors.targetUniverse =
           'The target universe must have the same Encryption in-Transit (TLS) configuration as the source universe. Edit the TLS configuration to proceed.';
-      } else if (
-        !_.isEqual(
-          values.targetUniverse?.value?.universeDetails?.encryptionAtRestConfig,
-          sourceUniveres?.universeDetails?.encryptionAtRestConfig
-        )
-      ) {
-        errors.targetUniverse =
-          'The target universe must have the same key management system (KMS) configuration as the source universe. Edit the KMS configuration to proceed.';
       }
 
       throw errors;

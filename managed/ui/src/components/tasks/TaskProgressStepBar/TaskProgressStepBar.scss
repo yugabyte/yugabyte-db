@@ -1,4 +1,4 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 /* Copyright (c) YugaByte, Inc. */
 
@@ -17,7 +17,7 @@
   line-height: 1.5em;
   font-size: 14px;
   font-weight: 500;
-  color: $YB_DARK_GRAY;
+  color: colors.$YB_DARK_GRAY;
 }
 
 .progressbar .failed:before {

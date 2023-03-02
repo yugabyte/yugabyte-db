@@ -1,4 +1,4 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .backup-empty {
   width: 100%;
@@ -15,14 +15,14 @@
   font-style: normal;
   position: relative;
   .sub-text {
-    color: $YB_DARKER_GRAY;
+    color: colors.$YB_DARKER_GRAY;
     font-weight: 400;
     font-size: 14px;
     line-height: 17px;
   }
 
   .backup-empty-icon {
-    color: $YB_GRAY_HOVER;
+    color: colors.$YB_GRAY_HOVER;
     font-size: 38px;
   }
 
@@ -62,11 +62,11 @@
 }
 
 #popover-backup-disabled {
-  background: $YB_BG_WHITE_3;
-  color: $YB_TEXT_COLOR;
+  background: colors.$YB_BG_WHITE_3;
+  color: colors.$YB_TEXT_COLOR;
 
   .popover-title {
-    background-color: $YB_BG_WHITE_3;
+    background-color: colors.$YB_BG_WHITE_3;
     border: none;
   }
 

@@ -15,7 +15,7 @@ menu:
 type: indexpage
 ---
 
-YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtual machines, pods, machines, and so on, provided by IaaS), grouped together to form one logical distributed database. Each universe includes one primary cluster and, optionally, one or more read replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.<br><br>
+YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtual machines, pods, machines, and so on, provided by IaaS), grouped together to form one logical distributed database. Each universe includes one primary cluster and, optionally, one or more read replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.
 
 <div class="row">
 

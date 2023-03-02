@@ -1,6 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 #replication-tab-panel {
   .replication-header {
@@ -34,7 +34,7 @@
       }
 
       .metric-attribute {
-        color: $YB_DARK_GRAY;
+        color: colors.$YB_DARK_GRAY;
         text-align: center;
       }
     }
@@ -73,7 +73,7 @@
       background: #f3f9f4;
 
       >.icon {
-        color: $YB_SUCCESS_COLOR;
+        color: colors.$YB_SUCCESS_COLOR;
         margin-right: 10px;
         display: inline-block;
         vertical-align: top;

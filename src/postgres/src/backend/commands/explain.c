@@ -207,6 +207,9 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt, const char *queryString,
 					 parser_errposition(pstate, opt->location)));
 	}
 
+	if (es->analyze)
+		yb_run_with_explain_analyze = true;
+
 	if (es->buffers && !es->analyze)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),

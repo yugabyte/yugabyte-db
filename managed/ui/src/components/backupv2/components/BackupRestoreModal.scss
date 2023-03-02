@@ -1,4 +1,4 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .restore-choose-universe {
   .row {
@@ -36,7 +36,7 @@
     .disable-keyspace-subtext {
       font-size: 12px;
       line-height: 14px;
-      color: $YB_DARKER_GRAY;
+      color: colors.$YB_DARKER_GRAY;
       margin-top: 8px;
     }
   }
@@ -68,7 +68,7 @@
     height: 46px;
   }
   .err-msg {
-    color: $YB_ERROR_TEXT_COLOR;
+    color: colors.$YB_ERROR_TEXT_COLOR;
     margin-bottom: 5px;
   }
 }

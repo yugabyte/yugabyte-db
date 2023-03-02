@@ -1,11 +1,11 @@
-@import '../../../../uikit/common';
+@use '../../../../uikit/common';
 
 .replicap-lacement-toggle-field {
   &__toggle-on {
-    background-color: $YB_CTA;
+    background-color: common.$YB_CTA;
   }
 
   &__toggle-off {
-    background-color: $YB_CTA;
+    background-color: common.$YB_CTA;
   }
 }
