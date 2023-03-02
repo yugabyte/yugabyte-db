@@ -262,6 +262,15 @@ public class NodeUniverseManager extends DevopsBase {
     return provider.getYbHome();
   }
 
+  /**
+   * Placeholder method to get tmp directory for node
+   *
+   * @return tmp directory
+   */
+  public String getYbTmpDir() {
+    return "/tmp";
+  }
+
   private void addConnectionParams(
       Universe universe, NodeDetails node, ShellProcessContext context, List<String> commandArgs) {
     UniverseDefinitionTaskParams.Cluster cluster =
