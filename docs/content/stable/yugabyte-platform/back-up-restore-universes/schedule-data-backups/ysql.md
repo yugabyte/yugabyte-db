@@ -45,9 +45,9 @@ Before scheduling a backup of your universe YSQL data, create a policy, as follo
 
 1. Select the **Backups** tab and then select **Scheduled Backup Policies**.
 
-1. Click **Create Scheduled Backup Policy** to open the dialog shown in the following illustration:
+1. Click **Create Scheduled Backup Policy**.
 
-    ![Create Backup form](/images/yp/scheduled-backup-ysql-1.png)
+<!--    ![Create Backup form](/images/yp/scheduled-backup-ysql-1.png)-->
 
 1. Provide the backup policy name.
 
