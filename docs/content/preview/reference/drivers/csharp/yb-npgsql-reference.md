@@ -141,7 +141,7 @@ while (reader.Read())
 
 ### Configure SSL/TLS
 
-For information on using SSL/TLS for your application, refer to the .NET Npgsql driver's [Configure SSL/TLS](../postgres-npgsql-reference/#configure-ssl-tls) instructions.
+The YugabyteDB Npgsql smart driver support for SSL is the same as for the upstream driver. For information on using SSL/TLS for your application, refer to the .NET Npgsql driver's [Configure SSL/TLS](../postgres-npgsql-reference/#configure-ssl-tls) instructions.
 
 <!-- The following table describes the additional parameters the YugabyteDB Npgsql smart driver requires as part of the connection string when using SSL.
 
