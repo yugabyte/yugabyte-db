@@ -23,6 +23,7 @@ This page documents known issues you may encounter and suggested workarounds whe
 - [A unique index which is also a primary key is not migrated](#a-unique-index-which-is-also-a-primary-key-is-not-migrated)
 - [Issue in some unsupported cases of GIN indexes](#issue-in-some-unsupported-cases-of-gin-indexes)
 - [Partition key column not part of primary key columns](#partition-key-column-not-part-of-primary-key-columns)
+- [Negative scale is not supported](#negative-scale-is-not-supported)
 
 ### Some numeric types are not exported
 
@@ -242,4 +243,34 @@ CREATE TABLE employees (
     part_name varchar(25),
     PRIMARY KEY (employee_id, hire_date)
 ) PARTITION BY RANGE (hire_date) ;
+```
+
+---
+
+### Negative scale is not supported
+
+**GitHub**: [Issue #779](https://github.com/yugabyte/yb-voyager/issues/779)
+
+**Description**: Oracle supports negative scale where you can round up the values to the power of tens corresponding to the scale provided. Negative scale support is not supported in PostgreSQL and therefore in YugabyteDB.
+
+**Workaround**: Remove the precision/scale from the exported schema, or change to any other supported datatype.
+
+**Example**
+
+An example source schema is as follows:
+
+```sql
+CREATE TABLE num_check (n1 number(5,-2));
+```
+
+An example exported schema is as follows:
+
+```sql
+CREATE TABLE num_check (n1 decimal(5,-2));
+```
+
+An example table with the suggested workaround is as follows:
+
+```sql
+CREATE TABLE num_check (n1 decimal);
 ```

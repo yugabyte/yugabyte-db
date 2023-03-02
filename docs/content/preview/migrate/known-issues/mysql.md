@@ -28,11 +28,11 @@ This page documents known issues you may encounter and suggested workarounds whe
 - [Multiple declarations of variables in functions](#multiple-declarations-of-variables-in-functions)
 - [Exporting text type columns with default value](#exporting-text-type-columns-with-default-value)
 
-### Approaching MAX/MIN double precision values are not exported
+### Approaching MAX/MIN double precision values are not imported
 
 **GitHub**: [Issue #188](https://github.com/yugabyte/yb-voyager/issues/188)
 
-**Description**: Exporting double precision values near MAX/MIN value may result in an _out of range_ error. This is due to the difference in maximum supported precision values between the two databases. While MySQL supports up to 17 precision values, YugabyteDB supports up to 15.
+**Description**: Importing double precision values near MAX/MIN value may result in an _out of range_ error or the exact values may not be imported. This is due to the difference in maximum supported precision values between the two databases. While MySQL supports up to 17 precision values, YugabyteDB supports up to 15.
 
 ---
 
