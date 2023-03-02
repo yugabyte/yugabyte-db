@@ -81,7 +81,7 @@ struct TabletInitData {
   TabletSplitter* tablet_splitter = nullptr;
   std::function<HybridTime(RaftGroupMetadata*)> allowed_history_cutoff_provider;
   TransactionManagerProvider transaction_manager_provider;
-  LocalWaitingTxnRegistry* waiting_txn_registry = nullptr;
+  docdb::LocalWaitingTxnRegistry* waiting_txn_registry = nullptr;
   ThreadPool* wait_queue_pool = nullptr;
   AutoFlagsManager* auto_flags_manager = nullptr;
   ThreadPool* full_compaction_pool;

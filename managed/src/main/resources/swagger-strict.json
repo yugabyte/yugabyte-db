@@ -508,6 +508,10 @@
         "$ref" : "#/definitions/AlertChannelParams"
       }, {
         "properties" : {
+          "httpAuth" : {
+            "$ref" : "#/definitions/HTTP Auth information",
+            "description" : "Authentication Details"
+          },
           "webhookUrl" : {
             "description" : "Webhook URL",
             "type" : "string"
@@ -2370,6 +2374,23 @@
       },
       "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
+    },
+    "Basic Auth information" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/HTTP Auth information"
+      }, {
+        "properties" : {
+          "password" : {
+            "description" : "Password",
+            "type" : "string"
+          },
+          "username" : {
+            "description" : "Username",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      } ]
     },
     "BootstarpBackupParams" : {
       "description" : "Backup parameters for bootstrapping",
@@ -4371,6 +4392,17 @@
       "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "masterGFlags", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
       "type" : "object"
     },
+    "HTTP Auth information" : {
+      "discriminator" : "type",
+      "properties" : {
+        "type" : {
+          "description" : "HTTP Auth type",
+          "enum" : [ "NONE", "BASIC", "TOKEN" ],
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "HashedTimestampColumnFinderResponse" : {
       "properties" : {
         "current_database" : {
@@ -5679,6 +5711,14 @@
       },
       "type" : "object"
     },
+    "No Auth" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/HTTP Auth information"
+      }, {
+        "properties" : { },
+        "type" : "object"
+      } ]
+    },
     "NodeActionFormData" : {
       "properties" : {
         "nodeAction" : {
@@ -5693,7 +5733,7 @@
       "description" : "A node configuration.",
       "properties" : {
         "type" : {
-          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YQL_SERVER_HTTP_PORT", "YQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT" ],
+          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YQL_SERVER_HTTP_PORT", "YQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT", "VM_MAX_MAP_COUNT" ],
           "type" : "string"
         },
         "value" : {
@@ -6231,6 +6271,21 @@
         }
       },
       "required" : [ "buildNumber" ],
+      "type" : "object"
+    },
+    "PerProcessFlags" : {
+      "properties" : {
+        "value" : {
+          "additionalProperties" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "type" : "object"
+        }
+      },
+      "required" : [ "value" ],
       "type" : "object"
     },
     "PerfAdvisorSettingsFormData" : {
@@ -8594,6 +8649,26 @@
       "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "upgradeSystemCatalog", "ybSoftwareVersion" ],
       "type" : "object"
     },
+    "SpecificGFlags" : {
+      "description" : "GFlags for current cluster",
+      "properties" : {
+        "inheritFromPrimary" : {
+          "type" : "boolean"
+        },
+        "perAZ" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/PerProcessFlags"
+          },
+          "description" : "Overrides for gflags per availability zone",
+          "type" : "object"
+        },
+        "perProcessFlags" : {
+          "$ref" : "#/definitions/PerProcessFlags",
+          "description" : "Gflags grouped by procces"
+        }
+      },
+      "type" : "object"
+    },
     "StateChangeAuditInfo" : {
       "properties" : {
         "customerId" : {
@@ -9676,6 +9751,23 @@
       },
       "required" : [ "allowInsecure", "clusters", "creatingUser", "enableClientToNodeEncrypt", "enableNodeToNodeEncrypt", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
+    },
+    "Token Auth information" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/HTTP Auth information"
+      }, {
+        "properties" : {
+          "tokenHeader" : {
+            "description" : "Header name",
+            "type" : "string"
+          },
+          "tokenValue" : {
+            "description" : "Token value",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      } ]
     },
     "TriggerHealthCheckResult" : {
       "description" : "The response type for triggering a health check. Contains the timestamp of when the health check was triggered.",
@@ -10838,6 +10930,9 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "specificGFlags" : {
+          "$ref" : "#/definitions/SpecificGFlags"
+        },
         "tserverGFlags" : {
           "additionalProperties" : {
             "type" : "string"
@@ -11316,7 +11411,7 @@
           "type" : "boolean"
         },
         "type" : {
-          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YQL_SERVER_HTTP_PORT", "YQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT" ],
+          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YQL_SERVER_HTTP_PORT", "YQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT", "VM_MAX_MAP_COUNT" ],
           "type" : "string"
         },
         "value" : {

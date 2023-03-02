@@ -71,7 +71,6 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
-#include "yb/tserver/cdc_consumer.h"
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/faststring.h"
@@ -134,12 +133,11 @@ using client::YBSession;
 using client::YBTable;
 using client::YBTableAlterer;
 using client::YBTableCreator;
-using client::YBTableType;
 using client::YBTableName;
+using client::YBTableType;
 using master::GetNamespaceInfoResponsePB;
 using master::MiniMaster;
 using tserver::MiniTabletServer;
-using tserver::CDCConsumer;
 
 using pgwrapper::ToString;
 using pgwrapper::GetInt32;

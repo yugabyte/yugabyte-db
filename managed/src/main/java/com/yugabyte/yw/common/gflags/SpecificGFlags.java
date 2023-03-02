@@ -9,6 +9,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -21,6 +23,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 @Data
+@ApiModel(description = "GFlags for current cluster")
 public class SpecificGFlags {
 
   @EqualsAndHashCode
@@ -28,8 +31,12 @@ public class SpecificGFlags {
     public Map<UniverseTaskBase.ServerType, Map<String, String>> value = new HashMap<>();
   }
 
-  private boolean inheritFromPrimary;
+  @ApiModelProperty private boolean inheritFromPrimary;
+
+  @ApiModelProperty(value = "Gflags grouped by procces")
   private PerProcessFlags perProcessFlags;
+
+  @ApiModelProperty(value = "Overrides for gflags per availability zone")
   private Map<UUID, PerProcessFlags> perAZ = new HashMap<>();
 
   @JsonIgnore

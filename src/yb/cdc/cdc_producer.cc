@@ -345,7 +345,7 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
       RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, docdb::HybridTimeRequired::kFalse));
 
       if (metadata.record_format == CDCRecordFormat::WAL) {
-        // For 2DC, populate serialized data from WAL, to avoid unnecessary deserializing on
+        // For xCluster, populate serialized data from WAL, to avoid unnecessary deserializing on
         // producer and re-serializing on consumer.
         auto kv_pair = record->add_key();
         if (decoded_key.doc_key().has_hash()) {

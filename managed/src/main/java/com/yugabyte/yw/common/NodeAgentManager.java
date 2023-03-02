@@ -370,14 +370,16 @@ public class NodeAgentManager {
       // Search for a pattern like node_agent-2.15.3.0*-linux-amd64.tar.gz.
       FileFilter fileFilter = new WildcardFileFilter(pkgFileFilter);
       File[] files = releasesPath.toFile().listFiles(fileFilter);
-      for (File file : files) {
-        matcher = filePattern.matcher(file.getName());
-        if (matcher.find()) {
-          // Extract the version with build number e.g. 2.15.3.0-b1372.
-          String version = matcher.group(1);
-          // Compare the full versions. The comparison ignores non-numeric build numbers.
-          if (Util.compareYbVersions(softwareVersion, version, true) == 0) {
-            return file.toPath();
+      if (files != null) {
+        for (File file : files) {
+          matcher = filePattern.matcher(file.getName());
+          if (matcher.find()) {
+            // Extract the version with build number e.g. 2.15.3.0-b1372.
+            String version = matcher.group(1);
+            // Compare the full versions. The comparison ignores non-numeric build numbers.
+            if (Util.compareYbVersions(softwareVersion, version, true) == 0) {
+              return file.toPath();
+            }
           }
         }
       }

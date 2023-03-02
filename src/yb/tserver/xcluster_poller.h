@@ -15,10 +15,10 @@
 #include <string>
 
 #include "yb/cdc/cdc_util.h"
-#include "yb/cdc/cdc_output_client_interface.h"
+#include "yb/tserver/xcluster_output_client_interface.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/rpc/rpc.h"
-#include "yb/tserver/cdc_consumer.h"
+#include "yb/tserver/xcluster_consumer.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/locks.h"
 #include "yb/util/status_fwd.h"
@@ -43,24 +43,23 @@ class CDCServiceProxy;
 
 namespace tserver {
 
-class CDCConsumer;
+class XClusterConsumer;
 
-
-class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
+class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
  public:
-  CDCPoller(
+  XClusterPoller(
       const cdc::ProducerTabletInfo& producer_tablet_info,
       const cdc::ConsumerTabletInfo& consumer_tablet_info,
       ThreadPool* thread_pool,
       rpc::Rpcs* rpcs,
-      const std::shared_ptr<CDCClient>& local_client,
-      const std::shared_ptr<CDCClient>& producer_client,
-      CDCConsumer* cdc_consumer,
+      const std::shared_ptr<XClusterClient>& local_client,
+      const std::shared_ptr<XClusterClient>& producer_client,
+      XClusterConsumer* xcluster_consumer,
       bool use_local_tserver,
       client::YBTablePtr global_transaction_status_table,
       bool enable_replicate_transaction_status_table,
       SchemaVersion last_compatible_consumer_schema_version);
-  ~CDCPoller();
+  ~XClusterPoller();
 
   void Shutdown();
 
@@ -89,9 +88,9 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
   void HandlePoll(const Status& status, cdc::GetChangesResponsePB&& resp);
   void DoHandlePoll(Status status, std::shared_ptr<cdc::GetChangesResponsePB> resp);
   // Async handler for the response from output client.
-  void HandleApplyChanges(cdc::OutputClientResponse response);
+  void HandleApplyChanges(XClusterOutputClientResponse response);
   // Does the work of polling for new changes.
-  void DoHandleApplyChanges(cdc::OutputClientResponse response);
+  void DoHandleApplyChanges(XClusterOutputClientResponse response);
   void UpdateSafeTime(int64 new_time) EXCLUDES(safe_time_lock_);
 
   cdc::ProducerTabletInfo producer_tablet_info_;
@@ -112,13 +111,13 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
   Status status_ GUARDED_BY(data_mutex_);
   std::shared_ptr<cdc::GetChangesResponsePB> resp_ GUARDED_BY(data_mutex_);
 
-  std::shared_ptr<cdc::CDCOutputClient> output_client_;
-  std::shared_ptr<CDCClient> producer_client_;
+  std::shared_ptr<XClusterOutputClientIf> output_client_;
+  std::shared_ptr<XClusterClient> producer_client_;
 
   ThreadPool* thread_pool_;
   rpc::Rpcs* rpcs_;
   rpc::Rpcs::Handle poll_handle_ GUARDED_BY(data_mutex_);
-  CDCConsumer* cdc_consumer_ GUARDED_BY(data_mutex_);
+  XClusterConsumer* xcluster_consumer_ GUARDED_BY(data_mutex_);
 
   mutable rw_spinlock safe_time_lock_;
   HybridTime producer_safe_time_ GUARDED_BY(safe_time_lock_);

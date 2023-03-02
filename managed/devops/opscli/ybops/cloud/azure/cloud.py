@@ -49,17 +49,20 @@ class AzureCloud(AbstractCloud):
         #   "azToSubnetIds": Dict mapping zones to subnet name
         #   "customSecurityGroupId": (Optional) String representing Azure SG name
         # if provided by the user
-        perRegionMetadata = json.loads(args.custom_payload).get("perRegionMetadata")
+        custom_payload = json.loads(args.custom_payload)
+        perRegionMetadata = custom_payload.get("perRegionMetadata")
 
         # First, make sure the resource group exists.
         # If not, place it in arbitrary Azure region about to be bootstrapped.
         create_resource_group(next(iter(perRegionMetadata.keys())))
 
-        user_provided_vnets = 0
+        added_region_codes = custom_payload.get("addedRegionCodes")
+        if added_region_codes is None:
+            added_region_codes = perRegionMetadata.keys()
         # Verify that the user provided data
-        user_provided_vnets = len([r for r in perRegionMetadata.values()
-                                   if r.get("vpcId") is not None])
-        if user_provided_vnets > 0 and user_provided_vnets != len(perRegionMetadata):
+        user_provided_vnets = len([r for k, r in perRegionMetadata.items()
+                                   if k in added_region_codes and r.get("vpcId") is not None])
+        if user_provided_vnets > 0 and user_provided_vnets != len(added_region_codes):
             raise YBOpsRuntimeError("Either no regions or all regions must have vpcId specified.")
 
         components = {}
@@ -72,8 +75,11 @@ class AzureCloud(AbstractCloud):
             logging.info("Bootstrapping individual regions.")
             # Bootstrap the individual region items standalone (vnet, subnet, sg, RT, etc).
             for region, metadata in perRegionMetadata.items():
-                components[region] = self.get_admin().network(metadata) \
-                                         .bootstrap(region).to_components()
+                if region in added_region_codes:
+                    components[region] = self.get_admin().network(metadata) \
+                                             .bootstrap(region).to_components()
+                else:
+                    components[region] = self.get_admin().network(metadata).to_components()
             self.get_admin().network().peer(components)
         print(json.dumps(components))
 
