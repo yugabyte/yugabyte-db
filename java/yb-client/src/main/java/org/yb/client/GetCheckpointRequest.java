@@ -62,7 +62,8 @@ public class GetCheckpointRequest extends YRpc<GetCheckpointResponse>{
     GetCheckpointResponse response =
       new GetCheckpointResponse(deadlineTracker.getElapsedMillis(), uuid,
         respBuilder.getCheckpoint().getOpId().getIndex(),
-    respBuilder.getCheckpoint().getOpId().getTerm());
+        respBuilder.getCheckpoint().getOpId().getTerm(), respBuilder.getSnapshotTime(),
+        respBuilder.getSnapshotKey().toByteArray());
     return new Pair<GetCheckpointResponse, Object>(
       response, respBuilder.hasError() ? respBuilder.getError() : null);
   }

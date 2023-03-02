@@ -756,7 +756,10 @@ Status DoUpdateCDCConsumerOpId(
 }
 
 bool UpdateCheckpointRequired(
-    const StreamMetadata& record, const CDCSDKCheckpointPB& cdc_sdk_op_id, bool* force_update) {
+    const StreamMetadata& record, const CDCSDKCheckpointPB& cdc_sdk_op_id, bool* force_update,
+    bool* is_snapshot) {
+  *is_snapshot = false;
+  *force_update = false;
   switch (record.source_type) {
     case XCLUSTER:
       return true;
@@ -765,12 +768,11 @@ bool UpdateCheckpointRequired(
       if (cdc_sdk_op_id.write_id() == 0) {
         return true;
       }
-      if (cdc_sdk_op_id.write_id() == -1) {
-        // CDC should do a force update of checkpoint in cdc_state table as a part snapshot
-        // initialization, so that it can restrict intents and WALS GC if concurrent DML operations
-        // are running as well as UpdatePeersAndMetrics will not GC the intents and WALS for the
-        // FOLLOWERS.
-        if (cdc_sdk_op_id.key().empty() && cdc_sdk_op_id.snapshot_time() == 0) {
+      if (CDCServiceImpl::IsCDCSDKSnapshotRequest(cdc_sdk_op_id)) {
+        *is_snapshot = true;
+        if (CDCServiceImpl::IsCDCSDKSnapshotBootstrapRequest(cdc_sdk_op_id)) {
+          // CDC should do a force update of checkpoint in cdc_state table as a part snapshot
+          // bootstrap.
           *force_update = true;
         }
         // CDC should update the stream active time in cdc_state table, during snapshot operation to
@@ -1730,29 +1732,35 @@ void CDCServiceImpl::GetChanges(
                  : 0);
 
   if (record.checkpoint_type == IMPLICIT) {
+    bool is_snapshot = false;
     bool force_update = false;
     OpId snapshot_op_id = OpId::Invalid();
+    std::string snapshot_key = "";
     // If snapshot operation or before image is enabled, don't allow compaction.
     HybridTime cdc_sdk_safe_time =
         record.record_type == CDCRecordType::ALL || cdc_sdk_op_id.write_id() == -1
             // TODO(abharadwaj): The safe time should be from  the req rather than from the response
             ? HybridTime::FromPB(resp->safe_hybrid_time())
             : HybridTime::kInvalid;
-    if (UpdateCheckpointRequired(record, cdc_sdk_op_id, &force_update)) {
-      // This is the snapshot bootstrap operation, so taking the checkpoint from the resp.
-      if (force_update) {
+    if (UpdateCheckpointRequired(record, cdc_sdk_op_id, &force_update, &is_snapshot)) {
+      // This is the snapshot operation, so taking the checkpoint from the resp.
+      if (is_snapshot) {
         snapshot_op_id =
             OpId(resp->cdc_sdk_checkpoint().term(), resp->cdc_sdk_checkpoint().index());
-        LOG(INFO) << "Snapshot bootstrapping is initiated for tablet_id: " << req->tablet_id()
-                  << " with stream_id: " << stream_id
-                  << ", forcefully update the checkpoint: " << snapshot_op_id
-                  << " and cdcsdk safe time: " << cdc_sdk_safe_time;
+        snapshot_key = req->from_cdc_sdk_checkpoint().key();
+
+        if (force_update) {
+          LOG(INFO) << "Snapshot bootstrapping is initiated for tablet_id: " << req->tablet_id()
+                    << " with stream_id: " << stream_id
+                    << ", we will update the checkpoint: " << snapshot_op_id
+                    << ", cdcsdk safe time: " << cdc_sdk_safe_time;
+        }
       }
       RPC_STATUS_RETURN_ERROR(
           UpdateCheckpointAndActiveTime(
               producer_tablet, OpId::FromPB(resp->checkpoint().op_id()),
-              force_update ? snapshot_op_id : op_id, session, last_record_hybrid_time,
-              record.source_type, force_update, cdc_sdk_safe_time),
+              is_snapshot ? snapshot_op_id : op_id, session, last_record_hybrid_time,
+              record.source_type, force_update, cdc_sdk_safe_time, is_snapshot, snapshot_key),
           resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     }
 
@@ -2845,15 +2853,38 @@ void CDCServiceImpl::GetCheckpoint(
   auto s = CheckTabletValidForStream(producer_tablet);
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
+  auto res = GetStream(req->stream_id());
+  RPC_RESULT_RETURN_ERROR(res, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+  const auto& stream_ptr = res->get();
+
   auto session = client()->NewSession();
   CoarseTimePoint deadline = GetDeadline(context, client());
 
   session->SetDeadline(deadline);
 
-  auto result = GetLastCheckpoint(producer_tablet, session);
-  RPC_RESULT_RETURN_ERROR(result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+  if (stream_ptr->source_type == CDCRequestSource::XCLUSTER) {
+    auto result = GetLastCheckpoint(producer_tablet, session);
+    RPC_RESULT_RETURN_ERROR(result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
-  result->ToPB(resp->mutable_checkpoint()->mutable_op_id());
+    result->ToPB(resp->mutable_checkpoint()->mutable_op_id());
+
+  } else {
+    // CDCSDK Source type
+    auto result = GetLastCDCSDKCheckpoint(producer_tablet, session);
+    RPC_RESULT_RETURN_ERROR(result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+
+    const auto& last_cdcsdk_checkpoint = result.get();
+
+    resp->mutable_checkpoint()->mutable_op_id()->set_term(last_cdcsdk_checkpoint.term());
+    resp->mutable_checkpoint()->mutable_op_id()->set_index(last_cdcsdk_checkpoint.index());
+
+    if (last_cdcsdk_checkpoint.has_key()) {
+      resp->set_snapshot_key(last_cdcsdk_checkpoint.key());
+    }
+    if (last_cdcsdk_checkpoint.has_snapshot_time()) {
+      resp->set_snapshot_time(last_cdcsdk_checkpoint.snapshot_time());
+    }
+  }
   context.RespondSuccess();
 }
 
@@ -3631,19 +3662,11 @@ Result<int64_t> CDCServiceImpl::GetLastActiveTime(
   return GetCurrentTimeMicros();
 }
 
-Result<OpId> CDCServiceImpl::GetLastCheckpoint(
+Result<CDCSDKCheckpointPB> CDCServiceImpl::GetLastCDCSDKCheckpoint(
     const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session) {
-  if (!PREDICT_FALSE(FLAGS_TEST_force_get_checkpoint_from_cdc_state)) {
-    auto result = impl_->GetLastCheckpoint(producer_tablet);
-    if (result) {
-      return *result;
-    }
-  }
+  auto cdc_state_table_result = VERIFY_RESULT(GetCdcStateTable());
 
-  auto cdc_state_table_result = GetCdcStateTable();
-  RETURN_NOT_OK(cdc_state_table_result);
-
-  const auto op = (*cdc_state_table_result)->NewReadOp();
+  const auto op = cdc_state_table_result->NewReadOp();
   auto* const req = op->mutable_request();
   DCHECK(!producer_tablet.stream_id.empty() && !producer_tablet.tablet_id.empty());
   QLAddStringHashValue(req, producer_tablet.tablet_id);
@@ -3655,21 +3678,71 @@ Result<OpId> CDCServiceImpl::GetLastCheckpoint(
       producer_tablet.stream_id);
   req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcTabletIdIdx);
   req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcStreamIdIdx);
-  (*cdc_state_table_result)->AddColumns({master::kCdcCheckpoint}, req);
+  cdc_state_table_result->AddColumns({master::kCdcCheckpoint}, req);
+  cdc_state_table_result->AddColumns({master::kCdcData}, req);
 
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
   RETURN_NOT_OK(RefreshCacheOnFail(session->ReadSync(op)));
   auto row_block = ql::RowsResult(op.get()).GetRowBlock();
+  CDCSDKCheckpointPB cdc_sdk_checkpoint_pb;
   if (row_block->row_count() == 0) {
     LOG(WARNING) << "Did not find any row in the cdc state table for tablet: "
                  << producer_tablet.tablet_id << ", stream " << producer_tablet.stream_id;
-    return OpId(0, 0);
+    cdc_sdk_checkpoint_pb.set_term(0);
+    cdc_sdk_checkpoint_pb.set_index(0);
+    cdc_sdk_checkpoint_pb.set_key("");
+    cdc_sdk_checkpoint_pb.set_snapshot_time(0);
+
+    return cdc_sdk_checkpoint_pb;
   }
 
   DCHECK_EQ(row_block->row_count(), 1);
-  DCHECK_EQ(row_block->row(0).column(0).type(), InternalType::kStringValue);
+  const auto& row = row_block->row(0);
 
-  return OpId::FromString(row_block->row(0).column(0).string_value());
+  DCHECK_EQ(row.column(0).type(), InternalType::kStringValue);
+
+  auto cdc_sdk_op_id = VERIFY_RESULT(OpId::FromString(row.column(0).string_value()));
+
+  if (!row.column(1).IsNull()) {
+    DCHECK_EQ(row.column(1).type(), InternalType::kMapValue);
+    auto& map_value = row.column(1).map_value();
+
+    auto snapshot_time_result = GetIntValueFromMap<uint64_t>(map_value, kCDCSDKSafeTime);
+    if (snapshot_time_result.ok()) {
+      cdc_sdk_checkpoint_pb.set_snapshot_time(snapshot_time_result.get());
+    } else {
+      cdc_sdk_checkpoint_pb.set_snapshot_time(0);
+    }
+
+    auto snapshot_key_result = GetValueFromMap(map_value, kCDCSDKSnapshotKey);
+    if (snapshot_key_result.ok()) {
+      cdc_sdk_checkpoint_pb.set_key(snapshot_key_result.get());
+    } else {
+      // If we do not find the 'kCDCSDKSnapshotKey' key in the 'kCdcData' column, we will infer that
+      // the snapshot is completed, and hence we will not populate the snapshot time nor snapshot
+      // key.
+      cdc_sdk_checkpoint_pb.set_snapshot_time(0);
+      cdc_sdk_checkpoint_pb.set_key("");
+    }
+  }
+
+  cdc_sdk_checkpoint_pb.set_term(cdc_sdk_op_id.term);
+  cdc_sdk_checkpoint_pb.set_index(cdc_sdk_op_id.index);
+
+  return cdc_sdk_checkpoint_pb;
+}
+
+Result<OpId> CDCServiceImpl::GetLastCheckpoint(
+    const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session) {
+  if (!PREDICT_FALSE(FLAGS_TEST_force_get_checkpoint_from_cdc_state)) {
+    auto result = impl_->GetLastCheckpoint(producer_tablet);
+    if (result) {
+      return *result;
+    }
+  }
+
+  const auto cdc_sdk_checkpoint = VERIFY_RESULT(GetLastCDCSDKCheckpoint(producer_tablet, session));
+  return OpId(cdc_sdk_checkpoint.term(), cdc_sdk_checkpoint.index());
 }
 
 bool RecordHasValidOp(const CDCSDKProtoRecordPB& record) {
@@ -3772,6 +3845,15 @@ void CDCServiceImpl::UpdateCDCTabletMetrics(
   }
 }
 
+bool CDCServiceImpl::IsCDCSDKSnapshotRequest(const CDCSDKCheckpointPB& req_checkpoint) {
+  return req_checkpoint.write_id() == -1;
+}
+
+bool CDCServiceImpl::IsCDCSDKSnapshotBootstrapRequest(const CDCSDKCheckpointPB& req_checkpoint) {
+  return req_checkpoint.write_id() == -1 && req_checkpoint.key().empty() &&
+         req_checkpoint.snapshot_time() == 0;
+}
+
 Status CDCServiceImpl::UpdateCheckpointAndActiveTime(
     const ProducerTabletInfo& producer_tablet,
     const OpId& sent_op_id,
@@ -3780,7 +3862,9 @@ Status CDCServiceImpl::UpdateCheckpointAndActiveTime(
     uint64_t last_record_hybrid_time,
     const CDCRequestSource& request_source,
     const bool force_update,
-    const HybridTime& cdc_sdk_safe_time) {
+    const HybridTime& cdc_sdk_safe_time,
+    const bool is_snapshot,
+    const std::string& snapshot_key) {
   bool update_cdc_state = impl_->UpdateCheckpoint(producer_tablet, sent_op_id, commit_op_id);
   if (update_cdc_state || force_update) {
     auto cdc_state = VERIFY_RESULT(GetCdcStateTable());
@@ -3802,10 +3886,15 @@ Status CDCServiceImpl::UpdateCheckpointAndActiveTime(
     if (request_source == CDCSDK) {
       auto last_active_time = GetCurrentTimeMicros();
       auto column_id = cdc_state->ColumnId(master::kCdcData);
+      // TODO Adithya: Explore updating the value of existing values in kCdcData column.
       auto map_value_pb = client::AddMapColumn(req, column_id);
       client::AddMapEntryToColumn(map_value_pb, kCDCSDKActiveTime, ToString(last_active_time));
       client::AddMapEntryToColumn(
           map_value_pb, kCDCSDKSafeTime, ToString(cdc_sdk_safe_time.ToUint64()));
+      if (is_snapshot) {
+        // The 'GetChanges' call bootstrapping snapshot will have snapshot key empty.
+        client::AddMapEntryToColumn(map_value_pb, kCDCSDKSnapshotKey, ToString(snapshot_key));
+      }
 
       VLOG(2) << "Updating cdc state table with: checkpoint: " << commit_op_id.ToString()
               << ", last active time: " << last_active_time
