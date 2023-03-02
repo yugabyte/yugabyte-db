@@ -38,6 +38,8 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 
+yb_original_stdout = sys.stdout
+
 # BEGIN: Python 2/3 compatibility - remove when Python 2 compatibility dropped
 if sys.version_info[0] <= 2:
     # Encode stdout as UTF-8, so we can just print to it
@@ -290,3 +292,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     main(args)
+
+# Doctest throws the following error unless sys.stdout is restored:
+#   AttributeError: '_io.BufferedWriter' object has no attribute 'encoding'
+sys.stdout = yb_original_stdout
