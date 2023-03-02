@@ -50,8 +50,6 @@ class YBTableName;
 
 namespace tools {
 
-typedef enterprise::ClusterAdminClient ClusterAdminClientClass;
-
 // Tool to administer a cluster from the CLI.
 class ClusterAdminCli {
  public:
@@ -77,7 +75,7 @@ class ClusterAdminCli {
   void RegisterJson(std::string&& cmd_name, std::string&& cmd_args, JsonAction&& action);
   void SetUsage(const std::string& prog_name);
 
-  virtual void RegisterCommandHandlers(ClusterAdminClientClass* client);
+  virtual void RegisterCommandHandlers(ClusterAdminClient* client);
 
  private:
   Status RunCommand(
@@ -92,14 +90,14 @@ using TailArgumentsProcessor =
     std::function<Status(CLIArgumentsIterator, const CLIArgumentsIterator&)>;
 
 Result<std::vector<client::YBTableName>> ResolveTableNames(
-    ClusterAdminClientClass* client,
+    ClusterAdminClient* client,
     CLIArgumentsIterator i,
     const CLIArgumentsIterator& end,
     const TailArgumentsProcessor& tail_processor = TailArgumentsProcessor(),
     bool allow_namespace_only = false);
 
 Result<client::YBTableName> ResolveSingleTableName(
-    ClusterAdminClientClass* client,
+    ClusterAdminClient* client,
     CLIArgumentsIterator i,
     const CLIArgumentsIterator& end,
     TailArgumentsProcessor tail_processor = TailArgumentsProcessor());
