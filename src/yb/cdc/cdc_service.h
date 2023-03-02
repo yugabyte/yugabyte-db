@@ -63,6 +63,7 @@ static const char* const kNamespaceId = "NAMESPACEID";
 static const char* const kTableId = "TABLEID";
 static const char* const kCDCSDKSafeTime = "cdc_sdk_safe_time";
 static const char* const kCDCSDKActiveTime = "active_time";
+static const char* const kCDCSDKSnapshotKey = "snapshot_key";
 struct TabletCheckpoint {
   OpId op_id;
   // Timestamp at which the op ID was last updated.
@@ -197,6 +198,10 @@ class CDCServiceImpl : public CDCServiceIf {
   // Marks the CDC enable flag as true.
   void SetCDCServiceEnabled();
 
+  static bool IsCDCSDKSnapshotRequest(const CDCSDKCheckpointPB& req_checkpoint);
+
+  static bool IsCDCSDKSnapshotBootstrapRequest(const CDCSDKCheckpointPB& req_checkpoint);
+
  private:
   FRIEND_TEST(CDCServiceTest, TestMetricsOnDeletedReplication);
   FRIEND_TEST(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure);
@@ -217,6 +222,9 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<OpId> GetLastCheckpoint(
       const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session);
 
+  Result<CDCSDKCheckpointPB> GetLastCDCSDKCheckpoint(
+      const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session);
+
   Result<std::vector<std::pair<std::string, std::string>>> GetDBStreamInfo(
       const std::string& db_stream_id, const client::YBSessionPtr& session);
 
@@ -231,7 +239,9 @@ class CDCServiceImpl : public CDCServiceIf {
       uint64_t last_record_hybrid_time,
       const CDCRequestSource& request_source = CDCRequestSource::CDCSDK,
       bool force_update = false,
-      const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid);
+      const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid,
+      const bool is_snapshot = false,
+      const std::string& snapshot_key = "");
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> GetTablets(
       const CDCStreamId& stream_id);

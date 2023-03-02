@@ -411,6 +411,9 @@ message GetCheckpointRequestPB {
 message GetCheckpointResponsePB {
   optional CDCErrorPB error = 1;
   optional CDCCheckpointPB checkpoint = 2;
+  // The snapshot_key and snapshot_time will be used for CDCSDK snapshot purposes.
+  optional bytes snapshot_key = 3;
+  optional uint64 snapshot_time = 4;
 }
 
 message UpdateCdcReplicatedIndexRequestPB {
