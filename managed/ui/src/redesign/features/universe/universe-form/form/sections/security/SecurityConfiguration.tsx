@@ -1,5 +1,4 @@
-import React, { FC, useContext } from 'react';
-import { useQuery } from 'react-query';
+import React, { useContext } from 'react';
 import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import { useWatch } from 'react-hook-form';
@@ -17,14 +16,14 @@ import {
   YSQLField
 } from '../../fields';
 import { YBLabel } from '../../../../../../components';
-import { api, QUERY_KEY } from '../../../utils/api';
 import { UniverseFormContext } from '../../../UniverseFormContainer';
 import {
   AccessKey,
   CloudType,
   ClusterModes,
   ClusterType,
-  RunTimeConfigEntry
+  RunTimeConfigEntry,
+  UniverseFormConfigurationProps
 } from '../../../utils/dto';
 import {
   PROVIDER_FIELD,
@@ -55,18 +54,12 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const SecurityConfiguration: FC = () => {
+export const SecurityConfiguration = ({ runtimeConfigs }: UniverseFormConfigurationProps) => {
   const classes = useSectionStyles();
   const helperClasses = useStyles();
   const { t } = useTranslation();
-  const currentCustomer = useSelector((state: any) => state.customer.currentCustomer);
-  const customerUUID = currentCustomer?.data?.uuid;
 
-  //fetch run time configs
-  const { data: runtimeConfigs } = useQuery(QUERY_KEY.fetchCustomerRunTimeConfigs, () =>
-    api.fetchRunTimeConfigs(true, customerUUID)
-  );
-
+  // Value of runtime config key
   const authEnforcedObject = runtimeConfigs?.configEntries?.find(
     (c: RunTimeConfigEntry) => c.key === 'yb.universe.auth.is_enforced'
   );
