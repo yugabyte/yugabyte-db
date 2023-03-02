@@ -5,6 +5,7 @@ import { ChevronRight } from '@material-ui/icons';
 import clsx from 'clsx';
 import { formatDistance } from 'date-fns';
 import { BadgeVariant, YBBadge } from '@app/components/YBBadge/YBBadge';
+import { Link as RouterLink } from 'react-router-dom';
 
 const useStyles = makeStyles((theme) => ({
   divider: {
@@ -48,6 +49,12 @@ const useStyles = makeStyles((theme) => ({
     display: "flex",
     alignItems: "center",
     gap: theme.spacing(1),
+  },
+  link: {
+    '&:link, &:focus, &:active, &:visited, &:hover': {
+      textDecoration: 'none',
+      color: theme.palette.text.primary
+    }
   }
 }));
 
@@ -71,36 +78,36 @@ export const ClusterAlertWidget: FC<ClusterAlertWidgetProps> = () => {
 
   return (
     <Box>
-      <Box display="flex" alignItems="center">
-        <Box display="flex" alignItems="center" flex={1} gridGap={8}>
-          <Typography variant="body2" className={classes.title}>{t('clusterDetail.overview.alerts')}</Typography>
-          <YBBadge variant={BadgeVariant.Warning} text={alerts.length} icon={false} />
-        </Box>
-        <Link>
+      <Link className={classes.link} component={RouterLink} to="/alerts">
+        <Box display="flex" alignItems="center">
+          <Box display="flex" alignItems="center" flex={1} gridGap={8}>
+            <Typography variant="body2" className={classes.title}>{t('clusterDetail.overview.alerts')}</Typography>
+            <YBBadge variant={BadgeVariant.Warning} text={alerts.length} icon={false} />
+          </Box>
           <ChevronRight className={classes.arrow} />
-        </Link>
-      </Box>
-      <Grid container className={classes.container}>
-        {alerts.length === 0 ?
-          <Typography variant="body2" className={clsx(classes.label, classes.marginBottom)}>
-            {t('clusterDetail.overview.noAlerts')}
-          </Typography>
-          :
-          <Box className={classes.alertContainer}>
-            <Typography variant="body2" className={classes.label}>
-              {formatDistance(alerts[0].at, new Date(), { addSuffix: true })}
+        </Box>
+        <Grid container className={classes.container}>
+          {alerts.length === 0 ?
+            <Typography variant="body2" className={clsx(classes.label, classes.marginBottom)}>
+              {t('clusterDetail.overview.noAlerts')}
             </Typography>
-            <Box className={classes.alertContent}>
-              <Typography variant="body2" className={classes.title} noWrap>
-                {alerts[0].alert}
+            :
+            <Box className={classes.alertContainer}>
+              <Typography variant="body2" className={classes.label}>
+                {formatDistance(alerts[0].at, new Date(), { addSuffix: true })}
               </Typography>
-              <Box className={classes.statusContainer}>
-                <YBBadge variant={BadgeVariant.Warning} text={alerts[0].status} />
+              <Box className={classes.alertContent}>
+                <Typography variant="body2" className={classes.title} noWrap>
+                  {alerts[0].alert}
+                </Typography>
+                <Box className={classes.statusContainer}>
+                  <YBBadge variant={BadgeVariant.Warning} text={alerts[0].status} />
+                </Box>
               </Box>
             </Box>
-          </Box>
-        }
-      </Grid>
+          }
+        </Grid>
+      </Link>
     </Box>
   );
 };

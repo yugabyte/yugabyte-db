@@ -1,8 +1,9 @@
 import React, { Component, FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import { makeStyles } from '@material-ui/core';
+import { Link, makeStyles } from '@material-ui/core';
 import { Layer, Rectangle, ResponsiveContainer, Sankey } from 'recharts';
 import type { ClusterData } from '@app/api/src';
+import { Link as RouterLink } from 'react-router-dom';
 
 const useStyles = makeStyles((theme) => ({
   container: {
@@ -10,6 +11,12 @@ const useStyles = makeStyles((theme) => ({
     overflow: 'auto',
     padding: `${theme.spacing(1)}px 0`,
   },
+  link: {
+    '&:link, &:focus, &:active, &:visited, &:hover': {
+      textDecoration: 'none',
+      color: theme.palette.text.primary,
+    }
+  }
 }));
 
 interface VCpuUsageChartProps {
@@ -50,26 +57,29 @@ export const VCpuUsageChart: FC<VCpuUsageChartProps> = ({ cluster }) => {
 
   return (
     <div className={classes.container}>
-      <ResponsiveContainer width="99%" height="100%" debounce={2} minWidth={380}>
-        <Sankey
-          data={data}
-          margin={{
-            top: 6,
-            left: 145,
-            right: 180,
-            bottom: 6,
-          }}
-          node={<CpuSankeyNode translate={t} 
-            nodeCount={data["nodes"].length - 1}
-            totalCores={totalCores} /> 
-          }
-          nodeWidth={4}
-          nodePadding={10}
-          link={<CpuSankeyLink />}
-        >
-          {/* <Tooltip /> */}
-        </Sankey>
+      <Link className={classes.link} component={RouterLink} to="/performance/metrics">
+        <ResponsiveContainer width="99%" height="100%" debounce={2} minWidth={380}>
+          <Sankey
+            data={data}
+            cursor="pointer"
+            margin={{
+              top: 6,
+              left: 145,
+              right: 180,
+              bottom: 6,
+            }}
+            node={<CpuSankeyNode translate={t} 
+              nodeCount={data["nodes"].length - 1}
+              totalCores={totalCores} /> 
+            }
+            nodeWidth={4}
+            nodePadding={10}
+            link={<CpuSankeyLink />}
+          >
+            {/* <Tooltip /> */}
+          </Sankey>
         </ResponsiveContainer>
+      </Link>
     </div>
   );
 };

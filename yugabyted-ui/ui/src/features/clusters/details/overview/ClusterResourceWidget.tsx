@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { ChevronRight } from '@material-ui/icons';
 import { TabContext, TabPanel } from '@material-ui/lab';
 import { VCpuUsageChart } from './VCpuUsageChart';
-
+import { Link as RouterLink } from 'react-router-dom';
 
 const useStyles = makeStyles((theme) => ({
   tabSectionContainer: {
@@ -47,6 +47,12 @@ const useStyles = makeStyles((theme) => ({
     color: theme.palette.grey[600],
     marginTop: theme.spacing(0.5)
   },
+  link: {
+    '&:link, &:focus, &:active, &:visited, &:hover': {
+      textDecoration: 'none',
+      color: theme.palette.text.primary,
+    }
+  }
 }));
 
 interface ClusterDiskWidgetProps {
@@ -87,9 +93,11 @@ export const ClusterResourceWidget: FC<ClusterDiskWidgetProps> = ({ cluster }) =
               />
             </Tabs>
           </div>
-          <Link>
-            <ChevronRight className={classes.arrow} />
-          </Link>
+          {value === "tabvCpu" &&
+            <Link className={classes.link} component={RouterLink} to="/performance/metrics">
+              <ChevronRight className={classes.arrow} />
+            </Link>
+          }
         </Box>
         
         <TabPanel className={classes.tabPanel} value={'tabvCpu'}>

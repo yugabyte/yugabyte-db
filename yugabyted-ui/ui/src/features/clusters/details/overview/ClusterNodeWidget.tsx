@@ -1,8 +1,7 @@
 import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, Divider, Grid, Link, makeStyles, Typography } from '@material-ui/core';
-
-// Local imports
+import { Link as RouterLink } from 'react-router-dom';
 import { HealthCheckInfo, useGetClusterNodesQuery, useGetIsLoadBalancerIdleQuery } from '@app/api/src';
 import { ChevronRight } from '@material-ui/icons';
 import clsx from 'clsx';
@@ -55,6 +54,12 @@ const useStyles = makeStyles((theme) => ({
     width: theme.spacing(2.5),
     background: theme.palette.grey[200]
   },
+  link: {
+    '&:link, &:focus, &:active, &:visited, &:hover': {
+      textDecoration: 'none',
+      color: theme.palette.text.primary
+    }
+  }
 }));
 
 interface ClusterNodeWidgetProps {
@@ -93,57 +98,57 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
 
   return (
     <Box flex={1}>
-      <Box display="flex" alignItems="center">
-        <Typography variant="body2" className={classes.title}>{t('clusterDetail.overview.nodes')}</Typography>
-        <Link>
+      <Link className={classes.link} component={RouterLink} to="tabNodes">
+        <Box display="flex" alignItems="center">
+          <Typography variant="body2" className={classes.title}>{t('clusterDetail.overview.nodes')}</Typography>
           <ChevronRight className={classes.arrow} />
-        </Link>
-      </Box>
-      <Grid container className={classes.container}>
-        <div className={classes.section}>
-          <Typography variant="h4" className={classes.value}>
-            {fetchingNodes ? <div className={classes.loadingCount} /> : numNodes}
-          </Typography>
-          <Typography variant="body2" className={classes.label}>
-            {t('clusterDetail.nodes.total')}
-          </Typography>
-        </div>
-        <div className={clsx(classes.section, classes.sectionBorder)}>
-          <Box display="flex" gridGap={7}>
+        </Box>
+        <Grid container className={classes.container}>
+          <div className={classes.section}>
             <Typography variant="h4" className={classes.value}>
-              {fetchingNodes ? <div className={classes.loadingCount} /> : healthyNodes}
+              {fetchingNodes ? <div className={classes.loadingCount} /> : numNodes}
             </Typography>
-            <YBStatus type={STATUS_TYPES.SUCCESS}/>
-          </Box>
-          <Typography variant="body2" className={classes.label}>
-            {t('clusterDetail.nodes.running')}
-          </Typography>
-        </div>
-        <div className={classes.section}>
-          <Box display="flex" gridGap={7}>
-            <Typography variant="h4" className={classes.value}>
-              {fetchingNodes ? <div className={classes.loadingCount} /> : deadNodes.length}
+            <Typography variant="body2" className={classes.label}>
+              {t('clusterDetail.nodes.total')}
             </Typography>
-            <YBStatus type={STATUS_TYPES.FAILED}/>
-          </Box>
-          <Typography variant="body2" className={classes.label}>
-            {t('clusterDetail.nodes.down')}
-          </Typography>
-        </div>
-        <div className={clsx(classes.section, classes.sectionBorder)}>
-          <Box display="flex" gridGap={7}>
-            <Typography variant="h4" className={classes.value}>
-              {fetchingNodes ? <div className={classes.loadingCount} /> : bootstrappingNodes.length}
+          </div>
+          <div className={clsx(classes.section, classes.sectionBorder)}>
+            <Box display="flex" gridGap={7}>
+              <Typography variant="h4" className={classes.value}>
+                {fetchingNodes ? <div className={classes.loadingCount} /> : healthyNodes}
+              </Typography>
+              <YBStatus type={STATUS_TYPES.SUCCESS}/>
+            </Box>
+            <Typography variant="body2" className={classes.label}>
+              {t('clusterDetail.nodes.running')}
             </Typography>
-            <YBStatus type={STATUS_TYPES.IN_PROGRESS}/>
-          </Box>
-          <Typography variant="body2" className={classes.label}>
-            {t('clusterDetail.nodes.bootstrapping')}
-          </Typography>
-        </div>
-      </Grid>
-      <Divider orientation="horizontal" variant="middle" className={classes.divider} />
-      <ClusterTabletWidget health={health} />
+          </div>
+          <div className={classes.section}>
+            <Box display="flex" gridGap={7}>
+              <Typography variant="h4" className={classes.value}>
+                {fetchingNodes ? <div className={classes.loadingCount} /> : deadNodes.length}
+              </Typography>
+              <YBStatus type={STATUS_TYPES.FAILED}/>
+            </Box>
+            <Typography variant="body2" className={classes.label}>
+              {t('clusterDetail.nodes.down')}
+            </Typography>
+          </div>
+          <div className={clsx(classes.section, classes.sectionBorder)}>
+            <Box display="flex" gridGap={7}>
+              <Typography variant="h4" className={classes.value}>
+                {fetchingNodes ? <div className={classes.loadingCount} /> : bootstrappingNodes.length}
+              </Typography>
+              <YBStatus type={STATUS_TYPES.IN_PROGRESS}/>
+            </Box>
+            <Typography variant="body2" className={classes.label}>
+              {t('clusterDetail.nodes.bootstrapping')}
+            </Typography>
+          </div>
+        </Grid>
+        <Divider orientation="horizontal" variant="middle" className={classes.divider} />
+        <ClusterTabletWidget health={health} />
+      </Link>
     </Box>
   );
 };
