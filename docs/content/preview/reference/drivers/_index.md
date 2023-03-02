@@ -46,7 +46,7 @@ type: indexpage
   </li>
 
   <li>
-    <a href="csharp/postgres-npgsql-reference/" class="orange">
+    <a href="csharp/yb-npgsql-reference/" class="orange">
       <i class="icon-csharp"></i>
       C#
     </a>
