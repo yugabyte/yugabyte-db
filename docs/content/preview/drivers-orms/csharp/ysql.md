@@ -130,7 +130,7 @@ NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder)
 
 #### Use SSL
 
-To set up the driver properties to configure the credentials and SSL certificates for connecting to your cluster, refer to [Use SSL](../postgres-npgsql/#use-ssl).
+The YugabyteDB Npgsql smart driver support for SSL is the same as for the upstream driver. To set up the driver properties to configure the credentials and SSL certificates for connecting to your cluster, refer to [Use SSL](../postgres-npgsql/#use-ssl).
 
 ### Step 3 : Write your application
 
