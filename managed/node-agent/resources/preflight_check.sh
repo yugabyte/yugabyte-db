@@ -234,6 +234,10 @@ preflight_configure_check() {
   else
     update_result_json "systemd_sudoer_entry" false
   fi
+
+  # Check virtual memory max map limit.
+  vm_max_map_count=$(cat /proc/sys/vm/max_map_count 2> /dev/null)
+  update_result_json "vm_max_map_count" "${vm_max_map_count:-0}"
 }
 
 preflight_all_checks() {

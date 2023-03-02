@@ -375,6 +375,9 @@ public class Region extends Model {
     if (metadata.has("ybImage")) {
       region.setYbImage(metadata.get("ybImage").textValue());
     }
+    if (metadata.has("architecture")) {
+      region.setArchitecture(Architecture.valueOf(metadata.get("architecture").textValue()));
+    }
     region.save();
     return region;
   }

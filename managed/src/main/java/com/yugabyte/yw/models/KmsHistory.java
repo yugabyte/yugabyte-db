@@ -12,6 +12,7 @@ package com.yugabyte.yw.models;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.ebean.Ebean;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -81,6 +82,7 @@ public class KmsHistory extends Model {
     return keyHistory;
   }
 
+  @JsonIgnore
   public static void setKeyRefStatus(
       UUID targetUUID,
       UUID confidUUID,
@@ -236,6 +238,18 @@ public class KmsHistory extends Model {
         .findList()
         .forEach(n -> universeUUIDs.add(n.uuid.targetUuid));
     return Universe.getAllPresent(universeUUIDs);
+  }
+
+  public static Set<UUID> getDistinctKmsConfigUUIDs(UUID targetUUID) {
+    Set<UUID> KmsConfigUUIDs = new HashSet<>();
+    KmsHistory.find
+        .query()
+        .where()
+        .eq("target_uuid", targetUUID)
+        .eq("type", KmsHistoryId.TargetType.UNIVERSE_KEY)
+        .findList()
+        .forEach(kh -> KmsConfigUUIDs.add(kh.configUuid));
+    return KmsConfigUUIDs;
   }
 
   @Override

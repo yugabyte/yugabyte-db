@@ -2035,7 +2035,7 @@ class ControlScript(object):
 
             placementInfoOfEveryNode = {}
             for node in dictOfAllNodes:
-                hostname = re.split('[-:]', node)[0]
+                hostname = node.split(":")[0]
                 cloudLocationOfHost = "{}.{}.{}".format(dictOfAllNodes[node]["cloud"],
                     dictOfAllNodes[node]["region"], dictOfAllNodes[node]["zone"])
                 placementInfoOfEveryNode[hostname] = cloudLocationOfHost
@@ -4156,7 +4156,12 @@ class YsqlProxy(object):
         env_var = os.environ.copy()
         env_var["PGUSER"] = self.username
         shell = subprocess.Popen(cmd, env=env_var)
-        shell.communicate()
+        while True:
+            try:
+                shell.communicate()
+            except KeyboardInterrupt:
+                continue
+            break
 
     # Checks if db exists.
     # Note that this will return false if ysqlsh can't connect, even if db exists.
@@ -4270,7 +4275,12 @@ class YcqlProxy(object):
         if self.keyspace is not None:
             cmd.extend(["-k", self.keyspace])
         shell = subprocess.Popen(cmd)
-        shell.communicate()
+        while True:
+            try:
+                shell.communicate()
+            except KeyboardInterrupt:
+                continue
+            break
 
     # Check user exists
     # Note that this will return false if ycqlsh can't connect, even if user exists.

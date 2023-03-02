@@ -373,7 +373,7 @@ Status AddDeltaToSstFile(
     auto builder = helper->NewTableBuilder(base_file_writer.get(), data_file_writer.get());
     const auto add_kv = [&builder, debug, storage_db_type](const Slice& k, const Slice& v) {
       if (debug) {
-        static docdb::SchemaPackingStorage schema_packing_storage;
+        static docdb::SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE);
         const Slice user_key(k.data(), k.size() - kKeySuffixLen);
         auto key_type = docdb::GetKeyType(user_key, storage_db_type);
         auto rocksdb_value_type = static_cast<rocksdb::ValueType>(*(k.end() - kKeySuffixLen));
@@ -505,7 +505,7 @@ Status AddDeltaToSstFile(
                 << "value " << value.ToDebugHexString() << " (" << FormatSliceAsStr(value) << "), "
                 << "decoded value " << DocDBValueToDebugStr(
                     docdb::KeyType::kReverseTxnKey, iterator->key(), iterator->value(),
-                    docdb::SchemaPackingStorage());
+                    docdb::SchemaPackingStorage(TableType::YQL_TABLE_TYPE));
             return doc_ht_result.status();
           }
           delta_data.AddEarlyTime(doc_ht_result->hybrid_time());

@@ -30,6 +30,25 @@
 namespace yb {
 namespace docdb {
 
+Status RemoveGroupEndSuffix(RefCntPrefix* key) {
+  size_t size = DCHECK_NOTNULL(key)->size();
+  if (size > 0) {
+    if (key->data()[0] == KeyEntryTypeAsChar::kGroupEnd) {
+      if (size != 1) {
+        return STATUS_FORMAT(Corruption, "Key starting with group end: $0",
+            key->as_slice().ToDebugHexString());
+      }
+      size = 0;
+    } else {
+      while (key->data()[size - 1] == KeyEntryTypeAsChar::kGroupEnd) {
+        --size;
+      }
+    }
+  }
+  key->Resize(size);
+  return Status::OK();
+}
+
 Result<DecodedIntentKey> DecodeIntentKey(const Slice &encoded_intent_key) {
   DecodedIntentKey result;
   auto& intent_prefix = result.intent_prefix;

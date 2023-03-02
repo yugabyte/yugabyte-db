@@ -48,7 +48,8 @@ public class AlertChannelWebHook extends AlertChannelWebBase {
     JsonNode body = Json.parse(text);
 
     try {
-      WSResponse response = sendRequest(WEBHOOK_WS_KEY, params.getWebhookUrl(), body);
+      WSResponse response =
+          sendRequest(WEBHOOK_WS_KEY, params.getWebhookUrl(), body, params.getHttpAuth());
 
       if (response.getStatus() != HttpStatus.SC_OK) {
         throw new PlatformNotificationException(

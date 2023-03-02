@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, Fragment } from 'react';
-import { Row, Col } from 'react-bootstrap';
+import { Row, Col, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { Field, Formik } from 'formik';
 import { toast } from 'react-toastify';
 import {
@@ -246,6 +246,9 @@ class KeyManagementConfiguration extends Component {
         case 'HASHICORP':
           data['HC_VAULT_ADDRESS'] = values.HC_VAULT_ADDRESS;
           data['HC_VAULT_TOKEN'] = values.HC_VAULT_TOKEN;
+          data['HC_VAULT_KEY_NAME'] = values.HC_VAULT_KEY_NAME
+          ? values.HC_VAULT_KEY_NAME
+          : 'key_yugabyte';
           data['HC_VAULT_MOUNT_PATH'] = values.HC_VAULT_MOUNT_PATH
             ? values.HC_VAULT_MOUNT_PATH
             : 'transit/';
@@ -325,7 +328,7 @@ class KeyManagementConfiguration extends Component {
     );
   };
 
-  getAWSForm = () => {
+  getAWSForm = (values) => {
     const isEdit = this.isEditMode();
     return (
       <Fragment>
@@ -425,7 +428,7 @@ class KeyManagementConfiguration extends Component {
         </Row>
         <Row className="kms-endpoint-row" key={'kms-endpoint-field'}>
           <Col lg={3}>
-            <div className="form-item-custom-label">AWS KMS Endpoint</div>
+            <div className="form-item-custom-label">AWS KMS Endpoint (Optional)</div>
           </Col>
           <Col lg={7}>
             <Field
@@ -436,19 +439,32 @@ class KeyManagementConfiguration extends Component {
             />
           </Col>
           <Col lg={1} className="config-zone-tooltip">
-            <YBInfoTip title="AWS KMS Endpoint" content="Enter your AWS KMS Endpoint." />
+            <YBInfoTip title="AWS KMS Endpoint (Optional)" content="Enter your AWS KMS Endpoint." />
           </Col>
         </Row>
-        <Row>
+        {!isEdit && <Row>
           <div className={'bottom-form-field'}>
-            <Field
-              component={YBFormDropZone}
-              name={'cmkPolicyContent'}
-              title={'Upload CMK Policy'}
-              className="upload-file-button"
-            />
+            <OverlayTrigger
+                placement="top"
+                overlay={
+                  !!values.cmk_id ? <Tooltip className="high-index">
+                    Custom policy file is not needed when Customer Master Key ID is specified.
+                  </Tooltip> : <></>
+                }
+              >
+                <div>
+                <Field
+                  component={YBFormDropZone}
+                  name={'cmkPolicyContent'}
+                  title={'Upload CMK Policy'}
+                  className="upload-file-button"
+                  disableClick={!!values.cmk_id}
+                />
+                </div>
+              </OverlayTrigger>
+            
           </div>
-        </Row>
+        </Row>}
       </Fragment>
     );
   };
@@ -467,6 +483,7 @@ class KeyManagementConfiguration extends Component {
               component={YBFormInput}
               placeholder={''}
               className={'kube-provider-input-field'}
+              disabled={isEdit}
             />
           </Col>
           <Col lg={1} className="config-zone-tooltip">
@@ -488,6 +505,26 @@ class KeyManagementConfiguration extends Component {
             />
           </Col>
         </Row>
+        <Row className="config-provider-row" key={'v-key-name-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">Key Name (Optional)</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name={'HC_VAULT_KEY_NAME'}
+              component={YBFormInput}
+              placeholder={'key_yugabyte'}
+              className={'kube-provider-input-field'}
+              disabled={isEdit}
+            />
+          </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip
+              title="Key Name (Optional)"
+              content="Enter the key name. If key name is not specified, it will be auto set to 'key_yugabyte'"
+            />
+          </Col>
+        </Row>
         <Row className="config-provider-row" key={'v-secret-engine-field'}>
           <Col lg={3}>
             <div className="form-item-custom-label">Secret Engine</div>
@@ -504,7 +541,7 @@ class KeyManagementConfiguration extends Component {
         </Row>
         <Row className="config-provider-row" key={'v-mount-path-field'}>
           <Col lg={3}>
-            <div className="form-item-custom-label">Mount Path</div>
+            <div className="form-item-custom-label">Mount Path (Optional)</div>
           </Col>
           <Col lg={7}>
             <Field
@@ -517,7 +554,7 @@ class KeyManagementConfiguration extends Component {
           </Col>
           <Col lg={1} className="config-zone-tooltip">
             <YBInfoTip
-              title="Mount Path"
+              title="Mount Path (Optional)"
               content="Enter the mount path. If mount path is not specified, path will be auto set to 'transit/'"
             />
           </Col>
@@ -655,7 +692,7 @@ class KeyManagementConfiguration extends Component {
           </Col>
           <Col lg={1} className="config-zone-tooltip">
             <YBInfoTip
-              title="KMS Endpoint"
+              title="KMS Endpoint (Optional)"
               content="If GCP KMS has custom endpoint. Must be a valid URL."
             />
           </Col>
@@ -811,15 +848,15 @@ class KeyManagementConfiguration extends Component {
     );
   };
 
-  displayFormContent = (provider) => {
+  displayFormContent = (provider, values) => {
     if (!provider) {
-      return this.getAWSForm();
+      return this.getAWSForm(values);
     }
     switch (provider.value) {
       case 'SMARTKEY':
         return this.getSmartKeyForm();
       case 'AWS':
-        return this.getAWSForm();
+        return this.getAWSForm(values);
       case 'HASHICORP':
         return this.getHCVaultForm();
       case 'GCP':
@@ -827,7 +864,7 @@ class KeyManagementConfiguration extends Component {
       case 'AZU':
         return this.getAzuForm();
       default:
-        return this.getAWSForm();
+        return this.getAWSForm(values);
     }
   };
 
@@ -1104,7 +1141,7 @@ class KeyManagementConfiguration extends Component {
                           />
                         </Col>
                       </Row>
-                      {this.displayFormContent(values.kmsProvider)}
+                      {this.displayFormContent(values.kmsProvider, values)}
                     </Col>
                   </Row>
                   <div className="form-action-button-container">

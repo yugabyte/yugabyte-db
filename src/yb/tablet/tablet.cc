@@ -880,7 +880,7 @@ void Tablet::CleanupIntentFiles() {
 }
 
 void Tablet::DoCleanupIntentFiles() {
-  if (metadata_->is_under_twodc_replication()) {
+  if (metadata_->IsUnderXClusterReplication()) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Exit because of TwoDC replication";
     return;
   }
@@ -1387,10 +1387,10 @@ Status Tablet::ApplyKeyValueRowOperations(
 
     // See comments for PrepareExternalWriteBatch.
     if (put_batch.enable_replicate_transaction_status_table()) {
-      if (!metadata_->is_under_twodc_replication()) {
+      if (!metadata_->IsUnderXClusterReplication()) {
         // The first time the consumer tablet sees an external write batch, set
-        // is_under_twodc_replication to true.
-        RETURN_NOT_OK(metadata_->SetIsUnderTwodcReplicationAndFlush(true));
+        // is_under_xcluster_replication to true.
+        RETURN_NOT_OK(metadata_->SetIsUnderXClusterReplicationAndFlush(true));
       }
       ThreadSafeArena arena;
       auto batches_by_transaction = SplitExternalBatchIntoTransactionBatches(put_batch, &arena);
@@ -1412,8 +1412,8 @@ Status Tablet::ApplyKeyValueRowOperations(
         external_txn_intents_state_.get());
 
     if (intents_write_batch.Count() != 0) {
-      if (!metadata_->is_under_twodc_replication()) {
-        RETURN_NOT_OK(metadata_->SetIsUnderTwodcReplicationAndFlush(true));
+      if (!metadata_->IsUnderXClusterReplication()) {
+        RETURN_NOT_OK(metadata_->SetIsUnderXClusterReplicationAndFlush(true));
       }
       WriteToRocksDB(frontiers, &intents_write_batch, StorageDbType::kIntents);
     }
@@ -3314,7 +3314,7 @@ ScopedRWOperationPause Tablet::PauseWritePermits(CoarseTimePoint deadline) {
 ScopedRWOperation Tablet::GetPermitToWrite(CoarseTimePoint deadline) {
   TRACE("Acquiring write permit");
   auto se = ScopeExit([] { TRACE("Acquiring write permit done"); });
-  return ScopedRWOperation(&write_ops_being_submitted_counter_);
+  return ScopedRWOperation(&write_ops_being_submitted_counter_, deadline);
 }
 
 Result<bool> Tablet::StillHasOrphanedPostSplitData() {
@@ -3687,7 +3687,7 @@ Status Tablet::ReadIntents(std::vector<std::string>* intents) {
   auto intent_iter = std::unique_ptr<rocksdb::Iterator>(
       intents_db_->NewIterator(read_options));
   intent_iter->SeekToFirst();
-  docdb::SchemaPackingStorage schema_packing_storage;
+  docdb::SchemaPackingStorage schema_packing_storage(table_type());
 
   for (; intent_iter->Valid(); intent_iter->Next()) {
     auto item = EntryToString(intent_iter->key(), intent_iter->value(),

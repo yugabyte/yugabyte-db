@@ -82,6 +82,8 @@ class LockBatch {
   // re-lock the keys.
   std::optional<UnlockedBatch> Unlock();
 
+  const LockBatchEntries& Get() const { return data_.key_to_type; }
+
  private:
   void MoveFrom(LockBatch* other);
 

@@ -67,6 +67,8 @@ export const PointInTimeRecoveryDisableModal: FC<PointInTimeRecoveryDisableModal
       submitLabel="Disable Point-In-Time Recovery"
       onFormSubmit={handleSubmit}
       dialogClassName="pitr-disable-modal"
+      submitTestId="DisablePitrSubmitBtn"
+      cancelTestId="DisablePitrCancelBtn"
       footerAccessory={<YBButton btnClass="btn" btnText="Cancel" onClick={onHide} />}
       render={() => {
         return (

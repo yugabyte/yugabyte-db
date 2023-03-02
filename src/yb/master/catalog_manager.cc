@@ -3601,24 +3601,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // If this is a transactional table and there is a associated tablespace, try to create a
   // local transaction status table for the tablespace if there is a placement attached to it
   // (and if it does not exist already).
-  if (GetAtomicFlag(&FLAGS_auto_create_local_transaction_tables)) {
-    if (is_transactional && orig_req->has_tablespace_id()) {
-      const auto& tablespace_id = orig_req->tablespace_id();
-      auto tablespace_pb = VERIFY_RESULT(GetTablespaceReplicationInfoWithRetry(tablespace_id));
-      if (tablespace_pb) {
-        RETURN_NOT_OK(CreateLocalTransactionStatusTableIfNeeded(rpc, tablespace_id));
-      } else {
-        VLOG(1)
-            << "Not attempting to create a local transaction status table: "
-            << "tablespace " << EXPR_VALUE_FOR_LOG(tablespace_id) << " has no placement\n";
-      }
-    } else {
-        VLOG(1)
-            << "Not attempting to create a local transaction status table:\n"
-            << "  " << EXPR_VALUE_FOR_LOG(is_transactional) << "\n "
-            << "  " << EXPR_VALUE_FOR_LOG(orig_req->has_tablespace_id());
-    }
-  }
+  RETURN_NOT_OK(MaybeCreateLocalTransactionTable(*orig_req, rpc));
 
   if (is_pg_catalog_table) {
     // No batching for migration.
@@ -3633,24 +3616,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
   auto ns = VERIFY_RESULT(FindNamespace(req.namespace_()));
-
-  // Pre-colocation GA colocated tables in a legacy colocated database are colocated via database,
-  // but after GA, colocated tables are colocated via tablegroups.
-  bool is_colocated_via_database;
-  NamespaceId namespace_id;
-  NamespaceName namespace_name;
-  {
-    auto ns_lock = ns->LockForRead();
-    if (ns->database_type() != GetDatabaseTypeForTable(req.table_type())) {
-      Status s = STATUS(NotFound, "Namespace not found");
-      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
-    }
-    namespace_id = ns->id();
-    namespace_name = ns->name();
-    SharedLock lock(mutex_);
-    is_colocated_via_database = IsColocatedDbParentTableId(req.table_id())
-        || colocated_db_tablets_map_.find(ns->id()) != colocated_db_tablets_map_.end();
-  }
 
   // For index table, find the table info
   scoped_refptr<TableInfo> indexed_table;
@@ -3668,16 +3633,30 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         indexed_table->LockForRead(), resp));
   }
 
-  // Determine if this table should be colocated with its database.
-  if (req.has_is_colocated_via_database() && !req.is_colocated_via_database()) {
-    // Opt out of colocation if the request says so.
-    is_colocated_via_database = false;
-  } else if (indexed_table && !indexed_table->colocated()) {
-    // Opt out of colocation if the indexed table opted out of colocation.
-    is_colocated_via_database = false;
+  // Pre-colocation GA colocated tables in a legacy colocated database are colocated via database,
+  // but after GA, colocated tables are colocated via tablegroups.
+  bool is_colocated_via_database;
+  NamespaceId namespace_id;
+  NamespaceName namespace_name;
+  {
+    auto ns_lock = ns->LockForRead();
+    if (ns->database_type() != GetDatabaseTypeForTable(req.table_type())) {
+      Status s = STATUS(NotFound, "Namespace not found");
+      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+    }
+    namespace_id = ns->id();
+    namespace_name = ns->name();
+    SharedLock lock(mutex_);
+    is_colocated_via_database =
+        (IsColocatedDbParentTableId(req.table_id()) ||
+         colocated_db_tablets_map_.find(ns->id()) != colocated_db_tablets_map_.end()) &&
+        // Opt out of colocation if the request says so.
+        (!req.has_is_colocated_via_database() || req.is_colocated_via_database()) &&
+        // Opt out of colocation if the indexed table opted out of colocation.
+        (!indexed_table || indexed_table->colocated());
   }
 
-  bool colocated = is_colocated_via_database || req.has_tablegroup_id();
+  const bool colocated = is_colocated_via_database || req.has_tablegroup_id();
   SCHECK(!colocated || req.has_table_id(),
          InvalidArgument, "Colocated table should specify a table ID");
 
@@ -3762,71 +3741,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     GetTableReplicationInfo(req.replication_info(), req.tablespace_id()));
   const PlacementInfoPB& placement_info = replication_info.live_replicas();
 
-  // Calculate number of tablets to be used. Priorities:
-  //   1. Use Internally specified value from 'CreateTableRequestPB::num_tablets'.
-  //   2. Use User specified value from
-  //      'CreateTableRequestPB::SchemaPB::TablePropertiesPB::num_tablets'.
-  //      Note, that the number will be saved in schema stored in the master persistent
-  //      SysCatalog irrespective of which way we choose the number of tablets to create.
-  //      If nothing is specified in this field, nothing will be stored in the table
-  //      TablePropertiesPB for number of tablets
-  //   3. Calculate own value.
-  int num_tablets = 0;
-  if (req.has_num_tablets()) {
-    num_tablets = req.num_tablets(); // Internal request.
-  }
-
-  if (num_tablets <= 0 && schema.table_properties().HasNumTablets()) {
-    num_tablets = schema.table_properties().num_tablets(); // User request.
-  }
-
-  if (num_tablets <= 0) {
-    // Use default as client could have gotten the value before any tserver had heartbeated
-    // to (a new) master leader.
-    const auto num_live_tservers =
-        GetNumLiveTServersForPlacement(placement_info.placement_uuid());
-    num_tablets = narrow_cast<int>(
-        num_live_tservers * (is_pg_table ? FLAGS_ysql_num_shards_per_tserver
-                                         : FLAGS_yb_num_shards_per_tserver));
-    LOG(INFO) << "Setting default tablets to " << num_tablets << " with "
-              << num_live_tservers << " primary servers";
-  }
-
-  // Create partitions.
-  PartitionSchema partition_schema;
-  vector<Partition> partitions;
-  if (colocated) {
-    RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
-    req.clear_partition_schema();
-    num_tablets = 1;
-  } else {
-    RETURN_NOT_OK(PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema));
-    if (req.partitions_size() > 0) {
-      if (req.partitions_size() != num_tablets) {
-        Status s = STATUS(InvalidArgument, "Partitions are not defined for all tablets");
-        return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
-      }
-      string last;
-      for (const auto& p : req.partitions()) {
-        Partition np;
-        Partition::FromPB(p, &np);
-        if (np.partition_key_start() != last) {
-          Status s = STATUS(InvalidArgument,
-                            "Partitions does not cover the full partition keyspace");
-          return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
-        }
-        last = np.partition_key_end();
-        partitions.push_back(std::move(np));
-      }
-    } else {
-      // Supplied number of partitions is merely a suggestion, actual number of
-      // created partitions might differ.
-      RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
-    }
-    // The vector 'partitions' contains real setup partitions, so the variable
-    // should be updated.
-    num_tablets = narrow_cast<int>(partitions.size());
-  }
+  const auto [partition_schema, partitions] =
+      VERIFY_RESULT(CreatePartitions(schema, placement_info, colocated, &req, resp));
 
   TSDescriptorVector all_ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&all_ts_descs);
@@ -3838,9 +3754,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     ValidateReplicationInfoResponsePB validate_resp;
     RETURN_NOT_OK(ValidateReplicationInfo(&validate_req, &validate_resp));
   }
-
-  LOG(INFO) << "Set number of tablets: " << num_tablets;
-  req.set_num_tablets(num_tablets);
 
   // For index table, populate the index info.
   IndexInfoPB index_info;
@@ -5522,13 +5435,15 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
                   table_id,
                   MasterError(MasterErrorPB::INVALID_REQUEST));
   }
-
-  if (!FLAGS_enable_delete_truncate_cdcsdk_table && IsCdcSdkEnabled(*table)) {
-    return STATUS(
-        NotSupported,
-        "Cannot truncate a table in a CDCSDK Stream.",
-        table_id,
-        MasterError(MasterErrorPB::INVALID_REQUEST));
+  {
+    SharedLock lock(mutex_);
+    if (!FLAGS_enable_delete_truncate_cdcsdk_table && IsTablePartOfCDCSDK(*table)) {
+        return STATUS(
+            NotSupported,
+            "Cannot truncate a table in a CDCSDK Stream.",
+            table_id,
+            MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
   }
 
   // Send a Truncate() request to each tablet in the table.
@@ -5890,22 +5805,18 @@ Status CatalogManager::DeleteTable(
     TableId table_id = table->id();
     resp->set_table_id(table_id);
     TableId indexed_table_id;
+    bool is_transactional = false;
+    TableType index_table_type;
     {
       auto l = table->LockForRead();
       indexed_table_id = GetIndexedTableId(l->pb);
+      is_transactional = l->schema().table_properties().is_transactional();
+      index_table_type = l->table_type();
     }
     scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
     const bool is_pg_table = indexed_table != nullptr &&
                              indexed_table->GetTableType() == PGSQL_TABLE_TYPE;
-    bool is_transactional;
-    {
-      Schema index_schema;
-      RETURN_NOT_OK(table->GetSchema(&index_schema));
-      is_transactional = index_schema.table_properties().is_transactional();
-    }
-    const bool index_backfill_enabled =
-        IsIndexBackfillEnabled(table->GetTableType(), is_transactional);
-    if (!is_pg_table && index_backfill_enabled) {
+    if (!is_pg_table && IsIndexBackfillEnabled(index_table_type, is_transactional)) {
       return MarkIndexInfoFromTableForDeletion(
           indexed_table_id, table_id, /* multi_stage */ true, resp);
     }
@@ -6401,11 +6312,23 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
   TRACE("Locking table");
   auto l = table->LockForRead();
 
+  if (l->is_index() && l->table_type() != PGSQL_TABLE_TYPE) {
+    if (IsIndexBackfillEnabled(
+            l->table_type(), l->schema().table_properties().is_transactional())) {
+      auto indexed_table = GetTableInfo(GetIndexedTableId(l->pb));
+      if (indexed_table != nullptr &&
+          indexed_table->AttachedYCQLIndexDeletionInProgress(req->table_id())) {
+        resp->set_done(true);
+        return Status::OK();
+      }
+    }
+  }
+
   if (!l->started_deleting() && !l->started_hiding()) {
     LOG(WARNING) << "Servicing IsDeleteTableDone request for table id " << req->table_id()
                  << ": NOT deleted in state " << l->state_name();
     Status s = STATUS(IllegalState, "The object was NOT deleted", l->pb.state_msg());
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
   }
 
   // Temporary fix for github issue #5290.
@@ -7343,6 +7266,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
   bool include_user_table = has_rel_filter ? false : true;
   bool include_user_index = has_rel_filter ? false : true;
   bool include_user_matview = has_rel_filter ? false : true;
+  bool include_colocated_parent_table = has_rel_filter ? false : true;
   bool include_system_table = req->exclude_system_tables() ? false
       : (has_rel_filter ? false : true);
 
@@ -7355,6 +7279,8 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
       include_user_index = true;
     } else if (relation == MATVIEW_TABLE_RELATION) {
       include_user_matview = true;
+    } else if (relation == COLOCATED_PARENT_TABLE_RELATION) {
+      include_colocated_parent_table = true;
     }
   }
 
@@ -7394,6 +7320,11 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
         continue;
       }
       relation_type = USER_TABLE_RELATION;
+    } else if (table_info->IsColocationParentTable()) {
+      if (!include_colocated_parent_table || !include_system_table) {
+        continue;
+      }
+      relation_type = COLOCATED_PARENT_TABLE_RELATION;
     } else {
       if (!include_system_table) {
         continue;
@@ -11516,6 +11447,106 @@ Status CatalogManager::BuildLocationsForSystemTablet(
         google::protobuf::RepeatedField<CapabilityId>(capabilities.begin(), capabilities.end());
   }
   return Status::OK();
+}
+
+Status CatalogManager::MaybeCreateLocalTransactionTable(
+    const CreateTableRequestPB& request, rpc::RpcContext* rpc) {
+  const bool is_transactional = request.schema().table_properties().is_transactional();
+  if (GetAtomicFlag(&FLAGS_auto_create_local_transaction_tables)) {
+    if (is_transactional && request.has_tablespace_id()) {
+      const auto& tablespace_id = request.tablespace_id();
+      auto tablespace_pb = VERIFY_RESULT(GetTablespaceReplicationInfoWithRetry(tablespace_id));
+      if (tablespace_pb) {
+        RETURN_NOT_OK(CreateLocalTransactionStatusTableIfNeeded(rpc, tablespace_id));
+      } else {
+        VLOG(1) << "Not attempting to create a local transaction status table: "
+                << "tablespace " << EXPR_VALUE_FOR_LOG(tablespace_id) << " has no placement\n";
+      }
+    } else {
+      VLOG(1) << "Not attempting to create a local transaction status table:\n"
+              << "  " << EXPR_VALUE_FOR_LOG(is_transactional) << "\n "
+              << "  " << EXPR_VALUE_FOR_LOG(request.has_tablespace_id());
+    }
+  }
+  return Status::OK();
+}
+
+int CatalogManager::CalculateNumTabletsForTableCreation(
+    const CreateTableRequestPB& request, const Schema& schema,
+    const PlacementInfoPB& placement_info) {
+  // Calculate number of tablets to be used. Priorities:
+  //   1. Use Internally specified value from 'CreateTableRequestPB::num_tablets'.
+  //   2. Use User specified value from
+  //      'CreateTableRequestPB::SchemaPB::TablePropertiesPB::num_tablets'.
+  //      Note, that the number will be saved in schema stored in the master persistent
+  //      SysCatalog irrespective of which way we choose the number of tablets to create.
+  //      If nothing is specified in this field, nothing will be stored in the table
+  //      TablePropertiesPB for number of tablets
+  //   3. Calculate own value.
+  int num_tablets = 0;
+  if (request.has_num_tablets()) {
+    num_tablets = request.num_tablets();  // Internal request.
+  }
+
+  if (num_tablets <= 0 && schema.table_properties().HasNumTablets()) {
+    num_tablets = schema.table_properties().num_tablets();  // User request.
+  }
+
+  if (num_tablets <= 0) {
+    // Use default as client could have gotten the value before any tserver had heartbeated
+    // to (a new) master leader.
+    const auto num_live_tservers = GetNumLiveTServersForPlacement(placement_info.placement_uuid());
+    num_tablets = narrow_cast<int>(
+        num_live_tservers * (request.table_type() == PGSQL_TABLE_TYPE
+                                 ? FLAGS_ysql_num_shards_per_tserver
+                                 : FLAGS_yb_num_shards_per_tserver));
+    LOG(INFO) << "Setting default tablets to " << num_tablets << " with " << num_live_tservers
+              << " primary servers";
+  }
+  return num_tablets;
+}
+
+Result<std::pair<PartitionSchema, std::vector<Partition>>> CatalogManager::CreatePartitions(
+    const Schema& schema, const PlacementInfoPB& placement_info, bool colocated,
+    CreateTableRequestPB* request, CreateTableResponsePB* resp) {
+  int num_tablets = CalculateNumTabletsForTableCreation(*request, schema, placement_info);
+  PartitionSchema partition_schema;
+  vector<Partition> partitions;
+  if (colocated) {
+    RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
+    request->clear_partition_schema();
+    num_tablets = 1;
+  } else {
+    RETURN_NOT_OK(PartitionSchema::FromPB(request->partition_schema(), schema, &partition_schema));
+    if (request->partitions_size() > 0) {
+      if (request->partitions_size() != num_tablets) {
+        Status s = STATUS(InvalidArgument, "Partitions are not defined for all tablets");
+        return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+      }
+      string last;
+      for (const auto& p : request->partitions()) {
+        Partition np;
+        Partition::FromPB(p, &np);
+        if (np.partition_key_start() != last) {
+          Status s =
+              STATUS(InvalidArgument, "Partitions does not cover the full partition keyspace");
+          return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+        }
+        last = np.partition_key_end();
+        partitions.push_back(std::move(np));
+      }
+    } else {
+      // Supplied number of partitions is merely a suggestion, actual number of
+      // created partitions might differ.
+      RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
+    }
+    // The vector 'partitions' contains real setup partitions, so the variable
+    // should be updated.
+    num_tablets = narrow_cast<int>(partitions.size());
+  }
+  LOG(INFO) << "Set number of tablets: " << num_tablets;
+  request->set_num_tablets(num_tablets);
+  return std::pair{partition_schema, partitions};
 }
 
 Status CatalogManager::BuildLocationsForTablet(
