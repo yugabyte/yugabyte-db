@@ -508,6 +508,10 @@
         "$ref" : "#/definitions/AlertChannelParams"
       }, {
         "properties" : {
+          "httpAuth" : {
+            "$ref" : "#/definitions/HTTP Auth information",
+            "description" : "Authentication Details"
+          },
           "webhookUrl" : {
             "description" : "Webhook URL",
             "type" : "string"
@@ -2370,6 +2374,23 @@
       },
       "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
+    },
+    "Basic Auth information" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/HTTP Auth information"
+      }, {
+        "properties" : {
+          "password" : {
+            "description" : "Password",
+            "type" : "string"
+          },
+          "username" : {
+            "description" : "Username",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      } ]
     },
     "BootstarpBackupParams" : {
       "description" : "Backup parameters for bootstrapping",
@@ -4371,6 +4392,17 @@
       "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "masterGFlags", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
       "type" : "object"
     },
+    "HTTP Auth information" : {
+      "discriminator" : "type",
+      "properties" : {
+        "type" : {
+          "description" : "HTTP Auth type",
+          "enum" : [ "NONE", "BASIC", "TOKEN" ],
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "HashedTimestampColumnFinderResponse" : {
       "properties" : {
         "current_database" : {
@@ -5678,6 +5710,14 @@
         }
       },
       "type" : "object"
+    },
+    "No Auth" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/HTTP Auth information"
+      }, {
+        "properties" : { },
+        "type" : "object"
+      } ]
     },
     "NodeActionFormData" : {
       "properties" : {
@@ -9752,6 +9792,23 @@
       },
       "required" : [ "allowInsecure", "clusters", "creatingUser", "enableClientToNodeEncrypt", "enableNodeToNodeEncrypt", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
+    },
+    "Token Auth information" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/HTTP Auth information"
+      }, {
+        "properties" : {
+          "tokenHeader" : {
+            "description" : "Header name",
+            "type" : "string"
+          },
+          "tokenValue" : {
+            "description" : "Token value",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      } ]
     },
     "TriggerHealthCheckResult" : {
       "description" : "The response type for triggering a health check. Contains the timestamp of when the health check was triggered.",
