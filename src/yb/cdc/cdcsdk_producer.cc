@@ -1331,6 +1331,7 @@ Status GetChangesForCDCSDK(
       // Snapshot is already taken.
       HybridTime ht;
       time = ReadHybridTime::FromUint64(from_op_id.snapshot_time());
+      *leader_safe_time = HybridTime(from_op_id.snapshot_time());
       nextKey = from_op_id.key();
       VLOG(1) << "The after snapshot term " << from_op_id.term() << "index  " << from_op_id.index()
               << "key " << from_op_id.key() << "snapshot time " << from_op_id.snapshot_time();
