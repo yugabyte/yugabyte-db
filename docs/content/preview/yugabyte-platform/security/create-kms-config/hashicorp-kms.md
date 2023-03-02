@@ -3,8 +3,6 @@ title: Create a KMS configuration using HashiCorp Vault
 headerTitle: Create a KMS configuration using HashiCorp Vault
 linkTitle: Create a KMS configuration
 description: Use YugabyteDB Anywhere to create a KMS configuration for HashiCorp Vault.
-aliases:
-  - /preview/yugabyte-platform/security/create-kms-config
 menu:
   preview_yugabyte-platform:
     parent: security
@@ -29,7 +27,7 @@ type: docs
   <li >
     <a href="{{< relref "./azure-kms.md" >}}" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
-      &nbsp;&nbsp;Azure KMS
+      Azure Key Vault
     </a>
   </li>
   <li >
@@ -39,7 +37,8 @@ type: docs
     </a>
   </li>
 </ul>
-<br>Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [HashiCorp Vault](https://www.vaultproject.io/) as a KMS.
+
+Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [HashiCorp Vault](https://www.vaultproject.io/) as a KMS.
 
 ## Configure HashiCorp Vault
 
@@ -51,78 +50,78 @@ Before you can start configuring HashiCorp Vault, install it on a virtual machin
 
 You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywhere, as follows:
 
-- Create a vault configuration file that references your nodes and specifies the address, as follows:
+1. Create a vault configuration file that references your nodes and specifies the address, as follows:
 
-  ```properties
-  storage "raft" {
-   path  = "./vault/data/"
-   node_id = "node1"
-  }
+    ```properties
+    storage "raft" {
+    path  = "./vault/data/"
+    node_id = "node1"
+    }
 
-  listener "tcp" {
-   address   = "127.0.0.1:8200"
-   tls_disable = "true"
-  }
+    listener "tcp" {
+    address   = "127.0.0.1:8200"
+    tls_disable = "true"
+    }
 
-  api_addr = "http://127.0.0.1:8200"
-  cluster_addr = "https://127.0.0.1:8201"
-  ui = true
-  disable_mlock = true
-  default_lease_ttl = "768h"
-  max_lease_ttl = "8760h"
-  ```
+    api_addr = "http://127.0.0.1:8200"
+    cluster_addr = "https://127.0.0.1:8201"
+    ui = true
+    disable_mlock = true
+    default_lease_ttl = "768h"
+    max_lease_ttl = "8760h"
+    ```
 
-  Replace `127.0.0.1` with the vault web address.
+    Replace `127.0.0.1` with the vault web address.
 
-  For additional configuration options, see [Parameters](https://www.vaultproject.io/docs/configuration#parameters).
+    For additional configuration options, see [Parameters](https://www.vaultproject.io/docs/configuration#parameters).
 
-- Initialize the vault server by following instructions provided in [Operator init](https://www.vaultproject.io/docs/commands/operator/init).
+1. Initialize the vault server by following instructions provided in [Operator init](https://www.vaultproject.io/docs/commands/operator/init).
 
-- Allow access to the vault by following instructions provided in [Unsealing](https://www.vaultproject.io/docs/concepts/seal#unsealing).
+1. Allow access to the vault by following instructions provided in [Unsealing](https://www.vaultproject.io/docs/concepts/seal#unsealing).
 
-- Enable the secret engine by executing the following command:
+1. Enable the secret engine by executing the following command:
 
-  ```shell
-  vault secrets enable transit
-  ```
+    ```shell
+    vault secrets enable transit
+    ```
 
-  For more information, see [Transit Secrets Engine](https://www.vaultproject.io/docs/secrets/transit) and [Setup](https://www.vaultproject.io/docs/secrets/transit#setup).
+    For more information, see [Transit Secrets Engine](https://www.vaultproject.io/docs/secrets/transit) and [Setup](https://www.vaultproject.io/docs/secrets/transit#setup).
 
-- Create the vault policy, as per the following sample:
+1. Create the vault policy, as per the following sample:
 
-  ```properties
-  path "transit/*" {
-    capabilities = ["create", "read", "update", "delete", "list"]
-  }
+    ```properties
+    path "transit/*" {
+      capabilities = ["create", "read", "update", "delete", "list"]
+    }
 
-  path "auth/token/lookup-self" {
-          capabilities = ["read"]
-  }
+    path "auth/token/lookup-self" {
+            capabilities = ["read"]
+    }
 
-  path "sys/capabilities-self" {
-          capabilities = ["read", "update"]
-  }
+    path "sys/capabilities-self" {
+            capabilities = ["read", "update"]
+    }
 
-  path "auth/token/renew-self" {
-          capabilities = ["update"]
-  }
+    path "auth/token/renew-self" {
+            capabilities = ["update"]
+    }
 
-  path "sys/*" {
-          capabilities = ["read"]
-  }
-  ```
+    path "sys/*" {
+            capabilities = ["read"]
+    }
+    ```
 
-- Generate a token with appropriate permissions (as per the referenced policy) by executing the following command:
+1. Generate a token with appropriate permissions (as per the referenced policy) by executing the following command:
 
-  ```shell
-  vault token create -no-default-policy -policy=trx
-  ```
+    ```shell
+    vault token create -no-default-policy -policy=trx
+    ```
 
-  You may also specify the following for your token:
+    You may also specify the following for your token:
 
-  - `ttl` — Time to live (TTL). If not specified, the default TTL of 32 days is used, which means that the generated token will expire after 32 days.
+    - `ttl` — Time to live (TTL). If not specified, the default TTL of 32 days is used, which means that the generated token will expire after 32 days.
 
-  - `period` — If specified, the token can be infinitely renewed.
+    - `period` — If specified, the token can be infinitely renewed.
 
 ## Create a KMS configuration
 
@@ -139,7 +138,7 @@ You can create a new KMS configuration that uses HashiCorp Vault as follows:
     - **Vault Address** — Enter the web address of your vault. For example, `http://127.0.0.1:8200`
     - **Secret Token** — Enter the token you obtained from the vault.
     - **Secret Engine** — This is a read-only field with its value set to `transit`. It identifies the secret engine.
-    - **Mount Path** — Specify the path to the secret engine within the vault. The default value is `transit/`.<br>
+    - **Mount Path** — Specify the path to the secret engine in the vault. The default value is `transit/`.
 
     ![Create config](/images/yp/security/hashicorp-config.png)
 

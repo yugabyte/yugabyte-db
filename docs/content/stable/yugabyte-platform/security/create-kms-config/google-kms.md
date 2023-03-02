@@ -28,7 +28,7 @@ type: docs
   <li >
     <a href="{{< relref "./azure-kms.md" >}}" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
-      &nbsp;&nbsp;&nbsp;&nbsp;Azure KMS
+      Azure Key Vault
     </a>
   </li>
 
@@ -41,7 +41,7 @@ type: docs
 
 </ul>
 
-<br>Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [Google Cloud KMS](https://cloud.google.com/security-key-management).
+Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [Google Cloud KMS](https://cloud.google.com/security-key-management).
 
 Conceptually, Google Cloud KMS consists of a key ring containing one or more cryptographic keys, with each key capable of having multiple versions.
 
@@ -67,7 +67,7 @@ You can create a KMS configuration that uses Google Cloud KMS, as follows:
 
 1. Click **Create New Config**.
 
-3. Enter the following configuration details in the form:
+1. Enter the following configuration details in the form:
 
     - **Configuration Name** — Enter a meaningful name for your configuration.
     - **KMS Provider** — Select **GCP KMS**.
@@ -80,12 +80,10 @@ You can create a KMS configuration that uses Google Cloud KMS, as follows:
 
     ![Google KMS](/images/yp/security/googlekms-config.png)
 
-3. Click **Save**.<br>
+1. Click **Save**.
 
     Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 
-4. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
-
-
+1. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
 
 Note that YugabyteDB Anywhere does not manage the key ring and deleting the KMS configuration does not destroy the key ring, cryptographic key, or its versions on Google Cloud KMS.
