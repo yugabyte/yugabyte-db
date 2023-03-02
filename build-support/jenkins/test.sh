@@ -97,7 +97,7 @@ fi
 activate_virtualenv
 set_pythonpath
 
-# shellcheck source=build-support/common-lto.sh
+# shellcheck source=build-support/jenkins/common-lto.sh
 . "${BASH_SOURCE%/*}/common-lto.sh"
 
 # -------------------------------------------------------------------------------------------------
