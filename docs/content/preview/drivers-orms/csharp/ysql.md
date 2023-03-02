@@ -130,30 +130,7 @@ NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder)
 
 #### Use SSL
 
-Set up the driver properties to configure the credentials and SSL certificates for connecting to your cluster. The following table describes the additional parameters the .NET Npgsql driver requires as part of the connection string when using SSL.
-
-| Npgsql Parameter | Description |
-| :---------- | :---------- |
-| SslMode  | SSL Mode |
-| RootCertificate | Path to the root certificate on your computer |
-
-The following is an example connection string for connecting to YugabyteDB using SSL.
-
-```csharp
-var connStringBuilder = new NpgsqlConnectionStringBuilder();
-    connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.ybdb.io";
-    connStringBuilder.Port = 5433;
-    connStringBuilder.SslMode = SslMode.VerifyFull;
-    connStringBuilder.RootCertificate = "/root.crt"; //Provide full path to your root CA.
-    connStringBuilder.Username = "admin";
-    connStringBuilder.Password = "xxxxxx";
-    connStringBuilder.Database = "yugabyte";
-    CRUD(connStringBuilder.ConnectionString);
-```
-
-[YugabyteDB Managed](https://www.yugabyte.com/managed/) clusters require SSL. Refer to [Connect applications](../../../yugabyte-cloud/cloud-connect/connect-applications/) for instructions on how to obtain the cluster connection parameters and download the CA certificate.
-
-Refer to [Configure SSL/TLS](../../../reference/drivers/csharp/yb-npgsql-reference/#configure-ssl-tls) for more information on the default and supported SSL modes, and examples for setting up your connection strings when using SSL.
+To set up the driver properties to configure the credentials and SSL certificates for connecting to your cluster, refer to [Use SSL](../postgres-npgsql/#use-ssl).
 
 ### Step 3 : Write your application
 
