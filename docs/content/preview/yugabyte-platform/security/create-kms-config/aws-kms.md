@@ -101,7 +101,7 @@ You can create a KMS configuration that uses AWS KMS as follows:
       }
     ```
 
-1. Click **Save**.<br>
+1. Click **Save**.
 
     Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 
