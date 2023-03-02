@@ -4,6 +4,7 @@
 package util
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -69,65 +70,75 @@ func FileLogger() *AppLogger {
 	return fileLogger
 }
 
-func (l *AppLogger) getEntry() *log.Entry {
+func (l *AppLogger) getEntry(ctx context.Context) *log.Entry {
 	entry := log.NewEntry(l.logger)
 	if l.enableDebug {
 		config := CurrentConfig()
+		corrId := ""
+		if ctx != nil {
+			if v := ctx.Value(CorrelationId); v != nil {
+				corrId = v.(string)
+			}
+		}
 		// Get the line number from the runtime stack.
 		funcPtr, file, line, ok := runtime.Caller(2)
 		if ok {
 			entry = entry.WithFields(
 				log.Fields{
-					"function": runtime.FuncForPC(funcPtr).Name(),
-					"file":     file,
-					"line":     line,
+					"func": runtime.FuncForPC(funcPtr).Name(),
+					"file": file,
+					"line": line,
 				},
 			)
 		}
 		if version := config.String(PlatformVersionKey); version != "" {
-			entry.WithField("version", version)
+			entry = entry.WithField("version", version)
+		}
+		if corrId != "" {
+			entry = entry.WithField("corr", corrId)
 		}
 	}
 	return entry
 }
-func (l *AppLogger) Errorf(msg string, v ...interface{}) {
-	l.getEntry().Errorf(msg, v...)
+
+func (l *AppLogger) Errorf(ctx context.Context, msg string, v ...interface{}) {
+	l.getEntry(ctx).Errorf(msg, v...)
 }
 
-func (l *AppLogger) Infof(msg string, v ...interface{}) {
-	l.getEntry().Infof(msg, v...)
+func (l *AppLogger) Infof(ctx context.Context, msg string, v ...interface{}) {
+	l.getEntry(ctx).Infof(msg, v...)
 }
 
-func (l *AppLogger) Error(msg string) {
-	l.getEntry().Error(msg)
+func (l *AppLogger) Error(ctx context.Context, msg string) {
+	l.getEntry(ctx).Error(msg)
 }
 
-func (l *AppLogger) Info(msg string) {
-	l.getEntry().Infof(msg)
+func (l *AppLogger) Info(ctx context.Context, msg string) {
+	l.getEntry(ctx).Infof(msg)
 }
 
-func (l *AppLogger) Debug(msg string) {
-	l.getEntry().Debug(msg)
+func (l *AppLogger) Debug(ctx context.Context, msg string) {
+	l.getEntry(ctx).Debug(msg)
 }
 
-func (l *AppLogger) Debugf(msg string, v ...interface{}) {
-	l.getEntry().Debugf(msg, v...)
+func (l *AppLogger) Debugf(ctx context.Context, msg string, v ...interface{}) {
+	l.getEntry(ctx).Debugf(msg, v...)
 }
 
-func (l *AppLogger) Warn(msg string) {
-	l.getEntry().Warn(msg)
+func (l *AppLogger) Warn(ctx context.Context, msg string) {
+	l.getEntry(ctx).Warn(msg)
 }
 
-func (l *AppLogger) Warnf(msg string, v ...interface{}) {
-	l.getEntry().Warnf(msg, v...)
+func (l *AppLogger) Warnf(ctx context.Context, msg string, v ...interface{}) {
+	l.getEntry(ctx).Warnf(msg, v...)
 }
 
-func (l *AppLogger) Fatal(msg string, v ...interface{}) {
-	l.getEntry().Fatal(msg)
+func (l *AppLogger) Fatal(ctx context.Context, msg string, v ...interface{}) {
+	l.getEntry(ctx).Fatal(msg)
 }
 
-func (l *AppLogger) Fatalf(msg string, v ...interface{}) {
-	l.getEntry().Fatalf(msg, v...)
+func (l *AppLogger) Fatalf(ctx context.Context, msg string, v ...interface{}) {
+	l.getEntry(ctx).Fatalf(msg, v...)
 }
 
 // IsDebugEnabled returns true only if debug is enabled.
