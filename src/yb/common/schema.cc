@@ -40,6 +40,8 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/row.h"
 
+#include "yb/docdb/doc_key.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
@@ -61,6 +63,8 @@ using std::shared_ptr;
 using std::unordered_set;
 using std::string;
 using std::vector;
+using yb::docdb::DocKey;
+using yb::docdb::KeyEntryValue;
 
 // ------------------------------------------------------------------------------------------------
 // ColumnSchema
@@ -326,6 +330,7 @@ void Schema::CopyFrom(const Schema& other) {
   cols_ = other.cols_;
   col_ids_ = other.col_ids_;
   col_offsets_ = other.col_offsets_;
+  doc_key_offsets_ = other.doc_key_offsets_;
   id_to_index_ = other.id_to_index_;
 
   // We can't simply copy name_to_index_ since the GStringPiece keys
@@ -354,6 +359,7 @@ void Schema::swap(Schema& other) {
   cols_.swap(other.cols_);
   col_ids_.swap(other.col_ids_);
   col_offsets_.swap(other.col_offsets_);
+  doc_key_offsets_.swap(other.doc_key_offsets_);
   name_to_index_.swap(other.name_to_index_);
   id_to_index_.swap(other.id_to_index_);
   std::swap(has_nullables_, other.has_nullables_);
@@ -434,22 +440,33 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
   }
 
   // Verify that the key columns are not nullable nor static
+  bool has_var_length_key_col = false;
   for (size_t i = 0; i < key_columns; ++i) {
-    if (PREDICT_FALSE(cols_[i].is_nullable())) {
+    const auto& col = cols_[i];
+    if (PREDICT_FALSE(col.is_nullable())) {
       return STATUS(InvalidArgument,
         "Bad schema", strings::Substitute("Nullable key columns are not "
-                                          "supported: $0", cols_[i].name()));
+                                          "supported: $0", col.name()));
     }
-    if (PREDICT_FALSE(cols_[i].is_static())) {
+    if (PREDICT_FALSE(col.is_static())) {
       return STATUS(InvalidArgument,
         "Bad schema", strings::Substitute("Static key columns are not "
-                                          "allowed: $0", cols_[i].name()));
+                                          "allowed: $0", col.name()));
     }
-    if (PREDICT_FALSE(cols_[i].is_counter())) {
+    if (PREDICT_FALSE(col.is_counter())) {
       return STATUS(InvalidArgument,
         "Bad schema", strings::Substitute("Counter key columns are not allowed: $0",
-                                          cols_[i].name()));
+                                          col.name()));
     }
+
+    if (KeyEntryValue::GetEncodedKeyEntryValueSize(col.type()->main()) == 0) {
+      has_var_length_key_col = true;
+    }
+  }
+
+  // Compute the key column offsets if there are no varlen columns.
+  if (!has_var_length_key_col) {
+    doc_key_offsets_ = DocKey::ComputeKeyColumnOffsets(*this);
   }
 
   // Calculate the offset of each column in the row format.
@@ -482,6 +499,12 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
     }
   }
   return Status::OK();
+}
+
+void Schema::UpdateDocKeyOffsets() {
+  if (doc_key_offsets_.has_value()) {
+    doc_key_offsets_ = DocKey::ComputeKeyColumnOffsets(*this);
+  }
 }
 
 Status Schema::CreateProjectionByNames(const std::vector<GStringPiece>& col_names,
@@ -631,6 +654,9 @@ size_t Schema::memory_footprint_excluding_this() const {
   }
   if (col_offsets_.capacity() > 0) {
     size += malloc_usable_size(col_offsets_.data());
+  }
+  if (doc_key_offsets_.has_value()) {
+    size += malloc_usable_size(doc_key_offsets_->key_offsets.data());
   }
   size += name_to_index_bytes_;
   size += id_to_index_.memory_footprint_excluding_this();

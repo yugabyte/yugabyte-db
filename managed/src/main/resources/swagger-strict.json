@@ -14,6 +14,14 @@
         },
         "awsHostedZoneName" : {
           "type" : "string"
+        },
+        "hostVpcId" : {
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "hostVpcRegion" : {
+          "readOnly" : true,
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -22,7 +30,6 @@
       "properties" : {
         "arch" : {
           "enum" : [ "x86_64", "aarch64" ],
-          "readOnly" : true,
           "type" : "string"
         },
         "securityGroupId" : {
@@ -501,6 +508,10 @@
         "$ref" : "#/definitions/AlertChannelParams"
       }, {
         "properties" : {
+          "httpAuth" : {
+            "$ref" : "#/definitions/HTTP Auth information",
+            "description" : "Authentication Details"
+          },
           "webhookUrl" : {
             "description" : "Webhook URL",
             "type" : "string"
@@ -1240,7 +1251,7 @@
       "properties" : {
         "action" : {
           "description" : "Action",
-          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "Validate", "Acknowledge", "SyncXClusterConfig", "Login", "Promote", "Bootstrap", "Configure", "UpdateOptions", "UpdateLoadBalancerConfig", "RefreshPricing", "UpgradeSoftware", "UpgradeGFlags", "UpgradeKubernetesOverrides", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "RebootUniverse", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "CreateRestrictedUserInDB", "DropUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateBackup", "RestoreBackup", "CreateSingleTableBackup", "CreateMultiTableBackup", "CreateBackupSchedule", "CreatePitrConfig", "RestoreSnapshotSchedule", "DeletePitrConfig", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType", "GetUniverseResources", "ThirdpartySoftwareUpgrade", "CreateTableSpaces", "CreateHook", "DeleteHook", "UpdateHook", "CreateHookScope", "DeleteHookScope", "AddHook", "RemoveHook", "RotateAccessKey", "CreateAndRotateAccessKey", "RunHook", "RunApiTriggeredHooks", "AddNodeAgent", "UpdateNodeAgent", "DeleteNodeAgent", "DisableYbc", "UpgradeYbc", "InstallYbc", "SetThrottleParams" ],
+          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "Validate", "Acknowledge", "SyncXClusterConfig", "Login", "ApiLogin", "Promote", "Bootstrap", "Configure", "UpdateOptions", "UpdateLoadBalancerConfig", "RefreshPricing", "UpgradeSoftware", "UpgradeGFlags", "UpgradeKubernetesOverrides", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "RebootUniverse", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "CreateRestrictedUserInDB", "DropUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateBackup", "RestoreBackup", "CreateSingleTableBackup", "CreateMultiTableBackup", "CreateBackupSchedule", "CreatePitrConfig", "RestoreSnapshotSchedule", "DeletePitrConfig", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType", "GetUniverseResources", "ThirdpartySoftwareUpgrade", "CreateTableSpaces", "CreateHook", "DeleteHook", "UpdateHook", "CreateHookScope", "DeleteHookScope", "AddHook", "RemoveHook", "RotateAccessKey", "CreateAndRotateAccessKey", "RunHook", "RunApiTriggeredHooks", "AddNodeAgent", "UpdateNodeAgent", "DeleteNodeAgent", "DisableYbc", "UpgradeYbc", "InstallYbc", "SetThrottleParams" ],
           "example" : "Create User",
           "readOnly" : true,
           "type" : "string"
@@ -2363,6 +2374,23 @@
       },
       "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
+    },
+    "Basic Auth information" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/HTTP Auth information"
+      }, {
+        "properties" : {
+          "password" : {
+            "description" : "Password",
+            "type" : "string"
+          },
+          "username" : {
+            "description" : "Username",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      } ]
     },
     "BootstarpBackupParams" : {
       "description" : "Backup parameters for bootstrapping",
@@ -3781,6 +3809,18 @@
       "required" : [ "license", "licenseType" ],
       "type" : "object"
     },
+    "CustomerLoginFormData" : {
+      "properties" : {
+        "email" : {
+          "type" : "string"
+        },
+        "password" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "email", "password" ],
+      "type" : "object"
+    },
     "CustomerRegisterFormData" : {
       "properties" : {
         "code" : {
@@ -4076,7 +4116,7 @@
     },
     "GCPCloudInfo" : {
       "properties" : {
-        "customGceNetwork" : {
+        "destVpcId" : {
           "type" : "string"
         },
         "gceApplicationCredentialsPath" : {
@@ -4084,6 +4124,10 @@
           "type" : "string"
         },
         "gceProject" : {
+          "type" : "string"
+        },
+        "hostVpcId" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "useHostCredentials" : {
@@ -4346,6 +4390,17 @@
         }
       },
       "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "masterGFlags", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
+      "type" : "object"
+    },
+    "HTTP Auth information" : {
+      "discriminator" : "type",
+      "properties" : {
+        "type" : {
+          "description" : "HTTP Auth type",
+          "enum" : [ "NONE", "BASIC", "TOKEN" ],
+          "type" : "string"
+        }
+      },
       "type" : "object"
     },
     "HashedTimestampColumnFinderResponse" : {
@@ -5656,6 +5711,14 @@
       },
       "type" : "object"
     },
+    "No Auth" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/HTTP Auth information"
+      }, {
+        "properties" : { },
+        "type" : "object"
+      } ]
+    },
     "NodeActionFormData" : {
       "properties" : {
         "nodeAction" : {
@@ -5670,7 +5733,7 @@
       "description" : "A node configuration.",
       "properties" : {
         "type" : {
-          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YQL_SERVER_HTTP_PORT", "YQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT" ],
+          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YQL_SERVER_HTTP_PORT", "YQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT", "VM_MAX_MAP_COUNT" ],
           "type" : "string"
         },
         "value" : {
@@ -6208,6 +6271,21 @@
         }
       },
       "required" : [ "buildNumber" ],
+      "type" : "object"
+    },
+    "PerProcessFlags" : {
+      "properties" : {
+        "value" : {
+          "additionalProperties" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "type" : "object"
+        }
+      },
+      "required" : [ "value" ],
       "type" : "object"
     },
     "PerfAdvisorSettingsFormData" : {
@@ -8571,6 +8649,26 @@
       "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "upgradeSystemCatalog", "ybSoftwareVersion" ],
       "type" : "object"
     },
+    "SpecificGFlags" : {
+      "description" : "GFlags for current cluster",
+      "properties" : {
+        "inheritFromPrimary" : {
+          "type" : "boolean"
+        },
+        "perAZ" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/PerProcessFlags"
+          },
+          "description" : "Overrides for gflags per availability zone",
+          "type" : "object"
+        },
+        "perProcessFlags" : {
+          "$ref" : "#/definitions/PerProcessFlags",
+          "description" : "Gflags grouped by procces"
+        }
+      },
+      "type" : "object"
+    },
     "StateChangeAuditInfo" : {
       "properties" : {
         "customerId" : {
@@ -9653,6 +9751,23 @@
       },
       "required" : [ "allowInsecure", "clusters", "creatingUser", "enableClientToNodeEncrypt", "enableNodeToNodeEncrypt", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
+    },
+    "Token Auth information" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/HTTP Auth information"
+      }, {
+        "properties" : {
+          "tokenHeader" : {
+            "description" : "Header name",
+            "type" : "string"
+          },
+          "tokenValue" : {
+            "description" : "Token value",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      } ]
     },
     "TriggerHealthCheckResult" : {
       "description" : "The response type for triggering a health check. Contains the timestamp of when the health check was triggered.",
@@ -10815,6 +10930,9 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "specificGFlags" : {
+          "$ref" : "#/definitions/SpecificGFlags"
+        },
         "tserverGFlags" : {
           "additionalProperties" : {
             "type" : "string"
@@ -10926,7 +11044,7 @@
       "description" : "A user with set of features, associated with a customer",
       "properties" : {
         "authTokenIssueDate" : {
-          "description" : "API token creation date",
+          "description" : "UI session token creation date",
           "example" : "2021-06-17T15:00:05-04:00",
           "format" : "date-time",
           "readOnly" : true,
@@ -10986,7 +11104,7 @@
       "description" : "A user associated with a customer",
       "properties" : {
         "authTokenIssueDate" : {
-          "description" : "API token creation date",
+          "description" : "UI session token creation date",
           "example" : "2021-06-17T15:00:05-04:00",
           "format" : "date-time",
           "readOnly" : true,
@@ -11293,7 +11411,7 @@
           "type" : "boolean"
         },
         "type" : {
-          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YQL_SERVER_HTTP_PORT", "YQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT" ],
+          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YQL_SERVER_HTTP_PORT", "YQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT", "VM_MAX_MAP_COUNT" ],
           "type" : "string"
         },
         "value" : {
@@ -11741,6 +11859,30 @@
     "version" : "v1"
   },
   "paths" : {
+    "/api/v1/api_login" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "apiLogin",
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "CustomerLoginFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/CustomerLoginFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SessionInfo"
+            }
+          }
+        },
+        "summary" : "Authenticate user and return api token",
+        "tags" : [ "Session management" ]
+      }
+    },
     "/api/v1/app_version" : {
       "get" : {
         "description" : "",
@@ -17046,84 +17188,6 @@
         "tags" : [ "Backups" ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/cdc_streams" : {
-      "get" : {
-        "description" : "List CDC Streams for a cluster",
-        "operationId" : "listCdcStreams",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "summary" : "List CDC Streams for a cluster"
-      },
-      "post" : {
-        "description" : "Create CDC Stream for a cluster",
-        "operationId" : "createCdcStream",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "summary" : "Create CDC Stream for a cluster"
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/cdc_streams/{streamId}" : {
-      "delete" : {
-        "description" : "Delete a CDC Stream for a cluster",
-        "operationId" : "deleteCdcStream",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "path",
-          "name" : "streamId",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "summary" : "Delete a CDC stream for a cluster"
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/clusters/primary" : {
       "put" : {
         "description" : "This will update primary cluster of existing universe.Use API to GET current universe. Lookup universeDetails attribute of the universe resource returned. Update the necessary field (e.g. numNodes) Use this updated universeDetails as request body. See https://github.com/yugabyte/yugabyte-db/blob/master/managed/api-examples/python-simple/edit-universe.ipynb",
@@ -18226,38 +18290,6 @@
         } ],
         "summary" : "Resume a paused universe",
         "tags" : [ "Universe management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/run_in_shell" : {
-      "post" : {
-        "description" : "This operation is no longer supported, for security reasons.",
-        "operationId" : "runInShell",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPError"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Run a shell command",
-        "tags" : [ "Universe database management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/run_query" : {

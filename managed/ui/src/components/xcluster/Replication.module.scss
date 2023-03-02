@@ -1,4 +1,4 @@
-@import '../../_style/colors.scss';
+@use '../../_style/colors.scss';
 
 .configActionsContainer {
   display: flex;
@@ -9,7 +9,7 @@
   .setMaxAcceptableLagBtn {
     margin-right: 10px;
 
-    background-color: $YB_BG_WHITE_3;
-    border: 1px solid $YB_BG_WHITE_4;
+    background-color: colors.$YB_BG_WHITE_3;
+    border: 1px solid colors.$YB_BG_WHITE_4;
   }
 }

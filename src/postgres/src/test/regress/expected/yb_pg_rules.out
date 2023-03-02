@@ -2399,6 +2399,14 @@ shoelace_obsolete| SELECT shoelace.sl_name,
   WHERE (NOT (EXISTS ( SELECT shoe.shoename
            FROM shoe
           WHERE (shoe.slcolor = shoelace.sl_color))));
+yb_terminated_queries| SELECT d.datname AS databasename,
+    s.backend_pid,
+    s.query_text,
+    s.termination_reason,
+    s.query_start AS query_start_time,
+    s.query_end AS query_end_time
+   FROM (yb_pg_stat_get_queries(NULL::oid) s(db_oid, backend_pid, query_text, termination_reason, query_start, query_end)
+     LEFT JOIN pg_database d ON ((s.db_oid = d.oid)));
 SELECT tablename, rulename, definition FROM pg_rules
 	ORDER BY tablename, rulename;
 pg_settings|pg_settings_n|CREATE RULE pg_settings_n AS

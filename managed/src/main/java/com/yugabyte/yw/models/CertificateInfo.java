@@ -35,6 +35,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -349,6 +350,16 @@ public class CertificateInfo extends Model {
 
   public static CertificateInfo get(UUID certUUID) {
     return find.byId(certUUID);
+  }
+
+  public static Optional<CertificateInfo> maybeGet(UUID certUUID) {
+    // Find the CertificateInfo.
+    CertificateInfo certificateInfo = find.byId(certUUID);
+    if (certificateInfo == null) {
+      LOG.trace("Cannot find certificateInfo {}", certUUID);
+      return Optional.empty();
+    }
+    return Optional.of(certificateInfo);
   }
 
   public static CertificateInfo getOrBadRequest(UUID certUUID, UUID customerUUID) {

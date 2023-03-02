@@ -30,6 +30,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -42,6 +43,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
@@ -220,6 +222,15 @@ public class GFlagsUtil {
     if (processType == null) {
       extra_gflags.put(MASTER_ADDRESSES, "");
     } else if (processType.equals(UniverseTaskBase.ServerType.TSERVER.name())) {
+      boolean configCgroup = config.getInt(NodeManager.POSTGRES_MAX_MEM_MB) > 0;
+
+      // If the cluster is a read replica, use the read replica max mem value if its >= 0. -1 means
+      // to use the primary cluster value instead.
+      if (universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid).clusterType
+              == UniverseDefinitionTaskParams.ClusterType.ASYNC
+          && config.getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) >= 0) {
+        configCgroup = config.getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) > 0;
+      }
       extra_gflags.putAll(
           getTServerDefaultGflags(
               taskParam,
@@ -228,7 +239,7 @@ public class GFlagsUtil {
               useHostname,
               useSecondaryIp,
               isDualNet,
-              config.getInt(NodeManager.POSTGRES_MAX_MEM_MB) > 0));
+              configCgroup));
     } else {
       extra_gflags.putAll(
           getMasterDefaultGFlags(taskParam, universe, useHostname, useSecondaryIp, isDualNet));
@@ -527,8 +538,23 @@ public class GFlagsUtil {
    */
   public static void checkGflagsAndIntentConsistency(
       UniverseDefinitionTaskParams.UserIntent userIntent) {
-    for (Map<String, String> gflags :
-        Arrays.asList(userIntent.masterGFlags, userIntent.tserverGFlags)) {
+    List<Map<String, String>> masterAndTserverGFlags =
+        Arrays.asList(userIntent.masterGFlags, userIntent.tserverGFlags);
+    if (userIntent.specificGFlags != null) {
+      masterAndTserverGFlags =
+          Arrays.asList(
+              userIntent
+                  .specificGFlags
+                  .getPerProcessFlags()
+                  .value
+                  .getOrDefault(UniverseTaskBase.ServerType.MASTER, new HashMap<>()),
+              userIntent
+                  .specificGFlags
+                  .getPerProcessFlags()
+                  .value
+                  .getOrDefault(UniverseTaskBase.ServerType.TSERVER, new HashMap<>()));
+    }
+    for (Map<String, String> gflags : masterAndTserverGFlags) {
       GFLAG_TO_INTENT_ACCESSOR.forEach(
           (gflagKey, accessor) -> {
             if (gflags.containsKey(gflagKey)) {
@@ -631,6 +657,43 @@ public class GFlagsUtil {
           }
         });
     return result.get();
+  }
+
+  public static Map<String, String> getBaseGFlags(
+      UniverseTaskBase.ServerType serverType,
+      UniverseDefinitionTaskParams.Cluster cluster,
+      Collection<UniverseDefinitionTaskParams.Cluster> allClusters) {
+    return getGFlagsForNode(null, serverType, cluster, allClusters);
+  }
+
+  public static Map<String, String> getGFlagsForNode(
+      @Nullable NodeDetails node,
+      UniverseTaskBase.ServerType serverType,
+      UniverseDefinitionTaskParams.Cluster cluster,
+      Collection<UniverseDefinitionTaskParams.Cluster> allClusters) {
+    UserIntent userIntent = cluster.userIntent;
+    UniverseDefinitionTaskParams.Cluster primary =
+        allClusters
+            .stream()
+            .filter(c -> c.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY)
+            .findFirst()
+            .orElse(null);
+    if (userIntent.specificGFlags != null) {
+      if (userIntent.specificGFlags.isInheritFromPrimary()) {
+        if (cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY) {
+          throw new IllegalStateException("Primary cluster has inherit gflags");
+        }
+        return getGFlagsForNode(node, serverType, primary, allClusters);
+      }
+      return userIntent.specificGFlags.getGFlags(node, serverType);
+    } else {
+      if (cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC) {
+        return getGFlagsForNode(node, serverType, primary, allClusters);
+      }
+      return serverType == UniverseTaskBase.ServerType.MASTER
+          ? userIntent.masterGFlags
+          : userIntent.tserverGFlags;
+    }
   }
 
   private static String getMountPoints(AnsibleConfigureServers.Params taskParam) {
@@ -759,6 +822,26 @@ public class GFlagsUtil {
       }
     }
     return null;
+  }
+
+  public static void removeGFlag(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      String gflagKey,
+      UniverseTaskBase.ServerType... serverTypes) {
+    if (userIntent.specificGFlags != null) {
+      userIntent.specificGFlags.removeGFlag(gflagKey, serverTypes);
+    } else {
+      for (UniverseTaskBase.ServerType serverType : serverTypes) {
+        switch (serverType) {
+          case MASTER:
+            userIntent.masterGFlags.remove(gflagKey);
+            break;
+          case TSERVER:
+            userIntent.tserverGFlags.remove(gflagKey);
+            break;
+        }
+      }
+    }
   }
 
   private interface StringIntentAccessor {

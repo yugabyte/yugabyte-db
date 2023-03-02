@@ -90,6 +90,12 @@ class TestEncryptionAtRestService extends EncryptionAtRestService<TestAlgorithm>
     this.createRequest = !this.createRequest;
     return this.createRequest ? null : "some_key_value".getBytes();
   }
+
+  @Override
+  public ObjectNode getKeyMetadata(UUID configUUID) {
+    // Does nothing here because we test for individual KMS providers.
+    return null;
+  }
 }
 
 @RunWith(MockitoJUnitRunner.class)

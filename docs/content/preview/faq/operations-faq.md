@@ -14,7 +14,7 @@ showRightNav: false
 
 ### Do YugabyteDB clusters need an external load balancer?
 
-For YSQL, an external load balancer is recommended. You can also use a YugabyteDB smart driver to balance connection load. To learn more about smart drivers, refer to [YugabyteDB smart drivers for YSQL](../../drivers-orms/smart-drivers/).
+For YSQL, you should use a YugabyteDB smart driver. YugabyteDB smart drivers automatically balance connections to the database and eliminate the need for an external load balancer. If you are not using a smart driver, you will need an external load balancer. To learn more about smart drivers, refer to [YugabyteDB smart drivers for YSQL](../../drivers-orms/smart-drivers/).
 
 For YCQL, YugabyteDB provides automatic load balancing.
 

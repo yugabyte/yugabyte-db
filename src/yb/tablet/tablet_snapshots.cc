@@ -282,7 +282,8 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
 }
 
 Status TabletSnapshots::RestorePartialRows(SnapshotOperation* operation) {
-  docdb::DocWriteBatch write_batch(tablet().doc_db(), docdb::InitMarkerBehavior::kOptional);
+  docdb::DocWriteBatch write_batch(
+      tablet().doc_db(), docdb::InitMarkerBehavior::kOptional, nullptr);
 
   auto restore_patch = VERIFY_RESULT(GenerateRestoreWriteBatch(
       operation->request()->ToGoogleProtobuf(), &write_batch));

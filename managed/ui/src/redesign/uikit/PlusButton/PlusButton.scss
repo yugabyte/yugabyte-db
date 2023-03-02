@@ -1,9 +1,9 @@
-@import '../common';
+@use '../common';
 
 .yb-uikit-plus-button {
   font-family: 'Source Sans Pro', sans-serif;
   font-size: 14px;
-  color: $YB_TEXT_2;
+  color: common.$YB_TEXT_2;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -13,8 +13,8 @@
     content: '+';
     width: 20px;
     height: 20px;
-    background-color: $YB_PAGE_BACKGROUND;
-    color: $YB_TEXT_1;
+    background-color: common.$YB_PAGE_BACKGROUND;
+    color: common.$YB_TEXT_1;
     border-radius: 50%;
     font-size: 18px;
     font-weight: 600;
@@ -29,7 +29,7 @@
     pointer-events: none;
 
     &:before {
-      background-color: $YB_BORDER_1;
+      background-color: common.$YB_BORDER_1;
       box-shadow: none;
     }
   }

@@ -1,16 +1,17 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../../_style/colors.scss';
-@import '../../../../_style/mixins.scss';
+@use '../../../../_style/colors.scss';
+@use '../../../../_style/mixins.scss';
+@use '../../../../_style/variables.scss';
 
 .side-nav-container {
   top: 60px;
   bottom: 0;
   z-index: 1040;
   position: fixed;
-  width: $YB_SIDEBAR_WIDTH;
+  width: variables.$YB_SIDEBAR_WIDTH;
   min-height: 322px;
-  background: $YB_VIOLET;
+  background: colors.$YB_VIOLET;
 }
 
 /* From gentelella.css need to cleanup */
@@ -98,7 +99,7 @@
         font-weight: 500 !important;
 
         i {
-          color: $YB_SIDEBAR_ICON;
+          color: colors.$YB_SIDEBAR_ICON;
         }
       }
 
@@ -114,9 +115,9 @@
 
       &:hover {
         transition: none;
-        background: $YB_VIOLET_DARK;
+        background: colors.$YB_VIOLET_DARK;
         text-decoration: none;
-        color: $YB_SIDEBAR_TEXT_HOVER;
+        color: colors.$YB_SIDEBAR_TEXT_HOVER;
 
         i,
         span {
@@ -124,7 +125,7 @@
         }
 
         i {
-          color: $YB_SIDEBAR_ICON_HOVER;
+          color: colors.$YB_SIDEBAR_ICON_HOVER;
         }
       }
     }
@@ -136,13 +137,13 @@
       &:hover,
       &:focus,
       &:active {
-        color: $YB_SIDEBAR_ICON;
+        color: colors.$YB_SIDEBAR_ICON;
         background: transparent;
         font-weight: 500 !important;
-        background: $YB_VIOLET_DARK;
+        background: colors.$YB_VIOLET_DARK;
 
         i {
-          color: $YB_SIDEBAR_ICON;
+          color: colors.$YB_SIDEBAR_ICON;
           opacity: 0.7;
         }
       }
@@ -154,7 +155,7 @@
         &:hover {
           text-shadow: rgba(0, 0, 0, 0.25) 0 -1px 0;
           color: #fff;
-          background: $YB_SIDEBAR_ACTIVE;
+          background: colors.$YB_SIDEBAR_ACTIVE;
 
           i {
             color: #fff;
@@ -163,7 +164,7 @@
       }
     }
     & > a[aria-expanded='true'] {
-      background: $YB_SIDEBAR_ACTIVE;
+      background: colors.$YB_SIDEBAR_ACTIVE;
     }
   }
 }
@@ -177,7 +178,7 @@
   font-weight: 500;
 
   i {
-    color: $YB_VIOLET_TEXT;
+    color: colors.$YB_VIOLET_TEXT;
   }
 }
 
@@ -231,7 +232,7 @@
     margin: 0 auto;
     top: -5px;
     position: relative;
-    background-color: $YB_ORANGE;
+    background-color: colors.$YB_ORANGE;
 
     @media screen and (max-height: 460px) {
       width: 20px;

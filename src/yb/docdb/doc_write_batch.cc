@@ -848,7 +848,7 @@ std::string DocWriteBatchFormatter::FormatKey(const Slice& key) {
 std::string DocWriteBatchFormatter::FormatValue(const Slice& key, const Slice& value) {
   auto key_type = GetKeyType(key, storage_db_type_);
   const auto value_result = DocDBValueToDebugStr(
-      key_type, key, value, SchemaPackingStorage());
+      key_type, key, value, SchemaPackingStorage(TableType::YQL_TABLE_TYPE));
   if (value_result.ok()) {
     return *value_result;
   }

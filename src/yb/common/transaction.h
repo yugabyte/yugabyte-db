@@ -127,6 +127,9 @@ struct StatusRequest {
   const std::string* reason;
   TransactionLoadFlags flags;
   TransactionStatusCallback callback;
+  // If non-null, populate status_tablet_id for known transactions in the same thread the request is
+  // initiated.
+  std::string* status_tablet_id = nullptr;
 
   std::string ToString() const {
     return Format("{ id: $0 read_ht: $1 global_limit_ht: $2 serial_no: $3 reason: $4 flags: $5}",
@@ -176,8 +179,6 @@ class TransactionStatusManager {
   // For each pair fills second with priority of transaction with id equals to first.
   virtual void FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) = 0;
-
-  virtual void FillStatusTablets(std::vector<BlockingTransactionData>* inout) = 0;
 
   virtual boost::optional<TabletId> FindStatusTablet(const TransactionId& id) = 0;
 

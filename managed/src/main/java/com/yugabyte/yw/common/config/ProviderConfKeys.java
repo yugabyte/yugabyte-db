@@ -251,4 +251,13 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Install node agent server on DB nodes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Integer> vmMaxMemCount =
+      new ConfKeyInfo<>(
+          "yb.node_agent.preflight_checks.vm_max_map_count",
+          ScopeType.PROVIDER,
+          "VM max map count",
+          "Max count of memory-mapped regions allowed in the system.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
 }

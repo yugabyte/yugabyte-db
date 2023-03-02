@@ -5,12 +5,15 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.AddGFlagMetadata;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.common.utils.Version;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -33,6 +36,7 @@ import java.nio.file.PathMatcher;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -766,6 +770,87 @@ public class ReleaseManager {
     }
   }
 
+  public void findLatestArmRelease(String currentVersion) {
+    // currentVersion - 2.17.2.0-PRE_RELEASE
+    JsonNode releaseTree;
+    try {
+      URL dockerUrl =
+          new URL("https://registry.hub.docker.com/v2/repositories/yugabytedb/yugabyte/tags");
+      ObjectMapper mapper = new ObjectMapper();
+      releaseTree = mapper.readTree(dockerUrl);
+    } catch (Exception e) {
+      log.warn(
+          String.format(
+              "Error reading release tags from URL. Skipping ARM http release import. %s",
+              e.getMessage()));
+      return;
+    }
+
+    Comparator<JsonNode> releaseNameComparator =
+        new Comparator<JsonNode>() {
+          @Override
+          public int compare(JsonNode r1, JsonNode r2) {
+            // Compare r2 to r1 because we want latest elements first.
+            return Util.compareYbVersions(r2.get("name").asText(), r1.get("name").asText());
+          }
+        };
+
+    if (releaseTree != null && releaseTree.has("results")) {
+      List<JsonNode> releases = releaseTree.findParents("name");
+      if (releases == null || releases.isEmpty()) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST, "Could not find versions in response JSON.");
+      }
+      JsonNode latestRelease =
+          releases
+              .stream()
+              .filter(r -> Util.isYbVersionFormatValid(r.get("name").asText()))
+              .filter(r -> Util.compareYbVersions(currentVersion, r.get("name").asText()) >= 0)
+              .sorted(releaseNameComparator)
+              .findFirst()
+              .get();
+      if (latestRelease.isNull() || latestRelease == null) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST, "Could not find latest release in response JSON.");
+      }
+      // version format - 2.17.1.0-b439
+      String version = latestRelease.get("name").asText();
+      String httpsUrl =
+          String.format(
+              "https://downloads.yugabyte.com/releases/%s/yugabyte-%s-el8-aarch64.tar.gz",
+              version.split("-")[0], version);
+      addHttpsRelease(version, httpsUrl, Architecture.aarch64, "%s-https-aarch64");
+    }
+  }
+
+  public synchronized void addHttpsRelease(
+      String version, String url, Architecture arch, String versionFormatString) {
+    Map<String, Object> currentReleases = getReleaseMetadata();
+    ReleaseMetadata rm;
+    if (currentReleases.containsKey(version)) {
+      // merge https URL with existing metadata
+      rm = metadataFromObject(currentReleases.get(version));
+      if (rm.http == null) {
+        ReleaseMetadata.PackagePaths httpsPaths = new ReleaseMetadata.PackagePaths();
+        httpsPaths.x86_64 = url;
+        verifyPackageNameFormat(version, httpsPaths);
+        rm.http = new ReleaseMetadata.HttpLocation();
+        rm.http.paths = httpsPaths;
+        rm = rm.withPackage(url, arch);
+      }
+    } else {
+      // create new release with only https ARM URL
+      verifyPackageNameFormat(version, url);
+      version = String.format(versionFormatString, version);
+      rm = ReleaseMetadata.create(version).withFilePath(url).withPackage(url, arch);
+      ReleaseMetadata.PackagePaths httpsPaths = new ReleaseMetadata.PackagePaths();
+      httpsPaths.x86_64 = url;
+      rm.http = new ReleaseMetadata.HttpLocation();
+      rm.http.paths = httpsPaths;
+    }
+    updateReleaseMetadata(version, rm);
+  }
+
   /** Idempotent method to update all releases with packages if possible. */
   public synchronized void updateCurrentReleases() {
     Map<String, Object> currentReleases = getReleaseMetadata();
@@ -854,12 +939,11 @@ public class ReleaseManager {
     }
   }
 
+  // Adds metadata to releases is version does not exist. Updates existing value if key present.
   public synchronized void updateReleaseMetadata(String version, ReleaseMetadata newData) {
     Map<String, Object> currentReleases = getReleaseMetadata();
-    if (currentReleases.containsKey(version)) {
-      currentReleases.put(version, newData);
-      configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
-    }
+    currentReleases.put(version, newData);
+    configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
   }
 
   /**

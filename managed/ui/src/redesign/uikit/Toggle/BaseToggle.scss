@@ -1,8 +1,8 @@
-@import '../common';
+@use '../common';
 
 .yb-uikit-toggle {
   display: inline-flex;
-  font-family: $YB_FONT_FAMILY;
+  font-family: common.$YB_FONT_FAMILY;
   user-select: none;
   position: relative;
 
@@ -20,17 +20,17 @@
     transition: all 250ms;
 
     &--on {
-      background-color: $YB_CTA;
-      color: $YB_PAGE_BACKGROUND;
-      fill: $YB_PAGE_BACKGROUND;
+      background-color: common.$YB_CTA;
+      color: common.$YB_PAGE_BACKGROUND;
+      fill: common.$YB_PAGE_BACKGROUND;
       padding-left: 15px;
       padding-right: 35px;
     }
 
     &--off {
-      background-color: $YB_BORDER_1;
-      color: $YB_PAGE_BACKGROUND;
-      fill: $YB_PAGE_BACKGROUND;
+      background-color: common.$YB_BORDER_1;
+      color: common.$YB_PAGE_BACKGROUND;
+      fill: common.$YB_PAGE_BACKGROUND;
       padding-left: 35px;
       padding-right: 15px;
     }
@@ -57,7 +57,7 @@
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    background-color: $YB_PAGE_BACKGROUND;
+    background-color: common.$YB_PAGE_BACKGROUND;
     box-shadow: 0 0 10px #00000029;
     position: absolute;
     top: 2px;
@@ -72,7 +72,7 @@
     }
 
     &--disabled {
-      background-color: $YB_BORDER_1;
+      background-color: common.$YB_BORDER_1;
     }
   }
 
@@ -88,7 +88,7 @@
     height: 0;
     border-top: 5px solid transparent;
     border-bottom: 5px solid transparent;
-    border-left: 8px solid $YB_TEXT_2;
+    border-left: 8px solid common.$YB_TEXT_2;
     margin-right: 10px;
   }
 }

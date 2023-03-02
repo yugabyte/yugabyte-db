@@ -11,13 +11,17 @@
 
 package com.yugabyte.yw.common.kms.services;
 
+import java.util.List;
 import java.util.UUID;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.algorithms.GcpAlgorithm;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil.GcpKmsAuthConfigField;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.KmsConfig;
 
@@ -188,5 +192,30 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
   @Override
   protected void cleanupWithService(UUID universeUUID, UUID configUUID) {
     // Do nothing to KMS when deleting universe with EAR enabled
+  }
+
+  @Override
+  public ObjectNode getKeyMetadata(UUID configUUID) {
+    // Get all the auth config fields marked as metadata.
+    List<String> gcpKmsMetadataFields = GcpKmsAuthConfigField.getMetadataFields();
+    ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
+    ObjectNode keyMetadata = new ObjectMapper().createObjectNode();
+
+    for (String fieldName : gcpKmsMetadataFields) {
+      if (authConfig.has(fieldName)) {
+        keyMetadata.set(fieldName, authConfig.get(fieldName));
+      }
+    }
+    // Add the GCP project ID to the key metadata as well.
+    // This is useful info to the user.
+    if (authConfig.has(GcpKmsAuthConfigField.GCP_CONFIG.fieldName)
+        && authConfig.get(GcpKmsAuthConfigField.GCP_CONFIG.fieldName).has("project_id")) {
+      keyMetadata.set(
+          "project_id",
+          authConfig.get(GcpKmsAuthConfigField.GCP_CONFIG.fieldName).get("project_id"));
+    }
+    // Add key_provider field.
+    keyMetadata.put("key_provider", KeyProvider.GCP.name());
+    return keyMetadata;
   }
 }

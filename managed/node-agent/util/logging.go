@@ -129,3 +129,18 @@ func (l *AppLogger) Fatal(msg string, v ...interface{}) {
 func (l *AppLogger) Fatalf(msg string, v ...interface{}) {
 	l.getEntry().Fatalf(msg, v...)
 }
+
+// IsDebugEnabled returns true only if debug is enabled.
+func (l *AppLogger) IsDebugEnabled() bool {
+	return l.IsLevelEnabled(log.DebugLevel)
+}
+
+// IsInfoEnabled returns true only if info is enabled.
+func (l *AppLogger) IsInfoEnabled() bool {
+	return l.IsLevelEnabled(log.InfoLevel)
+}
+
+// IsLevelEnabled returns true only if the given level is enabled.
+func (l *AppLogger) IsLevelEnabled(level log.Level) bool {
+	return int(l.logger.Level) <= int(level)
+}

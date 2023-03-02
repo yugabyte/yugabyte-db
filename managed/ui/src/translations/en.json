@@ -83,6 +83,8 @@
         "numReadReplicas": "Number of Read Replicas",
         "regionsField": "Regions",
         "replicationField": "Replication Factor",
+        "maxRFvalue": "Maximum supported replication factor is {{rfValue}}",
+        "minRFValue": "Minimum supported replication factor is {{rfValue}}",
         "title": "Cloud Configuration",
         "totalNodesField": "Total Nodes",
         "totalPodsField": "Total Pods",

@@ -120,6 +120,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final String MASTERS_FLAG = "FLAGS_pggate_master_addresses";
   private static final String YB_ENABLED_IN_PG_ENV_VAR_NAME = "YB_ENABLED_IN_POSTGRES";
 
+  // Error message templates
+  private static final String UNEXPECTED_ERR_MESSAGE = "Unexpected Error Message. Got: '%s', "
+      + "Expected to contain one of the error messages: %s.";
+
   // Metric names.
   protected static final String METRIC_PREFIX = "handler_latency_yb_ysqlserver_SQLProcessor_";
   protected static final String SELECT_STMT_METRIC = METRIC_PREFIX + "SelectStmt";
@@ -1778,13 +1782,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
           return;
         }
       }
-      String faillMessage = "Unexpected Error Message. Got: '" + e.getMessage() +
-          "', Expected to contain one of the error messages: ";
-      for (int i = 0; i < errorSubstrings.length-1; i++) {
-        faillMessage.concat("'").concat(errorSubstrings[i]).concat("', ");
-      }
-      faillMessage.concat("'").concat(errorSubstrings[errorSubstrings.length-1]).concat("'.");
-      fail(faillMessage);
+
+      final String expectedErrMsg = Arrays.asList(errorSubstrings).stream().map(i -> "'" + i + "'")
+          .collect(Collectors.joining(", "));
+      final String failMessage = String.format(UNEXPECTED_ERR_MESSAGE, e.getMessage(),
+          expectedErrMsg);
+      fail(failMessage);
     }
   }
 

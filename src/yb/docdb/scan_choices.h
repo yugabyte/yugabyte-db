@@ -342,6 +342,8 @@ class HybridScanChoices : public ScanChoices {
   ColGroupHolder col_groups_;
 
   size_t prefix_length_ = 0;
+
+  size_t schema_num_keys_;
 };
 
 }  // namespace docdb
