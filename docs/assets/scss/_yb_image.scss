@@ -64,7 +64,7 @@ p > img,
 
   &.open {
     opacity: 1;
-    z-index: 9999;
+    z-index: 999999;
   }
 
   .img-scroll {
@@ -73,9 +73,15 @@ p > img,
     border-radius: 5px;
     max-width: 90vw;
     max-height: 90vh;
-    overflow: auto;
+    overflow: visible;
     box-sizing: border-box;
     position: relative;
+    margin-top: 5vh;
+
+    @media (max-width: 767px) {
+      max-height: 80vh;
+      margin-top: 10vh;
+    }
 
     img {
       width: auto;
@@ -89,12 +95,11 @@ p > img,
     }
 
     i {
-      position: sticky;
-      width: 40px;
-      height: 40px;
-      margin: 0 0 -40px;
-      top: 5px;
-      left: calc(100% - 45px);
+      position: absolute;
+      width: 25px;
+      height: 25px;
+      top: -25px;
+      right: -35px;
       border-radius: 50%;
       background: #fff;
       z-index: 6;
@@ -104,6 +109,11 @@ p > img,
       cursor: pointer;
       transition: all 250ms ease;
 
+      @media (max-width: 767px) {
+        top: -35px;
+        right: -15px;
+      }
+
       &:hover {
         background: #f1f1f1;
       }
@@ -111,12 +121,12 @@ p > img,
       &::before,
       &::after {
         content: "";
-        width: 21px;
+        width: 16px;
         height: 1px;
         background: #000;
         position: absolute;
-        top: 20px;
-        left: 10px;
+        top: 12px;
+        left: 5px;
         transform: rotate(45deg);
       }
 
