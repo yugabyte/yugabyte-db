@@ -1390,6 +1390,19 @@ bool DocKeyBelongsTo(Slice doc_key, const Schema& schema) {
   }
 }
 
+Result<bool> IsColocatedTableTombstoneKey(Slice doc_key) {
+  DocKeyDecoder decoder(doc_key);
+  if (VERIFY_RESULT(decoder.DecodeColocationId())) {
+    RETURN_NOT_OK(decoder.ConsumeGroupEnd());
+
+    if (decoder.left_input().size() == 0) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 Result<boost::optional<DocKeyHash>> DecodeDocKeyHash(const Slice& encoded_key) {
   DocKey key;
   RETURN_NOT_OK(key.DecodeFrom(encoded_key, DocKeyPart::kUpToHashCode));
