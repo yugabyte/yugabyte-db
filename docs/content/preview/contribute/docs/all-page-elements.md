@@ -286,14 +286,6 @@ These contents might be a very long bit of code or somesuch.
 ysqlsh [ <option>...] [ <dbname> [ <username> ]]
 ```
 
-### Default flags
-
-When you open `ysqlsh`, the following default flags (aka flags) are set so that the user doesn't have to specify them.
-
-- host: `-h 127.0.0.1`
-- port: `-p 5433`
-- user: `-U yugabyte`
-
 ## Horizontal rule
 
 Once in awhile, there is a horizontal rule.
@@ -313,6 +305,10 @@ Heading 5 is used so that we can deep-link to the flag.
 ##### -F, --this-is-a-flag
 
 This is a paragraph.
+
+{{% readfile "include-file.md" %}}
+
+{{% includeMarkdown "include-markdown.md" %}}
 
 ## API Syntax
 
