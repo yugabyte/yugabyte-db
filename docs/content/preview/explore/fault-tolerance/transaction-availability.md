@@ -17,7 +17,7 @@ type: docs
 The following examples demonstrate how YugabyteDB transactions survive common failure scenarios that could happen when a transaction is being processed. In the examples, you execute a client-driven transaction that updates a single row, with failure scenarios as shown in the following table.
 
 | Scenario | Description |
-| :--- | :--- |
+| :------- | :---------- |
 | Node failure just before a transaction executes a statement | The node to which a statement is about to be sent fails just before it is executed. YugabyteDB handles this automatically. |
 | Node failure just after a transaction executes a statement | The node to which the statement has been sent fails before the transaction is committed. YugabyteDB handles this automatically. |
 | Failure of the node to which a client has connected | The node to which the client is connected fails after a statement but before the transaction has been committed. |
@@ -34,7 +34,7 @@ For more information on how YugabyteDB handles failures and its impact during tr
 
 1. Create a table space to help set up leader preferences. This will ensure that the leaders for the keys in our example transaction will be located in node `127.0.0.2`, so that we can correctly simulate the scenario by stopping this node.
 
-    {{< note title="Note" >}}We are using tablespaces here so that the failure scenarios run in a deterministic manner 
+    {{< note title="Note" >}}We are using tablespaces here so that the failure scenarios run in a deterministic manner
     in your cluster setup. YugabytedDB will handle transaction failures in the same way with or without table spaces.
     {{< /note >}}
 
@@ -66,7 +66,7 @@ For more information on how YugabyteDB handles failures and its impact during tr
 1. List the tablets in the table to see where the data is located using the following command:
 
     ```sh
-    yb-admin list_tablets ysql.yugabyte txndemo
+    ./bin/yb-admin list_tablets ysql.yugabyte txndemo
     ```
 
     ```output.sh
@@ -333,11 +333,11 @@ For this case, you can connect to any node in the cluster; `127.0.0.1` has been 
     ```output
       k | v
     ----+----
-      1 | 30
+      1 | 20
     (1 row)
     ```
 
-    The transaction fails; the row does not get the intended value of `40`, and still retains the old value of `30`. When the transaction manager fails before a commit happens, the transaction is lost. At this point, it's the application's responsibility to restart the transaction.
+    The transaction fails; the row does not get the intended value of `40`, and still retains the old value of `20`. When the transaction manager fails before a commit happens, the transaction is lost. At this point, it's the application's responsibility to restart the transaction.
 
 ## Clean up
 
