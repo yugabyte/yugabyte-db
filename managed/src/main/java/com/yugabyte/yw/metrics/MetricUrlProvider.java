@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.metrics;
 
+import com.cronutils.utils.StringUtils;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.Util;
 import java.net.URLEncoder;
@@ -13,6 +14,10 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Singleton
 public class MetricUrlProvider {
+
+  private static final String API_PATH = "/api/v1";
+
+  private static final String MANAGEMENT_PATH = "/-";
   public static final String DATE_FORMAT_STRING = "yyyy-MM-dd HH:mm:ss";
   private final Config appConfig;
 
@@ -26,13 +31,22 @@ public class MetricUrlProvider {
    *
    * @return returns metrics url string
    */
-  public String getMetricsUrl() {
-    String metricsUrl = appConfig.getString("yb.metrics.url");
-    if (metricsUrl == null || metricsUrl.isEmpty()) {
-      throw new RuntimeException("yb.metrics.url not set");
+  public String getMetricsApiUrl() {
+    return getMetricsInternalUrl() + API_PATH;
+  }
+
+  public String getMetricsManagementUrl() {
+    return getMetricsInternalUrl() + MANAGEMENT_PATH;
+  }
+
+  public String getMetricsExternalUrl() {
+    String metricsExternalUrl = appConfig.getString("yb.metrics.external.url");
+    if (StringUtils.isEmpty(metricsExternalUrl)) {
+      // Fallback to internal in case external is not explicitly defined
+      metricsExternalUrl = getMetricsInternalUrl();
     }
 
-    return metricsUrl;
+    return metricsExternalUrl;
   }
 
   public String getExpressionUrl(String queryExpr, Long startUnixTime, Long endUnixTime) {
@@ -52,9 +66,14 @@ public class MetricUrlProvider {
     // possible this breaks over time as we upgrade prometheus.
     return String.format(
         "%s/graph?g0.expr=%s&g0.tab=0&g0.range_input=%s&g0.end_input=%s",
-        this.getMetricsUrl().replace("/api/v1", ""),
-        URLEncoder.encode(queryExpr),
-        durationSecs,
-        endString);
+        this.getMetricsExternalUrl(), URLEncoder.encode(queryExpr), durationSecs, endString);
+  }
+
+  public String getMetricsInternalUrl() {
+    String metricsUrl = appConfig.getString("yb.metrics.url");
+    if (StringUtils.isEmpty(metricsUrl)) {
+      throw new RuntimeException("yb.metrics.url not set");
+    }
+    return metricsUrl.replace(API_PATH, StringUtils.EMPTY);
   }
 }
