@@ -51,6 +51,9 @@ class YQLRowwiseIteratorIf {
   // Otherwise returns invalid hybrid time.
   virtual HybridTime RestartReadHt() = 0;
 
+  // Returns max seen hybrid time. Only used by tests for validation.
+  virtual HybridTime TEST_MaxSeenHt();
+
   virtual std::string ToString() const = 0;
 
   // Could be subset of actual table schema.
