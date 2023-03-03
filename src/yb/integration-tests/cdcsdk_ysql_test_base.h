@@ -275,6 +275,34 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
         "Failed to delete stream rows from cdc_state table."));
   }
 
+  Result<OpId> GetStreamCheckpointInCdcState(
+      client::YBClient* client, const CDCStreamId& stream_id, const TabletId& tablet_id) {
+    client::TableHandle table;
+    const client::YBTableName cdc_state_table(
+        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+    RETURN_NOT_OK(table.Open(cdc_state_table, client));
+
+    const auto op = table.NewReadOp();
+    auto* const req = op->mutable_request();
+    QLAddStringHashValue(req, tablet_id);
+
+    auto cond = req->mutable_where_expr()->mutable_condition();
+    cond->set_op(QLOperator::QL_OP_AND);
+    QLAddStringCondition(
+        cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream_id);
+
+    table.AddColumns({master::kCdcCheckpoint}, req);
+    auto session = client->NewSession();
+
+    EXPECT_OK(session->TEST_ApplyAndFlush(op));
+    auto row_block = ql::RowsResult(op.get()).GetRowBlock();
+    auto op_id_result = OpId::FromString(row_block->row(0).column(0).string_value());
+    RETURN_NOT_OK(op_id_result);
+    auto op_id = *op_id_result;
+
+    return op_id;
+  }
+
   void VerifyStreamCheckpointInCdcState(
       client::YBClient* client, const CDCStreamId& stream_id, const TabletId& tablet_id,
       OpIdExpectedValue op_id_expected_value = OpIdExpectedValue::ValidNonMaxOpId,
@@ -969,6 +997,24 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     change_req->mutable_from_cdc_sdk_checkpoint()->set_write_id(cp.write_id());
   }
 
+  void PrepareChangeRequestWithExplicitCheckpoint(
+      GetChangesRequestPB* change_req, const CDCStreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const CDCSDKCheckpointPB& cp, const int tablet_idx = 0) {
+    change_req->set_stream_id(stream_id);
+    change_req->set_tablet_id(tablets.Get(tablet_idx).tablet_id());
+
+    change_req->mutable_from_cdc_sdk_checkpoint()->set_term(cp.term());
+    change_req->mutable_from_cdc_sdk_checkpoint()->set_index(cp.index());
+    change_req->mutable_from_cdc_sdk_checkpoint()->set_key(cp.key());
+    change_req->mutable_from_cdc_sdk_checkpoint()->set_write_id(cp.write_id());
+
+    change_req->mutable_explicit_cdc_sdk_checkpoint()->set_term(cp.term());
+    change_req->mutable_explicit_cdc_sdk_checkpoint()->set_index(cp.index());
+    change_req->mutable_explicit_cdc_sdk_checkpoint()->set_key(cp.key());
+    change_req->mutable_explicit_cdc_sdk_checkpoint()->set_write_id(cp.write_id());
+  }
+
   void PrepareSetCheckpointRequest(
       SetCDCCheckpointRequestPB* set_checkpoint_req,
       const CDCStreamId stream_id,
@@ -1342,6 +1388,43 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       PrepareChangeRequest(&change_req, stream_id, tablets, tablet_idx);
     } else {
       PrepareChangeRequest(&change_req, stream_id, tablets, *cp, tablet_idx);
+    }
+
+    // Retry only on LeaderNotReadyToServe errors
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          RpcController get_changes_rpc;
+          auto status = cdc_proxy_->GetChanges(change_req, &change_resp, &get_changes_rpc);
+
+          if (status.ok() && change_resp.has_error()) {
+            status = StatusFromPB(change_resp.error().status());
+          }
+
+          if (status.IsLeaderNotReadyToServe()) {
+            return false;
+          }
+
+          RETURN_NOT_OK(status);
+          return true;
+        },
+        MonoDelta::FromSeconds(kRpcTimeout),
+        "GetChanges timed out waiting for Leader to get ready"));
+
+    return change_resp;
+  }
+
+  Result<GetChangesResponsePB> GetChangesFromCDCWithExplictCheckpoint(
+      const CDCStreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const CDCSDKCheckpointPB* cp = nullptr,
+      int tablet_idx = 0) {
+    GetChangesRequestPB change_req;
+    GetChangesResponsePB change_resp;
+
+    if (cp == nullptr) {
+      PrepareChangeRequest(&change_req, stream_id, tablets, tablet_idx);
+    } else {
+      PrepareChangeRequestWithExplicitCheckpoint(&change_req, stream_id, tablets, *cp, tablet_idx);
     }
 
     // Retry only on LeaderNotReadyToServe errors

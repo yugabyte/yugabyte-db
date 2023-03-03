@@ -116,7 +116,7 @@ enum CDCRequestSource {
 }
 
 enum CDCCheckpointType {
-  IMPLICIT = 1; // Used for 2DC
+  IMPLICIT = 1; // Used for 2DC and CDC
   EXPLICIT = 2; // Used for CDC
 }
 
@@ -206,6 +206,9 @@ message GetChangesRequestPB {
   optional CDCSDKCheckpointPB from_cdc_sdk_checkpoint = 8;
 
   optional bool need_schema_info = 9 [default = false];
+
+  // This will be the checkpoint used for 'EXPLICIT' checkpoint streams.
+  optional CDCSDKCheckpointPB explicit_cdc_sdk_checkpoint = 10;
 }
 
 message KeyValuePairPB {

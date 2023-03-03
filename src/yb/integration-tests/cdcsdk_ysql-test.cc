@@ -6372,5 +6372,37 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIsUnderCDCSDKReplicationField
   check_is_under_cdc_sdk_replication(false);
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestExplicitCheckpointGetChangesRequest)) {
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ASSERT_OK(WriteRowsHelper(1 /* start */, 101 /* end */, &test_cluster_, true));
+
+  // Not setting explicit checkpoint here.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+
+  // Since stream is in EXPLICIT mode, the checkpoint won't be stored in cdc_state table.
+  auto checkpoint = ASSERT_RESULT(
+      GetStreamCheckpointInCdcState(test_client(), stream_id, tablets[0].tablet_id()));
+  ASSERT_EQ(checkpoint, OpId());
+
+  // This time call 'GetChanges' with an explicit checkpoint.
+  ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+
+  // The checkpoint stored in the cdc_state table will be updated.
+  checkpoint = ASSERT_RESULT(
+      GetStreamCheckpointInCdcState(test_client(), stream_id, tablets[0].tablet_id()));
+  ASSERT_EQ(
+      checkpoint,
+      OpId(change_resp.cdc_sdk_checkpoint().term(), change_resp.cdc_sdk_checkpoint().index()));
+}
+
 }  // namespace cdc
 }  // namespace yb
