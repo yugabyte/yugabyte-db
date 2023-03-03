@@ -359,6 +359,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   Status SetIsUnderTwodcReplicationAndFlush(bool is_under_twodc_replication);
 
+  bool is_under_cdc_sdk_replication() const;
+
   bool is_under_twodc_replication() const;
 
   bool has_been_fully_compacted() const {
@@ -651,6 +653,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   HybridTime cdc_sdk_safe_time_ GUARDED_BY(data_mutex_);
 
   bool is_under_twodc_replication_ GUARDED_BY(data_mutex_) = false;
+
+  bool is_under_cdc_sdk_replication_ GUARDED_BY(data_mutex_) = false;
 
   bool hidden_ GUARDED_BY(data_mutex_) = false;
 
