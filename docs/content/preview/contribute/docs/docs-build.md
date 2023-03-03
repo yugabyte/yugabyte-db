@@ -95,7 +95,7 @@ Create the folder with `mkdir ~/.hugo-cache`, then start a new terminal session.
 
 ## Install Hugo modules
 
-Install Hugo modules as a dependency of the site.
+Install Hugo as a dependency of the site:
 
 ```sh
 hugo mod get -u
