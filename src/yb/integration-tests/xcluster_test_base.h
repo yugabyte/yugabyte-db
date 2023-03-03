@@ -47,7 +47,7 @@ static const std::string kNamespaceName = "test_namespace";
 static const std::string kKeyColumnName = "key";
 static const uint32_t kRangePartitionInterval = 500;
 
-class TwoDCTestBase : public YBTest {
+class XClusterTestBase : public YBTest {
  public:
   class Cluster {
    public:

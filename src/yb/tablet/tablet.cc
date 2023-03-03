@@ -881,7 +881,7 @@ void Tablet::CleanupIntentFiles() {
 
 void Tablet::DoCleanupIntentFiles() {
   if (metadata_->IsUnderXClusterReplication()) {
-    VLOG_WITH_PREFIX_AND_FUNC(4) << "Exit because of TwoDC replication";
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Exit because of xCluster replication";
     return;
   }
   HybridTime best_file_max_ht = HybridTime::kMax;
