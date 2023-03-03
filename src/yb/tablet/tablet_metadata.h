@@ -358,6 +358,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   HybridTime cdc_sdk_safe_time() const;
 
+  bool is_under_cdc_sdk_replication() const;
+
   Status SetIsUnderXClusterReplicationAndFlush(bool is_under_xcluster_replication);
 
   bool IsUnderXClusterReplication() const;
@@ -669,6 +671,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   HybridTime cdc_sdk_safe_time_ GUARDED_BY(data_mutex_);
 
   bool is_under_xcluster_replication_ GUARDED_BY(data_mutex_) = false;
+
+  bool is_under_cdc_sdk_replication_ GUARDED_BY(data_mutex_) = false;
 
   bool hidden_ GUARDED_BY(data_mutex_) = false;
 

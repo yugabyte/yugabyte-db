@@ -416,6 +416,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   CoarseTimePoint cdc_sdk_min_checkpoint_op_id_expiration();
 
+  bool is_under_cdc_sdk_replication();
+
   Status SetCDCSDKRetainOpIdAndTime(
       const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration,
       const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid);
