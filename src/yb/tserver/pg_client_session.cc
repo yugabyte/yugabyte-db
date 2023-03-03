@@ -339,7 +339,8 @@ struct PerformData {
       std::vector<RefCntSlice> rows_data;
       rows_data.reserve(ops.size());
       for (const auto& op : ops) {
-        rows_data.emplace_back(context.sidecars().Extract(op->sidecar_index()));
+        rows_data.push_back(
+            op->has_sidecar() ? context.sidecars().Extract(op->sidecar_index()) : RefCntSlice());
       }
       cache_setter(PgResponseCache::Response{PgPerformResponsePB(*resp), std::move(rows_data)},
                    IsFailure(!status.ok()));
