@@ -9,6 +9,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
@@ -238,7 +239,11 @@ public class Backup extends Model {
     return scheduleUUID;
   }
 
-  @ApiModelProperty(value = "Expiry time (unix timestamp) of the backup", accessMode = READ_WRITE)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value = "Expiry time (unix timestamp) of the backup",
+      accessMode = READ_WRITE,
+      example = "2022-12-12T13:07:18Z")
   @Column
   // Unix timestamp at which backup will get deleted.
   private Date expiry;
@@ -287,19 +292,29 @@ public class Backup extends Model {
     return this.backupInfo;
   }
 
-  @CreatedTimestamp private Date createTime;
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(value = "Backup creation time", example = "2022-12-12T13:07:18Z")
+  @CreatedTimestamp
+  private Date createTime;
 
   public Date getCreateTime() {
     return createTime;
   }
 
-  @UpdatedTimestamp private Date updateTime;
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(value = "Backup update time", example = "2022-12-12T13:07:18Z")
+  @UpdatedTimestamp
+  private Date updateTime;
 
   public Date getUpdateTime() {
     return updateTime;
   }
 
-  @ApiModelProperty(value = "Backup completion time", accessMode = READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value = "Backup completion time",
+      accessMode = READ_ONLY,
+      example = "2022-12-12T13:07:18Z")
   @Column
   private Date completionTime;
 

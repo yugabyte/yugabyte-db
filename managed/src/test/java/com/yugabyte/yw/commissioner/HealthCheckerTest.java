@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -140,6 +141,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.nodeCheckTimeoutSec)))
         .thenReturn(1);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.backwardCompatibleDate))).thenReturn(false);
     doAnswer(
             i -> {
               Runnable runnable = i.getArgument(0);
@@ -705,7 +707,7 @@ public class HealthCheckerTest extends FakeDBApplication {
                           + dummyCheck
                           + "'', ''details'': [], ''has_warning'': false, ''node_name'': ''"
                           + nodeDetails.nodeName
-                          + "'', ''timestamp'': '''' } ] }")
+                          + "'', ''timestamp_iso'': ''2022-03-01T09:22:23Z'' } ] }")
                       .replace("''", "\""));
             });
   }
@@ -729,7 +731,7 @@ public class HealthCheckerTest extends FakeDBApplication {
                       + " \"node_name\": \""
                       + nodeDetails.nodeName
                       + "\","
-                      + "\"timestamp\":\"2022-03-01 09:22:23\"}]}");
+                      + "\"timestamp_iso\":\"2022-03-01T09:22:23Z\"}]}");
             });
   }
 

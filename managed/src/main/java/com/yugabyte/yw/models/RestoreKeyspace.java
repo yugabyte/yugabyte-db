@@ -4,6 +4,7 @@ package com.yugabyte.yw.models;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multimap;
@@ -30,7 +31,6 @@ import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.libs.Json;
 
 @ApiModel(description = "Keyspace level restores")
 @Entity
@@ -111,7 +111,10 @@ public class RestoreKeyspace extends Model {
     this.state = state;
   }
 
-  @CreatedTimestamp private Date createTime;
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(value = "RestoreKeyspace task creation time", example = "2022-12-12T13:07:18Z")
+  @CreatedTimestamp
+  private Date createTime;
 
   public Date getCreateTime() {
     return createTime;
@@ -121,7 +124,12 @@ public class RestoreKeyspace extends Model {
     this.createTime = createTime;
   }
 
-  @UpdatedTimestamp private Date completeTime;
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value = "RestoreKeyspace task completion time",
+      example = "2022-12-12T13:07:18Z")
+  @UpdatedTimestamp
+  private Date completeTime;
 
   public Date getCompleteTime() {
     return completeTime;

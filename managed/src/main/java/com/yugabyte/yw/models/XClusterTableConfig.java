@@ -60,10 +60,8 @@ public class XClusterTableConfig extends Model {
   @ApiModelProperty(value = "Whether this table needs bootstrap process for replication setup")
   public boolean needBootstrap;
 
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  @ApiModelProperty(
-      value = "Time of the bootstrap of the table",
-      example = "2022-04-26 15:37:32.610000")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(value = "Time of the bootstrap of the table", example = "2022-12-12T13:07:18Z")
   public Date bootstrapCreateTime;
 
   @ManyToOne
@@ -76,10 +74,10 @@ public class XClusterTableConfig extends Model {
   @JsonProperty("restoreUuid")
   public Restore restore;
 
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
       value = "Time of the last try to restore data to the target universe",
-      example = "2022-04-26 15:37:32.610000")
+      example = "2022-12-12T13:07:18Z")
   public Date restoreTime;
 
   // If its main table is not part the config, it will be false; otherwise, it indicates whether the
