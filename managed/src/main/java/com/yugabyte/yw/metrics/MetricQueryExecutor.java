@@ -78,9 +78,9 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
   private JsonNode getMetrics(Map<String, String> queryParam) {
     String queryUrl;
     if (queryParam.containsKey("end")) {
-      queryUrl = metricUrlProvider.getMetricsUrl() + "/query_range";
+      queryUrl = metricUrlProvider.getMetricsApiUrl() + "/query_range";
     } else {
-      queryUrl = metricUrlProvider.getMetricsUrl() + "/query";
+      queryUrl = metricUrlProvider.getMetricsApiUrl() + "/query";
     }
 
     log.trace("Executing metric query {}: {}", queryUrl, queryParam);
