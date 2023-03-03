@@ -201,6 +201,9 @@ message RaftGroupReplicaSuperBlockPB {
   // Minimum checkpoint op id for cdcsdk streams. This value is used to retain intents
   // with op id larger than this one.
   optional OpIdPB cdc_sdk_min_checkpoint_op_id = 33;
+
+  // Is this tablet currently a being replicated with cdc.
+  optional bool is_under_cdc_sdk_replication = 36;
 }
 
 message FilePB {

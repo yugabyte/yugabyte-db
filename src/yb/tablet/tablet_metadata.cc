@@ -696,16 +696,24 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     }
     cdc_min_replicated_index_ = superblock.cdc_min_replicated_index();
 
-    {
-      if (superblock.has_cdc_sdk_min_checkpoint_op_id()) {
-        cdc_sdk_min_checkpoint_op_id_ = OpId::FromPB(superblock.cdc_sdk_min_checkpoint_op_id());
-      } else {
-        // If a cluster is upgraded from any version lesser than 2.14,
-        // 'cdc_sdk_min_checkpoint_op_id' would be absent from the superblock, and we need to set
-        // 'cdc_sdk_min_checkpoint_op_id_' to OpId::Invalid() as this indicates that there are no
-        // active CDC streams on this tablet.
+    if (superblock.has_cdc_sdk_min_checkpoint_op_id()) {
+      auto cdc_sdk_checkpoint = OpId::FromPB(superblock.cdc_sdk_min_checkpoint_op_id());
+      if (cdc_sdk_checkpoint == OpId() && (!superblock.has_is_under_cdc_sdk_replication() ||
+                                           !superblock.is_under_cdc_sdk_replication())) {
+        // This indiactes that 'cdc_sdk_min_checkpoint_op_id' has been set to 0.0 during a prior
+        // upgrade even without CDC running. Hence we reset it to -1.-1.
+        LOG_WITH_PREFIX(WARNING) << "Setting cdc_sdk_min_checkpoint_op_id_ to OpId::Invalid(), "
+                                    "since 'is_under_cdc_sdk_replication' is not set";
         cdc_sdk_min_checkpoint_op_id_ = OpId::Invalid();
+      } else {
+        cdc_sdk_min_checkpoint_op_id_ = cdc_sdk_checkpoint;
+        is_under_cdc_sdk_replication_ = superblock.is_under_cdc_sdk_replication();
       }
+    } else {
+      // If a cluster is upgraded from any version lesser than 2.14, 'cdc_sdk_min_checkpoint_op_id'
+      // would be absent from the superblock, and we need to set 'cdc_sdk_min_checkpoint_op_id_' to
+      // OpId::Invalid() as this indicates that there are no active CDC streams on this tablet.
+      cdc_sdk_min_checkpoint_op_id_ = OpId::Invalid();
     }
 
     is_under_twodc_replication_ = superblock.is_under_twodc_replication();
@@ -846,6 +854,7 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   if (restoration_hybrid_time_) {
     pb.set_restoration_hybrid_time(restoration_hybrid_time_.ToUint64());
   }
+  pb.set_is_under_cdc_sdk_replication(is_under_cdc_sdk_replication_);
 
   if (!split_op_id_.empty()) {
     split_op_id_.ToPB(pb.mutable_split_op_id());
@@ -1082,10 +1091,23 @@ OpId RaftGroupMetadata::cdc_sdk_min_checkpoint_op_id() const {
   return cdc_sdk_min_checkpoint_op_id_;
 }
 
+bool RaftGroupMetadata::is_under_cdc_sdk_replication() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return is_under_cdc_sdk_replication_;
+}
+
 Status RaftGroupMetadata::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_min_checkpoint_op_id) {
   {
     std::lock_guard<MutexType> lock(data_mutex_);
     cdc_sdk_min_checkpoint_op_id_ = cdc_min_checkpoint_op_id;
+
+    if (cdc_min_checkpoint_op_id == OpId::Max() || cdc_min_checkpoint_op_id == OpId::Invalid()) {
+      // This means we no longer have an active CDC stream for the tablet.
+      is_under_cdc_sdk_replication_ = false;
+    } else if (cdc_min_checkpoint_op_id.valid()) {
+      // Any OpId less than OpId::Max() indicates we are actively streaming from this tablet.
+      is_under_cdc_sdk_replication_ = true;
+    }
   }
   return Flush();
 }

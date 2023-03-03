@@ -314,6 +314,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   bool is_under_twodc_replication() const;
 
+  bool is_under_cdc_sdk_replication() const;
+
   bool has_been_fully_compacted() const {
     std::lock_guard<MutexType> lock(data_mutex_);
     return kv_store_.has_been_fully_compacted;
@@ -591,6 +593,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   OpId cdc_sdk_min_checkpoint_op_id_ GUARDED_BY(data_mutex_);
 
   bool is_under_twodc_replication_ GUARDED_BY(data_mutex_) = false;
+
+  bool is_under_cdc_sdk_replication_ GUARDED_BY(data_mutex_) = false;
 
   bool hidden_ GUARDED_BY(data_mutex_) = false;
 

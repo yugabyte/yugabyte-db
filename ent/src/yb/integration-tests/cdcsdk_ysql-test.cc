@@ -7406,6 +7406,103 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveWithSnapshot)) {
 
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointWithNoCDCStream)) {
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+
+  // Assert the cdc_sdk_min_checkpoint_op_id is -1.-1.
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+    for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+      if (peer->tablet_id() == tablets[0].tablet_id()) {
+        // What ever checkpoint persisted in the RAFT logs should be same as what ever in memory
+        // transaction participant tablet peer.
+        ASSERT_EQ(peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
+        ASSERT_EQ(
+            peer->cdc_sdk_min_checkpoint_op_id(),
+            peer->tablet()->transaction_participant()->GetRetainOpId());
+      }
+    }
+  }
+
+  // Restart all nodes.
+  SleepFor(MonoDelta::FromSeconds(1));
+  test_cluster()->mini_tablet_server(1)->Shutdown();
+  ASSERT_OK(test_cluster()->mini_tablet_server(1)->Start());
+  ASSERT_OK(test_cluster()->mini_tablet_server(1)->WaitStarted());
+
+  // Re-Assert the cdc_sdk_min_checkpoint_op_id is -1.-1, even after restart
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+    for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+      if (peer->tablet_id() == tablets[0].tablet_id()) {
+        // What ever checkpoint persisted in the RAFT logs should be same as what ever in memory
+        // transaction participant tablet peer.
+        ASSERT_EQ(peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
+        ASSERT_EQ(
+            peer->cdc_sdk_min_checkpoint_op_id(),
+            peer->tablet()->transaction_participant()->GetRetainOpId());
+      }
+    }
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIsUnderCDCSDKReplicationField)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_update_metrics_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  EnableCDCServiceInAllTserver(3);
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  auto check_is_under_cdc_sdk_replication = [&](bool expected_value) {
+    for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+      for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+        if (peer->tablet_id() == tablets[0].tablet_id()) {
+          // Check value of 'is_under_cdc_sdk_replication' in all tablet peers.
+          ASSERT_EQ(peer->is_under_cdc_sdk_replication(), expected_value);
+        }
+      }
+    }
+  };
+
+  // Assert that 'is_under_cdc_sdk_replication' remains true even after restart.
+  check_is_under_cdc_sdk_replication(true);
+
+  // Restart all the nodes.
+  SleepFor(MonoDelta::FromSeconds(1));
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+    test_cluster()->mini_tablet_server(i)->Shutdown();
+    ASSERT_OK(test_cluster()->mini_tablet_server(i)->Start());
+  }
+  LOG(INFO) << "All nodes restarted";
+  EnableCDCServiceInAllTserver(3);
+
+  check_is_under_cdc_sdk_replication(true);
+
+  ASSERT_EQ(DeleteCDCStream(stream_id), true);
+  VerifyStreamDeletedFromCdcState(test_client(), stream_id, tablets.Get(0).tablet_id());
+  VerifyTransactionParticipant(tablets.Get(0).tablet_id(), OpId::Max());
+
+  // Assert that after deleting the stream, 'is_under_cdc_sdk_replication' will be set to 'false'.
+  check_is_under_cdc_sdk_replication(false);
+}
+
 }  // namespace enterprise
 }  // namespace cdc
 }  // namespace yb
