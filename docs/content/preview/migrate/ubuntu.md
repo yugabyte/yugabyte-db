@@ -6,6 +6,10 @@ private=true
 
 Perform the following steps to install yb-voyager using apt for Ubuntu:
 
+{{< note title="Note" >}}
+`apt` installation is only supported for Ubuntu 22. For other versions such as 18 and 20, use the install script via the Source installation option.
+{{< /note >}}
+
 1. Install the Yugabyte apt repository on your machine using the following command:
 
     ```sh
