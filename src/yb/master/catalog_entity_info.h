@@ -611,6 +611,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   void SetMatview();
 
+  bool AttachedYCQLIndexDeletionInProgress(const std::string& index_table_id) const;
+
  private:
   friend class RefCountedThreadSafe<TableInfo>;
   ~TableInfo();
