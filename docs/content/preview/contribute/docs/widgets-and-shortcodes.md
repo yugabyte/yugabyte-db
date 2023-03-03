@@ -116,7 +116,7 @@ The corresponding code for this widget is as follows. Note that the actual conte
 
 ## Include content from other files
 
-The [includeCode](#includecode) and [includeFile](#includefile) shortcodes insert the contents of a file as plain text, while [includeMarkdown](#includemarkdown) inserts the contents of a file _and renders it as markdown_.
+The [includeCode](#includecode) shortcode inserts the contents of a file as plain text, while `readfile` and [includeMarkdown](#includemarkdown) insert the contents of a file _and renders it as markdown_.
 
 ### includeCode
 
@@ -156,7 +156,7 @@ This shortcode strips trailing whitespace from the input file.
 For more information on highlight options, see the Hugo docs on [highlighting in code fences](https://gohugo.io/content-management/syntax-highlighting/#highlighting-in-code-fences) and [supported syntax highlighting languages](https://gohugo.io/content-management/syntax-highlighting/#list-of-chroma-highlighting-languages).
 {{< /tip >}}
 
-### includeFile
+<!--### includeFile
 
 The `includeFile` shortcode infers the code language from the filename extension (or `output` if there's no extension) and creates its own code block.
 
@@ -194,7 +194,7 @@ CAREFUL! `hl_lines` takes a different form here than when you're specifying it o
 
 For more information on highlight options: <https://gohugo.io/content-management/syntax-highlighting/#highlight-shortcode>
 
-{{< /warning >}}
+{{< /warning >}}-->
 
 ### includeMarkdown
 
