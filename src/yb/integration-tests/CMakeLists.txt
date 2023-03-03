@@ -81,6 +81,7 @@ target_link_libraries(integration-tests
   yb_pgwrapper
   master_proto
   cdc_test_util
+  test_echo_service_proto
   ${INTEGRATION_TESTS_LIB_EXTENSIONS})
 
 add_dependencies(integration-tests

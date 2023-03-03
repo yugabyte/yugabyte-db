@@ -111,9 +111,9 @@ const std::string kSnapshotsDirSuffix = ".snapshots";
 //  Raft group metadata
 // ============================================================================
 
-TableInfo::TableInfo(const std::string& log_prefix_, PrivateTag)
+TableInfo::TableInfo(const std::string& log_prefix_, TableType table_type, PrivateTag)
     : log_prefix(log_prefix_),
-      doc_read_context(new docdb::DocReadContext(log_prefix)),
+      doc_read_context(new docdb::DocReadContext(log_prefix, table_type)),
       index_map(std::make_shared<IndexMap>()) {
 }
 
@@ -134,7 +134,8 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
       table_type(table_type),
       cotable_id(CHECK_RESULT(ParseCotableId(primary, table_id))),
       log_prefix(MakeTableInfoLogPrefix(tablet_log_prefix, primary, table_id)),
-      doc_read_context(std::make_shared<docdb::DocReadContext>(log_prefix, schema, schema_version)),
+      doc_read_context(std::make_shared<docdb::DocReadContext>(
+          log_prefix, table_type, schema, schema_version)),
       index_map(std::make_shared<IndexMap>(index_map)),
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),
@@ -186,7 +187,7 @@ Result<TableInfoPtr> TableInfo::LoadFromPB(
     const std::string& tablet_log_prefix, const TableId& primary_table_id, const TableInfoPB& pb) {
   Primary primary(primary_table_id == pb.table_id());
   auto log_prefix = MakeTableInfoLogPrefix(tablet_log_prefix, primary, pb.table_id());
-  auto result = std::make_shared<TableInfo>(log_prefix, PrivateTag());
+  auto result = std::make_shared<TableInfo>(log_prefix, pb.table_type(), PrivateTag());
   RETURN_NOT_OK(result->DoLoadFromPB(primary, pb));
   return result;
 }
@@ -238,7 +239,8 @@ Status TableInfo::MergeWithRestored(
   // the latest schema.
   const docdb::SchemaPacking& latest_packing = VERIFY_RESULT(
       doc_read_context->schema_packing_storage.GetPacking(schema_version));
-  LOG_IF_WITH_PREFIX(DFATAL, !latest_packing.SchemaContainsPacking(doc_read_context->schema))
+  LOG_IF_WITH_PREFIX(DFATAL,
+                     !latest_packing.SchemaContainsPacking(table_type, doc_read_context->schema))
       << "After merging schema packings during restore, latest schema does not"
       << " have the same packing as the corresponding latest packing for table "
       << table_id;
@@ -778,20 +780,28 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     }
     cdc_min_replicated_index_ = superblock.cdc_min_replicated_index();
 
-    {
-      if (superblock.has_cdc_sdk_min_checkpoint_op_id()) {
-        cdc_sdk_min_checkpoint_op_id_ = OpId::FromPB(superblock.cdc_sdk_min_checkpoint_op_id());
-      } else {
-        // If a cluster is upgraded from any version lesser than 2.14,
-        // 'cdc_sdk_min_checkpoint_op_id' would be absent from the superblock, and we need to set
-        // 'cdc_sdk_min_checkpoint_op_id_' to OpId::Invalid() as this indicates that there are no
-        // active CDC streams on this tablet.
+    if (superblock.has_cdc_sdk_min_checkpoint_op_id()) {
+      auto cdc_sdk_checkpoint = OpId::FromPB(superblock.cdc_sdk_min_checkpoint_op_id());
+      if (cdc_sdk_checkpoint == OpId() && (!superblock.has_is_under_cdc_sdk_replication() ||
+                                           !superblock.is_under_cdc_sdk_replication())) {
+        // This indiactes that 'cdc_sdk_min_checkpoint_op_id' has been set to 0.0 during a prior
+        // upgrade even without CDC running. Hence we reset it to -1.-1.
+        LOG_WITH_PREFIX(WARNING) << "Setting cdc_sdk_min_checkpoint_op_id_ to OpId::Invalid(), "
+                                    "since 'is_under_cdc_sdk_replication' is not set";
         cdc_sdk_min_checkpoint_op_id_ = OpId::Invalid();
+      } else {
+        cdc_sdk_min_checkpoint_op_id_ = cdc_sdk_checkpoint;
+        is_under_cdc_sdk_replication_ = superblock.is_under_cdc_sdk_replication();
       }
+    } else {
+      // If a cluster is upgraded from any version lesser than 2.14, 'cdc_sdk_min_checkpoint_op_id'
+      // would be absent from the superblock, and we need to set 'cdc_sdk_min_checkpoint_op_id_' to
+      // OpId::Invalid() as this indicates that there are no active CDC streams on this tablet.
+      cdc_sdk_min_checkpoint_op_id_ = OpId::Invalid();
     }
 
     cdc_sdk_safe_time_ = HybridTime::FromPB(superblock.cdc_sdk_safe_time());
-    is_under_twodc_replication_ = superblock.is_under_twodc_replication();
+    is_under_xcluster_replication_ = superblock.is_under_twodc_replication();
     hidden_ = superblock.hidden();
     auto restoration_hybrid_time = HybridTime::FromPB(superblock.restoration_hybrid_time());
     if (restoration_hybrid_time) {
@@ -934,11 +944,12 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   pb.set_cdc_min_replicated_index(cdc_min_replicated_index_);
   cdc_sdk_min_checkpoint_op_id_.ToPB(pb.mutable_cdc_sdk_min_checkpoint_op_id());
   pb.set_cdc_sdk_safe_time(cdc_sdk_safe_time_.ToUint64());
-  pb.set_is_under_twodc_replication(is_under_twodc_replication_);
+  pb.set_is_under_twodc_replication(is_under_xcluster_replication_);
   pb.set_hidden(hidden_);
   if (restoration_hybrid_time_) {
     pb.set_restoration_hybrid_time(restoration_hybrid_time_.ToUint64());
   }
+  pb.set_is_under_cdc_sdk_replication(is_under_cdc_sdk_replication_);
 
   if (!split_op_id_.empty()) {
     split_op_id_.ToPB(pb.mutable_split_op_id());
@@ -1219,10 +1230,23 @@ HybridTime RaftGroupMetadata::cdc_sdk_safe_time() const {
   return cdc_sdk_safe_time_;
 }
 
+bool RaftGroupMetadata::is_under_cdc_sdk_replication() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return is_under_cdc_sdk_replication_;
+}
+
 Status RaftGroupMetadata::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_min_checkpoint_op_id) {
   {
     std::lock_guard<MutexType> lock(data_mutex_);
     cdc_sdk_min_checkpoint_op_id_ = cdc_min_checkpoint_op_id;
+
+    if (cdc_min_checkpoint_op_id == OpId::Max() || cdc_min_checkpoint_op_id == OpId::Invalid()) {
+      // This means we no longer have an active CDC stream for the tablet.
+      is_under_cdc_sdk_replication_ = false;
+    } else if (cdc_min_checkpoint_op_id.valid()) {
+      // Any OpId less than OpId::Max() indicates we are actively streaming from this tablet.
+      is_under_cdc_sdk_replication_ = true;
+    }
   }
   return Flush();
 }
@@ -1235,17 +1259,18 @@ Status RaftGroupMetadata::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_t
   return Flush();
 }
 
-Status RaftGroupMetadata::SetIsUnderTwodcReplicationAndFlush(bool is_under_twodc_replication) {
+Status RaftGroupMetadata::SetIsUnderXClusterReplicationAndFlush(
+    bool is_under_xcluster_replication) {
   {
     std::lock_guard<MutexType> lock(data_mutex_);
-    is_under_twodc_replication_ = is_under_twodc_replication;
+    is_under_xcluster_replication_ = is_under_xcluster_replication;
   }
   return Flush();
 }
 
-bool RaftGroupMetadata::is_under_twodc_replication() const {
+bool RaftGroupMetadata::IsUnderXClusterReplication() const {
   std::lock_guard<MutexType> lock(data_mutex_);
-  return is_under_twodc_replication_;
+  return is_under_xcluster_replication_;
 }
 
 void RaftGroupMetadata::SetHidden(bool value) {

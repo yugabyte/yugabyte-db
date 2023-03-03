@@ -1267,7 +1267,7 @@ TEST_F(QLDmlTest, ReadFollower) {
     cluster_->mini_tablet_server(i)->Shutdown();
   }
 
-  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
   // Since this will be the only alive tserver, there won't be any
   // UpdateConsensus requests to update the safe time. So staleness
   // will keep increasing. Disable staleness for the verification

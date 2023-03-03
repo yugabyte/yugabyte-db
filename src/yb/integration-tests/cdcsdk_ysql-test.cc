@@ -1163,7 +1163,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyNodeRest
   SleepFor(MonoDelta::FromSeconds(1));
   test_cluster()->mini_tablet_server(1)->Shutdown();
   ASSERT_OK(test_cluster()->mini_tablet_server(1)->Start());
-  ASSERT_OK(test_cluster()->mini_tablet_server(1)->WaitStarted());
 
   // Check all the tserver checkpoint info it's should be valid.
   for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
@@ -1697,7 +1696,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyAllNodes
   for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
     test_cluster()->mini_tablet_server(i)->Shutdown();
     ASSERT_OK(test_cluster()->mini_tablet_server(i)->Start());
-    ASSERT_OK(test_cluster()->mini_tablet_server(i)->WaitStarted());
   }
   LOG(INFO) << "All nodes restarted";
   EnableCDCServiceInAllTserver(3);
@@ -1770,7 +1768,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyAllNode
   for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
     test_cluster()->mini_tablet_server(i)->Shutdown();
     ASSERT_OK(test_cluster()->mini_tablet_server(i)->Start());
-    ASSERT_OK(test_cluster()->mini_tablet_server(i)->WaitStarted());
   }
   LOG(INFO) << "All nodes restarted";
   SleepFor(MonoDelta::FromSeconds(60));
@@ -1839,7 +1836,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestHighIntentCountPersistencyAll
   for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
     test_cluster()->mini_tablet_server(i)->Shutdown();
     ASSERT_OK(test_cluster()->mini_tablet_server(i)->Start());
-    ASSERT_OK(test_cluster()->mini_tablet_server(i)->WaitStarted());
   }
   LOG(INFO) << "All nodes restarted";
   SleepFor(MonoDelta::FromSeconds(60));
@@ -1906,7 +1902,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyBootstr
 
   // Restart the tserver hosting the initial leader.
   ASSERT_OK(test_cluster()->mini_tablet_server(first_leader_index)->Start());
-  ASSERT_OK(test_cluster()->mini_tablet_server(first_leader_index)->WaitStarted());
   SleepFor(MonoDelta::FromSeconds(1));
 
   OpId last_seen_checkpoint_op_id = OpId::Invalid();
@@ -2015,7 +2010,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumOnRestart)) {
   SleepFor(MonoDelta::FromSeconds(1));
   test_cluster()->mini_tablet_server(0)->Shutdown();
   ASSERT_OK(test_cluster()->mini_tablet_server(0)->Start());
-  ASSERT_OK(test_cluster()->mini_tablet_server(0)->WaitStarted());
 
   // Insert some more records in transaction.
   ASSERT_OK(WriteEnumsRows(insert_count / 2, insert_count, &test_cluster_));
@@ -2173,7 +2167,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompositeTypeWithRestart)) {
   SleepFor(MonoDelta::FromSeconds(1));
   test_cluster()->mini_tablet_server(0)->Shutdown();
   ASSERT_OK(test_cluster()->mini_tablet_server(0)->Start());
-  ASSERT_OK(test_cluster()->mini_tablet_server(0)->WaitStarted());
 
   // Insert some more records in transaction.
   ASSERT_OK(WriteCompositeRows(insert_count / 2, insert_count, &test_cluster_));
@@ -2482,7 +2475,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyAfterCo
   for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
     test_cluster()->mini_tablet_server(i)->Shutdown();
     ASSERT_OK(test_cluster()->mini_tablet_server(i)->Start());
-    ASSERT_OK(test_cluster()->mini_tablet_server(i)->WaitStarted());
   }
   LOG(INFO) << "All nodes restarted";
 
@@ -2554,7 +2546,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCedWithTabletBootStrap)) 
   // Restart of the tsever will make Tablet Bootstrap.
   test_cluster()->mini_tablet_server(0)->Shutdown();
   ASSERT_OK(test_cluster()->mini_tablet_server(0)->Start());
-  ASSERT_OK(test_cluster()->mini_tablet_server(0)->WaitStarted());
 
   SleepFor(MonoDelta::FromSeconds(FLAGS_log_min_seconds_to_retain));
   // Here testcase behave like a WAL cleaner thread.
@@ -2622,7 +2613,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestXClusterLogGCedWithTabletBoot
   // Restart of the tsever will make Tablet Bootstrap.
   test_cluster()->mini_tablet_server(0)->Shutdown();
   ASSERT_OK(test_cluster()->mini_tablet_server(0)->Start());
-  ASSERT_OK(test_cluster()->mini_tablet_server(0)->WaitStarted());
 
   SleepFor(MonoDelta::FromSeconds(FLAGS_log_min_seconds_to_retain));
   // Here testcase behave like a WAL cleaner thread.
@@ -2926,7 +2916,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDeletedStreamRowRemovedEvenAf
   // We shutdown the TServer so that the stream cache is cleared.
   test_cluster()->mini_tablet_server(0)->Shutdown();
   ASSERT_OK(test_cluster()->mini_tablet_server(0)->Start());
-  ASSERT_OK(test_cluster()->mini_tablet_server(0)->WaitStarted());
 
   // We verify that the row is deleted even after GetChanges() overwrote the OpId from Max.
   VerifyStreamDeletedFromCdcState(test_client(), stream_id, tablets[0].tablet_id());
@@ -3352,7 +3341,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderRestart)
 
   // restart the initial leader tserver
   ASSERT_OK(test_cluster()->mini_tablet_server(first_leader_index)->Start());
-  ASSERT_OK(test_cluster()->mini_tablet_server(first_leader_index)->WaitStarted());
 
   // Insert some records in transaction after leader shutdown.
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
@@ -4844,7 +4832,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentGCedWithTabletBootStrap
   for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
     test_cluster()->mini_tablet_server(i)->Shutdown();
     ASSERT_OK(test_cluster()->mini_tablet_server(i)->Start());
-    ASSERT_OK(test_cluster()->mini_tablet_server(i)->WaitStarted());
   }
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -6208,6 +6195,213 @@ TEST_F(
     }
   }
   ASSERT_EQ(count, 2000);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckpointUpdatedDuringSnapshot)) {
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  FLAGS_cdc_snapshot_batch_size = 10;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Invalid()));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
+
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDCSnapshot(stream_id, tablets));
+  int count = 0;
+  GetChangesResponsePB change_resp_updated;
+
+  uint64_t last_seen_snapshot_save_time = 0;
+  std::string last_seen_snapshot_key = "";
+
+  while (true) {
+    change_resp_updated = ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp));
+    uint32_t record_size = change_resp_updated.cdc_sdk_proto_records_size();
+
+    const auto& snapshopt_time_key_pair = ASSERT_RESULT(GetSnapshotDetailsFromCdcStateTable(
+        stream_id, tablets.begin()->tablet_id(), test_client()));
+
+    auto const& checkpoint_result =
+        ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
+
+    // Assert that 'GetCDCCheckpoint' return the same snapshot_time and key as in 'cdc_state' table.
+    ASSERT_EQ(checkpoint_result.snapshot_time(), std::get<0>(snapshopt_time_key_pair));
+    ASSERT_EQ(checkpoint_result.snapshot_key(), std::get<1>(snapshopt_time_key_pair));
+
+    if (last_seen_snapshot_save_time != 0) {
+      // Assert that the snapshot save time does not change per 'GetChanges' call.
+      ASSERT_EQ(last_seen_snapshot_save_time, std::get<0>(snapshopt_time_key_pair));
+    }
+    last_seen_snapshot_save_time = std::get<0>(snapshopt_time_key_pair);
+    ASSERT_NE(last_seen_snapshot_save_time, 0);
+
+    if (!last_seen_snapshot_key.empty()) {
+      // Assert that the snapshot key is updated per 'GetChanges' call.
+      ASSERT_NE(last_seen_snapshot_key, std::get<1>(snapshopt_time_key_pair));
+    }
+    last_seen_snapshot_key = std::get<1>(snapshopt_time_key_pair);
+
+    for (uint32_t i = 0; i < record_size; ++i) {
+      const CDCSDKProtoRecordPB record = change_resp_updated.cdc_sdk_proto_records(i);
+      if (record.row_message().op() == RowMessage::READ) {
+        count += 1;
+      }
+    }
+    change_resp = change_resp_updated;
+    if (change_resp_updated.cdc_sdk_checkpoint().key().empty() &&
+        change_resp_updated.cdc_sdk_checkpoint().write_id() == 0 &&
+        change_resp_updated.cdc_sdk_checkpoint().snapshot_time() == 0) {
+      break;
+    }
+  }
+  ASSERT_EQ(count, 1000);
+
+  // Call GetChanges after snapshot done. We should no loner see snapshot key and snasphot save_time
+  // in cdc_state table.
+  change_resp_updated = ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp));
+
+  // We should no longer be able to get the snapshot key and safe_time from 'cdc_state' table.
+  ASSERT_NOK(
+      GetSnapshotDetailsFromCdcStateTable(stream_id, tablets.begin()->tablet_id(), test_client()));
+
+  auto const& checkpoint_result =
+        ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
+  ASSERT_EQ(checkpoint_result.snapshot_time(), 0);
+  ASSERT_EQ(checkpoint_result.snapshot_key(), "");
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointWithNoCDCStream)) {
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+
+  // Assert the cdc_sdk_min_checkpoint_op_id is -1.-1.
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+    for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+      if (peer->tablet_id() == tablets[0].tablet_id()) {
+        // What ever checkpoint persisted in the RAFT logs should be same as what ever in memory
+        // transaction participant tablet peer.
+        ASSERT_EQ(peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
+        ASSERT_EQ(
+            peer->cdc_sdk_min_checkpoint_op_id(),
+            peer->tablet()->transaction_participant()->GetRetainOpId());
+      }
+    }
+  }
+
+  // Restart all nodes.
+  SleepFor(MonoDelta::FromSeconds(1));
+  test_cluster()->mini_tablet_server(1)->Shutdown();
+  ASSERT_OK(test_cluster()->mini_tablet_server(1)->Start());
+  ASSERT_OK(test_cluster()->mini_tablet_server(1)->WaitStarted());
+
+  // Re-Assert the cdc_sdk_min_checkpoint_op_id is -1.-1, even after restart
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+    for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+      if (peer->tablet_id() == tablets[0].tablet_id()) {
+        // What ever checkpoint persisted in the RAFT logs should be same as what ever in memory
+        // transaction participant tablet peer.
+        ASSERT_EQ(peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
+        ASSERT_EQ(
+            peer->cdc_sdk_min_checkpoint_op_id(),
+            peer->tablet()->transaction_participant()->GetRetainOpId());
+      }
+    }
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIsUnderCDCSDKReplicationField)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_update_metrics_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  EnableCDCServiceInAllTserver(1);
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  auto check_is_under_cdc_sdk_replication = [&](bool expected_value) {
+    for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+      for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+        if (peer->tablet_id() == tablets[0].tablet_id()) {
+          // Check value of 'is_under_cdc_sdk_replication' in all tablet peers.
+          ASSERT_EQ(peer->is_under_cdc_sdk_replication(), expected_value);
+        }
+      }
+    }
+  };
+
+  // Assert that 'is_under_cdc_sdk_replication' remains true even after restart.
+  check_is_under_cdc_sdk_replication(true);
+
+  // Restart all the nodes.
+  SleepFor(MonoDelta::FromSeconds(1));
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+    test_cluster()->mini_tablet_server(i)->Shutdown();
+    ASSERT_OK(test_cluster()->mini_tablet_server(i)->Start());
+  }
+  LOG(INFO) << "All nodes restarted";
+  EnableCDCServiceInAllTserver(1);
+
+  check_is_under_cdc_sdk_replication(true);
+
+  ASSERT_EQ(DeleteCDCStream(stream_id), true);
+  VerifyStreamDeletedFromCdcState(test_client(), stream_id, tablets.Get(0).tablet_id());
+  VerifyTransactionParticipant(tablets.Get(0).tablet_id(), OpId::Max());
+
+  // Assert that after deleting the stream, 'is_under_cdc_sdk_replication' will be set to 'false'.
+  check_is_under_cdc_sdk_replication(false);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestExplicitCheckpointGetChangesRequest)) {
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ASSERT_OK(WriteRowsHelper(1 /* start */, 101 /* end */, &test_cluster_, true));
+
+  // Not setting explicit checkpoint here.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+
+  // Since stream is in EXPLICIT mode, the checkpoint won't be stored in cdc_state table.
+  auto checkpoint = ASSERT_RESULT(
+      GetStreamCheckpointInCdcState(test_client(), stream_id, tablets[0].tablet_id()));
+  ASSERT_EQ(checkpoint, OpId());
+
+  // This time call 'GetChanges' with an explicit checkpoint.
+  ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+
+  // The checkpoint stored in the cdc_state table will be updated.
+  checkpoint = ASSERT_RESULT(
+      GetStreamCheckpointInCdcState(test_client(), stream_id, tablets[0].tablet_id()));
+  ASSERT_EQ(
+      checkpoint,
+      OpId(change_resp.cdc_sdk_checkpoint().term(), change_resp.cdc_sdk_checkpoint().index()));
 }
 
 }  // namespace cdc

@@ -9,6 +9,7 @@
 | "Show costs in UI" | "yb.ui.show_cost" | "CUSTOMER" | "Option to enable/disable costs in UI" | "Boolean" |
 | "Helm chart http download timeout" | "yb.releases.download_helm_chart_http_timeout" | "CUSTOMER" | "The timeout for downloading the Helm chart while importing a release using HTTP" | "Duration" |
 | "Use Redesigned Provider UI" | "yb.ui.feature_flags.provider_redesign" | "CUSTOMER" | "The redesigned provider UI adds a provider list view, a provider details view and improves the provider creation form for AWS, AZU, GCP, and K8s" | "Boolean" |
+| "Use K8 custom resources" | "yb.ui.feature_flags.k8s_custom_resources" | "CUSTOMER" | "Allows user to select custom K8 memory(GB) and cpu cores" | "Boolean" |
 | "Enforce User Tags" | "yb.universe.user_tags.is_enforced" | "CUSTOMER" | "Prevents universe creation when the enforced tags are not provided." | "Boolean" |
 | "Enforced User Tags List" | "yb.universe.user_tags.enforced_tags" | "CUSTOMER" | "A list of enforced user tag and accepted value pairs during universe creation. Pass '*' to accept all values for a tag. Ex: [\"yb_task:dev\",\"yb_task:test\",\"yb_owner:*\",\"yb_dept:eng\",\"yb_dept:qa\", \"yb_dept:product\", \"yb_dept:sales\"]" | "Key Value SetMultimap" |
 | "Allow Unsupported Instances" | "yb.internal.allow_unsupported_instances" | "PROVIDER" | "Enabling removes supported instance type filtering on AWS providers." | "Boolean" |
@@ -24,9 +25,17 @@
 | "Default AWS Volume Size" | "yb.aws.default_volume_size_gb" | "PROVIDER" | "Default AWS Volume Size" | "Integer" |
 | "Default GCP Volume Size" | "yb.gcp.default_volume_size_gb" | "PROVIDER" | "Default GCP Volume Size" | "Integer" |
 | "Default Azure Volume Size" | "yb.azure.default_volume_size_gb" | "PROVIDER" | "Default Azure Volume Size" | "Integer" |
+| "Default Kubernetes Volume Count" | "yb.kubernetes.default_volume_count" | "PROVIDER" | "Default Kubernetes Volume Count" | "Integer" |
 | "Default Kubernetes Volume Size" | "yb.kubernetes.default_volume_size_gb" | "PROVIDER" | "Default Kubernetes Volume Size" | "Integer" |
+| "Default Kubernetes CPU cores" | "yb.kubernetes.default_cpu_cores" | "PROVIDER" | "Default Kubernetes CPU cores" | "Integer" |
+| "Minimum Kubernetes CPU cores" | "yb.kubernetes.min_cpu_cores" | "PROVIDER" | "Minimum Kubernetes CPU cores" | "Integer" |
+| "Maximum Kubernetes CPU cores" | "yb.kubernetes.max_cpu_cores" | "PROVIDER" | "Maximum Kubernetes CPU cores" | "Integer" |
+| "Default Kubernetes Memory Size" | "yb.kubernetes.default_memory_size_gb" | "PROVIDER" | "Default Kubernetes Memory Size" | "Integer" |
+| "Minimum Kubernetes Memory Size" | "yb.kubernetes.min_memory_size_gb" | "PROVIDER" | "Minimum Kubernetes Memory Size" | "Integer" |
+| "Maximum Kubernetes Memory Size" | "yb.kubernetes.max_memory_size_gb" | "PROVIDER" | "Maximum Kubernetes Memory Size" | "Integer" |
 | "Enable Node Agent Client" | "yb.node_agent.client.enabled" | "PROVIDER" | "Enable node agent client for communication to DB nodes." | "Boolean" |
 | "Install Node Agent Server" | "yb.node_agent.server.install" | "PROVIDER" | "Install node agent server on DB nodes." | "Boolean" |
+| "Enable Ansible Offloading" | "yb.node_agent.ansible_offloading.enabled" | "PROVIDER" | "Offload ansible tasks to the DB nodes." | "Boolean" |
 | "Max Number of Parallel Node Checks" | "yb.health.max_num_parallel_node_checks" | "GLOBAL" | "Number of parallel node checks, spawned as part of universes health check process" | "Integer" |
 | "Log Script Output For YBA HA Feature" | "yb.ha.logScriptOutput" | "GLOBAL" | "To log backup restore script output for debugging issues" | "Boolean" |
 | "Use Kubectl" | "yb.use_kubectl" | "GLOBAL" | "Use java library instead of spinning up kubectl process." | "Boolean" |

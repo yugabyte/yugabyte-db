@@ -396,7 +396,13 @@ public class AccessManager extends DevopsBase {
       commandArgs.add(privateKeyFilePath);
     }
 
-    JsonNode response = execAndParseCommandRegion(regionUUID, "add-key", commandArgs);
+    JsonNode response =
+        execAndParseShellResponse(
+            DevopsCommand.builder()
+                .regionUUID(regionUUID)
+                .command("add-key")
+                .commandArgs(commandArgs)
+                .build());
     if (response.has("error")) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
@@ -465,11 +471,21 @@ public class AccessManager extends DevopsBase {
     }
     commandArgs.add("--private_key_file");
     commandArgs.add(privateKeyFile);
-    return execAndParseCommandRegion(regionUUID, "create-vault", commandArgs);
+    return execAndParseShellResponse(
+        DevopsCommand.builder()
+            .regionUUID(regionUUID)
+            .command("create-vault")
+            .commandArgs(commandArgs)
+            .build());
   }
 
   public JsonNode listKeys(UUID regionUUID) {
-    return execAndParseCommandRegion(regionUUID, "list-keys", Collections.emptyList());
+    return execAndParseShellResponse(
+        DevopsCommand.builder()
+            .regionUUID(regionUUID)
+            .command("list-keys")
+            .commandArgs(Collections.emptyList())
+            .build());
   }
 
   public JsonNode deleteKey(UUID regionUUID, String keyCode) {
@@ -526,7 +542,13 @@ public class AccessManager extends DevopsBase {
       commandArgs.add("--delete_remote");
     }
     commandArgs.add("--ignore_auth_failure");
-    JsonNode response = execAndParseCommandRegion(regionUUID, "delete-key", commandArgs);
+    JsonNode response =
+        execAndParseShellResponse(
+            DevopsCommand.builder()
+                .regionUUID(regionUUID)
+                .command("delete-key")
+                .commandArgs(commandArgs)
+                .build());
     if (response.has("error")) {
       throw new RuntimeException(response.get("error").asText());
     }

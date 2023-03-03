@@ -73,7 +73,6 @@ You can run examples using a universe set up on your local machine or in a cloud
 <div class="tab-content">
   <div id="local" class="tab-pane fade show active" role="tabpanel" aria-labelledby="local-tab">
 
-
 To run the examples, you need to create a single- or multi-node universe.
 
 For testing and learning YugabyteDB on your computer, use the [yugabyted](../reference/configuration/yugabyted/) utility to create and manage universes.
@@ -81,6 +80,8 @@ For testing and learning YugabyteDB on your computer, use the [yugabyted](../ref
 {{< tabpane text=true >}}
 
   {{% tab header="Single-node universe" lang="Single-node universe" %}}
+
+If a local universe is currently running, first [destroy it](../reference/configuration/yugabyted/#destroy-a-local-cluster).
 
 You can create a single-node local universe with a replication factor (RF) of 1 by running the following command:
 
@@ -97,23 +98,13 @@ Or, if you are running macOS Monterey, use the following command:
 
 For more information, refer to [Quick Start](../quick-start/linux/#create-a-local-cluster).
 
-To stop a single-node universe, execute the following:
-
-```sh
-./bin/yugabyted destroy
-```
-
   {{% /tab %}}
 
   {{% tab header="Multi-node universe" lang="Multi-node universe" %}}
 
 The following instructions show how to simulate a multi-node universe on a single computer. To deploy a true multi-node universe, follow the instructions in [Deploy](../deploy/).
 
-If a single-node universe is currently running, first destroy it, as follows:
-
-```sh
-./bin/yugabyted destroy
-```
+If a local universe is currently running, first [destroy it](../reference/configuration/yugabyted/#destroy-a-local-cluster).
 
 Start a local three-node universe with an RF of `3` by first creating a single node universe, as follows:
 
@@ -156,14 +147,6 @@ After starting the yugabyted processes on all the nodes, configure the data plac
 ```
 
 This command can be executed on any node where you already started YugabyteDB.
-
-To destroy the multi-node universe, execute the following:
-
-```sh
-./bin/yugabyted destroy --base_dir=/tmp/ybd1
-./bin/yugabyted destroy --base_dir=/tmp/ybd2
-./bin/yugabyted destroy --base_dir=/tmp/ybd3
-```
 
   {{% /tab %}}
 

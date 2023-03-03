@@ -355,6 +355,49 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateInstanceTypeWithSoftDeletedKeyCollision() {
+    String sharedInstanceTypeCode = "test-i1";
+    // Setup a soft deleted instance type
+    InstanceType it =
+        InstanceType.upsert(
+            awsProvider.uuid,
+            sharedInstanceTypeCode,
+            3,
+            5.0,
+            new InstanceType.InstanceTypeDetails());
+    JsonNode json = doDeleteInstanceTypeAndVerify(awsProvider.uuid, it.getInstanceTypeCode(), OK);
+    it = InstanceType.get(awsProvider.uuid, it.getInstanceTypeCode());
+    assertTrue(json.get("success").asBoolean());
+    assertFalse(it.isActive());
+
+    // Create and verify an instance type with the same instanceTypeCode `sharedInstanceTypeCode`.
+    InstanceType.InstanceTypeDetails details = new InstanceType.InstanceTypeDetails();
+    InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
+    volumeDetails.volumeType = InstanceType.VolumeType.EBS;
+    volumeDetails.volumeSizeGB = 10;
+    details.volumeDetailsList.add(volumeDetails);
+    details.setDefaultMountPaths();
+    ObjectNode instanceTypeJson = Json.newObject();
+    ObjectNode idKey = Json.newObject();
+    idKey.put("instanceTypeCode", sharedInstanceTypeCode);
+    instanceTypeJson.set("idKey", idKey);
+    instanceTypeJson.put("memSizeGB", 11.9);
+    instanceTypeJson.put("numCores", 4);
+    instanceTypeJson.set("instanceTypeDetails", Json.toJson(details));
+    json = doCreateInstanceTypeAndVerify(awsProvider.uuid, instanceTypeJson, OK);
+    assertValue(json, "instanceTypeCode", sharedInstanceTypeCode);
+    assertValue(json, "memSizeGB", "11.9");
+    assertValue(json, "numCores", "4.0");
+    assertValue(json, "active", "true");
+    JsonNode machineDetailsNode = json.get("instanceTypeDetails").get("volumeDetailsList").get(0);
+    assertThat(machineDetailsNode, notNullValue());
+    assertValue(machineDetailsNode, "volumeSizeGB", "10");
+    assertValue(machineDetailsNode, "volumeType", "EBS");
+    assertValue(machineDetailsNode, "mountPath", "/mnt/d0");
+    assertAuditEntry(2, customer.uuid);
+  }
+
+  @Test
   public void testGetOnPremInstanceTypeWithValidParams() {
     InstanceType.InstanceTypeDetails details = new InstanceType.InstanceTypeDetails();
     InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();

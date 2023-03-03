@@ -538,7 +538,6 @@ components:
                 swamper.targetPath = /opt/yugabyte/prometheus/targets
                 swamper.rulesPath = /opt/yugabyte/prometheus/rules
                 multiTenant = false
-                releases.path = "/opt/yugabyte/releases"
                 docker.release = "/opt/yugabyte/release"
                 thirdparty.packagePath = /opt/third-party
                 helm.packagePath = "/opt/yugabyte/helm"

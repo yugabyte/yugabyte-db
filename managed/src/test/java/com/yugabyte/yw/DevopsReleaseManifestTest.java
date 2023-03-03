@@ -47,7 +47,6 @@ public class DevopsReleaseManifestTest {
           .put(
               "bin",
               ImmutableSet.of(
-                  "ansible-playbook.sh",
                   "ansible_runner.sh",
                   "diagnostics.sh",
                   "filter_ansible_output.py",

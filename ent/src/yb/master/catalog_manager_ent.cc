@@ -878,6 +878,7 @@ Status CatalogManager::ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_p
                                                 NamespaceMap* namespace_map,
                                                 UDTypeMap* type_map,
                                                 ExternalTableSnapshotDataMap* tables_data) {
+  // First pass: preprocess namespaces and UDTs
   for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
     switch (entry.type()) {
@@ -896,28 +897,8 @@ Status CatalogManager::ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_p
           // when the UDT will be found or recreated. Now it's empty value.
         }
         break;
-      case SysRowEntryType::TABLE: { // Create TABLE metadata.
-          LOG_IF(DFATAL, entry.id().empty()) << "Empty entry id";
-          ExternalTableSnapshotData& data = (*tables_data)[entry.id()];
-
-          if (data.old_table_id.empty()) {
-            data.old_table_id = entry.id();
-            data.table_meta = resp->mutable_tables_meta()->Add();
-            data.tablet_id_map = data.table_meta->mutable_tablets_ids();
-            data.table_entry_pb = VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
-
-            if (backup_entry.has_pg_schema_name()) {
-              data.pg_schema_name = backup_entry.pg_schema_name();
-            }
-          } else {
-            LOG_WITH_FUNC(WARNING) << "Ignoring duplicate table with id " << entry.id();
-          }
-
-          LOG_IF(DFATAL, data.old_table_id.empty()) << "Not initialized table id";
-        }
-        break;
+      case SysRowEntryType::TABLE: // Create TABLE metadata.
       case SysRowEntryType::TABLET: // Preprocess original tablets.
-        RETURN_NOT_OK(PreprocessTabletEntry(entry, tables_data));
         break;
       case SysRowEntryType::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntryType::REDIS_CONFIG: FALLTHROUGH_INTENDED;
@@ -932,6 +913,78 @@ Status CatalogManager::ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_p
       case SysRowEntryType::XCLUSTER_SAFE_TIME: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
+    }
+  }
+
+  // Second pass: preprocess tables and tablets
+  for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
+    const SysRowEntry& entry = backup_entry.entry();
+    switch (entry.type()) {
+      case SysRowEntryType::TABLE: { // Create TABLE metadata.
+          LOG_IF(DFATAL, entry.id().empty()) << "Empty entry id";
+          ExternalTableSnapshotData& data = (*tables_data)[entry.id()];
+
+          if (data.old_table_id.empty()) {
+            data.old_table_id = entry.id();
+            data.table_entry_pb = VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
+            if (backup_entry.has_pg_schema_name()) {
+              data.pg_schema_name = backup_entry.pg_schema_name();
+            }
+            if (data.table_entry_pb.colocated() && IsColocatedDbParentTableId(data.old_table_id)) {
+              // Find the new namespace id of the namespace of the table.
+              auto ns_it = namespace_map->find(data.table_entry_pb.namespace_id());
+              if (ns_it == namespace_map->end()) {
+                const string msg = Format("Namespace not found: $0",
+                                          data.table_entry_pb.namespace_id());
+                LOG_WITH_FUNC(WARNING) << msg;
+                return STATUS(NotFound, msg, MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
+              }
+              const NamespaceId new_namespace_id = ns_it->second.new_namespace_id;
+              bool legacy_colocated_database;
+              {
+                SharedLock lock(mutex_);
+                legacy_colocated_database = (colocated_db_tablets_map_.find(new_namespace_id)
+                                             != colocated_db_tablets_map_.end());
+              }
+              if (!legacy_colocated_database) {
+                // Colocation migration.
+                // Check if the default tablegroup exists.
+                PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(new_namespace_id));
+                PgOid default_tablegroup_oid =
+                    VERIFY_RESULT(sys_catalog_->ReadPgYbTablegroupOid(database_oid,
+                                                                      kDefaultTablegroupName));
+                if (default_tablegroup_oid == kPgInvalidOid) {
+                  // The default tablegroup doesn't exist in the restoring database. This means
+                  // there are no colocated tables in both of the backup and restoring database
+                  // because the default tablegroup is lazily created along with the creation of the
+                  // first colocated table. However, legacy colocated database parent table is
+                  // created along with the creation of the database. This is a special case to
+                  // handle. Just skip importing the legacy colocated database parent table by
+                  // removing this legacy colocated parent table's corresponding entry from
+                  // ExternalTableSnapshotDataMap tables_data. Also, we don't add its relevant
+                  // entry: TableMetaPB in ImportSnapshotMetaResponsePB resp. Since its entry in
+                  // ExternalTableSnapshotDataMap is removed, We will skip processing this parent
+                  // table and parent table tablet in [PHASE 3: Recreate ONLY tables] and
+                  // [PHASE 5: Restore tablets] in ImportSnapshotMeta(), respectively.
+                  tables_data->erase(entry.id());
+                  continue;
+                }
+              }
+            }
+            data.table_meta = resp->mutable_tables_meta()->Add();
+            data.tablet_id_map = data.table_meta->mutable_tablets_ids();
+          } else {
+            LOG_WITH_FUNC(WARNING) << "Ignoring duplicate table with id " << entry.id();
+          }
+
+          LOG_IF(DFATAL, data.old_table_id.empty()) << "Not initialized table id";
+        }
+        break;
+      case SysRowEntryType::TABLET: // Preprocess original tablets.
+        RETURN_NOT_OK(PreprocessTabletEntry(entry, tables_data));
+        break;
+      default:
+        break;
     }
   }
 
@@ -961,7 +1014,8 @@ Status CatalogManager::ImportSnapshotCreateIndexes(const SnapshotInfoPB& snapsho
   // Create ONLY INDEXES.
   for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
-    if (entry.type() == SysRowEntryType::TABLE) {
+    if (entry.type() == SysRowEntryType::TABLE
+        && tables_data->find(entry.id()) != tables_data->end()) {
       ExternalTableSnapshotData& data = (*tables_data)[entry.id()];
       if (data.is_index()) {
         RETURN_NOT_OK(ImportTableEntry(namespace_map, type_map, *tables_data, &data));
@@ -981,6 +1035,9 @@ Status CatalogManager::ImportSnapshotCreateAndWaitForTables(
     const SysRowEntry& entry = backup_entry.entry();
     // Only for tables that are not indexes.
     if (entry.type() != SysRowEntryType::TABLE) {
+      continue;
+    }
+    if (tables_data->find(entry.id()) == tables_data->end()) {
       continue;
     }
     // ExternalTableSnapshotData only contains entries for tables, so
@@ -1839,15 +1896,46 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
           // since the names will not match.
           // For normal colocated tables, we are still able to follow the normal table flow, so no
           // need to generate the new_table_id ourselves.
-          table_data->new_table_id = GetColocatedDbParentTableId(new_namespace_id);
+          // Case 1: Legacy colocated database
+          // parent table id = <namespace_id>.colocated.parent.uuid
+          // Case 2: Migration to colocation database
+          // parent table id = <tablegroup_id>.colocation.parent.uuid
+          SharedLock lock(mutex_);
+          bool legacy_colocated_database =
+              colocated_db_tablets_map_.find(new_namespace_id) != colocated_db_tablets_map_.end();
+          if (legacy_colocated_database) {
+            table_data->new_table_id = GetColocatedDbParentTableId(new_namespace_id);
+          } else {
+            PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(new_namespace_id));
+            PgOid default_tablegroup_oid =
+                VERIFY_RESULT(sys_catalog_->ReadPgYbTablegroupOid(database_oid,
+                                                                  kDefaultTablegroupName));
+            if (default_tablegroup_oid == kPgInvalidOid) {
+              // The default tablegroup doesn't exist in the restoring colocated database.
+              // This is a special case of colocation migration where only non-colocated tables
+              // exist in the database.
+              // We should already handle this case in ImportSnapshotPreprocess, such that we don't
+              // need to deal with it during the whole import snapshot process.
+              // If we get here, there must be something wrong and we should throw an error status.
+              // See ImportSnapshotPreprocess for more details.
+              const string msg = Format("Unexpected legacy colocated parent table during colocation"
+                                        " migration. We should skip processing it.");
+              LOG_WITH_FUNC(WARNING) << msg;
+              return STATUS(InternalError, msg, MasterError(MasterErrorPB::INTERNAL_ERROR));
+            } else {
+              table_data->new_table_id =
+                  GetColocationParentTableId(GetPgsqlTablegroupId(database_oid,
+                                                                  default_tablegroup_oid));
+            }
+          }
           is_parent_colocated_table = true;
         } else if (meta.colocated() && IsTablegroupParentTableId(table_data->old_table_id)) {
           // Since we preserve tablegroup oid in ysql_dump, for the parent tablegroup table, if we
           // didn't find a match by id in the previous step, then we need to generate the
           // new_table_id ourselves because the namespace id of the namespace where this tablegroup
           // was created changes.
-          uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(new_namespace_id));
-          uint32_t tablegroup_oid =
+          PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(new_namespace_id));
+          PgOid tablegroup_oid =
               VERIFY_RESULT(GetPgsqlTablegroupOid(
                   GetTablegroupIdFromParentTableId(table_data->old_table_id)));
           if (IsColocatedDbTablegroupParentTableId(table_data->old_table_id)) {
@@ -2136,6 +2224,12 @@ Status CatalogManager::PreprocessTabletEntry(const SysRowEntry& entry,
 
   SysTabletsEntryPB meta = VERIFY_RESULT(ParseFromSlice<SysTabletsEntryPB>(entry.data()));
 
+  // Colocation Migration special case. See ImportSnapshotPreprocess for more details.
+  if (meta.colocated() && IsColocatedDbParentTableId(meta.table_id())
+      && table_map->find(meta.table_id()) == table_map->end()) {
+    return Status::OK();
+  }
+
   ExternalTableSnapshotData& table_data = (*table_map)[meta.table_id()];
   if (meta.colocated()) {
     table_data.num_tablets = 1;
@@ -2154,6 +2248,13 @@ Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
       << "Unexpected entry type: " << entry.type();
 
   SysTabletsEntryPB meta = VERIFY_RESULT(ParseFromSlice<SysTabletsEntryPB>(entry.data()));
+
+  // This is the special case of colocation migration.
+  // See ImportSnapshotPreprocess for more details.
+  if (meta.colocated() && IsColocatedDbParentTableId(meta.table_id())
+      && table_map->find(meta.table_id()) == table_map->end()) {
+    return Status::OK();
+  }
 
   LOG_IF(DFATAL, table_map->find(meta.table_id()) == table_map->end())
       << "Table not found: " << meta.table_id();

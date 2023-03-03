@@ -28,7 +28,7 @@ type: docs
   <li >
     <a href="{{< relref "./azure-kms.md" >}}" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>&nbsp;
-      &nbsp;&nbsp;Azure KMS
+      Azure Key Vault
     </a>
   </li>
 
@@ -41,7 +41,7 @@ type: docs
 
 </ul>
 
-<br>Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [Amazon Web Services (AWS) KMS](https://aws.amazon.com/kms/).
+Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [Amazon Web Services (AWS) KMS](https://aws.amazon.com/kms/).
 
 The AWS user associated with a KMS configuration requires the following minimum Identity and Access Management (IAM) KMS-related permissions:
 
@@ -99,7 +99,7 @@ You can create a KMS configuration that uses AWS KMS as follows:
         }
     ```
 
-5. Click **Save**.<br>
+5. Click **Save**.
 
     Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 

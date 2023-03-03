@@ -30,9 +30,19 @@ public class NetworkManager extends DevopsBase {
     commandArgs.add(customPayload);
 
     if (regionUUID != null) {
-      return execAndParseCommandRegion(regionUUID, "bootstrap", commandArgs);
+      return execAndParseShellResponse(
+          DevopsCommand.builder()
+              .regionUUID(regionUUID)
+              .command("bootstrap")
+              .commandArgs(commandArgs)
+              .build());
     } else {
-      return execAndParseCommandCloud(providerUUID, "bootstrap", commandArgs);
+      return execAndParseShellResponse(
+          DevopsCommand.builder()
+              .providerUUID(providerUUID)
+              .command("bootstrap")
+              .commandArgs(commandArgs)
+              .build());
     }
   }
 
@@ -40,11 +50,22 @@ public class NetworkManager extends DevopsBase {
     List<String> commandArgs = new ArrayList<>();
     commandArgs.add("--custom_payload");
     commandArgs.add(customPayload);
-    return execAndParseCommandRegion(regionUUID, "query", commandArgs);
+    return execAndParseShellResponse(
+        DevopsCommand.builder()
+            .regionUUID(regionUUID)
+            .command("query")
+            .commandArgs(commandArgs)
+            .build());
   }
 
   public JsonNode cleanupOrFail(UUID regionUUID) {
-    JsonNode response = execAndParseCommandRegion(regionUUID, "cleanup", Collections.emptyList());
+    JsonNode response =
+        execAndParseShellResponse(
+            DevopsCommand.builder()
+                .regionUUID(regionUUID)
+                .command("cleanup")
+                .commandArgs(Collections.emptyList())
+                .build());
     if (response.has("error")) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, response.get("error").asText());
     }

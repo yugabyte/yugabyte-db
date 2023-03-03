@@ -296,8 +296,7 @@ class PerTableLoadState {
   virtual void UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc);
 
   Result<bool> CanAddTabletToTabletServer(
-    const TabletId& tablet_id, const TabletServerId& to_ts,
-    const PlacementInfoPB* placement_info = nullptr);
+    const TabletId& tablet_id, const TabletServerId& to_ts, const PlacementInfoPB* placement_info);
 
   // For a TS specified by ts_uuid, this function checks if there is a placement
   // block in placement_info where this TS can be placed. If there doesn't exist

@@ -13,6 +13,7 @@ import { MASTER_PLACEMENT_FIELD, PROVIDER_FIELD } from '../../../utils/constants
 
 interface MasterPlacementFieldProps {
   isPrimary: boolean;
+  useK8CustomResources: boolean;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -28,7 +29,10 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const MasterPlacementField = ({ isPrimary }: MasterPlacementFieldProps): ReactElement => {
+export const MasterPlacementField = ({
+  isPrimary,
+  useK8CustomResources
+}: MasterPlacementFieldProps): ReactElement => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const classes = useStyles();
   const { t } = useTranslation();
@@ -36,7 +40,7 @@ export const MasterPlacementField = ({ isPrimary }: MasterPlacementFieldProps): 
   // Tooltip message
   const masterPlacementTooltipText = t('universeForm.cloudConfig.masterPlacementHelper');
 
-  // watcher
+  // watchers
   const masterPlacement = useWatch({ name: MASTER_PLACEMENT_FIELD });
   const provider = useWatch({ name: PROVIDER_FIELD });
 
@@ -44,7 +48,13 @@ export const MasterPlacementField = ({ isPrimary }: MasterPlacementFieldProps): 
     if (!isPrimary) {
       setValue(MASTER_PLACEMENT_FIELD, MasterPlacementMode.COLOCATED);
     }
-  }, [isPrimary]);
+    if (isPrimary && provider?.code === CloudType.kubernetes) {
+      setValue(
+        MASTER_PLACEMENT_FIELD,
+        useK8CustomResources ? MasterPlacementMode.DEDICATED : MasterPlacementMode.COLOCATED
+      );
+    }
+  }, [isPrimary, provider]);
 
   return (
     <>

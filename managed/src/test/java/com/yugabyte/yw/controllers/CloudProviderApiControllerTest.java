@@ -34,7 +34,6 @@ import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
 
-import com.amazonaws.AmazonServiceException;
 import com.amazonaws.services.ec2.model.Image;
 import com.amazonaws.services.ec2.model.IpPermission;
 import com.amazonaws.services.ec2.model.SecurityGroup;
@@ -709,17 +708,26 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     ProviderDetails providerDetails = new ProviderDetails();
     Provider provider =
         Provider.create(customer.uuid, Common.CloudType.aws, "test", providerDetails);
-    Region.create(provider, "us-west-1", "us-west-1", "foo");
+    Region region = Region.create(provider, "us-west-1", "us-west-1", "foo");
+    region.setVnetName("vpc-foo");
+    region.setSecurityGroupId("sg-foo");
+    region.save();
+    AvailabilityZone.createOrThrow(region, "us-west-1a", "us-west-1a", "subnet-foo", "subnet-foo");
     String jsonString =
         String.format(
             "{\"code\":\"aws\",\"name\":\"test\",\"regions\":[{\"name\":\"us-west-1\""
                 + ",\"code\":\"us-west-1\", \"details\": {\"cloudInfo\": { \"aws\": {"
-                + "\"vnetName\":\"vpc-foo\","
+                + "\"vnetName\":\"vpc-foo\", \"ybImage\":\"foo\", "
                 + "\"securityGroupId\":\"sg-foo\" }}}, "
                 + "\"zones\":[{\"code\":\"us-west-1a\",\"name\":\"us-west-1a\","
                 + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}],"
                 + "\"version\": %d}",
             provider.getVersion());
+    Image image = new Image();
+    image.setArchitecture("x86_64");
+    image.setRootDeviceType("ebs");
+    image.setPlatformDetails("linux/UNIX");
+    when(mockAWSCloudImpl.describeImageOrBadRequest(any(), any(), any())).thenReturn(image);
     when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
         .thenReturn(getTestSecurityGroup(21, 24));
     Result result =
@@ -743,23 +751,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(() -> editProvider(Json.parse(jsonString), provider.uuid));
     assertBadRequest(result, "Required field vnet name (VPC ID) for region: us-west-1");
-  }
-
-  @Test
-  public void testAddRegionNoAccessKeyFail() {
-    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
-        .thenReturn(UUID.randomUUID());
-    Provider provider = Provider.create(customer.uuid, Common.CloudType.aws, "test");
-    String jsonString =
-        "{\"code\":\"aws\",\"name\":\"test\",\"regions\":[{\"name\":\"us-west-1\""
-            + ",\"code\":\"us-west-1\", \"details\": {\"cloudInfo\": { \"aws\": {"
-            + "\"securityGroupId\":\"sg-foo\" }}}, "
-            + "\"zones\":[{\"code\":\"us-west-1a\",\"name\":\"us-west-1a\","
-            + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}]}";
-
-    Result result =
-        assertPlatformException(() -> editProvider(Json.parse(jsonString), provider.uuid));
-    assertBadRequest(result, "KeyCode not found: " + AccessKey.getDefaultKeyCode(provider));
   }
 
   @Test

@@ -20,7 +20,7 @@ import {
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
 import { NTPConfigField } from '../../components/NTPConfigField';
 import { RegionList } from '../../components/RegionList';
-// import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
+import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import {
   ASYNC_ERROR,
   NTPSetupType,
@@ -72,16 +72,16 @@ const KeyPairManagement = {
 } as const;
 type KeyPairManagement = typeof KeyPairManagement[keyof typeof KeyPairManagement];
 
-// const KEY_PAIR_MANAGEMENT_OPTIONS: OptionProps[] = [
-//   {
-//     value: KeyPairManagement.YBA_MANAGED,
-//     label: 'Use YugabyteDB Anywhere to manage key pairs'
-//   },
-//   {
-//     value: KeyPairManagement.CUSTOM_KEY_PAIR,
-//     label: 'Provide custom key pair information'
-//   }
-// ];
+const KEY_PAIR_MANAGEMENT_OPTIONS: OptionProps[] = [
+  {
+    value: KeyPairManagement.YBA_MANAGED,
+    label: 'Use YugabyteDB Anywhere to manage key pairs'
+  },
+  {
+    value: KeyPairManagement.CUSTOM_KEY_PAIR,
+    label: 'Provide custom key pair information'
+  }
+];
 
 const VPC_SETUP_OPTIONS: OptionProps[] = [
   {
@@ -237,10 +237,10 @@ export const AZUProviderCreateForm = ({
   const onDeleteRegionSubmit = (currentRegion: CloudVendorRegionField) =>
     deleteItem(currentRegion, regions, setRegions);
 
-  // const keyPairManagement = formMethods.watch(
-  //   'sshKeypairManagement',
-  //   DEFAULT_FORM_VALUES.sshKeypairManagement
-  // );
+  const keyPairManagement = formMethods.watch(
+    'sshKeypairManagement',
+    DEFAULT_FORM_VALUES.sshKeypairManagement
+  );
   const vpcSetupType = formMethods.watch('vpcSetupType', DEFAULT_FORM_VALUES.vpcSetupType);
 
   return (
@@ -331,7 +331,7 @@ export const AZUProviderCreateForm = ({
                   fullWidth
                 />
               </FormField>
-              {/* <FormField>
+              <FormField>
                 <FieldLabel>Key Pair Management</FieldLabel>
                 <YBRadioGroupField
                   name="sshKeypairManagement"
@@ -357,7 +357,7 @@ export const AZUProviderCreateForm = ({
                     />
                   </FormField>
                 </>
-              )} */}
+              )}
             </FieldGroup>
             <FieldGroup heading="Advanced">
               <FormField>

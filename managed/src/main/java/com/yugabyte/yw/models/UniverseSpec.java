@@ -13,14 +13,23 @@
 
 package com.yugabyte.yw.models;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
+import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
-
+import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
+import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import io.ebean.annotation.Transactional;
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -36,6 +45,9 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.GZIPOutputStream;
 import lombok.Builder;
 import lombok.Data;
@@ -43,6 +55,7 @@ import lombok.extern.jackson.Jacksonized;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 @Slf4j
@@ -57,21 +70,29 @@ public class UniverseSpec {
 
   public Universe universe;
 
-  // Already consists of regions and regions contain availability zones
+  // Contains Region, AvailabilityZone, and AccessKey entities.
   public Provider provider;
-
-  public List<AccessKey> accessKeys;
 
   public List<InstanceType> instanceTypes;
 
   public List<PriceComponent> priceComponents;
 
+  public List<CertificateInfo> certificateInfoList;
+
+  public List<KmsConfig> kmsConfigs;
+
+  public List<KmsHistory> kmsHistoryList;
+
   public Map<String, String> universeConfig;
 
-  private String oldStoragePath;
+  public PlatformPaths oldPlatformPaths;
+
+  private ReleaseMetadata ybReleaseMetadata;
+
+  private boolean skipReleases;
 
   public InputStream exportSpec() throws IOException {
-    String specBasePath = this.oldStoragePath + "/universe-specs/export";
+    String specBasePath = this.oldPlatformPaths.storagePath + "/universe-specs/export";
     String specName = UniverseSpec.generateSpecName(true);
     String specJsonPath = specBasePath + "/" + specName + ".json";
     String specTarGZPath = specBasePath + "/" + specName + ".tar.gz";
@@ -88,9 +109,23 @@ public class UniverseSpec {
       // Save universe spec.
       Util.copyFileToTarGZ(jsonSpecFile, "universe-spec.json", tarOS);
 
-      // Save access keys.
-      for (AccessKey accessKey : accessKeys) {
+      // Save access key files.
+      for (AccessKey accessKey : this.provider.allAccessKeys) {
         exportAccessKey(accessKey, tarOS);
+      }
+      if (this.provider.code.equals(Common.CloudType.kubernetes.toString())) {
+        exportKubernetesAccessKey(tarOS);
+      }
+
+      // Save certificate files.
+      for (CertificateInfo certificateInfo : certificateInfoList) {
+        exportCertificateInfo(certificateInfo, tarOS);
+      }
+
+      // Save ybc and software release files.
+      if (!this.skipReleases) {
+        exportYBSoftwareReleases(tarOS);
+        exportYbcReleases(tarOS);
       }
     }
 
@@ -103,6 +138,7 @@ public class UniverseSpec {
   private void exportUniverseSpecObj(File jsonSpecFile) throws IOException {
     ObjectMapper mapper = Json.mapper();
     ObjectNode universeSpecObj = (ObjectNode) Json.toJson(this);
+    log.debug("Finished serializing universeSpec object.");
     universeSpecObj = setIgnoredJsonProperties(universeSpecObj);
     mapper.writeValue(jsonSpecFile, universeSpecObj);
   }
@@ -113,36 +149,92 @@ public class UniverseSpec {
     File pubKeyFile = new File(pubKeyPath);
     File accessKeyFolder = pubKeyFile.getParentFile();
     Util.addFilesToTarGZ(accessKeyFolder.getAbsolutePath(), "keys/", tarArchive);
+    log.debug("Added accessKey {} to tar gz file.", accessKey.getKeyCode());
   }
 
-  // Add any member variables that have the @jsonIgnored annotation.
+  private void exportKubernetesAccessKey(TarArchiveOutputStream tarArchive) throws IOException {
+    KubernetesInfo kubernetesInfo =
+        this.provider.getProviderDetails().getCloudInfo().getKubernetes();
+    String kubernetesPullSecretPath = kubernetesInfo.getKubernetesPullSecret();
+    File kubernetesPullSecretFile = new File(kubernetesPullSecretPath);
+    File accessKeyFolder = kubernetesPullSecretFile.getParentFile();
+    Util.addFilesToTarGZ(accessKeyFolder.getAbsolutePath(), "keys/", tarArchive);
+    log.debug("Added kubernetes accessKey {} to tar gz file.", kubernetesPullSecretFile.getName());
+  }
+
+  // Certs are stored under {yb.storage.path}/certs/{customer_uuid}/{certificate_info_uuid}/
+  // We will store each certificate folder in tar gz under certs/ without customer_uuid for
+  // simplicity.
+  // Legacy yugabytedb.crt/yugabytedb.pem files will be included as they are stored under
+  //  certificateFolder (usually in n2n rootCA folder).
+  private void exportCertificateInfo(
+      CertificateInfo certificateInfo, TarArchiveOutputStream tarArchive) throws IOException {
+    String certificatePath = certificateInfo.certificate;
+    File certificateFile = new File(certificatePath);
+    File certificateFolder = certificateFile.getParentFile();
+    Util.addFilesToTarGZ(certificateFolder.getAbsolutePath(), "certs/", tarArchive);
+    log.debug("Added certificate {} to tar gz file.", certificateInfo.label);
+  }
+
+  private void exportYBSoftwareReleases(TarArchiveOutputStream tarArchive) throws IOException {
+    String universeVersion =
+        this.universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    File releaseFolder =
+        new File(String.format("%s/%s", this.oldPlatformPaths.releasesPath, universeVersion));
+    Util.addFilesToTarGZ(releaseFolder.getAbsolutePath(), "releases/", tarArchive);
+    log.debug("Added software release {} to tar gz file.", universeVersion);
+  }
+
+  private void exportYbcReleases(TarArchiveOutputStream tarArchive) throws IOException {
+    File ybcReleaseFolder = new File(this.oldPlatformPaths.ybcReleasePath);
+    String universeYbcVersion = this.universe.getUniverseDetails().ybcSoftwareVersion;
+    if (this.universe.getUniverseDetails().ybcInstalled && ybcReleaseFolder.isDirectory()) {
+      File[] ybcTarFiles = ybcReleaseFolder.listFiles();
+      Pattern ybcVersionPattern =
+          Pattern.compile(String.format("%s-", Pattern.quote(universeYbcVersion)));
+      if (ybcTarFiles != null) {
+        // Need to add folder to tar gz file, otherwise, there are issues with untar.
+        tarArchive.putArchiveEntry(tarArchive.createArchiveEntry(ybcReleaseFolder, "ybcRelease/"));
+        tarArchive.closeArchiveEntry();
+
+        for (File ybcTarFile : ybcTarFiles) {
+          Matcher matcher = ybcVersionPattern.matcher(ybcTarFile.getName());
+          boolean matchFound = matcher.find();
+          if (matchFound) {
+            Util.addFilesToTarGZ(ybcTarFile.getAbsolutePath(), "ybcRelease/", tarArchive);
+          }
+        }
+      }
+      log.debug("Added ybc release {} to tar gz file.", universeYbcVersion);
+    }
+  }
+
+  // Retrieve unmasked details from provider, region, and availability zone.
   public ObjectNode setIgnoredJsonProperties(ObjectNode universeSpecObj) {
-    Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(provider);
-    JsonNode providerUnmaskedConfig = Json.toJson(envVars);
+    ProviderDetails unmaskedProviderDetails = this.provider.getProviderDetails();
+    JsonNode unmaskedProviderDetailsJson = Json.toJson(unmaskedProviderDetails);
     ObjectNode providerObj = (ObjectNode) universeSpecObj.get("provider");
-    providerObj.set("config", providerUnmaskedConfig);
+    providerObj.set("details", unmaskedProviderDetailsJson);
 
     List<Region> regions = this.provider.regions;
     ArrayNode regionsObj = (ArrayNode) providerObj.get("regions");
-
     if (regionsObj.isArray()) {
       for (int i = 0; i < regions.size(); i++) {
         ObjectNode regionObj = (ObjectNode) regionsObj.get(i);
         Region region = regions.get(i);
-        envVars = CloudInfoInterface.fetchEnvVars(region);
-        JsonNode regionUnmaskedConfig = Json.toJson(envVars);
-        regionObj.set("config", regionUnmaskedConfig);
+        RegionDetails unmaskedRegionDetails = region.getRegionDetails();
+        JsonNode unmaskedRegionDetailsJson = Json.toJson(unmaskedRegionDetails);
+        regionObj.set("details", unmaskedRegionDetailsJson);
 
         List<AvailabilityZone> zones = region.zones;
         ArrayNode zonesObj = (ArrayNode) regionObj.get("zones");
-
         if (zonesObj.isArray()) {
           for (int j = 0; j < zones.size(); j++) {
             ObjectNode zoneObj = (ObjectNode) zonesObj.get(j);
             AvailabilityZone zone = zones.get(j);
-            envVars = CloudInfoInterface.fetchEnvVars(zone);
-            JsonNode zoneUnmaskedConfig = Json.toJson(envVars);
-            zoneObj.set("config", zoneUnmaskedConfig);
+            AvailabilityZoneDetails unmaskedAZDetails = zone.getAvailabilityZoneDetails();
+            JsonNode unmaskedAZDetailsJson = Json.toJson(unmaskedAZDetails);
+            zoneObj.set("details", unmaskedAZDetailsJson);
           }
         }
       }
@@ -150,8 +242,14 @@ public class UniverseSpec {
     return universeSpecObj;
   }
 
-  public static UniverseSpec importSpec(File tarFile, String storagePath, Customer customer)
-      throws IOException {
+  public static UniverseSpec importSpec(
+      File tarFile, PlatformPaths platformPaths, Customer customer) throws IOException {
+
+    String storagePath = platformPaths.storagePath;
+    String releasesPath = platformPaths.releasesPath;
+    String ybcReleasePath = platformPaths.ybcReleasePath;
+    String ybcReleasesPath = platformPaths.ybcReleasesPath;
+
     String specBasePath = storagePath + "/universe-specs/import";
     String specName = UniverseSpec.generateSpecName(false);
     String specFolderPath = specBasePath + "/" + specName;
@@ -162,11 +260,24 @@ public class UniverseSpec {
     // Retrieve universe spec.
     UniverseSpec universeSpec = UniverseSpec.importUniverseSpec(specFolderPath);
 
-    // Update spec with new customer information.
-    universeSpec.updateUniverseCustomerDetails(customer);
-
     // Copy access keys to correct location if existing provider does not exist.
     universeSpec.importAccessKeys(specFolderPath, storagePath);
+
+    // Copy certificate files to correct location.
+    universeSpec.importCertificateInfoList(specFolderPath, storagePath, customer.getUuid());
+
+    if (!universeSpec.skipReleases) {
+      // Import the ybsoftwareversions, etc if exists.
+      universeSpec.importSoftwareReleases(specFolderPath, releasesPath);
+
+      // Import the ybcsoftware version, etc if exists.
+      universeSpec.importYbcSoftwareReleases(specFolderPath, ybcReleasePath);
+      universeSpec.createYbcReleasesFolder(ybcReleasesPath);
+    }
+
+    // Update universe related metadata due to platform switch.
+    // Placed after copying files due to dependencies upon files existing in correct location.
+    universeSpec.updateUniverseMetadata(storagePath, customer);
 
     return universeSpec;
   }
@@ -175,6 +286,7 @@ public class UniverseSpec {
     File jsonDir = new File(specFolderPath + "/universe-spec.json");
     ObjectMapper mapper = Json.mapper();
     UniverseSpec universeSpec = mapper.readValue(jsonDir, UniverseSpec.class);
+    log.debug("Finished deserializing universe spec.");
     return universeSpec;
   }
 
@@ -187,35 +299,227 @@ public class UniverseSpec {
           File[] keyFiles = keyDir.listFiles();
           if (keyFiles != null) {
             for (File keyFile : keyFiles) {
-              String extension = FilenameUtils.getExtension(keyFile.getName());
-              Set<PosixFilePermission> permissions =
-                  PosixFilePermissions.fromString(DEFAULT_PERMISSIONS);
-              if (extension.equals("pem")) {
-                permissions = PosixFilePermissions.fromString(PEM_PERMISSIONS);
-              } else if (extension.equals("pub")) {
-                permissions = PosixFilePermissions.fromString(PUB_PERMISSIONS);
+              // K8s universes have kubeconfig accessKey on per az level, which will be a directory.
+              if (!keyFile.isDirectory()) {
+                String extension = FilenameUtils.getExtension(keyFile.getName());
+                Set<PosixFilePermission> permissions =
+                    PosixFilePermissions.fromString(DEFAULT_PERMISSIONS);
+                if (extension.equals("pem")) {
+                  permissions = PosixFilePermissions.fromString(PEM_PERMISSIONS);
+                } else if (extension.equals("pub")) {
+                  permissions = PosixFilePermissions.fromString(PUB_PERMISSIONS);
+                }
+                Files.setPosixFilePermissions(keyFile.toPath(), permissions);
               }
-              Files.setPosixFilePermissions(keyFile.toPath(), permissions);
             }
           }
+          log.debug("Saved access key folder {}.", keyDir.getName());
         }
       }
       File destKeyMasterDir = new File(storagePath + "/keys");
       org.apache.commons.io.FileUtils.copyDirectory(srcKeyMasterDir, destKeyMasterDir);
-      log.debug("Saved access keys to {}", destKeyMasterDir.getPath());
+      log.debug("Saved access key file to {}", destKeyMasterDir.getPath());
     }
   }
 
-  public void updateUniverseCustomerDetails(Customer customer) {
+  private void importCertificateInfoList(
+      String specFolderPath, String storagePath, UUID customerUUID) throws IOException {
+    File srcCertificateInfoMasterDir = new File(specFolderPath + "/certs");
+    File[] certificateInfoDirs = srcCertificateInfoMasterDir.listFiles();
+
+    if (certificateInfoDirs != null) {
+      for (File certificateInfoDir : certificateInfoDirs) {
+        String certificateInfoUUID = certificateInfoDir.getName();
+        String certificateInfoBasePath =
+            CertificateHelper.getCADirPath(
+                storagePath, customerUUID, UUID.fromString(certificateInfoUUID));
+        log.debug("Current certificate directory {}", certificateInfoBasePath);
+        Files.createDirectories(Paths.get(certificateInfoBasePath));
+
+        File[] certificateInfoFiles = certificateInfoDir.listFiles();
+        if (certificateInfoFiles != null) {
+          for (File certificateInfoFile : certificateInfoFiles) {
+            Set<PosixFilePermission> permissions =
+                PosixFilePermissions.fromString(DEFAULT_PERMISSIONS);
+            Files.setPosixFilePermissions(certificateInfoFile.toPath(), permissions);
+          }
+        }
+
+        File destCertificateInfoDir = new File(certificateInfoBasePath);
+        org.apache.commons.io.FileUtils.copyDirectory(certificateInfoDir, destCertificateInfoDir);
+        log.debug("Save certificate info folder {}.", certificateInfoUUID);
+      }
+    }
+  }
+
+  private void importSoftwareReleases(String specFolderPath, String releasesPath)
+      throws IOException {
+    String universeVersion =
+        this.universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    File srcReleasesDir =
+        new File(String.format("%s/releases/%s", specFolderPath, universeVersion));
+
+    if (srcReleasesDir.isDirectory()) {
+      File destReleasesDir = new File(String.format("%s/%s", releasesPath, universeVersion));
+      Files.createDirectories(Paths.get(releasesPath));
+      org.apache.commons.io.FileUtils.copyDirectory(srcReleasesDir, destReleasesDir);
+      log.debug("Finished importing software release {}.", universeVersion);
+    }
+  }
+
+  private void importYbcSoftwareReleases(String specFolderPath, String ybcReleasePath)
+      throws IOException {
+    File srcYbcReleaseDir = new File(String.format("%s/%s", specFolderPath, "ybcRelease"));
+    File destYbcReleaseDir = new File(ybcReleasePath);
+    if (srcYbcReleaseDir.isDirectory()) {
+      org.apache.commons.io.FileUtils.copyDirectory(srcYbcReleaseDir, destYbcReleaseDir);
+      log.debug("Finished importing ybc software release.");
+    }
+  }
+
+  private void createYbcReleasesFolder(String ybcReleasesPath) throws IOException {
+    if (!(new File(ybcReleasesPath)).isDirectory()) {
+      Files.createDirectories(Paths.get(ybcReleasesPath));
+      log.debug("Created ybc releases folder as it was not found.");
+    }
+  }
+
+  private void updateUniverseDetails(Customer customer) {
     Long customerId = customer.getCustomerId();
-    universe.customerId = customerId;
+    this.universe.customerId = customerId;
+
+    this.universe.setConfig(this.universeConfig);
+  }
+
+  private void updateProviderDetails(String storagePath, Customer customer) {
+    // Use new customer.
+    provider.customerUUID = customer.uuid;
+
+    if (this.provider.code.equals(Common.CloudType.kubernetes.toString())) {
+      // Update abs. path for kubernetesPullSecret to use new yb.storage.path.
+      KubernetesInfo kubernetesInfo =
+          this.provider.getProviderDetails().getCloudInfo().getKubernetes();
+      kubernetesInfo.setKubernetesPullSecret(
+          UniverseSpec.replaceBeginningPath(
+              kubernetesInfo.getKubernetesPullSecret(),
+              this.oldPlatformPaths.storagePath,
+              storagePath));
+
+      // Update abs. path for kubeConfig to use new yb.storage.path.
+      for (Region region : Region.getByProvider(this.provider.uuid)) {
+        for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(region.uuid)) {
+          KubernetesRegionInfo kubernetesRegionInfo =
+              az.getAvailabilityZoneDetails().getCloudInfo().getKubernetes();
+          kubernetesRegionInfo.setKubeConfig(
+              UniverseSpec.replaceBeginningPath(
+                  kubernetesRegionInfo.getKubeConfig(),
+                  this.oldPlatformPaths.storagePath,
+                  storagePath));
+        }
+      }
+    } else if (this.provider.code.equals(Common.CloudType.gcp.toString())) {
+      // Update abs. path for credentials.json to use new yb.storage.path.
+      GCPCloudInfo gcpCloudInfo = this.provider.getProviderDetails().getCloudInfo().getGcp();
+      gcpCloudInfo.setGceApplicationCredentialsPath(
+          UniverseSpec.replaceBeginningPath(
+              gcpCloudInfo.getGceApplicationCredentialsPath(),
+              this.oldPlatformPaths.storagePath,
+              storagePath));
+    }
+  }
+
+  private void updateCertificateInfoDetails(String storagePath, Customer customer) {
+    UUID customerUUID = customer.getUuid();
+    for (CertificateInfo certificateInfo : this.certificateInfoList) {
+      UUID oldCustomerUUID = certificateInfo.customerUUID;
+      certificateInfo.customerUUID = customerUUID;
+
+      // HashicorpVault does not have privateKey.
+      if (!StringUtils.isEmpty(certificateInfo.privateKey)) {
+        certificateInfo.privateKey =
+            UniverseSpec.replaceBeginningPath(
+                certificateInfo.privateKey, this.oldPlatformPaths.storagePath, storagePath);
+        certificateInfo.privateKey =
+            certificateInfo.privateKey.replaceFirst(
+                oldCustomerUUID.toString(), customerUUID.toString());
+      }
+
+      certificateInfo.certificate =
+          UniverseSpec.replaceBeginningPath(
+              certificateInfo.certificate, this.oldPlatformPaths.storagePath, storagePath);
+      certificateInfo.certificate =
+          certificateInfo.certificate.replaceFirst(
+              oldCustomerUUID.toString(), customerUUID.toString());
+    }
+  }
+
+  // Update absolute path to access keys due to yb.storage.path changes.
+  private void updateAccessKeyDetails(String storagePath) {
+    for (AccessKey key : this.provider.allAccessKeys) {
+      key.getKeyInfo().publicKey =
+          UniverseSpec.replaceBeginningPath(
+              key.getKeyInfo().publicKey, this.oldPlatformPaths.storagePath, storagePath);
+      key.getKeyInfo().privateKey =
+          UniverseSpec.replaceBeginningPath(
+              key.getKeyInfo().privateKey, this.oldPlatformPaths.storagePath, storagePath);
+      key.getKeyInfo().vaultPasswordFile =
+          UniverseSpec.replaceBeginningPath(
+              key.getKeyInfo().vaultPasswordFile, this.oldPlatformPaths.storagePath, storagePath);
+      key.getKeyInfo().vaultFile =
+          UniverseSpec.replaceBeginningPath(
+              key.getKeyInfo().vaultFile, this.oldPlatformPaths.storagePath, storagePath);
+    }
+  }
+
+  private void updateKmsConfigDetails(Customer customer) {
+    for (KmsConfig kmsConfig : this.kmsConfigs) {
+      kmsConfig.customerUUID = customer.uuid;
+    }
+  }
+
+  private void updateUniverseMetadata(String storagePath, Customer customer) {
+
+    // Update universe information with new customer information and universe config.
+    updateUniverseDetails(customer);
+
+    // Update provider information with new customer information and k8s specific file paths.
+    updateProviderDetails(storagePath, customer);
+
+    // Update certificate file paths.
+    updateCertificateInfoDetails(storagePath, customer);
+
+    // Update access key file paths.
+    updateAccessKeyDetails(storagePath);
+
+    updateKmsConfigDetails(customer);
   }
 
   @Transactional
-  public void save(String storagePath) {
-    // Check if provider exists, if not, save all entities related to provider.
+  public void save(
+      PlatformPaths platformPaths, ReleaseManager releaseManager, SwamperHelper swamperHelper) {
+
+    // Check if provider exists, if not, save all entities related to provider (Region,
+    // AvailabilityZone, AccessKey).
     if (!Provider.maybeGet(this.provider.uuid).isPresent()) {
       this.provider.save();
+
+      if (this.provider.code.equals(Common.CloudType.kubernetes.toString())) {
+        // Kubernetes provider contains kubernetesPullSecret file.
+        FileData.writeFileToDB(
+            this.provider
+                .getProviderDetails()
+                .getCloudInfo()
+                .getKubernetes()
+                .getKubernetesPullSecret());
+
+        // Each az contains its own kubeConfig.
+        for (Region region : Region.getByProvider(this.provider.uuid)) {
+          for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(region.uuid)) {
+            FileData.writeFileToDB(
+                az.getAvailabilityZoneDetails().getCloudInfo().getKubernetes().getKubeConfig());
+          }
+        }
+      }
 
       for (InstanceType instanceType : this.instanceTypes) {
         instanceType.save();
@@ -225,24 +529,77 @@ public class UniverseSpec {
         priceComponent.save();
       }
 
-      for (AccessKey key : this.getAccessKeys()) {
-        key.getKeyInfo().publicKey =
-            key.getKeyInfo().publicKey.replace(this.oldStoragePath, storagePath);
-        key.getKeyInfo().privateKey =
-            key.getKeyInfo().privateKey.replace(this.oldStoragePath, storagePath);
-        key.getKeyInfo().vaultPasswordFile =
-            key.getKeyInfo().vaultPasswordFile.replace(this.oldStoragePath, storagePath);
-        key.getKeyInfo().vaultFile =
-            key.getKeyInfo().vaultFile.replace(this.oldStoragePath, storagePath);
-      }
+      // Sync access keys to db.
+      for (AccessKey key : this.provider.allAccessKeys) {
+        AccessKey.KeyInfo keyInfo = key.getKeyInfo();
+        FileData.writeFileToDB(keyInfo.vaultFile);
+        FileData.writeFileToDB(keyInfo.vaultPasswordFile);
+        if (keyInfo.privateKey != null) {
+          FileData.writeFileToDB(keyInfo.privateKey);
+        }
+        if (keyInfo.publicKey != null) {
+          FileData.writeFileToDB(keyInfo.publicKey);
+        }
 
-      for (AccessKey key : this.accessKeys) {
-        key.save();
+        File accessKeyDir = new File(keyInfo.vaultFile).getParentFile();
+        // GCP provider contains credentials.json file.
+        if (this.provider.code.equals(Common.CloudType.gcp.toString())) {
+          FileData.writeFileToDB(
+              Paths.get(accessKeyDir.getAbsolutePath(), "credentials.json").toString());
+        }
       }
     }
 
-    this.universe.setConfig(this.universeConfig);
+    for (CertificateInfo certificateInfo : certificateInfoList) {
+      if (!CertificateInfo.maybeGet(certificateInfo.uuid).isPresent()) {
+        certificateInfo.save();
+
+        File certificateInfoBaseDir =
+            new File(
+                CertificateHelper.getCADirPath(
+                    platformPaths.storagePath, certificateInfo.customerUUID, certificateInfo.uuid));
+        File[] certificateInfoFiles = certificateInfoBaseDir.listFiles();
+        if (certificateInfoFiles != null) {
+          for (File certificateInfoFile : certificateInfoFiles) {
+            FileData.writeFileToDB(certificateInfoFile.getAbsolutePath());
+          }
+        }
+      }
+    }
+
+    for (KmsConfig kmsConfig : kmsConfigs) {
+      if (KmsConfig.get(kmsConfig.configUUID) == null) {
+        kmsConfig.save();
+      }
+    }
+
+    for (KmsHistory kmsHistory : kmsHistoryList) {
+      if (!EncryptionAtRestUtil.keyRefExists(this.universe.universeUUID, kmsHistory.uuid.keyRef)) {
+        kmsHistory.save();
+      }
+    }
+
+    if (!this.skipReleases) {
+      // Update and save software releases and ybc software releases.
+      if (ybReleaseMetadata != null) {
+        String universeVersion =
+            this.universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+        if (releaseManager.getReleaseByVersion(universeVersion) == null) {
+          releaseManager.addReleaseWithMetadata(universeVersion, ybReleaseMetadata);
+        } else {
+          releaseManager.updateReleaseMetadata(universeVersion, ybReleaseMetadata);
+        }
+      }
+
+      // Imports local ybc and software releases.
+      releaseManager.importLocalReleases();
+      releaseManager.updateCurrentReleases();
+    }
+
     this.universe.save();
+
+    // Update prometheus files.
+    swamperHelper.writeUniverseTargetJson(this.universe);
   }
 
   private static String generateSpecName(boolean isExport) {
@@ -250,5 +607,31 @@ public class UniverseSpec {
     String type = isExport ? "export" : "import";
     String specName = "yb-universe-spec-" + type + "-" + datePrefix;
     return specName;
+  }
+
+  // Only replace path at the beginning.
+  @VisibleForTesting
+  public static String replaceBeginningPath(
+      String pathToModify, String initialRoot, String finalRoot) {
+    String regex = "^" + Pattern.quote(initialRoot);
+    return pathToModify.replaceAll(regex, finalRoot);
+  }
+
+  @Builder
+  @Jacksonized
+  @Data
+  public static class PlatformPaths {
+
+    @JsonProperty("storagePath")
+    public String storagePath;
+
+    @JsonProperty("releasesPath")
+    public String releasesPath;
+
+    @JsonProperty("ybcReleasePath")
+    public String ybcReleasePath;
+
+    @JsonProperty("ybcReleasesPath")
+    public String ybcReleasesPath;
   }
 }

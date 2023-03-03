@@ -1,15 +1,23 @@
-import React, { FC, useContext } from 'react';
+import React, { useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { Box, Grid, Typography, makeStyles } from '@material-ui/core';
-import { InstanceTypeField, VolumeInfoField, StorageTypeField } from '../../fields';
+import {
+  InstanceTypeField,
+  K8NodeSpecField,
+  K8VolumeInfoField,
+  VolumeInfoField,
+  StorageTypeField
+} from '../../fields';
 import { UniverseFormContext } from '../../../UniverseFormContainer';
 import {
   CloudType,
   ClusterModes,
   ClusterType,
   MasterPlacementMode,
-  UniverseFormData
+  RunTimeConfigEntry,
+  UniverseFormData,
+  UniverseFormConfigurationProps
 } from '../../../utils/dto';
 import {
   PROVIDER_FIELD,
@@ -35,10 +43,16 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const InstanceConfiguration: FC = () => {
+export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurationProps) => {
   const classes = useSectionStyles();
   const helperClasses = useStyles();
   const { t } = useTranslation();
+
+  // Value of runtime config key
+  const useK8CustomResourcesObject = runtimeConfigs?.configEntries?.find(
+    (c: RunTimeConfigEntry) => c.key === 'yb.ui.feature_flags.k8s_custom_resources'
+  );
+  const useK8CustomResources = !!(useK8CustomResourcesObject?.value === 'true');
 
   //form context
   const { getValues } = useFormContext<UniverseFormData>();
@@ -59,17 +73,30 @@ export const InstanceConfiguration: FC = () => {
   const getInstanceMetadataElement = (isDedicatedMasterField: boolean) => {
     return (
       <Box width={masterPlacement === MasterPlacementMode.DEDICATED ? '100%' : CONTAINER_WIDTH}>
-        <InstanceTypeField isDedicatedMasterField={isDedicatedMasterField} />
-        <VolumeInfoField
-          isEditMode={!isCreateMode}
-          isPrimary={isPrimary}
-          disableVolumeSize={false}
-          disableNumVolumes={!isCreateMode && provider?.code === CloudType.kubernetes}
-          disableStorageType={!isCreatePrimary && !isCreateRR}
-          disableIops={!isCreatePrimary && !isCreateRR}
-          disableThroughput={!isCreatePrimary && !isCreateRR}
-          isDedicatedMasterField={isDedicatedMasterField}
-        />
+        {provider?.code === CloudType.kubernetes && useK8CustomResources ? (
+          <>
+            <K8NodeSpecField isDedicatedMasterField={isDedicatedMasterField} />
+            <K8VolumeInfoField
+              isDedicatedMasterField={isDedicatedMasterField}
+              disableVolumeSize={false}
+              disableNumVolumes={!isCreateMode && provider?.code === CloudType.kubernetes}
+            />
+          </>
+        ) : (
+          <>
+            <InstanceTypeField isDedicatedMasterField={isDedicatedMasterField} />
+            <VolumeInfoField
+              isEditMode={!isCreateMode}
+              isPrimary={isPrimary}
+              disableVolumeSize={false}
+              disableNumVolumes={!isCreateMode && provider?.code === CloudType.kubernetes}
+              disableStorageType={!isCreatePrimary && !isCreateRR}
+              disableIops={!isCreatePrimary && !isCreateRR}
+              disableThroughput={!isCreatePrimary && !isCreateRR}
+              isDedicatedMasterField={isDedicatedMasterField}
+            />
+          </>
+        )}
       </Box>
     );
   };

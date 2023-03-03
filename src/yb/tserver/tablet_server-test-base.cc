@@ -128,7 +128,7 @@ void TabletServerTestBase::StartTabletServer() {
   auto addr = std::make_shared<server::MasterAddresses>();
   addr->push_back({HostPort("255.255.255.255", 1)});
   mini_server_->options()->SetMasterAddresses(addr);
-  CHECK_OK(mini_server_->Start());
+  CHECK_OK(mini_server_->Start(tserver::WaitTabletsBootstrapped::kFalse));
 
   // Set up a tablet inside the server.
   CHECK_OK(mini_server_->AddTestTablet(
@@ -334,7 +334,6 @@ Status TabletServerTestBase::ShutdownAndRebuildTablet() {
   mini_server_->options()->SetMasterAddresses(addr);
   // this should open the tablet created on StartTabletServer()
   RETURN_NOT_OK(mini_server_->Start());
-  RETURN_NOT_OK(mini_server_->WaitStarted());
 
   tablet_peer_ = VERIFY_RESULT(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
   // Connect to it.

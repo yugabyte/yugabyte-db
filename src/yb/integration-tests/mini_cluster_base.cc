@@ -15,6 +15,7 @@
 
 #include "yb/client/client.h"
 
+#include "yb/client/stateful_services/stateful_service_client_base.h"
 #include "yb/server/secure.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
@@ -75,4 +76,8 @@ Result<HostPort> MiniClusterBase::GetLeaderMasterBoundRpcAddr() {
   return DoGetLeaderMasterBoundRpcAddr();
 }
 
+Status MiniClusterBase::InitStatefulServiceClient(client::StatefulServiceClientBase* client) {
+  auto host_port = VERIFY_RESULT(GetLeaderMasterBoundRpcAddr());
+  return client->TESTInit("127.0.0.52", host_port.ToString());
+}
 }  // namespace yb

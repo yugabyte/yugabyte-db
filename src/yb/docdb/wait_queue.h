@@ -13,13 +13,14 @@
 
 #pragma once
 
-#include <future>
+#include <stdint.h>
 
 #include "yb/client/client.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/conflict_data.h"
 #include "yb/docdb/lock_batch.h"
 
 #include "yb/server/server_fwd.h"
@@ -33,7 +34,7 @@ class ScopedWaitingTxnRegistration {
  public:
   virtual Status Register(
     const TransactionId& waiting,
-    std::vector<BlockingTransactionData>&& blocking,
+    std::shared_ptr<ConflictDataManager> blockers,
     const TabletId& status_tablet) = 0;
   virtual int64 GetDataUseCount() const = 0;
   virtual ~ScopedWaitingTxnRegistration() = default;
@@ -74,14 +75,36 @@ class WaitQueue {
   // callback.
   Status WaitOn(
       const TransactionId& waiter, LockBatch* locks,
-      std::vector<BlockingTransactionData>&& blockers, const TabletId& status_tablet_id,
-      WaitDoneCallback callback);
+      std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
+      uint64_t serial_no, WaitDoneCallback callback);
+
+  // Check the wait queue for any active blockers which would conflict with locks. This method
+  // should be called as the first step in conflict resolution when processing a new request to
+  // ensure incoming requests do not starve existing blocked requests which are about to resume.
+  // Returns true if this call results in the request entering the wait queue, in which case the
+  // provided callback is used as described in the comment of WaitOn() above. Returns false in case
+  // the request is not entered into the wait queue and the callback is never invoked. Returns
+  // status in case of some unresolvable error.
+  Result<bool> MaybeWaitOnLocks(
+      const TransactionId& waiter, LockBatch* locks, const TabletId& status_tablet_id,
+      uint64_t serial_no, WaitDoneCallback callback);
 
   void Poll(HybridTime now);
 
   void StartShutdown();
 
   void CompleteShutdown();
+
+  // Provides access to a monotonically increasing serial number to be used by waiting requests to
+  // enforce fairness in a best effort manner. Incoming requests should retain a serial number as
+  // soon as they begin conflict resolution, and the same serial number should be used any time the
+  // request enters the wait queue, to ensure it is resolved before any requests which arrived later
+  // than it did to this tserver.
+  uint64_t GetSerialNo();
+
+  // Output html to display information to an admin page about the internal state of this wait
+  // queue. Useful for debugging.
+  void DumpStatusHtml(std::ostream& out);
 
  private:
   class Impl;

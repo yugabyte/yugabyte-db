@@ -306,11 +306,12 @@ Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow() const {
         && !scan_choices_->CurrentTargetMatchesKey(row_key_)) {
       return scan_choices_->SeekToCurrentTarget(db_iter_.get());
     }
+  }
+  if (!is_forward_scan_) {
+    VLOG(4) << __PRETTY_FUNCTION__ << " setting as PrevDocKey";
+    db_iter_->PrevDocKey(row_key_);
   } else {
-    if (!is_forward_scan_) {
-      VLOG(4) << __PRETTY_FUNCTION__ << " setting as PrevDocKey";
-      db_iter_->PrevDocKey(row_key_);
-    }
+    db_iter_->SeekOutOfSubDoc(row_key_);
   }
 
   return Status::OK();

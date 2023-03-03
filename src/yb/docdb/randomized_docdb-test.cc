@@ -82,6 +82,10 @@ class RandomizedDocDBTest : public DocDBTestBase,
     SeedRandom();
   }
 
+  Schema CreateSchema() override {
+    return Schema();
+  }
+
   ~RandomizedDocDBTest() override {}
   void RunWorkloadWithSnaphots(bool enable_history_cleanup);
 
