@@ -63,7 +63,7 @@ The example uses tablespaces so that the failure scenarios run in a deterministi
     INSERT INTO txndemo SELECT id,10 FROM generate_series(1,5) AS id;
     ```
 
-1. List the tablets in the table to see where the data is located using the following command:
+1. From another terminal of your YugabyteDB home directory, list the tablets in the table to see where the data is located using the following command:
 
     ```sh
     ./bin/yb-admin list_tablets ysql.yugabyte txndemo
@@ -340,10 +340,4 @@ For this case, you can connect to any node in the cluster; `127.0.0.1` has been 
 
 ## Clean up
 
-You can shut down the local cluster that you created as follows:
-
-```sh
-./bin/yugabyted destroy --base_dir=/tmp/ybd1
-./bin/yugabyted destroy --base_dir=/tmp/ybd2
-./bin/yugabyted destroy --base_dir=/tmp/ybd3
-```
+You can shut down the local cluster by following the instructions provided in [Destroy a local cluster](../../../reference/configuration/yugabyted/#destroy-a-local-cluster).
