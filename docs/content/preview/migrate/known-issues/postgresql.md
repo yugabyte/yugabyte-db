@@ -66,11 +66,11 @@ PARTITION BY LIST (region);
 
 ### Index creation on partitions fail for some YugabyteDB builds
 
-**GitHub**: [Issue 14529](https://github.com/yugabyte/yugabyte-db/issues/14529)
+**GitHub**: [Issue #14529](https://github.com/yugabyte/yugabyte-db/issues/14529)
 
 **Description**: If you have a partitioned table with indexes on it, the migration will fail with an error for YugabyteDB `2.15` or `2.16` due to a regression.
 
-Note that it is fixed in the release [12.17.1.0](../../../releases/release-notes/v2.17/#v2.17.1.0).
+Note that this is fixed in release [12.17.1.0](../../../releases/release-notes/v2.17/#v2.17.1.0).
 
 **Workaround**: N/A
 
@@ -98,7 +98,7 @@ CREATE INDEX list_ind ON list_part(status);
 
 ### Creation of certain views in the rule.sql file
 
-**GitHub**: [Issue 770](https://github.com/yugabyte/yb-voyager/issues/770)
+**GitHub**: [Issue #770](https://github.com/yugabyte/yb-voyager/issues/770)
 
 **Description**: There may be few cases where certain exported views come under the `rule.sql` file and the `view.sql` file might contain a dummy view definition. This `pg_dump` behaviour may be due to how PostgreSQL handles views internally (via rules).
 
@@ -129,7 +129,7 @@ CREATE VIEW public.v1 AS
     NULL::integer AS n2;
 ```
 
-The exported schema for `view.sql` is as follows:
+The exported schema for `rule.sql` is as follows:
 
 ```sql
 CREATE OR REPLACE VIEW public.v1 AS

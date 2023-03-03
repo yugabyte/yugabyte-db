@@ -17,7 +17,7 @@ This page documents known issues you may encounter and suggested workarounds whe
 
 ## Contents
 
-- [Approaching MAX/MIN double precision values are not exported](#approaching-max-min-double-precision-values-are-not-exported)
+- [Approaching MAX/MIN double precision values are not imported](#approaching-max-min-double-precision-values-are-not-imported)
 - [Functional/Expression indexes fail to migrate](#functional-expression-indexes-fail-to-migrate)
 - [Exporting data from MySQL when table names include quotes](#exporting-data-from-mysql-when-table-names-include-quotes)
 - [Spatial datatype migration is not yet supported](#spatial-datatype-migration-is-not-yet-supported)
