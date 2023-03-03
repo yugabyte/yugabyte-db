@@ -17,8 +17,6 @@
  * under the License.
  */
 
- \! cp -r regress/age_load/data regress/instance/data/age_load
-
 LOAD 'age';
 SET search_path TO ag_catalog;
 
@@ -27,42 +25,43 @@ SET search_path TO ag_catalog;
 --
 SELECT create_graph('cypher_with');
 
-SELECT create_vlabel('cypher_with','Country');
-SELECT load_labels_from_file('cypher_with', 'Country',
-    'age_load/countries.csv');
-
-SELECT create_vlabel('cypher_with','City');
-SELECT load_labels_from_file('cypher_with', 'City',
-    'age_load/cities.csv');
-
-SELECT create_elabel('cypher_with','has_city');
-SELECT load_edges_from_file('cypher_with', 'has_city',
-     'age_load/edges.csv');
+SELECT * FROM cypher('cypher_with', $$
+    CREATE (andres {name : 'Andres', age : 36}),
+    (caesar {name : 'Caesar', age : 25}),
+    (bossman {name : 'Bossman', age : 55}),
+    (david {name : 'David', age : 35}),
+    (george {name : 'George', age : 37}),
+    (andres)-[:BLOCKS]->(caesar),
+    (andres)-[:KNOWS]->(bossman),
+    (caesar)-[:KNOWS]->(george),
+    (bossman)-[:BLOCKS]->(david),
+    (bossman)-[:KNOWS]->(george),
+    (david)-[:KNOWS]->(andres)
+$$) as (a agtype);
 
 --
 -- Test WITH clause
 --
 
-SELECT count(*) FROM cypher('cypher_with', $$
-    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'}) 
-    WITH m,b
-    RETURN m,b
-$$) AS (City agtype, Country agtype);
+SELECT * FROM cypher('cypher_with', $$
+    MATCH (n)-[e]->(m) 
+    WITH n,e,m
+    RETURN n,e,m
+$$) AS (N1 agtype, edge agtype, N2 agtype);
 
 -- WITH/AS
 
 SELECT * FROM cypher('cypher_with', $$
-    MATCH (b:Country {iso2 : 'AT'}) 
-    WITH b.name AS name, id(b) AS id 
-    RETURN name,id
-$$) AS (Country agtype, Country_id agtype);
+    MATCH (n)-[e]->(m)
+    WITH n.name AS n1, e as edge, m.name as n2
+    RETURN n1,label(edge),n2
+$$) AS (start_node agtype,edge agtype, end_node agtype);
 
-SELECT * FROM cypher('cypher_with', $$
-    MATCH (m:City {name: 'Zell'})-[]-(b:Country {iso2 : 'AT'})
-    WITH b as country, count(*) AS foaf
-    WHERE foaf > 1      
-    RETURN country.name, foaf
-$$) as (name agtype, foaf agtype);
+SELECT * FROM cypher('cypher_with',$$
+    MATCH (person)-[r]->(otherPerson)
+    WITH *, type(r) AS connectionType
+    RETURN person.name, connectionType, otherPerson.name
+$$) AS (start_node agtype, connection agtype, end_node agtype);
 
 SELECT * FROM cypher('cypher_with', $$
     WITH true AS b
@@ -72,28 +71,21 @@ $$) AS (b bool);
 -- WITH/WHERE
 
 SELECT * FROM cypher('cypher_with', $$
-    MATCH (m:City)-[:has_city]->(b:Country{iso2:'BE'})
-    WITH b,m 
-    WHERE m.name='x'
-    RETURN m.name,b.iso2
-$$) AS ( "m.name" agtype, "b" agtype);
+MATCH (george {name: 'George'})<-[]-(otherPerson)
+    WITH otherPerson, toUpper(otherPerson.name) AS upperCaseName
+    WHERE upperCaseName STARTS WITH 'C'
+    RETURN otherPerson.name
+$$) as (name agtype);
 
 SELECT * FROM cypher('cypher_with', $$
-    MATCH (b:Country {iso2 : 'AT'}) 
-    WITH b.name AS name, id(b) AS id
-    WHERE name = 'Austria'
-    RETURN name,id
-$$) AS (Country agtype, Country_id agtype);
+	MATCH (david {name: 'David'})-[]-(otherPerson)-[]->()
+	WITH otherPerson, count(*) AS foaf
+	WHERE foaf > 1
+	RETURN otherPerson.name
+$$) as (name agtype);
 
 SELECT * FROM cypher('cypher_with', $$
-    MATCH (b:Country {iso2 : 'AT'}) 
-    WITH b.name AS name, id(b) AS id
-    WHERE name = 'Austria' OR name = 'Kosovo'
-    RETURN name,id                             
-$$) AS (Country agtype, Country_id agtype);
-
-SELECT * FROM cypher('cypher_with', $$
-    MATCH p = (m:City)-[:has_city*1..2]->(b:Country {iso2 : 'AT'}) 
+    MATCH p = (m)-[*1..2]->(b) 
     WITH p, length(p) AS path_length 
     WHERE path_length > 1 
     RETURN p
@@ -102,66 +94,67 @@ $$) AS (pattern agtype);
 -- MATCH/WHERE with WITH/WHERE
 
 SELECT * FROM cypher('cypher_with', $$
-    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'})
-    WHERE b.name = 'Austria'
-    WITH m.name AS city,b.name AS country
-    WHERE city = 'Vienna'
-    RETURN city,country
-$$) AS (City agtype, Country agtype);
+    MATCH (m)-[e]->(b)
+    WHERE label(e) = 'KNOWS'
+    WITH *
+    WHERE m.name = 'Andres'
+    RETURN m.name,label(e),b.name
+$$) AS (N1 agtype, edge agtype, N2 agtype);
 
 -- WITH/ORDER BY
 
 SELECT * FROM cypher('cypher_with', $$
-    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'})
-    WITH m AS city,b AS country
-    ORDER BY id(m) DESC LIMIT 10
-    RETURN id(city),city
-$$) AS (id agtype, city agtype);
+    MATCH (n)
+    WITH n
+    ORDER BY id(n)
+    RETURN n
+$$) as (name agtype);
+
+-- WITH/ORDER BY/DESC
 
 SELECT * FROM cypher('cypher_with', $$
-    MATCH (m:City) 
-    WITH m AS city
-    ORDER BY id(m) ASC LIMIT 10
-    RETURN id(city),city.name
-$$) AS (id agtype, names agtype);
-
--- WITH/ORDER BY/DESC/WHERE
+    MATCH (n)
+    WITH n
+    ORDER BY n.name DESC LIMIT 3
+    RETURN collect(n.name)
+$$) as (names agtype);
 
 SELECT * FROM cypher('cypher_with', $$
-    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'})
-    WITH m AS city,b AS country
-    ORDER BY id(m) DESC LIMIT 10
-    WHERE city.name = 'Zell' OR city.name = 'Umberg'
-    RETURN id(city),city.name,country.name
-$$) AS (id agtype, city agtype, country agtype);
+    MATCH (n {name: 'Andres'})-[]-(m)
+    WITH m
+    ORDER BY m.name DESC LIMIT 1
+    MATCH (m)-[]-(o)
+    RETURN o.name ORDER BY o.name
+$$) as (name agtype);
 
 -- multiple WITH clauses
 
 SELECT * FROM cypher('cypher_with', $$
-    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'})
-    WITH m AS city,b AS country     
-    WITH city LIMIT 10
-    RETURN city.name
-$$) AS (city agtype);
+    MATCH (n)-[e]->(m)
+    WITH n, e, m
+    WHERE label(e) = 'KNOWS'
+    WITH n.name as n1, label(e) as edge, m.name as n2
+    WHERE n1 = 'Andres'
+    RETURN n1,edge,n2
+$$) AS (N1 agtype, edge agtype, N2 agtype);
 
 SELECT * FROM cypher('cypher_with', $$
-    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'})
-    WITH m AS city,b AS country
-    ORDER BY id(m) DESC LIMIT 10
-    WITH city
-    WHERE city.name = 'Zell'
-    RETURN id(city),city.name
-$$) AS (id agtype, city agtype);
+    UNWIND [1, 2, 3, 4, 5, 6] AS x
+    WITH x
+    WHERE x > 2
+    WITH x
+    LIMIT 5
+    RETURN x
+$$) as (name agtype);
 
 SELECT * FROM cypher('cypher_with', $$
-    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'})
-    WITH m AS city,b AS country
-    WHERE country.name = 'Austria'
-    WITH city
-    ORDER BY id(city) DESC
-    WHERE city.name = 'Zell'
-    RETURN id(city),city.name
-$$) AS (id agtype, city agtype);
+    MATCH (m)-[]->(b)
+    WITH m,b
+    ORDER BY id(m) DESC LIMIT 5
+    WITH m as start_node, b as end_node
+    WHERE end_node.name = 'George'
+    RETURN id(start_node),start_node.name,id(end_node),end_node.name
+$$) AS (id1 agtype, name1 agtype, id2 agtype, name2 agtype);
 
 -- Expression item must be aliased.
 
@@ -171,27 +164,27 @@ SELECT * FROM cypher('cypher_with', $$
 $$) AS (i int);
 
 SELECT * FROM cypher('cypher_with', $$
-    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'})
+    MATCH (m)-[]->(b)
     WITH id(m)
     RETURN m
-$$) AS (id agtype, city agtype);
+$$) AS (id agtype);
 
 -- Reference undefined variable in WITH clause (should error out)
 
 SELECT count(*) FROM cypher('cypher_with', $$
-    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'}) 
+    MATCH (m)-[]->(b)
     WITH m  
     RETURN m,b
-$$) AS (City agtype, Country agtype);
+$$) AS (a agtype, b agtype);
 
 SELECT * FROM cypher('cypher_with', $$
-    MATCH (m:City)-[:has_city]->(b:Country {iso2 : 'AT'})
-    WITH m AS city,b AS country
-    WHERE country.name = 'Austria'
-    WITH city
-    WHERE city.name = 'Zell'
-    RETURN id(city),country.name
-$$) AS (id agtype, country agtype);
+    MATCH (m)-[]->(b)
+    WITH m AS start_node,b AS end_node
+    WHERE start_node.name = 'Andres'
+    WITH start_node
+    WHERE start_node.name = 'George'
+    RETURN id(start_node),end_node.name
+$$) AS (id agtype, node agtype);
 
 -- Clean up
 
@@ -219,15 +212,15 @@ $$) AS (n agtype, d agtype);
 -- Issue 396 (should error out)
 
 SELECT * FROM cypher('graph',$$
-     CREATE (v),(u),(w),
-            (v)-[:hasFriend]->(u),
-            (u)-[:hasFriend]->(w)
+    CREATE (v),(u),(w),
+        (v)-[:hasFriend]->(u),
+        (u)-[:hasFriend]->(w)
 $$) as (a agtype);
 
 SELECT * FROM cypher('graph',$$
-      MATCH p=(v)-[*1..2]->(u) 
-      WITH p,length(p) AS path_length 
-      RETURN v,path_length
+    MATCH p=(v)-[*1..2]->(u) 
+    WITH p,length(p) AS path_length 
+    RETURN v,path_length
 $$) as (a agtype,b agtype);
 
 -- Clean up
