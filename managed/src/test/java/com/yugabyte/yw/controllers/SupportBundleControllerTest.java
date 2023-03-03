@@ -256,8 +256,8 @@ public class SupportBundleControllerTest extends FakeDBApplication {
             "YbcLogs");
     ArrayNode componentsArray = mapper.valueToTree(components);
 
-    bodyJson.put("startDate", "2022-02-01");
-    bodyJson.put("endDate", "2022-03-03");
+    bodyJson.put("startDate", "2022-02-01T12:21:45Z");
+    bodyJson.put("endDate", "2022-03-03T12:21:45Z");
     bodyJson.putArray("components").addAll(componentsArray);
 
     // Mocking commissioner submit functionality to create a support bundle
@@ -382,8 +382,8 @@ public class SupportBundleControllerTest extends FakeDBApplication {
             "YbcLogs");
     ArrayNode componentsArray = mapper.valueToTree(components);
 
-    bodyJson.put("startDate", "2022-02-01");
-    bodyJson.put("endDate", "2022-03-03");
+    bodyJson.put("startDate", "2022-02-01T22:45:21Z");
+    bodyJson.put("endDate", "2022-03-03T22:45:21Z");
     bodyJson.putArray("components").addAll(componentsArray);
 
     // Mocking commissioner submit functionality to create a support bundle
@@ -426,8 +426,8 @@ public class SupportBundleControllerTest extends FakeDBApplication {
             "YbcLogs");
     ArrayNode componentsArray = mapper.valueToTree(components);
 
-    bodyJson.put("startDate", "2022-02-01");
-    bodyJson.put("endDate", "2022-03-03");
+    bodyJson.put("startDate", "2022-02-01T12:34:45Z");
+    bodyJson.put("endDate", "2022-03-03T12:34:45Z");
     bodyJson.putArray("components").addAll(componentsArray);
 
     // Mocking commissioner submit functionality to create a support bundle

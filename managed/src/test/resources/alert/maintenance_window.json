@@ -3,9 +3,9 @@
   "customerUUID": "f33e3c9b-75ab-4c30-80ad-cba85646ea39",
   "name": "Some Maintenance",
   "description": "Some Maintenance Description",
-  "createTime": "2021-05-30 15:08:19",
-  "startTime": "2021-06-30 15:08:19",
-  "endTime": "2021-07-30 15:08:19",
+  "createTime": "2021-05-30T15:08:19Z",
+  "startTime": "2021-06-30T15:08:19Z",
+  "endTime": "2021-07-30T15:08:19Z",
   "alertConfigurationFilter": {
     "uuids": ["f33e3c9b-75ab-4c30-80ad-cba8564dfef8", "f33e3c9b-75ab-4c30-80ad-cba8564dfef9"],
     "name": "Test",

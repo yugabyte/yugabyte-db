@@ -14,7 +14,7 @@
     }
   },
   "thresholdUnit": "MILLISECOND",
-  "createTime": "2021-06-30 15:08:19",
+  "createTime": "2021-06-30T15:08:19Z",
   "template": "REPLICATION_LAG",
   "durationSec": 15,
   "active": false,

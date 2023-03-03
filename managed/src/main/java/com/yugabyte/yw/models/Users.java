@@ -123,20 +123,20 @@ public class Users extends Model {
   }
 
   @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
       value = "User creation date",
-      example = "2021-06-17T15:00:05-04:00",
+      example = "2022-12-12T13:07:18Z",
       accessMode = READ_ONLY)
   public Date creationDate;
 
   @Encrypted private String authToken;
 
   @Column(nullable = true)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
       value = "UI session token creation date",
-      example = "2021-06-17T15:00:05-04:00",
+      example = "2021-06-17T15:00:05Z",
       accessMode = READ_ONLY)
   private Date authTokenIssueDate;
 

@@ -206,7 +206,7 @@ YB_NODE_CONTROLLER_CHECK = MetricDefinition(
 
 
 def generate_ts():
-    return local_time().strftime('%Y-%m-%d %H:%M:%S')
+    return local_time().strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
 class EntryType:
@@ -218,7 +218,7 @@ class EntryType:
     LABELS = "labels"
     NODE = "node"
     NODE_NAME = "node_name"
-    TIMESTAMP = "timestamp"
+    TIMESTAMP = "timestamp_iso"
     MESSAGE = "message"
     DETAILS = "details"
     METRICS = "metrics"
@@ -422,7 +422,7 @@ class Report:
 
     def as_json(self):
         j = {
-            "timestamp": self.start_ts,
+            "timestamp_iso": self.start_ts,
             "data": [entry.as_json() for entry in self.entries]
         }
         return json.dumps(j, indent=2)
