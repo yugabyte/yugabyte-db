@@ -134,15 +134,7 @@ using pgwrapper::PGConn;
 using pgwrapper::PGResultPtr;
 using pgwrapper::ToString;
 
-struct XClusterYsqlTestParams {
-  explicit XClusterYsqlTestParams(int batch_size_)
-      : batch_size(batch_size_) {}
-
-  int batch_size;
-};
-
-class XClusterYsqlTest : public XClusterYsqlTestBase,
-                      public testing::WithParamInterface<XClusterYsqlTestParams> {
+class XClusterYsqlTest : public XClusterYsqlTestBase {
  public:
   void SetUp() override {
     XClusterYsqlTestBase::SetUp();
@@ -157,14 +149,7 @@ class XClusterYsqlTest : public XClusterYsqlTestBase,
       std::vector<uint32_t> consumer_tablet_counts, std::vector<uint32_t> producer_tablet_counts,
       uint32_t num_tablet_servers = 1, bool range_partitioned = false);
 
-  Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1,
-                    boost::optional<uint32_t> batch_size = boost::none) {
-    if (batch_size) {
-      FLAGS_cdc_max_apply_batch_num_records = *batch_size;
-    } else {
-      FLAGS_cdc_max_apply_batch_num_records = GetParam().batch_size;
-    }
-
+  Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1) {
     // In this test, the tservers in each cluster share the same postgres proxy. As each tserver
     // initializes, it will overwrite the auth key for the "postgres" user. Force an identical key
     // so that all tservers can authenticate as "postgres".
@@ -186,9 +171,8 @@ class XClusterYsqlTest : public XClusterYsqlTestBase,
       uint32_t num_masters = 1,
       bool colocated = false,
       boost::optional<std::string> tablegroup_name = boost::none,
-      const bool ranged_partitioned = false,
-      boost::optional<uint32_t> batch_size = boost::none) {
-    RETURN_NOT_OK(Initialize(replication_factor, num_masters, batch_size));
+      const bool ranged_partitioned = false) {
+    RETURN_NOT_OK(Initialize(replication_factor, num_masters));
 
     if (num_consumer_tablets.size() != num_producer_tablets.size()) {
       return STATUS(IllegalState,
@@ -647,10 +631,19 @@ class XClusterYsqlTest : public XClusterYsqlTestBase,
   }
 };
 
-INSTANTIATE_TEST_CASE_P(XClusterYsqlTestParams, XClusterYsqlTest,
-                        ::testing::Values(XClusterYsqlTestParams(0 /* batch_size */)));
+struct XClusterYsqlTestParams {
+  explicit XClusterYsqlTestParams(int batch_size_) : batch_size(batch_size_) {}
 
-class XClusterYsqlTestToggleBatching : public XClusterYsqlTest {
+  int batch_size;
+};
+
+class XClusterYsqlTestToggleBatching : public XClusterYsqlTest,
+                                       public testing::WithParamInterface<XClusterYsqlTestParams> {
+ public:
+  void SetUp() override {
+    FLAGS_cdc_max_apply_batch_num_records = GetParam().batch_size;
+    XClusterYsqlTest::SetUp();
+  }
 };
 
 INSTANTIATE_TEST_CASE_P(XClusterYsqlTestParams, XClusterYsqlTestToggleBatching,
@@ -762,9 +755,7 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
   Result<std::pair<client::YBTablePtr, client::YBTablePtr>> CreateTableAndSetupReplication(
       int num_masters = 3) {
     FLAGS_enable_replicate_transaction_status_table = true;
-    auto tables = VERIFY_RESULT(SetUpWithParams(
-        {4}, {4}, 3, num_masters, false /* colocated */, boost::none /* tablegroup_name */,
-        false /* ranged_partitioned */, 0 /* batch_size */));
+    auto tables = VERIFY_RESULT(SetUpWithParams({4}, {4}, 3, num_masters));
     auto producer_table = tables[0];
     auto consumer_table = tables[1];
     RETURN_NOT_OK(SetupUniverseReplication(kUniverseId, {producer_table}));
@@ -876,7 +867,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
   const auto namespace_name = "demo";
   const auto table_name = "account_balance";
 
-  ASSERT_OK(Initialize(3 /* replication_factor */, 1 /* num_masters */, 0 /* batch_size */));
+  ASSERT_OK(Initialize(3 /* replication_factor */, 1 /* num_masters */));
 
   ASSERT_OK(RunOnBothClusters(
       [&](Cluster* cluster) { return CreateDatabase(cluster, namespace_name); }));
@@ -1299,7 +1290,7 @@ TEST_P(XClusterYsqlTestToggleBatching, ChangeRole) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_P(XClusterYsqlTest, SetupUniverseReplication) {
+TEST_F(XClusterYsqlTest, SetupUniverseReplication) {
   auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3, 1, false /* colocated */));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
@@ -1470,30 +1461,30 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
       "IsDataReplicatedCorrectly"));
 }
 
-TEST_P(XClusterYsqlTest, SimpleReplication) {
+TEST_F(XClusterYsqlTest, SimpleReplication) {
   ValidateSimpleReplicationWithPackedRowsUpgrade(
       /* consumer_tablet_counts */ {1, 1}, /* producer_tablet_counts */ {1, 1});
 }
 
-TEST_P(XClusterYsqlTest, SimpleReplicationWithUnevenTabletCounts) {
+TEST_F(XClusterYsqlTest, SimpleReplicationWithUnevenTabletCounts) {
   ValidateSimpleReplicationWithPackedRowsUpgrade(
       /* consumer_tablet_counts */ {5, 3}, /* producer_tablet_counts */ {3, 5},
       /* num_tablet_servers */ 3);
 }
 
-TEST_P(XClusterYsqlTest, SimpleReplicationWithRangedPartitions) {
+TEST_F(XClusterYsqlTest, SimpleReplicationWithRangedPartitions) {
   ValidateSimpleReplicationWithPackedRowsUpgrade(
       /* consumer_tablet_counts */ {1, 1}, /* producer_tablet_counts */ {1, 1},
       /* num_tablet_servers */ 1, /* range_partitioned */ true);
 }
 
-TEST_P(XClusterYsqlTest, SimpleReplicationWithRangedPartitionsAndUnevenTabletCounts) {
+TEST_F(XClusterYsqlTest, SimpleReplicationWithRangedPartitionsAndUnevenTabletCounts) {
   ValidateSimpleReplicationWithPackedRowsUpgrade(
       /* consumer_tablet_counts */ {5, 3}, /* producer_tablet_counts */ {3, 5},
       /* num_tablet_servers */ 3, /* range_partitioned */ true);
 }
 
-TEST_P(XClusterYsqlTest, ReplicationWithBasicDDL) {
+TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
   SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
   FLAGS_ysql_enable_packed_row = true;
   string new_column = "contact_name";
@@ -1804,7 +1795,7 @@ TEST_P(XClusterYsqlTest, ReplicationWithBasicDDL) {
             MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
 }
 
-TEST_P(XClusterYsqlTest, ReplicationWithCreateIndexDDL) {
+TEST_F(XClusterYsqlTest, ReplicationWithCreateIndexDDL) {
   SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
   FLAGS_ysql_disable_index_backfill = false;
   string new_column = "alt";
@@ -1881,7 +1872,7 @@ TEST_P(XClusterYsqlTest, ReplicationWithCreateIndexDDL) {
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 }
 
-TEST_P(XClusterYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
+TEST_F(XClusterYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 3));
@@ -2039,16 +2030,16 @@ TEST_P(XClusterYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
                     MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
 }
 
-TEST_P(XClusterYsqlTest, ColocatedDatabaseReplication) {
+TEST_F(XClusterYsqlTest, ColocatedDatabaseReplication) {
   TestColocatedDatabaseReplication();
 }
 
-TEST_P(XClusterYsqlTest, LegacyColocatedDatabaseReplication) {
+TEST_F(XClusterYsqlTest, LegacyColocatedDatabaseReplication) {
   FLAGS_ysql_legacy_colocated_database_creation = true;
   TestColocatedDatabaseReplication();
 }
 
-TEST_P(XClusterYsqlTest, ColocatedDatabaseDifferentColocationIds) {
+TEST_F(XClusterYsqlTest, ColocatedDatabaseDifferentColocationIds) {
   auto colocated_tables = ASSERT_RESULT(SetUpWithParams({}, {}, 3, 1, true /* colocated */));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
@@ -2079,7 +2070,7 @@ TEST_P(XClusterYsqlTest, ColocatedDatabaseDifferentColocationIds) {
   ASSERT_NOK(VerifyUniverseReplication(kUniverseId, &get_universe_replication_resp));
 }
 
-TEST_P(XClusterYsqlTest, TablegroupReplication) {
+TEST_F(XClusterYsqlTest, TablegroupReplication) {
   std::vector<uint32_t> tables_vector = {1, 1};
   boost::optional<std::string> kTablegroupName("mytablegroup");
   auto tables = ASSERT_RESULT(
@@ -2241,7 +2232,7 @@ TEST_P(XClusterYsqlTest, TablegroupReplication) {
             MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
 }
 
-TEST_P(XClusterYsqlTest, TablegroupReplicationMismatch) {
+TEST_F(XClusterYsqlTest, TablegroupReplicationMismatch) {
   ASSERT_OK(Initialize(1 /* replication_factor */));
 
   boost::optional<std::string> tablegroup_name("mytablegroup");
@@ -2295,7 +2286,7 @@ TEST_P(XClusterYsqlTest, TablegroupReplicationMismatch) {
 }
 
 // Checks that in regular replication set up, bootstrap is not required
-TEST_P(XClusterYsqlTest, IsBootstrapRequiredNotFlushed) {
+TEST_F(XClusterYsqlTest, IsBootstrapRequiredNotFlushed) {
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
@@ -2378,7 +2369,7 @@ TEST_P(XClusterYsqlTest, IsBootstrapRequiredNotFlushed) {
 }
 
 // Checks that with missing logs, replication will require bootstrapping
-TEST_P(XClusterYsqlTest, IsBootstrapRequiredFlushed) {
+TEST_F(XClusterYsqlTest, IsBootstrapRequiredFlushed) {
   FLAGS_enable_load_balancing = false;
   FLAGS_log_cache_size_limit_mb = 1;
   FLAGS_log_segment_size_bytes = 5_KB;
@@ -2482,7 +2473,7 @@ TEST_P(XClusterYsqlTest, IsBootstrapRequiredFlushed) {
 
 // TODO adapt rest of xcluster-test.cc tests.
 
-TEST_P(XClusterYsqlTest, DeleteTableChecks) {
+TEST_F(XClusterYsqlTest, DeleteTableChecks) {
   constexpr int kNT = 1; // Tablets per table.
   std::vector<uint32_t> tables_vector = {kNT, kNT, kNT}; // Each entry is a table. (Currently 3)
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
@@ -2607,7 +2598,7 @@ TEST_P(XClusterYsqlTest, DeleteTableChecks) {
   // }
 }
 
-TEST_P(XClusterYsqlTest, TruncateTableChecks) {
+TEST_F(XClusterYsqlTest, TruncateTableChecks) {
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
@@ -2685,7 +2676,7 @@ TEST_P(XClusterYsqlTest, TruncateTableChecks) {
   ASSERT_OK(TruncateTable(&consumer_cluster_, {consumer_table_id}));
 }
 
-TEST_P(XClusterYsqlTest, SetupReplicationWithMaterializedViews) {
+TEST_F(XClusterYsqlTest, SetupReplicationWithMaterializedViews) {
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
@@ -2723,7 +2714,7 @@ TEST_P(XClusterYsqlTest, SetupReplicationWithMaterializedViews) {
   LOG(INFO) << "Replication verification failed : " << status.ToString();
 }
 
-TEST_P(XClusterYsqlTest, ReplicationWithPackedColumnsAndSchemaVersionMismatch) {
+TEST_F(XClusterYsqlTest, ReplicationWithPackedColumnsAndSchemaVersionMismatch) {
   FLAGS_ysql_enable_packed_row = true;
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
@@ -3083,33 +3074,33 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(bool update_min_cdc_ind
   ASSERT_EQ(expected_record_count, ins_count);
 }
 
-TEST_P(XClusterYsqlTest, XClusterWithCDCSDKEnabled) {
+TEST_F(XClusterYsqlTest, XClusterWithCDCSDKEnabled) {
   FLAGS_ysql_enable_packed_row = false;
   ValidateRecordsXClusterWithCDCSDK(false, false, false);
 }
 
-TEST_P(XClusterYsqlTest, XClusterWithCDCSDKPackedRowsEnabled) {
+TEST_F(XClusterYsqlTest, XClusterWithCDCSDKPackedRowsEnabled) {
   FLAGS_ysql_enable_packed_row = true;
   FLAGS_ysql_packed_row_size_limit = 1_KB;
   ValidateRecordsXClusterWithCDCSDK(false, false, false);
 }
 
-TEST_P(XClusterYsqlTest, XClusterWithCDCSDKExplictTransaction) {
+TEST_F(XClusterYsqlTest, XClusterWithCDCSDKExplictTransaction) {
   FLAGS_ysql_enable_packed_row = false;
   ValidateRecordsXClusterWithCDCSDK(false, true, true);
 }
 
-TEST_P(XClusterYsqlTest, XClusterWithCDCSDKExplictTranPackedRows) {
+TEST_F(XClusterYsqlTest, XClusterWithCDCSDKExplictTranPackedRows) {
   FLAGS_ysql_enable_packed_row = true;
   FLAGS_ysql_packed_row_size_limit = 1_KB;
   ValidateRecordsXClusterWithCDCSDK(false, true, true);
 }
 
-TEST_P(XClusterYsqlTest, XClusterWithCDCSDKUpdateCDCInterval) {
+TEST_F(XClusterYsqlTest, XClusterWithCDCSDKUpdateCDCInterval) {
   ValidateRecordsXClusterWithCDCSDK(true, true, false);
 }
 
-TEST_P(XClusterYsqlTest, SetupSameNameDifferentSchemaUniverseReplication) {
+TEST_F(XClusterYsqlTest, SetupSameNameDifferentSchemaUniverseReplication) {
   constexpr int kNumTables = 3;
   constexpr int kNTabletsPerTable = 3;
   auto tables = ASSERT_RESULT(SetUpWithParams({}, {}, 1));
@@ -3157,7 +3148,7 @@ TEST_P(XClusterYsqlTest, SetupSameNameDifferentSchemaUniverseReplication) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
+TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
   constexpr int kNTabletsPerTable = 1;
   const int num_tables = 3;
 
