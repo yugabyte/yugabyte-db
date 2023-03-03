@@ -2,8 +2,12 @@
 
 package com.yugabyte.yw.forms.filters;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.filters.RestoreFilter;
+
+import io.swagger.annotations.ApiModelProperty;
+
 import java.util.Date;
 import java.util.Set;
 import java.util.UUID;
@@ -16,8 +20,16 @@ import org.apache.commons.lang3.StringUtils;
 @NoArgsConstructor
 public class RestoreApiFilter {
 
+  @ApiModelProperty(
+      value = "The start date to filter paged query.",
+      example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   private Date dateRangeStart;
+
+  @ApiModelProperty(value = "The end date to filter paged query.", example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   private Date dateRangeEnd;
+
   private Set<Restore.State> states;
   private Set<String> universeNameList;
   private Set<String> sourceUniverseNameList;

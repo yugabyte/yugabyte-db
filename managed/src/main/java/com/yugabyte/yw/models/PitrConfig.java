@@ -81,13 +81,19 @@ public class PitrConfig extends Model {
   @Column(nullable = false)
   public long retentionPeriod = 86400L * 7L;
 
-  @ApiModelProperty(value = "Create time of the PITR config", accessMode = READ_ONLY)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
+  @ApiModelProperty(
+      value = "Create time of the PITR config",
+      accessMode = READ_ONLY,
+      example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @Column
   private Date createTime;
 
-  @ApiModelProperty(value = "Update time of the PITR con", accessMode = READ_WRITE)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
+  @ApiModelProperty(
+      value = "Update time of the PITR con",
+      accessMode = READ_WRITE,
+      example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @Column
   private Date updateTime;
 

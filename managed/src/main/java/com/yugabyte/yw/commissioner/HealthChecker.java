@@ -762,7 +762,7 @@ public class HealthChecker {
 
     Details fullReport =
         new Details()
-            .setTimestamp(startTime)
+            .setTimestampIso(startTime)
             .setYbVersion(details.getPrimaryCluster().userIntent.ybSoftwareVersion)
             .setData(nodeReports)
             .setHasError(nodeReports.stream().anyMatch(NodeData::getHasError))
@@ -846,7 +846,7 @@ public class HealthChecker {
               .setNode(nodeInfo.nodeHost)
               .setNodeName(nodeInfo.nodeName)
               .setMessage("Node")
-              .setTimestamp(new Date());
+              .setTimestampIso(new Date());
       try {
         CompletableFuture<Details> future = nodeChecks.get(nodeInfo.getNodeName());
         result.addAll(future.get().getData());
@@ -1066,7 +1066,7 @@ public class HealthChecker {
             .filter(data -> !data.getMetricsOnly())
             .collect(Collectors.toList());
     return new Details()
-        .setTimestamp(details.getTimestamp())
+        .setTimestampIso(details.getTimestampIso())
         .setYbVersion(details.getYbVersion())
         .setData(nodeReports)
         .setHasError(nodeReports.stream().anyMatch(NodeData::getHasError))
