@@ -24,6 +24,8 @@ import {
   REPLICATION_FACTOR_FIELD,
   INSTANCE_TYPE_FIELD,
   DEVICE_INFO_FIELD,
+  TSERVER_K8_NODE_SPEC_FIELD,
+  MASTER_K8_NODE_SPEC_FIELD,
   MASTERS_IN_DEFAULT_REGION_FIELD,
   DEFAULT_REGION_FIELD,
   MASTER_PLACEMENT_FIELD,
@@ -32,6 +34,7 @@ import {
   TOAST_AUTO_DISMISS_INTERVAL,
   RESET_AZ_FIELD
 } from '../../../utils/constants';
+import { CloudType } from '../../../../../../helpers/dtos';
 
 export const getPlacementsFromCluster = (
   cluster?: Cluster,
@@ -148,6 +151,7 @@ export const useNodePlacements = () => {
   ]: any = useContext(UniverseFormContext);
 
   //watchers
+  const provider = useWatch({ name: PROVIDER_FIELD });
   const regionList = useWatch({ name: REGIONS_FIELD });
   const totalNodes = useWatch({ name: TOTAL_NODES_FIELD });
   const replicationFactor = useWatch({ name: REPLICATION_FACTOR_FIELD });
@@ -159,6 +163,8 @@ export const useNodePlacements = () => {
   const masterPlacement = useWatch({ name: MASTER_PLACEMENT_FIELD });
   const masterDeviceInfo =  useWatch({ name: MASTER_DEVICE_INFO_FIELD });
   const masterInstanceType =  useWatch({ name: MASTER_INSTANCE_TYPE_FIELD });
+  const tserverK8SNodeResourceSpec = useWatch({ name: TSERVER_K8_NODE_SPEC_FIELD });
+  const masterK8SNodeResourceSpec = useWatch({ name: MASTER_K8_NODE_SPEC_FIELD });
   const resetAZ = useWatch({ name: RESET_AZ_FIELD });
 
   const prevPropsCombination = useRef({
@@ -228,7 +234,7 @@ export const useNodePlacements = () => {
         needPlacement &&
         totalNodes >= replicationFactor &&
         !_.isEmpty(regionList) &&
-        !_.isEmpty(instanceType) &&
+        (!_.isEmpty(instanceType) || provider?.code === CloudType.kubernetes) &&
         !_.isEmpty(deviceInfo),
       onSuccess: async (data) => {
         const cluster = _.find(data.clusters, { clusterType });
@@ -290,6 +296,6 @@ export const useNodePlacements = () => {
     }
 
     prevPropsCombination.current = propsCombination;
-  }, [instanceType, regionList, totalNodes, replicationFactor, deviceInfo, masterPlacement, masterDeviceInfo, masterInstanceType, resetAZ]);
+  }, [instanceType, regionList, totalNodes, replicationFactor, deviceInfo, masterPlacement, masterDeviceInfo, masterInstanceType, resetAZ, tserverK8SNodeResourceSpec, masterK8SNodeResourceSpec]);
   return { isLoading: isFetching };
 };

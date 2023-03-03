@@ -37,24 +37,22 @@ To back up your universe YCQL data immediately, see [Back up universe YCQL data]
 
 Before scheduling a backup of your universe YCQL data, create a policy, as follows:
 
-- Navigate to **Universes**.
-- Select the name of the universe for which you want to schedule backups.
-- Select the **Tables** tab and click **Actions** to verify that backups are enabled. If disabled, click **Enable Backup**.
-- Select the **Backups** tab and then select **Scheduled Backup Policies**.
-- Click **Create Scheduled Backup Policy** to open the dialog shown in the following illustration:
+1. Navigate to **Universes**.
+1. Select the name of the universe for which you want to schedule backups.
+1. Select the **Tables** tab and click **Actions** to verify that backups are enabled. If disabled, click **Enable Backup**.
+1. Select the **Backups** tab and then select **Scheduled Backup Policies**.
+1. Click **Create Scheduled Backup Policy** to open the dialog shown in the following illustration:
 
-<br><br>
+    ![Create Backup form](/images/yp/scheduled-backup-ycql.png)
 
-![Create Backup form](/images/yp/scheduled-backup-ycql.png)<br><br>
-
-- Provide the backup policy name.
-- Specify the interval between backups or select **Use cron expression (UTC)**.
-- Set the API type as YCQL.
-- Select the database to back up.
-- Specify whether you want to back up all tables in the keyspace to which the database belongs or only  certain tables. If you choose **Select a subset of tables**, a **Select Tables** dialog opens allowing you to select one or more tables to back up.
-- Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
-- Optionally, specify the number of threads that should be available for the backup process.
-- Click **Create**.
+1. Provide the backup policy name.
+1. Specify the interval between backups or select **Use cron expression (UTC)**.
+1. Set the API type as YCQL.
+1. Select the database to back up.
+1. Specify whether you want to back up all tables in the keyspace to which the database belongs or only  certain tables. If you choose **Select a subset of tables**, a **Select Tables** dialog opens allowing you to select one or more tables to back up.
+1. Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
+1. Optionally, specify the number of threads that should be available for the backup process.
+1. Click **Create**.
 
 Subsequent backups are created based on the value you specified for **Set backup intervals** or **Use cron expression**.
 

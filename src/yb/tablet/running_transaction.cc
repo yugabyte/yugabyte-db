@@ -89,7 +89,10 @@ void RunningTransaction::SetLocalCommitData(
 void RunningTransaction::Aborted() {
   VLOG_WITH_PREFIX(4) << __func__ << "()";
 
-  last_known_status_ = TransactionStatus::ABORTED;
+  if (last_known_status_ != TransactionStatus::ABORTED) {
+    last_known_status_ = TransactionStatus::ABORTED;
+    context_.NotifyAborted(id());
+  }
   last_known_status_hybrid_time_ = HybridTime::kMax;
 }
 
@@ -356,6 +359,7 @@ void RunningTransaction::DoStatusReceived(const Status& status,
     auto did_abort_txn = UpdateStatus(
         transaction_status, time_of_status, coordinator_safe_time, aborted_subtxn_set);
     if (did_abort_txn) {
+      context_.NotifyAborted(id());
       context_.EnqueueRemoveUnlocked(id(), RemoveReason::kStatusReceived, &min_running_notifier);
     }
 
@@ -488,6 +492,7 @@ void RunningTransaction::AbortReceived(const Status& status,
       auto coordinator_safe_time = HybridTime::FromPB(response.coordinator_safe_time());
       if (UpdateStatus(
           result->status, result->status_time, coordinator_safe_time, result->aborted_subtxn_set)) {
+        context_.NotifyAborted(id());
         context_.EnqueueRemoveUnlocked(id(), RemoveReason::kAbortReceived, &min_running_notifier);
       }
     }

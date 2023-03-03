@@ -273,7 +273,7 @@ Status GeoTransactionsTestBase::StartShutdownTabletServers(
         tserver->Shutdown();
       } else {
         LOG(INFO) << "Starting tserver #" << i;
-        RETURN_NOT_OK(tserver->Start());
+        RETURN_NOT_OK(tserver->Start(tserver::WaitTabletsBootstrapped::kFalse));
       }
     }
   }

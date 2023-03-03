@@ -77,7 +77,7 @@ TEST_F(TabletServerITest, TestTServerCrashWithEmptyUUID) {
       MiniTabletServer::CreateMiniTabletServer(GetTestPath("TabletServerTest-fsroot"), 0);
   CHECK_OK(mini_ts);
   mini_server_ = std::move(*mini_ts);
-  auto status = mini_server_->Start();
+  auto status = mini_server_->Start(tserver::WaitTabletsBootstrapped::kFalse);
   ASSERT_TRUE(status.IsCorruption());
 }
 

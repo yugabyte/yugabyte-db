@@ -3,6 +3,7 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
@@ -67,6 +68,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -1913,6 +1915,51 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
         },
         EDIT,
         UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
+  }
+
+  @Test
+  public void testUniverseCreateWithDeletedRegionFail() {
+    Provider p = ModelFactory.awsProvider(customer);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    Region r2 = Region.create(p, "region-2", "PlacementRegion 2", "default-image");
+    AvailabilityZone.createOrThrow(r2, "az2-1", "PlacementAZ 1/2", "subnet-1");
+    InstanceType i =
+        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode bodyJson = Json.newObject();
+    UserIntent userIntent = new UserIntent();
+    userIntent.instanceType = i.getInstanceTypeCode();
+    userIntent.universeName = "foo";
+    userIntent.numNodes = 3;
+    userIntent.provider = p.uuid.toString();
+    userIntent.regionList = Arrays.asList(r.uuid, r2.uuid);
+
+    DeviceInfo di = new DeviceInfo();
+    di.storageType = PublicCloudConstants.StorageType.GP2;
+    di.volumeSize = 100;
+    di.numVolumes = 2;
+    userIntent.deviceInfo = di;
+    PlacementInfo placementInfo =
+        PlacementInfoUtil.getPlacementInfo(
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+            userIntent,
+            3,
+            null,
+            Collections.emptyList());
+    UniverseDefinitionTaskParams.Cluster cluster =
+        new UniverseDefinitionTaskParams.Cluster(
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY, userIntent);
+    cluster.placementInfo = placementInfo;
+
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.toJson(cluster));
+    bodyJson.set("clusters", clustersJsonArray);
+    r.disableRegionAndZones();
+    Result result = assertPlatformException(() -> sendCreateRequest(bodyJson));
+    assertErrorResponse(result, "Region region-1 is deleted");
+    assertBadRequest(result, "");
+    assertAuditEntry(0, customer.uuid);
   }
 
   private void testGetAvailableOptions(

@@ -211,6 +211,9 @@ message RaftGroupReplicaSuperBlockPB {
 
   // List of stateful services hosted by this tablet.
   repeated StatefulServiceKind hosted_stateful_services = 35;
+
+  // Is this tablet currently a being replicated with cdc.
+  optional bool is_under_cdc_sdk_replication = 36;
 }
 
 message FilePB {

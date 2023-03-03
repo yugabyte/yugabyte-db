@@ -282,6 +282,62 @@ $(document).ready(() => {
     });
   })();
 
+  /**
+   * Add Image Popup.
+   */
+  (() => {
+    const imgPopupData = document.createElement('div');
+    const imageClick = document.querySelectorAll('.td-content > img:not(.icon), .td-content p > img');
+    imgPopupData.className = 'img-popup-data';
+
+    let popupCounter = 1;
+    document.body.appendChild(imgPopupData);
+
+    imageClick.forEach((img) => {
+      img.setAttribute('data-popup', popupCounter);
+      const imgSrc = img.getAttribute('src');
+      let imgAlt = '';
+      if (img.hasAttribute('alt')) {
+        imgAlt = ' alt="' + img.getAttribute('alt') + '"';
+      }
+      let imgTitle = '';
+      if (img.hasAttribute('title')) {
+        imgTitle = ' title="' + img.getAttribute('title') + '"';
+      }
+      imgPopupData.insertAdjacentHTML('beforeend', '<div class="image-popup" data-popup="' + popupCounter + '"><i class="bg-drop"></i><div class="img-scroll"><i></i><img src="' + imgSrc + '"' + imgAlt + imgTitle + '></div></div>');
+      popupCounter++;
+
+      img.addEventListener('click', (e) => {
+        const currentImg = e.target.getAttribute('data-popup');
+        document.querySelector('.image-popup[data-popup="' + currentImg + '"]').classList.add('open');
+        document.body.classList.add('image-popped-up');
+      });
+    });
+
+    /**
+     * Close popup on clicking cross.
+     */
+    document.querySelectorAll('.image-popup i').forEach((popupClose) => {
+      popupClose.addEventListener('click', (e) => {
+        document.body.classList.remove('image-popped-up');
+        popupClose.closest('.image-popup').classList.remove('open');
+      });
+    });
+
+    /**
+     * Close popup on escape key.
+     */
+    document.onkeydown = function (event) {
+      const keycode = (event.keyCode ? event.keyCode : event.which);
+      if (keycode === 27) {
+        document.body.classList.remove('image-popped-up');
+        document.querySelectorAll('.image-popup.open').forEach((popup) => {
+          popup.classList.remove('open');
+        });
+      }
+    };
+  })();
+
   rightnavAppend();
   popupOnPills();
   checkAnchorMultilines();

@@ -1105,7 +1105,7 @@ Status SysCatalogTable::ReadTablespaceInfoFromPgYbTablegroup(
 
   const auto &pg_yb_tablegroup_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
   const auto& pg_tablegroup_info =
-    VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_yb_tablegroup_id));
+      VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_yb_tablegroup_id));
 
   Schema projection;
   RETURN_NOT_OK(pg_tablegroup_info->schema().CreateProjectionByNames({"oid", "grptablespace"},
@@ -1611,6 +1611,52 @@ Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo
     VLOG(1) << "oid: " << oid << " typtype: " << typtype << " typbasetype: " << typbasetype;
   }
   return type_oid_info_map;
+}
+
+Result<uint32_t> SysCatalogTable::ReadPgYbTablegroupOid(const uint32_t database_oid,
+                                                        const string& tg_grpname) {
+  TRACE_EVENT0("master", "ReadPgYbTablegroupOid");
+
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+
+  const TableId& pg_yb_tablegroup_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
+  const auto& pg_tablegroup_info =
+    VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_yb_tablegroup_id));
+
+  Schema projection;
+  RETURN_NOT_OK(pg_tablegroup_info->schema().CreateProjectionByNames({"oid", "grpname"},
+                &projection,
+                pg_tablegroup_info->schema().num_key_columns()));
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(projection.CopyWithoutColumnIds(),
+                                                   {} /* read_hybrid_time */,
+                                                   pg_yb_tablegroup_id));
+  const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
+  const auto grpname_col_id = VERIFY_RESULT(projection.ColumnIdByName("grpname")).rep();
+
+  QLTableRow source_row;
+
+  while (VERIFY_RESULT(iter->HasNext())) {
+    RETURN_NOT_OK(iter->NextRow(&source_row));
+    // Fetch the tablegroup grpname.
+    const auto& tablegroup_grpname = source_row.GetValue(grpname_col_id);
+    if (!tablegroup_grpname) {
+      return STATUS(Corruption, "Could not read grpname column from pg_yb_tablegroup");
+    }
+    const string& grpname = tablegroup_grpname->string_value();
+
+    // Fetch the tablegroup oid.
+    const auto& tablegroup_oid = source_row.GetValue(oid_col_id);
+    if (!tablegroup_oid) {
+      return STATUS(Corruption, "Could not read oid column from pg_yb_tablegroup");
+    }
+    const uint32_t oid = tablegroup_oid->uint32_value();
+
+    if (tg_grpname == grpname)
+      return oid;
+  }
+
+  // Cannot find default tablegroup in pg_yb_tablegroup.
+  return kPgInvalidOid;
 }
 
 Status SysCatalogTable::CopyPgsqlTables(

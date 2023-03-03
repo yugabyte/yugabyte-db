@@ -37,43 +37,43 @@ To back up your universe YCQL data immediately, see [Back up universe YCQL data]
 
 Before scheduling a backup of your universe YCQL data, create a policy, as follows:
 
-- Navigate to **Universes**.
+1. Navigate to **Universes**.
 
-- Select the name of the universe for which you want to schedule backups.
+1. Select the name of the universe for which you want to schedule backups.
 
-- Select the **Tables** tab and click **Actions** to verify that backups are enabled. If disabled, click **Enable Backup**.
+1. Select the **Tables** tab and click **Actions** to verify that backups are enabled. If disabled, click **Enable Backup**.
 
-- Select the **Backups** tab and then select **Scheduled Backup Policies**.
+1. Select the **Backups** tab and then select **Scheduled Backup Policies**.
 
-- Click **Create Scheduled Backup Policy** to open the dialog shown in the following illustration:
+1. Click **Create Scheduled Backup Policy** to open the dialog shown in the following illustration:
 
-  ![Create Backup form](/images/yp/scheduled-backup-ycql-1.png)<br>
+    ![Create Backup form](/images/yp/scheduled-backup-ycql-1.png)
 
-- Provide the backup policy name.
+1. Provide the backup policy name.
 
-- Ensure that the API type is set as YCQL.
+1. Ensure that the API type is set as YCQL.
 
-- Select the database to back up.
+1. Select the database to back up.
 
-- Specify whether you want to back up all tables in the keyspace to which the database belongs or only  certain tables. If you choose **Select a subset of tables**, a **Select Tables** dialog opens allowing you to select one or more tables to back up.
+1. Specify whether you want to back up all tables in the keyspace to which the database belongs or only certain tables. If you choose **Select a subset of tables**, a **Select Tables** dialog opens allowing you to select one or more tables to back up.
 
-- Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
+1. Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
 
-- Specify the interval between backups or select **Use cron expression (UTC)**.
+1. Specify the interval between backups or select **Use cron expression (UTC)**.
 
-- For a YB Controller-powered universe, you can enable **Take incremental backups within full backup intervals** to instruct the schedule policy to take full backups periodically and incremental backups between those full backups. The incremental backups intervals be longer than the full scheduled backup frequency:
+1. Enable **Take incremental backups within full backup intervals** to instruct the schedule policy to take full backups periodically and incremental backups between those full backups (YBA version 2.16 or later, and YugabyteDB version 2.16 or later only). The incremental backups intervals must be shorter than the full scheduled backup frequency:
 
-  ![Incremental Backup](/images/yp/scheduled-backup-ycql-incremental.png)<br>
+    ![Incremental Backup](/images/yp/scheduled-backup-ycql-incremental.png)
 
-  If you disable the full backup, the incremental backup stops. If you enable the full backup again, the incremental backup schedule starts on new full backups.
+    If you disable the full backup, the incremental backup stops. If you enable the full backup again, the incremental backup schedule starts on new full backups.
 
-  If you delete the main full backup schedule, the incremental backup schedule is also deleted.
+    If you delete the main full backup schedule, the incremental backup schedule is also deleted.
 
-  You cannot modify any incremental backup-related property in the schedule; to overwrite any incremental backup property, you have to delete the existing schedule and create a new schedule if needed.
+    You cannot modify any incremental backup-related property in the schedule; to overwrite any incremental backup property, you have to delete the existing schedule and create a new schedule if needed.
 
-- Optionally, specify the number of threads that should be available for the backup process.
+1. Optionally, specify the number of threads that should be available for the backup process.
 
-- Click **Create**.
+1. Click **Create**.
 
 Subsequent backups are created based on the value you specified for **Set backup intervals** or **Use cron expression**.
 

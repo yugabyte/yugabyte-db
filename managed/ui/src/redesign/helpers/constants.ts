@@ -1,3 +1,5 @@
+import { UniverseState } from '../../components/universes/helpers/universeHelpers';
+
 export const YBTableRelationType = {
   SYSTEM_TABLE_RELATION: 'SYSTEM_TABLE_RELATION',
   USER_TABLE_RELATION: 'USER_TABLE_RELATION',
@@ -12,3 +14,5 @@ export const YBAHost = {
   AWS: 'aws',
   SELF_HOSTED: 'selfHosted'
 };
+
+export const UnavailableUniverseStates = [UniverseState.PAUSED, UniverseState.PENDING] as const;

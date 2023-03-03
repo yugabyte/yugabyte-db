@@ -76,10 +76,10 @@ struct KeyFilterCallbackResult {
 // the key, and second parameter controls the multi-key caching at Iterator
 // layer.
 using KeyFilterCallback = boost::function<KeyFilterCallbackResult(
-    const Slice& /*prefixed key*/, size_t /*shared_bytes*/, const Slice& /*delta*/)>;
+    Slice /*prefixed key*/, size_t /*shared_bytes*/, Slice /*delta*/)>;
 // ScanCallback is called for keys which are not skipped.
 using ScanCallback =
-    boost::function<bool(const Slice& /*key_bytes*/, const Slice& /*value_bytes*/)>;
+    boost::function<bool(Slice /*key_bytes*/, Slice /*value_bytes*/)>;
 
 class Iterator : public Cleanable {
  public:
@@ -176,7 +176,7 @@ class Iterator : public Cleanable {
   // ScanBackward() is not supported using callback, because every previous callback
   // requires to go back to start of restart_point and find the key before current key.
   virtual bool ScanForward(
-      const Slice& upperbound, KeyFilterCallback* key_filter_callback,
+      Slice upperbound, KeyFilterCallback* key_filter_callback,
       ScanCallback* scan_callback) {
     assert(false);
     return false;

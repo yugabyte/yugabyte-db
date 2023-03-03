@@ -52,7 +52,7 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
   void SetUp() override {
     YBTableTestBase::SetUp();
 
-    yb_admin_client_ = std::make_unique<tools::enterprise::ClusterAdminClient>(
+    yb_admin_client_ = std::make_unique<tools::ClusterAdminClient>(
         external_mini_cluster()->GetMasterAddresses(), kDefaultTimeout);
 
     ASSERT_OK(yb_admin_client_->Init());
@@ -169,7 +169,7 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
       kDefaultTimeout));
   }
 
-  std::unique_ptr<tools::enterprise::ClusterAdminClient> yb_admin_client_;
+  std::unique_ptr<tools::ClusterAdminClient> yb_admin_client_;
 };
 
 TEST_F(LoadBalancerPlacementPolicyTest, CreateTableWithPlacementPolicyTest) {

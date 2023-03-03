@@ -381,7 +381,7 @@ Status MiniCluster::AddTabletServer(const tserver::TabletServerOptions& extra_op
   if (options_.ts_rocksdb_env) {
     tablet_server->options()->rocksdb_env = options_.ts_rocksdb_env;
   }
-  RETURN_NOT_OK(tablet_server->Start());
+  RETURN_NOT_OK(tablet_server->Start(tserver::WaitTabletsBootstrapped::kFalse));
   mini_tablet_servers_.push_back(tablet_server);
   return Status::OK();
 }
@@ -1198,7 +1198,7 @@ void ShutdownAllTServers(MiniCluster* cluster) {
 
 Status StartAllTServers(MiniCluster* cluster) {
   for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
-    RETURN_NOT_OK(cluster->mini_tablet_server(i)->Start());
+    RETURN_NOT_OK(cluster->mini_tablet_server(i)->Start(tserver::WaitTabletsBootstrapped::kFalse));
   }
 
   return Status::OK();

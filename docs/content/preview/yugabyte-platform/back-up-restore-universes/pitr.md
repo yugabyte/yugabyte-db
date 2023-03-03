@@ -5,8 +5,8 @@ description: Point-in-time recovery
 menu:
   preview_yugabyte-platform:
     parent: back-up-restore-universes
-    identifier: pier
-    weight: 10
+    identifier: pitr
+    weight: 50
 type: docs
 ---
 
@@ -24,7 +24,7 @@ You can create a PITR configuration as follows:
 
    ![PITR](/images/yp/pitr-main.png)
 
-   If there are currently no databases or keyspaces enabled for PITR, a message is displayed. 
+   If there are currently no databases or keyspaces enabled for PITR, a message is displayed.
 
 1. Click **Enable Point-in-time Recovery** to open the dialog shown in the following illustration:
 
@@ -34,9 +34,9 @@ You can create a PITR configuration as follows:
 
 1. Click **Enable**.
 
-The database or keyspace is now added to the **Databases/Keyspaces with Point-In-Time Recovery Enabled** list. 
+The database or keyspace is now added to the **Databases/Keyspaces with Point-In-Time Recovery Enabled** list.
 
-## Recover to a point in time 
+## Recover to a point in time
 
 You can recover a snapshot to a specific point in time as follows:
 

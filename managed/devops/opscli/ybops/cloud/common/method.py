@@ -195,6 +195,10 @@ class AbstractInstancesMethod(AbstractMethod):
                                  help="Node agent auth token")
         self.parser.add_argument("--node_agent_home", required=False,
                                  help="Node agent home path")
+        self.parser.add_argument("--offload_ansible",
+                                 required=False,
+                                 action="store_true",
+                                 help="Offload ansible tasks to the DB node")
 
         mutex_group = self.parser.add_mutually_exclusive_group()
         mutex_group.add_argument("--num_volumes", type=int, default=0,
@@ -261,6 +265,7 @@ class AbstractInstancesMethod(AbstractMethod):
 
         if args.instance_tags:
             updated_args["instance_tags"] = json.loads(args.instance_tags)
+        updated_args["offload_ansible"] = args.offload_ansible
 
         self.extra_vars.update(updated_args)
 
@@ -827,7 +832,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         use_default_ssh_port = not ssh_port_updated
         host_info = self.wait_for_host(args, use_default_ssh_port)
         ansible = self.cloud.setup_ansible(args)
-        ansible.run("preprovision.yml", self.extra_vars, host_info)
+        ansible.run("preprovision.yml", self.extra_vars, host_info, disable_offloading=True)
 
         # Disabling custom_ssh_port for onprem provider when ssh2_enabled, because
         # we won't be able to know whether the nodes used are having openssh/tectia server.
@@ -1313,7 +1318,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                     # Runs all itest-related tasks (e.g. download from s3 bucket).
                     itest_extra_vars["tags"] = "itest"
                     self.cloud.setup_ansible(args).run(
-                        "configure-{}.yml".format(args.type), itest_extra_vars, host_info)
+                        "configure-{}.yml".format(args.type), itest_extra_vars,
+                        host_info)
                     logging.info(("[app] Running itest tasks including S3 " +
                                   "package download {} to {} took {:.3f} sec").format(
                         args.itest_s3_package_path,

@@ -31,7 +31,7 @@ export const transitToUniverse = (universeUUID?: string) =>
     : browserHistory.push(`/universes`);
 
 export const getClusterByType = (universeData: UniverseDetails, clusterType: ClusterType) =>
-  universeData.clusters.find((cluster) => cluster.clusterType === clusterType);
+  universeData?.clusters?.find((cluster) => cluster.clusterType === clusterType);
 
 export const getPrimaryCluster = (universeData: UniverseDetails) =>
   getClusterByType(universeData, ClusterType.PRIMARY);
@@ -210,6 +210,11 @@ export const getUserIntent = ({ formData }: { formData: UniverseFormData }) => {
   if (!_.isEmpty(tserverGFlags)) intent.tserverGFlags = tserverGFlags;
   if (!_.isEmpty(advancedConfig.awsArnString)) intent.awsArnString = advancedConfig.awsArnString;
   if (!_.isEmpty(instanceTags)) intent.instanceTags = transformTagsArrayToObject(instanceTags);
+
+  if (cloudConfig.provider?.code === CloudType.kubernetes && cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
+    intent.tserverK8SNodeResourceSpec = instanceConfig.tserverK8SNodeResourceSpec;
+    intent.masterK8SNodeResourceSpec = instanceConfig.masterK8SNodeResourceSpec;
+  }
 
   if (cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
     intent.masterInstanceType = instanceConfig.masterInstanceType;

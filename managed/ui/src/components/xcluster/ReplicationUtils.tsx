@@ -19,6 +19,8 @@ import {
 } from './constants';
 import { api } from '../../redesign/helpers/api';
 import { assertUnreachableCase } from '../../utils/ErrorUtils';
+import { getUniverseStatus } from '../universes/helpers/universeHelpers';
+import { UnavailableUniverseStates } from '../../redesign/helpers/constants';
 
 import {
   Metrics,
@@ -308,7 +310,21 @@ export const getUniverseByUUID = (universeList: Universe[], uuid: string) => {
   return universeList.find((universes) => universes.universeUUID === uuid);
 };
 
-export const getEnabledConfigActions = (replication: XClusterConfig): XClusterConfigAction[] => {
+export const getEnabledConfigActions = (
+  replication: XClusterConfig,
+  sourceUniverse: Universe | undefined,
+  targetUniverse: Universe | undefined
+): XClusterConfigAction[] => {
+  if (
+    UnavailableUniverseStates.includes(getUniverseStatus(sourceUniverse).state) ||
+    UnavailableUniverseStates.includes(getUniverseStatus(targetUniverse).state)
+  ) {
+    // xCluster 'Delete' action will fail on the backend. But if the user selects the
+    // 'force delete' option, then they will be able to remove the config even if a
+    // participating universe is unavailable.
+    return [XClusterConfigAction.DELETE];
+  }
+
   switch (replication.status) {
     case XClusterConfigStatus.INITIALIZED:
     case XClusterConfigStatus.UPDATING:
