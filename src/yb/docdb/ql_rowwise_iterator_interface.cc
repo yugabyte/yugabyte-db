@@ -13,6 +13,8 @@
 
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
+#include "yb/common/hybrid_time.h"
+
 #include "yb/util/result.h"
 
 namespace yb {
@@ -40,6 +42,10 @@ Status YQLRowwiseIteratorIf::NextRow(QLTableRow* table_row) {
 
 Status YQLRowwiseIteratorIf::Iterate(const YQLScanCallback& callback) {
   return STATUS(NotSupported, "This iterator does not support iterate with callback.");
+}
+
+HybridTime YQLRowwiseIteratorIf::TEST_MaxSeenHt() {
+  return HybridTime::kInvalid;
 }
 
 }  // namespace docdb

@@ -771,11 +771,10 @@ Status HybridScanChoices::SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) {
 
 ScanChoicesPtr ScanChoices::Create(
     const Schema& schema, const DocQLScanSpec& doc_spec,
-    const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key,
-    const size_t prefix_length) {
+    const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key) {
   if (doc_spec.range_options() || doc_spec.range_bounds()) {
     return std::make_unique<HybridScanChoices>(
-        schema, doc_spec, lower_doc_key, upper_doc_key, prefix_length);
+        schema, doc_spec, lower_doc_key, upper_doc_key, doc_spec.prefix_length());
   }
 
   return nullptr;
@@ -783,11 +782,10 @@ ScanChoicesPtr ScanChoices::Create(
 
 ScanChoicesPtr ScanChoices::Create(
     const Schema& schema, const DocPgsqlScanSpec& doc_spec,
-    const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key,
-    const size_t prefix_length) {
+    const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key) {
   if (doc_spec.range_options() || doc_spec.range_bounds()) {
     return std::make_unique<HybridScanChoices>(
-        schema, doc_spec, lower_doc_key, upper_doc_key, prefix_length);
+        schema, doc_spec, lower_doc_key, upper_doc_key, doc_spec.prefix_length());
   }
 
   return nullptr;
