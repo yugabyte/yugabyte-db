@@ -93,9 +93,9 @@ Create the folder with `mkdir ~/.hugo-cache`, then start a new terminal session.
     git push origin
     ```
 
-## Install Hugo Modules
+## Install Hugo modules
 
-Install Hugo module as a dependency of the site.
+Install Hugo modules as a dependency of the site.
 
 ```sh
 hugo mod get -u
