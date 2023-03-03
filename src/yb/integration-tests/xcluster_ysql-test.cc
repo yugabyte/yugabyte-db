@@ -50,7 +50,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/integration-tests/twodc_test_base.h"
+#include "yb/integration-tests/xcluster_test_base.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/catalog_manager_if.h"
@@ -124,44 +124,32 @@ namespace yb {
 
 using namespace std::chrono_literals;
 using client::YBClient;
-using client::YBClientBuilder;
-using client::YBColumnSchema;
-using client::YBError;
-using client::YBSchema;
-using client::YBSchemaBuilder;
-using client::YBSession;
 using client::YBTable;
-using client::YBTableAlterer;
-using client::YBTableCreator;
 using client::YBTableName;
-using client::YBTableType;
 using master::GetNamespaceInfoResponsePB;
-using master::MiniMaster;
-using tserver::MiniTabletServer;
 
-using pgwrapper::ToString;
 using pgwrapper::GetInt32;
 using pgwrapper::GetValue;
 using pgwrapper::PGConn;
 using pgwrapper::PGResultPtr;
-using pgwrapper::PgSupervisor;
+using pgwrapper::ToString;
 
-struct TwoDCYsqlTestParams {
-  explicit TwoDCYsqlTestParams(int batch_size_)
+struct XClusterYsqlTestParams {
+  explicit XClusterYsqlTestParams(int batch_size_)
       : batch_size(batch_size_) {}
 
   int batch_size;
 };
 
-class TwoDCYsqlTest : public XClusterYsqlTest,
-                      public testing::WithParamInterface<TwoDCYsqlTestParams> {
+class XClusterYsqlTest : public XClusterYsqlTestBase,
+                      public testing::WithParamInterface<XClusterYsqlTestParams> {
  public:
   void SetUp() override {
-    XClusterYsqlTest::SetUp();
+    XClusterYsqlTestBase::SetUp();
     FLAGS_ysql_legacy_colocated_database_creation = false;
   }
 
-  void ValidateRecordsTwoDCWithCDCSDK(bool update_min_cdc_indices_interval = false,
+  void ValidateRecordsXClusterWithCDCSDK(bool update_min_cdc_indices_interval = false,
                                       bool enable_cdc_sdk_in_producer = false,
                                       bool do_explict_transaction = false);
 
@@ -659,17 +647,17 @@ class TwoDCYsqlTest : public XClusterYsqlTest,
   }
 };
 
-INSTANTIATE_TEST_CASE_P(TwoDCYsqlTestParams, TwoDCYsqlTest,
-                        ::testing::Values(TwoDCYsqlTestParams(0 /* batch_size */)));
+INSTANTIATE_TEST_CASE_P(XClusterYsqlTestParams, XClusterYsqlTest,
+                        ::testing::Values(XClusterYsqlTestParams(0 /* batch_size */)));
 
-class TwoDCYsqlTestToggleBatching : public TwoDCYsqlTest {
+class XClusterYsqlTestToggleBatching : public XClusterYsqlTest {
 };
 
-INSTANTIATE_TEST_CASE_P(TwoDCYsqlTestParams, TwoDCYsqlTestToggleBatching,
-                        ::testing::Values(TwoDCYsqlTestParams(0 /* batch_size */),
-                                          TwoDCYsqlTestParams(1 /* batch_size */)));
+INSTANTIATE_TEST_CASE_P(XClusterYsqlTestParams, XClusterYsqlTestToggleBatching,
+                        ::testing::Values(XClusterYsqlTestParams(0 /* batch_size */),
+                                          XClusterYsqlTestParams(1 /* batch_size */)));
 
-TEST_P(TwoDCYsqlTestToggleBatching, GenerateSeries) {
+TEST_P(XClusterYsqlTestToggleBatching, GenerateSeries) {
   auto tables = ASSERT_RESULT(SetUpWithParams({4}, {4}, 3, 1));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
@@ -691,7 +679,7 @@ TEST_P(TwoDCYsqlTestToggleBatching, GenerateSeries) {
 
 constexpr int kTransactionalConsistencyTestDurationSecs = 30;
 
-class TwoDCYSqlTestConsistentTransactionsTest : public TwoDCYsqlTest {
+class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
  public:
   void MultiTransactionConsistencyTest(
       uint32_t transaction_size, uint32_t num_transactions, const YBTableName& producer_table,
@@ -799,7 +787,7 @@ class TwoDCYSqlTestConsistentTransactionsTest : public TwoDCYsqlTest {
 constexpr uint32_t kTransactionSize = 50;
 constexpr uint32_t kNumTransactions = 100;
 
-TEST_F(TwoDCYSqlTestConsistentTransactionsTest, ConsistentTransactions) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, ConsistentTransactions) {
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
 
   ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
@@ -809,7 +797,7 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, ConsistentTransactions) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_F(TwoDCYSqlTestConsistentTransactionsTest, ConsistentTransactionsWithApplyDisabled) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, ConsistentTransactionsWithApplyDisabled) {
   FLAGS_TEST_disable_apply_committed_transactions = true;
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
 
@@ -820,7 +808,7 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, ConsistentTransactionsWithApplyD
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_F(TwoDCYSqlTestConsistentTransactionsTest, LargeTransaction) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, LargeTransaction) {
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
 
   ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
@@ -830,7 +818,7 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, LargeTransaction) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_F(TwoDCYSqlTestConsistentTransactionsTest, ManySmallTransactions) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, ManySmallTransactions) {
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
 
   ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
@@ -840,7 +828,7 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, ManySmallTransactions) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_F(TwoDCYSqlTestConsistentTransactionsTest, UncommittedTransactions) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, UncommittedTransactions) {
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
 
   ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
@@ -850,7 +838,7 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, UncommittedTransactions) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_F(TwoDCYSqlTestConsistentTransactionsTest, NonTransactionalWorkload) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, NonTransactionalWorkload) {
   // Write 10000 rows non-transactionally to ensure there's no regression for non-transactional
   // workloads.
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
@@ -860,7 +848,7 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, NonTransactionalWorkload) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionSpanningMultipleBatches) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionSpanningMultipleBatches) {
   // Write a large transaction spanning multiple write batches and then delete all rows on both
   // producer and consumer and ensure we still maintain read consistency and can properly apply
   // intents.
@@ -881,7 +869,7 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionSpanningMultipleBatch
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
   // Write a transactional workload of updates with valdation for 30s and ensure there are no
   // FATALs and that we maintain consistent reads.
   FLAGS_enable_replicate_transaction_status_table = true;
@@ -963,7 +951,7 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_F(TwoDCYSqlTestConsistentTransactionsTest, AddServerBetweenTransactions) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, AddServerBetweenTransactions) {
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
   auto producer_table = tables_pair.first;
   auto consumer_table = tables_pair.second;
@@ -986,7 +974,7 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, AddServerBetweenTransactions) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_F(TwoDCYSqlTestConsistentTransactionsTest, AddServerIntraTransaction) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, AddServerIntraTransaction) {
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
   auto producer_table = tables_pair.first;
   auto consumer_table = tables_pair.second;
@@ -1019,7 +1007,7 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, AddServerIntraTransaction) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_F(TwoDCYSqlTestConsistentTransactionsTest, RefreshCheckpointAfterRestart) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, RefreshCheckpointAfterRestart) {
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
   FLAGS_TEST_force_get_checkpoint_from_cdc_state = true;
   auto producer_table = tables_pair.first;
@@ -1053,7 +1041,7 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, RefreshCheckpointAfterRestart) {
 }
 
 
-TEST_F(TwoDCYSqlTestConsistentTransactionsTest, RestartServer) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, RestartServer) {
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
   auto producer_table = tables_pair.first;
   auto consumer_table = tables_pair.second;
@@ -1077,7 +1065,7 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, RestartServer) {
 }
 
 
-TEST_F(TwoDCYSqlTestConsistentTransactionsTest, MasterLeaderRestart) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, MasterLeaderRestart) {
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication(3 /* num_masters */));
   auto producer_table = tables_pair.first;
   auto consumer_table = tables_pair.second;
@@ -1099,7 +1087,7 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, MasterLeaderRestart) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionsSpanningConsensusMaxBatchSize) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsSpanningConsensusMaxBatchSize) {
   FLAGS_consensus_max_batch_size_bytes = 8_KB;
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
   auto producer_table = tables_pair.first;
@@ -1121,7 +1109,7 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionsSpanningConsensusMax
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_F(TwoDCYSqlTestConsistentTransactionsTest, ReplicationPause) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, ReplicationPause) {
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
   auto producer_table = tables_pair.first;
   auto consumer_table = tables_pair.second;
@@ -1141,7 +1129,7 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, ReplicationPause) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionsWithCompactions) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsWithCompactions) {
   // This test ensures that the compactions flow does not cleanup external intents from transactions
   // thought to be aborted. In the xcluster case, it is possible that a transaction is thought to
   // be aborted when the consumer has just yet to replicate the CREATE + COMMIT records for this
@@ -1179,7 +1167,7 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionsWithCompactions) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_F(TwoDCYSqlTestConsistentTransactionsTest, GarbageCollectExpiredTransactions) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, GarbageCollectExpiredTransactions) {
   // This test ensures that transactions older than the retention window are cleaned up on both
   // the coordinator and participant.
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
@@ -1220,15 +1208,15 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, GarbageCollectExpiredTransaction
   ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
 }
 
-class TwoDCYSqlTestStressTest : public TwoDCYSqlTestConsistentTransactionsTest {
+class XClusterYSqlTestStressTest : public XClusterYSqlTestConsistentTransactionsTest {
   void SetUp() override {
     FLAGS_rpc_workers_limit = 8;
     FLAGS_tablet_server_svc_queue_length = 10;
-    TwoDCYSqlTestConsistentTransactionsTest::SetUp();
+    XClusterYSqlTestConsistentTransactionsTest::SetUp();
   }
 };
 
-TEST_F(TwoDCYSqlTestStressTest, ApplyTranasctionThrottling) {
+TEST_F(XClusterYSqlTestStressTest, ApplyTranasctionThrottling) {
   // After a boostrap or a network partition, it is possible that there many unreplicated
   // transactions that the consumer receives at once. Specifically, the consumer's
   // coordinator must commit and then apply many transactions at once. Ensure that there is
@@ -1255,7 +1243,7 @@ TEST_F(TwoDCYSqlTestStressTest, ApplyTranasctionThrottling) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_P(TwoDCYsqlTestToggleBatching, GenerateSeriesMultipleTransactions) {
+TEST_P(XClusterYsqlTestToggleBatching, GenerateSeriesMultipleTransactions) {
   // Use a 4 -> 1 mapping to ensure that multiple transactions are processed by the same tablet.
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {4}, 3, 1));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
@@ -1277,7 +1265,7 @@ TEST_P(TwoDCYsqlTestToggleBatching, GenerateSeriesMultipleTransactions) {
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 }
 
-TEST_P(TwoDCYsqlTestToggleBatching, ChangeRole) {
+TEST_P(XClusterYsqlTestToggleBatching, ChangeRole) {
   // 1. Test that an existing universe without replication of txn status table cannot become a
   // STANDBY.
   FLAGS_enable_replicate_transaction_status_table = false;
@@ -1311,7 +1299,7 @@ TEST_P(TwoDCYsqlTestToggleBatching, ChangeRole) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
+TEST_P(XClusterYsqlTest, SetupUniverseReplication) {
   auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3, 1, false /* colocated */));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
@@ -1344,7 +1332,7 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-void TwoDCYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
+void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
     std::vector<uint32_t> consumer_tablet_counts, std::vector<uint32_t> producer_tablet_counts,
     uint32_t num_tablet_servers, bool range_partitioned) {
   FLAGS_ysql_enable_packed_row = false;
@@ -1482,30 +1470,30 @@ void TwoDCYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
       "IsDataReplicatedCorrectly"));
 }
 
-TEST_P(TwoDCYsqlTest, SimpleReplication) {
+TEST_P(XClusterYsqlTest, SimpleReplication) {
   ValidateSimpleReplicationWithPackedRowsUpgrade(
       /* consumer_tablet_counts */ {1, 1}, /* producer_tablet_counts */ {1, 1});
 }
 
-TEST_P(TwoDCYsqlTest, SimpleReplicationWithUnevenTabletCounts) {
+TEST_P(XClusterYsqlTest, SimpleReplicationWithUnevenTabletCounts) {
   ValidateSimpleReplicationWithPackedRowsUpgrade(
       /* consumer_tablet_counts */ {5, 3}, /* producer_tablet_counts */ {3, 5},
       /* num_tablet_servers */ 3);
 }
 
-TEST_P(TwoDCYsqlTest, SimpleReplicationWithRangedPartitions) {
+TEST_P(XClusterYsqlTest, SimpleReplicationWithRangedPartitions) {
   ValidateSimpleReplicationWithPackedRowsUpgrade(
       /* consumer_tablet_counts */ {1, 1}, /* producer_tablet_counts */ {1, 1},
       /* num_tablet_servers */ 1, /* range_partitioned */ true);
 }
 
-TEST_P(TwoDCYsqlTest, SimpleReplicationWithRangedPartitionsAndUnevenTabletCounts) {
+TEST_P(XClusterYsqlTest, SimpleReplicationWithRangedPartitionsAndUnevenTabletCounts) {
   ValidateSimpleReplicationWithPackedRowsUpgrade(
       /* consumer_tablet_counts */ {5, 3}, /* producer_tablet_counts */ {3, 5},
       /* num_tablet_servers */ 3, /* range_partitioned */ true);
 }
 
-TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
+TEST_P(XClusterYsqlTest, ReplicationWithBasicDDL) {
   SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
   FLAGS_ysql_enable_packed_row = true;
   string new_column = "contact_name";
@@ -1816,7 +1804,7 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
             MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
 }
 
-TEST_P(TwoDCYsqlTest, ReplicationWithCreateIndexDDL) {
+TEST_P(XClusterYsqlTest, ReplicationWithCreateIndexDDL) {
   SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
   FLAGS_ysql_disable_index_backfill = false;
   string new_column = "alt";
@@ -1893,7 +1881,7 @@ TEST_P(TwoDCYsqlTest, ReplicationWithCreateIndexDDL) {
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 }
 
-TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
+TEST_P(XClusterYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 3));
@@ -2051,16 +2039,16 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
                     MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
 }
 
-TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
+TEST_P(XClusterYsqlTest, ColocatedDatabaseReplication) {
   TestColocatedDatabaseReplication();
 }
 
-TEST_P(TwoDCYsqlTest, LegacyColocatedDatabaseReplication) {
+TEST_P(XClusterYsqlTest, LegacyColocatedDatabaseReplication) {
   FLAGS_ysql_legacy_colocated_database_creation = true;
   TestColocatedDatabaseReplication();
 }
 
-TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentColocationIds) {
+TEST_P(XClusterYsqlTest, ColocatedDatabaseDifferentColocationIds) {
   auto colocated_tables = ASSERT_RESULT(SetUpWithParams({}, {}, 3, 1, true /* colocated */));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
@@ -2091,7 +2079,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentColocationIds) {
   ASSERT_NOK(VerifyUniverseReplication(kUniverseId, &get_universe_replication_resp));
 }
 
-TEST_P(TwoDCYsqlTest, TablegroupReplication) {
+TEST_P(XClusterYsqlTest, TablegroupReplication) {
   std::vector<uint32_t> tables_vector = {1, 1};
   boost::optional<std::string> kTablegroupName("mytablegroup");
   auto tables = ASSERT_RESULT(
@@ -2253,7 +2241,7 @@ TEST_P(TwoDCYsqlTest, TablegroupReplication) {
             MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
 }
 
-TEST_P(TwoDCYsqlTest, TablegroupReplicationMismatch) {
+TEST_P(XClusterYsqlTest, TablegroupReplicationMismatch) {
   ASSERT_OK(Initialize(1 /* replication_factor */));
 
   boost::optional<std::string> tablegroup_name("mytablegroup");
@@ -2307,7 +2295,7 @@ TEST_P(TwoDCYsqlTest, TablegroupReplicationMismatch) {
 }
 
 // Checks that in regular replication set up, bootstrap is not required
-TEST_P(TwoDCYsqlTest, IsBootstrapRequiredNotFlushed) {
+TEST_P(XClusterYsqlTest, IsBootstrapRequiredNotFlushed) {
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
@@ -2390,7 +2378,7 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredNotFlushed) {
 }
 
 // Checks that with missing logs, replication will require bootstrapping
-TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
+TEST_P(XClusterYsqlTest, IsBootstrapRequiredFlushed) {
   FLAGS_enable_load_balancing = false;
   FLAGS_log_cache_size_limit_mb = 1;
   FLAGS_log_segment_size_bytes = 5_KB;
@@ -2492,9 +2480,9 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
   ASSERT_TRUE(StatusFromPB(is_resp.replication_error()).IsIllegalState());
 }
 
-// TODO adapt rest of twodc-test.cc tests.
+// TODO adapt rest of xcluster-test.cc tests.
 
-TEST_P(TwoDCYsqlTest, DeleteTableChecks) {
+TEST_P(XClusterYsqlTest, DeleteTableChecks) {
   constexpr int kNT = 1; // Tablets per table.
   std::vector<uint32_t> tables_vector = {kNT, kNT, kNT}; // Each entry is a table. (Currently 3)
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
@@ -2619,7 +2607,7 @@ TEST_P(TwoDCYsqlTest, DeleteTableChecks) {
   // }
 }
 
-TEST_P(TwoDCYsqlTest, TruncateTableChecks) {
+TEST_P(XClusterYsqlTest, TruncateTableChecks) {
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
@@ -2697,7 +2685,7 @@ TEST_P(TwoDCYsqlTest, TruncateTableChecks) {
   ASSERT_OK(TruncateTable(&consumer_cluster_, {consumer_table_id}));
 }
 
-TEST_P(TwoDCYsqlTest, SetupReplicationWithMaterializedViews) {
+TEST_P(XClusterYsqlTest, SetupReplicationWithMaterializedViews) {
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
@@ -2735,7 +2723,7 @@ TEST_P(TwoDCYsqlTest, SetupReplicationWithMaterializedViews) {
   LOG(INFO) << "Replication verification failed : " << status.ToString();
 }
 
-TEST_P(TwoDCYsqlTest, ReplicationWithPackedColumnsAndSchemaVersionMismatch) {
+TEST_P(XClusterYsqlTest, ReplicationWithPackedColumnsAndSchemaVersionMismatch) {
   FLAGS_ysql_enable_packed_row = true;
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
@@ -2919,7 +2907,7 @@ Status SetInitialCheckpoint(const std::unique_ptr<cdc::CDCServiceProxy>& cdc_pro
                                       &set_checkpoint_rpc);
 }
 
-void TwoDCYsqlTest::ValidateRecordsTwoDCWithCDCSDK(bool update_min_cdc_indices_interval,
+void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(bool update_min_cdc_indices_interval,
                                                    bool enable_cdc_sdk_in_producer,
                                                    bool do_explict_transaction) {
   constexpr int kNTabletsPerTable = 1;
@@ -3095,33 +3083,33 @@ void TwoDCYsqlTest::ValidateRecordsTwoDCWithCDCSDK(bool update_min_cdc_indices_i
   ASSERT_EQ(expected_record_count, ins_count);
 }
 
-TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKEnabled) {
+TEST_P(XClusterYsqlTest, XClusterWithCDCSDKEnabled) {
   FLAGS_ysql_enable_packed_row = false;
-  ValidateRecordsTwoDCWithCDCSDK(false, false, false);
+  ValidateRecordsXClusterWithCDCSDK(false, false, false);
 }
 
-TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKPackedRowsEnabled) {
+TEST_P(XClusterYsqlTest, XClusterWithCDCSDKPackedRowsEnabled) {
   FLAGS_ysql_enable_packed_row = true;
   FLAGS_ysql_packed_row_size_limit = 1_KB;
-  ValidateRecordsTwoDCWithCDCSDK(false, false, false);
+  ValidateRecordsXClusterWithCDCSDK(false, false, false);
 }
 
-TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKExplictTransaction) {
+TEST_P(XClusterYsqlTest, XClusterWithCDCSDKExplictTransaction) {
   FLAGS_ysql_enable_packed_row = false;
-  ValidateRecordsTwoDCWithCDCSDK(false, true, true);
+  ValidateRecordsXClusterWithCDCSDK(false, true, true);
 }
 
-TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKExplictTranPackedRows) {
+TEST_P(XClusterYsqlTest, XClusterWithCDCSDKExplictTranPackedRows) {
   FLAGS_ysql_enable_packed_row = true;
   FLAGS_ysql_packed_row_size_limit = 1_KB;
-  ValidateRecordsTwoDCWithCDCSDK(false, true, true);
+  ValidateRecordsXClusterWithCDCSDK(false, true, true);
 }
 
-TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKUpdateCDCInterval) {
-  ValidateRecordsTwoDCWithCDCSDK(true, true, false);
+TEST_P(XClusterYsqlTest, XClusterWithCDCSDKUpdateCDCInterval) {
+  ValidateRecordsXClusterWithCDCSDK(true, true, false);
 }
 
-TEST_P(TwoDCYsqlTest, SetupSameNameDifferentSchemaUniverseReplication) {
+TEST_P(XClusterYsqlTest, SetupSameNameDifferentSchemaUniverseReplication) {
   constexpr int kNumTables = 3;
   constexpr int kNTabletsPerTable = 3;
   auto tables = ASSERT_RESULT(SetUpWithParams({}, {}, 1));
@@ -3169,7 +3157,7 @@ TEST_P(TwoDCYsqlTest, SetupSameNameDifferentSchemaUniverseReplication) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCYsqlTest, DeletingDatabaseContainingReplicatedTable) {
+TEST_P(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
   constexpr int kNTabletsPerTable = 1;
   const int num_tables = 3;
 

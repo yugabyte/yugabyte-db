@@ -801,7 +801,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     }
 
     cdc_sdk_safe_time_ = HybridTime::FromPB(superblock.cdc_sdk_safe_time());
-    is_under_xcluster_replication_ = superblock.is_under_twodc_replication();
+    is_under_xcluster_replication_ = superblock.is_under_xcluster_replication();
     hidden_ = superblock.hidden();
     auto restoration_hybrid_time = HybridTime::FromPB(superblock.restoration_hybrid_time());
     if (restoration_hybrid_time) {
@@ -944,7 +944,7 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   pb.set_cdc_min_replicated_index(cdc_min_replicated_index_);
   cdc_sdk_min_checkpoint_op_id_.ToPB(pb.mutable_cdc_sdk_min_checkpoint_op_id());
   pb.set_cdc_sdk_safe_time(cdc_sdk_safe_time_.ToUint64());
-  pb.set_is_under_twodc_replication(is_under_xcluster_replication_);
+  pb.set_is_under_xcluster_replication(is_under_xcluster_replication_);
   pb.set_hidden(hidden_);
   if (restoration_hybrid_time_) {
     pb.set_restoration_hybrid_time(restoration_hybrid_time_.ToUint64());

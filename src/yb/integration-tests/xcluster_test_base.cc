@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/integration-tests/twodc_test_base.h"
+#include "yb/integration-tests/xcluster_test_base.h"
 
 #include <string>
 
@@ -55,7 +55,7 @@ using client::YBClient;
 using client::YBTableName;
 using tserver::XClusterConsumer;
 
-Status TwoDCTestBase::InitClusters(const MiniClusterOptions& opts) {
+Status XClusterTestBase::InitClusters(const MiniClusterOptions& opts) {
   FLAGS_replication_factor = static_cast<int>(opts.num_tablet_servers);
   // Disable tablet split for regular tests, see xcluster-tablet-split-itest for those tests.
   FLAGS_enable_tablet_split_of_xcluster_replicated_tables = false;
@@ -83,7 +83,7 @@ Status TwoDCTestBase::InitClusters(const MiniClusterOptions& opts) {
   return Status::OK();
 }
 
-void TwoDCTestBase::TearDown() {
+void XClusterTestBase::TearDown() {
   LOG(INFO) << "Destroying CDC Clusters";
   if (consumer_cluster()) {
     if (consumer_cluster_.pg_supervisor_) {
@@ -107,7 +107,7 @@ void TwoDCTestBase::TearDown() {
   YBTest::TearDown();
 }
 
-Status TwoDCTestBase::RunOnBothClusters(std::function<Status(MiniCluster*)> run_on_cluster) {
+Status XClusterTestBase::RunOnBothClusters(std::function<Status(MiniCluster*)> run_on_cluster) {
   auto producer_future = std::async(std::launch::async, [&] {
     CDSAttacher attacher;
     return run_on_cluster(producer_cluster());
@@ -124,7 +124,7 @@ Status TwoDCTestBase::RunOnBothClusters(std::function<Status(MiniCluster*)> run_
   return consumer_status;
 }
 
-Status TwoDCTestBase::RunOnBothClusters(std::function<Status(Cluster*)> run_on_cluster) {
+Status XClusterTestBase::RunOnBothClusters(std::function<Status(Cluster*)> run_on_cluster) {
   auto producer_future = std::async(std::launch::async, [&] {
     CDSAttacher attacher;
     return run_on_cluster(&producer_cluster_);
@@ -141,13 +141,13 @@ Status TwoDCTestBase::RunOnBothClusters(std::function<Status(Cluster*)> run_on_c
   return consumer_status;
 }
 
-Status TwoDCTestBase::WaitForLoadBalancersToStabilize() {
+Status XClusterTestBase::WaitForLoadBalancersToStabilize() {
   RETURN_NOT_OK(
       producer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
   return consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout));
 }
 
-Status TwoDCTestBase::CreateDatabase(
+Status XClusterTestBase::CreateDatabase(
     Cluster* cluster, const std::string& namespace_name, bool colocated) {
   auto conn = EXPECT_RESULT(cluster->Connect());
   EXPECT_OK(conn.ExecuteFormat(
@@ -155,7 +155,7 @@ Status TwoDCTestBase::CreateDatabase(
   return Status::OK();
 }
 
-Result<YBTableName> TwoDCTestBase::CreateTable(
+Result<YBTableName> XClusterTestBase::CreateTable(
     YBClient* client, const std::string& namespace_name, const std::string& table_name,
     uint32_t num_tablets, const client::YBSchema* schema) {
   YBTableName table(YQL_DATABASE_CQL, namespace_name, table_name);
@@ -171,25 +171,25 @@ Result<YBTableName> TwoDCTestBase::CreateTable(
   return table;
 }
 
-Status TwoDCTestBase::SetupUniverseReplication(
+Status XClusterTestBase::SetupUniverseReplication(
     const std::vector<std::shared_ptr<client::YBTable>>& tables, bool leader_only) {
   return SetupUniverseReplication(kUniverseId, tables, leader_only);
 }
 
-Status TwoDCTestBase::SetupUniverseReplication(
+Status XClusterTestBase::SetupUniverseReplication(
     const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
     bool leader_only) {
   return SetupUniverseReplication(
       producer_cluster(), consumer_cluster(), consumer_client(), universe_id, tables, leader_only);
 }
 
-Status TwoDCTestBase::SetupReverseUniverseReplication(
+Status XClusterTestBase::SetupReverseUniverseReplication(
     const std::vector<std::shared_ptr<client::YBTable>>& tables) {
   return SetupUniverseReplication(
       consumer_cluster(), producer_cluster(), producer_client(), kUniverseId, tables);
 }
 
-Status TwoDCTestBase::SetupUniverseReplication(
+Status XClusterTestBase::SetupUniverseReplication(
     MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
     const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
     bool leader_only, const std::vector<string>& bootstrap_ids) {
@@ -249,7 +249,7 @@ Status TwoDCTestBase::SetupUniverseReplication(
   return master_proxy->SetupUniverseReplication(req, &resp, &rpc);
 }
 
-Status TwoDCTestBase::SetupNSUniverseReplication(
+Status XClusterTestBase::SetupNSUniverseReplication(
     MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
     const std::string& universe_id, const std::string& producer_ns_name,
     const YQLDatabase& producer_ns_type,
@@ -283,16 +283,16 @@ Status TwoDCTestBase::SetupNSUniverseReplication(
   }, MonoDelta::FromSeconds(30), "Setup namespace-level universe replication");
 }
 
-Status TwoDCTestBase::VerifyUniverseReplication(master::GetUniverseReplicationResponsePB* resp) {
+Status XClusterTestBase::VerifyUniverseReplication(master::GetUniverseReplicationResponsePB* resp) {
   return VerifyUniverseReplication(kUniverseId, resp);
 }
 
-Status TwoDCTestBase::VerifyUniverseReplication(
+Status XClusterTestBase::VerifyUniverseReplication(
     const std::string& universe_id, master::GetUniverseReplicationResponsePB* resp) {
   return VerifyUniverseReplication(consumer_cluster(), consumer_client(), universe_id, resp);
 }
 
-Status TwoDCTestBase::VerifyUniverseReplication(
+Status XClusterTestBase::VerifyUniverseReplication(
     MiniCluster* consumer_cluster, YBClient* consumer_client, const std::string& universe_id,
     master::GetUniverseReplicationResponsePB* resp) {
   master::IsSetupUniverseReplicationDoneResponsePB setup_resp;
@@ -321,7 +321,7 @@ Status TwoDCTestBase::VerifyUniverseReplication(
       MonoDelta::FromSeconds(kRpcTimeout), "Verify universe replication");
 }
 
-Status TwoDCTestBase::VerifyNSUniverseReplication(
+Status XClusterTestBase::VerifyNSUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, int num_expected_table) {
   return LoggedWaitFor([&]() -> Result<bool> {
@@ -334,7 +334,7 @@ Status TwoDCTestBase::VerifyNSUniverseReplication(
   }, MonoDelta::FromSeconds(kRpcTimeout), "Verify namespace-level universe replication");
 }
 
-Status TwoDCTestBase::ToggleUniverseReplication(
+Status XClusterTestBase::ToggleUniverseReplication(
     MiniCluster* consumer_cluster, YBClient* consumer_client,
     const std::string& universe_id, bool is_enabled) {
   master::SetUniverseReplicationEnabledRequestPB req;
@@ -356,7 +356,7 @@ Status TwoDCTestBase::ToggleUniverseReplication(
   return Status::OK();
 }
 
-Status TwoDCTestBase::ChangeXClusterRole(const cdc::XClusterRole role, Cluster* cluster) {
+Status XClusterTestBase::ChangeXClusterRole(const cdc::XClusterRole role, Cluster* cluster) {
   if (!cluster) {
     cluster = &consumer_cluster_;
   }
@@ -379,7 +379,7 @@ Status TwoDCTestBase::ChangeXClusterRole(const cdc::XClusterRole role, Cluster* 
   return Status::OK();
 }
 
-Status TwoDCTestBase::VerifyUniverseReplicationDeleted(MiniCluster* consumer_cluster,
+Status XClusterTestBase::VerifyUniverseReplicationDeleted(MiniCluster* consumer_cluster,
     YBClient* consumer_client, const std::string& universe_id, int timeout) {
   return LoggedWaitFor([=]() -> Result<bool> {
     master::GetUniverseReplicationRequestPB req;
@@ -397,7 +397,7 @@ Status TwoDCTestBase::VerifyUniverseReplicationDeleted(MiniCluster* consumer_clu
   }, MonoDelta::FromMilliseconds(timeout), "Verify universe replication deleted");
 }
 
-Status TwoDCTestBase::WaitForSetupUniverseReplication(
+Status XClusterTestBase::WaitForSetupUniverseReplication(
     MiniCluster* consumer_cluster, YBClient* consumer_client, const std::string& universe_id,
     master::IsSetupUniverseReplicationDoneResponsePB* resp) {
   return LoggedWaitFor(
@@ -422,7 +422,7 @@ Status TwoDCTestBase::WaitForSetupUniverseReplication(
       MonoDelta::FromSeconds(kRpcTimeout), "Is setup replication done");
 }
 
-Status TwoDCTestBase::GetCDCStreamForTable(
+Status XClusterTestBase::GetCDCStreamForTable(
     const std::string& table_id, master::ListCDCStreamsResponsePB* resp) {
   return LoggedWaitFor([this, table_id, resp]() -> Result<bool> {
     master::ListCDCStreamsRequestPB req;
@@ -438,7 +438,7 @@ Status TwoDCTestBase::GetCDCStreamForTable(
   }, MonoDelta::FromSeconds(kRpcTimeout), "Get CDC stream for table");
 }
 
-uint32_t TwoDCTestBase::GetSuccessfulWriteOps(MiniCluster* cluster) {
+uint32_t XClusterTestBase::GetSuccessfulWriteOps(MiniCluster* cluster) {
   uint32_t size = 0;
   for (const auto& mini_tserver : cluster->mini_tablet_servers()) {
     auto* tserver = mini_tserver->server();
@@ -450,11 +450,11 @@ uint32_t TwoDCTestBase::GetSuccessfulWriteOps(MiniCluster* cluster) {
   return size;
 }
 
-Status TwoDCTestBase::DeleteUniverseReplication(const std::string& universe_id) {
+Status XClusterTestBase::DeleteUniverseReplication(const std::string& universe_id) {
   return DeleteUniverseReplication(universe_id, consumer_client(), consumer_cluster());
 }
 
-Status TwoDCTestBase::DeleteUniverseReplication(
+Status XClusterTestBase::DeleteUniverseReplication(
     const std::string& universe_id, YBClient* client, MiniCluster* cluster) {
   master::DeleteUniverseReplicationRequestPB req;
   master::DeleteUniverseReplicationResponsePB resp;
@@ -472,13 +472,13 @@ Status TwoDCTestBase::DeleteUniverseReplication(
   return Status::OK();
 }
 
-Status TwoDCTestBase::CorrectlyPollingAllTablets(
+Status XClusterTestBase::CorrectlyPollingAllTablets(
     MiniCluster* cluster, uint32_t num_producer_tablets) {
   return cdc::CorrectlyPollingAllTablets(
       cluster, num_producer_tablets, MonoDelta::FromSeconds(kRpcTimeout));
 }
 
-Status TwoDCTestBase::WaitForSetupUniverseReplicationCleanUp(string producer_uuid) {
+Status XClusterTestBase::WaitForSetupUniverseReplicationCleanUp(string producer_uuid) {
   auto proxy = std::make_shared<master::MasterReplicationProxy>(
     &consumer_client()->proxy_cache(),
     VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
@@ -494,7 +494,7 @@ Status TwoDCTestBase::WaitForSetupUniverseReplicationCleanUp(string producer_uui
   }, MonoDelta::FromSeconds(kRpcTimeout), "Waiting for universe to delete");
 }
 
-Status TwoDCTestBase::WaitForValidSafeTimeOnAllTServers(
+Status XClusterTestBase::WaitForValidSafeTimeOnAllTServers(
     const NamespaceId& namespace_id, Cluster* cluster) {
   if (!cluster) {
     cluster = &consumer_cluster_;
@@ -517,7 +517,7 @@ Status TwoDCTestBase::WaitForValidSafeTimeOnAllTServers(
   return Status::OK();
 }
 
-Status TwoDCTestBase::WaitForReplicationDrain(
+Status XClusterTestBase::WaitForReplicationDrain(
     const std::shared_ptr<master::MasterReplicationProxy>& master_proxy,
     const master::WaitForReplicationDrainRequestPB& req,
     int expected_num_nondrained,
@@ -529,7 +529,7 @@ Status TwoDCTestBase::WaitForReplicationDrain(
   return SetupWaitForReplicationDrainStatus(s, resp, expected_num_nondrained);
 }
 
-void TwoDCTestBase::PopulateWaitForReplicationDrainRequest(
+void XClusterTestBase::PopulateWaitForReplicationDrainRequest(
     const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
     master::WaitForReplicationDrainRequestPB* req) {
   for (const auto& producer_table : producer_tables) {
@@ -541,7 +541,7 @@ void TwoDCTestBase::PopulateWaitForReplicationDrainRequest(
   }
 }
 
-Status TwoDCTestBase::SetupWaitForReplicationDrainStatus(
+Status XClusterTestBase::SetupWaitForReplicationDrainStatus(
     Status api_status,
     const master::WaitForReplicationDrainResponsePB& api_resp,
     int expected_num_nondrained) {
