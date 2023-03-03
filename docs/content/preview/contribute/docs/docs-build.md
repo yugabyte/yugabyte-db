@@ -93,6 +93,14 @@ Create the folder with `mkdir ~/.hugo-cache`, then start a new terminal session.
     git push origin
     ```
 
+## Install Hugo Modules
+
+Install Hugo module as a dependency of the site.
+
+```sh
+hugo mod get -u
+```
+
 ## Build the docs site {#live-reload}
 
 The YugabyteDB documentation is written in Markdown, and processed by Hugo (a static site generator) into an HTML site.
