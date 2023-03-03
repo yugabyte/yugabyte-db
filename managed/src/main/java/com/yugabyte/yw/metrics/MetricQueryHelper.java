@@ -68,8 +68,6 @@ public class MetricQueryHelper {
   public static final String ALERTS_PATH = "alerts";
 
   public static final String MANAGEMENT_COMMAND_RELOAD = "reload";
-  private static final String PROMETHEUS_METRICS_URL_PATH = "yb.metrics.url";
-  private static final String PROMETHEUS_MANAGEMENT_URL_PATH = "yb.metrics.management.url";
   public static final String PROMETHEUS_MANAGEMENT_ENABLED = "yb.metrics.management.enabled";
 
   private static final String CONTAINER_METRIC_PREFIX = "container";
@@ -387,12 +385,6 @@ public class MetricQueryHelper {
       }
     }
 
-    String metricsUrl = appConfig.getString(PROMETHEUS_METRICS_URL_PATH);
-    if ((null == metricsUrl || metricsUrl.isEmpty())) {
-      LOG.error("Error fetching metrics data: no prometheus metrics URL configured");
-      return Json.newObject();
-    }
-
     ExecutorService threadPool =
         platformExecutorFactory.createFixedExecutor(
             getClass().getSimpleName(),
@@ -485,7 +477,7 @@ public class MetricQueryHelper {
   }
 
   public void postManagementCommand(String command) {
-    final String queryUrl = getPrometheusManagementUrl(command);
+    final String queryUrl = metricUrlProvider.getMetricsManagementUrl() + "/" + command;
     if (!apiHelper.postRequest(queryUrl)) {
       throw new RuntimeException(
           "Failed to perform " + command + " on prometheus instance " + queryUrl);
@@ -496,20 +488,8 @@ public class MetricQueryHelper {
     return appConfig.getBoolean(PROMETHEUS_MANAGEMENT_ENABLED);
   }
 
-  private String getPrometheusManagementUrl(String path) {
-    final String prometheusManagementUrl = appConfig.getString(PROMETHEUS_MANAGEMENT_URL_PATH);
-    if (StringUtils.isEmpty(prometheusManagementUrl)) {
-      throw new RuntimeException(PROMETHEUS_MANAGEMENT_URL_PATH + " not set");
-    }
-    return prometheusManagementUrl + "/" + path;
-  }
-
   private String getPrometheusQueryUrl(String path) {
-    final String metricsUrl = appConfig.getString(PROMETHEUS_METRICS_URL_PATH);
-    if (StringUtils.isEmpty(metricsUrl)) {
-      throw new RuntimeException(PROMETHEUS_METRICS_URL_PATH + " not set");
-    }
-    return metricsUrl + "/" + path;
+    return metricUrlProvider.getMetricsApiUrl() + "/" + path;
   }
 
   // Return a regex string for filtering the metrics based on

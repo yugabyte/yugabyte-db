@@ -86,11 +86,12 @@ run_sudo_cmd() {
 # Query prometheus for it's data directory and set as env var
 set_prometheus_data_dir() {
   prometheus_host="$1"
+  prometheus_port="$2"
   data_dir="$2"
   if [[ "$DOCKER_BASED" = true ]]; then
     PROMETHEUS_DATA_DIR="${data_dir}/prometheusv2"
   else
-    PROMETHEUS_DATA_DIR=$(curl "http://${prometheus_host}:9090/api/v1/status/flags" |
+    PROMETHEUS_DATA_DIR=$(curl "http://${prometheus_host}:${prometheus_port}/api/v1/status/flags" |
     ${PYTHON_EXECUTABLE} -c "import sys, json; print(json.load(sys.stdin)['data']['storage.tsdb.path'])")
   fi
   if [[ -z "$PROMETHEUS_DATA_DIR" ]]; then
@@ -295,7 +296,7 @@ create_backup() {
   if [[ "$exclude_prometheus" = false ]]; then
     trap 'run_sudo_cmd "rm -rf ${data_dir}/${PROMETHEUS_SNAPSHOT_DIR}"' RETURN
     echo "Creating prometheus snapshot..."
-    set_prometheus_data_dir "${prometheus_host}" "${data_dir}"
+    set_prometheus_data_dir "${prometheus_host}" "${prometheus_port}" "${data_dir}"
     snapshot_dir=$(curl -X POST "http://${prometheus_host}:${prometheus_port}/api/v1/admin/tsdb/snapshot" |
       ${PYTHON_EXECUTABLE} -c "import sys, json; print(json.load(sys.stdin)['data']['name'])")
     mkdir -p "$data_dir/$PROMETHEUS_SNAPSHOT_DIR"
@@ -338,10 +339,11 @@ restore_backup() {
   db_username="${5}"
   verbose="${6}"
   prometheus_host="${7}"
-  data_dir="${8}"
-  k8s_namespace="${9}"
-  k8s_pod="${10}"
-  disable_version_check="${11}"
+  prometheus_port="${8}"
+  data_dir="${9}"
+  k8s_namespace="${10}"
+  k8s_pod="${11}"
+  disable_version_check="${12}"
   prometheus_dir_regex="^${PROMETHEUS_SNAPSHOT_DIR}/$"
   if [[ "${yba_installer}" = true ]]; then
     prometheus_dir_regex="${PROMETHEUS_SNAPSHOT_DIR}"
@@ -466,7 +468,7 @@ restore_backup() {
   # Restore prometheus data.
   if tar -tf "${input_path}" | grep $prometheus_dir_regex; then
     echo "Restoring prometheus snapshot..."
-    set_prometheus_data_dir "${prometheus_host}" "${data_dir}"
+    set_prometheus_data_dir "${prometheus_host}" "${prometheus_port}" "${data_dir}"
     modify_service prometheus stop
     run_sudo_cmd "rm -rf ${PROMETHEUS_DATA_DIR}/*"
     if [[ "${yba_installer}" = true ]]; then
@@ -538,6 +540,7 @@ print_restore_usage() {
   echo "  -h, --db_host=HOST             postgres host (default: localhost)"
   echo "  -P, --db_port=PORT             postgres port (default: 5432)"
   echo "  -n, --prometheus_host=HOST     prometheus host (default: localhost)"
+  echo "  -t, --prometheus_port=PORT     prometheus port (default: 9090)"
   echo "  -e, --prometheus_user=USERNAME prometheus user (default: prometheus)"
   echo "  --k8s_namespace                kubernetes namespace"
   echo "  --k8s_pod                      kubernetes pod"
@@ -737,6 +740,10 @@ case $command in
           prometheus_host=$2
           shift 2
           ;;
+        -t|--prometheus_port)
+          prometheus_port=$2
+          shift 2
+          ;;
         -e|--prometheus_user)
           prometheus_user=$2
           shift 2
@@ -784,7 +791,8 @@ case $command in
     validate_k8s_args "${k8s_namespace}" "${k8s_pod}"
 
     restore_backup "$input_path" "$destination" "$db_host" "$db_port" "$db_username" "$verbose" \
-    "$prometheus_host" "$data_dir" "$k8s_namespace" "$k8s_pod" "$disable_version_check"
+    "$prometheus_host" "$prometheus_port" "$data_dir" "$k8s_namespace" "$k8s_pod" \
+    "$disable_version_check"
     exit 0
     ;;
   *)
