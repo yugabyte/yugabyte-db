@@ -26,16 +26,16 @@ For more information on how YugabyteDB handles failures and its impact during tr
 
 ## Prerequisites
 
-1. Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a local single region three-node universe. Now, you will have a single region cluster with nodes in 3 different zones as illustrated in the diagram below.
+1. Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a local single region three-node universe. This creates a single region cluster with nodes in 3 different zones as shown in the following illustration:
 
     ![Local three node cluster](/images/explore/local_cluster_setup.svg)
 
-1. Connect to your universe using [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh)
+1. Connect to your universe using [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh).
 
-1. Create a table space to help set up leader preferences. This will ensure that the leaders for the keys in our example transaction will be located in node `127.0.0.2`, so that we can correctly simulate the scenario by stopping this node.
+1. Create a tablespace to help set leader preferences. This ensures that the leaders for the keys in the example transaction are located in node `127.0.0.2`, so that you can correctly simulate the scenario by stopping this node.
 
-    {{< note title="Note" >}}We are using tablespaces here so that the failure scenarios run in a deterministic manner
-    in your cluster setup. YugabytedDB will handle transaction failures in the same way with or without table spaces.
+    {{< note title="Note" >}}
+The example uses tablespaces so that the failure scenarios run in a deterministic manner in your cluster setup. YugabytedDB handles transaction failures in the same way with or without tablespaces.
     {{< /note >}}
 
     ```sql
@@ -47,7 +47,7 @@ For more information on how YugabyteDB handles failures and its impact during tr
     ]}');
     ```
 
-1. Create a table in the above created tablespace using the following command:
+1. Create a table in the tablespace using the following command:
 
     ```sql
     CREATE TABLE txndemo (
@@ -76,7 +76,7 @@ For more information on how YugabyteDB handles failures and its impact during tr
     60f88495f6034baab6bb418ed3a0917f   [0xAAAA, 0xFFFF]  127.0.0.2:9100  0a321a134fce4c95ba433a33f7c16416
     ```
 
-    As you can see, all the leaders are in node `127.0.0.2` and this is the node that will stop during the following failure scenarios.
+    All the leaders are in node `127.0.0.2`, and this is the node that you stop during the following failure scenarios.
 
 ## Node failure just before a transaction executes a statement
 
@@ -84,7 +84,7 @@ During a transaction, when a row is updated, YugabyteDB sends the modified row (
 
 In this example, you can see how a transaction completes when the node that is about to receive a provisional write fails by taking down node `127.0.0.2`, as that node has the row with `k=1`.
 
-The following diagram illustrates the high-level steps that ensure transactions to succeed when a node fails before receiving the write.
+The following diagram illustrates the high-level steps that ensure transactions succeed when a node fails before receiving the write.
 
 ![Failure of a node before write](/images/explore/transactions/failure_node_before_write.svg)
 
@@ -105,7 +105,7 @@ The following diagram illustrates the high-level steps that ensure transactions 
     Time: 2.047 ms
     ```
 
-    The transaction is started, but you have not yet modified the row. So at this point, no provisional records have been sent to node `127.0.0.2`.
+    The transaction is started, but the row hasn't yet been modified. At this point, no provisional records have been sent to node `127.0.0.2`.
 
 1. From another terminal of your YugabyteDB home directory, stop the node at `127.0.0.2`, which has the row with `k=1`.
 
@@ -126,7 +126,7 @@ The following diagram illustrates the high-level steps that ensure transactions 
     60f88495f6034baab6bb418ed3a0917f   [0xAAAA, 0xFFFF]  127.0.0.1:9100  146f4b6440584e2a91d21f18cb17479c
     ```
 
-    Notice that the node `127.0.0.2` is gone and a new leader `127.0.0.1` has been elected for all the tablets which were in node `127.0.0.2`.
+    Notice that the node `127.0.0.2` is gone and a new leader `127.0.0.1` has been elected for all the tablets that were in node `127.0.0.2`.
 
 1. Update and commit the transaction as follows:
 
@@ -169,10 +169,9 @@ The following diagram illustrates the high-level steps that ensure transactions 
 
 As mentioned in the preceding example, when a row is updated during a transaction, YugabyteDB sends the modified row to the node with the row that is being modified. In this example, you can see how a transaction completes when the node that has just received a provisional write fails.
 
-The following diagram illustrates the high-level steps that ensure transactions to succeed when a node fails after receiving a statement.
+The following diagram illustrates the high-level steps that ensure transactions succeed when a node fails after receiving a statement.
 
 ![Failure of a node after write](/images/explore/transactions/failure_node_after_write.svg)
-
 
 1. If not already connected, connect to `127.0.0.1` using the following ysqlsh command:
 
@@ -234,7 +233,7 @@ The following diagram illustrates the high-level steps that ensure transactions 
     Time: 6.243 ms
     ```
 
-    The transaction succeeds even though the node at `127.0.0.2` failed after receiving the provisional write, and the row value updates to `20`. This is because the provisional writes were replicated to the follower tablets and when the leader failed, the newly elected leader already had the provisional writes, which enabled the transaction to continue further without disruption.
+    The transaction succeeds even though the node at `127.0.0.2` failed after receiving the provisional write, and the row value updates to `20`. This is because the provisional writes were replicated to the follower tablets and when the leader failed, the newly elected leader already had the provisional writes, which enabled the transaction to continue without disruption.
 
 1. Check the value of the row at `k=1` using the following command:
 
@@ -263,7 +262,7 @@ The node to which a client connects acts as the manager for the transaction. The
 
 In this example, you can see how a transaction aborts when the transaction manager fails. For more details on the role of the transaction manager, see [Transactional I/O](../../../architecture/transactions/transactional-io-path/#client-requests-transaction).
 
-The following diagram illustrates the high-level steps that result in transactions to abort when the node that the client has connected to fails.
+The following diagram illustrates the high-level steps that result in transactions aborting when the node that the client has connected to fails.
 
 ![Failure of a node the client is connected to](/images/explore/transactions/failure_client_connected_node.svg)
 
