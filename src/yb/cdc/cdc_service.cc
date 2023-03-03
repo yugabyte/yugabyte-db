@@ -787,6 +787,17 @@ bool UpdateCheckpointRequired(
   return false;
 }
 
+bool GetExplicitOpId(
+    const GetChangesRequestPB* req, OpId* op_id, CDCSDKCheckpointPB* cdc_sdk_explicit_op_id) {
+  if (req->has_explicit_cdc_sdk_checkpoint()) {
+    *cdc_sdk_explicit_op_id = req->explicit_cdc_sdk_checkpoint();
+    *op_id = OpId::FromPB(*cdc_sdk_explicit_op_id);
+    return true;
+  }
+
+  return false;
+}
+
 bool GetFromOpId(const GetChangesRequestPB* req, OpId* op_id, CDCSDKCheckpointPB* cdc_sdk_op_id) {
   if (req->has_from_checkpoint()) {
     *op_id = OpId::FromPB(req->from_checkpoint().op_id());
@@ -1554,14 +1565,24 @@ void CDCServiceImpl::GetChanges(
   // This is the leader tablet, so mark cdc as enabled.
   SetCDCServiceEnabled();
 
-  OpId op_id;
-  CDCSDKCheckpointPB cdc_sdk_op_id;
+  OpId from_op_id;
+  CDCSDKCheckpointPB cdc_sdk_from_op_id;
+
+  OpId explicit_op_id;
+  CDCSDKCheckpointPB cdc_sdk_explicit_op_id;
+
+  bool got_explicit_checkpoint_from_request = false;
+  if (record.checkpoint_type == EXPLICIT) {
+    got_explicit_checkpoint_from_request =
+        GetExplicitOpId(req, &explicit_op_id, &cdc_sdk_explicit_op_id);
+  }
+
   // Get opId from request.
-  if (!GetFromOpId(req, &op_id, &cdc_sdk_op_id)) {
+  if (!GetFromOpId(req, &from_op_id, &cdc_sdk_from_op_id)) {
     auto result = GetLastCheckpoint(producer_tablet, session);
     RPC_RESULT_RETURN_ERROR(result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     if (record.source_type == XCLUSTER) {
-      op_id = *result;
+      from_op_id = *result;
     } else {
       // This is the initial checkpoint set in cdc_state table, during create of CDCSDK
       // create stream, so throw an exeception to client to call setCDCCheckpoint or  take Snapshot.
@@ -1576,14 +1597,14 @@ void CDCServiceImpl::GetChanges(
             CDCErrorPB::INTERNAL_ERROR, &context);
         return;
       }
-      result->ToPB(&cdc_sdk_op_id);
-      op_id = OpId::FromPB(cdc_sdk_op_id);
+      result->ToPB(&cdc_sdk_from_op_id);
+      from_op_id = OpId::FromPB(cdc_sdk_from_op_id);
     }
   }
 
   if (PREDICT_FALSE(FLAGS_TEST_block_get_changes)) {
     // Early exit for testing purpose.
-    op_id.ToPB(resp->mutable_checkpoint()->mutable_op_id());
+    from_op_id.ToPB(resp->mutable_checkpoint()->mutable_op_id());
     context.RespondSuccess();
     return;
   }
@@ -1614,7 +1635,7 @@ void CDCServiceImpl::GetChanges(
   // Read the latest changes from the Log.
   if (record.source_type == XCLUSTER) {
     status = GetChangesForXCluster(
-        stream_id, req->tablet_id(), op_id, record, tablet_peer, session,
+        stream_id, req->tablet_id(), from_op_id, record, tablet_peer, session,
         std::bind(
             &CDCServiceImpl::UpdateChildrenTabletsOnSplitOp, this, producer_tablet, _1, session),
         mem_tracker, &msgs_holder, resp, &last_readable_index, get_changes_deadline);
@@ -1634,9 +1655,9 @@ void CDCServiceImpl::GetChanges(
     // If from_op_id is more than the last sent op_id, it may be the stale entry and tablet
     // LEADERship change may happen.
     if (last_sent_checkpoint == boost::none ||
-        OpId::FromPB(cdc_sdk_op_id) > *last_sent_checkpoint) {
+        OpId::FromPB(cdc_sdk_from_op_id) > *last_sent_checkpoint) {
       VLOG(1) << "Stale entry in the cache, because last sent checkpoint: " << *last_sent_checkpoint
-              << " less than from_op_id: " << OpId::FromPB(cdc_sdk_op_id)
+              << " less than from_op_id: " << OpId::FromPB(cdc_sdk_from_op_id)
               << ", get proper schema version from system catalog.";
       cached_schema = std::make_shared<Schema>();
       cached_schema_version = std::numeric_limits<uint32_t>::max();
@@ -1651,7 +1672,7 @@ void CDCServiceImpl::GetChanges(
         CDCErrorPB::INTERNAL_ERROR, context);
 
     status = GetChangesForCDCSDK(
-        req->stream_id(), req->tablet_id(), cdc_sdk_op_id, record, tablet_peer, mem_tracker,
+        req->stream_id(), req->tablet_id(), cdc_sdk_from_op_id, record, tablet_peer, mem_tracker,
         *enum_map_result, *composite_atts_map, client(), &msgs_holder, resp, &commit_timestamp,
         &cached_schema, &cached_schema_version, &last_streamed_op_id, &last_readable_index,
         get_changes_deadline);
@@ -1679,7 +1700,7 @@ void CDCServiceImpl::GetChanges(
       // encountered.
       resp->clear_cdc_sdk_proto_records();
       status = GetChangesForCDCSDK(
-          req->stream_id(), req->tablet_id(), cdc_sdk_op_id, record, tablet_peer, mem_tracker,
+          req->stream_id(), req->tablet_id(), cdc_sdk_from_op_id, record, tablet_peer, mem_tracker,
           *enum_map_result, *composite_atts_map, client(), &msgs_holder, resp, &commit_timestamp,
           &cached_schema, &cached_schema_version, &last_streamed_op_id, &last_readable_index,
           get_changes_deadline);
@@ -1731,19 +1752,20 @@ void CDCServiceImpl::GetChanges(
                        .commit_time()
                  : 0);
 
-  if (record.checkpoint_type == IMPLICIT) {
+  if (record.checkpoint_type == IMPLICIT ||
+      (record.checkpoint_type == EXPLICIT && got_explicit_checkpoint_from_request)) {
     bool is_snapshot = false;
     bool force_update = false;
     OpId snapshot_op_id = OpId::Invalid();
     std::string snapshot_key = "";
     // If snapshot operation or before image is enabled, don't allow compaction.
     HybridTime cdc_sdk_safe_time =
-        record.record_type == CDCRecordType::ALL || cdc_sdk_op_id.write_id() == -1
+        record.record_type == CDCRecordType::ALL || cdc_sdk_from_op_id.write_id() == -1
             // TODO(abharadwaj): The safe time should be from  the req rather than from the response
             ? HybridTime::FromPB(resp->safe_hybrid_time())
             : HybridTime::kInvalid;
-    if (UpdateCheckpointRequired(record, cdc_sdk_op_id, &force_update, &is_snapshot)) {
-      // This is the snapshot operation, so taking the checkpoint from the resp.
+    if (UpdateCheckpointRequired(record, cdc_sdk_from_op_id, &force_update, &is_snapshot)) {
+      // This is the snapshot bootstrap operation, so taking the checkpoint from the resp.
       if (is_snapshot) {
         snapshot_op_id =
             OpId(resp->cdc_sdk_checkpoint().term(), resp->cdc_sdk_checkpoint().index());
@@ -1756,10 +1778,21 @@ void CDCServiceImpl::GetChanges(
                     << ", cdcsdk safe time: " << cdc_sdk_safe_time;
         }
       }
+
+      // In IMPLICIT mode the from_op_id itself will be the checkpoint.
+      OpId commit_op_id = from_op_id;
+      if (force_update) {
+        // During snapshot irrespective of IMPLICIT or EXPLICIT mode, we will use the snapshot_op_id
+        // as checkpoint.
+        commit_op_id = snapshot_op_id;
+      } else if (record.checkpoint_type == EXPLICIT) {
+        commit_op_id = explicit_op_id;
+      }
+
       RPC_STATUS_RETURN_ERROR(
           UpdateCheckpointAndActiveTime(
               producer_tablet, OpId::FromPB(resp->checkpoint().op_id()),
-              is_snapshot ? snapshot_op_id : op_id, session, last_record_hybrid_time,
+              commit_op_id, session, last_record_hybrid_time,
               record.source_type, force_update, cdc_sdk_safe_time, is_snapshot, snapshot_key),
           resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     }
@@ -1771,7 +1804,7 @@ void CDCServiceImpl::GetChanges(
   }
   // Update relevant GetChanges metrics before handing off the Response.
   UpdateCDCTabletMetrics(
-      resp, producer_tablet, tablet_peer, op_id, record.source_type, last_readable_index);
+      resp, producer_tablet, tablet_peer, from_op_id, record.source_type, last_readable_index);
 
   if (report_tablet_split) {
     RPC_STATUS_RETURN_ERROR(
