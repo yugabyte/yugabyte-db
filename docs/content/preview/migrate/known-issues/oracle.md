@@ -19,11 +19,11 @@ This page documents known issues you may encounter and suggested workarounds whe
 
 - [Some numeric types are not exported](#some-numeric-types-are-not-exported)
 - [RAW data is not imported in some cases](#raw-data-is-not-imported-in-some-cases)
-- [Using a variation of `trunc` with datetime columns in Oracle and YugabyteDB](#using-a-variation-of-trunc-with-datetime-columns-in-oracle-and-yugabytedb)
 - [A unique index which is also a primary key is not migrated](#a-unique-index-which-is-also-a-primary-key-is-not-migrated)
 - [Issue in some unsupported cases of GIN indexes](#issue-in-some-unsupported-cases-of-gin-indexes)
 - [Partition key column not part of primary key columns](#partition-key-column-not-part-of-primary-key-columns)
 - [Negative scale is not supported](#negative-scale-is-not-supported)
+- [Error in CREATE VIEW DDL in synonym.sql](#error-in-create-view-ddl-in-synonym-sql)
 
 ### Some numeric types are not exported
 
@@ -92,30 +92,6 @@ CREATE TABLE numeric_size (
 **Description**: When attempting to migrate a (LONG) RAW attribute from an Oracle instance, you may face an _invalid hexadecimal error_.
 
 **Workaround**: None. A workaround is currently being explored.
-
----
-
-### Using a variation of `trunc` with datetime columns in Oracle and YugabyteDB
-
-**GitHub**: [Issue #602](https://github.com/yugabyte/yb-voyager/issues/602)
-
-**Description**: You can use the `trunc` function with a timestamp column in your Oracle schema, but this variation is not supported in YugabytedB, where the `date_trunc` function is used for these types of datetime columns. When you export such a schema using `trunc`, the data import fails.
-
-**Workaround**: Manual intervention needed. You have to replace `trunc` with `date_trunc` in the exported schema files.
-
-**Example**
-
-An example DDL on the source Oracle database is as follows:
-
-```sql
-ALTER TABLE test_timezone ADD CONSTRAINT test_cc1 CHECK ((dtts = trunc(dtts)));
-```
-
-Note that the DDL gets exported with `trunc` function and you have to replace it with `date_trunc` after export as follows:
-
-```sql
-ALTER TABLE test_timezone ADD CONSTRAINT test_cc1 CHECK ((dtts = date_trunc('day',dtts)));
-```
 
 ---
 
@@ -251,7 +227,7 @@ CREATE TABLE employees (
 
 **GitHub**: [Issue #779](https://github.com/yugabyte/yb-voyager/issues/779)
 
-**Description**: Oracle supports negative scale where you can round up the values to the power of tens corresponding to the scale provided. Negative scale support is not supported in PostgreSQL and therefore in YugabyteDB.
+**Description**: Oracle supports negative scale where you can round down the values to the power of tens corresponding to the scale provided. Negative scale is not supported in PostgreSQL and therefore in YugabyteDB.
 
 **Workaround**: Remove the precision/scale from the exported schema, or change to any other supported datatype.
 
@@ -274,3 +250,46 @@ An example table with the suggested workaround is as follows:
 ```sql
 CREATE TABLE num_check (n1 decimal);
 ```
+
+---
+
+### Error in CREATE VIEW DDL in synonym.sql
+
+**GitHub**: [Issue #673](https://github.com/yugabyte/yb-voyager/issues/673)
+
+**Description**: When exporting synonyms from Oracle, the CREATE OR REPLACE VIEW DDLs gets exported with full classified name of the object, and while the schema in the DDLs will be same as the schema in which the synonym is present in Oracle, the schema with that name may not be present in the target YugabyteDB database, and so import schema fails with a _does not exist_ error.
+
+**Workaround**: Manual intervention needed. You can resolve the issue with one of the following options:
+
+- Create the target schema with the name mentioned in the object name of DDLs present in `synonym.sql`.
+- Remove the schema name from all the object names from the DDLs.
+
+**Example**
+
+An example DDL on the source schema `test` is as follows:
+
+```sql
+CREATE OR REPLACE PUBLIC SYNONYM pub_offices for offices;
+```
+
+An example exported schema is as follows:
+
+```sql
+CREATE OR REPLACE VIEW test.offices AS SELECT * FROM test.locations;
+```
+
+Suggested changes to the schema are as follows:
+
+- Execute the following DDL on the target database:
+
+    ```sql
+    CREATE SCHEMA test;
+    ```
+
+OR
+
+- Modify the DDL by removing the schema name `test` from the DDL:
+
+    ```sql
+    CREATE OR REPLACE VIEW offices AS SELECT * FROM locations;
+    ```

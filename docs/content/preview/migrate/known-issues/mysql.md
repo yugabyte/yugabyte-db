@@ -235,7 +235,7 @@ p_name varchar(10)
 /* Function definition */
 CREATE OR REPLACE FUNCTION foo (p_id integer) RETURNS varchar AS $body$
   BEGIN
-    RETURN(SELECT p_name FROM bar WHERE p_id=id);
+    RETURN (SELECT p_name FROM bar WHERE p_id=id);
   END;
 $body$
 LANGUAGE PLPGSQL
@@ -258,7 +258,7 @@ CREATE OR REPLACE VIEW v1 AS SELECT foo(bar.id::int) AS p_name FROM bar;
 
 **GitHub**: [Issue #705](https://github.com/yugabyte/yb-voyager/issues/705)
 
-**Description**: If you have a temporary table defined in a function or stored procedure in MySQL and you have a `drop temporary table` statement associated with it, the schema gets exported as is, which is an invalid syntax in YugabyteDB.
+**Description**: If you have a temporary table defined in a function in MySQL and you have a `drop temporary table` statement associated with it, the schema gets exported as is, which is an invalid syntax in YugabyteDB.
 
 **Workaround**: Manually remove the temporary clause from the drop statement.
 
@@ -276,7 +276,7 @@ READS SQL DATA
     DROP TEMPORARY TABLE IF EXISTS temp;
     CREATE TEMPORARY TABLE temp(id int, name text);
     INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
-    SELECT name FROM temp;
+    RETURN (SELECT name FROM temp);
 END//
 delimiter;
 ```
@@ -289,7 +289,7 @@ CREATE OR REPLACE FUNCTION func (p_id integer) RETURNS varchar AS $body$
     DROP TEMPORARY TABLE IF EXISTS temp;
     CREATE TEMPORARY TABLE temp(id int, name text);
     INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
-    RETURN(SELECT name FROM temp);
+    RETURN (SELECT name FROM temp);
   END;
 $body$
 LANGUAGE PLPGSQL
@@ -305,7 +305,7 @@ CREATE OR REPLACE PROCEDURE foo (p_id integer) AS $body$
     DROP TABLE IF EXISTS temp;
     CREATE TEMPORARY TABLE temp(id int, name text);
     INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
-    SELECT name FROM temp;
+    RETURN (SELECT name FROM temp);
   END;
 $body$
 LANGUAGE PLPGSQL
