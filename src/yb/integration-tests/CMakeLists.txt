@@ -57,7 +57,7 @@ set(INTEGRATION_TESTS_SRCS
   ts_itest-base.cc
   yb_mini_cluster_test_base.cc
   yb_table_test_base.cc
-  twodc_test_base.cc
+  xcluster_test_base.cc
   cdcsdk_test_base.cc
   xcluster_ysql_test_base.cc
   ${INTEGRATION_TESTS_SRCS_EXTENSIONS}
@@ -186,8 +186,8 @@ ADD_YB_TEST(cdcsdk_stream-test)
 ADD_YB_TEST(cdcsdk_ysql-test)
 ADD_YB_TEST(cdcsdk_before_image-test)
 ADD_YB_TEST(cdcsdk_tablet_split-test)
-ADD_YB_TEST(twodc_ysql-test)
-ADD_YB_TEST(twodc-test)
+ADD_YB_TEST(xcluster_ysql-test)
+ADD_YB_TEST(xcluster-test)
 ADD_YB_TEST(xcluster_safe_time-itest)
 ADD_YB_TEST(xcluster_dr-itest)
 

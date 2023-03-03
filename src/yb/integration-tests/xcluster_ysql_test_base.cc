@@ -38,12 +38,12 @@ namespace yb {
 using OK = Status::OK;
 using client::YBTableName;
 
-void XClusterYsqlTest::SetUp() {
+void XClusterYsqlTestBase::SetUp() {
   YB_SKIP_TEST_IN_TSAN();
-  TwoDCTestBase::SetUp();
+  XClusterTestBase::SetUp();
 }
 
-Status XClusterYsqlTest::InitClusters(const MiniClusterOptions& opts) {
+Status XClusterYsqlTestBase::InitClusters(const MiniClusterOptions& opts) {
   FLAGS_replication_factor = static_cast<int>(opts.num_tablet_servers);
   // Disable tablet split for regular tests, see xcluster-tablet-split-itest for those tests.
   FLAGS_enable_tablet_split_of_xcluster_replicated_tables = false;
@@ -99,7 +99,8 @@ Status XClusterYsqlTest::InitClusters(const MiniClusterOptions& opts) {
   return InitPostgres(&consumer_cluster_, pg_ts_idx, consumer_pg_port);
 }
 
-Status XClusterYsqlTest::InitPostgres(Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port) {
+Status XClusterYsqlTestBase::InitPostgres(
+    Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port) {
   RETURN_NOT_OK(WaitForInitDb(cluster->mini_cluster_.get()));
 
   tserver::MiniTabletServer* const pg_ts = cluster->mini_cluster_->mini_tablet_server(pg_ts_idx);
@@ -125,13 +126,13 @@ Status XClusterYsqlTest::InitPostgres(Cluster* cluster, const size_t pg_ts_idx, 
   return OK();
 }
 
-std::string XClusterYsqlTest::GetCompleteTableName(const YBTableName& table) {
+std::string XClusterYsqlTestBase::GetCompleteTableName(const YBTableName& table) {
   // Append schema name before table name, if schema is available.
   return table.has_pgschema_name() ? Format("$0.$1", table.pgschema_name(), table.table_name())
                                    : table.table_name();
 }
 
-Result<std::string> XClusterYsqlTest::GetNamespaceId(YBClient* client) {
+Result<std::string> XClusterYsqlTestBase::GetNamespaceId(YBClient* client) {
   master::GetNamespaceInfoResponsePB resp;
 
   RETURN_NOT_OK(
@@ -140,7 +141,7 @@ Result<std::string> XClusterYsqlTest::GetNamespaceId(YBClient* client) {
   return resp.namespace_().id();
 }
 
-Result<YBTableName> XClusterYsqlTest::CreateYsqlTable(
+Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
     Cluster* cluster,
     const std::string& namespace_name,
     const std::string& schema_name,
@@ -196,7 +197,7 @@ Result<YBTableName> XClusterYsqlTest::CreateYsqlTable(
       !schema_name.empty() /* verify_schema_name*/);
 }
 
-Status XClusterYsqlTest::CreateYsqlTable(
+Status XClusterYsqlTestBase::CreateYsqlTable(
     uint32_t idx, uint32_t num_tablets, Cluster* cluster, std::vector<YBTableName>* table_names,
     const boost::optional<std::string>& tablegroup_name, bool colocated,
     const bool ranged_partitioned) {
@@ -210,7 +211,7 @@ Status XClusterYsqlTest::CreateYsqlTable(
   return OK();
 }
 
-Result<YBTableName> XClusterYsqlTest::GetYsqlTable(
+Result<YBTableName> XClusterYsqlTestBase::GetYsqlTable(
     Cluster* cluster,
     const std::string& namespace_name,
     const std::string& schema_name,
@@ -263,7 +264,7 @@ Result<YBTableName> XClusterYsqlTest::GetYsqlTable(
       strings::Substitute("Unable to find table $0 in namespace $1", table_name, namespace_name));
 }
 
-Status XClusterYsqlTest::DropYsqlTable(
+Status XClusterYsqlTestBase::DropYsqlTable(
     Cluster* cluster,
     const std::string& namespace_name,
     const std::string& schema_name,
@@ -276,7 +277,7 @@ Status XClusterYsqlTest::DropYsqlTable(
   return conn.Execute(query);
 }
 
-void XClusterYsqlTest::WriteWorkload(
+void XClusterYsqlTestBase::WriteWorkload(
     const YBTableName& table, uint32_t start, uint32_t end, Cluster* cluster) {
   auto conn = EXPECT_RESULT(cluster->ConnectToDB(table.namespace_name()));
   std::string table_name_str = GetCompleteTableName(table);
@@ -299,8 +300,8 @@ void XClusterYsqlTest::WriteWorkload(
   }
 }
 
-Result<pgwrapper::PGResultPtr> XClusterYsqlTest::ScanToStrings(
-    const YBTableName& table_name, TwoDCTestBase::Cluster* cluster) {
+Result<pgwrapper::PGResultPtr> XClusterYsqlTestBase::ScanToStrings(
+    const YBTableName& table_name, XClusterTestBase::Cluster* cluster) {
   auto conn = VERIFY_RESULT(cluster->ConnectToDB(table_name.namespace_name()));
   const std::string table_name_str = GetCompleteTableName(table_name);
   auto result = VERIFY_RESULT(
@@ -308,7 +309,7 @@ Result<pgwrapper::PGResultPtr> XClusterYsqlTest::ScanToStrings(
   return result;
 }
 
-Result<int> XClusterYsqlTest::GetRowCount(
+Result<int> XClusterYsqlTestBase::GetRowCount(
     const YBTableName& table_name, Cluster* cluster, bool read_latest) {
   auto conn = VERIFY_RESULT(
       cluster->ConnectToDB(table_name.namespace_name(), true /*simple_query_protocol*/));
@@ -325,7 +326,7 @@ Result<int> XClusterYsqlTest::GetRowCount(
   return PQntuples(results.get());
 }
 
-Status XClusterYsqlTest::WaitForRowCount(
+Status XClusterYsqlTestBase::WaitForRowCount(
     const YBTableName& table_name, uint32_t row_count, Cluster* cluster, bool allow_greater) {
   uint32_t last_row_count = 0;
 
@@ -350,7 +351,7 @@ Status XClusterYsqlTest::WaitForRowCount(
           row_count));
 }
 
-Status XClusterYsqlTest::ValidateRows(
+Status XClusterYsqlTestBase::ValidateRows(
     const YBTableName& table_name, int row_count, Cluster* cluster) {
   auto results = VERIFY_RESULT(ScanToStrings(table_name, cluster));
   auto actual_row_count = PQntuples(results.get());
@@ -367,8 +368,9 @@ Status XClusterYsqlTest::ValidateRows(
   return OK();
 }
 
-Result<std::vector<std::string>> XClusterYsqlTest::BootstrapCluster(
-    const std::vector<std::shared_ptr<client::YBTable>>& tables, TwoDCTestBase::Cluster* cluster) {
+Result<std::vector<std::string>> XClusterYsqlTestBase::BootstrapCluster(
+    const std::vector<std::shared_ptr<client::YBTable>>& tables,
+    XClusterTestBase::Cluster* cluster) {
   cdc::BootstrapProducerRequestPB req;
   cdc::BootstrapProducerResponsePB resp;
 
