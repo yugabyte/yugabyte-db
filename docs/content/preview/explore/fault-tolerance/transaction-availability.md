@@ -340,4 +340,5 @@ For this case, you can connect to any node in the cluster; `127.0.0.1` has been 
 
 ## Clean up
 
-You can shut down the local cluster by following the instructions provided in [Destroy a local cluster](../../../reference/configuration/yugabyted/#destroy-a-local-cluster).
+You can shut down the local cluster that you created by following the steps at [Destroy a local cluster](../../reference/configuration/yugabyted/#destroy-a-local-cluster).
+
