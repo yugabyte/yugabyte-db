@@ -9,6 +9,7 @@
 
 import axios from 'axios';
 import { ROOT_URL } from '../../../config';
+import { convertToISODateString } from '../../../redesign/helpers/DateUtils';
 import { TIME_RANGE_STATE } from './IBackup';
 
 export function getRestoreList(
@@ -48,8 +49,8 @@ export function getRestoreList(
     payload.filter['states'] = [states[0].value];
   }
   if (timeRange.startTime && timeRange.endTime) {
-    payload.filter['dateRangeStart'] = timeRange.startTime.toISOString();
-    payload.filter['dateRangeEnd'] = timeRange.endTime.toISOString();
+    payload.filter['dateRangeStart'] = convertToISODateString(timeRange.startTime);
+    payload.filter['dateRangeEnd'] = convertToISODateString(timeRange.endTime);
   }
 
   if (Array.isArray(moreFilters) && moreFilters?.length > 0) {
