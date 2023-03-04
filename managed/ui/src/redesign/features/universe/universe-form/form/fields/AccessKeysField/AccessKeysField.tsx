@@ -59,9 +59,9 @@ export const AccessKeysField = ({ disabled }: AccessKeysFieldProps): ReactElemen
       <YBLabel dataTestId={'AccessKeysField-Label'} className={classes.advancedConfigLabel}>
         {t('universeForm.advancedConfig.accessKey')}
       </YBLabel>
-      <Box flex={1}>
+      <Box flex={1} className={classes.defaultTextBox}>
         <YBSelectField
-          className={`${classes.advancedConfigTextBox} ${helperClasses.overrideMuiSelectMenu}`}
+          className={`${classes.defaultTextBox} ${helperClasses.overrideMuiSelectMenu}`}
           rules={{
             required: !disabled
               ? (t('universeForm.validation.required', {

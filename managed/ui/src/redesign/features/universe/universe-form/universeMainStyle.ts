@@ -62,7 +62,7 @@ export const useFormMainStyles = makeStyles((theme) => ({
     display: 'flex',
     flexDirection: 'column',
     height: '100%',
-    padding: theme.spacing(0, 3),
+    padding: theme.spacing(0, 5),
     width: '100%',
     flexGrow: 1
   },
@@ -95,7 +95,6 @@ export const useSectionStyles = makeStyles((theme) => ({
   sectionContainer: {
     display: 'flex',
     padding: theme.spacing(5, 0),
-    flexDirection: 'column',
     borderBottom: `1px solid ${theme.palette.ybacolors.ybGrayHover}`
   },
   sectionHeaderFont: {
@@ -106,7 +105,7 @@ export const useSectionStyles = makeStyles((theme) => ({
   subsectionHeaderFont: {
     fontFamily: 'Inter',
     fontWeight: 600,
-    fontSize: "15px"
+    fontSize: '15px'
   }
 }));
 
@@ -117,7 +116,7 @@ export const useFormFieldStyles = makeStyles((theme) => ({
   },
   labelFont: {
     fontFamily: 'Inter',
-    fontSize: "13px",
+    fontSize: '13px',
     fontWeight: theme.typography.fontWeightMedium as number
   },
   defaultTextBox: {

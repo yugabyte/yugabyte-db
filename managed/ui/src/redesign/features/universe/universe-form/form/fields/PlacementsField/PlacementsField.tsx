@@ -28,6 +28,25 @@ const useStyles = makeStyles((theme) => ({
     '& .MuiFormControl-root': {
       flexDirection: 'inherit'
     }
+  },
+  nameColumn: {
+    width: 400,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-start'
+  },
+  nodesColumn: {
+    width: 100,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    margin: theme.spacing(0, 1)
+  },
+  preferredColumn: {
+    width: 100,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-start'
   }
 }));
 
@@ -58,19 +77,13 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
   const isDedicatedNodes = masterPlacement === MasterPlacementMode.DEDICATED;
 
   const renderHeader = (
-    <Box
-      flex={1}
-      mt="3px"
-      display="flex"
-      flexDirection="row"
-      data-testid="PlacementsField-Container"
-    >
-      <Box flex={2}>
+    <Box flex={1} mb={1} display="flex" flexDirection="row" data-testid="PlacementsField-Container">
+      <Box className={helperClasses.nameColumn}>
         <YBLabel dataTestId="PlacementsField-AZNameLabel">
           {t('universeForm.cloudConfig.azNameLabel')}
         </YBLabel>
       </Box>
-      <Box flexShrink={1} width={isPrimary ? '110px' : '100px'}>
+      <Box className={helperClasses.nodesColumn}>
         <YBLabel dataTestId="PlacementsField-IndividualUnitLabel">
           {provider?.code === CloudType.kubernetes
             ? t('universeForm.cloudConfig.azPodsLabel')
@@ -80,7 +93,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
         </YBLabel>
       </Box>
       {isPrimary && (
-        <Box flexShrink={1} width="42px">
+        <Box className={helperClasses.preferredColumn}>
           <YBLabel dataTestId="PlacementsField-PreferredLabel">
             {t('universeForm.cloudConfig.preferredAZLabel')}
           </YBLabel>
@@ -111,12 +124,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
 
       return (
         <Box flex={1} display="flex" mb={2} flexDirection="row" key={field.id}>
-          <Box
-            flex={2}
-            mr={1}
-            flexShrink={1}
-            className={`${helperClasses.overrideMuiFormControl} ${classes.defaultTextBox}`}
-          >
+          <Box className={helperClasses.nameColumn}>
             <YBSelect
               fullWidth
               disabled={isLoading}
@@ -135,7 +143,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
               ))}
             </YBSelect>
           </Box>
-          <Box flexShrink={1} width="96px" mr={1}>
+          <Box className={helperClasses.nodesColumn}>
             <Controller
               control={control}
               name={`${PLACEMENTS_FIELD}.${index}.numNodesInAZ` as const}
@@ -159,7 +167,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
             />
           </Box>
           {isPrimary && (
-            <Box flexShrink={1} alignItems="center" mt={1}>
+            <Box className={helperClasses.preferredColumn}>
               <YBCheckbox
                 name={prefferedAZField}
                 onChange={(e) => {
@@ -188,9 +196,9 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
         flexDirection="column"
         data-testid="PlacementsField-Container"
       >
-        <Box width="100%" display="flex" flexDirection="row" alignItems={'center'}>
+        <Box width="100%" display="flex" flexDirection="row" mb={1.5} alignItems={'center'}>
           <Box flexShrink={1} mr={3}>
-            <Typography variant="h5">{t('universeForm.cloudConfig.azHeader')}</Typography>
+            <Typography variant="h4">{t('universeForm.cloudConfig.azHeader')}</Typography>
           </Box>
           <YBButton variant="secondary" onClick={() => setValue(RESET_AZ_FIELD, true)}>
             {t('universeForm.cloudConfig.resetAZLabel')}
@@ -227,9 +235,8 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
     return (
       <Box
         display="flex"
-        justifyContent="center"
+        marginTop={15}
         alignItems={'center'}
-        height="100%"
         flexDirection={'column'}
         data-testid="PlacementsField-Loader"
       >
