@@ -247,6 +247,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteNamespaceDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsFlushTablesDone);
+YB_CLIENT_SPECIALIZE_SIMPLE(GetCompactionStatus);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsTruncateTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListNamespaces);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListTablegroups);
@@ -1142,6 +1143,27 @@ Status YBClient::Data::WaitForFlushTableToFinish(YBClient* client,
   return RetryFunc(
       deadline, "Waiting for FlushTables to be completed", "Timed out waiting for FlushTables",
       std::bind(&YBClient::Data::IsFlushTableInProgress, this, client, flush_id, _1, _2));
+}
+
+Status YBClient::Data::GetCompactionStatus(
+    const YBTableName& table_name, const CoarseTimePoint deadline, MonoTime* last_request_time) {
+  GetCompactionStatusRequestPB req;
+  GetCompactionStatusResponsePB resp;
+
+  if (!table_name.has_table()) {
+    const string msg = "Could not get the compaction status without the table name" +
+                       (table_name.has_table_id() ? " for table id: " + table_name.table_id() : "");
+    return STATUS(InvalidArgument, msg);
+  }
+  table_name.SetIntoTableIdentifierPB(req.mutable_table());
+
+  RETURN_NOT_OK(SyncLeaderMasterRpc(
+      deadline, req, &resp, "GetCompactionStatus",
+      &master::MasterAdminProxy::GetCompactionStatusAsync));
+
+  *last_request_time = MonoTime::FromUint64(resp.last_request_time());
+
+  return Status::OK();
 }
 
 bool YBClient::Data::IsTabletServerLocal(const RemoteTabletServer& rts) const {
