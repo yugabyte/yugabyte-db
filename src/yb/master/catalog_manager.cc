@@ -3106,7 +3106,7 @@ Status CatalogManager::ValidateSplitCandidateTableCdc(const TableInfo& table) co
 Status CatalogManager::ValidateSplitCandidateTableCdcUnlocked(const TableInfo& table) const {
   // Check if this table is part of a cdc stream.
   if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_replicated_tables) &&
-      IsCdcEnabledUnlocked(table)) {
+      IsXClusterEnabledUnlocked(table)) {
     return STATUS_FORMAT(
         NotSupported,
         "Tablet splitting is not supported for tables that are a part of"
@@ -4561,6 +4561,10 @@ Status CatalogManager::AddTransactionStatusTablet(
     table = VERIFY_RESULT(FindTableByIdUnlocked(req->table_id()));
     write_lock = table->LockForWrite();
 
+    SCHECK(
+        !IsXClusterEnabledUnlocked(*table), NotSupported,
+        "Cannot add transaction status tablet to transaction table under xCluster replication");
+
     Schema schema;
     RETURN_NOT_OK(table->GetSchema(&schema));
 
@@ -5465,11 +5469,12 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
       }
   }
 
-  if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && IsCdcEnabled(*table)) {
-    return STATUS(NotSupported,
-                  "Cannot truncate a table in replication.",
-                  table_id,
-                  MasterError(MasterErrorPB::INVALID_REQUEST));
+  if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && IsXClusterEnabled(*table)) {
+      return STATUS(
+          NotSupported,
+          "Cannot truncate a table in replication.",
+          table_id,
+          MasterError(MasterErrorPB::INVALID_REQUEST));
   }
   {
     SharedLock lock(mutex_);
@@ -5828,7 +5833,7 @@ Status CatalogManager::DeleteTable(
   }
 
   // For now, only disable dropping YCQL tables under xCluster replication.
-  bool result = table->GetTableType() == YQL_TABLE_TYPE && IsCdcEnabled(*table);
+  bool result = table->GetTableType() == YQL_TABLE_TYPE && IsXClusterEnabled(*table);
   if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && result) {
     return STATUS(NotSupported,
                   "Cannot delete a table in replication.",
@@ -6687,9 +6692,10 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     SchemaToPB(new_schema, table_pb.mutable_schema());
   }
 
-
-  if (GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter) &&
-      [&]() {SharedLock lock(mutex_); return IsTableCdcConsumer(*table);}()) {
+  if (GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter) && [&]() {
+        SharedLock lock(mutex_);
+        return IsTableXClusterConsumer(*table);
+      }()) {
     // If we're waiting for a Schema because we saw the a replication source with a change,
     // ensure this alter is compatible with what we're expecting.
     RETURN_NOT_OK(ValidateNewSchemaWithCdc(*table, new_schema));
@@ -8830,7 +8836,7 @@ Status CatalogManager::CheckIfDatabaseHasReplication(const scoped_refptr<Namespa
     if (table->namespace_id() != database->id()) {
       continue;
     }
-    if (IsCdcEnabledUnlocked(*table)) {
+    if (IsXClusterEnabledUnlocked(*table)) {
       LOG(ERROR) << "Error deleting database: " << database->id() << ", table: " << table->id()
                  << " is under replication"
                  << ". Cannot delete a database that contains tables under replication.";
@@ -10492,7 +10498,7 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
         });
 
         if (!tablets_data.back().hide_only &&
-            (IsTableCdcProducer(*tablet->table()) || IsTablePartOfCDCSDK(*tablet->table()))) {
+            (IsTableXClusterProducer(*tablet->table()) || IsTablePartOfCDCSDK(*tablet->table()))) {
           // For xCluster and CDCSDK , the only time we try to delete a tablet that is part of an
           // active stream is during tablet splitting, where we need to keep the parent tablet
           // around until we have replicated its SPLIT_OP record.
@@ -10573,7 +10579,7 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
     hidden_tablets_.insert(hidden_tablets_.end(), marked_as_hidden.begin(), marked_as_hidden.end());
     // Also keep track of all tablets that were hid due to xCluster.
     for (const auto& tablet : marked_as_hidden) {
-      bool is_table_cdc_producer = IsTableCdcProducer(*tablet->table());
+      bool is_table_cdc_producer = IsTableXClusterProducer(*tablet->table());
       bool is_table_part_of_cdcsdk = IsTablePartOfCDCSDK(*tablet->table());
       if (is_table_cdc_producer || is_table_part_of_cdcsdk) {
         auto tablet_lock = tablet->LockForRead();
@@ -10894,7 +10900,10 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
 
   // With Replication Enabled, verify that we've finished applying the New Schema.
   // This may need to be refactored when we support Replication + Active Index Backfill in #7613.
-  if ([&]() {SharedLock lock(mutex_); return IsTableCdcConsumer(*table);}()) {
+  if ([&]() {
+        SharedLock lock(mutex_);
+        return IsTableXClusterConsumer(*table);
+      }()) {
     // If we're waiting for a Schema because we saw the a replication source with a change,
     // resume replication now that the alter is complete.
     RETURN_NOT_OK(ResumeCdcAfterNewSchema(*table, version));

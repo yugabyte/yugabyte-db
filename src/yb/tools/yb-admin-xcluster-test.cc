@@ -23,6 +23,7 @@
 #include "yb/integration-tests/external_mini_cluster_ent.h"
 
 #include "yb/master/master_backup.proxy.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_replication.proxy.h"
 
 #include "yb/rpc/secure_stream.h"
@@ -46,6 +47,7 @@ DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
 DECLARE_int64(rpc_throttle_threshold_bytes);
 DECLARE_bool(parallelize_bootstrap_producer);
 DECLARE_bool(check_bootstrap_required);
+DECLARE_bool(enable_replicate_transaction_status_table);
 
 namespace yb {
 namespace tools {
@@ -827,6 +829,38 @@ TEST_F(XClusterAdminCliTest, TestFailedSetupUniverseWithDeletion) {
       producer_cluster_->GetMasterAddresses(),
       producer_cluster_table->id()));
   std::this_thread::sleep_for(5s);
+}
+
+TEST_F(XClusterAdminCliTest, DisallowAddTransactionTablet) {
+  FLAGS_enable_replicate_transaction_status_table = true;
+
+  // Create an identical table on the producer.
+  client::TableHandle producer_table;
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table);
+
+  ASSERT_OK(RunAdminToolCommand(
+      "setup_universe_replication",
+      kProducerClusterId,
+      producer_cluster_->GetMasterAddresses(),
+      producer_table->id()));
+
+  auto global_txn_table =
+      YBTableName(YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+  auto producer_global_txn_table_id =
+      ASSERT_RESULT(client::GetTableId(producer_cluster_client_.get(), global_txn_table));
+  auto consumer_global_txn_table_id =
+      ASSERT_RESULT(client::GetTableId(client_.get(), global_txn_table));
+
+  // Fail to add for actively replicated transaction tables.
+  ASSERT_NOK(RunAdminToolCommandOnProducer("add_transaction_tablet", producer_global_txn_table_id));
+  ASSERT_NOK(RunAdminToolCommand("add_transaction_tablet", consumer_global_txn_table_id));
+
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
+
+  // After deleting, should be fine to add again.
+  ASSERT_OK(RunAdminToolCommandOnProducer("add_transaction_tablet", producer_global_txn_table_id));
+  ASSERT_OK(RunAdminToolCommand("add_transaction_tablet", consumer_global_txn_table_id));
 }
 
 class XClusterAdminCliTest_Large : public XClusterAdminCliTest {
