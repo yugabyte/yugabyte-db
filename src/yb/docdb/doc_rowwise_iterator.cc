@@ -318,7 +318,8 @@ Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow() const {
 }
 
 Result<bool> DocRowwiseIterator::HasNext() {
-  VLOG(4) << __PRETTY_FUNCTION__;
+  VLOG(4) << __PRETTY_FUNCTION__ << ", has_next_status_: " << has_next_status_ << ", row_ready_: "
+          << row_ready_ << ", done_: " << done_;
 
   // Repeated HasNext calls (without Skip/NextRow in between) should be idempotent:
   // 1. If a previous call failed we returned the same status.
