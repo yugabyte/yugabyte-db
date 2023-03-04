@@ -265,6 +265,11 @@ class CatalogManagerIf {
 
   virtual tablet::SnapshotCoordinator& snapshot_coordinator() = 0;
 
+  virtual Status UpdateLastFullCompactionRequestTime(const TableId& table_id) = 0;
+
+  virtual Status GetCompactionStatus(
+      const GetCompactionStatusRequestPB* req, GetCompactionStatusResponsePB* resp) = 0;
+
   virtual ~CatalogManagerIf() = default;
 };
 
