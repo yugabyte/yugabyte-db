@@ -309,8 +309,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const std::vector<CDCStreamId>& stream_ids,
       const std::vector<yb::master::SysCDCStreamEntryPB>& update_entries);
 
-  bool IsCdcEnabled(const TableInfo& table_info) const override EXCLUDES(mutex_);
-  bool IsCdcEnabledUnlocked(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
+  bool IsXClusterEnabled(const TableInfo& table_info) const override EXCLUDES(mutex_);
+  bool IsXClusterEnabledUnlocked(const TableInfo& table_info) const override
+      REQUIRES_SHARED(mutex_);
 
   bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const override
     EXCLUDES(mutex_);
@@ -636,10 +637,10 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       scoped_refptr<UniverseReplicationInfo> universe);
 
   // Checks if table has at least one cdc stream (includes producers for xCluster replication).
-  bool IsTableCdcProducer(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
+  bool IsTableXClusterProducer(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
 
   // Checks if the table is a consumer in an xCluster replication universe.
-  bool IsTableCdcConsumer(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
+  bool IsTableXClusterConsumer(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
 
   // Checks if table has at least one cdcsdk stream.
   bool IsTablePartOfCDCSDK(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);

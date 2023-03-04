@@ -270,7 +270,7 @@ void CatalogManager::LoadCDCRetainedTabletsSet() {
   for (const auto& hidden_tablet : hidden_tablets_) {
     // Only keep track of hidden tablets that have been split and that are part of a CDC stream.
     if (hidden_tablet->old_pb().split_tablet_ids_size() > 0) {
-      bool is_table_cdc_producer = IsTableCdcProducer(*hidden_tablet->table());
+      bool is_table_cdc_producer = IsTableXClusterProducer(*hidden_tablet->table());
       bool is_table_part_of_cdcsdk = IsTablePartOfCDCSDK(*hidden_tablet->table());
       if (is_table_cdc_producer || is_table_part_of_cdcsdk) {
         auto tablet_lock = hidden_tablet->LockForRead();
@@ -4612,7 +4612,7 @@ void CatalogManager::PopulateUniverseReplicationStatus(
   }
 }
 
-bool CatalogManager::IsTableCdcProducer(const TableInfo& table_info) const {
+bool CatalogManager::IsTableXClusterProducer(const TableInfo& table_info) const {
   auto it = xcluster_producer_tables_to_stream_map_.find(table_info.id());
   if (it != xcluster_producer_tables_to_stream_map_.end()) {
     // Check that at least one of these streams is active (ie not being deleted).
@@ -4629,7 +4629,7 @@ bool CatalogManager::IsTableCdcProducer(const TableInfo& table_info) const {
   return false;
 }
 
-bool CatalogManager::IsTableCdcConsumer(const TableInfo& table_info) const {
+bool CatalogManager::IsTableXClusterConsumer(const TableInfo& table_info) const {
   auto it = xcluster_consumer_tables_to_stream_map_.find(table_info.id());
   if (it == xcluster_consumer_tables_to_stream_map_.end()) {
     return false;
@@ -4676,13 +4676,13 @@ std::unordered_set<CDCStreamId> CatalogManager::GetCdcStreamsForProducerTable(
   return it->second;
 }
 
-bool CatalogManager::IsCdcEnabled(const TableInfo& table_info) const {
+bool CatalogManager::IsXClusterEnabled(const TableInfo& table_info) const {
   SharedLock lock(mutex_);
-  return IsCdcEnabledUnlocked(table_info);
+  return IsXClusterEnabledUnlocked(table_info);
 }
 
-bool CatalogManager::IsCdcEnabledUnlocked(const TableInfo& table_info) const {
-  return IsTableCdcProducer(table_info) || IsTableCdcConsumer(table_info);
+bool CatalogManager::IsXClusterEnabledUnlocked(const TableInfo& table_info) const {
+  return IsTableXClusterProducer(table_info) || IsTableXClusterConsumer(table_info);
 }
 
 bool CatalogManager::IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const {

@@ -1588,12 +1588,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     return false;
   }
 
-  virtual bool IsCdcEnabled(const TableInfo& table_info) const {
+  virtual bool IsXClusterEnabled(const TableInfo& table_info) const {
     // Default value.
     return false;
   }
 
-  virtual bool IsCdcEnabledUnlocked(const TableInfo& table_info) const REQUIRES_SHARED(mutex_) {
+  virtual bool IsXClusterEnabledUnlocked(const TableInfo& table_info) const
+      REQUIRES_SHARED(mutex_) {
     // Default value.
     return false;
   }
@@ -1609,12 +1610,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     return false;
   }
 
-  virtual bool IsTableCdcProducer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_) {
+  virtual bool IsTableXClusterProducer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_) {
     // Default value.
     return false;
   }
 
-  virtual bool IsTableCdcConsumer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_) {
+  virtual bool IsTableXClusterConsumer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_) {
     // Default value.
     return false;
   }
