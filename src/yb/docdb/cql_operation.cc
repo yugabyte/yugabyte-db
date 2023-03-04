@@ -765,7 +765,8 @@ Status QLWriteOperation::InsertScalar(
     bfql::TSOpcode op_code) {
   ValueRef value_ref(value, column_schema.sorting_type(), op_code);
   if (context.row_packer && value_ref.IsTombstoneOrPrimitive() && !column_schema.is_static() &&
-      VERIFY_RESULT(context.row_packer->AddValue(column_id, value))) {
+      VERIFY_RESULT(context.row_packer->AddValue(
+          column_id, context.column_control_fields.AsSlice(), value))) {
     return Status::OK();
   }
 

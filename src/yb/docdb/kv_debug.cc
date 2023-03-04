@@ -121,6 +121,7 @@ Result<std::string> DocDBValueToDebugStrInternal(
         prefix += " ";
         prefix += column_data.id.ToString();
         prefix += ": ";
+        auto column_control_fields = VERIFY_RESULT(ValueControlFields::Decode(&slice));
         if (slice.empty()) {
           prefix += "NULL";
         } else {
@@ -132,8 +133,10 @@ Result<std::string> DocDBValueToDebugStrInternal(
             prefix += pv.ToString();
           }
         }
+        prefix += column_control_fields.ToString();
       }
       prefix += " }";
+      prefix += control_fields.ToString();
       return prefix;
     }
   } else {
