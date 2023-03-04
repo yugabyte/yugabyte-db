@@ -1761,6 +1761,12 @@ Status ClusterAdminClient::FlushTablesById(
   return Status::OK();
 }
 
+Status ClusterAdminClient::CompactionStatus(const YBTableName& table_name) {
+  const auto last_request_time = VERIFY_RESULT(yb_client_->GetCompactionStatus(table_name));
+  cout << "Last full compaction request time: " << last_request_time.ToUint64() << endl;
+  return Status::OK();
+}
+
 Status ClusterAdminClient::FlushSysCatalog() {
   master::FlushSysCatalogRequestPB req;
   auto res = InvokeRpc(

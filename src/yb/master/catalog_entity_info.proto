@@ -206,6 +206,9 @@ message SysTablesEntryPB {
   optional TransactionMetadataPB transaction = 29;
 
   repeated StatefulServiceKind hosted_stateful_services = 39;
+
+  // Time when a full compaction was last requested by the user.
+  optional fixed64 last_full_compaction_time = 41;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for

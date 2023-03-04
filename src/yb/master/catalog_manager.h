@@ -1329,6 +1329,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     pending_backfill_tables_.emplace(id);
   }
 
+  Status UpdateLastFullCompactionRequestTime(const TableId& table_id) override;
+
+  Status GetCompactionStatus(
+      const GetCompactionStatusRequestPB* req, GetCompactionStatusResponsePB* resp) override;
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;

@@ -298,6 +298,8 @@ class YBClient {
                      int timeout_secs,
                      bool is_compaction);
 
+  Result<MonoTime> GetCompactionStatus(const YBTableName& table_name);
+
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const YBTableName& table_name);
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const std::string id);
 

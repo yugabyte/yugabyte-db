@@ -232,6 +232,9 @@ class YBClient::Data {
                                    const FlushRequestId& flush_id,
                                    const CoarseTimePoint deadline);
 
+  Status GetCompactionStatus(
+      const YBTableName& table_name, const CoarseTimePoint deadline, MonoTime* last_request_time);
+
   Status GetTableSchema(YBClient* client,
                         const YBTableName& table_name,
                         CoarseTimePoint deadline,
