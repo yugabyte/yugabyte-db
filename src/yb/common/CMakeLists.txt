@@ -54,6 +54,7 @@ ADD_YB_LIBRARY(yb_common_proto
   NONLINK_DEPS ${COMMON_PROTO_TGTS})
 
 set(COMMON_BASE_SRCS
+  column_id.cc
   json_util.cc
   jsonb.cc
   ql_datatype.cc
@@ -65,6 +66,7 @@ set(COMMON_BASE_SRCS
 set(COMMON_BASE_LIBS
   yb_util
   yb_common_proto
+  yb_bfcommon
   )
 
 ADD_YB_LIBRARY(yb_common_base
@@ -75,7 +77,6 @@ set(COMMON_SRCS
   clock.cc
   common_flags.cc
   common_types_util.cc
-  column_id.cc
   consistent_read_point.cc
   entity_ids.cc
   hybrid_time.cc
