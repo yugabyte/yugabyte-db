@@ -79,8 +79,8 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
         <Box mt={2}>
           <RegionsField disabled={false} />
         </Box>
-        {isPrimary && isDedicatedNodesEnabled && (
-          <Box mt={2}>
+        {isDedicatedNodesEnabled && (
+          <Box mt={isPrimary ? 2 : 0}>
             <MasterPlacementField
               isPrimary={isPrimary}
               useK8CustomResources={useK8CustomResources}
