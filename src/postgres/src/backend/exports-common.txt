@@ -5,6 +5,7 @@ YbgInit
 # YbgStatus API
 YbgStatusErrorReportingError
 YbgStatusCreate
+YbgStatusCreateError
 YbgStatusDestroy
 YbgStatusIsError
 YbgStatusGetContext

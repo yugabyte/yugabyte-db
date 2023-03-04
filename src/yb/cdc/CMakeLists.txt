@@ -66,7 +66,7 @@ set(CDC_YRPC_LIBS
   opid_proto)
 ADD_YB_LIBRARY(cdc_service_proto
   SRCS ${CDC_YRPC_SRCS} cdc_error.cc
-  DEPS ${CDC_YRPC_LIBS}
+  DEPS yb_ql_common ${CDC_YRPC_LIBS}
   NONLINK_DEPS ${CDC_YRPC_TGTS})
 
 #########################################

@@ -441,7 +441,7 @@ yb::DocKeyOffsets DocKey::ComputeKeyColumnOffsets(const Schema& schema) {
           KeyEntryValue::GetEncodedKeyEntryValueSize(schema.column(i).type()->main());
       LOG_IF(DFATAL, encoded_size == 0)
           << "Encountered a varlength column when computing Key offsets. Column "
-          << schema.column(i).ToString();
+          << schema.column(i).name();
       offset += encoded_size;
     }
 
