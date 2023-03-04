@@ -47,15 +47,15 @@ export interface Keyspace_Table {
 export interface ICommonBackupInfo {
   backupUUID: string;
   baseBackupUUID: string;
-  completionTime: number;
-  createTime: number;
+  completionTime: string;
+  createTime: string;
   responseList: Keyspace_Table[];
   sse: boolean;
   state: Backup_States;
   storageConfigUUID: string;
   taskUUID: string;
   totalBackupSizeInBytes?: number;
-  updateTime: number;
+  updateTime: string;
   parallelism: number;
 }
 
@@ -73,8 +73,8 @@ export interface IBackup {
   isStorageConfigPresent: boolean;
   isUniversePresent: boolean;
   onDemand: boolean;
-  updateTime: number;
-  expiryTime: number;
+  updateTime: string;
+  expiryTime: string;
   fullChainSizeInBytes: number;
   kmsConfigUUID?: null | string;
 }

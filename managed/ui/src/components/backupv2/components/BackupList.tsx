@@ -26,9 +26,7 @@ import {
   convertArrayToMap,
   DATE_FORMAT,
   ENTITY_NOT_AVAILABLE,
-  FormatUnixTimeStampTimeToTimezone
 } from '../common/BackupUtils';
-import './BackupList.scss';
 import { BackupCancelModal, BackupDeleteModal } from './BackupDeleteModal';
 import { BackupRestoreModal } from './BackupRestoreModal';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
@@ -42,6 +40,8 @@ import { YBTable } from '../../common/YBTable';
 import { find } from 'lodash';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { TableTypeLabel } from '../../../redesign/helpers/dtos';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import './BackupList.scss';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const reactWidgets = require('react-widgets');
@@ -149,7 +149,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
 
     return {
       label: action.label,
-      startTime: moment().subtract(action.value[0], action.value[1]),
+      startTime: moment().subtract(action.value[0], action.value[1]).toDate(),
       endTime: new Date()
     };
   };
@@ -536,9 +536,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="createTime"
-            dataFormat={(_, row: IBackup) => (
-              <FormatUnixTimeStampTimeToTimezone timestamp={row.commonBackupInfo.createTime} />
-            )}
+            dataFormat={(_, row: IBackup) => ybFormatDate(row.commonBackupInfo.createTime)}
             width="20%"
             dataSort
           >
@@ -547,7 +545,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           <TableHeaderColumn
             dataField="expiryTime"
             dataFormat={(time) =>
-              time ? <FormatUnixTimeStampTimeToTimezone timestamp={time} /> : "Won't Expire"
+              time ? ybFormatDate(time) : "Won't Expire"
             }
             width="20%"
           >

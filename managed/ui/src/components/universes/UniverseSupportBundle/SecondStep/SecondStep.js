@@ -1,10 +1,10 @@
 import React, { useRef, useState } from 'react';
 import { YBCheckBox } from '../../../common/forms/fields';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
-import moment from 'moment';
 import { CustomDateRangePicker } from '../DateRangePicker/DateRangePicker';
 import { useSelector } from 'react-redux';
 import { find } from 'lodash';
+import { convertToISODateString } from '../../../../redesign/helpers/DateUtils';
 
 const filterTypes = [
   { label: 'Last 24 hrs', type: 'days', value: '1' },
@@ -36,8 +36,8 @@ export const updateOptions = (
   dateType,
   selectionOptionsValue,
   setIsDateTypeCustom,
-  startDate = new moment(new Date()),
-  endDate = new moment(new Date())
+  startDate = new Date(),
+  endDate = new Date()
 ) => {
   if (dateType === 'custom') {
     setIsDateTypeCustom(true);
@@ -45,7 +45,7 @@ export const updateOptions = (
   }
 
   if (dateType !== 'customWithValue' && dateType !== 'custom') {
-    startDate = new moment(getBackDateByDay(+dateType));
+    startDate = getBackDateByDay(+dateType);
     setIsDateTypeCustom(false);
   }
 
@@ -56,8 +56,8 @@ export const updateOptions = (
     }
   });
   return {
-    startDate: startDate.format('yyyy-MM-DD'),
-    endDate: endDate.format('yyyy-MM-DD'),
+    startDate: convertToISODateString(startDate),
+    endDate: convertToISODateString(endDate),
     components: components
   };
 };
@@ -116,8 +116,8 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse }) => {
                 'customWithValue',
                 selectionOptionsValue,
                 setIsDateTypeCustom,
-                new moment(startEnd.start),
-                new moment(startEnd.end)
+                startEnd.start,
+                startEnd.end
               );
               onOptionsChange(changedOptions);
             }}
