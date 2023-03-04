@@ -1095,6 +1095,10 @@ CoarseTimePoint TabletPeer::cdc_sdk_min_checkpoint_op_id_expiration() {
   return CoarseTimePoint();
 }
 
+bool TabletPeer::is_under_cdc_sdk_replication() {
+  return meta_->is_under_cdc_sdk_replication();
+}
+
 OpId TabletPeer::GetLatestCheckPoint() {
   auto tablet = shared_tablet();
   if (tablet) {

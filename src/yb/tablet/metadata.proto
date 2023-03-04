@@ -208,6 +208,9 @@ message RaftGroupReplicaSuperBlockPB {
   optional OpIdPB cdc_sdk_min_checkpoint_op_id = 33;
 
   optional fixed64 cdc_sdk_safe_time = 34;
+
+  // Is this tablet currently a being replicated with cdc.
+  optional bool is_under_cdc_sdk_replication = 36;
 }
 
 message FilePB {
