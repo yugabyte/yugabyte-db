@@ -4,7 +4,6 @@
 //
 // This file will hold all the configuration list of alerts.
 
-import moment from 'moment';
 import React, { useEffect, useRef, useState } from 'react';
 import { Col, DropdownButton, MenuItem, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
@@ -29,6 +28,7 @@ import {
   formatString,
   NO_DESTINATION
 } from './AlertsFilter';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 
 /**
  * This is the header for YB Panel Item.
@@ -258,7 +258,7 @@ export const AlertsList = (props) => {
    * @param {object} row Respective row.
    */
   const formatCreatedTime = (cell, row) => {
-    return moment(row.createTime).format('MM/DD/yyyy');
+    return ybFormatDate(row.createTime);
   };
 
   /**

@@ -236,9 +236,9 @@ const detailsFormatter = (cell, row) => {
 // For performance optimization, move this to a Redux reducer, so that it doesn't get run on each render.
 function prepareData(data, timezone) {
   return data.map((timeData) => {
-    let timestampMoment = moment.utc(timeData.timestamp).local();
+    let timestampMoment = moment.utc(timeData.timestamp_iso).local();
     if (timezone) {
-      timestampMoment = moment.utc(timeData.timestamp).tz(timezone);
+      timestampMoment = moment.utc(timeData.timestamp_iso).tz(timezone);
     }
     const nodesByIpAddress = {};
     timeData.data.forEach((check) => {

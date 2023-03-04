@@ -25,7 +25,7 @@ export const BACKUP_REFETCH_INTERVAL = 20 * 1000;
  * @param endtime end time
  * @returns diff between the dates
  */
-export const calculateDuration = (startTime: number, endtime: number): string => {
+export const calculateDuration = (startTime: string, endtime: string): string => {
   const start = moment(startTime);
   const end = moment(endtime);
 

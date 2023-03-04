@@ -18,10 +18,10 @@ import { Col, Row } from 'react-bootstrap';
 
 import { YBModalForm } from '../../common/forms';
 import { YBFormSelect, YBNumericInput } from '../../common/forms/fields';
-import { FormatUnixTimeStampTimeToTimezone } from './PointInTimeRecoveryList';
 import { restoreSnapShot } from '../common/PitrAPI';
 import CautionIcon from '../common/CautionIcon';
 import './PointInTimeRecoveryModal.scss';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const reactWidgets = require('react-widgets');
@@ -208,11 +208,11 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
             <div className="notice">
               You may recover {config.dbName} to any time between{' '}
               <b>
-                <FormatUnixTimeStampTimeToTimezone timestamp={minTime} />
+                {ybFormatDate(minTime)}
               </b>{' '}
               and{' '}
               <b>
-                <FormatUnixTimeStampTimeToTimezone timestamp={maxTime} />
+                {ybFormatDate(maxTime)}
               </b>
             </div>
             <Row>
@@ -268,12 +268,12 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
                           ) : (
                             <div className="pitr-info-text">
                               Will recover to:{' '}
-                              <FormatUnixTimeStampTimeToTimezone
-                                timestamp={getFinalTimeStamp({
+                              {
+                                ybFormatDate(getFinalTimeStamp({
                                   ...values,
                                   recovery_time_mode: RECOVERY_MODE.RELATIVE
-                                })}
-                              />
+                                }))
+                              }
                             </div>
                           )}
                         </div>
