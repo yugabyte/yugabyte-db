@@ -133,6 +133,7 @@ export const YSQLField = ({ disabled, enforceAuth }: YSQLFieldProps): ReactEleme
                         }}
                         error={!!errors?.instanceConfig?.ysqlPassword}
                         helperText={errors?.instanceConfig?.ysqlPassword?.message}
+                        placeholder={t('universeForm.securityConfig.placeholder.enterYSQLPassword')}
                       />
                     </Box>
                   </Box>
@@ -163,6 +164,9 @@ export const YSQLField = ({ disabled, enforceAuth }: YSQLFieldProps): ReactEleme
                         }}
                         error={!!errors?.instanceConfig?.ysqlConfirmPassword}
                         helperText={errors?.instanceConfig?.ysqlConfirmPassword?.message}
+                        placeholder={t(
+                          'universeForm.securityConfig.placeholder.confirmYSQLPassword'
+                        )}
                       />
                     </Box>
                   </Box>

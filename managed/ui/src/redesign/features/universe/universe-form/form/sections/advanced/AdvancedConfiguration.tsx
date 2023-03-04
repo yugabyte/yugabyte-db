@@ -1,7 +1,7 @@
 import React, { FC, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useWatch } from 'react-hook-form';
-import { Box, Grid, Typography } from '@material-ui/core';
+import { Box, Typography } from '@material-ui/core';
 import {
   AccessKeysField,
   ARNField,
@@ -34,78 +34,45 @@ export const AdvancedConfiguration: FC = () => {
   if (!provider?.code) return null;
 
   return (
-    <Box className={classes.sectionContainer} data-testid="advanced-config-section">
-      <Typography className={classes.sectionHeaderFont}>
-        {t('universeForm.advancedConfig.title')}
-      </Typography>
-      <Box width="100%" display="flex" flexDirection="column" justifyContent="center">
-        <Box mt={2}>
-          <Grid container spacing={3}>
-            <Grid lg={6} item container>
-              <DBVersionField disabled={!isCreatePrimary} />
-            </Grid>
-          </Grid>
-        </Box>
-
-        {provider.code !== CloudType.kubernetes && (
-          <Box mt={2}>
-            <Grid container spacing={3}>
-              <Grid lg={6} item container>
-                <AccessKeysField disabled={!isCreatePrimary && !isCreateRR} />
-              </Grid>
-            </Grid>
-          </Box>
-        )}
-
-        {provider.code === CloudType.aws && (
-          <Box mt={2}>
-            <Grid container spacing={3}>
-              <Grid lg={6} item container>
-                <ARNField disabled={!isCreatePrimary && !isCreateRR} />
-              </Grid>
-            </Grid>
-          </Box>
-        )}
-
-        {provider.code === CloudType.kubernetes && (
-          <>
-            <Box mt={2}>
-              <Grid container>
-                <Grid lg={6} item container>
-                  <IPV6Field disabled={!isCreatePrimary} />
-                </Grid>
-              </Grid>
-            </Box>
-
-            <Box mt={2}>
-              <Grid container>
-                <Grid lg={6} item container>
-                  <NetworkAccessField disabled={!isCreatePrimary} />
-                </Grid>
-              </Grid>
-            </Box>
-          </>
-        )}
-
-        {provider.code !== CloudType.kubernetes && (
-          <>
-            <Box mt={3}>
-              <Grid container>
-                <Grid lg={6} item container>
-                  <SystemDField disabled={!isCreatePrimary} />
-                </Grid>
-              </Grid>
-            </Box>
-            <Box mt={3}>
-              <Grid container>
-                <Grid lg={6} item container>
-                  <DeploymentPortsField disabled={!isCreatePrimary} />
-                </Grid>
-              </Grid>
-            </Box>
-          </>
-        )}
+    <Box
+      className={classes.sectionContainer}
+      flexDirection="column"
+      data-testid="AdvancedConfiguration-Section"
+    >
+      <Typography variant="h4">{t('universeForm.advancedConfig.title')}</Typography>
+      <Box display="flex" width="100%" mt={4}>
+        <DBVersionField disabled={!isCreatePrimary} />
       </Box>
+      {provider.code !== CloudType.kubernetes && (
+        <Box display="flex" width="100%" mt={2}>
+          <AccessKeysField disabled={!isCreatePrimary && !isCreateRR} />
+        </Box>
+      )}
+      {provider.code === CloudType.aws && (
+        <Box display="flex" width="100%" mt={2}>
+          <ARNField disabled={!isCreatePrimary && !isCreateRR} />
+        </Box>
+      )}
+      {provider.code === CloudType.kubernetes && (
+        <>
+          <Box display="flex" width="100%" mt={2}>
+            <IPV6Field disabled={!isCreatePrimary} />
+          </Box>
+          <Box display="flex" width="100%" mt={2}>
+            <NetworkAccessField disabled={!isCreatePrimary} />
+          </Box>
+        </>
+      )}
+      {provider.code !== CloudType.kubernetes && (
+        <>
+          <Box display="flex" width="100%" mt={2.5}>
+            <SystemDField disabled={!isCreatePrimary} />
+          </Box>
+          <Box display="flex" width="100%" mt={2.5}>
+            <DeploymentPortsField disabled={!isCreatePrimary} />
+          </Box>
+        </>
+      )}
     </Box>
   );
 };

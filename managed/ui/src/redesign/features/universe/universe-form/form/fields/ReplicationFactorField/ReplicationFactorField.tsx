@@ -7,6 +7,7 @@ import { YBButton, YBLabel, YBInputField } from '../../../../../../components';
 import { UniverseFormData } from '../../../utils/dto';
 import { REPLICATION_FACTOR_FIELD, TOAST_AUTO_DISMISS_INTERVAL } from '../../../utils/constants';
 import { themeVariables } from '../../../../../../theme/variables';
+import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface ReplicationFactorProps {
   disabled?: boolean;
@@ -31,6 +32,7 @@ export const ReplicationFactor = ({
   const { control, setValue } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
   const classes = useStyles();
+  const fieldClasses = useFormFieldStyles();
 
   const {
     field: { value }
@@ -44,18 +46,20 @@ export const ReplicationFactor = ({
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     //reset field value
-    const fieldValue = e.target.value as unknown as number;
+    const fieldValue = (e.target.value as unknown) as number;
 
-    if(!fieldValue || fieldValue < ASYNC_RF_MIN) {
-      setValue(REPLICATION_FACTOR_FIELD, ASYNC_RF_MIN, {shouldValidate:true});
-      toast.error(t('universeForm.cloudConfig.minRFValue', {rfValue: ASYNC_RF_MIN}), {autoClose: TOAST_AUTO_DISMISS_INTERVAL})
-    }
-    else if(fieldValue > ASYNC_RF_MAX) {
-      setValue(REPLICATION_FACTOR_FIELD, ASYNC_RF_MAX, {shouldValidate:true});
-      toast.error(t('universeForm.cloudConfig.maxRFvalue', {rfValue: ASYNC_RF_MAX}), {autoClose: TOAST_AUTO_DISMISS_INTERVAL})
-    }
-    else setValue(REPLICATION_FACTOR_FIELD, fieldValue, {shouldValidate:true});
-  }
+    if (!fieldValue || fieldValue < ASYNC_RF_MIN) {
+      setValue(REPLICATION_FACTOR_FIELD, ASYNC_RF_MIN, { shouldValidate: true });
+      toast.error(t('universeForm.cloudConfig.minRFValue', { rfValue: ASYNC_RF_MIN }), {
+        autoClose: TOAST_AUTO_DISMISS_INTERVAL
+      });
+    } else if (fieldValue > ASYNC_RF_MAX) {
+      setValue(REPLICATION_FACTOR_FIELD, ASYNC_RF_MAX, { shouldValidate: true });
+      toast.error(t('universeForm.cloudConfig.maxRFvalue', { rfValue: ASYNC_RF_MAX }), {
+        autoClose: TOAST_AUTO_DISMISS_INTERVAL
+      });
+    } else setValue(REPLICATION_FACTOR_FIELD, fieldValue, { shouldValidate: true });
+  };
 
   return (
     <Box width="100%" display="flex" data-testid="ReplicationFactor-Container">
@@ -64,7 +68,7 @@ export const ReplicationFactor = ({
           ? t('universeForm.cloudConfig.replicationField')
           : t('universeForm.cloudConfig.numReadReplicas')}
       </YBLabel>
-      <Box flex={1}>
+      <Box flex={1} className={fieldClasses.defaultTextBox}>
         {isPrimary ? (
           <ButtonGroup variant="contained" color="default">
             {PRIMARY_RF.map((factor) => {

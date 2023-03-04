@@ -84,7 +84,10 @@ export const RegionsField = ({ disabled }: RegionsFieldProps): ReactElement => {
                   ybInputProps={{
                     error: !!fieldState.error,
                     helperText: fieldState.error?.message,
-                    'data-testid': 'RegionsField-AutoComplete'
+                    'data-testid': 'RegionsField-AutoComplete',
+                    placeholder: _.isEmpty(value)
+                      ? t('universeForm.cloudConfig.placeholder.selectRegions')
+                      : ''
                   }}
                 />
               </Box>

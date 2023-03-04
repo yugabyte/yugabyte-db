@@ -2,7 +2,7 @@ import React, { useContext } from 'react';
 import _ from 'lodash';
 import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
-import { Box, Grid, makeStyles, Typography } from '@material-ui/core';
+import { Box, Typography, useMediaQuery } from '@material-ui/core';
 import {
   DefaultRegionField,
   MasterPlacementField,
@@ -23,16 +23,10 @@ import {
 } from '../../../utils/dto';
 import { useSectionStyles } from '../../../universeMainStyle';
 
-const useStyles = makeStyles((theme) => ({
-  placementFieldContainer: {
-    width: theme.spacing(70)
-  }
-}));
-
 export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfigurationProps) => {
   const classes = useSectionStyles();
-  const helperClasses = useStyles();
   const { t } = useTranslation();
+  const isLargeDevice = useMediaQuery('(min-width:1400px)');
 
   //feature flagging
   const featureFlags = useSelector((state: any) => state.featureFlags);
@@ -62,59 +56,51 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
     : null;
 
   return (
-    <Box className={classes.sectionContainer} data-testid="CloudConfiguration-Container">
-      <Box display="flex" flexDirection="row">
-        <Box>
-          <Grid container spacing={3}>
-            <Grid item lg={12}>
-              <Box mb={4}>
-                <Typography className={classes.sectionHeaderFont}>
-                  {t('universeForm.cloudConfig.title')}
-                </Typography>
-              </Box>
-              {isPrimary && (
-                <Box mt={2}>
-                  <UniverseNameField disabled={isEditPrimary} />
-                </Box>
-              )}
-              <Box mt={2}>
-                <ProvidersField
-                  disabled={isEditMode || !isPrimary}
-                  filterByProvider={primaryProviderCode}
-                />
-              </Box>
-              <Box mt={2}>
-                <RegionsField disabled={false} />
-              </Box>
-              {isDedicatedNodesEnabled && (
-                <Box mt={2}>
-                  <MasterPlacementField
-                    isPrimary={isPrimary}
-                    useK8CustomResources={useK8CustomResources}
-                  />
-                </Box>
-              )}
-              <Box mt={2}>
-                <TotalNodesField disabled={false} />
-              </Box>
-              <Box mt={2}>
-                <ReplicationFactor disabled={isEditMode} isPrimary={isPrimary} />
-              </Box>
-              {isCreatePrimary && isGeoPartitionEnabled && (
-                <Box mt={2} display="flex" flexDirection="column">
-                  <DefaultRegionField />
-                </Box>
-              )}
-            </Grid>
-          </Grid>
+    <Box
+      className={classes.sectionContainer}
+      style={{ flexDirection: isLargeDevice ? 'row' : 'column' }}
+      data-testid="CloudConfiguration-Section"
+    >
+      <Box width="600px" display="flex" flexDirection="column">
+        <Box mb={4}>
+          <Typography variant="h4">{t('universeForm.cloudConfig.title')}</Typography>
         </Box>
-        <Box ml={5} className={helperClasses.placementFieldContainer}>
-          <Grid container spacing={3}>
-            <Grid item lg={12}>
-              <PlacementsField disabled={false} isPrimary={isPrimary} />
-            </Grid>
-          </Grid>
+        {isPrimary && (
+          <Box mt={2}>
+            <UniverseNameField disabled={isEditPrimary} />
+          </Box>
+        )}
+        <Box mt={2}>
+          <ProvidersField
+            disabled={isEditMode || !isPrimary}
+            filterByProvider={primaryProviderCode}
+          />
         </Box>
+        <Box mt={2}>
+          <RegionsField disabled={false} />
+        </Box>
+        {isPrimary && isDedicatedNodesEnabled && (
+          <Box mt={2}>
+            <MasterPlacementField
+              isPrimary={isPrimary}
+              useK8CustomResources={useK8CustomResources}
+            />
+          </Box>
+        )}
+        <Box mt={2}>
+          <TotalNodesField disabled={false} />
+        </Box>
+        <Box mt={2}>
+          <ReplicationFactor disabled={isEditMode} isPrimary={isPrimary} />
+        </Box>
+        {isCreatePrimary && isGeoPartitionEnabled && (
+          <Box mt={2} display="flex" flexDirection="column">
+            <DefaultRegionField />
+          </Box>
+        )}
+      </Box>
+      <Box width="600px" mt={isLargeDevice ? 0 : 4}>
+        <PlacementsField disabled={false} isPrimary={isPrimary} />
       </Box>
     </Box>
   );
