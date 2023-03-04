@@ -920,13 +920,6 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     return Status::OK();
   }
 
-  // TODO(packed_row) combine non packed columns into packed row
-  if (value_type == ValueEntryType::kPackedRow) {
-    return packed_row_.ProcessPackedRow(
-        internal_key, sub_key_ends_.back(), value, value_slice.data() - value.data(),
-        encoded_doc_ht, doc_key_serial_);
-  }
-
   // If the entry has the TTL flag, delete the entry.
   if (is_ttl_row) {
     within_merge_block_ = true;
@@ -970,6 +963,10 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     new_value_buffer_.Append(value_slice);
     new_value = new_value_buffer_.AsSlice();
     within_merge_block_ = false;
+  } else if (value_type == ValueEntryType::kPackedRow) {
+    return packed_row_.ProcessPackedRow(
+        internal_key, sub_key_ends_.back(), value, value_slice.data() - value.data(),
+        encoded_doc_ht, doc_key_serial_);
   } else if (control_fields.intent_doc_ht.is_valid()) {
     // Cleanup intent doc hybrid time when we don't need it anymore.
     // See https://github.com/yugabyte/yugabyte-db/issues/4535 for details.
