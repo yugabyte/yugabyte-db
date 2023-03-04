@@ -1,8 +1,10 @@
 import React, { useContext, FC } from 'react';
+import _ from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { useForm, FormProvider } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
+import { toast } from 'react-toastify';
 import { Typography, Grid, Box, Link } from '@material-ui/core';
 import { YBButton } from '../../../../components';
 import {
@@ -18,7 +20,7 @@ import {
 import { UniverseFormContext } from '../UniverseFormContainer';
 import { api, QUERY_KEY } from '../utils/api';
 import { UniverseFormData, ClusterType, ClusterModes } from '../utils/dto';
-import { UNIVERSE_NAME_FIELD } from '../utils/constants';
+import { UNIVERSE_NAME_FIELD, TOAST_AUTO_DISMISS_INTERVAL } from '../utils/constants';
 import { useFormMainStyles } from '../universeMainStyle';
 
 // ! How to add new form field ?
@@ -57,18 +59,23 @@ export const UniverseForm: FC<UniverseFormProps> = ({
   const { t } = useTranslation();
 
   //context state
-  const { asyncFormData, clusterType, mode, universeResourceTemplate } = useContext(
-    UniverseFormContext
-  )[0];
+  const {
+    asyncFormData,
+    clusterType,
+    mode,
+    universeResourceTemplate,
+    universeConfigureError
+  } = useContext(UniverseFormContext)[0];
   const isPrimary = clusterType === ClusterType.PRIMARY;
   const isEditMode = mode === ClusterModes.EDIT;
   const isEditRR = isEditMode && !isPrimary;
 
-  // Get customer scope runtime configs
+  // Fetch customer scope runtime configs
   const currentCustomer = useSelector((state: any) => state.customer.currentCustomer);
   const customerUUID = currentCustomer?.data?.uuid;
-  const { data: runtimeConfigs } = useQuery(QUERY_KEY.fetchCustomerRunTimeConfigs, () =>
-    api.fetchRunTimeConfigs(true, customerUUID)
+  const { data: runtimeConfigs } = useQuery(
+    [QUERY_KEY.fetchCustomerRunTimeConfigs, customerUUID],
+    () => api.fetchRunTimeConfigs(true, customerUUID)
   );
 
   //init form
@@ -82,13 +89,21 @@ export const UniverseForm: FC<UniverseFormProps> = ({
 
   //methods
   const triggerValidation = () => trigger(undefined, { shouldFocus: true }); //Trigger validation and focus on fields with errors , undefined = validate all fields
-  const onSubmit = (formData: UniverseFormData) => onFormSubmit(formData);
+
+  const onSubmit = (formData: UniverseFormData) => {
+    if (!_.isEmpty(universeConfigureError))
+      // Do not allow for form submission incase error exists in universe configure response
+      toast.error(universeConfigureError, { autoClose: TOAST_AUTO_DISMISS_INTERVAL });
+    else onFormSubmit(formData);
+  };
   const switchClusterType = () => onClusterTypeChange && onClusterTypeChange(getValues());
 
   //switching from primary to RR and vice versa  (Create Primary + RR flow)
   const handleClusterChange = async () => {
     if (isPrimary) {
       // Validate primary form before switching to async
+      if (!_.isEmpty(universeConfigureError))
+        toast.error(universeConfigureError, { autoClose: TOAST_AUTO_DISMISS_INTERVAL });
       let isValid = await triggerValidation();
       isValid && switchClusterType();
     } else {
@@ -237,7 +252,7 @@ export const UniverseForm: FC<UniverseFormProps> = ({
   // const isPrimary = [clusterModes.NEW_PRIMARY, clusterModes.EDIT_PRIMARY].includes(mode);
 
   return (
-    <Box className={classes.mainConatiner}>
+    <Box className={classes.mainConatiner} data-testid="UniverseForm-Container">
       <FormProvider {...formMethods}>
         <form key={clusterType} onSubmit={formMethods.handleSubmit(onSubmit)}>
           <Box className={classes.formHeader}>{renderHeader()}</Box>

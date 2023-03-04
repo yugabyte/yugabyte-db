@@ -279,7 +279,7 @@ export interface DeviceInfo {
 
 export interface K8NodeSpec {
   memory: number;
-  cpu: number
+  cpu: number;
 }
 //-------------------------------------------------------- Most Used OR Common Types - Ends --------------------------------------------------------
 
@@ -564,7 +564,7 @@ export const DEFAULT_INSTANCE_CONFIG: InstanceConfigFormValue = {
   ycqlPassword: '',
   ycqlConfirmPassword: '',
   enableYEDIS: false,
-  kmsConfig: null,
+  kmsConfig: null
 };
 
 export const DEFAULT_ADVANCED_CONFIG: AdvancedConfigFormValue = {

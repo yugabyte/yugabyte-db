@@ -123,7 +123,9 @@ export const CreateUniverse: FC = () => {
     if (asyncData) {
       configurePayload.clusters?.push({
         clusterType: ClusterType.ASYNC,
-        userIntent: getUserIntent({ formData: asyncData }),
+        userIntent: getUserIntent({
+          formData: { ...asyncData, instanceTags: primaryData.instanceTags } //copy primary user tags to RR while creation
+        }),
         placementInfo: {
           cloudList: [
             {
