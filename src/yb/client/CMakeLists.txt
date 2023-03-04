@@ -87,7 +87,8 @@ set(CLIENT_LIBS
   yb_util
   gutil
   yrpc
-  yb_docdb_encoding)
+  yb_docdb_encoding
+  yb_docdb_encoding_util)
 
 # We customize the output name/directory of the exported library so that we can
 # call it "yb_client" without it colliding with the regular library.
