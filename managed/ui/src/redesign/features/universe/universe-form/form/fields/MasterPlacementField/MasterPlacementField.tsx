@@ -102,7 +102,7 @@ export const MasterPlacementField = ({
           </Box>
         </Box>
       ) : (
-        <Box mb={2}></Box>
+        <></>
       )}
     </>
   );
