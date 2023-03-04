@@ -10,6 +10,10 @@ SELECT yb_get_range_split_clause(0);
 
 SELECT yb_get_range_split_clause('pg_class'::regclass);
 
+-- Control the message level sent to the client to make this test suite more robust for oid changes.
+-- Don't output NOTICE: relation with oid <oid> is not backed by YB for some cases.
+SET client_min_messages = 'WARNING';
+
 -- Test system view, view, YB materialized view
 SELECT yb_get_range_split_clause('pg_roles'::regclass);
 
@@ -23,11 +27,14 @@ SELECT yb_get_range_split_clause('my_materialized_view'::regclass);
 DROP MATERIALIZED VIEW my_materialized_view;
 DROP TABLE view_test;
 
+RESET client_min_messages;
+SET yb_enable_create_with_table_oid = true;
+
 -- Test temp table
 CREATE TEMP TABLE temp_tbl (
   a INT,
   PRIMARY KEY(a ASC)
-) SPLIT AT VALUES((-100), (250));
+) WITH (table_oid = 20000) SPLIT AT VALUES((-100), (250));
 SELECT yb_get_range_split_clause('temp_tbl'::regclass);
 DROP TABLE temp_tbl;
 
@@ -35,12 +42,12 @@ DROP TABLE temp_tbl;
 CREATE TABLE no_pk_tbl (
   a INT,
   b TEXT
-);
+) WITH (table_oid = 20003);
 SELECT yb_get_range_split_clause('no_pk_tbl'::regclass);
 DROP TABLE no_pk_tbl;
 
 -- Test hash-partitioned table.
-CREATE TABLE hash_partitioned_tbl (k INT PRIMARY KEY) SPLIT INTO 5 TABLETS;
+CREATE TABLE hash_partitioned_tbl (k INT PRIMARY KEY) WITH (table_oid = 20006) SPLIT INTO 5 TABLETS;
 SELECT yb_get_range_split_clause('hash_partitioned_tbl'::regclass);
 DROP TABLE hash_partitioned_tbl;
 
