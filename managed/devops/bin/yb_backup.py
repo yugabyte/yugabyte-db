@@ -2453,12 +2453,13 @@ class YBBackup:
                 # FOLLOWERS replicas are not in the 'tablets_by_tserver_ip' list
                 # (the list 'tablets_by_tserver_ip' contains only the LEADER replicas).
                 if tablet_id not in tablets_by_tserver_ip[tserver_ip]:
-                    logging.warning(
-                        ("Found a snapshot directory '{}' on tablet server '{}' that is not "
-                         "present in the list of tablets we are interested in that have this "
-                         "tserver hosting it ({}), skipping.").format(
-                            snapshot_dir, tserver_ip,
-                            ", ".join(sorted(tablets_by_tserver_ip[tserver_ip]))))
+                    if self.args.verbose:
+                        logging.warning(
+                            ("Found a snapshot directory '{}' on tablet server '{}' that is not "
+                             "present in the list of tablets we are interested in that have this "
+                             "tserver hosting it ({}), skipping.").format(
+                                snapshot_dir, tserver_ip,
+                                ", ".join(sorted(tablets_by_tserver_ip[tserver_ip]))))
                     continue
 
                 tablet_id_to_snapshot_dirs.setdefault(tablet_id, set()).add(snapshot_dir)
