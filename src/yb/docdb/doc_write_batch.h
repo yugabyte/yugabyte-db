@@ -297,6 +297,10 @@ class DocWriteBatch {
     return narrow_cast<IntraTxnWriteId>(put_batch_.size()) - 1;
   }
 
+  void RollbackReservedWriteId() {
+    put_batch_.pop_back();
+  }
+
  private:
   struct LazyIterator;
 

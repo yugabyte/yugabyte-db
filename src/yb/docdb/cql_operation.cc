@@ -989,7 +989,13 @@ Status QLWriteOperation::ApplyUpsert(
   IsInsert is_insert(request_.type() == QLWriteRequestPB::QL_STMT_INSERT);
 
   std::optional<RowPacker> row_packer;
-  IntraTxnWriteId packed_row_write_id = 0;
+  std::optional<IntraTxnWriteId> packed_row_write_id;
+
+  auto se = ScopeExit([&packed_row_write_id, doc_write_batch = data.doc_write_batch]() {
+    if (packed_row_write_id) {
+      doc_write_batch->RollbackReservedWriteId();
+    }
+  });
 
   if (is_insert && encoded_pk_doc_key_) {
     bool pack_row = FLAGS_ycql_enable_packed_row;
@@ -1073,7 +1079,8 @@ Status QLWriteOperation::ApplyUpsert(
     auto encoded_value = VERIFY_RESULT(row_packer->Complete());
     RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
         DocPath(encoded_pk_doc_key_.as_slice()), context.control_fields, ValueRef(encoded_value),
-        data.read_time, data.deadline, request_.query_id(), packed_row_write_id));
+        data.read_time, data.deadline, request_.query_id(), *packed_row_write_id));
+    packed_row_write_id.reset();
   }
 
   if (update_indexes_) {
