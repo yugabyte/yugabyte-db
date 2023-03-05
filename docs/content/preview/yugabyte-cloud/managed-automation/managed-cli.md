@@ -731,5 +731,6 @@ ybm cluster create \
     --region-info=region=aws.us-east-2.us-east-2a,vpc=aws-us-east-2 \
     --region-info=region=aws.us-east-2.us-east-2b,vpc=aws-us-east-2 \
     --region-info=region=aws.us-east-2.us-east-2c,vpc=aws-us-east-2 \
-    --fault-tolerance=zone
+    --fault-tolerance=zone \
+    --credentials=username=admin,password=password123
 ```
