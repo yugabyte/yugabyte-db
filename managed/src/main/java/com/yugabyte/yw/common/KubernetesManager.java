@@ -506,6 +506,8 @@ public abstract class KubernetesManager {
 
   public abstract Pod getPodObject(Map<String, String> config, String namespace, String podName);
 
+  public abstract String getCloudProvider(Map<String, String> config);
+
   public abstract List<Pod> getPodInfos(
       Map<String, String> config, String universePrefix, String namespace);
 
