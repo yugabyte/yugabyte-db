@@ -231,4 +231,12 @@ TEST_F(CqlPackedRowTest, LivenessColumnExpiry) {
   ASSERT_EQ(value, "");
 }
 
+TEST_F(CqlPackedRowTest, BadCast) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  ASSERT_OK(session.ExecuteQuery("CREATE TABLE test_cast (h int PRIMARY KEY, t text)"));
+
+  ASSERT_NOK(session.ExecuteQuery("INSERT INTO test_cast (h, t) values (2, cast(22 as text))"));
+}
+
 } // namespace yb
