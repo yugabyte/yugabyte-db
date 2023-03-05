@@ -19,30 +19,10 @@ rightNav:
 
 The [YugabyteDB Managed Command Line Interface](https://github.com/yugabyte/ybm-cli) (ybm) is an open source tool that enables you to interact with YugabyteDB Managed accounts using commands in your command-line shell. With minimal configuration, the CLI enables you to start running commands that implement functionality equivalent to that provided by the browser-based YugabyteDB Managed interface from the command prompt in your shell.
 
-You can install the ybm CLI using any of the following methods:
-
-Using Docker:
-
-```sh
-docker run -it yugabytedb/yugabyte-client ybm -h <hostname> -p <port>
-```
-
-Using Homebrew:
+You can install the ybm CLI using Homebrew:
 
 ```sh
 brew install yugabyte/yugabytedb/ybm
-```
-
-Using a shell script:
-
-```sh
-curl -sSL https://downloads.yugabyte.com/get_ybm.sh | bash
-```
-
-If you have wget, you can use the following:
-
-```sh
-wget -q -O - https://downloads.yugabyte.com/get_ybm.sh | sh
 ```
 
 ## Global configuration
@@ -57,10 +37,10 @@ ybm --apikey AWERDFSSS --host cloud.yugabyte.com cluster get
 
 For convenience, you can configure ybm with default values for these flags as follows:
 
-- Use the `configure` command to write these values to a YAML configuration file. For example:
+- Use the `auth` command to write these values to a YAML configuration file. For example:
 
   ```sh
-  ybm configure --apikey AWERDFSSS --host cloud.yugabyte.com
+  ybm auth --apikey AWERDFSSS --host cloud.yugabyte.com
   ```
 
   By default, this writes the values to the file `.ybm-cli.yaml` under your `$HOME` directory.
@@ -80,6 +60,21 @@ For convenience, you can configure ybm with default values for these flags as fo
   ```
 
 By default, `https://` is added to the host if no scheme is provided. To use http, add `http://` to the host.
+
+### Autocompletion
+
+You can configure command autocompletion for your shell using the `completion` resource. For example:
+
+```sh
+ybm completion bash
+```
+
+This generates an autocompletion script for the specified shell. Available options are as follows:
+
+- bash
+- fish
+- powershell
+- zsh
 
 ## Syntax
 
@@ -106,7 +101,7 @@ ybm -h
 ```
 
 ```sh
-ybm -help
+ybm --help
 ```
 
 For help with specific `ybm` resource commands, run `ybm [ resource ] [ command ] -h`. For example, you can print the command-line help for the `ybm create` command by running the following:
@@ -119,16 +114,69 @@ ybm read-replica create -h
 
 The following resources can be managed using the CLI:
 
+- [backup](#backup)
 - [cluster](#cluster)
 - [network-allow-list](#network-allow-list)
 - [read-replica](#read-replica)
 - [vpc](#vpc)
 - [vpc-peering](#vpc-peering)
+
+<!--
 - [cdc-sink](#cdc-sink)
-- [cdc-stream](#cdc-stream)
-- [backup](#backup)
+- [cdc-stream](#cdc-stream) -->
 
 -----
+
+### backup
+
+Use the `backup` resource to perform operations on cluster backups, including the following:
+
+- create and delete cluster backups
+- restore a backup
+- get information about clusters
+
+```text
+Usage: ybm backup [command] [flags]
+```
+
+Examples:
+
+- Create a backup:
+
+  ```sh
+  ybm backup create \
+      --cluster-name=test-cluster \
+      --credentials=username=admin,password=password123
+  ```
+
+#### create
+
+--cluster-name=_name_
+: Name of the cluster to back up.
+
+--retention-period=_days_
+: Retention period for the backup in days (integer).
+
+--description=_description_
+: A description of the backup.
+
+#### delete
+
+--backup-id=_id_
+: The ID of the backup to delete.
+
+#### get
+
+--cluster-name=_name_
+: Name of the cluster of which you want to view the backups.
+
+#### restore
+
+--cluster-name=_name_
+: Name of the cluster to restore to.
+
+--backup-id=_id_
+: The ID of the backup to restore.
 
 ### cluster
 
@@ -632,57 +680,6 @@ Examples:
 
 ----->
 
-### backup
-
-Use the `backup` resource to perform operations on cluster backups, including the following:
-
-- create and delete cluster backups
-- restore a backup
-- get information about clusters
-
-```text
-Usage: ybm backup [command] [flags]
-```
-
-Examples:
-
-- Create a backup:
-
-  ```sh
-  ybm backup create \
-      --cluster-name=test-cluster \
-      --credentials=username=admin,password=password123
-  ```
-
-#### create
-
---cluster-name=_name_
-: Name of the cluster to back up.
-
---retention-period=_days_
-: Retention period for the backup in days.
-
---description=_description_
-: A description of the backup.
-
-#### delete
-
---backup-id=_id_
-: The ID of the backup to delete.
-
-#### get
-
---cluster-name=_name_
-: Name of the cluster of which you want to view the backups.
-
-#### restore
-
---cluster-name=_name_
-: Name of the cluster to restore to.
-
---backup-id=_id_
-: The ID of the backup to restore.
-
 ### wait flag
 
 For long-running commands such as creating or deleting a cluster, you can use the `--wait` flag to wait until the operation is completed. For example:
@@ -717,4 +714,22 @@ The following are combinations of environment variables and their uses:
 
 ### Create a single-node cluster
 
+  ```sh
+ybm cluster create \
+    --cluster-name=test-cluster \
+    --credentials=username=admin,password=password123
+```
+
 ### Create a multi-node cluster
+
+  ```sh
+ybm cluster create \
+    --cluster-name=test-cluster \
+    --credentials=username=admin,password=password123 \
+    --cloud-type=gcp \
+    --node-config=3 \
+    --region-info=region=aws.us-east-2.us-east-2a,vpc=aws-us-east-2 \
+    --region-info=region=aws.us-east-2.us-east-2b,vpc=aws-us-east-2 \
+    --region-info=region=aws.us-east-2.us-east-2c,vpc=aws-us-east-2 \
+    --fault-tolerance=zone
+```
