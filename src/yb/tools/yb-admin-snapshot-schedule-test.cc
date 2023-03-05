@@ -55,7 +55,6 @@ using std::string;
 using std::vector;
 
 DECLARE_uint64(max_clock_skew_usec);
-
 DECLARE_int32(num_tablet_servers);
 DECLARE_int32(num_replicas);
 
@@ -443,6 +442,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   }
 
   void TestUndeleteTable(bool restart_masters);
+  void TestGCHiddenTables();
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->bind_to_unique_loopback_addresses = true;
@@ -2773,6 +2773,23 @@ TEST_F(YbAdminSnapshotScheduleTest, TestVerifyRestorationLogic) {
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, TestGCHiddenTables) {
+  TestGCHiddenTables();
+}
+
+class YbAdminSnapshotScheduleTestWithYcqlPackedRow : public YbAdminSnapshotScheduleTestWithYsql {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back("--ycql_enable_packed_row=true");
+    opts->extra_master_flags.emplace_back("--ycql_enable_packed_row=true");
+  }
+};
+
+TEST_F(YbAdminSnapshotScheduleTestWithYcqlPackedRow, GCHiddenTables) {
+  TestGCHiddenTables();
+}
+
+void YbAdminSnapshotScheduleTest::TestGCHiddenTables() {
   const auto interval = 15s;
   const auto retention = 30s * kTimeMultiplier;
   auto schedule_id = ASSERT_RESULT(PrepareQl(interval, retention));
