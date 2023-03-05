@@ -82,6 +82,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.Random;
+
 import javax.persistence.PersistenceException;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -388,6 +390,19 @@ public class CloudProviderHandler {
         provider.uuid, () -> doUpdateKubeConfigForZone(provider, region, zone, config, edit));
   }
 
+  public static String generateRandomString(int length, String prefix, String suffix) {
+    String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    StringBuilder sb = new StringBuilder(length);
+    sb.append(prefix);
+    Random random = new Random();
+    for (int i = 0; i < length; i++) {
+      int index = random.nextInt(chars.length());
+      sb.append(chars.charAt(index));
+    }
+    sb.append(suffix);
+    return sb.toString();
+  }
+
   private boolean doUpdateKubeConfigForZone(
       Provider provider,
       Region region,
@@ -521,11 +536,14 @@ public class CloudProviderHandler {
 
       KubernetesProviderFormData formData = new KubernetesProviderFormData();
       formData.code = kubernetes;
+      formData.name = generateRandomString(5, "k8s", "provider");
       if (pullSecret != null) {
         formData.config =
             ImmutableMap.of(
                 "KUBECONFIG_IMAGE_PULL_SECRET_NAME",
                 pullSecretName,
+                "KUBECONFIG_PROVIDER",
+                getCloudProvider(),
                 "KUBECONFIG_PULL_SECRET_NAME",
                 pullSecretName, // filename
                 "KUBECONFIG_PULL_SECRET_CONTENT",
@@ -631,6 +649,29 @@ public class CloudProviderHandler {
       metadata.getAnnotations().remove("kubectl.kubernetes.io/last-applied-configuration");
     }
     return pullSecret;
+  }
+
+  public String getCloudProvider() {
+    String cloudProvider = kubernetesManagerFactory.getManager().getCloudProvider(null);
+    if (StringUtils.isEmpty(cloudProvider)) {
+      return "CUSTOM";
+    }
+    String retVal;
+    switch (cloudProvider) {
+      case "gce":
+        retVal = "GKE";
+        break;
+      case "aws":
+        retVal = "EKS";
+        break;
+      case "azure":
+        retVal = "AKS";
+        break;
+      default:
+        retVal = "CUSTOM";
+        break;
+    }
+    return retVal;
   }
 
   public String getKubernetesImageRepository() {

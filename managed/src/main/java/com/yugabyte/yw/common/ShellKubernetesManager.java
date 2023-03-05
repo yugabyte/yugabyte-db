@@ -181,6 +181,16 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
+  public String getCloudProvider(Map<String, String> config) {
+    List<String> commandList =
+        ImmutableList.of("kubectl", "get", "nodes", "-o", "jsonpath={.items[0].spec.providerID}");
+    ShellResponse response =
+        execCommand(config, commandList, false /*logCmdOutput*/).processErrors();
+    String nodeName = response.getMessage();
+    return nodeName.split(":")[0];
+  }
+
+  @Override
   public String getPreferredServiceIP(
       Map<String, String> config,
       String universePrefix,

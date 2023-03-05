@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import io.fabric8.kubernetes.api.model.DeletionPropagation;
 import io.fabric8.kubernetes.api.model.NamespaceBuilder;
 import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.NodeSpec;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodStatus;
@@ -112,6 +113,16 @@ public class NativeKubernetesManager extends KubernetesManager {
   public Pod getPodObject(Map<String, String> config, String namespace, String podName) {
     try (KubernetesClient client = getClient(config)) {
       return client.pods().inNamespace(namespace).withName(podName).get();
+    }
+  }
+
+  @Override
+  public String getCloudProvider(Map<String, String> config) {
+    try (KubernetesClient client = getClient(config)) {
+      Node node = client.nodes().list().getItems().get(0);
+      NodeSpec spec = node.getSpec();
+      String provider = spec.getProviderID().split(":")[0];
+      return provider;
     }
   }
 
