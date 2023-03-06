@@ -21,6 +21,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Strings;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multimap;
@@ -954,6 +955,17 @@ public class CloudProviderHandler {
         GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
         if (gcpCloudInfo == null) {
           return;
+        }
+
+        if (StringUtils.isBlank(gcpCloudInfo.getGceProject())) {
+          /**
+           * Preferences for GCP Project. 1. User provided project name. 2. `project_id` present in
+           * gcp credentials user provided. 3. Metadata query to fetch the same.
+           */
+          ObjectNode credentialJSON = (ObjectNode) gcpCloudInfo.gceApplicationCredentials;
+          if (credentialJSON != null && credentialJSON.has("project_id")) {
+            gcpCloudInfo.setGceProject(credentialJSON.get("project_id").asText());
+          }
         }
 
         if (gcpCloudInfo.getUseHostCredentials() != null
