@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -269,6 +270,9 @@ public class Restore extends Model {
   }
 
   public static void updateRestoreSizeForRestore(UUID restoreUUID, long backupSize) {
+    if (restoreUUID == null || Objects.isNull(backupSize)) {
+      return;
+    }
     Optional<Restore> restoreIfPresent = Restore.fetchRestore(restoreUUID);
     if (!restoreIfPresent.isPresent()) {
       return;
@@ -298,6 +302,9 @@ public class Restore extends Model {
   }
 
   public static Optional<Restore> fetchRestore(UUID restoreUUID) {
+    if (restoreUUID == null) {
+      return Optional.empty();
+    }
     Restore restore = find.byId(restoreUUID);
     if (restore == null) {
       LOG.trace("Cannot find restore {}", restoreUUID);
@@ -307,7 +314,6 @@ public class Restore extends Model {
   }
 
   public static RestoreResp toRestoreResp(Restore restore) {
-
     String targetUniverseName =
         BackupUtil.checkIfUniverseExists(restore.universeUUID)
             ? Universe.getOrBadRequest(restore.universeUUID).name
