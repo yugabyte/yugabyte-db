@@ -24,7 +24,7 @@ This page documents known issues you may encounter and suggested workarounds whe
 - [Partition key column not part of primary key columns](#partition-key-column-not-part-of-primary-key-columns)
 - [Negative scale is not supported](#negative-scale-is-not-supported)
 - [Error in CREATE VIEW DDL in synonym.sql](#error-in-create-view-ddl-in-synonym-sql)
-- [Small-sized CLOB/NCLOB data is only supported](#small-sized-clob-nclob-data-is-only-supported)
+- [Large-sized CLOB/NCLOB data is not supported](#large-sized-clob-nclob-data-is-not-supported)
 
 ### Some numeric types are not exported
 
@@ -297,7 +297,7 @@ OR
 
 ---
 
-### Small-sized CLOB/NCLOB data is only supported
+### Large-sized CLOB/NCLOB data is not supported
 
 **GitHub**: [Issue #385](https://github.com/yugabyte/yb-voyager/issues/385)
 
