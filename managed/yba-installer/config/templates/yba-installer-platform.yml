@@ -98,15 +98,15 @@ services:
         # The IP of the platform.
         url = ""
         url = "{{ yamlPath "platform.ywUrl" }}"
+
+        node_agent {
+          releases.path = "{{ .DataDir }}/node-agent/releases"
+        }
       }
 
       ybc {
         releases.path = "{{ .DataDir }}/ybc/releases"
         docker.release = "{{ .DataDir }}/ybc/release"
-      }
-
-      node_agent {
-        releases.path = "{{ .DataDir }}/node-agent/releases"
       }
 
       play.filters {
