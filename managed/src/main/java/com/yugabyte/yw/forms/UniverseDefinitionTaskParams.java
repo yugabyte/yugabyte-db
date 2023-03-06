@@ -289,6 +289,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     public void validate(boolean validateGFlagsConsistency) {
+      if (uuid == null) {
+        throw new IllegalStateException("Cluster uuid should not be null");
+      }
+      if (placementInfo == null) {
+        throw new IllegalStateException("Placement should be provided");
+      }
       checkDeviceInfo();
       checkStorageType();
       if (validateGFlagsConsistency) {

@@ -419,7 +419,17 @@ public class UniverseCRUDHandler {
     }
     boolean cloudEnabled =
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
-
+    // Verify that there are no nodes in unknown cluster
+    for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
+      if (taskParams.getClusterByUuid(nodeDetails.placementUuid) == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Unknown cluster "
+                + nodeDetails.placementUuid
+                + " for node with idx "
+                + nodeDetails.nodeIdx);
+      }
+    }
     for (Cluster c : taskParams.clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
       // Set the provider code.
@@ -470,6 +480,7 @@ public class UniverseCRUDHandler {
       }
 
       PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
+      PlacementInfoUtil.finalSanityCheckConfigure(c, taskParams.getNodesInCluster(c.uuid));
     }
 
     if (taskParams.getPrimaryCluster() != null) {

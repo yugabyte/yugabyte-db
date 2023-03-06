@@ -26,6 +26,9 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -154,6 +157,9 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
       Consumer<UniverseDefinitionTaskParams.UserIntent> readonlyMutator,
       boolean success) {
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
+    Provider p = ModelFactory.awsProvider(customer);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
@@ -168,6 +174,7 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
     deviceInfo.storageType = PublicCloudConstants.StorageType.GP2;
     newCluster.userIntent.deviceInfo = deviceInfo;
     newCluster.userIntent.instanceType = "c3.xlarge";
+    newCluster.userIntent.regionList = Collections.singletonList(r.uuid);
 
     if (primaryMutator != null) {
       Universe.saveDetails(
