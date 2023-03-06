@@ -35,14 +35,22 @@
 #include <mutex>
 #include <vector>
 
+#include "yb/common/wire_protocol.h"
 #include "yb/gutil/map-util.h"
 
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/util/atomic.h"
 
 using std::shared_ptr;
 using std::string;
 using std::vector;
+
+DEFINE_NON_RUNTIME_bool(
+    master_register_ts_check_desired_host_port, true,
+    "When set to true, master will only do duplicate address checks on the used host/port instead "
+    "of on all. The used host/port combination depends on the value of --use_private_ip.");
+TAG_FLAG(master_register_ts_check_desired_host_port, advanced);
 
 namespace yb {
 namespace master {
@@ -83,6 +91,10 @@ bool TSManager::LookupTSByUUID(const string& uuid,
   return true;
 }
 
+bool HasSameHostPort(const HostPortPB& old_address, const HostPortPB& new_address) {
+  return old_address.host() == new_address.host() && old_address.port() == new_address.port();
+}
+
 bool HasSameHostPort(const google::protobuf::RepeatedPtrField<HostPortPB>& old_addresses,
                      const google::protobuf::RepeatedPtrField<HostPortPB>& new_addresses) {
   for (const auto& old_address : old_addresses) {
@@ -110,21 +122,42 @@ Status TSManager::RegisterTS(const NodeInstancePB& instance,
     if (it == servers_by_id_.end()) {
       // Check if a server with the same host and port already exists.
       for (const auto& map_entry : servers_by_id_) {
-        const auto ts_info = map_entry.second->GetTSInformationPB();
-
-        if (HasSameHostPort(ts_info->registration().common().private_rpc_addresses(),
-                            registration.common().private_rpc_addresses()) ||
-            HasSameHostPort(ts_info->registration().common().broadcast_addresses(),
-                            registration.common().broadcast_addresses())) {
-          if (ts_info->tserver_instance().instance_seqno() >= instance.instance_seqno()) {
+        const auto existing_ts_info = map_entry.second->GetTSInformationPB();
+        const auto existing_ts_registration_common = existing_ts_info->registration().common();
+        // When desired host-port check is enabled, we do the following checks:
+        // 1. For master, the host-port for existing and registering tservers are different.
+        // 2. The existing and registering tservers have distinct host-port from each others
+        // perspective.
+        const auto has_duplicate_from_master = HasSameHostPort(
+            DesiredHostPort(existing_ts_registration_common, local_cloud_info),
+            DesiredHostPort(registration.common(), local_cloud_info));
+        const auto has_duplicate_from_existing_ts = HasSameHostPort(
+            DesiredHostPort(
+                existing_ts_registration_common, existing_ts_registration_common.cloud_info()),
+            DesiredHostPort(registration.common(), existing_ts_registration_common.cloud_info()));
+        const auto has_duplicate_from_registering_ts = HasSameHostPort(
+            DesiredHostPort(existing_ts_registration_common, registration.common().cloud_info()),
+            DesiredHostPort(registration.common(), registration.common().cloud_info()));
+        const auto has_duplicate_host_port =
+            PREDICT_TRUE(GetAtomicFlag(&FLAGS_master_register_ts_check_desired_host_port))
+                ? (has_duplicate_from_master || has_duplicate_from_existing_ts ||
+                   has_duplicate_from_registering_ts)
+                : (HasSameHostPort(
+                       existing_ts_registration_common.private_rpc_addresses(),
+                       registration.common().private_rpc_addresses()) ||
+                   HasSameHostPort(
+                       existing_ts_registration_common.broadcast_addresses(),
+                       registration.common().broadcast_addresses()));
+        if (has_duplicate_host_port) {
+          if (existing_ts_info->tserver_instance().instance_seqno() >= instance.instance_seqno()) {
             // Skip adding the node since we already have a node with the same rpc address and
             // a higher sequence number.
             LOG(WARNING) << "Skipping registration for TS " << instance.ShortDebugString()
                 << " since an entry with same host/port but a higher sequence number exists "
-                << ts_info->ShortDebugString();
+                << existing_ts_info->ShortDebugString();
             return Status::OK();
           } else {
-            LOG(WARNING) << "Removing entry: " << ts_info->ShortDebugString()
+            LOG(WARNING) << "Removing entry: " << existing_ts_info->ShortDebugString()
                 << " since we received registration for a tserver with a higher sequence number: "
                 << instance.ShortDebugString();
             // Mark the old node to be removed, since we have a newer sequence number.
