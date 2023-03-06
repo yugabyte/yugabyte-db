@@ -15,6 +15,7 @@ import com.cronutils.parser.CronParser;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ScheduleUtil;
@@ -131,6 +132,12 @@ public class Schedule extends Model {
 
   public UUID getCustomerUUID() {
     return customerUUID;
+  }
+
+  public void setCustomerUUID(UUID customerUUID) {
+    this.customerUUID = customerUUID;
+    ObjectNode scheduleTaskParams = (ObjectNode) getTaskParams();
+    scheduleTaskParams.set("customerUUID", Json.toJson(customerUUID));
   }
 
   @ApiModelProperty(value = "Number of failed backup attempts", accessMode = READ_ONLY)
@@ -263,7 +270,6 @@ public class Schedule extends Model {
   public void setCronExpressionAndTaskParams(String cronExpression, ITaskParams params) {
     this.cronExpression = cronExpression;
     this.taskParams = Json.toJson(params);
-    save();
   }
 
   public void setFailureCount(int count) {
@@ -271,7 +277,6 @@ public class Schedule extends Model {
     if (count >= MAX_FAIL_COUNT) {
       this.status = State.Paused;
     }
-    save();
   }
 
   public void resetSchedule() {
@@ -315,7 +320,6 @@ public class Schedule extends Model {
 
   public void setRunningState(boolean state) {
     this.runningState = state;
-    save();
   }
 
   public void updateIncrementalBackupFrequencyAndTimeUnit(
@@ -448,6 +452,11 @@ public class Schedule extends Model {
         .eq("status", "Active")
         .eq("task_type", taskType)
         .findList();
+  }
+
+  public static List<Schedule> getAllSchedulesByOwnerUUIDAndType(
+      UUID ownerUUID, TaskType taskType) {
+    return find.query().where().eq("owner_uuid", ownerUUID).in("task_type", taskType).findList();
   }
 
   public static List<Schedule> getAllByCustomerUUIDAndType(UUID customerUUID, TaskType taskType) {
