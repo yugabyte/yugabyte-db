@@ -20,7 +20,7 @@ Evaluate the performance of slow queries that have run on your cluster using the
 
 Slow queries are not available for YCQL.
 
-![Cluster Slow Queries](/images/yb-cloud/cloud-clusters-slow.png)
+![Cluster Slow Queries](/images/yb-cloud/managed-monitor-slow-queries.png)
 
 To filter the query list, enter query text in the filter field. To sort the list by column, click the column heading. Click **Edit Options** to select the columns to display.
 
