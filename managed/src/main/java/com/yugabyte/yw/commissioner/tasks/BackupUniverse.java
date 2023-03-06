@@ -160,6 +160,7 @@ public class BackupUniverse extends UniverseTaskBase {
 
         Backup backup = Backup.create(taskParams().customerUuid, taskParams());
         backup.setTaskUUID(userTaskUUID);
+        backup.save();
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.
         if (taskParams().alterLoadBalancer) {
