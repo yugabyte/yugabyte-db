@@ -1,0 +1,5 @@
+ansible==2.9.27
+ansible-vault==2.1.0
+six==1.10.0
+mitogen==0.2.9
+distro==1.5.0
