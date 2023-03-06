@@ -43,13 +43,17 @@ public class RestoreBackupYb extends AbstractTaskBase {
       }
       if (response.code != 0 || jsonNode.has("error")) {
         log.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
-        restoreKeyspace.update(taskUUID, RestoreKeyspace.State.Failed);
+        if (restoreKeyspace != null) {
+          restoreKeyspace.update(taskUUID, RestoreKeyspace.State.Failed);
+        }
         throw new RuntimeException(response.message);
       } else {
         log.info("[" + getName() + "] STDOUT: " + response.message);
-        long backupSize = restoreKeyspace.getBackupSizeFromStorageLocation();
-        Restore.updateRestoreSizeForRestore(taskParams().prefixUUID, backupSize);
-        restoreKeyspace.update(taskUUID, RestoreKeyspace.State.Completed);
+        if (restoreKeyspace != null) {
+          long backupSize = restoreKeyspace.getBackupSizeFromStorageLocation();
+          Restore.updateRestoreSizeForRestore(taskParams().prefixUUID, backupSize);
+          restoreKeyspace.update(taskUUID, RestoreKeyspace.State.Completed);
+        }
       }
     } catch (Exception e) {
       log.error("Errored out with: " + e);

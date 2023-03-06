@@ -67,7 +67,10 @@ public class RestoreBackup extends UniverseTaskBase {
       // Run all the tasks.
       getRunnableTask().runSubTasks();
       unlockUniverseForUpdate();
-      restore.update(taskUUID, Restore.State.Completed);
+      if (restore != null) {
+        restore.update(taskUUID, Restore.State.Completed);
+      }
+
     } catch (CancellationException ce) {
       unlockUniverseForUpdate(false);
       // Aborted

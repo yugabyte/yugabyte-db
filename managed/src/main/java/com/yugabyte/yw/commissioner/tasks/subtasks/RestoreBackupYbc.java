@@ -192,7 +192,9 @@ public class RestoreBackupYbc extends YbcTaskBase {
       if (updateRestoreSizeInBytes) {
         Restore.updateRestoreSizeForRestore(taskParams().prefixUUID, backupSize);
       }
-      restoreKeyspace.update(taskUUID, RestoreKeyspace.State.Completed);
+      if (restoreKeyspace != null) {
+        restoreKeyspace.update(taskUUID, RestoreKeyspace.State.Completed);
+      }
     } catch (CancellationException ce) {
       if (!taskExecutor.isShutdown()) {
         // update aborted/failed - not showing aborted from here.

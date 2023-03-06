@@ -659,11 +659,15 @@ public class Backup extends Model {
     List<Backup> backupList = find.query().findList();
     List<BackupTableParams> backupParams = new ArrayList<>();
 
+    if (storageLocation == null) {
+      return Optional.empty();
+    }
+
     for (Backup b : backupList) {
       BackupTableParams backupInfo = b.getBackupInfo();
       if (CollectionUtils.isEmpty(backupInfo.backupList)) {
         BackupTableParams backupTableParams =
-            b.getBackupInfo().storageLocation.equals(storageLocation) ? b.getBackupInfo() : null;
+            storageLocation.equals(b.getBackupInfo().storageLocation) ? b.getBackupInfo() : null;
         if (backupTableParams != null) {
           backupParams.add(backupTableParams);
         }
@@ -672,7 +676,7 @@ public class Backup extends Model {
             backupInfo
                 .backupList
                 .stream()
-                .filter(bL -> bL.storageLocation.equals(storageLocation))
+                .filter(bL -> storageLocation.equals(bL.storageLocation))
                 .findFirst();
         if (backupTableParams.isPresent()) {
           backupParams.add(backupTableParams.get());
