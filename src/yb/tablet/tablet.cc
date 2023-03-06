@@ -488,7 +488,8 @@ Tablet::Tablet(const TabletInitData& data)
       data.transaction_participant_context &&
       (is_sys_catalog_ || transactional)) {
     transaction_participant_ = std::make_unique<TransactionParticipant>(
-        data.transaction_participant_context, this, DCHECK_NOTNULL(tablet_metrics_entity_));
+        data.transaction_participant_context, this, DCHECK_NOTNULL(tablet_metrics_entity_),
+        data.parent_mem_tracker);
     if (data.waiting_txn_registry) {
       wait_queue_ = std::make_unique<docdb::WaitQueue>(
         transaction_participant_.get(), metadata_->fs_manager()->uuid(), data.waiting_txn_registry,
