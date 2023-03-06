@@ -43,7 +43,7 @@ For more information, see the following:
     <a class="section-link icon-offset" href="macos/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/zero_downtime.png" aria-hidden="true" />
-        <div class="title">High availability on node and zone failures</div>
+        <div class="title">High availability during node and zone failures</div>
       </div>
       <div class="body">
         Continuously serve requests in the event of unplanned outages.

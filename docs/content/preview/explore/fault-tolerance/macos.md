@@ -1,7 +1,7 @@
 ---
-title: High availability on node and zone failures
-headerTitle: High availability on node and zone failures
-linkTitle: HA on node and zone failures
+title: High availability during failures
+headerTitle: High availability during node and zone failures
+linkTitle: HA during failures
 description: Simulate fault tolerance and resilience in a local YugabyteDB database universe.
 headcontent: Keep serving requests through node, zone, and region failures
 menu:
@@ -75,13 +75,4 @@ Despite the loss of an entire fault domain, there is no impact on the applicatio
 
 ### Clean up
 
-You can shut down the local universe that you created as follows:
-
-```sh
-./bin/yugabyted destroy \
-                --base_dir=/tmp/ybd1
-./bin/yugabyted destroy \
-                --base_dir=/tmp/ybd2
-./bin/yugabyted destroy \
-                --base_dir=/tmp/ybd3
-```
+You can shut down the local cluster by following the instructions provided in [Destroy a local cluster](../../../reference/configuration/yugabyted/#destroy-a-local-cluster).

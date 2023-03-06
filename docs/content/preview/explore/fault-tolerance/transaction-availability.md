@@ -20,7 +20,7 @@ The following examples demonstrate how YugabyteDB transactions survive common fa
 | :------- | :---------- |
 | Node failure just before a transaction executes a statement | The node to which a statement is about to be sent fails just before it is executed. YugabyteDB handles this automatically. |
 | Node failure just after a transaction executes a statement | The node to which the statement has been sent fails before the transaction is committed. YugabyteDB handles this automatically. |
-| Failure of the node to which a client has connected | The node to which the client is connected fails after a statement but before the transaction has been committed. |
+| Failure of the node to which a client has connected | The node to which the client is connected fails after a statement but before the transaction has been committed. The database returns a standard error which is handled using retry logic in the client. |
 
 For more information on how YugabyteDB handles failures and its impact during transaction processing, refer to [Impact of failures](../../../architecture/transactions/distributed-txns/#impact-of-failures).
 
