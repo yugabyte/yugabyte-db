@@ -218,7 +218,13 @@ You can customize the following passwordcheck parameters:
 | restrict_special | Passwords must include a special character. | true |
 | special_chars | The set of special characters. | <code>!@#$%^&*()_+{}\|\<\>?=</code> |
 
-You can change passwordcheck parameters using a `SET` statement. For example, to increase the maximum length allowed and not require numbers, execute the following commands:
+For example, the following flag changes the minimum and maximum passwordcheck lengths:
+
+```sh
+--ysql_pg_conf_csv="shared_preload_libraries=passwordcheck,passwordcheck.minimum_length=10,passwordcheck.maximum_length=18"
+```
+
+You can change passwordcheck parameters for the _current session only_ using a `SET` statement. For example, to increase the maximum length allowed and not require numbers, execute the following commands:
 
 ```sql
 SET passwordcheck.maximum_length TO 20;
