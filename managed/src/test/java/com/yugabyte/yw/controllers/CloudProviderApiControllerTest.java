@@ -73,6 +73,8 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
@@ -270,10 +272,10 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     CloudInfoInterface.setCloudProviderInfoFromConfig(provider, reqConfig);
     provider = createProviderTest(provider, ImmutableList.of("region1"), UUID.randomUUID());
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
-    assertEquals("234234", provider.hostVpcId);
-    assertEquals("234234", provider.destVpcId);
+    GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
+    assertEquals("234234", gcpCloudInfo.getHostVpcId());
+    assertEquals("234234", gcpCloudInfo.getDestVpcId());
     assertEquals("PROJ", config.get(GCPCloudImpl.GCE_PROJECT_PROPERTY));
-    assertEquals("234234", config.get(GCPCloudImpl.CUSTOM_GCE_NETWORK_PROPERTY));
   }
 
   @Test
@@ -282,9 +284,9 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
         .thenReturn(Json.newObject().put("vpc-id", "234234").put("region", "VPCreg"));
     Provider provider = buildProviderReq("aws", "AWS");
     provider = createProviderTest(provider, ImmutableList.of("region1"), UUID.randomUUID());
-    assertEquals("234234", provider.hostVpcId);
-    assertNull(provider.destVpcId);
-    assertEquals("VPCreg", provider.hostVpcRegion);
+    AWSCloudInfo awsCloudInfo = CloudInfoInterface.get(provider);
+    assertEquals("234234", awsCloudInfo.getHostVpcId());
+    assertEquals("VPCreg", awsCloudInfo.getHostVpcRegion());
   }
 
   @Test

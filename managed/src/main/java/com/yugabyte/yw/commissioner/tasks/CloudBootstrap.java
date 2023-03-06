@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeySetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudInitializer;
@@ -24,6 +25,8 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import io.swagger.annotations.ApiModel;
 import java.util.ArrayList;
@@ -43,19 +46,46 @@ public class CloudBootstrap extends CloudTaskBase {
   @ApiModel(value = "CloudBootstrapParams", description = "Cloud bootstrap parameters")
   public static class Params extends CloudTaskParams {
     public static Params fromProvider(Provider provider) {
+      return CloudBootstrap.Params.fromProvider(provider, provider);
+    }
+
+    public static Params fromProvider(Provider provider, Provider reqProvider) {
       Params taskParams = new Params();
-      AccessKey accessKey = null;
-      if (provider.allAccessKeys.size() > 0) {
-        accessKey = provider.allAccessKeys.get(0);
-      }
-      taskParams.airGapInstall = provider.details.airGapInstall;
-      taskParams.destVpcId = provider.destVpcId;
-      taskParams.hostVpcId = provider.hostVpcId;
-      taskParams.hostVpcRegion = provider.hostVpcRegion;
-      if (accessKey != null) {
+      List<Region> regions = reqProvider.regions;
+      // This is the case of initial provider creation.
+      // If user provides his own access keys, we should take the first one in the list.
+      // AccessKey in the provider object will be empty at this point as they are not yet
+      // synced in the DB.
+      if (reqProvider.allAccessKeys != null && reqProvider.allAccessKeys.size() > 0) {
+        AccessKey accessKey = reqProvider.allAccessKeys.get(0);
         taskParams.keyPairName = accessKey.getKeyInfo().keyPairName;
         taskParams.sshPrivateKeyContent = accessKey.getKeyInfo().sshPrivateKeyContent;
       }
+      String destVpcId = null;
+      String hostVpcId = null;
+      String hostVpcRegion = null;
+      CloudType cloudType = provider.getCloudCode();
+      if (cloudType.equals(CloudType.aws)) {
+        AWSCloudInfo awsCloudInfo = CloudInfoInterface.get(provider);
+        hostVpcId = awsCloudInfo.getHostVpcId();
+        hostVpcRegion = awsCloudInfo.getHostVpcRegion();
+      } else if (cloudType.equals(CloudType.gcp)) {
+        GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
+        hostVpcId = gcpCloudInfo.getHostVpcId();
+        destVpcId = gcpCloudInfo.getDestVpcId();
+      }
+      taskParams.airGapInstall = provider.details.airGapInstall;
+      taskParams.destVpcId = destVpcId;
+      taskParams.hostVpcId = hostVpcId;
+      if (provider.getCloudCode().equals(CloudType.gcp)) {
+        GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
+        // useHostVpc will be false for the case when user wants yugabyte to
+        // create & manage VPC on their behalf.
+        if (gcpCloudInfo.getUseHostVPC() != null && !gcpCloudInfo.getUseHostVPC()) {
+          taskParams.createNewVpc = true;
+        }
+      }
+      taskParams.hostVpcRegion = hostVpcRegion;
       taskParams.providerUUID = provider.uuid;
       taskParams.sshPort = provider.details.sshPort;
       taskParams.sshUser = provider.details.sshUser;
@@ -63,8 +93,7 @@ public class CloudBootstrap extends CloudTaskBase {
       taskParams.ntpServers = provider.details.ntpServers;
       taskParams.showSetUpChrony = provider.details.showSetUpChrony;
       taskParams.perRegionMetadata =
-          provider
-              .regions
+          regions
               .stream()
               .collect(Collectors.toMap(region -> region.code, PerRegionMetadata::fromRegion));
       return taskParams;
@@ -199,6 +228,7 @@ public class CloudBootstrap extends CloudTaskBase {
     public String hostVpcId = null;
     public String hostVpcRegion = null;
     public String destVpcId = null;
+    public boolean createNewVpc = false;
 
     // Dictates whether or not NTP should be configured on newly provisioned nodes.
     public boolean setUpChrony = false;
