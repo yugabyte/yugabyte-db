@@ -584,11 +584,19 @@ Cleans the data directories for already existing files and is applicable during 
 
 ### --table-list
 
-Comma-separated list of the tables for which data is exported. Do not use in conjunction with [--exclude-table-list](#exclude-table-list).
+Comma-separated list of the tables for which data needs to be migrated. Do not use in conjunction with [--exclude-table-list](#exclude-table-list).
 
 ### --exclude-table-list
 
-Comma-separated list of tables to exclude while exporting data.
+Comma-separated list of tables to exclude while migrating data.
+
+{{< note title="Note" >}}
+
+For `export data` command, the list of table names passed in the `--table-list` and `--exclude-table-list` are, by default, case insensitive. Enclose each name in double quotes to make it case sensitive.
+
+For `import data` command, the list of table names passed in the `--table-list` and `--exclude-table-list` are, by default, case sensitive. You don't need to enclose them in double quotes.
+
+{{< /note >}}
 
 ### --send-diagnostics
 
