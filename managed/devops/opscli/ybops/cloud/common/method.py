@@ -638,6 +638,11 @@ class CreateInstancesMethod(AbstractInstancesMethod):
                                  default=False,
                                  help="Assign a static public ip to the instance.")
 
+        self.parser.add_argument("--use_spot_instance",
+                                 action="store_true",
+                                 default=False,
+                                 help="Use Spot instance.")
+
         self.parser.add_argument("--boot_disk_size_gb",
                                  type=int,
                                  default=40,

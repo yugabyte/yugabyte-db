@@ -1496,6 +1496,13 @@ public class NodeManager extends DevopsBase {
             if (taskParam.assignPublicIP) {
               commandArgs.add("--assign_public_ip");
             }
+            if (cloudType.equals(Common.CloudType.aws) && taskParam.useSpotInstance) {
+              commandArgs.add("--use_spot_instance");
+              if (taskParam.spotPrice > 0.0) {
+                commandArgs.add("--spot_price");
+                commandArgs.add(Double.toString(taskParam.spotPrice));
+              }
+            }
             if (config.getBoolean("yb.cloud.enabled")
                 && taskParam.assignPublicIP
                 && taskParam.assignStaticPublicIP) {
