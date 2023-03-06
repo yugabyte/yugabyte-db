@@ -2276,6 +2276,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
 
     backup.setTaskUUID(userTaskUUID);
+    backup.save();
     backupTableParams = backup.getBackupInfo();
     backupTableParams.backupUuid = backup.backupUUID;
     backupTableParams.baseBackupUUID = backup.baseBackupUUID;

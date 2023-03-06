@@ -10,6 +10,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
@@ -208,6 +209,11 @@ public class Backup extends Model {
   @ApiModelProperty(value = "Customer UUID that owns this backup", accessMode = READ_WRITE)
   @Column(nullable = false)
   public UUID customerUUID;
+
+  public void setCustomerUUID(UUID customerUUID) {
+    this.customerUUID = customerUUID;
+    this.backupInfo.customerUuid = customerUUID;
+  }
 
   @ApiModelProperty(value = "Universe UUID that created this backup", accessMode = READ_WRITE)
   @Column(nullable = false)
@@ -409,11 +415,9 @@ public class Backup extends Model {
   public synchronized boolean setTaskUUID(UUID taskUUID) {
     if (this.taskUUID == null) {
       this.taskUUID = taskUUID;
-      save();
       return true;
     }
     this.taskUUID = taskUUID;
-    save();
     return false;
   }
 
@@ -566,6 +570,15 @@ public class Backup extends Model {
     return Optional.ofNullable(get(customerUUID, backupUUID));
   }
 
+  public static Optional<Backup> maybeGet(UUID backupUUID) {
+    Backup backup = find.byId(backupUUID);
+    if (backup == null) {
+      LOG.trace("Cannot find backup {}", backupUUID);
+      return Optional.empty();
+    }
+    return Optional.of(backup);
+  }
+
   public static List<Backup> fetchAllBackupsByTaskUUID(UUID taskUUID) {
     return Backup.find.query().where().eq("task_uuid", taskUUID).findList();
   }
@@ -632,13 +645,11 @@ public class Backup extends Model {
       return;
     }
     this.backupInfo.backupList.get(idx).backupSizeInBytes = backupSize;
-    this.save();
   }
 
   public void setPerRegionLocations(int idx, List<BackupUtil.RegionLocations> perRegionLocations) {
     if (idx == -1) {
       this.backupInfo.regionLocations = perRegionLocations;
-      this.save();
       return;
     }
     int backupListLen = this.backupInfo.backupList.size();
@@ -647,12 +658,10 @@ public class Backup extends Model {
       return;
     }
     this.backupInfo.backupList.get(idx).regionLocations = perRegionLocations;
-    this.save();
   }
 
   public void setTotalBackupSize(long backupSize) {
     this.backupInfo.backupSizeInBytes = backupSize;
-    this.save();
   }
 
   public static List<Backup> getInProgressAndCompleted(UUID customerUUID) {

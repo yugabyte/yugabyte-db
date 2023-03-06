@@ -73,11 +73,13 @@ public class BackupTableYb extends AbstractTaskBase {
             backup.setPerRegionLocations(backupIdx, locations);
           }
           backup.setBackupSizeInBackupList(backupIdx, backupSize);
+          backup.save();
           totalBackupSize += backupSize;
           backupIdx++;
         }
         backup.setCompletionTime(backup.getUpdateTime());
         backup.setTotalBackupSize(totalBackupSize);
+        backup.save();
         backup.transitionState(Backup.BackupState.Completed);
       } else {
         backup.transitionState(Backup.BackupState.Skipped);

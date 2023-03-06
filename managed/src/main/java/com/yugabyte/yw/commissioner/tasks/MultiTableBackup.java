@@ -274,6 +274,7 @@ public class MultiTableBackup extends UniverseTaskBase {
 
           Backup backup = Backup.create(params().customerUUID, tableBackupParams);
           backup.setTaskUUID(userTaskUUID);
+          backup.save();
           tableBackupParams.backupUuid = backup.backupUUID;
           log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
 
@@ -289,6 +290,7 @@ public class MultiTableBackup extends UniverseTaskBase {
                     && params().transactionalBackup))) {
           Backup backup = Backup.create(params().customerUUID, tableBackupParams);
           backup.setTaskUUID(userTaskUUID);
+          backup.save();
           tableBackupParams.backupUuid = backup.backupUUID;
           log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
 
@@ -300,6 +302,7 @@ public class MultiTableBackup extends UniverseTaskBase {
           for (BackupTableParams tableParams : backupParamsList) {
             Backup backup = Backup.create(params().customerUUID, tableParams);
             backup.setTaskUUID(userTaskUUID);
+            backup.save();
             tableParams.backupUuid = backup.backupUUID;
             tableParams.customerUuid = backup.customerUUID;
             tableParams.disableChecksum = params().disableChecksum;

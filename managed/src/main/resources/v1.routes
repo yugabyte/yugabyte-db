@@ -296,6 +296,7 @@ POST    /customers/:cUUID/universes/import                                     c
 # Attach/Detach universe
 POST   /customers/:cUUID/universes/:uniUUID/export                             com.yugabyte.yw.controllers.AttachDetachController.exportUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST   /customers/:cUUID/universes/:uniUUID/import                             com.yugabyte.yw.controllers.AttachDetachController.importUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST   /customers/:cUUID/universes/:uniUUID/delete_metadata                    com.yugabyte.yw.controllers.AttachDetachController.deleteUniverseMetadata(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Universe - info about Yugabyte DB master node
 GET     /customers/:cUUID/universes/:uniUUID/masters                           com.yugabyte.yw.controllers.MetaMasterController.getMasterAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
