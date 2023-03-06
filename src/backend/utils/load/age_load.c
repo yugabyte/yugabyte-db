@@ -148,6 +148,12 @@ void insert_edge_simple(Oid graph_id, char* label_name, graphid edge_id,
     Relation label_relation;
     HeapTuple tuple;
 
+    // Check if label provided exists as vertex label, then throw error
+    if (get_label_kind(label_name, graph_id) == LABEL_KIND_VERTEX)
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("label %s already exists as vertex label", label_name)));
+    }
 
     values[0] = GRAPHID_GET_DATUM(edge_id);
     values[1] = GRAPHID_GET_DATUM(start_id);
@@ -175,6 +181,13 @@ void insert_vertex_simple(Oid graph_id, char* label_name,
     bool nulls[2] = {false, false};
     Relation label_relation;
     HeapTuple tuple;
+
+    // Check if label provided exists as edge label, then throw error
+    if (get_label_kind(label_name, graph_id) == LABEL_KIND_EDGE)
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("label %s already exists as edge label", label_name)));
+    }
 
     values[0] = GRAPHID_GET_DATUM(vertex_id);
     values[1] = AGTYPE_P_GET_DATUM((vertex_properties));

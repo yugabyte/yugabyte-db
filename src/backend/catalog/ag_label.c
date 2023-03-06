@@ -170,6 +170,21 @@ char *get_label_relation_name(const char *label_name, Oid label_graph)
     return get_rel_name(get_label_relation(label_name, label_graph));
 }
 
+char get_label_kind(const char *label_name, Oid label_graph)
+{
+    label_cache_data *cache_data;
+
+    cache_data = search_label_name_graph_cache(label_name, label_graph);
+    if (cache_data)
+    {
+        return cache_data->kind;
+    }
+    else
+    {
+        return INVALID_LABEL_ID;
+    }
+}
+
 PG_FUNCTION_INFO_V1(_label_name);
 
 /*

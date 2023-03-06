@@ -36,12 +36,17 @@ SELECT COUNT(*) FROM gp1."vertices";
 
 SELECT * FROM create_complete_graph('gp2',5,'edges');
 
+-- SHOULD FAIL
 SELECT * FROM create_complete_graph('gp3',5, NULL);
 
 SELECT * FROM create_complete_graph('gp4',NULL,NULL);
 
 SELECT * FROM create_complete_graph(NULL,NULL,NULL);
 
+-- Should error out because same labels are used for both vertices and edges
+SELECT * FROM create_complete_graph('gp5',5,'label','label');
+
+-- DROPPING GRAPHS
 SELECT drop_graph('gp1', true);
 SELECT drop_graph('gp2', true);
 
@@ -67,6 +72,9 @@ SELECT * FROM age_create_barbell_graph('gp2',NULL,0,'vertices',NULL,'edges',NULL
 SELECT * FROM age_create_barbell_graph('gp3',5,NULL,'vertices',NULL,'edges',NULL);
 SELECT * FROM age_create_barbell_graph('gp4',NULL,0,'vertices',NULL,'edges',NULL);
 SELECT * FROM age_create_barbell_graph('gp5',5,0,'vertices',NULL,NULL,NULL);
+
+-- Should error out because same labels are used for both vertices and edges
+SELECT * FROM age_create_barbell_graph('gp6',5,10,'label',NULL,'label',NULL);
 
 -- DROPPING GRAPHS
 SELECT drop_graph('gp1', true);
