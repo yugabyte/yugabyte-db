@@ -714,7 +714,7 @@ The following are combinations of environment variables and their uses:
 
 ### Create a single-node cluster
 
-  ```sh
+```sh
 ybm cluster create \
     --cluster-name=test-cluster \
     --credentials=username=admin,password=password123
@@ -722,7 +722,7 @@ ybm cluster create \
 
 ### Create a multi-node cluster
 
-  ```sh
+```sh
 ybm cluster create \
     --cluster-name=test-cluster \
     --credentials=username=admin,password=password123 \
@@ -733,4 +733,21 @@ ybm cluster create \
     --region-info=region=aws.us-east-2.us-east-2c,vpc=aws-us-east-2 \
     --fault-tolerance=zone \
     --credentials=username=admin,password=password123
+```
+
+### Create an IP allow list and add your computer
+
+```sh
+ybm network-allow-list create \
+  --ip-addr $(curl ifconfig.me) \
+  --name "my computer" \
+  --description "Access the cluster from the CLI"
+```
+
+### Assign an IP allow list to a cluster
+
+```sh
+ybm cluster assign \
+  --cluster-name test-cluster\
+  --network-allow-list "my computer""
 ```
