@@ -10,22 +10,18 @@
 
 set -e
 
-export YB_MANAGED_DEVOPS_USE_PYTHON3=1
-bin/install_python_requirements.sh --create_package --use_dynamic_paths
-
 . "${BASH_SOURCE%/*}"/bin/common.sh
-# Use dynamic paths to shorten shebangs below 64 characters.
-bin/install_python_requirements.sh --use_dynamic_paths
-activate_virtualenv
-bin/install_ansible_requirements.sh --force
 
-# PEX Generation Steps
+# Ansible PEX Generation Steps.
 cd "$yb_devops_home/pex"
-docker build -t "$DOCKER_IMAGE_NAME" .
+
+# Remove existing pexEnv
+rm -rf "pexEnv"
+
+# Build pex docker image if doesn't exist.
+docker inspect "$DOCKER_IMAGE_NAME" > /dev/null 2>&1 || docker build -t "$DOCKER_IMAGE_NAME" .
+
 # Execute the build_pex.sh script inside the built docker image
 # to generate the repaired PEX.
 docker run -v "$yb_devops_home:/code" -u "$UID:$(id -g $UID)" \
-"$DOCKER_IMAGE_NAME" -c "-r" "/code/python3_requirements_frozen.txt"
-
-"$yb_devops_home"/yb_release.py "$@"
-rm -rf "$YB_PYTHON_MODULES_PACKAGE"
+"$DOCKER_IMAGE_NAME" -c "-r" "/code/ansible_python3_requirements.txt"

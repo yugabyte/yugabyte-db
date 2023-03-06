@@ -1,7 +1,9 @@
 {
   ".": [
     "ansible.cfg",
+    "ansible_python3_requirements.txt",
     "ansible_requirements_prod.yml",
+    "build_ansible_pex.sh",
     "configure-cluster-server.yml",
     "destroy-instance.yml",
     "python_requirements_frozen.txt",
