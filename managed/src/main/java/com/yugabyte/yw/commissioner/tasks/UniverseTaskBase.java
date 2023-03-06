@@ -2310,6 +2310,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
 
     Restore restore = null;
+    if (restoreBackupParams.prefixUUID == null) {
+      return restore;
+    }
     Optional<Restore> restoreIfPresent = Restore.fetchRestore(restoreBackupParams.prefixUUID);
     if (restoreIfPresent.isPresent()) {
       restore = restoreIfPresent.get();

@@ -19,8 +19,10 @@ import io.ebean.annotation.UpdatedTimestamp;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.text.SimpleDateFormat;
+import java.util.Collection;
 import java.util.Date;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import javax.persistence.Column;
@@ -31,6 +33,7 @@ import javax.persistence.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
+import org.apache.commons.collections.CollectionUtils;
 
 @ApiModel(description = "Keyspace level restores")
 @Entity
@@ -165,17 +168,22 @@ public class RestoreKeyspace extends Model {
     restoreKeyspace.restoreUUID = taskDetails.prefixUUID;
     restoreKeyspace.taskUUID = taskUUID;
 
-    RestoreBackupParams.BackupStorageInfo storageInfo = taskDetails.backupStorageInfoList.get(0);
-    restoreKeyspace.storageLocation = storageInfo.storageLocation;
-    restoreKeyspace.targetKeyspace = storageInfo.keyspace;
-    restoreKeyspace.sourceKeyspace =
-        BackupUtil.getKeyspaceFromStorageLocation(restoreKeyspace.storageLocation);
+    if (!CollectionUtils.isEmpty(taskDetails.backupStorageInfoList)) {
+      RestoreBackupParams.BackupStorageInfo storageInfo = taskDetails.backupStorageInfoList.get(0);
+      restoreKeyspace.storageLocation = storageInfo.storageLocation;
+      restoreKeyspace.targetKeyspace = storageInfo.keyspace;
+      restoreKeyspace.sourceKeyspace =
+          BackupUtil.getKeyspaceFromStorageLocation(restoreKeyspace.storageLocation);
+    }
     restoreKeyspace.state = RestoreKeyspace.State.InProgress;
     restoreKeyspace.save();
     return restoreKeyspace;
   }
 
   public long getBackupSizeFromStorageLocation() {
+    if (storageLocation == null) {
+      return 0L;
+    }
     long backupSize = getBackupSizeFromStorageLocation(storageLocation);
     return backupSize;
   }
@@ -184,7 +192,9 @@ public class RestoreKeyspace extends Model {
     Optional<BackupTableParams> backupParams =
         Backup.findBackupParamsWithStorageLocation(storageLocation);
     if (backupParams.isPresent()) {
-      return backupParams.get().backupSizeInBytes;
+      if (!Objects.isNull(backupParams.get().backupSizeInBytes)) {
+        return backupParams.get().backupSizeInBytes;
+      }
     }
     return 0L;
   }
@@ -223,6 +233,9 @@ public class RestoreKeyspace extends Model {
   }
 
   public static Optional<RestoreKeyspace> fetchRestoreKeyspace(UUID restoreKeyspaceUUID) {
+    if (restoreKeyspaceUUID == null) {
+      return Optional.empty();
+    }
     RestoreKeyspace restoreKeyspace = find.byId(restoreKeyspaceUUID);
     if (restoreKeyspace == null) {
       LOG.trace("Cannot find restoreKeyspace {}", restoreKeyspaceUUID);
