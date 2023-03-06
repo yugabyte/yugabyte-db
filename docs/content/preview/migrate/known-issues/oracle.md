@@ -24,6 +24,7 @@ This page documents known issues you may encounter and suggested workarounds whe
 - [Partition key column not part of primary key columns](#partition-key-column-not-part-of-primary-key-columns)
 - [Negative scale is not supported](#negative-scale-is-not-supported)
 - [Error in CREATE VIEW DDL in synonym.sql](#error-in-create-view-ddl-in-synonym-sql)
+- [Small-sized CLOB/NCLOB data is only supported](#small-sized-clob-nclob-data-is-only-supported)
 
 ### Some numeric types are not exported
 
@@ -293,3 +294,13 @@ OR
     ```sql
     CREATE OR REPLACE VIEW offices AS SELECT * FROM locations;
     ```
+
+---
+
+### Small-sized CLOB/NCLOB data is only supported
+
+**GitHub**: [Issue #385](https://github.com/yugabyte/yb-voyager/issues/385)
+
+**Description**: YugabyteDB Voyager ignores any values of BLOB types by default, but for CLOB and NCLOB, it migrates the data as text. However, if the size of rows for such CLOB/ NCLOB type columns exceeds 240 MB, it may result in errors and the migration may fail.
+
+**Workaround**: None. A workaround is being currently explored.

@@ -300,7 +300,7 @@ SECURITY DEFINER
 Suggested change to the schema is to remove the temporary clause from the drop statement as follows:
 
 ```sql
-CREATE OR REPLACE PROCEDURE foo (p_id integer) AS $body$
+CREATE OR REPLACE FUNCTION func (p_id integer) RETURNS varchar AS $body$
   BEGIN
     DROP TABLE IF EXISTS temp;
     CREATE TEMPORARY TABLE temp(id int, name text);
