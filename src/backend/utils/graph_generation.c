@@ -142,6 +142,18 @@ Datum create_complete_graph(PG_FUNCTION_ARGS)
     vtx_name_str = AG_DEFAULT_LABEL_VERTEX;
     edge_name_str = NameStr(*edge_label_name);
 
+    if (!PG_ARGISNULL(3))
+    {
+        vtx_label_name = PG_GETARG_NAME(3);
+        vtx_name_str = NameStr(*vtx_label_name);
+        
+        // Check if vertex and edge label are same
+        if (strcmp(vtx_name_str, edge_name_str) == 0)
+        {
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                    errmsg("vertex and edge label can not be same")));
+        }
+    }
 
     if (!graph_exists(graph_name_str))
     {
@@ -154,8 +166,6 @@ Datum create_complete_graph(PG_FUNCTION_ARGS)
     
     if (!PG_ARGISNULL(3))
     {
-        vtx_label_name = PG_GETARG_NAME(3);
-        vtx_name_str = NameStr(*vtx_label_name);
         // Check if label with the input name already exists
         if (!label_exists(vtx_name_str, graph_id))
         {

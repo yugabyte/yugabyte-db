@@ -80,12 +80,17 @@ NOTICE:  ELabel "edges" has been created
  
 (1 row)
 
+-- SHOULD FAIL
 SELECT * FROM create_complete_graph('gp3',5, NULL);
 ERROR:  edge label can not be NULL
 SELECT * FROM create_complete_graph('gp4',NULL,NULL);
 ERROR:  number of nodes can not be NULL
 SELECT * FROM create_complete_graph(NULL,NULL,NULL);
 ERROR:  graph name can not be NULL
+-- Should error out because same labels are used for both vertices and edges
+SELECT * FROM create_complete_graph('gp5',5,'label','label');
+ERROR:  vertex and edge label can not be same
+-- DROPPING GRAPHS
 SELECT drop_graph('gp1', true);
 NOTICE:  drop cascades to 4 other objects
 DETAIL:  drop cascades to table gp1._ag_label_vertex
@@ -195,6 +200,9 @@ SELECT * FROM age_create_barbell_graph('gp4',NULL,0,'vertices',NULL,'edges',NULL
 ERROR:  Graph size cannot be NULL or lower than 3
 SELECT * FROM age_create_barbell_graph('gp5',5,0,'vertices',NULL,NULL,NULL);
 ERROR:  edge label can not be NULL
+-- Should error out because same labels are used for both vertices and edges
+SELECT * FROM age_create_barbell_graph('gp6',5,10,'label',NULL,'label',NULL);
+ERROR:  vertex and edge label can not be same
 -- DROPPING GRAPHS
 SELECT drop_graph('gp1', true);
 NOTICE:  drop cascades to 4 other objects
