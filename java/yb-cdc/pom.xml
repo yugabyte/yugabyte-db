@@ -11,7 +11,7 @@
   <artifactId>yb-cdc</artifactId>
   <name>YB CDC Connector</name>
   <description>
-    CDC Connector for a YugaByte source cluster.
+    CDC Connector for a Yugabyte source cluster.
   </description>
   <packaging>jar</packaging>
 
