@@ -271,6 +271,13 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     }
   }
 
+  protected ArrayNode clustersArray(ObjectNode userIntentJson, ObjectNode placementInfoJson) {
+    ObjectNode cluster = Json.newObject();
+    cluster.set("userIntent", userIntentJson);
+    cluster.set("placementInfo", placementInfoJson);
+    return Json.newArray().add(cluster);
+  }
+
   protected ObjectNode createDeviceInfo(
       StorageType storageType,
       Integer numVolumes,

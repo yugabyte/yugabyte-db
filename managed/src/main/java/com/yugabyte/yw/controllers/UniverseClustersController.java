@@ -16,7 +16,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Audit;
@@ -27,7 +26,6 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-
 import java.util.Objects;
 import java.util.UUID;
 import play.mvc.Result;
@@ -139,12 +137,13 @@ public class UniverseClustersController extends AuthenticatedController {
   public Result createReadOnlyCluster(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    UniverseConfigureTaskParams taskParams =
+        bindFormDataToTaskParams(ctx(), request(), UniverseConfigureTaskParams.class);
+    taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
+    taskParams.currentClusterType = ClusterType.ASYNC;
+    universeCRUDHandler.configure(customer, taskParams);
 
-    UUID taskUUID =
-        universeCRUDHandler.createCluster(
-            customer,
-            universe,
-            bindFormDataToTaskParams(ctx(), request(), UniverseDefinitionTaskParams.class));
+    UUID taskUUID = universeCRUDHandler.createCluster(customer, universe, taskParams);
 
     auditService()
         .createAuditEntryWithReqBody(

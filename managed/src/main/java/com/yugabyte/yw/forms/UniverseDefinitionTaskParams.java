@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.forms;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -30,12 +32,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.ApiModelProperty;
-import lombok.ToString;
-import org.apache.commons.lang3.StringUtils;
-import play.data.validation.Constraints;
-
-import javax.annotation.Nullable;
-import javax.validation.constraints.Size;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -48,8 +44,11 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
+import javax.annotation.Nullable;
+import javax.validation.constraints.Size;
+import lombok.ToString;
+import org.apache.commons.lang3.StringUtils;
+import play.data.validation.Constraints;
 
 /**
  * This class captures the user intent for creation of the universe. Note some nuances in the way
@@ -301,6 +300,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     public void validate(boolean validateGFlagsConsistency, boolean isAuthEnforced) {
+      if (uuid == null) {
+        throw new IllegalStateException("Cluster uuid should not be null");
+      }
+      if (placementInfo == null) {
+        throw new IllegalStateException("Placement should be provided");
+      }
       checkDeviceInfo();
       checkStorageType();
       validateAuth(isAuthEnforced);
