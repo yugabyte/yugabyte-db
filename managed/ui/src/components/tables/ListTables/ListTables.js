@@ -5,7 +5,6 @@ import { Link } from 'react-router';
 import { Image, ProgressBar, ButtonGroup, DropdownButton } from 'react-bootstrap';
 import { toast } from 'react-toastify';
 import tableIcon from '../images/table.png';
-import './ListTables.scss';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { TableAction } from '../../tables';
 import { YBPanelItem } from '../../panels';
@@ -17,6 +16,7 @@ import { YBResourceCount } from '../../common/descriptors';
 import { isDisabled, isNotHidden } from '../../../utils/LayoutUtils';
 import { formatSchemaName } from '../../../utils/Formatters';
 import { YBButtonLink } from '../../common/forms/fields';
+import './ListTables.scss';
 
 class TableTitle extends Component {
   render() {
@@ -35,7 +35,7 @@ class TableTitle extends Component {
         toast.error('Refresh failed, try again', {
           // Adding toastId helps prevent multiple duplicate toasts that appears
           // on screen when user presses refresh button multiple times
-          toastId: 'table-fetch-failure',
+          toastId: 'table-fetch-failure'
         });
       }
     };
@@ -60,7 +60,7 @@ class TableTitle extends Component {
         <div className="pull-right">
           <YBButtonLink
             btnIcon="fa fa-refresh"
-            btnClass="btn btn-default refresh-btn"
+            btnClass="btn btn-default refresh-table-list-btn"
             onClick={() => fetchCurrentUniverseTables(currentUniverseUUID)}
           />
         </div>
@@ -271,11 +271,7 @@ class ListTableGrid extends Component {
     }
     const sortedListItems = _.sortBy(listItems, 'tableName');
     const tableListDisplay = (
-      <BootstrapTable
-        data={sortedListItems}
-        pagination
-        className="backup-list-table middle-aligned-table"
-      >
+      <BootstrapTable data={sortedListItems} pagination search className="middle-aligned-table">
         <TableHeaderColumn dataField="tableID" isKey={true} hidden={true} />
         <TableHeaderColumn
           dataField={'tableName'}

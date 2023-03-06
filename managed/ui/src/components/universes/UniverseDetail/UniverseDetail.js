@@ -364,6 +364,7 @@ class UniverseDetail extends Component {
         isNotHidden(currentCustomer.data.features, 'universes.details.tables') && (
           <Tab.Pane
             eventKey={'tables'}
+            className={'universe-tables-list'}
             tabtitle="Tables"
             key="tables-tab"
             mountOnEnter={true}
@@ -922,7 +923,7 @@ class UniverseDetail extends Component {
             activeTab={activeTab}
             routePrefix={`/universes/${currentUniverse.data.universeUUID}/`}
             id={'universe-tab-panel'}
-            className="universe-detail"
+            className={'universe-detail'}
           >
             {tabElements}
           </YBTabsWithLinksPanel>
