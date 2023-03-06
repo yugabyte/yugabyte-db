@@ -314,6 +314,32 @@
           "StringListTooltipMessage": "['foo', 'bar']"
         }
       }
+    },
+    "alertCustomTemplates": {
+      "customVariables": {
+        "addNewVariableText": "Create your own variables with <bold> customized value </bold> to use in the notification templates.",
+        "createNewVariableButton": "Create Custom Variable",
+        "systemVariables": "System Variables",
+        "assignVariablesButton":"Assign Variable Value to Alert Policies",
+        "customVariableContextMenu": {
+          "editVariable": "Edit Variable",
+          "variableDetails": "Variable Details",
+          "deleteVariable": "Delete Variable"
+        },
+        "variableText": "Variable",
+        "deleteSuccess":"Successfully deleted custom variable <u>{{variable_name}}</u>",
+        "createSuccess": "Successfully created custom variable <u>{{variable_name}}</u>",
+        "editSuccess": "Successfully edited custom variable <u>{{variable_name}}</u>",
+        "createNewVariableModal": {
+          "title": "Create Custom Variable",
+          "editTitle": "Edit Custom Variable",
+          "name": "Name",
+          "values": "Values",
+          "default": "Default",
+          "addValuesButton": "Add Values",
+          "valuesHelpText": "Define the possible values for the variable. Set one of the values as the <bold>default</bold> to use for all alerts that use the notification template. You can choose a value when configuring the alert policy."
+        }
+      }
     }
   }
 }
