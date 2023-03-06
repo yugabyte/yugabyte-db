@@ -475,6 +475,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty(value = "Whether to assign static public IP")
     public boolean assignStaticPublicIP = false;
 
+    @ApiModelProperty(notes = "default: false")
+    public boolean useSpotInstance = false;
+
+    @ApiModelProperty(notes = "Max price we are willing to pay for spot instance")
+    public Double spotPrice = 0.0;
+
     @ApiModelProperty() public boolean useTimeSync = false;
 
     @ApiModelProperty() public boolean enableYCQL = true;
@@ -552,6 +558,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           + universeName
           + " type="
           + instanceType
+          + ", spotInstance="
+          + useSpotInstance
+          + ", spotPrice="
+          + spotPrice
           + ", numNodes="
           + numNodes
           + ", prov="
@@ -597,6 +607,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.useSystemd = useSystemd;
       newUserIntent.accessKeyCode = accessKeyCode;
       newUserIntent.assignPublicIP = assignPublicIP;
+      newUserIntent.useSpotInstance = useSpotInstance;
+      newUserIntent.spotPrice = spotPrice;
       newUserIntent.assignStaticPublicIP = assignStaticPublicIP;
       newUserIntent.specificGFlags = specificGFlags == null ? null : specificGFlags.clone();
       newUserIntent.masterGFlags = new HashMap<>(masterGFlags);
@@ -659,6 +671,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && ybSoftwareVersion.equals(other.ybSoftwareVersion)
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
+          && useSpotInstance == other.useSpotInstance
+          && spotPrice == other.spotPrice
           && assignStaticPublicIP == other.assignStaticPublicIP
           && useTimeSync == other.useTimeSync
           && useSystemd == other.useSystemd
@@ -681,6 +695,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && ybSoftwareVersion.equals(other.ybSoftwareVersion)
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
+          && useSpotInstance == other.useSpotInstance
+          && spotPrice == other.spotPrice
           && assignStaticPublicIP == other.assignStaticPublicIP
           && useTimeSync == other.useTimeSync
           && dedicatedNodes == other.dedicatedNodes

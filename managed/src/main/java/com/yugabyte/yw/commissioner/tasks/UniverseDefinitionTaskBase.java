@@ -966,6 +966,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.machineImage = node.machineImage;
     params.cmkArn = taskParams().cmkArn;
     params.ipArnString = userIntent.awsArnString;
+    params.useSpotInstance = userIntent.useSpotInstance;
+    params.spotPrice = userIntent.spotPrice;
   }
 
   /**

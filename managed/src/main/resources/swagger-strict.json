@@ -11063,6 +11063,10 @@
         "specificGFlags" : {
           "$ref" : "#/definitions/SpecificGFlags"
         },
+        "spotPrice" : {
+          "format" : "double",
+          "type" : "number"
+        },
         "tserverGFlags" : {
           "additionalProperties" : {
             "type" : "string"
@@ -11076,6 +11080,9 @@
           "type" : "string"
         },
         "useHostname" : {
+          "type" : "boolean"
+        },
+        "useSpotInstance" : {
           "type" : "boolean"
         },
         "useSystemd" : {
