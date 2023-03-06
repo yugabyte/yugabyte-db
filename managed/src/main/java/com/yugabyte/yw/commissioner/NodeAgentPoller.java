@@ -6,7 +6,6 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.NodeAgentClient;
@@ -16,6 +15,8 @@ import com.yugabyte.yw.common.NodeAgentManager.InstallerFiles;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
@@ -37,6 +38,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -51,15 +54,14 @@ import org.apache.commons.lang3.StringUtils;
 @Slf4j
 @Singleton
 public class NodeAgentPoller {
-  public static final String POLLER_INTERVAL_PROPERTY = "yb.node_agent.poller_interval";
   public static final String RETENTION_DURATION_PROPERTY = "yb.node_agent.retention_duration";
   private static final Duration POLLER_INITIAL_DELAY = Duration.ofMinutes(1);
   private static final String LIVE_POLLER_POOL_NAME = "node_agent.live_node_poller";
   private static final String DEAD_POLLER_POOL_NAME = "node_agent.dead_node_poller";
   private static final int MAX_FAILED_CONN_COUNT = 100;
 
-  private final Config appConfig;
   private final ConfigHelper configHelper;
+  private final RuntimeConfGetter confGetter;
   private final PlatformExecutorFactory platformExecutorFactory;
   private final PlatformScheduler platformScheduler;
   private final NodeAgentClient nodeAgentClient;
@@ -71,17 +73,19 @@ public class NodeAgentPoller {
   private ExecutorService livePollerExecutor;
   // Poller with less threads allowing more queuing.
   private ExecutorService deadPollerExecutor;
+  // Tracks the current number of active upgrades.
+  private Semaphore activeUpgrades;
 
   @Inject
   public NodeAgentPoller(
-      Config appConfig,
       ConfigHelper configHelper,
+      RuntimeConfGetter confGetter,
       PlatformExecutorFactory platformExecutorFactory,
       PlatformScheduler platformScheduler,
       NodeAgentManager nodeAgentManager,
       NodeAgentClient nodeAgentClient) {
-    this.appConfig = appConfig;
     this.configHelper = configHelper;
+    this.confGetter = confGetter;
     this.platformExecutorFactory = platformExecutorFactory;
     this.platformScheduler = platformScheduler;
     this.nodeAgentManager = nodeAgentManager;
@@ -102,6 +106,7 @@ public class NodeAgentPoller {
     private final PollerTaskParam param;
     private final AtomicReference<Future<?>> future = new AtomicReference<>();
     private final AtomicInteger lastFailedCount = new AtomicInteger();
+    private final AtomicBoolean isUpgradeTokenAcquired = new AtomicBoolean();
 
     PollerTask(PollerTaskParam param) {
       this.param = param;
@@ -111,7 +116,7 @@ public class NodeAgentPoller {
       return param;
     }
 
-    void schedule(ExecutorService pollerExecutor) {
+    private void schedule(ExecutorService pollerExecutor) {
       try {
         future.set(pollerExecutor.submit(this));
       } catch (RejectedExecutionException e) {
@@ -119,13 +124,36 @@ public class NodeAgentPoller {
       }
     }
 
-    @VisibleForTesting
-    boolean isSchedulable() {
+    private boolean isSchedulable() {
       return future.get() == null;
     }
 
-    boolean isNodeAgentAlive() {
+    private boolean isNodeAgentAlive() {
       return lastFailedCount.get() < MAX_FAILED_CONN_COUNT;
+    }
+
+    private boolean acquireUpgradeToken() {
+      if (isUpgradeTokenAcquired.get()) {
+        log.info("Node agent {} is already being upgraded", param.getNodeAgentUuid());
+        return true;
+      }
+      if (activeUpgrades.tryAcquire()) {
+        log.info("Upgrading node agent {}", param.getNodeAgentUuid());
+        isUpgradeTokenAcquired.set(true);
+        return true;
+      }
+      log.info(
+          "Postponing node agent {} upgrade as max parallel upgrades has reached",
+          param.getNodeAgentUuid());
+      isUpgradeTokenAcquired.set(false);
+      return false;
+    }
+
+    private void releaseUpgradeToken() {
+      if (isUpgradeTokenAcquired.get()) {
+        activeUpgrades.release();
+        isUpgradeTokenAcquired.set(false);
+      }
     }
 
     @Override
@@ -143,6 +171,8 @@ public class NodeAgentPoller {
       try {
         nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofSeconds(2));
       } catch (RuntimeException e) {
+        // Release on connection error if it was already acquired.
+        releaseUpgradeToken();
         int count =
             lastFailedCount.updateAndGet(val -> val >= MAX_FAILED_CONN_COUNT ? val : val + 1);
         if (count % 10 == 0) {
@@ -185,11 +215,17 @@ public class NodeAgentPoller {
               nodeAgent.heartbeat();
               return;
             }
+            if (!acquireUpgradeToken()) {
+              return;
+            }
             nodeAgent.saveState(State.UPGRADE);
             // Fall-thru to complete in single cycle.
           }
         case UPGRADE:
           {
+            if (!acquireUpgradeToken()) {
+              return;
+            }
             log.info("Initiating upgrade for node agent {}", nodeAgent.uuid);
             InstallerFiles installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, null);
             // Upload the installer files including new cert and key to the remote node agent.
@@ -211,6 +247,9 @@ public class NodeAgentPoller {
           }
         case UPGRADED:
           {
+            if (!acquireUpgradeToken()) {
+              return;
+            }
             log.info("Finalizing upgrade for node agent {}", nodeAgent.uuid);
             // Inform the node agent to restart and load the new cert and key on restart.
             String nodeAgentHome = nodeAgentClient.finalizeUpgrade(nodeAgent);
@@ -226,7 +265,9 @@ public class NodeAgentPoller {
               nodeAgent.home = nodeAgentHome;
               nodeAgent.version = serverInfo.getVersion();
               nodeAgent.saveState(State.READY);
+              releaseUpgradeToken();
               log.info("Node agent {} has been upgraded successfully", nodeAgent.uuid);
+              // Release the node agent is already upgraded.
             }
             break;
           }
@@ -243,9 +284,18 @@ public class NodeAgentPoller {
 
   /** Starts background tasks. */
   public void init() {
-    Duration pollerInterval = appConfig.getDuration(POLLER_INTERVAL_PROPERTY);
+    Duration pollerInterval = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentPollerInterval);
     if (pollerInterval.isZero()) {
-      throw new IllegalArgumentException(String.format("%s cannot be 0", POLLER_INTERVAL_PROPERTY));
+      throw new IllegalArgumentException(
+          String.format(
+              "%s must be greater than 0", GlobalConfKeys.nodeAgentPollerInterval.getKey()));
+    }
+    Integer maxParallelUpgrades =
+        confGetter.getGlobalConf(GlobalConfKeys.maxParallelNodeAgentUpgrades);
+    if (maxParallelUpgrades == null || maxParallelUpgrades < 1) {
+      throw new IllegalArgumentException(
+          String.format(
+              "%s must be greater than 0", GlobalConfKeys.maxParallelNodeAgentUpgrades.getKey()));
     }
     livePollerExecutor =
         platformExecutorFactory.createExecutor(
@@ -255,6 +305,7 @@ public class NodeAgentPoller {
         platformExecutorFactory.createExecutor(
             DEAD_POLLER_POOL_NAME,
             new ThreadFactoryBuilder().setNameFormat("NodeAgentDeadPoller-%d").build());
+    activeUpgrades = new Semaphore(maxParallelUpgrades);
     log.info("Scheduling poller service");
     platformScheduler.schedule(
         NodeAgentHandler.class.getSimpleName() + "Poller",
@@ -301,7 +352,7 @@ public class NodeAgentPoller {
   @VisibleForTesting
   void pollerService() {
     try {
-      Duration duration = appConfig.getDuration(RETENTION_DURATION_PROPERTY);
+      Duration duration = confGetter.getGlobalConf(GlobalConfKeys.deadNodeAgentRetention);
       String softwareVersion =
           Objects.requireNonNull(
               (String) configHelper.getConfig(ConfigType.SoftwareVersion).get("version"));
@@ -327,6 +378,7 @@ public class NodeAgentPoller {
       while (iter.hasNext()) {
         Entry<UUID, PollerTask> entry = iter.next();
         if (!nodeUuids.contains(entry.getKey())) {
+          entry.getValue().releaseUpgradeToken();
           iter.remove();
         }
       }
