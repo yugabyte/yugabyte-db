@@ -115,6 +115,9 @@ YB_STRONGLY_TYPED_BOOL(PostApplyCleanup);
 
 } // namespace
 
+constexpr size_t kRunningTransactionSize = sizeof(RunningTransaction);
+const std::string kParentMemTrackerId = "transactions";
+
 std::string TransactionApplyData::ToString() const {
   return YB_STRUCT_TO_STRING(
       leader_term, transaction_id, op_id, commit_ht, log_ht, sealed, status_tablet, apply_state);
@@ -124,7 +127,8 @@ class TransactionParticipant::Impl
     : public RunningTransactionContext, public TransactionLoaderContext {
  public:
   Impl(TransactionParticipantContext* context, TransactionIntentApplier* applier,
-       const scoped_refptr<MetricEntity>& entity)
+       const scoped_refptr<MetricEntity>& entity,
+       const std::shared_ptr<MemTracker>& tablets_mem_tracker)
       : RunningTransactionContext(context, applier),
         log_prefix_(context->LogPrefix()),
         loader_(this, entity),
@@ -132,6 +136,10 @@ class TransactionParticipant::Impl
     LOG_WITH_PREFIX(INFO) << "Create";
     metric_transactions_running_ = METRIC_transactions_running.Instantiate(entity, 0);
     metric_transaction_not_found_ = METRIC_transaction_not_found.Instantiate(entity);
+    auto parent_mem_tracker = MemTracker::FindOrCreateTracker(
+        kParentMemTrackerId, tablets_mem_tracker);
+    mem_tracker_ = MemTracker::CreateTracker(Format("$0-$1", kParentMemTrackerId,
+        participant_context_.tablet_id()), parent_mem_tracker);
   }
 
   ~Impl() {
@@ -175,6 +183,7 @@ class TransactionParticipant::Impl
       transactions_.clear();
       TransactionsModifiedUnlocked(&min_running_notifier);
       status_resolvers.swap(status_resolvers_);
+      mem_tracker_->UnregisterFromParent();
     }
 
     rpcs_.Shutdown();
@@ -214,6 +223,7 @@ class TransactionParticipant::Impl
     VLOG_WITH_PREFIX(4) << "Create new transaction: " << metadata.transaction_id;
     transactions_.insert(std::make_shared<RunningTransaction>(
         metadata, TransactionalBatchData(), OneWayBitmap(), metadata.start_time, this));
+    mem_tracker_->Consume(kRunningTransactionSize);
     TransactionsModifiedUnlocked(&min_running_notifier);
     return true;
   }
@@ -766,6 +776,7 @@ class TransactionParticipant::Impl
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard<std::mutex> lock(mutex_);
     transactions_.clear();
+    mem_tracker_->Release(mem_tracker_->consumption());
     TransactionsModifiedUnlocked(&min_running_notifier);
   }
 
@@ -1365,6 +1376,7 @@ class TransactionParticipant::Impl
       txn->SetApplyData(pending_apply->state);
     }
     transactions_.insert(txn);
+    mem_tracker_->Consume(kRunningTransactionSize);
     TransactionsModifiedUnlocked(&min_running_notifier);
   }
 
@@ -1401,6 +1413,7 @@ class TransactionParticipant::Impl
         << "Transaction removed twice: " << transaction.id();
     VLOG_WITH_PREFIX(4) << "Remove transaction: " << transaction.id();
     transactions_.erase(it);
+    mem_tracker_->Release(kRunningTransactionSize);
     TransactionsModifiedUnlocked(min_running_notifier);
   }
 
@@ -1524,6 +1537,7 @@ class TransactionParticipant::Impl
       };
       it = transactions_.insert(std::make_shared<RunningTransaction>(
           metadata, TransactionalBatchData(), OneWayBitmap(), HybridTime::kMax, this)).first;
+      mem_tracker_->Consume(kRunningTransactionSize);
       TransactionsModifiedUnlocked(&min_running_notifier);
     }
 
@@ -1700,12 +1714,15 @@ class TransactionParticipant::Impl
   CoarseTimePoint cdc_sdk_min_checkpoint_op_id_expiration_ = CoarseTimePoint::min();
 
   std::condition_variable requests_completed_cond_;
+
+  std::shared_ptr<MemTracker> mem_tracker_ GUARDED_BY(mutex_);
 };
 
 TransactionParticipant::TransactionParticipant(
     TransactionParticipantContext* context, TransactionIntentApplier* applier,
-    const scoped_refptr<MetricEntity>& entity)
-    : impl_(new Impl(context, applier, entity)) {
+    const scoped_refptr<MetricEntity>& entity,
+    const std::shared_ptr<MemTracker>& tablets_mem_tracker)
+    : impl_(new Impl(context, applier, entity, tablets_mem_tracker)) {
 }
 
 TransactionParticipant::~TransactionParticipant() {

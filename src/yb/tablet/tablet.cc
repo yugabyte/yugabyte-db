@@ -471,7 +471,8 @@ Tablet::Tablet(const TabletInitData& data)
       data.transaction_participant_context &&
       (is_sys_catalog_ || transactional)) {
     transaction_participant_ = std::make_unique<TransactionParticipant>(
-        data.transaction_participant_context, this, tablet_metrics_entity_);
+        data.transaction_participant_context, this, tablet_metrics_entity_,
+        data.parent_mem_tracker);
   }
 
   // Create index table metadata cache for secondary index update.
