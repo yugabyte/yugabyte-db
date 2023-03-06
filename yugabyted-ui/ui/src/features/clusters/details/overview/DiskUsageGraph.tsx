@@ -22,7 +22,6 @@ const useStyles = makeStyles((theme) => ({
   label: {
     color: theme.palette.grey[600],
     fontWeight: theme.typography.fontWeightRegular as number,
-    marginTop: theme.spacing(0.2),
     textTransform: 'uppercase',
   },
   graphLabel: {

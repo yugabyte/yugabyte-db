@@ -7,7 +7,7 @@ import { Link as RouterLink } from 'react-router-dom';
 
 const useStyles = makeStyles((theme) => ({
   container: {
-    height: '190px',
+    height: '186px',
     overflow: 'auto',
     padding: `${theme.spacing(1)}px 0`,
   },

@@ -4,6 +4,7 @@ import { OverviewTab } from '@app/features/clusters/details/overview/OverviewTab
 import { NodesTab } from '../nodes/NodesTab';
 import { generatePath, Link, Route, Switch, useRouteMatch } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { ActivityTab } from '../activities/ActivityTab';
 
 const useStyles = makeStyles((theme) => ({
   tabSectionContainer: {
@@ -31,11 +32,11 @@ const tabList: ITabListItem[] = [
     component: NodesTab,
     testId: 'ClusterTabList-Nodes'
   },
-  // {
-  //   name: 'tabActivity',
-  //   component: ActivityTab,
-  //   testId: 'ClusterTabList-Activity'
-  // },
+  {
+    name: 'tabActivity',
+    component: ActivityTab,
+    testId: 'ClusterTabList-Activity'
+  },
   // {
   //   name: 'tabSettings',
   //   component: SettingsTab,

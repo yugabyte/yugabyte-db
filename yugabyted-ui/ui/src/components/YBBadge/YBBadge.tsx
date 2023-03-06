@@ -16,7 +16,7 @@ export enum BadgeVariant {
 }
 
 export interface BadgeProps {
-  text: string | ReactNode;
+  text?: string | ReactNode;
   variant?: BadgeVariant;
   icon?: boolean,
 }
@@ -81,34 +81,39 @@ export const YBBadge: FC<BadgeProps> = (props: BadgeProps) => {
   const classes = useStyles({ ...props, icon });
   let alertClassName = classes.root;
   let alertIcon = <span />;
+  let alertText = text;
   switch (variant) {
     case BadgeVariant.Warning:
       alertClassName = clsx(alertClassName, classes.warning);
       alertIcon = <WarningIcon className={clsx(classes.icon, classes.warningIcon)} />;
-      console.log(alertIcon)
+      alertText = text || "Warning";
       break;
     case BadgeVariant.Success:
       alertClassName = clsx(alertClassName, classes.success);
       alertIcon = <SuccessIcon className={clsx(classes.icon, classes.successIcon)} />;
+      alertText = text || "Success";
       break;
     case BadgeVariant.Error:
       alertClassName = clsx(alertClassName, classes.error);
       alertIcon = <ErrorIcon className={clsx(classes.icon, classes.errorIcon)} />;
+      alertText = text || "Error";
       break;
     case BadgeVariant.InProgress:
       alertClassName = clsx(alertClassName, classes.inprogress);
       alertIcon = <LoadingIcon className={clsx(classes.icon, classes.inprogressIcon)} />;
+      alertText = text || "In progress";
       break;
     case BadgeVariant.Info:
     default:
       alertClassName = clsx(alertClassName, classes.info);
       alertIcon = <InfoIcon className={clsx(classes.icon, classes.infoIcon)} />;
+      alertText = text || "Info";
       break;
   }
 
   return (
     <div className={alertClassName} role="alert" aria-label={`alert ${variant}`}>
-      <span>{text}</span>
+      <span>{alertText}</span>
       {icon && alertIcon}
     </div>
   );

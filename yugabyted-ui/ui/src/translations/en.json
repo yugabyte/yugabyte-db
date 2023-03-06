@@ -1082,6 +1082,11 @@
         "master": "Master"
       },
       "activity": {
+        "activity": "Activity",
+        "status": "Status",
+        "starttime": "Start time",
+        "endtime": "End time",
+        "noactivity": "There is no activity",
         "createCluster": "Create Cluster",
         "deleteCluster": "Delete Cluster",
         "editCluster": "Edit Cluster",

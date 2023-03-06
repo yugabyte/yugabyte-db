@@ -6,6 +6,7 @@ import clsx from 'clsx';
 import { formatDistance } from 'date-fns';
 import { BadgeVariant, YBBadge } from '@app/components/YBBadge/YBBadge';
 import { ClusterAlertWidget } from './ClusterAlertWidget';
+import { Link as RouterLink } from 'react-router-dom';
 
 const useStyles = makeStyles((theme) => ({
   divider: {
@@ -51,6 +52,12 @@ const useStyles = makeStyles((theme) => ({
     display: "flex",
     alignItems: "center",
     gap: theme.spacing(1),
+  },
+  link: {
+    '&:link, &:focus, &:active, &:visited, &:hover': {
+      textDecoration: 'none',
+      color: theme.palette.text.primary
+    }
   }
 }));
 
@@ -74,33 +81,35 @@ export const ClusterActivityWidget: FC<ClusterActivityWidgetProps> = () => {
 
   return (
     <Box>
-      <Box display="flex" alignItems="center">
-        <Typography variant="body2" className={classes.title}>{t('clusterDetail.overview.activities')}</Typography>
-        <Link>
-          <ChevronRight className={classes.arrow} />
-        </Link>
-      </Box>
-      <Grid container className={classes.container}>
-        {activities.length === 0 ?
-          <Typography variant="body2" className={clsx(classes.label, classes.marginBottom)}>
-            {t('clusterDetail.overview.noActivities')}
-          </Typography>
-          :
-          <Box className={classes.activityContainer}>
-            <Typography variant="body2" className={classes.label}>
-              {formatDistance(activities[0].at, new Date(), { addSuffix: true })}
+      <Link className={classes.link} component={RouterLink} to="tabActivity">
+        <Box display="flex" alignItems="center">
+          <Typography variant="body2" className={classes.title}>{t('clusterDetail.overview.activities')}</Typography>
+          <Link>
+            <ChevronRight className={classes.arrow} />
+          </Link>
+        </Box>
+        <Grid container className={classes.container}>
+          {activities.length === 0 ?
+            <Typography variant="body2" className={clsx(classes.label, classes.marginBottom)}>
+              {t('clusterDetail.overview.noActivities')}
             </Typography>
-            <Box className={classes.activityContent}>
-              <Typography variant="body2" className={classes.title} noWrap>
-                {activities[0].activity}
+            :
+            <Box className={classes.activityContainer}>
+              <Typography variant="body2" className={classes.label}>
+                {formatDistance(activities[0].at, new Date(), { addSuffix: true })}
               </Typography>
-              <Box className={classes.statusContainer}>
-                <YBBadge variant={BadgeVariant.InProgress} text={activities[0].status} />
+              <Box className={classes.activityContent}>
+                <Typography variant="body2" className={classes.title} noWrap>
+                  {activities[0].activity}
+                </Typography>
+                <Box className={classes.statusContainer}>
+                  <YBBadge variant={BadgeVariant.InProgress} text={activities[0].status} />
+                </Box>
               </Box>
             </Box>
-          </Box>
-        }
-      </Grid>
+          }
+        </Grid>
+      </Link>
       <Divider orientation="horizontal" variant="middle" className={classes.divider} />
       <ClusterAlertWidget />
     </Box>
