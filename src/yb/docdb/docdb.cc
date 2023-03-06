@@ -230,6 +230,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
     const scoped_refptr<Histogram>& write_lock_latency,
+    const scoped_refptr<Counter>& failed_batch_lock,
     const IsolationLevel isolation_level,
     const OperationKind operation_kind,
     const RowMarkType row_mark_type,
@@ -257,8 +258,14 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   const MonoTime start_time = (write_lock_latency != nullptr) ? MonoTime::Now() : MonoTime();
   result.lock_batch = LockBatch(
       lock_manager, std::move(determine_keys_to_lock_result.lock_batch), deadline);
-  RETURN_NOT_OK_PREPEND(
-      result.lock_batch.status(), Format("Timeout: $0", deadline - ToCoarse(start_time)));
+  auto lock_status = result.lock_batch.status();
+  if (!lock_status.ok()) {
+    if (failed_batch_lock != nullptr) {
+      failed_batch_lock->Increment();
+    }
+    return lock_status.CloneAndAppend(
+        Format("Timeout: $0", deadline - ToCoarse(start_time)));
+  }
   if (write_lock_latency != nullptr) {
     const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(start_time);
     write_lock_latency->Increment(elapsed_time.ToMicroseconds());
