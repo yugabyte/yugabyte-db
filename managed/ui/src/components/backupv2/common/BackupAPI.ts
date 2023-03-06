@@ -11,7 +11,9 @@ import axios from 'axios';
 import { Dictionary, groupBy } from 'lodash';
 import { IBackup, Keyspace_Table, RESTORE_ACTION_TYPE, TIME_RANGE_STATE } from '..';
 import { ROOT_URL } from '../../../config';
+import { convertToISODateString } from '../../../redesign/helpers/DateUtils';
 import { MILLISECONDS_IN } from '../scheduled/ScheduledBackupUtils';
+
 import {
   BACKUP_API_TYPES,
   Backup_Options_Type,
@@ -20,6 +22,7 @@ import {
   ITable,
   ThrottleParameters
 } from './IBackup';
+
 
 export function getBackupsList(
   page = 0,
@@ -59,8 +62,8 @@ export function getBackupsList(
     payload.filter['states'] = [states[0].value];
   }
   if (timeRange.startTime && timeRange.endTime) {
-    payload.filter['dateRangeStart'] = timeRange.startTime.toISOString();
-    payload.filter['dateRangeEnd'] = timeRange.endTime.toISOString();
+    payload.filter['dateRangeStart'] = convertToISODateString(timeRange.startTime);
+    payload.filter['dateRangeEnd'] = convertToISODateString(timeRange.endTime);
   }
 
   if (Array.isArray(moreFilters) && moreFilters?.length > 0) {

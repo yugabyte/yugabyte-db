@@ -86,7 +86,7 @@ class ArenaWrappedDBIter : public Iterator {
   void RevalidateAfterUpperBoundChange() override;
 
   virtual bool ScanForward(
-    const Slice& upperbound, KeyFilterCallback* key_filter_callback,
+    Slice upperbound, KeyFilterCallback* key_filter_callback,
     ScanCallback* scan_callback) override;
 
  private:

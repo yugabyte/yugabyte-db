@@ -494,4 +494,22 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable scope strictness while setting runtime keys",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> ansibleOffloadSupportedVersion =
+      new ConfKeyInfo<>(
+          "yb.node_agent.ansible_offloading.min_supported_version",
+          ScopeType.GLOBAL,
+          "Ansible Offloading Supported Version",
+          "Minimum supported version for ansible offloading",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> backwardCompatibleDate =
+      new ConfKeyInfo<>(
+          "yb.api.backward_compatible_date",
+          ScopeType.GLOBAL,
+          "API support for backward compatible date fields",
+          "Enable when a client to the YBAnywhere API wants to continue using the older date "
+              + " fields in non-ISO format. Default behaviour is to not populate such deprecated "
+              + "API fields and only return newer date fields.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

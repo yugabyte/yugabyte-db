@@ -18,7 +18,7 @@ import {
   getUniverseNodeCount
 } from '../../../utils/UniverseUtils';
 import { isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
-import { TimestampWithTimezone } from '../../common/timestampWithTimezone/TimestampWithTimezone';
+import { ybFormatDate, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
 
 import './UniverseDisplayPanel.scss';
 
@@ -74,7 +74,7 @@ class UniverseDisplayItem extends Component {
       );
     }
     const universeCreationDate = universe.creationDate ? (
-      <TimestampWithTimezone timeFormat="MM/DD/YYYY" timestamp={universe.creationDate} />
+      ybFormatDate(universe.creationDate, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP)
     ) : (
       ''
     );

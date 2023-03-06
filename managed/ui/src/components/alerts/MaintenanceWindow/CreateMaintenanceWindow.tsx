@@ -16,12 +16,12 @@ import { useMutation } from 'react-query';
 import {
   convertUTCStringToDate,
   createMaintenanceWindow,
-  formatDateToUTC,
   MaintenanceWindowSchema,
   updateMaintenanceWindow
 } from '.';
 import { toast } from 'react-toastify';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
+import { convertToISODateString, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const reactWidgets = require('react-widgets');
@@ -54,7 +54,7 @@ const initialValues = {
   selectedUniverse: []
 };
 
-const DATE_FORMAT = 'YYYY-DD-MMMM';
+const DATE_FORMAT = YBTimeFormats.YB_DATE_ONLY_TIMESTAMP;
 
 const validationSchema = Yup.object().shape({
   name: Yup.string().required('Enter name'),
@@ -208,7 +208,7 @@ export const CreateMaintenanceWindow: FC<CreateMaintenanceWindowProps> = ({
                 formats={DATE_FORMAT}
                 min={new Date()}
                 onChange={(time: Date) =>
-                  setFieldValue('startTime' as never, formatDateToUTC(time), false)
+                  setFieldValue('startTime' as never, convertToISODateString(time), false)
                 }
                 defaultValue={
                   values['startTime'] ? convertUTCStringToDate(values['startTime']) : null
@@ -224,7 +224,7 @@ export const CreateMaintenanceWindow: FC<CreateMaintenanceWindowProps> = ({
                 step={10}
                 min={moment(new Date()).add(1, 'm').toDate()}
                 onChange={(time: Date) =>
-                  setFieldValue('endTime' as never, formatDateToUTC(time), false)
+                  setFieldValue('endTime' as never, convertToISODateString(time), false)
                 }
                 defaultValue={values['endTime'] ? convertUTCStringToDate(values['endTime']) : null}
               />

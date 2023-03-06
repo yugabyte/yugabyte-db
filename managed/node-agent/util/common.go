@@ -37,6 +37,7 @@ const (
 	GetVersionEndpoint      = "/api/app_version"
 	UpgradeScript           = "node-agent-installer.sh"
 	InstallScript           = "node-agent-installer.sh"
+	RequestIdHeader         = "X-REQUEST-ID"
 
 	// Cert names.
 	NodeAgentCertFile = "node_agent.crt"
@@ -75,10 +76,17 @@ const (
 	NodeAgentLogMaxDaysKey    = "node.log_max_days"
 )
 
+const (
+	CorrelationId ContextKey = "correlation-id"
+)
+
 var (
 	nodeAgentHome         string
 	onceLoadNodeAgentHome = &sync.Once{}
 )
+
+// ContextKey is the key type go context values.
+type ContextKey string
 
 type Handler func(context.Context) (any, error)
 
@@ -268,4 +276,17 @@ func UserInfo(username string) (*user.User, uint32, uint32, error) {
 		return nil, 0, 0, err
 	}
 	return userAcc, uint32(uid), uint32(gid), nil
+}
+
+// CorrelationID returns the correlation ID from the context.
+func CorrelationID(ctx context.Context) string {
+	if v := ctx.Value(CorrelationId); v != nil {
+		return v.(string)
+	}
+	return ""
+}
+
+// WithCorrelationID creates a child context with correlation ID.
+func WithCorrelationID(ctx context.Context, corrId string) context.Context {
+	return context.WithValue(ctx, CorrelationId, corrId)
 }

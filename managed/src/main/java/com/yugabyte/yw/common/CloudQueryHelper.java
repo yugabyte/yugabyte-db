@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import java.util.ArrayList;
@@ -26,10 +27,10 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
-import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 public class CloudQueryHelper extends DevopsBase {
@@ -61,9 +62,12 @@ public class CloudQueryHelper extends DevopsBase {
       commandArgs.add("--metadata_types");
       commandArgs.addAll(metadataTypes);
     }
-    return parseShellResponse(
-        execCommand(null, null, cloudType, "current-host", commandArgs, new ArrayList<>()),
-        "current-host");
+    return execAndParseShellResponse(
+        DevopsCommand.builder()
+            .cloudType(cloudType)
+            .command("current-host")
+            .commandArgs(commandArgs)
+            .build());
   }
 
   public List<String> getRegionCodes(Provider p) {
@@ -71,14 +75,20 @@ public class CloudQueryHelper extends DevopsBase {
     if (p.code.equals("gcp")) {
       // TODO: ideally we shouldn't have this hardcoded string present in multiple
       // places.
-      Map<String, String> config = CloudInfoInterface.fetchEnvVars(p);
-      String potentialGcpNetwork = config.get("CUSTOM_GCE_NETWORK");
+      GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(p);
+      String potentialGcpNetwork = gcpCloudInfo.getDestVpcId();
       if (potentialGcpNetwork != null && !potentialGcpNetwork.isEmpty()) {
         commandArgs.add("--network");
         commandArgs.add(potentialGcpNetwork);
       }
     }
-    JsonNode regionInfo = execAndParseCommandCloud(p.uuid, "regions", commandArgs);
+    JsonNode regionInfo =
+        execAndParseShellResponse(
+            DevopsCommand.builder()
+                .providerUUID(p.uuid)
+                .command("regions")
+                .commandArgs(commandArgs)
+                .build());
     List<String> regionCodes = ImmutableList.of();
     if (regionInfo instanceof ArrayNode) {
       regionCodes = Json.fromJson(regionInfo, List.class);
@@ -105,7 +115,12 @@ public class CloudQueryHelper extends DevopsBase {
       commandArgs.add("--custom_payload");
       commandArgs.add(customPayload);
     }
-    return execAndParseCommandRegion(region.uuid, "zones", commandArgs);
+    return execAndParseShellResponse(
+        DevopsCommand.builder()
+            .regionUUID(region.uuid)
+            .command("zones")
+            .commandArgs(commandArgs)
+            .build());
   }
 
   /*
@@ -142,14 +157,24 @@ public class CloudQueryHelper extends DevopsBase {
       commandArgs.add("--custom_payload");
       commandArgs.add(customPayload);
     }
-    return execAndParseCommandRegion(regionList.get(0).uuid, "instance_types", commandArgs);
+    return execAndParseShellResponse(
+        DevopsCommand.builder()
+            .regionUUID(regionList.get(0).uuid)
+            .command("instance_types")
+            .commandArgs(commandArgs)
+            .build());
   }
 
   public JsonNode getMachineImages(UUID providerUUID, Region region) {
     List<String> commandArgs = new ArrayList<>();
     commandArgs.add("--regions");
     commandArgs.add(region.code);
-    return execAndParseCommandCloud(providerUUID, "ami", commandArgs);
+    return execAndParseShellResponse(
+        DevopsCommand.builder()
+            .providerUUID(providerUUID)
+            .command("ami")
+            .commandArgs(commandArgs)
+            .build());
   }
 
   public JsonNode queryVpcs(UUID regionUUID, String arch) {
@@ -158,7 +183,12 @@ public class CloudQueryHelper extends DevopsBase {
       commandArgs.add("--architecture");
       commandArgs.add(arch);
     }
-    return execAndParseCommandRegion(regionUUID, "vpc", commandArgs);
+    return execAndParseShellResponse(
+        DevopsCommand.builder()
+            .regionUUID(regionUUID)
+            .command("vpc")
+            .commandArgs(commandArgs)
+            .build());
   }
 
   public String getDefaultImage(Region region, String architecture) {
@@ -179,7 +209,12 @@ public class CloudQueryHelper extends DevopsBase {
     List<String> commandArgs = new ArrayList<>();
     commandArgs.add("--machine_image");
     commandArgs.add(ybImage);
-    return execAndParseCommandRegion(regionUUID, "image", commandArgs);
+    return execAndParseShellResponse(
+        DevopsCommand.builder()
+            .regionUUID(regionUUID)
+            .command("image")
+            .commandArgs(commandArgs)
+            .build());
   }
 
   public String getImageArchitecture(Region region) {
@@ -205,7 +240,12 @@ public class CloudQueryHelper extends DevopsBase {
 
   public JsonNode queryVnet(UUID regionUUID) {
     List<String> commandArgs = new ArrayList<>();
-    return execAndParseCommandRegion(regionUUID, "vnet", commandArgs);
+    return execAndParseShellResponse(
+        DevopsCommand.builder()
+            .regionUUID(regionUUID)
+            .command("vnet")
+            .commandArgs(commandArgs)
+            .build());
   }
 
   public String getVnetOrFail(Region region) {

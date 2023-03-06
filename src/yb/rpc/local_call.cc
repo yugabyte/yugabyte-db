@@ -34,10 +34,11 @@ LocalOutboundCall::LocalOutboundCall(
     const RemoteMethod* remote_method,
     const shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
     AnyMessagePtr response_storage, RpcController* controller,
-    std::shared_ptr<RpcMetrics> rpc_metrics, ResponseCallback callback)
+    std::shared_ptr<RpcMetrics> rpc_metrics, ResponseCallback callback,
+    ThreadPool* callback_thread_pool)
     : OutboundCall(remote_method, outbound_call_metrics, /* method_metrics= */ nullptr,
                    response_storage, controller, std::move(rpc_metrics), std::move(callback),
-                   /* callback_thread_pool= */ nullptr) {
+                   callback_thread_pool) {
   TRACE_TO(trace_, "LocalOutboundCall");
 }
 

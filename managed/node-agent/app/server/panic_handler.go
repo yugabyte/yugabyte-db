@@ -7,8 +7,34 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
+
+type serverStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+// Context returns the overridden context.
+func (ss *serverStream) Context() context.Context {
+	return ss.ctx
+}
+
+func withCorrelationID(srvCtx context.Context) context.Context {
+	corrId := ""
+	md, ok := metadata.FromIncomingContext(srvCtx)
+	if ok {
+		values := md[util.RequestIdHeader]
+		if len(values) > 0 {
+			corrId = values[0]
+		}
+	}
+	if corrId == "" {
+		corrId = util.NewUUID().String()
+	}
+	return util.WithCorrelationID(srvCtx, util.NewUUID().String())
+}
 
 // UnaryPanicHandler returns the ServerOption to handle panic occurred in the unary interceptor
 // or the downstream unary handler.
@@ -21,10 +47,11 @@ func UnaryPanicHandler(interceptor grpc.UnaryServerInterceptor) grpc.ServerOptio
 	) (response interface{}, err error) {
 		defer func() {
 			if e := recover(); e != nil {
-				util.FileLogger().Errorf("Panic occurred: %v", string(debug.Stack()))
+				util.FileLogger().Errorf(ctx, "Panic occurred: %v", string(debug.Stack()))
 				err = status.Errorf(codes.Internal, "Internal error occurred")
 			}
 		}()
+		ctx = withCorrelationID(ctx)
 		if interceptor == nil {
 			response, err = handler(ctx, req)
 		} else {
@@ -43,12 +70,15 @@ func StreamPanicHandler(interceptor grpc.StreamServerInterceptor) grpc.ServerOpt
 		info *grpc.StreamServerInfo,
 		handler grpc.StreamHandler,
 	) (err error) {
+		ctx := stream.Context()
 		defer func() {
 			if e := recover(); e != nil {
-				util.FileLogger().Errorf("Panic occurred: %v", string(debug.Stack()))
+				util.FileLogger().Errorf(ctx, "Panic occurred: %v", string(debug.Stack()))
 				err = status.Errorf(codes.Internal, "Internal error occurred")
 			}
 		}()
+		ctx = withCorrelationID(ctx)
+		stream = &serverStream{stream, ctx}
 		if interceptor == nil {
 			err = handler(srv, stream)
 		} else {

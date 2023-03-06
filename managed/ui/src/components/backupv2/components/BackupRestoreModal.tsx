@@ -30,7 +30,6 @@ import {
 } from '..';
 import { YBModalForm } from '../../common/forms';
 import {
-  FormatUnixTimeStampTimeToTimezone,
   KEYSPACE_VALIDATION_REGEX,
   SPINNER_ICON
 } from '../common/BackupUtils';
@@ -57,6 +56,7 @@ import { TableType } from '../../../redesign/helpers/dtos';
 import clsx from 'clsx';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import './BackupRestoreModal.scss';
 
 interface RestoreModalProps {
@@ -123,9 +123,9 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
 
   const kmsConfigList = kmsConfigs
     ? kmsConfigs.map((config: any) => {
-        const labelName = config.metadata.provider + ' - ' + config.metadata.name;
-        return { value: config.metadata.configUUID, label: labelName };
-      })
+      const labelName = config.metadata.provider + ' - ' + config.metadata.name;
+      return { value: config.metadata.configUUID, label: labelName };
+    })
     : [];
 
   const restore = useMutation(
@@ -178,7 +178,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
   );
 
   const footerActions = [
-    () => {},
+    () => { },
     () => {
       setCurrentStep(currentStep - 1);
       setOverrideSubmitLabel(TEXT_RENAME_DATABASE);
@@ -308,11 +308,11 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
     keyspaces:
       currentStep === 1
         ? Yup.array(
-            Yup.string().matches(KEYSPACE_VALIDATION_REGEX, {
-              message: 'Invalid keyspace name',
-              excludeEmptyString: true
-            })
-          )
+          Yup.string().matches(KEYSPACE_VALIDATION_REGEX, {
+            message: 'Invalid keyspace name',
+            excludeEmptyString: true
+          })
+        )
         : Yup.array(Yup.string()),
     parallelThreads: Yup.number()
       .min(1, 'Parallel threads should be greater than or equal to 1')
@@ -448,9 +448,7 @@ function RestoreChooseUniverseForm({
         </Col>
         <Col lg={6} className="no-padding align-right">
           <div className="title">Created at</div>
-          <FormatUnixTimeStampTimeToTimezone
-            timestamp={backup_details.commonBackupInfo.createTime}
-          />
+          {ybFormatDate(backup_details.commonBackupInfo.createTime)}
         </Col>
       </Row>
       <Row>
@@ -553,9 +551,8 @@ function RestoreChooseUniverseForm({
             <Field
               name="should_rename_keyspace"
               component={YBCheckBox}
-              label={`Rename databases in this backup before restoring (${
-                values['disable_keyspace_rename'] ? 'Required' : 'Optional'
-              })`}
+              label={`Rename databases in this backup before restoring (${values['disable_keyspace_rename'] ? 'Required' : 'Optional'
+                })`}
               input={{
                 checked: values['should_rename_keyspace'],
                 onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -631,8 +628,8 @@ export function RenameKeyspace({
           values.backup.commonBackupInfo.responseList.map(
             (keyspace: Keyspace_Table, index: number) =>
               values['searchText'] &&
-              keyspace.keyspace &&
-              !keyspace.keyspace.includes(values['searchText']) ? null : (
+                keyspace.keyspace &&
+                !keyspace.keyspace.includes(values['searchText']) ? null : (
                 // eslint-disable-next-line react/jsx-indent
                 <Row key={index}>
                   <Col lg={6} className="keyspaces-input no-padding">

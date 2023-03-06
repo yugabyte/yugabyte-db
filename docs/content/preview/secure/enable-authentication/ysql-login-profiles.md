@@ -1,4 +1,4 @@
-<!--
+---
 title: Create login profiles
 headerTitle: Create and configure login profiles in YSQL
 linkTitle: Create login profiles
@@ -10,14 +10,8 @@ menu:
     parent: enable-authentication
     weight: 725
 type: docs
--->
-{{< note title="Note" >}}
+---
 
-This feature is currently only available in [v2.14.6](../../../../v2.14/secure/enable-authentication/ysql-login-profiles/).
-
-{{< /note >}}
-
-<!--
 To enhance the security of your database, you can enable login profiles to lock accounts after a specified number of login attempts. This prevents brute force exploits.
 
 When enabled, database administrators with superuser (or in YugabyteDB Managed, `yb_db_admin`) privileges can create login profiles and assign roles to the profiles.
@@ -128,7 +122,7 @@ To re-enable accounts, do the following:
 1. Restart the cluster with profiles enabled.
 1. Connect as the new superuser and issue the profile commands to unlock the accounts.
 
-## Timed locked behaviour
+<!--## Timed locked behaviour
 
 A profile can be locked indefinitely or for a specific interval. The `pg_yb_role_profile` has two states for the different LOCK behaviour:
 
@@ -137,7 +131,7 @@ A profile can be locked indefinitely or for a specific interval. The `pg_yb_role
 
 A role is moved to the LOCKED(TIMED) state when the number of consecutive failed attempts exceeds the limit. The interval (in seconds) to lock the role is read from `pg_yb_profile.prfpasswordlocktime`. The interval is added to the current timestamp and stored in `pg_yb_role_profile.pg_yb_rolprflockeduntil`. Login attempts by the role before `pg_yb_role_profile.pg_yb_rolprflockeduntil` will fail. If the column is NULL, then it is moved to LOCKED state instead.
 
-When the role successfully logs in after `pg_yb_role_profile.pg_yb_rolprflockeduntil`, the role is moved to the OPEN state, and is allowed to log in. Failed attempts after the lock time out period don't modify `pg_yb_role_profile.pg_yb_rolprflockeduntil`.
+When the role successfully logs in after `pg_yb_role_profile.pg_yb_rolprflockeduntil`, the role is moved to the OPEN state, and is allowed to log in. Failed attempts after the lock time out period don't modify `pg_yb_role_profile.pg_yb_rolprflockeduntil`. -->
 
 ## View profiles
 
@@ -202,7 +196,7 @@ yugabyte=# \dgP
 ```
 -->
 
-<!--## Limitations and caveats
+## Limitations and caveats
 
 - A profile can't be modified using `ALTER PROFILE`. If a profile needs to be modified, create a new profile.
 - Currently a role is locked indefinitely unless an administrator unlocks the role.
@@ -219,4 +213,3 @@ yugabyte=# \dgP
 - The `\h` and `\dg` meta commands do not currently provide information about PROFILE and ROLE PROFILE catalog objects.
 
 Enhancements to login profiles are tracked in GitHub issue [#15676](https://github.com/yugabyte/yugabyte-db/issues/15676).
--->

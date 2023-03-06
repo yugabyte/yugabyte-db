@@ -51,30 +51,33 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   }
   ~DocRowwiseIteratorTest() override {}
 
-  // TODO Could define them out of class, so one line would be enough for them.
-  static const KeyBytes kEncodedDocKey1;
-  static const KeyBytes kEncodedDocKey2;
-  static const Schema kSchemaForIteratorTests;
-  static Schema kProjectionForIteratorTests;
-
   void SetUp() override {
     FLAGS_TEST_docdb_sort_weak_intents = true;
     DocDBTestBase::SetUp();
   }
 
-  static void SetUpTestCase() {
-    ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "d", "e"},
-        &kProjectionForIteratorTests));
+  const Schema& projection() {
+    if (!projection_) {
+      projection_.emplace();
+      CHECK_OK(doc_read_context().schema.CreateProjectionByNames({"c", "d", "e"}, &*projection_));
+    }
+    return *projection_;
   }
+
+  Schema CreateSchema() override;
 
   void InsertPopulationData();
 
   void InsertTestRangeData();
 
+  void InsertPackedRow(
+      SchemaVersion version, std::reference_wrapper<const SchemaPacking> schema_packing,
+      const KeyBytes &doc_key, HybridTime ht,
+      std::initializer_list<std::pair<ColumnId, const QLValuePB>> columns);
+
   virtual Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
       const Schema &projection,
-      std::reference_wrapper<const DocReadContext>
-          doc_read_context,
+      std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext &txn_op_context,
       const DocDB &doc_db,
       CoarseTimePoint deadline,
@@ -91,8 +94,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
 
   virtual Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
       const Schema &projection,
-      std::reference_wrapper<const DocReadContext>
-          doc_read_context,
+      std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext &txn_op_context,
       const DocDB &doc_db,
       CoarseTimePoint deadline,
@@ -109,8 +111,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
 
   virtual Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
       const Schema &projection,
-      std::reference_wrapper<const DocReadContext>
-          doc_read_context,
+      std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext &txn_op_context,
       const DocDB &doc_db,
       CoarseTimePoint deadline,
@@ -123,6 +124,32 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
     RETURN_NOT_OK(iter->Init(YQL_TABLE_TYPE));
     return iter;
   }
+
+  // CreateIteratorAndValidate functions create iterator and validate output of both Iterate() and
+  // HasNext/DoNextRow access patterns.
+  template <class T>
+  void CreateIteratorAndValidate(
+      const Schema &schema,
+      const ReadHybridTime &read_time,
+      const T &spec,
+      const std::string &expected,
+      const HybridTime &max_seen_ht = HybridTime::kInvalid,
+      const Schema *projection = nullptr,
+      const TransactionOperationContext &txn_op_context = kNonTransactionalOperationContext);
+
+  void CreateIteratorAndValidate(
+      const Schema &schema,
+      const ReadHybridTime &read_time,
+      const std::string &expected,
+      const HybridTime &max_seen_ht = HybridTime::kInvalid,
+      const Schema *projection = nullptr,
+      const TransactionOperationContext &txn_op_context = kNonTransactionalOperationContext);
+
+  void CreateIteratorAndValidate(
+      const ReadHybridTime &read_time,
+      const std::string &expected,
+      const HybridTime &max_seen_ht = HybridTime::kInvalid,
+      const TransactionOperationContext &txn_op_context = kNonTransactionalOperationContext);
 
   // Test case implementation.
   void TestClusteredFilterRange();
@@ -154,23 +181,28 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   void TestScanWithinTheSameTxn();
   void TestLargeKeys();
   void TestPackedRow();
+  void TestDeleteMarkerWithPackedRow();
+  void TestUpdatePackedRow();
   // Restore doesn't use delete tombstones for rows, instead marks all columns
   // as deleted.
   void TestDeletedDocumentUsingLivenessColumnDelete();
+
+  std::optional<Schema> projection_;
 };
 
-const std::string kStrKey1 = "row1";
-constexpr int64_t kIntKey1 = 11111;
-const std::string kStrKey2 = "row2";
-constexpr int64_t kIntKey2 = 22222;
+static const std::string kStrKey1 = "row1";
+static constexpr int64_t kIntKey1 = 11111;
+static const std::string kStrKey2 = "row2";
+static constexpr int64_t kIntKey2 = 22222;
 
-const KeyBytes DocRowwiseIteratorTest::kEncodedDocKey1(
+static const KeyBytes kEncodedDocKey1(
     DocKey(KeyEntryValues(kStrKey1, kIntKey1)).Encode());
 
-const KeyBytes DocRowwiseIteratorTest::kEncodedDocKey2(
+static const KeyBytes kEncodedDocKey2(
     DocKey(KeyEntryValues(kStrKey2, kIntKey2)).Encode());
 
-const Schema DocRowwiseIteratorTest::kSchemaForIteratorTests({
+Schema DocRowwiseIteratorTest::CreateSchema() {
+  return Schema({
         ColumnSchema("a", DataType::STRING, /* is_nullable = */ false),
         ColumnSchema("b", DataType::INT64, false),
         // Non-key columns
@@ -184,9 +216,7 @@ const Schema DocRowwiseIteratorTest::kSchemaForIteratorTests({
         40_ColId,
         50_ColId
     }, 2);
-
-Schema DocRowwiseIteratorTest::kProjectionForIteratorTests;
-
+}
 constexpr int32_t kFixedHashCode = 0;
 
 const KeyBytes GetKeyBytes(
@@ -319,9 +349,143 @@ void DocRowwiseIteratorTest::InsertTestRangeData() {
   }
 }
 
+void DocRowwiseIteratorTest::InsertPackedRow(
+    SchemaVersion version, std::reference_wrapper<const SchemaPacking> schema_packing,
+    const KeyBytes &doc_key, HybridTime ht,
+    std::initializer_list<std::pair<ColumnId, const QLValuePB>> columns) {
+  RowPacker packer(
+      version, schema_packing, /* packed_size_limit= */ std::numeric_limits<int64_t>::max(),
+      /* value_control_fields= */ Slice());
+
+  for (auto &column : columns) {
+    ASSERT_OK(packer.AddValue(column.first, column.second));
+  }
+  auto packed_row = ASSERT_RESULT(packer.Complete());
+
+  ASSERT_OK(SetPrimitive(
+      DocPath(doc_key), ValueControlFields(), ValueRef(packed_row), ht));
+}
+
+Result<std::string> QLTableRowToString(
+    const Schema &schema, const QLTableRow &row, const Schema *projection) {
+  QLValue value;
+  std::stringstream buffer;
+  buffer << "{";
+  for (size_t idx = 0; idx < schema.num_columns(); idx++) {
+    if (idx != 0) {
+      buffer << ",";
+    }
+    if (projection &&
+        projection->find_column_by_id(schema.column_id(idx)) == Schema::kColumnNotFound) {
+      buffer << "missing";
+    } else {
+      RETURN_NOT_OK(row.GetValue(schema.column_id(idx), &value));
+      buffer << value.ToString();
+    }
+  }
+  buffer << "}";
+  return buffer.str();
+}
+
+Result<std::string> ConvertIteratorRowsToString(
+    YQLRowwiseIteratorIf *iter,
+    const Schema &schema,
+    bool use_iterate_callback = false,
+    const Schema *projection = nullptr) {
+  std::stringstream buffer;
+  if (use_iterate_callback) {
+    RETURN_NOT_OK(iter->Iterate([&](const QLTableRow &row) -> Result<ContinueScan> {
+      buffer << VERIFY_RESULT(QLTableRowToString(schema, row, projection));
+      buffer << "\n";
+
+      return ContinueScan::kTrue;
+    }));
+  } else {
+    QLTableRow row;
+    while (VERIFY_RESULT(iter->HasNext())) {
+      RETURN_NOT_OK(iter->NextRow(&row));
+      buffer << VERIFY_RESULT(QLTableRowToString(schema, row, projection));
+      buffer << "\n";
+    }
+  }
+
+  return buffer.str();
+}
+
+void ValidateIterator(
+    YQLRowwiseIteratorIf *iter,
+    const Schema &schema,
+    bool use_iterate_callback,
+    const Schema *projection,
+    const std::string &expected,
+    const HybridTime &expected_max_seen_ht) {
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      expected,
+      ASSERT_RESULT(
+          ConvertIteratorRowsToString(iter, schema, use_iterate_callback, projection)));
+
+  ASSERT_EQ(expected_max_seen_ht, iter->TEST_MaxSeenHt());
+}
+
+template <class T>
+void DocRowwiseIteratorTest::CreateIteratorAndValidate(
+    const Schema &schema,
+    const ReadHybridTime &read_time,
+    const T &spec,
+    const std::string &expected,
+    const HybridTime &expected_max_seen_ht,
+    const Schema *projection,
+    const TransactionOperationContext &txn_op_context) {
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
+
+  for (bool use_iterate_callback : {false, true}) {
+    auto iter = ASSERT_RESULT(CreateIterator(
+        projection ? *projection : schema, doc_read_context, txn_op_context, doc_db(),
+        CoarseTimePoint::max() /* deadline */, read_time, spec));
+
+    ValidateIterator(
+        iter.get(), schema, use_iterate_callback, projection, expected, expected_max_seen_ht);
+  }
+}
+
+void DocRowwiseIteratorTest::CreateIteratorAndValidate(
+    const Schema &schema,
+    const ReadHybridTime &read_time,
+    const std::string &expected,
+    const HybridTime &expected_max_seen_ht,
+    const Schema *projection,
+    const TransactionOperationContext &txn_op_context) {
+
+  for (bool use_iterate_callback : {false, true}) {
+    auto iter = ASSERT_RESULT(CreateIterator(
+        projection ? *projection : schema, doc_read_context(), txn_op_context, doc_db(),
+        CoarseTimePoint::max() /* deadline */, read_time));
+
+    ValidateIterator(
+        iter.get(), schema, use_iterate_callback, projection, expected, expected_max_seen_ht);
+  }
+}
+
+void DocRowwiseIteratorTest::CreateIteratorAndValidate(
+    const ReadHybridTime &read_time,
+    const std::string &expected,
+    const HybridTime &expected_max_seen_ht,
+    const TransactionOperationContext &txn_op_context) {
+  auto& projection = this->projection();
+
+  for (bool use_iterate_callback : {false, true}) {
+    auto iter = ASSERT_RESULT(CreateIterator(
+        projection, doc_read_context(), txn_op_context, doc_db(),
+        CoarseTimePoint::max() /* deadline */, read_time));
+
+    ValidateIterator(
+        iter.get(), doc_read_context().schema, use_iterate_callback, &doc_read_context().schema,
+        expected, expected_max_seen_ht);
+  }
+}
+
 void DocRowwiseIteratorTest::TestClusteredFilterRange() {
   InsertTestRangeData();
-  auto doc_read_context = DocReadContext::TEST_Create(test_range_schema);
 
   const std::vector<KeyEntryValue> hashed_components{KeyEntryValue::Int32(5)};
 
@@ -340,32 +504,12 @@ void DocRowwiseIteratorTest::TestClusteredFilterRange() {
       test_range_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
       rocksdb::kDefaultQueryId);
 
-  auto iter = ASSERT_RESULT(CreateIterator(
-      test_range_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000), spec));
-
-  QLTableRow row;
-  QLValue value;
-  ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-  ASSERT_OK(iter->NextRow(&row));
-
-  ASSERT_OK(row.GetValue(test_range_schema.column_id(0), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(5, value.int32_value());
-
-  ASSERT_OK(row.GetValue(test_range_schema.column_id(1), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(5, value.int32_value());
-
-  ASSERT_OK(row.GetValue(test_range_schema.column_id(2), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(6, value.int32_value());
-
-  ASSERT_OK(row.GetValue(test_range_schema.column_id(3), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(6, value.int32_value());
-
-  ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
+  CreateIteratorAndValidate(
+      test_range_schema, ReadHybridTime::FromMicros(2000), spec,
+      R"#(
+        {int32:5,int32:5,int32:6,int32:6}
+      )#",
+      HybridTime::FromMicros(1000));
 }
 
 void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstone() {
@@ -395,8 +539,6 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstone() {
   DocKey colocation_key(colocation_id);
   ASSERT_OK(DeleteSubDoc(DocPath(colocation_key.Encode()), HybridTime::FromMicros(500)));
 
-  auto doc_read_context = DocReadContext::TEST_Create(test_schema);
-
   PgsqlConditionPB cond;
   auto ids = cond.add_operands()->mutable_tuple();
   ids->add_elems()->set_column_id(12_ColId);
@@ -414,28 +556,12 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstone() {
       test_schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
       empty_hash_code, empty_hash_code, nullptr);
 
-  auto iter = ASSERT_RESULT(CreateIterator(
-      test_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000), spec));
-
-  QLTableRow row;
-  QLValue value;
-  ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-  ASSERT_OK(iter->NextRow(&row));
-
-  ASSERT_OK(row.GetValue(test_schema.column_id(0), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(5, value.int32_value());
-
-  ASSERT_OK(row.GetValue(test_schema.column_id(1), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(6, value.int32_value());
-
-  ASSERT_OK(row.GetValue(test_schema.column_id(2), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(10, value.int32_value());
-
-  ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
+  CreateIteratorAndValidate(
+      test_schema, ReadHybridTime::FromMicros(2000), spec,
+      R"#(
+        {int32:5,int32:6,int32:10}
+      )#",
+      HybridTime::FromMicros(1000));
 }
 
 void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstoneReverseScan() {
@@ -465,8 +591,6 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstoneReverseSc
   DocKey colocation_key(colocation_id);
   ASSERT_OK(DeleteSubDoc(DocPath(colocation_key.Encode()), HybridTime::FromMicros(500)));
 
-  auto doc_read_context = DocReadContext::TEST_Create(test_schema);
-
   PgsqlConditionPB cond;
   auto ids = cond.add_operands()->mutable_tuple();
   ids->add_elems()->set_column_id(12_ColId);
@@ -483,33 +607,16 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstoneReverseSc
       test_schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
       empty_hash_code, empty_hash_code, nullptr, default_doc_key, /* is_forward_scan */ false);
 
-  auto iter = ASSERT_RESULT(CreateIterator(
-      test_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000), spec));
-
-  QLTableRow row;
-  QLValue value;
-  ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-  ASSERT_OK(iter->NextRow(&row));
-
-  ASSERT_OK(row.GetValue(test_schema.column_id(0), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(5, value.int32_value());
-
-  ASSERT_OK(row.GetValue(test_schema.column_id(1), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(6, value.int32_value());
-
-  ASSERT_OK(row.GetValue(test_schema.column_id(2), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(10, value.int32_value());
-
-  ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
+  CreateIteratorAndValidate(
+      test_schema, ReadHybridTime::FromMicros(2000), spec,
+      R"#(
+        {int32:5,int32:6,int32:10}
+      )#",
+      HybridTime::FromMicros(1000));
 }
 
 void DocRowwiseIteratorTest::TestClusteredFilterHybridScan() {
   InsertPopulationData();
-  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
 
@@ -535,64 +642,17 @@ void DocRowwiseIteratorTest::TestClusteredFilterHybridScan() {
       population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
       rocksdb::kDefaultQueryId);
 
-  auto iter = ASSERT_RESULT(CreateIterator(
-      population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000), spec));
-
-  QLTableRow row;
-  QLValue value;
-  ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-  ASSERT_OK(iter->NextRow(&row));
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(INDIA, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(CG, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(DURG, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(AREA1, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(10, value.int64_value());
-
-  ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-  ASSERT_OK(iter->NextRow(&row));
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(INDIA, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(KA, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(MYSORE, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(AREA1, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(10, value.int64_value());
-
-  ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
+  CreateIteratorAndValidate(
+      population_schema, ReadHybridTime::FromMicros(2000), spec,
+      R"#(
+        {string:"INDIA",string:"CG",string:"DURG",string:"AREA1",int64:10}
+        {string:"INDIA",string:"KA",string:"MYSORE",string:"AREA1",int64:10}
+      )#",
+      HybridTime::FromMicros(1000));
 }
 
 void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol() {
   InsertPopulationData();
-  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
 
@@ -614,110 +674,20 @@ void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol() {
   DocQLScanSpec spec(
       population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
       rocksdb::kDefaultQueryId);
-  auto iter = ASSERT_RESULT(CreateIterator(
-      population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000), spec));
 
-  QLTableRow row;
-  QLValue value;
-  ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-  ASSERT_OK(iter->NextRow(&row));
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(INDIA, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(CG, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(DURG, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(AREA1, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(10, value.int64_value());
-
-  ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-  ASSERT_OK(iter->NextRow(&row));
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(INDIA, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(CG, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(DURG, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(AREA2, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(10, value.int64_value());
-
-  ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-  ASSERT_OK(iter->NextRow(&row));
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(INDIA, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(KA, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(MYSORE, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(AREA1, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(10, value.int64_value());
-
-  ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-  ASSERT_OK(iter->NextRow(&row));
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(INDIA, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(KA, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(MYSORE, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(AREA2, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(10, value.int64_value());
-
-  ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
+  CreateIteratorAndValidate(
+      population_schema, ReadHybridTime::FromMicros(2000), spec,
+      R"#(
+        {string:"INDIA",string:"CG",string:"DURG",string:"AREA1",int64:10}
+        {string:"INDIA",string:"CG",string:"DURG",string:"AREA2",int64:10}
+        {string:"INDIA",string:"KA",string:"MYSORE",string:"AREA1",int64:10}
+        {string:"INDIA",string:"KA",string:"MYSORE",string:"AREA2",int64:10}
+      )#",
+      HybridTime::FromMicros(1000));
 }
 
 void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol2() {
   InsertPopulationData();
-  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
 
@@ -739,64 +709,18 @@ void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol2() {
   DocQLScanSpec spec(
       population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
       rocksdb::kDefaultQueryId);
-  auto iter = ASSERT_RESULT(CreateIterator(
-      population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000), spec));
 
-  QLTableRow row;
-  QLValue value;
-  ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-  ASSERT_OK(iter->NextRow(&row));
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(INDIA, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(CG, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(DURG, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(AREA1, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(10, value.int64_value());
-
-  ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-  ASSERT_OK(iter->NextRow(&row));
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(INDIA, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(KA, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(MYSORE, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(AREA1, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(10, value.int64_value());
-
-  ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
+  CreateIteratorAndValidate(
+      population_schema, ReadHybridTime::FromMicros(2000), spec,
+      R"#(
+        {string:"INDIA",string:"CG",string:"DURG",string:"AREA1",int64:10}
+        {string:"INDIA",string:"KA",string:"MYSORE",string:"AREA1",int64:10}
+      )#",
+      HybridTime::FromMicros(1000));
 }
 
 void DocRowwiseIteratorTest::TestClusteredFilterMultiIn() {
   InsertPopulationData();
-  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
 
@@ -827,64 +751,17 @@ void DocRowwiseIteratorTest::TestClusteredFilterMultiIn() {
       population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
       rocksdb::kDefaultQueryId);
 
-  auto iter = ASSERT_RESULT(CreateIterator(
-      population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000), spec));
-
-  QLTableRow row;
-  QLValue value;
-  ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-  ASSERT_OK(iter->NextRow(&row));
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(INDIA, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(CG, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(DURG, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(AREA1, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(10, value.int64_value());
-
-  ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-  ASSERT_OK(iter->NextRow(&row));
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(INDIA, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(KA, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(MYSORE, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(AREA1, value.string_value());
-
-  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ(10, value.int64_value());
-
-  ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
+  CreateIteratorAndValidate(
+      population_schema, ReadHybridTime::FromMicros(2000), spec,
+      R"#(
+        {string:"INDIA",string:"CG",string:"DURG",string:"AREA1",int64:10}
+        {string:"INDIA",string:"KA",string:"MYSORE",string:"AREA1",int64:10}
+      )#",
+      HybridTime::FromMicros(1000));
 }
 
 void DocRowwiseIteratorTest::TestClusteredFilterEmptyIn() {
   InsertPopulationData();
-  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
 
@@ -909,11 +786,10 @@ void DocRowwiseIteratorTest::TestClusteredFilterEmptyIn() {
       population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
       rocksdb::kDefaultQueryId);
 
-  auto iter = ASSERT_RESULT(CreateIterator(
-      population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000), spec));
-
-  ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
+  CreateIteratorAndValidate(
+      population_schema, ReadHybridTime::FromMicros(2000), spec,
+      "",
+      HybridTime::FromMicros(1000));
 }
 
 void DocRowwiseIteratorTest::SetupDocRowwiseIteratorData() {
@@ -971,104 +847,33 @@ void DocRowwiseIteratorTest::SetupDocRowwiseIteratorData() {
 void DocRowwiseIteratorTest::TestDocRowwiseIterator() {
   SetupDocRowwiseIteratorData();
 
-  const Schema &schema = kSchemaForIteratorTests;
-  const Schema &projection = kProjectionForIteratorTests;
-  QLTableRow row;
-  QLValue value;
-  auto doc_read_context = DocReadContext::TEST_Create(schema);
-
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000)));
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row1_c", value.string_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ(10000, value.int64_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row1_e", value.string_value());
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_TRUE(value.IsNull()) << "Value: " << value.ToString();
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ(20000, value.int64_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row2_e", value.string_value());
-
-    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
-  }
+  CreateIteratorAndValidate(
+      ReadHybridTime::FromMicros(2000),
+      R"#(
+        {string:"row1",int64:11111,string:"row1_c",int64:10000,string:"row1_e"}
+        {string:"row2",int64:22222,null,int64:20000,string:"row2_e"}
+      )#",
+      HybridTime::FromMicros(2000));
 
   // Scan at a later hybrid_time.
-
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000)));
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    // This row is exactly the same as in the previous case. TODO: deduplicate.
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row1_c", value.string_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ(10000, value.int64_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row1_e", value.string_value());
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_TRUE(value.IsNull());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_FALSE(value.IsNull());
-
-    // These two rows have different values compared to the previous case.
-    ASSERT_EQ(30000, value.int64_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row2_e_prime", value.string_value());
-
-    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
-  }
+  CreateIteratorAndValidate(
+      ReadHybridTime::FromMicros(5000),
+      R"#(
+        {string:"row1",int64:11111,string:"row1_c",int64:10000,string:"row1_e"}
+        {string:"row2",int64:22222,null,int64:30000,string:"row2_e_prime"}
+      )#",
+      HybridTime::FromMicros(4000));
 }
 
 void DocRowwiseIteratorTest::TestDocRowwiseIteratorCallbackAPI() {
   SetupDocRowwiseIteratorData();
 
-  const Schema &schema = kSchemaForIteratorTests;
-  const Schema &projection = kProjectionForIteratorTests;
   QLValue value;
-  auto doc_read_context = DocReadContext::TEST_Create(schema);
+  const auto& projection = this->projection();
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+        projection, doc_read_context(), kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000)));
 
     size_t row_idx = 0;
@@ -1116,7 +921,7 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorCallbackAPI() {
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+        projection, doc_read_context(), kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000)));
 
     size_t row_idx = 0;
@@ -1165,7 +970,7 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorCallbackAPI() {
   // Validate the callback function result.
   {
     auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+        projection, doc_read_context(), kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000)));
 
     YQLScanCallback callback = [&](const QLTableRow& row) -> Result<ContinueScan> {
@@ -1178,7 +983,7 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorCallbackAPI() {
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+        projection, doc_read_context(), kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000)));
 
     size_t row_idx = 0;
@@ -1219,33 +1024,12 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorDeletedDocument() {
       SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2000 }]) -> 20000
       )#");
 
-  const Schema &schema = kSchemaForIteratorTests;
-  const Schema &projection = kProjectionForIteratorTests;
-  auto doc_read_context = DocReadContext::TEST_Create(schema);
-
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2500)));
-
-    QLTableRow row;
-    QLValue value;
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_TRUE(value.IsNull());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ(20000, value.int64_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
-    ASSERT_TRUE(value.IsNull());
-
-    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
-  }
+  CreateIteratorAndValidate(
+      ReadHybridTime::FromMicros(5000),
+      R"#(
+        {string:"row2",int64:22222,null,int64:20000,null}
+      )#",
+      HybridTime::FromMicros(2500));
 }
 
 void DocRowwiseIteratorTest::TestDocRowwiseIteratorWithRowDeletes() {
@@ -1276,45 +1060,13 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> 
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2800 w: 1 }]) -> 20000
       )#");
 
-  const Schema &schema = kSchemaForIteratorTests;
-  const Schema &projection = kProjectionForIteratorTests;
-  auto doc_read_context = DocReadContext::TEST_Create(schema);
-
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800)));
-
-    QLTableRow row;
-    QLValue value;
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    // ColumnId 30, 40 should be hidden whereas ColumnId 50 should be visible.
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_TRUE(value.IsNull());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_TRUE(value.IsNull());
-
-    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row1_e", value.string_value());
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_TRUE(value.IsNull());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ(20000, value.int64_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
-    ASSERT_TRUE(value.IsNull());
-  }
+  CreateIteratorAndValidate(
+      ReadHybridTime::FromMicros(5000),
+      R"#(
+        {string:"row1",int64:11111,null,null,string:"row1_e"}
+        {string:"row2",int64:22222,null,int64:20000,null}
+      )#",
+      HybridTime::FromMicros(2800));
 }
 
 void VerifyOldestRecordTime(IntentAwareIterator *iter, const DocKey &doc_key,
@@ -1491,13 +1243,10 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> "row1_e"
       )#");
 
-  const Schema &schema = kSchemaForIteratorTests;
-  const Schema &projection = kProjectionForIteratorTests;
-  auto doc_read_context = DocReadContext::TEST_Create(schema);
-
+  const auto& projection = this->projection();
   {
     auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+        projection, doc_read_context(), kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800)));
 
     QLTableRow row;
@@ -1539,42 +1288,16 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorIncompleteProjection() {
       SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 1000 w: 2 }]) -> 20000
       )#");
 
-  const Schema &schema = kSchemaForIteratorTests;
   Schema projection;
-  ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "d"}, &projection));
-  auto doc_read_context = DocReadContext::TEST_Create(schema);
+  ASSERT_OK(doc_read_context().schema.CreateProjectionByNames({"c", "d"}, &projection));
 
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800)));
-
-    QLTableRow row;
-    QLValue value;
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_TRUE(value.IsNull());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ(10000, value.int64_value());
-
-    // Now find next row.
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_TRUE(value.IsNull());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ(20000, value.int64_value());
-
-    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
-  }
+  CreateIteratorAndValidate(
+      doc_read_context().schema, ReadHybridTime::FromMicros(5000),
+      R"#(
+        {missing,missing,null,int64:10000,missing}
+        {missing,missing,null,int64:20000,missing}
+      )#",
+      HybridTime::FromMicros(1000), &projection);
 }
 
 void DocRowwiseIteratorTest::TestColocatedTableTombstone() {
@@ -1600,7 +1323,7 @@ SubDocKey(DocKey(ColocationId=16385, [], []), [HT{ physical: 2000 }]) -> DEL
 SubDocKey(DocKey(ColocationId=16385, [], ["row1", 11111]), [SystemColumnId(0); \
     HT{ physical: 1000 }]) -> null
       )#");
-  Schema schema_copy = kSchemaForIteratorTests;
+  Schema schema_copy = doc_read_context().schema;
   schema_copy.set_colocation_id(colocation_id);
   Schema projection;
   auto doc_read_context = DocReadContext::TEST_Create(schema_copy);
@@ -1672,33 +1395,15 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2800 w: 3 }]
     "row2_e"; ttl: 0.003s
       )#");
 
-  const Schema &schema = kSchemaForIteratorTests;
   Schema projection;
-  ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "e"}, &projection));
-  auto doc_read_context = DocReadContext::TEST_Create(schema);
+  ASSERT_OK(doc_read_context().schema.CreateProjectionByNames({"c", "e"}, &projection));
 
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, read_time));
-
-    QLTableRow row;
-    QLValue value;
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    // Ensure Idempotency.
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_TRUE(value.IsNull());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row2_e", value.string_value());
-
-    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
-  }
+  CreateIteratorAndValidate(
+      doc_read_context().schema, read_time,
+      R"#(
+        {missing,missing,null,missing,string:"row2_e"}
+      )#",
+      HybridTime::FromMicros(2800), &projection);
 }
 
 void DocRowwiseIteratorTest::TestDocRowwiseIteratorValidColumnNotInProjection() {
@@ -1738,47 +1443,25 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorValidColumnNotInProjection() 
       SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2000 }]) -> "row2_e"
       )#");
 
-  const Schema &schema = kSchemaForIteratorTests;
   Schema projection;
-  ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "d"}, &projection));
-  auto doc_read_context = DocReadContext::TEST_Create(schema);
+  ASSERT_OK(doc_read_context().schema.CreateProjectionByNames({"c", "d"}, &projection));
 
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800)));
-
-    QLTableRow row;
-    QLValue value;
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_TRUE(value.IsNull());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_TRUE(value.IsNull());
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row2_c", value.string_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ(20000, value.int64_value());
-
-    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
-  }
+  CreateIteratorAndValidate(
+      doc_read_context().schema, ReadHybridTime::FromMicros(2800),
+      R"#(
+        {missing,missing,null,null,missing}
+        {missing,missing,string:"row2_c",int64:20000,missing}
+      )#",
+      HybridTime::FromMicros(2800), &projection);
 }
 
 void DocRowwiseIteratorTest::TestDocRowwiseIteratorKeyProjection() {
   auto dwb = MakeDocWriteBatch();
 
   // Row 1
+  ASSERT_OK(dwb.SetPrimitive(
+      DocPath(kEncodedDocKey1, KeyEntryValue::kLivenessColumn),
+      ValueRef(ValueEntryType::kNullLow)));
   ASSERT_OK(dwb.SetPrimitive(
       DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(40_ColId)),
       ValueRef(QLValue::PrimitiveInt64(10000))));
@@ -1789,35 +1472,19 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorKeyProjection() {
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
 
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 10000
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 1 }]) -> "row1_e"
+SubDocKey(DocKey([], ["row1", 11111]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 w: 1 }]) -> 10000
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 2 }]) -> "row1_e"
       )#");
 
-  const Schema &schema = kSchemaForIteratorTests;
   Schema projection;
-  ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"a", "b"},
-      &projection, 2));
-  auto doc_read_context = DocReadContext::TEST_Create(schema);
-
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800)));
-
-    QLTableRow row;
-    QLValue value;
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_EQ("row1", value.string_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_EQ(kIntKey1, value.int64_value());
-
-    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
-  }
+  ASSERT_OK(doc_read_context().schema.CreateProjectionByNames({"a", "b"}, &projection, 2));
+  CreateIteratorAndValidate(
+      doc_read_context().schema, ReadHybridTime::FromMicros(2800),
+      R"#(
+        {string:"row1",int64:11111,missing,missing,missing}
+      )#",
+      HybridTime::FromMicros(1000), &projection);
 }
 
 void DocRowwiseIteratorTest::TestDocRowwiseIteratorResolveWriteIntents() {
@@ -1952,121 +1619,37 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
     SubDocKey(DocKey([], ["row2", 22222]), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 3 }
       )#");
 
-  const Schema &schema = kSchemaForIteratorTests;
-  const Schema &projection = kProjectionForIteratorTests;
   const auto txn_context = TransactionOperationContext(
       TransactionId::GenerateRandom(), &txn_status_manager);
-  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   LOG(INFO) << "=============================================== ReadTime-2000";
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, txn_context, doc_db(), CoarseTimePoint::max() /* deadline */,
-        ReadHybridTime::FromMicros(2000)));
-
-    QLTableRow row;
-    QLValue value;
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row1_c", value.string_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ(10000, value.int64_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row1_e", value.string_value());
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_TRUE(value.IsNull());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ(20000, value.int64_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row2_e", value.string_value());
-
-    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
-  }
+  CreateIteratorAndValidate(
+      ReadHybridTime::FromMicros(2000),
+      R"#(
+        {string:"row1",int64:11111,string:"row1_c",int64:10000,string:"row1_e"}
+        {string:"row2",int64:22222,null,int64:20000,string:"row2_e"}
+      )#",
+      HybridTime::FromMicros(2000), txn_context);
 
   // Scan at a later hybrid_time.
 
   LOG(INFO) << "=============================================== ReadTime-5000";
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, txn_context, doc_db(), CoarseTimePoint::max() /* deadline */,
-        ReadHybridTime::FromMicros(5000)));
-    QLTableRow row;
-    QLValue value;
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row1_c_t1", value.string_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ(40000, value.int64_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row1_e_t1", value.string_value());
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_TRUE(value.IsNull());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ(42000, value.int64_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row2_e_prime", value.string_value());
-
-    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
-  }
+  CreateIteratorAndValidate(
+      ReadHybridTime::FromMicros(5000),
+      R"#(
+        {string:"row1",int64:11111,string:"row1_c_t1",int64:40000,string:"row1_e_t1"}
+        {string:"row2",int64:22222,null,int64:42000,string:"row2_e_prime"}
+      )#",
+      HybridTime::FromMicros(4000), txn_context);
 
   // Scan at a later hybrid_time.
   LOG(INFO) << "=============================================== ReadTime-6000";
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, txn_context, doc_db(), CoarseTimePoint::max() /* deadline */,
-        ReadHybridTime::FromMicros(6000)));
-
-    QLTableRow row;
-    QLValue value;
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_TRUE(value.IsNull());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ(42000, value.int64_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row2_e_t2", value.string_value());
-
-    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
-  }
+  CreateIteratorAndValidate(
+      ReadHybridTime::FromMicros(6000),
+      R"#(
+        {string:"row2",int64:22222,null,int64:42000,string:"row2_e_t2"}
+      )#",
+      HybridTime::FromMicros(6000), txn_context);
 }
 
 void DocRowwiseIteratorTest::TestIntentAwareIteratorSeek() {
@@ -2203,43 +1786,19 @@ void DocRowwiseIteratorTest::TestScanWithinTheSameTxn() {
   LOG(INFO) << "Dump:\n" << DocDBDebugDumpToStr();
 
   const auto txn_context = TransactionOperationContext(*txn, &txn_status_manager);
-  const Schema &projection = kProjectionForIteratorTests;
-  auto doc_read_context = DocReadContext::TEST_Create(kSchemaForIteratorTests);
+  Schema projection;
+  ASSERT_OK(doc_read_context().schema.CreateProjectionByNames({"c", "d", "e"}, &projection));
 
   auto iter = ASSERT_RESULT(CreateIterator(
-      projection, doc_read_context, txn_context, doc_db(), CoarseTimePoint::max() /* deadline */,
+      projection, doc_read_context(), txn_context, doc_db(), CoarseTimePoint::max() /* deadline */,
       ReadHybridTime::FromMicros(1000)));
 
-  QLTableRow row;
-  QLValue value;
-
-  ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-  ASSERT_OK(iter->NextRow(&row));
-
-  ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ("row1_c_t1", value.string_value());
-
-  ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-  ASSERT_TRUE(value.IsNull());
-
-  ASSERT_OK(row.GetValue(projection.column_id(2), &value));
-  ASSERT_TRUE(value.IsNull());
-
-  ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-  ASSERT_OK(iter->NextRow(&row));
-
-  ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-  ASSERT_FALSE(value.IsNull());
-  ASSERT_EQ("row2_c_t1", value.string_value());
-
-  ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-  ASSERT_TRUE(value.IsNull());
-
-  ASSERT_OK(row.GetValue(projection.column_id(2), &value));
-  ASSERT_TRUE(value.IsNull());
-
-  ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      ASSERT_RESULT(ConvertIteratorRowsToString(iter.get(), doc_read_context().schema)),
+      R"#(
+        {string:"row1",int64:11111,string:"row1_c_t1",null,null}
+        {string:"row2",int64:22222,string:"row2_c_t1",null,null}
+      )#");
 
   // Empirically we require 3 seeks to perform this test.
   // If this number increased, then something got broken and should be fixed.
@@ -2249,7 +1808,7 @@ void DocRowwiseIteratorTest::TestScanWithinTheSameTxn() {
 
 void DocRowwiseIteratorTest::TestLargeKeys() {
   constexpr size_t str_key_size = 0x100;
-  auto str_key = RandomString(str_key_size);
+  std::string str_key(str_key_size, 't');
   KeyBytes kEncodedKey(
     DocKey(KeyEntryValues(str_key, kIntKey1)).Encode());
 
@@ -2267,121 +1826,81 @@ void DocRowwiseIteratorTest::TestLargeKeys() {
 
   DocDBDebugDumpToConsole();
 
-  const Schema &schema = kSchemaForIteratorTests;
-  const Schema &projection = kProjectionForIteratorTests;
-  QLTableRow row;
-  QLValue value;
-  auto doc_read_context = DocReadContext::TEST_Create(schema);
-
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000)));
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row1_c", value.string_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ(10000, value.int64_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row1_e", value.string_value());
-
-    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
-  }
+  CreateIteratorAndValidate(
+      ReadHybridTime::FromMicros(2000),
+      Format(
+          R"#(
+            {string:"$0",int64:$1,string:"row1_c",int64:10000,string:"row1_e"}
+          )#",
+          str_key, kIntKey1),
+      HybridTime::FromMicros(1000));
 }
 
 void DocRowwiseIteratorTest::TestPackedRow() {
-  constexpr int kVersion = 1;
-  const Schema &schema = kSchemaForIteratorTests;
-  SchemaPacking schema_packing(schema);
+  constexpr int kVersion = 0;
+  auto& schema_packing = ASSERT_RESULT(
+      doc_read_context().schema_packing_storage.GetPacking(kVersion)).get();
 
-  {
-    Slice row1_packed_row;
-    RowPacker packer(
-        kVersion, schema_packing, /* packed_size_limit= */ std::numeric_limits<int64_t>::max(),
-        /* value_control_fields= */ Slice());
-    ASSERT_OK(packer.AddValue(30_ColId, QLValue::Primitive("row1_c")));
-    ASSERT_OK(packer.AddValue(40_ColId, QLValue::PrimitiveInt64(10000)));
-    ASSERT_OK(packer.AddValue(50_ColId, QLValue::Primitive("row1_e")));
-    row1_packed_row = ASSERT_RESULT(packer.Complete());
-    LOG(INFO) << "Row1 Packed: " << row1_packed_row.ToDebugHexString();
-
-    ASSERT_OK(SetPrimitive(
-        DocPath(kEncodedDocKey1),
-        ValueControlFields(),
-        ValueRef(row1_packed_row),
-        HybridTime::FromMicros(1000)));
-  }
+  InsertPackedRow(
+      kVersion, schema_packing, kEncodedDocKey1, HybridTime::FromMicros(1000),
+      {
+          {30_ColId, QLValue::Primitive("row1_c")},
+          {40_ColId, QLValue::PrimitiveInt64(10000)},
+          {50_ColId, QLValue::Primitive("row1_e")},
+      });
 
   // Add row2 with missing columns.
-  {
-    Slice row2_packed_row;
-    RowPacker packer(
-        kVersion, schema_packing, /* packed_size_limit= */ std::numeric_limits<int64_t>::max(),
-        /* value_control_fields= */ Slice());
-    ASSERT_OK(packer.AddValue(30_ColId, QLValue::Primitive("row2_c")));
-    row2_packed_row = ASSERT_RESULT(packer.Complete());
-    LOG(INFO) << "Row2 Packed: " << row2_packed_row.ToDebugHexString();
+  InsertPackedRow(
+      kVersion, schema_packing, kEncodedDocKey2, HybridTime::FromMicros(1000),
+      {
+          {30_ColId, QLValue::Primitive("row2_c")},
+      });
 
-    ASSERT_OK(SetPrimitive(
-        DocPath(kEncodedDocKey2),
-        ValueControlFields(),
-        ValueRef(row2_packed_row),
-        HybridTime::FromMicros(1000)));
-  }
+  DocDBDebugDumpToConsole();
 
-  SchemaPackingStorage schema_packing_storage;
-  schema_packing_storage.AddSchema(kVersion, schema);
+  CreateIteratorAndValidate(
+      ReadHybridTime::FromMicros(2000),
+      R"#(
+        {string:"row1",int64:11111,string:"row1_c",int64:10000,string:"row1_e"}
+        {string:"row2",int64:22222,string:"row2_c",null,null}
+      )#",
+      HybridTime::FromMicros(1000));
+}
 
-  DocDBDebugDumpToConsole(schema_packing_storage);
+void DocRowwiseIteratorTest::TestDeleteMarkerWithPackedRow() {
+  constexpr int kVersion = 0;
+  auto& schema_packing = ASSERT_RESULT(
+      doc_read_context().schema_packing_storage.GetPacking(kVersion)).get();
 
-  const Schema &projection = kProjectionForIteratorTests;
-  QLTableRow row;
-  QLValue value;
-  auto doc_read_context = DocReadContext::TEST_Create(schema);
+  InsertPackedRow(
+      kVersion, schema_packing, kEncodedDocKey1, HybridTime::FromMicros(1000),
+      {
+          {30_ColId, QLValue::Primitive("row1_c")},
+          {40_ColId, QLValue::PrimitiveInt64(10000)},
+          {50_ColId, QLValue::Primitive("row1_e")},
+      });
 
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000)));
+  DocDBDebugDumpToConsole();
 
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
+  // Test delete marker with lower timestamp than packed row.
+  ASSERT_OK(DeleteSubDoc(
+      DocPath(kEncodedDocKey1), HybridTime::FromMicros(800)));
 
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row1_c", value.string_value());
+  CreateIteratorAndValidate(
+      ReadHybridTime::FromMicros(2000),
+      R"#(
+        {string:"row1",int64:11111,string:"row1_c",int64:10000,string:"row1_e"}
+      )#",
+      HybridTime::FromMicros(1000));
 
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ(10000, value.int64_value());
+  // Delete document with higher timestamp than packed row.
+  ASSERT_OK(DeleteSubDoc(
+      DocPath(kEncodedDocKey1), HybridTime::FromMicros(1100)));
 
-    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row1_e", value.string_value());
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row2_c", value.string_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_TRUE(value.IsNull());
-
-    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
-    ASSERT_TRUE(value.IsNull());
-
-    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
-  }
+  CreateIteratorAndValidate(
+      ReadHybridTime::FromMicros(2000),
+      R"#()#",
+      HybridTime::FromMicros(1100));
 }
 
 void DocRowwiseIteratorTest::TestDeletedDocumentUsingLivenessColumnDelete() {
@@ -2428,170 +1947,176 @@ void DocRowwiseIteratorTest::TestDeletedDocumentUsingLivenessColumnDelete() {
       SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 }]) -> "row1_e"
       )#");
 
-  const Schema &schema = kSchemaForIteratorTests;
-  const Schema &projection = kProjectionForIteratorTests;
-  QLTableRow row;
-  QLValue value;
-  auto doc_read_context = DocReadContext::TEST_Create(schema);
-
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(1000), nullptr));
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row1_c", value.string_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ(10000, value.int64_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row1_e", value.string_value());
-
-    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
-  }
+  CreateIteratorAndValidate(
+      ReadHybridTime::FromMicros(1000),
+      R"#(
+        {string:"row1",int64:11111,string:"row1_c",int64:10000,string:"row1_e"}
+      )#",
+      HybridTime::FromMicros(1000));
 
   LOG(INFO) << "Validate one deleted column is removed";
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(1100), nullptr));
-
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
-
-    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_TRUE(value.IsNull());
-
-    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ(10000, value.int64_value());
-
-    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
-    ASSERT_FALSE(value.IsNull());
-    ASSERT_EQ("row1_e", value.string_value());
-
-    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
-  }
+  CreateIteratorAndValidate(
+      ReadHybridTime::FromMicros(1100),
+      R"#(
+        {string:"row1",int64:11111,null,int64:10000,string:"row1_e"}
+      )#",
+      HybridTime::FromMicros(1100));
 
   LOG(INFO) << "Validate that row is not visible when liveness column is tombstoned";
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(1500), nullptr));
+  CreateIteratorAndValidate(
+      ReadHybridTime::FromMicros(1500),
+      "",
+      HybridTime::FromMicros(1500));
+}
 
-    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
-  }
+void DocRowwiseIteratorTest::TestUpdatePackedRow() {
+  constexpr int kVersion = 0;
+  auto& schema_packing = ASSERT_RESULT(
+      doc_read_context().schema_packing_storage.GetPacking(kVersion)).get();
+
+  InsertPackedRow(
+      kVersion, schema_packing, kEncodedDocKey1, HybridTime::FromMicros(1000),
+      {
+          {30_ColId, QLValue::Primitive("row1_c")},
+          {40_ColId, QLValue::PrimitiveInt64(10000)},
+          {50_ColId, QLValue::Primitive("row1_e")},
+      });
+
+  InsertPackedRow(
+      kVersion, schema_packing, kEncodedDocKey1, HybridTime::FromMicros(1500),
+      {
+          {30_ColId, QLValue::Primitive("row1_c_prime")},
+          {40_ColId, QLValue::PrimitiveInt64(20000)},
+          {50_ColId, QLValue::Primitive("row1_e_prime")},
+      });
+
+  DocDBDebugDumpToConsole();
+
+  CreateIteratorAndValidate(
+      ReadHybridTime::FromMicros(1000),
+      R"#(
+        {string:"row1",int64:11111,string:"row1_c",int64:10000,string:"row1_e"}
+      )#",
+      HybridTime::FromMicros(1000));
+
+  CreateIteratorAndValidate(
+      ReadHybridTime::FromMicros(2000),
+      R"#(
+        {string:"row1",int64:11111,string:"row1_c_prime",int64:20000,string:"row1_e_prime"}
+      )#",
+      HybridTime::FromMicros(1500));
 }
 
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterTestRange) {
-    TestClusteredFilterRange();
+  TestClusteredFilterRange();
 }
 
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterRangeWithTableTombstone) {
-    TestClusteredFilterRangeWithTableTombstone();
+  TestClusteredFilterRangeWithTableTombstone();
 }
 
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterRangeWithTableTombstoneReverseScan) {
-    TestClusteredFilterRangeWithTableTombstoneReverseScan();
+  TestClusteredFilterRangeWithTableTombstoneReverseScan();
 }
 
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterHybridScanTest) {
-    TestClusteredFilterHybridScan();
+  TestClusteredFilterHybridScan();
 }
 
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterSubsetColTest) {
-    TestClusteredFilterSubsetCol();
+  TestClusteredFilterSubsetCol();
 }
 
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterSubsetColTest2) {
-    TestClusteredFilterSubsetCol2();
+  TestClusteredFilterSubsetCol2();
 }
 
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterMultiInTest) {
-    TestClusteredFilterMultiIn();
+  TestClusteredFilterMultiIn();
 }
 
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterEmptyInTest) {
-    TestClusteredFilterEmptyIn();
+  TestClusteredFilterEmptyIn();
 }
 
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
-    TestDocRowwiseIterator();
+  TestDocRowwiseIterator();
 }
 
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTestCallbackAPI) {
-    TestDocRowwiseIteratorCallbackAPI();
+  TestDocRowwiseIteratorCallbackAPI();
 }
 
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorDeletedDocumentTest) {
-    TestDocRowwiseIteratorDeletedDocument();
+  TestDocRowwiseIteratorDeletedDocument();
 }
 
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTestRowDeletes) {
-    TestDocRowwiseIteratorWithRowDeletes();
+  TestDocRowwiseIteratorWithRowDeletes();
 }
 
 TEST_F(DocRowwiseIteratorTest, BackfillInsert) {
-    TestBackfillInsert();
+  TestBackfillInsert();
 }
 
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorHasNextIdempotence) {
-    TestDocRowwiseIteratorHasNextIdempotence();
+  TestDocRowwiseIteratorHasNextIdempotence();
 }
 
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorIncompleteProjection) {
-    TestDocRowwiseIteratorIncompleteProjection();
+  TestDocRowwiseIteratorIncompleteProjection();
 }
 
 TEST_F(DocRowwiseIteratorTest, ColocatedTableTombstoneTest) {
-    TestColocatedTableTombstone();
+  TestColocatedTableTombstone();
 }
 
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorMultipleDeletes) {
-    TestDocRowwiseIteratorMultipleDeletes();
+  TestDocRowwiseIteratorMultipleDeletes();
 }
 
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorValidColumnNotInProjection) {
-    TestDocRowwiseIteratorValidColumnNotInProjection();
+  TestDocRowwiseIteratorValidColumnNotInProjection();
 }
 
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorKeyProjection) {
-    TestDocRowwiseIteratorKeyProjection();
+  TestDocRowwiseIteratorKeyProjection();
 }
 
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorResolveWriteIntents) {
-    TestDocRowwiseIteratorResolveWriteIntents();
+  TestDocRowwiseIteratorResolveWriteIntents();
 }
 
 TEST_F(DocRowwiseIteratorTest, IntentAwareIteratorSeek) {
-    TestIntentAwareIteratorSeek();
+  TestIntentAwareIteratorSeek();
 }
 
 TEST_F(DocRowwiseIteratorTest, SeekTwiceWithinTheSameTxn) {
-    TestSeekTwiceWithinTheSameTxn();
+  TestSeekTwiceWithinTheSameTxn();
 }
 
 TEST_F(DocRowwiseIteratorTest, ScanWithinTheSameTxn) {
-    TestScanWithinTheSameTxn();
+  TestScanWithinTheSameTxn();
 }
 
 TEST_F(DocRowwiseIteratorTest, LargeKeysTest) {
-    TestLargeKeys();
+  TestLargeKeys();
 }
 
 TEST_F(DocRowwiseIteratorTest, BasicPackedRowTest) {
-    TestPackedRow();
+  TestPackedRow();
+}
+
+TEST_F(DocRowwiseIteratorTest, DeleteMarkerWithPackedRow) {
+  TestDeleteMarkerWithPackedRow();
+}
+
+TEST_F(DocRowwiseIteratorTest, UpdatePackedRow) {
+  TestUpdatePackedRow();
 }
 
 TEST_F(DocRowwiseIteratorTest, DeletedDocumentUsingLivenessColumnDeleteTest) {
-    TestDeletedDocumentUsingLivenessColumnDelete();
+  TestDeletedDocumentUsingLivenessColumnDelete();
 }
 
 }  // namespace docdb

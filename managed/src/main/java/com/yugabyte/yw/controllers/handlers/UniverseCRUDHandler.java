@@ -69,6 +69,7 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Ebean;
 import java.util.ArrayList;
@@ -229,14 +230,14 @@ public class UniverseCRUDHandler {
     // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster
     //  uuid.
     Cluster cluster = getClusterFromTaskParams(taskParams);
-    UniverseDefinitionTaskParams.UserIntent primaryIntent = cluster.userIntent;
+    UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CONFIGURE);
 
-    primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
-    primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
-    if (StringUtils.isEmpty(primaryIntent.accessKeyCode)) {
-      primaryIntent.accessKeyCode = appConfig.getString("yb.security.default.access.key");
+    userIntent.masterGFlags = trimFlags(userIntent.masterGFlags);
+    userIntent.tserverGFlags = trimFlags(userIntent.tserverGFlags);
+    if (StringUtils.isEmpty(userIntent.accessKeyCode)) {
+      userIntent.accessKeyCode = appConfig.getString("yb.security.default.access.key");
     }
     try {
       Universe universe = PlacementInfoUtil.getUniverseForParams(taskParams);
@@ -452,6 +453,7 @@ public class UniverseCRUDHandler {
         c.userIntent.enableExposingService =
             UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED;
       }
+      validateRegionsAndZones(provider, c);
 
       // Set the node exporter config based on the provider
       if (!c.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
@@ -722,6 +724,35 @@ public class UniverseCRUDHandler {
       return updateCluster(customer, u, taskParams);
     } else {
       return updatePrimaryCluster(customer, u, taskParams);
+    }
+  }
+
+  private static void validateRegionsAndZones(Provider provider, Cluster cluster) {
+    Map<UUID, Region> regionMap =
+        provider.regions.stream().collect(Collectors.toMap(r -> r.uuid, r -> r));
+    if (cluster.placementInfo == null) {
+      return; // Otherwise tests are failing
+    }
+
+    for (PlacementInfo.PlacementCloud placementCloud : cluster.placementInfo.cloudList) {
+      for (PlacementInfo.PlacementRegion placementRegion : placementCloud.regionList) {
+        Region region = regionMap.get(placementRegion.uuid);
+        LOG.debug("Checking " + placementRegion.code + " -> " + region.isActive());
+        if (!region.isActive()) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Region " + placementRegion.code + " is deleted");
+        }
+
+        Map<UUID, AvailabilityZone> zones =
+            region.zones.stream().collect(Collectors.toMap(z -> z.uuid, z -> z));
+        for (PlacementInfo.PlacementAZ placementAZ : placementRegion.azList) {
+          AvailabilityZone zone = zones.get(placementAZ.uuid);
+          if (!zone.isActive()) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Availability zone " + zone.code + " is deleted");
+          }
+        }
+      }
     }
   }
 
@@ -1073,6 +1104,8 @@ public class UniverseCRUDHandler {
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     taskParams.clusters.add(primaryCluster);
     validateConsistency(primaryCluster, readOnlyCluster);
+
+    boolean isCloud = runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
 
     // Set the provider code.
     Provider provider =

@@ -99,6 +99,8 @@ class RowPacker {
   Result<bool> AddValue(
       ColumnId column_id, const Slice& value_prefix, const Slice& value_suffix, ssize_t tail_size);
   Result<bool> AddValue(ColumnId column_id, const QLValuePB& value);
+  Result<bool> AddValue(
+      ColumnId column_id, const Slice& control_fields, const QLValuePB& value);
 
   Result<Slice> Complete();
 

@@ -55,6 +55,8 @@ COLOCATION_NAME_SUFFIX = '.colocation.parent.tablename'
 COLOCATION_UUID_RE_STR = UUID_RE_STR + COLOCATION_UUID_SUFFIX
 COLOCATION_PARENT_TABLE_NEW_OLD_UUID_RE = re.compile(
     COLOCATION_UUID_RE_STR + '[ ]*\t' + COLOCATION_UUID_RE_STR)
+COLOCATION_MIGRATION_PARENT_TABLE_NEW_OLD_UUID_RE = re.compile(
+    COLOCATED_UUID_RE_STR + '[ ]*\t' + COLOCATION_UUID_RE_STR)
 LEADING_UUID_RE = re.compile('^(' + UUID_RE_STR + r')\b')
 
 LIST_TABLET_SERVERS_RE = re.compile('.*list_tablet_servers.*(' + UUID_RE_STR + ').*')
@@ -110,6 +112,7 @@ YB_VERSION_RE = re.compile(r'^version (\d+\.\d+\.\d+\.\d+).*')
 YB_ADMIN_HELP_RE = re.compile(r'^ \d+\. (\w+).*')
 
 XXH64HASH_TOOL_PATH = os.path.join(YB_HOME_DIR, 'bin/xxhash')
+XXH64HASH_TOOL_PATH_K8S = '/tmp/xxhash'
 XXH64_FILE_EXT = 'xxh64'
 XXH64_X86_BIN = 'xxhsum_x86'
 XXH64_AARCH_BIN = 'xxhsum_aarch'
@@ -962,7 +965,7 @@ class YBManifest:
         properties['check-sums'] = not self.backup.args.disable_checksums
         if not self.backup.args.disable_checksums:
             properties['hash-algorithm'] = XXH64_FILE_EXT \
-                if self.backup.use_xxhash_checksum else SHA_FILE_EXT
+                if self.backup.xxhash_checksum_path else SHA_FILE_EXT
 
     def init_locations(self, tablet_leaders, snapshot_bucket):
         locations = self.body['locations']
@@ -1050,7 +1053,7 @@ class YBBackup:
         self.ip_to_ssh_key_map = {}
         self.secondary_to_primary_ip_map = {}
         self.region_to_location = {}
-        self.use_xxhash_checksum = None
+        self.xxhash_checksum_path = ''
         self.database_version = YBVersion("unknown")
         self.manifest = YBManifest(self)
         self.parse_arguments()
@@ -1462,10 +1465,10 @@ class YBBackup:
             if live_tservers:
                 # Need to check the architecture for only first node, rest
                 # will be same in the cluster.
-                global XXH64HASH_TOOL_PATH
+                xxhash_tool_path = XXH64HASH_TOOL_PATH_K8S if self.is_k8s() else XXH64HASH_TOOL_PATH
                 tserver = live_tservers[0]
                 try:
-                    self.run_ssh_cmd("[ -d '{}' ]".format(XXH64HASH_TOOL_PATH),
+                    self.run_ssh_cmd("[ -d '{}' ]".format(xxhash_tool_path),
                                      tserver, upload_cloud_cfg=False).strip()
                     node_machine_arch = self.run_ssh_cmd(['uname', '-m'], tserver,
                                                          upload_cloud_cfg=False).strip()
@@ -1473,16 +1476,12 @@ class YBBackup:
                         xxh64_bin = XXH64_AARCH_BIN
                     else:
                         xxh64_bin = XXH64_X86_BIN
-                    XXH64HASH_TOOL_PATH = os.path.join(XXH64HASH_TOOL_PATH, xxh64_bin)
-                    self.use_xxhash_checksum = True
+                    self.xxhash_checksum_path = os.path.join(xxhash_tool_path, xxh64_bin)
                 except Exception:
                     logging.warn("[app] xxhsum tool missing on the host, continuing with sha256")
-                    self.use_xxhash_checksum = False
             else:
                 raise BackupException("No Live TServer exists. "
                                       "Check the TServer nodes status & try again.")
-        else:
-            self.use_xxhash_checksum = False
 
         if self.args.mac:
             # As this arg is used only for the purpose of tests & we use hardcoded paths only
@@ -2483,8 +2482,7 @@ class YBBackup:
         return tserver_ip_to_tablet_id_to_snapshot_dirs
 
     def create_checksum_cmd_not_quoted(self, file_path, checksum_file_path):
-        assert self.use_xxhash_checksum is not None
-        tool_path = XXH64HASH_TOOL_PATH if self.use_xxhash_checksum else SHA_TOOL_PATH
+        tool_path = self.xxhash_checksum_path if self.xxhash_checksum_path else SHA_TOOL_PATH
         prefix = pipes.quote(tool_path)
         return "{} {} > {}".format(prefix, file_path, checksum_file_path)
 
@@ -2493,8 +2491,7 @@ class YBBackup:
             pipes.quote(file_path), pipes.quote(checksum_file_path))
 
     def checksum_path(self, file_path):
-        assert self.use_xxhash_checksum is not None
-        ext = XXH64_FILE_EXT if self.use_xxhash_checksum else SHA_FILE_EXT
+        ext = XXH64_FILE_EXT if self.xxhash_checksum_path else SHA_FILE_EXT
         return file_path + '.' + ext
 
     def checksum_path_downloaded(self, file_path):
@@ -3161,11 +3158,11 @@ class YBBackup:
             try:
                 self.download_file(src_manifest_path, manifest_path)
             except subprocess.CalledProcessError as ex:
-                if self.use_xxhash_checksum:
+                if self.xxhash_checksum_path:
                     # Possibly old checksum tool was used for the backup.
                     # Try again with the old tool.
                     logging.warning("Try to use " + SHA_TOOL_PATH + " for Manifest")
-                    self.use_xxhash_checksum = False
+                    self.xxhash_checksum_path = ''
                     self.download_file(src_manifest_path, manifest_path)
                 else:
                     raise ex
@@ -3182,11 +3179,11 @@ class YBBackup:
         if self.manifest.is_loaded():
             if not self.args.disable_checksums and \
                 self.manifest.get_hash_algorithm() == XXH64_FILE_EXT \
-                    and not self.use_xxhash_checksum:
-                raise BackupException("Manifest references unavailable tool " + XXH64HASH_TOOL_PATH)
+                    and not self.xxhash_checksum_path:
+                raise BackupException("Manifest references unavailable tool: xxhash")
         else:
             self.manifest.create_by_default(self.args.backup_location)
-            self.use_xxhash_checksum = False
+            self.xxhash_checksum_path = ''
 
         if self.args.verbose:
             logging.info("{} manifest: {}".format(
@@ -3340,7 +3337,8 @@ class YBBackup:
                                  .format(old_id, new_id))
             elif (COLOCATED_DB_PARENT_TABLE_NEW_OLD_UUID_RE.search(line) or
                   TABLEGROUP_PARENT_TABLE_NEW_OLD_UUID_RE.search(line) or
-                  COLOCATION_PARENT_TABLE_NEW_OLD_UUID_RE.search(line)):
+                  COLOCATION_PARENT_TABLE_NEW_OLD_UUID_RE.search(line) or
+                  COLOCATION_MIGRATION_PARENT_TABLE_NEW_OLD_UUID_RE.search(line)):
                 # Parent colocated/tablegroup table
                 (entity, old_id, new_id) = split_by_tab(line)
                 assert entity == 'ParentColocatedTable'

@@ -21,6 +21,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSync;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -1412,21 +1413,27 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
   public static boolean isTransactionalReplication(
       @Nullable Universe sourceUniverse, Universe targetUniverse) {
-    UniverseDefinitionTaskParams.UserIntent targetUniverseUserIntent =
-        targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
+    Map<String, String> targetMasterGFlags =
+        GFlagsUtil.getBaseGFlags(
+            ServerType.MASTER,
+            targetUniverse.getUniverseDetails().getPrimaryCluster(),
+            targetUniverse.getUniverseDetails().clusters);
     String gflagValueOnTarget =
-        targetUniverseUserIntent.masterGFlags.get(ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_GFLAG);
+        targetMasterGFlags.get(ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_GFLAG);
     Boolean gflagValueOnTargetBoolean =
         gflagValueOnTarget != null ? Boolean.valueOf(gflagValueOnTarget) : null;
 
     if (sourceUniverse != null) {
+      Map<String, String> sourceMasterGFlags =
+          GFlagsUtil.getBaseGFlags(
+              ServerType.MASTER,
+              sourceUniverse.getUniverseDetails().getPrimaryCluster(),
+              sourceUniverse.getUniverseDetails().clusters);
+
       // Replication between a universe with the gflag `enable_replicate_transaction_status_table`
       // and a universe without it is not allowed.
-      UniverseDefinitionTaskParams.UserIntent sourceUniverseUserIntent =
-          sourceUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
       String gflagValueOnSource =
-          sourceUniverseUserIntent.masterGFlags.get(
-              ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_GFLAG);
+          sourceMasterGFlags.get(ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_GFLAG);
       Boolean gflagValueOnSourceBoolean =
           gflagValueOnSource != null ? Boolean.valueOf(gflagValueOnSource) : null;
       if (!Objects.equals(gflagValueOnSourceBoolean, gflagValueOnTargetBoolean)) {

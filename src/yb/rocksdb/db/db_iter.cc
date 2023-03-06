@@ -38,6 +38,7 @@
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/stop_watch.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/stats/perf_step_timer.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
@@ -182,7 +183,7 @@ class DBIter: public Iterator {
   void SeekToFirst() override;
   void SeekToLast() override;
   bool ScanForward(
-      const Slice& upperbound, KeyFilterCallback* key_filter_callback,
+      Slice upperbound, KeyFilterCallback* key_filter_callback,
       ScanCallback* scan_callback) override;
 
   void RevalidateAfterUpperBoundChange() override {
@@ -860,19 +861,33 @@ void DBIter::SeekToLast() {
   }
 }
 
+// PRE: iterator is valid and direction is kForward.
+// POST: saved_key_ should have the next user key if valid_,
+//       if the current entry is a result of merge
+//           current_entry_is_merged_ => true
+//           saved_value_             => the merged value
 bool DBIter::ScanForward(
-    const Slice& upperbound, KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
+    Slice upperbound, KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
   LOG_IF(DFATAL, !iter_->Valid()) << "Iterator should be valid.";
   LOG_IF(DFATAL, direction_ != kForward) << "Only forward direction scan is supported.";
 
-  if (upperbound.empty() || (iterate_upper_bound_ != nullptr && !upperbound.empty() &&
-                             user_comparator_->Compare(upperbound, *iterate_upper_bound_) >= 0)) {
-    return iter_->ScanForward(
-        user_comparator_, iterate_upper_bound_ ? *iterate_upper_bound_ : upperbound,
-        key_filter_callback, scan_callback);
+  if (iterate_upper_bound_ != nullptr && !upperbound.empty() &&
+      user_comparator_->Compare(upperbound, *iterate_upper_bound_) >= 0) {
+    upperbound = *iterate_upper_bound_;
   }
 
-  return iter_->ScanForward(user_comparator_, upperbound, key_filter_callback, scan_callback);
+  auto result =
+      iter_->ScanForward(user_comparator_, upperbound, key_filter_callback, scan_callback);
+  if (iter_->Valid()) {
+    FindNextUserEntry(/* skipping = */ false);
+  } else {
+    valid_ = false;
+  }
+
+  VLOG_WITH_FUNC(4) << "ScanForward result: " << result << ", IsValid: " << valid_
+                    << ", Key: " << (valid_ ? saved_key_.GetKey().ToDebugHexString() : "");
+
+  return result;
 }
 
 Iterator* NewDBIterator(Env* env, const ImmutableCFOptions& ioptions,
@@ -930,7 +945,7 @@ void ArenaWrappedDBIter::RevalidateAfterUpperBoundChange() {
 }
 
 bool ArenaWrappedDBIter::ScanForward(
-    const Slice& upperbound, KeyFilterCallback* key_filter_callback,
+    Slice upperbound, KeyFilterCallback* key_filter_callback,
     ScanCallback* scan_callback) {
   return db_iter_->ScanForward(upperbound, key_filter_callback, scan_callback);
 }

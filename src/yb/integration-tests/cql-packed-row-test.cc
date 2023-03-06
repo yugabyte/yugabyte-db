@@ -196,4 +196,39 @@ TEST_F(CqlPackedRowTest, RetainPacking) {
   ASSERT_OK(cluster_->CompactTablets());
 }
 
+TEST_F(CqlPackedRowTest, NonFullInsert) {
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 INT, v2 INT) WITH tablets = 1"));
+
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t (key, v1, v2) VALUES (1, 1, 1)"));
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t (key, v2) VALUES (1, 2)"));
+
+  auto value = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM t"));
+  ASSERT_EQ(value, "1,1,2");
+}
+
+TEST_F(CqlPackedRowTest, LivenessColumnExpiry) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 INT) WITH tablets = 1"));
+
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t (key, v1) VALUES (1, 1) USING TTL 1"));
+  ASSERT_OK(session.ExecuteQuery("UPDATE t SET v1 = 2 WHERE key = 1"));
+
+  std::this_thread::sleep_for(1s);
+
+  auto value = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM t"));
+  ASSERT_EQ(value, "1,2");
+
+  ASSERT_OK(session.ExecuteQuery("UPDATE t SET v1 = NULL WHERE key = 1"));
+
+  value = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM t"));
+  ASSERT_EQ(value, "");
+}
+
 } // namespace yb

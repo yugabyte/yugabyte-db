@@ -169,6 +169,7 @@ set(MASTER_RPC_SRCS
   master_rpc.cc)
 set(MASTER_RPC_LIBS
   yb_common
+  yb_ql_common
   yrpc
   gutil
   yb_util
@@ -188,7 +189,7 @@ set(MASTER_UTIL_SRCS
   master_util.cc)
 ADD_YB_LIBRARY(master_util
   SRCS ${MASTER_UTIL_SRCS}
-  DEPS master_error ${MASTER_RPC_LIBS})
+  DEPS yb_ql_common master_error ${MASTER_RPC_LIBS})
 
 # A library with common code shared between master tests.
 set(MASTER_TEST_COMMON_SRCS

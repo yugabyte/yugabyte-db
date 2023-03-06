@@ -142,10 +142,10 @@ Result<std::unique_ptr<MiniTabletServer>> MiniTabletServer::CreateMiniTabletServ
   return std::make_unique<MiniTabletServer>(fs_root, rpc_port, *options_result, index);
 }
 
-Status MiniTabletServer::Start() {
+Status MiniTabletServer::Start(WaitTabletsBootstrapped wait_tablets_bootstrapped) {
   CHECK(!started_);
 
-  std::unique_ptr<TabletServer> server(new enterprise::TabletServer(opts_));
+  std::unique_ptr<TabletServer> server(new TabletServer(opts_));
   RETURN_NOT_OK(server->Init());
 
   RETURN_NOT_OK(server->Start());
@@ -155,7 +155,7 @@ Status MiniTabletServer::Start() {
   RETURN_NOT_OK(Reconnect());
 
   started_ = true;
-  return Status::OK();
+  return wait_tablets_bootstrapped ? WaitStarted() : Status::OK();
 }
 
 void MiniTabletServer::Isolate() {
@@ -275,12 +275,12 @@ Status MiniTabletServer::CleanTabletLogs() {
 Status MiniTabletServer::Restart() {
   CHECK(started_);
   Shutdown();
-  return Start();
+  return Start(WaitTabletsBootstrapped::kFalse);
 }
 
 Status MiniTabletServer::RestartStoppedServer() {
   Shutdown();
-  return Start();
+  return Start(WaitTabletsBootstrapped::kFalse);
 }
 
 RaftConfigPB MiniTabletServer::CreateLocalConfig() const {

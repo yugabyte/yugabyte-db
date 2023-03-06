@@ -5,16 +5,16 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertNoKey;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.spy;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
@@ -35,10 +35,9 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Set;
 import java.util.UUID;
-
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.hamcrest.CoreMatchers;
 import org.junit.Assert;
 import org.junit.Before;
@@ -168,7 +167,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
 
     assertTrue(json.get("success").asBoolean());
     assertAuditEntry(1, defaultCustomer.uuid);
-    assertNull(AvailabilityZone.find.byId(az.uuid));
+    assertFalse(AvailabilityZone.find.byId(az.uuid).isActive());
   }
 
   private void createUniverseInAZ(UUID azUUID) {

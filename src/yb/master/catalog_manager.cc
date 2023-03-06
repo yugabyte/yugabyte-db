@@ -7266,6 +7266,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
   bool include_user_table = has_rel_filter ? false : true;
   bool include_user_index = has_rel_filter ? false : true;
   bool include_user_matview = has_rel_filter ? false : true;
+  bool include_colocated_parent_table = has_rel_filter ? false : true;
   bool include_system_table = req->exclude_system_tables() ? false
       : (has_rel_filter ? false : true);
 
@@ -7278,6 +7279,8 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
       include_user_index = true;
     } else if (relation == MATVIEW_TABLE_RELATION) {
       include_user_matview = true;
+    } else if (relation == COLOCATED_PARENT_TABLE_RELATION) {
+      include_colocated_parent_table = true;
     }
   }
 
@@ -7317,6 +7320,11 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
         continue;
       }
       relation_type = USER_TABLE_RELATION;
+    } else if (table_info->IsColocationParentTable()) {
+      if (!include_colocated_parent_table || !include_system_table) {
+        continue;
+      }
+      relation_type = COLOCATED_PARENT_TABLE_RELATION;
     } else {
       if (!include_system_table) {
         continue;

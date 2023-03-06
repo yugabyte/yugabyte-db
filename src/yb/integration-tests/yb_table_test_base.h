@@ -94,7 +94,7 @@ class YBTableTestBase : public YBTest {
 
   client::TableHandle table_;
   std::unique_ptr<client::YBClient> client_;
-  std::unique_ptr<tools::enterprise::ClusterAdminClient> yb_admin_client_;
+  std::unique_ptr<tools::ClusterAdminClient> yb_admin_client_;
   bool table_exists_ = false;
 
   yb::MiniCluster* mini_cluster() {

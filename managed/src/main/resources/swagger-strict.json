@@ -14,6 +14,14 @@
         },
         "awsHostedZoneName" : {
           "type" : "string"
+        },
+        "hostVpcId" : {
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "hostVpcRegion" : {
+          "readOnly" : true,
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -124,6 +132,7 @@
       "properties" : {
         "acknowledgedTime" : {
           "description" : "Timestamp at which the alert was acknowledged",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -142,6 +151,7 @@
         },
         "createTime" : {
           "description" : "Alert creation timestamp",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -180,12 +190,14 @@
         },
         "nextNotificationTime" : {
           "description" : "Time of the next notification attempt",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
         },
         "notificationAttemptTime" : {
           "description" : "Time of the last notification attempt",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -204,6 +216,7 @@
         },
         "resolvedTime" : {
           "description" : "Timestamp at which the alert was resolved",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -500,6 +513,10 @@
         "$ref" : "#/definitions/AlertChannelParams"
       }, {
         "properties" : {
+          "httpAuth" : {
+            "$ref" : "#/definitions/HTTP Auth information",
+            "description" : "Authentication Details"
+          },
           "webhookUrl" : {
             "description" : "Webhook URL",
             "type" : "string"
@@ -522,6 +539,7 @@
         },
         "createTime" : {
           "description" : "Creation time",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -735,6 +753,7 @@
         },
         "createTime" : {
           "description" : "Creation time",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -1081,6 +1100,7 @@
       "properties" : {
         "createTime" : {
           "description" : "Creation time",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -1239,7 +1259,7 @@
       "properties" : {
         "action" : {
           "description" : "Action",
-          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "Validate", "Acknowledge", "SyncXClusterConfig", "Login", "Promote", "Bootstrap", "Configure", "UpdateOptions", "UpdateLoadBalancerConfig", "RefreshPricing", "UpgradeSoftware", "UpgradeGFlags", "UpgradeKubernetesOverrides", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "RebootUniverse", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "CreateRestrictedUserInDB", "DropUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateBackup", "RestoreBackup", "CreateSingleTableBackup", "CreateMultiTableBackup", "CreateBackupSchedule", "CreatePitrConfig", "RestoreSnapshotSchedule", "DeletePitrConfig", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType", "GetUniverseResources", "ThirdpartySoftwareUpgrade", "CreateTableSpaces", "CreateHook", "DeleteHook", "UpdateHook", "CreateHookScope", "DeleteHookScope", "AddHook", "RemoveHook", "RotateAccessKey", "CreateAndRotateAccessKey", "RunHook", "RunApiTriggeredHooks", "AddNodeAgent", "UpdateNodeAgent", "DeleteNodeAgent", "DisableYbc", "UpgradeYbc", "InstallYbc", "SetThrottleParams" ],
+          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "Validate", "Acknowledge", "SyncXClusterConfig", "Login", "ApiLogin", "Promote", "Bootstrap", "Configure", "UpdateOptions", "UpdateLoadBalancerConfig", "RefreshPricing", "UpgradeSoftware", "UpgradeGFlags", "UpgradeKubernetesOverrides", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "RebootUniverse", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "CreateRestrictedUserInDB", "DropUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateBackup", "RestoreBackup", "CreateSingleTableBackup", "CreateMultiTableBackup", "CreateBackupSchedule", "CreatePitrConfig", "RestoreSnapshotSchedule", "DeletePitrConfig", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType", "GetUniverseResources", "ThirdpartySoftwareUpgrade", "CreateTableSpaces", "CreateHook", "DeleteHook", "UpdateHook", "CreateHookScope", "DeleteHookScope", "AddHook", "RemoveHook", "RotateAccessKey", "CreateAndRotateAccessKey", "RunHook", "RunApiTriggeredHooks", "AddNodeAgent", "UpdateNodeAgent", "DeleteNodeAgent", "DisableYbc", "UpgradeYbc", "InstallYbc", "SetThrottleParams" ],
           "example" : "Create User",
           "readOnly" : true,
           "type" : "string"
@@ -1295,7 +1315,10 @@
           "type" : "string"
         },
         "timestamp" : {
+          "description" : "The task creation time.",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
+          "readOnly" : true,
           "type" : "string"
         },
         "userAddress" : {
@@ -1315,7 +1338,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "auditID", "timestamp" ],
+      "required" : [ "auditID" ],
       "type" : "object"
     },
     "AuditLoggingConfig" : {
@@ -1524,11 +1547,14 @@
         },
         "completionTime" : {
           "description" : "Backup completion time",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
         },
         "createTime" : {
+          "description" : "Backup creation time",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -1539,6 +1565,7 @@
         },
         "expiry" : {
           "description" : "Expiry time (unix timestamp) of the backup",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -1586,6 +1613,8 @@
           "type" : "string"
         },
         "updateTime" : {
+          "description" : "Backup update time",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -1595,16 +1624,20 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupCategory", "createTime", "incrementalBackup", "parentBackup", "updateTime" ],
+      "required" : [ "backupCategory", "incrementalBackup", "parentBackup" ],
       "type" : "object"
     },
     "BackupApiFilter" : {
       "properties" : {
         "dateRangeEnd" : {
+          "description" : "The end date for backup filter.",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
         "dateRangeStart" : {
+          "description" : "The start date for backup filter.",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -1661,7 +1694,7 @@
           "uniqueItems" : true
         }
       },
-      "required" : [ "dateRangeEnd", "dateRangeStart", "keyspaceList", "onlyShowDeletedConfigs", "onlyShowDeletedUniverses", "scheduleUUIDList", "states", "storageConfigUUIDList", "universeNameList", "universeUUIDList" ],
+      "required" : [ "keyspaceList", "onlyShowDeletedConfigs", "onlyShowDeletedUniverses", "scheduleUUIDList", "states", "storageConfigUUIDList", "universeNameList", "universeUUIDList" ],
       "type" : "object"
     },
     "BackupPagedApiQuery" : {
@@ -1973,6 +2006,8 @@
           "type" : "string"
         },
         "expiryTime" : {
+          "description" : "The expiry time for backup.",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -1997,6 +2032,8 @@
           "type" : "string"
         },
         "lastIncrementalBackupTime" : {
+          "description" : "Time for last incremenatal backup.",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -2019,7 +2056,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupType", "category", "commonBackupInfo", "customerUUID", "expiryTime", "fullChainSizeInBytes", "hasIncrementalBackups", "isFullBackup", "isStorageConfigPresent", "isUniversePresent", "lastBackupState", "lastIncrementalBackupTime", "onDemand", "scheduleUUID", "storageConfigType", "universeName", "universeUUID" ],
+      "required" : [ "backupType", "category", "commonBackupInfo", "customerUUID", "fullChainSizeInBytes", "hasIncrementalBackups", "isFullBackup", "isStorageConfigPresent", "isUniversePresent", "lastBackupState", "onDemand", "scheduleUUID", "storageConfigType", "universeName", "universeUUID" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
@@ -2363,6 +2400,23 @@
       "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
     },
+    "Basic Auth information" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/HTTP Auth information"
+      }, {
+        "properties" : {
+          "password" : {
+            "description" : "Password",
+            "type" : "string"
+          },
+          "username" : {
+            "description" : "Username",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      } ]
+    },
     "BootstarpBackupParams" : {
       "description" : "Backup parameters for bootstrapping",
       "properties" : {
@@ -2596,8 +2650,9 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "expiryDate" : {
+        "expiryDateIso" : {
           "description" : "The certificate's expiry date",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -2616,8 +2671,9 @@
           "example" : "/opt/yugaware/.../example.key.pem",
           "type" : "string"
         },
-        "startDate" : {
+        "startDateIso" : {
           "description" : "The certificate's creation date",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -3101,10 +3157,14 @@
           "type" : "string"
         },
         "completionTime" : {
+          "description" : "Backup completion time.",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
         "createTime" : {
+          "description" : "Backup create time.",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -3139,11 +3199,13 @@
           "type" : "integer"
         },
         "updateTime" : {
+          "description" : "Backup update time.",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         }
       },
-      "required" : [ "backupUUID", "baseBackupUUID", "completionTime", "createTime", "kmsConfigUUID", "responseList", "sse", "state", "storageConfigUUID", "taskUUID", "totalBackupSizeInBytes", "updateTime" ],
+      "required" : [ "backupUUID", "baseBackupUUID", "kmsConfigUUID", "responseList", "sse", "state", "storageConfigUUID", "taskUUID", "totalBackupSizeInBytes" ],
       "type" : "object"
     },
     "CommunicationPorts" : {
@@ -3487,7 +3549,7 @@
         },
         "creationDate" : {
           "description" : "Creation time",
-          "example" : "2021-06-17T15:00:05-0400",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -3708,7 +3770,7 @@
         },
         "creationDate" : {
           "description" : "Creation timestamp",
-          "example" : "2021-06-17 15:00:05",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -3753,6 +3815,7 @@
       "properties" : {
         "creationDate" : {
           "description" : "Creation date of license",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -3778,6 +3841,18 @@
         }
       },
       "required" : [ "license", "licenseType" ],
+      "type" : "object"
+    },
+    "CustomerLoginFormData" : {
+      "properties" : {
+        "email" : {
+          "type" : "string"
+        },
+        "password" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "email", "password" ],
       "type" : "object"
     },
     "CustomerRegisterFormData" : {
@@ -3807,7 +3882,7 @@
         },
         "completionTime" : {
           "description" : "Customer task completion time",
-          "example" : "2021-06-17T15:00:05-0400",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -3817,7 +3892,7 @@
         },
         "createTime" : {
           "description" : "Customer task creation time",
-          "example" : "2021-06-17T15:00:05-0400",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -3926,6 +4001,32 @@
         }
       },
       "required" : [ "dbName", "password", "username", "ycqlAdminPassword", "ycqlAdminUsername", "ysqlAdminPassword", "ysqlAdminUsername" ],
+      "type" : "object"
+    },
+    "Details" : {
+      "properties" : {
+        "data" : {
+          "items" : {
+            "$ref" : "#/definitions/NodeData"
+          },
+          "type" : "array"
+        },
+        "has_error" : {
+          "type" : "boolean"
+        },
+        "has_warning" : {
+          "type" : "boolean"
+        },
+        "timestamp_iso" : {
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "yb_version" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "data", "has_error", "has_warning", "yb_version" ],
       "type" : "object"
     },
     "DeviceInfo" : {
@@ -4075,7 +4176,7 @@
     },
     "GCPCloudInfo" : {
       "properties" : {
-        "customGceNetwork" : {
+        "destVpcId" : {
           "type" : "string"
         },
         "gceApplicationCredentialsPath" : {
@@ -4083,6 +4184,10 @@
           "type" : "string"
         },
         "gceProject" : {
+          "type" : "string"
+        },
+        "hostVpcId" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "useHostCredentials" : {
@@ -4345,6 +4450,17 @@
         }
       },
       "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "masterGFlags", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
+      "type" : "object"
+    },
+    "HTTP Auth information" : {
+      "discriminator" : "type",
+      "properties" : {
+        "type" : {
+          "description" : "HTTP Auth type",
+          "enum" : [ "NONE", "BASIC", "TOKEN" ],
+          "type" : "string"
+        }
+      },
       "type" : "object"
     },
     "HashedTimestampColumnFinderResponse" : {
@@ -5056,6 +5172,7 @@
         },
         "createTime" : {
           "description" : "Creation time",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -5074,6 +5191,7 @@
         },
         "endTime" : {
           "description" : "End time",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -5085,6 +5203,7 @@
         },
         "startTime" : {
           "description" : "Start time",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -5199,6 +5318,39 @@
         }
       },
       "required" : [ "masters" ],
+      "type" : "object"
+    },
+    "Metric" : {
+      "properties" : {
+        "help" : {
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "unit" : {
+          "type" : "string"
+        },
+        "values" : {
+          "items" : {
+            "$ref" : "#/definitions/MetricValue"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [ "help", "name", "unit", "values" ],
+      "type" : "object"
+    },
+    "MetricLabel" : {
+      "properties" : {
+        "name" : {
+          "type" : "string"
+        },
+        "value" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "name", "value" ],
       "type" : "object"
     },
     "MetricQueryParams" : {
@@ -5324,6 +5476,22 @@
         }
       },
       "required" : [ "metric" ],
+      "type" : "object"
+    },
+    "MetricValue" : {
+      "properties" : {
+        "labels" : {
+          "items" : {
+            "$ref" : "#/definitions/MetricLabel"
+          },
+          "type" : "array"
+        },
+        "value" : {
+          "format" : "double",
+          "type" : "number"
+        }
+      },
+      "required" : [ "labels", "value" ],
       "type" : "object"
     },
     "MultiTableBackupRequestParams" : {
@@ -5655,6 +5823,14 @@
       },
       "type" : "object"
     },
+    "No Auth" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/HTTP Auth information"
+      }, {
+        "properties" : { },
+        "type" : "object"
+      } ]
+    },
     "NodeActionFormData" : {
       "properties" : {
         "nodeAction" : {
@@ -5669,7 +5845,7 @@
       "description" : "A node configuration.",
       "properties" : {
         "type" : {
-          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YQL_SERVER_HTTP_PORT", "YQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT" ],
+          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YQL_SERVER_HTTP_PORT", "YQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT", "VM_MAX_MAP_COUNT" ],
           "type" : "string"
         },
         "value" : {
@@ -5678,6 +5854,50 @@
         }
       },
       "required" : [ "type", "value" ],
+      "type" : "object"
+    },
+    "NodeData" : {
+      "properties" : {
+        "details" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "has_error" : {
+          "type" : "boolean"
+        },
+        "has_warning" : {
+          "type" : "boolean"
+        },
+        "message" : {
+          "type" : "string"
+        },
+        "metrics" : {
+          "items" : {
+            "$ref" : "#/definitions/Metric"
+          },
+          "type" : "array"
+        },
+        "metrics_only" : {
+          "type" : "boolean"
+        },
+        "node" : {
+          "type" : "string"
+        },
+        "node_name" : {
+          "type" : "string"
+        },
+        "process" : {
+          "type" : "string"
+        },
+        "timestamp_iso" : {
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        }
+      },
+      "required" : [ "details", "has_error", "has_warning", "message", "metrics", "metrics_only", "node", "node_name", "process" ],
       "type" : "object"
     },
     "NodeDetails" : {
@@ -6209,6 +6429,21 @@
       "required" : [ "buildNumber" ],
       "type" : "object"
     },
+    "PerProcessFlags" : {
+      "properties" : {
+        "value" : {
+          "additionalProperties" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "type" : "object"
+        }
+      },
+      "required" : [ "value" ],
+      "type" : "object"
+    },
     "PerfAdvisorSettingsFormData" : {
       "properties" : {
         "connection_skew_interval_mins" : {
@@ -6518,6 +6753,7 @@
       "properties" : {
         "createTime" : {
           "description" : "Create time of the PITR config",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -6564,6 +6800,7 @@
         },
         "updateTime" : {
           "description" : "Update time of the PITR con",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -7537,10 +7774,14 @@
     "RestoreApiFilter" : {
       "properties" : {
         "dateRangeEnd" : {
+          "description" : "The end date to filter paged query.",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
         "dateRangeStart" : {
+          "description" : "The start date to filter paged query.",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -7586,7 +7827,7 @@
           "uniqueItems" : true
         }
       },
-      "required" : [ "dateRangeEnd", "dateRangeStart", "onlyShowDeletedSourceUniverses", "sourceUniverseNameList", "states", "storageConfigUUIDList", "universeNameList", "universeUUIDList" ],
+      "required" : [ "onlyShowDeletedSourceUniverses", "sourceUniverseNameList", "states", "storageConfigUUIDList", "universeNameList", "universeUUIDList" ],
       "type" : "object"
     },
     "RestoreBackupParams" : {
@@ -7781,10 +8022,14 @@
           "type" : "integer"
         },
         "completeTime" : {
+          "description" : "RestoreKeyspace task completion time",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
         "createTime" : {
+          "description" : "RestoreKeyspace task creation time",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -7828,7 +8073,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupSizeFromStorageLocation", "completeTime", "createTime" ],
+      "required" : [ "backupSizeFromStorageLocation" ],
       "type" : "object"
     },
     "RestorePagedApiQuery" : {
@@ -7884,6 +8129,8 @@
     "RestoreResp" : {
       "properties" : {
         "createTime" : {
+          "description" : "Restore creation time.",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -7927,11 +8174,13 @@
           "type" : "string"
         },
         "updateTime" : {
+          "description" : "Restore update time.",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         }
       },
-      "required" : [ "createTime", "customerUUID", "isSourceUniversePresent", "restoreKeyspaceList", "restoreSizeInBytes", "restoreUUID", "sourceUniverseName", "sourceUniverseUUID", "state", "targetUniverseName", "universeUUID", "updateTime" ],
+      "required" : [ "customerUUID", "isSourceUniversePresent", "restoreKeyspaceList", "restoreSizeInBytes", "restoreUUID", "sourceUniverseName", "sourceUniverseUUID", "state", "targetUniverseName", "universeUUID" ],
       "type" : "object"
     },
     "RestoreSnapshotScheduleParams" : {
@@ -8131,6 +8380,7 @@
         },
         "nextScheduleTaskTime" : {
           "description" : "Time on which schedule is expected to run",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -8570,6 +8820,26 @@
       "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "upgradeSystemCatalog", "ybSoftwareVersion" ],
       "type" : "object"
     },
+    "SpecificGFlags" : {
+      "description" : "GFlags for current cluster",
+      "properties" : {
+        "inheritFromPrimary" : {
+          "type" : "boolean"
+        },
+        "perAZ" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/PerProcessFlags"
+          },
+          "description" : "Overrides for gflags per availability zone",
+          "type" : "object"
+        },
+        "perProcessFlags" : {
+          "$ref" : "#/definitions/PerProcessFlags",
+          "description" : "Gflags grouped by procces"
+        }
+      },
+      "type" : "object"
+    },
     "StateChangeAuditInfo" : {
       "properties" : {
         "customerId" : {
@@ -8690,14 +8960,20 @@
           "type" : "string"
         },
         "creationDate" : {
+          "description" : "Support bundle creation date.",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
         "endDate" : {
+          "description" : "Support bundle end date.",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
         "expirationDate" : {
+          "description" : "Support bundle expiration date.",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -8714,6 +8990,8 @@
           "type" : "integer"
         },
         "startDate" : {
+          "description" : "Support bundle start date.",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -8722,7 +9000,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "bundleDetails", "bundleUUID", "creationDate", "endDate", "expirationDate", "path", "scopeUUID", "startDate", "status" ],
+      "required" : [ "bundleDetails", "bundleUUID", "path", "scopeUUID", "status" ],
       "type" : "object"
     },
     "SupportBundleFormData" : {
@@ -8738,13 +9016,13 @@
         },
         "endDate" : {
           "description" : "End date to filter logs till",
-          "example" : "2022-01-26",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
         "startDate" : {
           "description" : "Start date to filter logs from",
-          "example" : "2022-01-25",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         }
@@ -9653,11 +9931,29 @@
       "required" : [ "allowInsecure", "clusters", "creatingUser", "enableClientToNodeEncrypt", "enableNodeToNodeEncrypt", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
+    "Token Auth information" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/HTTP Auth information"
+      }, {
+        "properties" : {
+          "tokenHeader" : {
+            "description" : "Header name",
+            "type" : "string"
+          },
+          "tokenValue" : {
+            "description" : "Token value",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      } ]
+    },
     "TriggerHealthCheckResult" : {
       "description" : "The response type for triggering a health check. Contains the timestamp of when the health check was triggered.",
       "properties" : {
         "timestamp" : {
           "description" : "The ISO-8601 timestamp when the health check was triggered.",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         }
@@ -10814,6 +11110,9 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "specificGFlags" : {
+          "$ref" : "#/definitions/SpecificGFlags"
+        },
         "tserverGFlags" : {
           "additionalProperties" : {
             "type" : "string"
@@ -10925,15 +11224,15 @@
       "description" : "A user with set of features, associated with a customer",
       "properties" : {
         "authTokenIssueDate" : {
-          "description" : "API token creation date",
-          "example" : "2021-06-17T15:00:05-04:00",
+          "description" : "UI session token creation date",
+          "example" : "2021-06-17T15:00:05Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
         },
         "creationDate" : {
           "description" : "User creation date",
-          "example" : "2021-06-17T15:00:05-04:00",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -10985,15 +11284,15 @@
       "description" : "A user associated with a customer",
       "properties" : {
         "authTokenIssueDate" : {
-          "description" : "API token creation date",
-          "example" : "2021-06-17T15:00:05-04:00",
+          "description" : "UI session token creation date",
+          "example" : "2021-06-17T15:00:05Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
         },
         "creationDate" : {
           "description" : "User creation date",
-          "example" : "2021-06-17T15:00:05-04:00",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -11292,7 +11591,7 @@
           "type" : "boolean"
         },
         "type" : {
-          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YQL_SERVER_HTTP_PORT", "YQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT" ],
+          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YQL_SERVER_HTTP_PORT", "YQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT", "VM_MAX_MAP_COUNT" ],
           "type" : "string"
         },
         "value" : {
@@ -11324,13 +11623,13 @@
       "properties" : {
         "createTime" : {
           "description" : "Create time of the xCluster config",
-          "example" : "2022-04-26 15:37:32.610000",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
         "modifyTime" : {
           "description" : "Last modify time of the xCluster config",
-          "example" : "2022-04-26 15:37:32.610000",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -11461,7 +11760,7 @@
       "properties" : {
         "createTime" : {
           "description" : "Create time of the xCluster config",
-          "example" : "2022-04-26 15:37:32.610000",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -11471,7 +11770,7 @@
         },
         "modifyTime" : {
           "description" : "Last modify time of the xCluster config",
-          "example" : "2022-04-26 15:37:32.610000",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -11581,7 +11880,7 @@
         },
         "bootstrapCreateTime" : {
           "description" : "Time of the bootstrap of the table",
-          "example" : "2022-04-26 15:37:32.610000",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -11598,7 +11897,7 @@
         },
         "restoreTime" : {
           "description" : "Time of the last try to restore data to the target universe",
-          "example" : "2022-04-26 15:37:32.610000",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -11740,6 +12039,30 @@
     "version" : "v1"
   },
   "paths" : {
+    "/api/v1/api_login" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "apiLogin",
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "CustomerLoginFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/CustomerLoginFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SessionInfo"
+            }
+          }
+        },
+        "summary" : "Authenticate user and return api token",
+        "tags" : [ "Session management" ]
+      }
+    },
     "/api/v1/app_version" : {
       "get" : {
         "description" : "",
@@ -17045,84 +17368,6 @@
         "tags" : [ "Backups" ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/cdc_streams" : {
-      "get" : {
-        "description" : "List CDC Streams for a cluster",
-        "operationId" : "listCdcStreams",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "summary" : "List CDC Streams for a cluster"
-      },
-      "post" : {
-        "description" : "Create CDC Stream for a cluster",
-        "operationId" : "createCdcStream",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "summary" : "Create CDC Stream for a cluster"
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/cdc_streams/{streamId}" : {
-      "delete" : {
-        "description" : "Delete a CDC Stream for a cluster",
-        "operationId" : "deleteCdcStream",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "path",
-          "name" : "streamId",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "summary" : "Delete a CDC stream for a cluster"
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/clusters/primary" : {
       "put" : {
         "description" : "This will update primary cluster of existing universe.Use API to GET current universe. Lookup universeDetails attribute of the universe resource returned. Update the necessary field (e.g. numNodes) Use this updated universeDetails as request body. See https://github.com/yugabyte/yugabyte-db/blob/master/managed/api-examples/python-simple/edit-universe.ipynb",
@@ -17407,7 +17652,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "type" : "object"
+              "$ref" : "#/definitions/Details"
             }
           }
         },
@@ -18225,38 +18470,6 @@
         } ],
         "summary" : "Resume a paused universe",
         "tags" : [ "Universe management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/run_in_shell" : {
-      "post" : {
-        "description" : "This operation is no longer supported, for security reasons.",
-        "operationId" : "runInShell",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPError"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Run a shell command",
-        "tags" : [ "Universe database management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/run_query" : {

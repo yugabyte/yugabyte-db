@@ -13,8 +13,8 @@ import { useMutation, useQueryClient } from 'react-query';
 import { Col, Row } from 'react-bootstrap';
 import { YBModalForm } from '../../common/forms';
 import { YBButton } from '../../common/forms/fields';
-import { FormatUnixTimeStampTimeToTimezone } from './PointInTimeRecoveryList';
 import { deletePITRConfig } from '../common/PitrAPI';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import './PointInTimeRecoveryDisableModal.scss';
 
 interface PointInTimeRecoveryDisableModalProps {
@@ -67,6 +67,8 @@ export const PointInTimeRecoveryDisableModal: FC<PointInTimeRecoveryDisableModal
       submitLabel="Disable Point-In-Time Recovery"
       onFormSubmit={handleSubmit}
       dialogClassName="pitr-disable-modal"
+      submitTestId="DisablePitrSubmitBtn"
+      cancelTestId="DisablePitrCancelBtn"
       footerAccessory={<YBButton btnClass="btn" btnText="Cancel" onClick={onHide} />}
       render={() => {
         return (
@@ -100,7 +102,7 @@ export const PointInTimeRecoveryDisableModal: FC<PointInTimeRecoveryDisableModal
                   Earliest Recoverable Time
                 </Col>
                 <Col sm={6}>
-                  <FormatUnixTimeStampTimeToTimezone timestamp={minTime} />
+                  {ybFormatDate(minTime)}
                 </Col>
               </Row>
             </div>

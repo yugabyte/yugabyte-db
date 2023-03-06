@@ -21,13 +21,13 @@ import {
   CALDENDAR_ICON,
   DATE_FORMAT,
   ENTITY_NOT_AVAILABLE,
-  FormatUnixTimeStampTimeToTimezone
 } from '../common/BackupUtils';
 import { TIME_RANGE_STATE } from '../common/IBackup';
 import { IRestore, RESTORE_STATUS_OPTIONS } from '../common/IRestore';
 import { getRestoreList } from '../common/RestoreAPI';
 import { DEFAULT_TIME_STATE, TIME_RANGE_OPTIONS } from '../components/BackupList';
 import { RestoreEmpty } from './RestoreEmpty';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import './Restore.scss';
 
 const reactWidgets = require('react-widgets');
@@ -65,7 +65,7 @@ export const Restore: FC<RestoreProps> = ({ universeUUID, type }) => {
 
     return {
       label: action.label,
-      startTime: moment().subtract(action.value[0], action.value[1]),
+      startTime: moment().subtract(action.value[0], action.value[1]).toDate(),
       endTime: new Date()
     };
   };
@@ -218,7 +218,7 @@ export const Restore: FC<RestoreProps> = ({ universeUUID, type }) => {
 
         <TableHeaderColumn
           dataField="createTime"
-          dataFormat={(time) => <FormatUnixTimeStampTimeToTimezone timestamp={time} />}
+          dataFormat={(time) => ybFormatDate(time)}
           width="20%"
           dataSort
         >

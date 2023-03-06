@@ -8,6 +8,7 @@ import logging
 import os
 import shutil
 import subprocess
+import tarfile
 
 from ybops.utils import init_env, log_message, get_default_release_version, get_release_file
 from ybops.common.exceptions import YBOpsRuntimeError
@@ -16,7 +17,16 @@ from ybops.common.exceptions import YBOpsRuntimeError
 """
 
 # Supported platforms for node-agent.
-NODE_AGENT_PLATFORMS = set(["darwin/amd64", "linux/amd64", "linux/arm64"])
+NODE_AGENT_PLATFORMS = set(["linux/amd64", "linux/arm64"])
+
+
+def filter_function(version, filename):
+    exclude_folders = ["{}/devops/venv".format(version)]
+    for exclude_folder in exclude_folders:
+        if filename.startswith(exclude_folder):
+            logging.info("Skipping {}".format(filename))
+            return False
+    return True
 
 
 def get_release_version(source_dir):
@@ -40,6 +50,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--source_dir', help='Source code directory.', required=True)
 parser.add_argument('--destination', help='Copy release to Destination directory.', required=True)
 parser.add_argument('--pre_release', help='Generate pre-release packages.', action='store_true')
+parser.add_argument('--node_agent_only', help='Generate only node agent package.',
+                    action='store_true')
 args = parser.parse_args()
 
 try:
@@ -62,7 +74,30 @@ try:
                                         "node_agent", os_type=parts[0], arch_type=parts[1])
         shutil.copyfile(packaged_file, release_file)
         if args.pre_release:
+            # Pre-release is for local testing only.
             release_file = packaged_file
+            if not args.node_agent_only:
+                repackaged_file = os.path.join(args.source_dir, "build",
+                                               "node_agent-{}-{}-{}-repackaged.tar.gz"
+                                               .format(version, parts[0], parts[1]))
+                with tarfile.open(repackaged_file, "w|gz") as repackaged_tarfile:
+                    with tarfile.open(release_file, "r|gz") as tarfile:
+                        for member in tarfile:
+                            repackaged_tarfile.addfile(member, tarfile.extractfile(member))
+
+                    repackaged_tarfile.add("../devops", arcname="{}/devops".format(version),
+                                           filter=lambda x: x if filter_function(version, x.name)
+                                           else None)
+
+                    thirdparty_folder = "/opt/third-party/"
+                    for file in os.listdir(thirdparty_folder):
+                        filepath = os.path.join(thirdparty_folder, file)
+                        if os.path.isfile(filepath):
+                            repackaged_tarfile.add(filepath,
+                                                   "{}/thirdparty/{}".format(version, file))
+
+                shutil.move(repackaged_file, packaged_file)
+
         logging.info("Copying file {} to {}".format(release_file, args.destination))
         shutil.copy(release_file, args.destination)
 

@@ -102,6 +102,8 @@ namespace yb {
 namespace pgwrapper {
 namespace {
 
+YB_STRONGLY_TYPED_BOOL(WaitForTS);
+
 template<IsolationLevel level>
 class TxnHelper {
  public:
@@ -229,7 +231,7 @@ class PgMiniSingleTServerTest : public PgMiniTest {
 class PgMiniMasterFailoverTest : public PgMiniTest {
  protected:
   void ElectNewLeaderAfterShutdown();
-
+  void TestNonRespondingMaster(WaitForTS wait_for_ts);
  public:
   size_t NumMasters() override {
     return 3;
@@ -2977,10 +2979,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
   ASSERT_LE(new_file_size, base_file_size + 100_KB);
 }
 
-// Use special mode when non leader master times out all rpcs.
-// Then step down master leader and perform backup.
-TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMaster),
-          PgMiniMasterFailoverTest) {
+void PgMiniMasterFailoverTest::TestNonRespondingMaster(WaitForTS wait_for_ts) {
   FLAGS_TEST_timeout_non_leader_master_rpcs = true;
   tools::TmpDirProvider tmp_dir;
 
@@ -3001,10 +3000,12 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMaster),
     return false;
   }, 10s, "Wait leader change"));
 
-  master::TSManager& ts_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->ts_manager();
-  ASSERT_OK(WaitFor([this, &ts_manager]() -> Result<bool> {
-    return ts_manager.GetAllDescriptors().size() == NumTabletServers();
-  }, 10s, "Wait all TServers to be registered"));
+  if (wait_for_ts) {
+    master::TSManager& ts_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->ts_manager();
+    ASSERT_OK(WaitFor([this, &ts_manager]() -> Result<bool> {
+      return ts_manager.GetAllDescriptors().size() == NumTabletServers();
+    }, 10s, "Wait all TServers to be registered"));
+  }
 
   ASSERT_OK(tools::RunBackupCommand(
       pg_host_port(), cluster_->GetMasterAddresses(), cluster_->GetTserverHTTPAddresses(),
@@ -3012,6 +3013,17 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMaster),
        "create"}));
 }
 
+// Use special mode when non leader master times out all rpcs.
+// Then step down master leader and perform backup.
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMaster),
+          PgMiniMasterFailoverTest) {
+  TestNonRespondingMaster(WaitForTS::kFalse);
+}
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMasterWithTSWaiting),
+          PgMiniMasterFailoverTest) {
+  TestNonRespondingMaster(WaitForTS::kTrue);
+}
 
 // The test checks that YSQL doesn't wait for sent RPC response in case of process termination.
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoWaitForRPCOnTermination)) {

@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -566,16 +567,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     PlacementInfoUtil.selectNumMastersAZ(pi, numTotalMasters);
   }
 
-  /**
-   * Return map of primary cluster gflags based on serverType
-   *
-   * @param taskType
-   */
-  public Map<String, String> getPrimaryClusterGFlags(ServerType taskType, Universe universe) {
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    return taskType.equals(ServerType.MASTER) ? userIntent.masterGFlags : userIntent.tserverGFlags;
-  }
-
   // Utility method so that the same tasks can be executed in StopNodeInUniverse.java
   // part of the automatic restart process of a master, if applicable, as well as in
   // StartMasterOnNode.java for any user-specified master starts.
@@ -664,24 +655,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         getTaskExecutor().createSubTaskGroup("AnsibleConfigureServersGFlags", executor);
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
 
-    // Read gflags from taskPrams primary cluster. If it is null, read it from the universe.
-    Map<String, String> gflags;
-    Cluster primaryClusterInTaskParams = taskParams().getPrimaryCluster();
-    if (primaryClusterInTaskParams != null) {
-      UserIntent userIntent = primaryClusterInTaskParams.userIntent;
-      gflags =
-          serverType.equals(ServerType.MASTER) ? userIntent.masterGFlags : userIntent.tserverGFlags;
-      log.debug(
-          "gflags in taskParams: {}, gflags in universeDetails: {}",
-          gflags,
-          getPrimaryClusterGFlags(serverType, universe));
-    } else {
-      gflags = getPrimaryClusterGFlags(serverType, universe);
-      log.debug("gflags gathered from the UniverseDetails : {}", gflags);
-    }
-
     for (NodeDetails node : nodes) {
-      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
+      Cluster cluster = taskParams().getClusterByUuid(node.placementUuid);
+      UserIntent userIntent = cluster.userIntent;
+
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = userIntent.getDeviceInfoForNode(node);
@@ -724,7 +701,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Add task type
       params.type = UpgradeTaskParams.UpgradeTaskType.GFlags;
       params.setProperty("processType", serverType.toString());
-      params.gflags = gflags;
+      params.gflags =
+          GFlagsUtil.getGFlagsForNode(
+              node, serverType, cluster, universe.getUniverseDetails().clusters);
       params.useSystemd = userIntent.useSystemd;
       paramsCustomizer.accept(params);
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
@@ -1065,7 +1044,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleConfigureServers", executor);
     for (NodeDetails node : nodes) {
-      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
+      Cluster cluster = taskParams().getClusterByUuid(node.placementUuid);
+      UserIntent userIntent = cluster.userIntent;
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = userIntent.getDeviceInfoForNode(node);
@@ -1113,10 +1093,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         params.type = UpgradeTaskParams.UpgradeTaskType.GFlags;
         if (params.isMaster) {
           params.setProperty("processType", ServerType.MASTER.toString());
-          params.gflags = getPrimaryClusterGFlags(ServerType.MASTER, universe);
+          params.gflags =
+              GFlagsUtil.getGFlagsForNode(
+                  node,
+                  ServerType.MASTER,
+                  universe.getUniverseDetails().getClusterByUuid(cluster.uuid),
+                  universe.getUniverseDetails().clusters);
         } else {
           params.setProperty("processType", ServerType.TSERVER.toString());
-          params.gflags = getPrimaryClusterGFlags(ServerType.TSERVER, universe);
+          params.gflags =
+              GFlagsUtil.getGFlagsForNode(
+                  node,
+                  ServerType.TSERVER,
+                  universe.getUniverseDetails().getClusterByUuid(cluster.uuid),
+                  universe.getUniverseDetails().clusters);
         }
       }
       // Create the Ansible task to get the server info.
@@ -2204,7 +2194,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       UpgradeTaskSubType taskSubType) {
     AnsibleConfigureServers.Params params =
         getBaseAnsibleServerTaskParams(userIntent, node, processType, type, taskSubType);
-    Map<String, String> gflags = getPrimaryClusterGFlags(processType, getUniverse());
+    Universe universe = getUniverse();
+    Map<String, String> gflags =
+        GFlagsUtil.getGFlagsForNode(
+            node,
+            processType,
+            universe.getCluster(node.placementUuid),
+            universe.getUniverseDetails().clusters);
     // Add the universe uuid.
     params.universeUUID = taskParams().universeUUID;
 
@@ -2218,7 +2214,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.allowInsecure = taskParams().allowInsecure;
     params.setTxnTableWaitCountFlag = taskParams().setTxnTableWaitCountFlag;
 
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     UUID custUUID = Customer.get(universe.customerId).uuid;
     params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
     params.rootCA = universe.getUniverseDetails().rootCA;

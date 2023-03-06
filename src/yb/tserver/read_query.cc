@@ -341,9 +341,15 @@ Status ReadQuery::DoPerform() {
   }
 
   if (transactional) {
+    // TODO(wait-queues) -- having this RequestScope live during conflict resolution may prevent
+    // intent cleanup for any transactions resolved after this is created and before it's destroyed.
+    // This may be especially problematic for operations which need to wait, as their waiting may
+    // now cause intents_db scans to become less performant. Moving this initialization to only
+    // cover cases where we avoid writes may cause inconsistency issues, as exposed by
+    // PgOnConflictTest.OnConflict which fails if we move this code below.
+    request_scope_ = VERIFY_RESULT(RequestScope::Create(tablet()->transaction_participant()));
     // Serial number is used to check whether this operation was initiated before
     // transaction status request. So we should initialize it as soon as possible.
-    request_scope_ = VERIFY_RESULT(RequestScope::Create(tablet()->transaction_participant()));
     read_time_.serial_no = request_scope_.request_id();
   }
 

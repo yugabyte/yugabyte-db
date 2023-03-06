@@ -20,6 +20,7 @@
     "install-third-party.yml"
   ],
   "bin": [
+    "bin/ansible-playbook.sh",
     "bin/common.sh",
     "bin/install_ansible_requirements.sh",
     "bin/install_python_requirements.sh",

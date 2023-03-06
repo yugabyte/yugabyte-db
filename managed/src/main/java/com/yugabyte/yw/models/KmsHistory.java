@@ -240,6 +240,18 @@ public class KmsHistory extends Model {
     return Universe.getAllPresent(universeUUIDs);
   }
 
+  public static Set<UUID> getDistinctKmsConfigUUIDs(UUID targetUUID) {
+    Set<UUID> KmsConfigUUIDs = new HashSet<>();
+    KmsHistory.find
+        .query()
+        .where()
+        .eq("target_uuid", targetUUID)
+        .eq("type", KmsHistoryId.TargetType.UNIVERSE_KEY)
+        .findList()
+        .forEach(kh -> KmsConfigUUIDs.add(kh.configUuid));
+    return KmsConfigUUIDs;
+  }
+
   @Override
   public String toString() {
     return Json.newObject()

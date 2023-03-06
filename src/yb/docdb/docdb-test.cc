@@ -73,9 +73,9 @@ using rocksdb::WriteOptions;
 
 using namespace std::literals;
 
+DECLARE_bool(TEST_docdb_sort_weak_intents);
 DECLARE_bool(use_docdb_aware_bloom_filter);
 DECLARE_int32(max_nexts_to_avoid_seek);
-DECLARE_bool(TEST_docdb_sort_weak_intents);
 
 #define ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(str) ASSERT_NO_FATALS(AssertDocDbDebugDumpStrEq(str))
 
@@ -120,6 +120,10 @@ class DocDBTest : public DocDBTestBase {
   }
 
   ~DocDBTest() override {
+  }
+
+  Schema CreateSchema() override {
+    return Schema();
   }
 
   virtual void GetSubDoc(
@@ -4015,8 +4019,8 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilter) {
     } else {
       int kf_calls = 0;
       rocksdb::KeyFilterCallback kf_callback = [&kf_calls](
-                             const Slice& prefixed_key, size_t shared_bytes,
-                             const Slice& delta) -> rocksdb::KeyFilterCallbackResult {
+                             Slice prefixed_key, size_t shared_bytes,
+                             Slice delta) -> rocksdb::KeyFilterCallbackResult {
         kf_calls++;
         return rocksdb::KeyFilterCallbackResult{.skip_key = false, .cache_key = false};
       };
@@ -4123,8 +4127,13 @@ TEST_P(DocDBTestWrapper, IteratorScanForwardUpperbound) {
             iter->ScanForward(encoded_doc_key, /*key_filter_callback=*/ nullptr, &scan_callback));
         ASSERT_EQ(i - 1, scanned_keys);
 
+        ASSERT_TRUE(iter->Valid());
+        ASSERT_EQ(encoded_doc_key.AsSlice(), iter->key().Prefix(encoded_doc_key.size()));
+
         ASSERT_TRUE(iter->ScanForward(Slice(), /*key_filter_callback=*/ nullptr, &scan_callback));
         ASSERT_EQ(kNumKeys, scanned_keys);
+
+        ASSERT_FALSE(iter->Valid());
       }
 
       if (k == 0) {

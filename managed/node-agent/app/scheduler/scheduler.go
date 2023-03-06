@@ -52,7 +52,7 @@ func Init(ctx context.Context) *Scheduler {
 
 func GetInstance() *Scheduler {
 	if instance == nil {
-		util.FileLogger().Fatal("Scheduler is not initialized")
+		util.FileLogger().Fatal(nil, "Scheduler is not initialized")
 	}
 	return instance
 }
@@ -61,12 +61,12 @@ func (s *Scheduler) executeTask(ctx context.Context, taskID uuid.UUID) error {
 	value, ok := s.tasks.Load(taskID)
 	if !ok {
 		err := fmt.Errorf("Invalid state for task %s. Exiting...", taskID)
-		util.FileLogger().Errorf(err.Error())
+		util.FileLogger().Errorf(ctx, err.Error())
 		return err
 	}
 	info := value.(*taskInfo)
 	if !info.compareAndSetRunning(true) {
-		util.FileLogger().Warnf("Task %s is still running", taskID)
+		util.FileLogger().Warnf(ctx, "Task %s is still running", taskID)
 		return nil
 	}
 	defer func() {
@@ -75,7 +75,7 @@ func (s *Scheduler) executeTask(ctx context.Context, taskID uuid.UUID) error {
 	err := executor.GetInstance().ExecuteTask(ctx, info.handler)
 	if err != nil {
 		err := fmt.Errorf("Failed to submit job %s. Error: %s", taskID, err)
-		util.FileLogger().Errorf(err.Error())
+		util.FileLogger().Errorf(ctx, err.Error())
 		return err
 	}
 	return nil
@@ -102,7 +102,7 @@ func (s *Scheduler) Schedule(
 			case <-taskInfo.ticker.C:
 				err := s.executeTask(ctx, taskID)
 				if err != nil {
-					util.FileLogger().Errorf("Exiting scheduled task %s", taskID)
+					util.FileLogger().Errorf(ctx, "Exiting scheduled task %s", taskID)
 				}
 			}
 		}

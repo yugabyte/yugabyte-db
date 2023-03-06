@@ -34,7 +34,9 @@ export default class YBModalForm extends Component {
       validate,
       initialValues,
       validateOnBlur,
-      validateOnChange
+      validateOnChange,
+      submitTestId="submitForm",
+      cancelTestId="closeForm"
     } = this.props;
 
     let footerButtonClass = '';
@@ -105,9 +107,10 @@ export default class YBModalForm extends Component {
                       btnText={submitLabel}
                       btnType="submit"
                       disabled={props.isSubmitting}
+                      data-testid={submitTestId}
                     />
                     {showCancelButton && (
-                      <YBButton btnClass="btn" btnText={cancelLabel} onClick={onHide} />
+                      <YBButton btnClass="btn" btnText={cancelLabel} onClick={onHide} data-testid={cancelTestId}/>
                     )}
                     {footerAccessory && (
                       <div className={`pull-${pullRightFooter ? 'right' : 'left'} modal-accessory`}>

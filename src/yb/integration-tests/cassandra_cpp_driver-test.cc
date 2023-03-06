@@ -1088,7 +1088,7 @@ TEST_F_EX(CppCassandraDriverTest, TestDeferredIndexBackfillsAfterWait,
 
   // Launch Backfill through yb-admin
   constexpr auto kAdminRpcTimeout = 5;
-  auto yb_admin_client = std::make_unique<tools::enterprise::ClusterAdminClient>(
+  auto yb_admin_client = std::make_unique<tools::ClusterAdminClient>(
       cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(kAdminRpcTimeout));
   ASSERT_OK(yb_admin_client->Init());
   ASSERT_OK(yb_admin_client->LaunchBackfillIndexForTable(table_name));

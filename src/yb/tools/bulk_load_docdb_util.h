@@ -27,6 +27,7 @@ class BulkLoadDocDBUtil : public docdb::DocDBRocksDBUtil {
   std::string tablet_id() override;
   size_t block_cache_size() const override  { return 0; }
   const std::string& rocksdb_dir();
+  Schema CreateSchema() override { return Schema(); }
 
  private:
   const std::string tablet_id_;

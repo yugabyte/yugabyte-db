@@ -20,8 +20,12 @@ import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.helpers.auth.BasicAuth;
+import com.yugabyte.yw.models.helpers.auth.HttpAuth;
+import com.yugabyte.yw.models.helpers.auth.TokenAuth;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.function.Consumer;
 import okhttp3.HttpUrl;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -106,6 +110,32 @@ public class AlertChannelWebhookTest extends FakeDBApplication {
   }
 
   @Test
+  public void testBasicAuth()
+      throws PlatformNotificationException, IOException, InterruptedException {
+    BasicAuth basicAuth = new BasicAuth();
+    basicAuth.setUsername("testUser");
+    basicAuth.setPassword("testPassword");
+    testAuth(
+        basicAuth,
+        recordedRequest ->
+            assertThat(
+                recordedRequest.getHeader("Authorization"),
+                equalTo("Basic dGVzdFVzZXI6dGVzdFBhc3N3b3Jk")));
+  }
+
+  @Test
+  public void testTokenAuth()
+      throws PlatformNotificationException, IOException, InterruptedException {
+    TokenAuth tokenAuth = new TokenAuth();
+    tokenAuth.setTokenHeader("testHeader");
+    tokenAuth.setTokenValue("testValue");
+    testAuth(
+        tokenAuth,
+        recordedRequest ->
+            assertThat(recordedRequest.getHeader("testHeader"), equalTo("testValue")));
+  }
+
+  @Test
   public void testFailure() throws IOException, PlatformNotificationException {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
@@ -127,6 +157,29 @@ public class AlertChannelWebhookTest extends FakeDBApplication {
               PlatformNotificationException.class,
               "Error sending WebHook message for alert Alert 1: "
                   + "error response 500 received with body {\"error\":\"not_ok\"}"));
+    }
+  }
+
+  private void testAuth(HttpAuth auth, Consumer<RecordedRequest> asserts)
+      throws PlatformNotificationException, IOException, InterruptedException {
+    try (MockWebServer server = new MockWebServer()) {
+      server.start();
+      HttpUrl baseUrl = server.url(WEBHOOK_TEST_PATH);
+      server.enqueue(new MockResponse().setBody("{\"status\":\"ok\"}"));
+
+      AlertChannel channelConfig = new AlertChannel();
+      channelConfig.setName("Channel name");
+      AlertChannelWebHookParams params = new AlertChannelWebHookParams();
+      params.setWebhookUrl(baseUrl.toString());
+      params.setHttpAuth(auth);
+      channelConfig.setParams(params);
+
+      Alert alert = ModelFactory.createAlert(defaultCustomer);
+      channel.sendNotification(defaultCustomer, alert, channelConfig, alertChannelTemplatesExt);
+
+      RecordedRequest request = server.takeRequest();
+      assertThat(request.getPath(), is(WEBHOOK_TEST_PATH));
+      asserts.accept(request);
     }
   }
 }

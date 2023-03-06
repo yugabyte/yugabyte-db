@@ -505,7 +505,6 @@ TEST_F(SnapshotTest, SnapshotRemoteBootstrap) {
   ASSERT_OK(cluster_->CleanTabletLogs());
   const MonoDelta kTimeout = 20s * kTimeMultiplier;
   ASSERT_OK(ts0->Start());
-  ASSERT_OK(ts0->WaitStarted());
   // Get the map of tserverdetails and the set of all_tablet_ids in order to use them
   // for ts0 to catch up with the rest of replicas after remote bootstrapping
   auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());

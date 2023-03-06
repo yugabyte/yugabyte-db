@@ -24,11 +24,11 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.AccessManager.KeyType;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
@@ -288,9 +288,9 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       }
       // Check AMI info.
       if (customImageId) {
-        assertEquals(r.getYbImage(), metadata.customImageId);
+        assertEquals(metadata.customImageId, r.getYbImage());
       } else {
-        assertEquals(r.getYbImage(), defaultImage);
+        assertEquals(defaultImage, r.getYbImage());
       }
       // Check Arch info.
       assertEquals(r.getArchitecture(), metadata.architecture);
@@ -550,7 +550,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     eastRegion.subnetId = "us-east1-subnet1";
     eastRegion.secondarySubnetId = "us-east1-subnet2";
     taskParams.providerUUID = gcpProvider.uuid;
-    taskParams.regionAddOnly = true;
+    taskParams.skipBootstrapRegion = true;
     taskParams.perRegionMetadata.put("us-east1", eastRegion);
     validateCloudBootstrapSuccess(
         taskParams,
