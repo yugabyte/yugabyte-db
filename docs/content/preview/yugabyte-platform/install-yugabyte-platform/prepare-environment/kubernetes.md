@@ -171,7 +171,7 @@ You need to perform the following steps:
   docker search quay.io/yugabyte
   ```
 
-- Install Helm to fetch the YugabyteDB Anywhere Helm chart on your machine. Follow to see [Helm Installation](https://helm.sh/docs/intro/install/).
+- Install Helm to fetch the YugabyteDB Anywhere Helm chart on your machine. For more information, refer to [Installing Helm](https://helm.sh/docs/intro/install/).
 
 - Run the following `helm repo add` command to clone the [YugabyteDB charts repository](https://charts.yugabyte.com/).
 
@@ -186,7 +186,7 @@ You need to perform the following steps:
   helm search repo yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}}
   ```
 
-  A similar output should appear:
+  You should see output similar to the following:
 
   ```output
   NAME                            CHART VERSION   APP VERSION     DESCRIPTION
@@ -199,7 +199,7 @@ You need to perform the following steps:
   helm show values yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}}
   ```
 
-  A similar output should appear:
+  You should see output similar to the following:
 
   ```properties
   image:
@@ -239,7 +239,7 @@ You need to perform the following steps:
 
 - Pull images to your machine, as follows:
 
-  **Note** - These image tags will vary based on the version.
+  **Note**: These image tags will vary based on the version.
 
   ```sh
   docker pull quay.io/yugabyte/yugaware:{{<yb-version version="preview" format="build">}}
