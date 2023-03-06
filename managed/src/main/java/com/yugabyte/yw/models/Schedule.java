@@ -12,6 +12,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
@@ -212,7 +213,11 @@ public class Schedule extends Model {
   }
 
   @Column
-  @ApiModelProperty(value = "Time on which schedule is expected to run", accessMode = READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value = "Time on which schedule is expected to run",
+      accessMode = READ_ONLY,
+      example = "2022-12-12T13:07:18Z")
   private Date nextScheduleTaskTime;
 
   public Date getNextScheduleTaskTime() {

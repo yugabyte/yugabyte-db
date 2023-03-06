@@ -4,6 +4,7 @@
 package util
 
 import (
+	"context"
 	"crypto"
 	"crypto/x509"
 	"encoding/pem"
@@ -25,11 +26,11 @@ type Claims struct {
 }
 
 // Saves the cert and key to the certs directory.
-func SaveCerts(config *Config, cert string, key string, subDir string) error {
+func SaveCerts(ctx context.Context, config *Config, cert string, key string, subDir string) error {
 	certsDir := filepath.Join(CertsDir(), subDir)
 	err := os.MkdirAll(certsDir, os.ModePerm)
 	if err != nil {
-		FileLogger().Errorf("Error while creating current certs dir %s", certsDir)
+		FileLogger().Errorf(ctx, "Error while creating current certs dir %s", certsDir)
 		return err
 	}
 	certFilepath := filepath.Join(certsDir, NodeAgentCertFile)
@@ -39,7 +40,7 @@ func SaveCerts(config *Config, cert string, key string, subDir string) error {
 		0644,
 	)
 	if err != nil {
-		FileLogger().Errorf("Error while saving certs to %s", certFilepath)
+		FileLogger().Errorf(ctx, "Error while saving certs to %s", certFilepath)
 		return err
 	}
 	keyFilepath := filepath.Join(certsDir, NodeAgentKeyFile)
@@ -49,29 +50,31 @@ func SaveCerts(config *Config, cert string, key string, subDir string) error {
 		0644,
 	)
 	if err != nil {
-		FileLogger().Errorf("Error while saving key to %s", keyFilepath)
+		FileLogger().Errorf(ctx, "Error while saving key to %s", keyFilepath)
 		return err
 	}
-	FileLogger().Infof("Saved new certs to %s", certsDir)
+	FileLogger().Infof(ctx, "Saved new certs to %s", certsDir)
 	return nil
 }
 
-func DeleteCerts(subDir string) error {
+// DeleteCerts deletes all the certs in the given sub-directory.
+func DeleteCerts(ctx context.Context, subDir string) error {
 	certsDir := filepath.Join(CertsDir(), subDir)
-	FileLogger().Infof("Deleting certs %s", certsDir)
+	FileLogger().Infof(ctx, "Deleting certs %s", certsDir)
 	err := os.RemoveAll(certsDir)
 	if err != nil {
-		FileLogger().Errorf("Error while deleting certs %s, err %s", certsDir, err.Error())
+		FileLogger().Errorf(ctx, "Error while deleting certs %s, err %s", certsDir, err.Error())
 	}
 	return err
 }
 
-func DeleteRelease(release string) error {
+// DeleteCerts deletes a release.
+func DeleteRelease(ctx context.Context, release string) error {
 	releaseDir := filepath.Join(ReleaseDir(), release)
-	FileLogger().Infof("Deleting release dir %s", releaseDir)
+	FileLogger().Infof(ctx, "Deleting release dir %s", releaseDir)
 	err := os.RemoveAll(releaseDir)
 	if err != nil {
-		FileLogger().Errorf("Error while deleting release dir %s, err %s", release, err.Error())
+		FileLogger().Errorf(ctx, "Error while deleting release dir %s, err %s", release, err.Error())
 	}
 	return err
 }
@@ -112,16 +115,16 @@ func ServerKeyPath(config *Config) string {
 
 // Creates a new JWT with the required claims: Node Id and User Id.
 // The JWT is signed using the key in the certs directory.
-func GenerateJWT(config *Config) (string, error) {
+func GenerateJWT(ctx context.Context, config *Config) (string, error) {
 	keyFilepath := ServerKeyPath(config)
 	privateKey, err := ioutil.ReadFile(keyFilepath)
 	if err != nil {
-		FileLogger().Errorf("Error while reading the private key: %s", err.Error())
+		FileLogger().Errorf(ctx, "Error while reading the private key: %s", err.Error())
 		return "", err
 	}
 	key, err := jwt.ParseRSAPrivateKeyFromPEM(privateKey)
 	if err != nil {
-		FileLogger().Errorf("Error while parsing the private key: %s", err.Error())
+		FileLogger().Errorf(ctx, "Error while parsing the private key: %s", err.Error())
 		return "", err
 	}
 	claims := &Claims{
@@ -134,41 +137,43 @@ func GenerateJWT(config *Config) (string, error) {
 			Subject:   JwtSubject,
 		},
 	}
-	FileLogger().Infof("Created JWT using %s key", config.String(PlatformCertsKey))
+	FileLogger().Infof(ctx, "Created JWT using %s key", config.String(PlatformCertsKey))
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	return token.SignedString(key)
 }
 
 // PublicKeyFromCert extracts public key from a cert.
-func PublicKeyFromCert(certFilepath string) (crypto.PublicKey, error) {
+func PublicKeyFromCert(ctx context.Context, certFilepath string) (crypto.PublicKey, error) {
 	bytes, err := ioutil.ReadFile(certFilepath)
 	if err != nil {
-		FileLogger().Errorf("Error while reading the certificate: %s", err.Error())
+		FileLogger().Errorf(ctx, "Error while reading the certificate: %s", err.Error())
 		return nil, err
 	}
 	block, _ := pem.Decode(bytes)
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		FileLogger().Errorf("Error while parsing the certificate: %s", err.Error())
+		FileLogger().Errorf(ctx, "Error while parsing the certificate: %s", err.Error())
 		return nil, err
 	}
 	if cert.PublicKeyAlgorithm != x509.RSA {
 		err = errors.New("RSA public key is expected")
-		FileLogger().Errorf("Error - %s", err.Error())
+		FileLogger().Errorf(ctx, "Error - %s", err.Error())
 		return nil, err
 	}
 	return cert.PublicKey, nil
 }
 
-func PublicKey(config *Config) (crypto.PublicKey, error) {
-	return PublicKeyFromCert(ServerCertPath(config))
+// PublicKey returns the public key.
+func PublicKey(ctx context.Context, config *Config) (crypto.PublicKey, error) {
+	return PublicKeyFromCert(ctx, ServerCertPath(config))
 }
 
-func PublicKeys(config *Config) ([]crypto.PublicKey, error) {
+// PublicKey returns all the public keys including the new one.
+func PublicKeys(ctx context.Context, config *Config) ([]crypto.PublicKey, error) {
 	keys := []crypto.PublicKey{}
 	paths := ServerCertPaths(config)
 	for _, path := range paths {
-		key, err := PublicKeyFromCert(path)
+		key, err := PublicKeyFromCert(ctx, path)
 		if err != nil {
 			return keys, err
 		}
@@ -177,10 +182,11 @@ func PublicKeys(config *Config) ([]crypto.PublicKey, error) {
 	return keys, nil
 }
 
-func VerifyJWT(config *Config, authToken string) (*jwt.MapClaims, error) {
-	publicKeys, err := PublicKeys(config)
+// VerifyJWT verifies the JWT and returns the claims.
+func VerifyJWT(ctx context.Context, config *Config, authToken string) (*jwt.MapClaims, error) {
+	publicKeys, err := PublicKeys(ctx, config)
 	if err != nil {
-		FileLogger().Errorf("Error in getting the public key: %s", err.Error())
+		FileLogger().Errorf(ctx, "Error in getting the public key: %s", err.Error())
 		return nil, err
 	}
 	for idx, publicKey := range publicKeys {
@@ -200,7 +206,7 @@ func VerifyJWT(config *Config, authToken string) (*jwt.MapClaims, error) {
 		}
 		if idx == len(publicKeys)-1 {
 			// All keys are exhausted.
-			FileLogger().Errorf("Failed to validate claim - %s", err.Error())
+			FileLogger().Errorf(ctx, "Failed to validate claim - %s", err.Error())
 		}
 	}
 	return nil, fmt.Errorf("Invalid token")

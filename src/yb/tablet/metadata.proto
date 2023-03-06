@@ -187,8 +187,8 @@ message RaftGroupReplicaSuperBlockPB {
   // retaining any log files unnecessarily.
   optional int64 cdc_min_replicated_index = 26 [ default = 9223372036854775807 ];
 
-  // Is this tablet currently a consumer tablet for 2dc replication.
-  optional bool is_under_twodc_replication = 27;
+  // Is this tablet currently a consumer tablet for xcluster replication.
+  optional bool is_under_xcluster_replication = 27;
 
   // Reject client queries (read and write) to this tablet like it does not present.
   optional bool hidden = 28;

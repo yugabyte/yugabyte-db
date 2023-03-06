@@ -1025,6 +1025,22 @@ int32_t TabletServer::cluster_config_version() const {
   return xcluster_consumer_->cluster_config_version();
 }
 
+Result<uint32_t> TabletServer::XClusterConfigVersion() const {
+  SCHECK(cdc_service_, NotFound, "CDC Service not found");
+  return cdc_service_->GetXClusterConfigVersion();
+}
+
+Status TabletServer::SetPausedXClusterProducerStreams(
+    const ::google::protobuf::Map<::std::string, bool>& paused_producer_stream_ids,
+    uint32_t xcluster_config_version) {
+  SCHECK(cdc_service_, NotFound, "CDC Service not found");
+  if (VERIFY_RESULT(XClusterConfigVersion()) < xcluster_config_version) {
+    cdc_service_->SetPausedXClusterProducerStreams(
+        paused_producer_stream_ids, xcluster_config_version);
+  }
+  return Status::OK();
+}
+
 Status TabletServer::ReloadKeysAndCertificates() {
   if (!secure_context_) {
     return Status::OK();

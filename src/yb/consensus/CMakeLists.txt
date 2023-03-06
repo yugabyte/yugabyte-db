@@ -116,6 +116,7 @@ target_link_libraries(log
   server_common
   gutil
   yb_common
+  yb_ql_common
   yb_fs
   consensus_proto
   log_proto

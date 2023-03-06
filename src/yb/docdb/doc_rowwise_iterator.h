@@ -107,6 +107,8 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
 
   HybridTime RestartReadHt() override;
 
+  HybridTime TEST_MaxSeenHt() override;
+
   // Returns the tuple id of the current tuple. The tuple id returned is the serialized DocKey
   // and without the cotable id.
   Result<Slice> GetTupleId() const override;
@@ -128,18 +130,16 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // Used only in debug mode to ensure that generated key offsets are correct for provided key.
   bool ValidateDocKeyOffsets(const Slice& iter_key);
 
-  static bool is_hybrid_scan_enabled();
-
  private:
   template <class T>
   Status DoInit(const T& spec);
   void ConfigureForYsql();
   void InitResult();
 
-  Result<bool> InitScanChoices(
+  void InitScanChoices(
       const DocQLScanSpec& doc_spec, const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key);
 
-  Result<bool> InitScanChoices(
+  void InitScanChoices(
       const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
       const KeyBytes& upper_doc_key);
 
@@ -150,9 +150,6 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
 
   // Read next row into a value map using the specified projection.
   Status DoNextRow(boost::optional<const Schema&> projection, QLTableRow* table_row) override;
-
-  // Returns OK if row_key_ is pointing to a system key.
-  Status ValidateSystemKey();
 
   const std::unique_ptr<Schema> projection_owner_;
   // Used to maintain ownership of projection_.

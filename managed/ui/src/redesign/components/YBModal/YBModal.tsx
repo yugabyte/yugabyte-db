@@ -14,7 +14,6 @@ import {
 } from '@material-ui/core';
 import type { TransitionProps } from '@material-ui/core/transitions';
 import { YBTooltip, YBButton, YBButtonProps } from '../../components/';
-import { isSubmitting } from 'redux-form';
 
 export interface OverrideButtonProps {
   primary?: YBButtonProps;
@@ -102,7 +101,7 @@ const useStyles = makeStyles<Theme, Partial<YBModalProps>>((theme) => ({
   },
   closeBtnText: {
     color: theme.palette.orange[500],
-    fontSize: theme.spacing(4),
+    fontSize: theme.spacing(3),
     lineHeight: '26px'
   },
   actionsInfo: {
@@ -274,7 +273,7 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
                 )}
                 {!hideCloseBtn && (
                   <YBButton className={classes.closeBtn} onClick={handleClose}>
-                    <span className={classes.closeBtnText}>x</span>
+                    <i className={`fa fa-remove ${classes.closeBtnText}`}></i>
                   </YBButton>
                 )}
               </Typography>

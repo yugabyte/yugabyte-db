@@ -17,6 +17,7 @@ import io.ebean.Model;
 import io.ebean.annotation.DbEnumValue;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModelProperty;
+
 import java.io.File;
 import java.io.InputStream;
 import java.nio.file.Path;
@@ -52,12 +53,14 @@ public class SupportBundle extends Model {
 
   @Column
   @Getter
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+  @ApiModelProperty(value = "Support bundle start date.", example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   private Date startDate;
 
   @Column
   @Getter
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+  @ApiModelProperty(value = "Support bundle end date.", example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   private Date endDate;
 
   @Column(nullable = true)
@@ -187,7 +190,8 @@ public class SupportBundle extends Model {
     return creationDate;
   }
 
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+  @ApiModelProperty(value = "Support bundle creation date.", example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   public Date getCreationDate() {
     if (this.status != SupportBundleStatusType.Success) {
       return null;
@@ -195,7 +199,8 @@ public class SupportBundle extends Model {
     return this.parseCreationDate();
   }
 
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+  @ApiModelProperty(value = "Support bundle expiration date.", example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   public Date getExpirationDate() {
     if (this.status != SupportBundleStatusType.Success) {
       return null;

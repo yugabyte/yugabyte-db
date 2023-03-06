@@ -23,7 +23,7 @@ export const HelmOverrides: FC = () => {
 
   if (isCreatePrimary && provider?.code === CloudType.kubernetes)
     return (
-      <Box data-testid="helm-overrides-section">
+      <Box data-testid="HelmOverrides-Section">
         <Box mt={2}>
           <Typography className={classes.sectionHeaderFont}>
             {t('universeForm.helmOverrides.title')}

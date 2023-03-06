@@ -439,6 +439,8 @@ Result<bool> HashedOrFirstRangeComponentsEqual(const Slice& lhs, const Slice& rh
 
 bool DocKeyBelongsTo(Slice doc_key, const Schema& schema);
 
+Result<bool> IsColocatedTableTombstoneKey(Slice doc_key);
+
 // Consumes single primitive value from start of slice.
 // Returns true when value was consumed, false when group end is found. The group end byte is
 // consumed in the latter case.

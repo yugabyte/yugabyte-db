@@ -1345,6 +1345,24 @@ Status CatalogManager::CleanUpCDCStreamsMetadata(
   return CleanUpCDCMetadataFromSystemCatalog(drop_stream_tablelist);
 }
 
+Status CatalogManager::RemoveStreamFromXClusterProducerConfig(
+    const std::vector<CDCStreamInfo*>& streams) {
+  auto xcluster_config = XClusterConfig();
+  auto l = xcluster_config->LockForWrite();
+  auto* data = l.mutable_data();
+  auto paused_producer_stream_ids =
+      data->pb.mutable_xcluster_producer_registry()->mutable_paused_producer_stream_ids();
+  for (const auto& stream : streams) {
+    paused_producer_stream_ids->erase(stream->id());
+  }
+  data->pb.set_version(data->pb.version() + 1);
+  RETURN_NOT_OK(CheckStatus(
+      sys_catalog_->Upsert(leader_ready_term(), xcluster_config.get()),
+      "updating xcluster config in sys-catalog"));
+  l.Commit();
+  return Status::OK();
+}
+
 Status CatalogManager::CleanUpDeletedCDCStreams(
     const std::vector<scoped_refptr<CDCStreamInfo>>& streams) {
   auto ybclient = master_->cdc_state_client_initializer().client();
@@ -1453,6 +1471,9 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
       streams_to_delete.push_back(stream.get());
     }
   }
+
+  // Remove the stream ID from the cluster config CDC stream replication enabled/disabled map.
+  RETURN_NOT_OK(RemoveStreamFromXClusterProducerConfig(streams_to_delete));
 
   // The mutation will be aborted when 'l' exits the scope on early return.
   RETURN_NOT_OK(CheckStatus(
@@ -3331,6 +3352,64 @@ Status CatalogManager::SetUniverseReplicationEnabled(
 
   CreateXClusterSafeTimeTableAndStartService();
 
+  return Status::OK();
+}
+
+Status CatalogManager::PauseResumeXClusterProducerStreams(
+    const PauseResumeXClusterProducerStreamsRequestPB* req,
+    PauseResumeXClusterProducerStreamsResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing PauseXCluster request from " << RequestorString(rpc) << ".";
+  SCHECK(req->has_is_paused(), InvalidArgument, "is_paused must be set in the request");
+  bool paused = req->is_paused();
+  string action = paused ? "Pausing" : "Resuming";
+  if (req->stream_ids_size() == 0) {
+    LOG(INFO) << action << " replication for all XCluster streams.";
+  }
+
+  auto xcluster_config = XClusterConfig();
+  auto l = xcluster_config->LockForWrite();
+  {
+    SharedLock lock(mutex_);
+    auto paused_producer_stream_ids = l.mutable_data()
+                                          ->pb.mutable_xcluster_producer_registry()
+                                          ->mutable_paused_producer_stream_ids();
+    // If an empty stream_ids list is given, then pause replication for all streams. Presence in
+    // paused_producer_stream_ids indicates that a stream is paused.
+    if (req->stream_ids().empty()) {
+      if (paused) {
+        for (auto& stream : cdc_stream_map_) {
+          // If the stream id is not already in paused_producer_stream_ids, then insert it into
+          // paused_producer_stream_ids to pause it.
+          if (!paused_producer_stream_ids->count(stream.first)) {
+            paused_producer_stream_ids->insert({stream.first, true});
+          }
+        }
+      } else {
+        // Clear paused_producer_stream_ids to resume replication for all streams.
+        paused_producer_stream_ids->clear();
+      }
+    } else {
+      // Pause or resume the user-provided list of streams.
+      for (const auto& stream_id : req->stream_ids()) {
+        bool contains_stream_id = paused_producer_stream_ids->count(stream_id);
+        bool stream_exists = cdc_stream_map_.contains(stream_id);
+        SCHECK(stream_exists, NotFound, "XCluster Stream: $0 does not exists", stream_id);
+        if (paused && !contains_stream_id) {
+          // Insert stream id to pause replication on that stream.
+          paused_producer_stream_ids->insert({stream_id, true});
+        } else if (!paused && contains_stream_id) {
+          // Erase stream id to resume replication on that stream.
+          paused_producer_stream_ids->erase(stream_id);
+        }
+      }
+    }
+  }
+  l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
+  RETURN_NOT_OK(CheckStatus(
+      sys_catalog_->Upsert(leader_ready_term(), xcluster_config.get()),
+      "updating xcluster config in sys-catalog"));
+  l.Commit();
   return Status::OK();
 }
 
@@ -5462,6 +5541,13 @@ Status CatalogManager::FillHeartbeatResponseCDC(
       resp->set_cluster_config_version(cluster_config.version());
       *resp->mutable_consumer_registry() = consumer_registry;
     }
+  }
+  if (req->has_xcluster_config_version() &&
+      req->xcluster_config_version() < VERIFY_RESULT(GetXClusterConfigVersion())) {
+    auto xcluster_config = XClusterConfig();
+    auto l = xcluster_config->LockForRead();
+    resp->set_xcluster_config_version(l->pb.version());
+    *resp->mutable_xcluster_producer_registry() = l->pb.xcluster_producer_registry();
   }
 
   return Status::OK();

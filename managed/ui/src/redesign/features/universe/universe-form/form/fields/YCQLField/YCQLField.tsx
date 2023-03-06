@@ -134,6 +134,7 @@ export const YCQLField = ({ disabled, enforceAuth }: YCQLFieldProps): ReactEleme
                         }}
                         error={!!errors?.instanceConfig?.ycqlPassword}
                         helperText={errors?.instanceConfig?.ycqlPassword?.message}
+                        placeholder={t('universeForm.securityConfig.placeholder.enterYCQLPassword')}
                       />
                     </Box>
                   </Box>
@@ -164,6 +165,9 @@ export const YCQLField = ({ disabled, enforceAuth }: YCQLFieldProps): ReactEleme
                         }}
                         error={!!errors?.instanceConfig?.ycqlConfirmPassword}
                         helperText={errors?.instanceConfig?.ycqlConfirmPassword?.message ?? ''}
+                        placeholder={t(
+                          'universeForm.securityConfig.placeholder.confirmYCQLPassword'
+                        )}
                       />
                     </Box>
                   </Box>

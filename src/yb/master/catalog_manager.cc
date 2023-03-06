@@ -1213,6 +1213,10 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
           cluster_config_.reset();
           RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
 
+          LOG_WITH_PREFIX(INFO) << "Re-initializing xcluster config";
+          xcluster_config_.reset();
+          RETURN_NOT_OK(PrepareDefaultXClusterConfig(term));
+
           LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
           RETURN_NOT_OK(InitDbFinished(Status::OK(), term));
           RETURN_NOT_OK(RunLoaders(term));
@@ -1238,6 +1242,8 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
   // If this is the first time we start up, we have no config information as default. We write an
   // empty version 0.
   RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
+
+  RETURN_NOT_OK(PrepareDefaultXClusterConfig(term));
 
   permissions_manager_->BuildRecursiveRoles();
 
@@ -1319,6 +1325,9 @@ Status CatalogManager::RunLoaders(int64_t term) {
   // Clear the current cluster config.
   cluster_config_.reset();
 
+  // Clear the current xcluster config.
+  xcluster_config_.reset();
+
   // Clear redis config mapping.
   redis_config_map_.clear();
 
@@ -1363,6 +1372,7 @@ Status CatalogManager::RunLoaders(int64_t term) {
   RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration", &state, term));
   RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config", &state, term));
   RETURN_NOT_OK(Load<XClusterSafeTimeLoader>("XCluster safe time", &state, term));
+  RETURN_NOT_OK(Load<XClusterConfigLoader>("xcluster configuration", &state, term));
 
   if (!transaction_tables_config_) {
     RETURN_NOT_OK(InitializeTransactionTablesConfig(term));
@@ -1442,6 +1452,31 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
 
   // Write to sys_catalog and in memory.
   RETURN_NOT_OK(sys_catalog_->Upsert(term, cluster_config_.get()));
+  l.Commit();
+
+  return Status::OK();
+}
+
+Status CatalogManager::PrepareDefaultXClusterConfig(int64_t term) {
+  if (xcluster_config_) {
+    LOG_WITH_PREFIX(INFO)
+        << "Cluster configuration has already been set up, skipping re-initialization.";
+    return Status::OK();
+  }
+
+  // Create default.
+  SysXClusterConfigEntryPB config;
+  config.set_version(0);
+
+  // Create in memory object.
+  xcluster_config_ = std::make_shared<XClusterConfigInfo>();
+
+  // Prepare write.
+  auto l = xcluster_config_->LockForWrite();
+  l.mutable_data()->pb = std::move(config);
+
+  // Write to sys_catalog and in memory.
+  RETURN_NOT_OK(sys_catalog_->Upsert(term, xcluster_config_.get()));
   l.Commit();
 
   return Status::OK();
@@ -5031,6 +5066,7 @@ std::string CatalogManager::GenerateIdUnlocked(
       case SysRowEntryType::DDL_LOG_ENTRY: FALLTHROUGH_INTENDED;
       case SysRowEntryType::SNAPSHOT_RESTORATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::XCLUSTER_SAFE_TIME: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::XCLUSTER_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         LOG(DFATAL) << "Invalid id type: " << *entity_type;
         return id;
@@ -12041,6 +12077,13 @@ Status CatalogManager::SetClusterConfig(
   return Status::OK();
 }
 
+Result<uint32_t> CatalogManager::GetXClusterConfigVersion() const {
+  auto xcluster_config = XClusterConfig();
+  SCHECK(xcluster_config, IllegalState, "XCluster config is not initialized");
+  auto l = xcluster_config->LockForRead();
+  return l->pb.version();
+}
+
 Status CatalogManager::ValidateReplicationInfo(
     const ValidateReplicationInfoRequestPB* req, ValidateReplicationInfoResponsePB* resp) {
   TSDescriptorVector all_ts_descs;
@@ -12735,6 +12778,10 @@ Result<bool> CatalogManager::SysCatalogLeaderStepDown(const ServerEntryPB& maste
 
 std::shared_ptr<ClusterConfigInfo> CatalogManager::ClusterConfig() const {
   return cluster_config_;
+}
+
+std::shared_ptr<XClusterConfigInfo> CatalogManager::XClusterConfig() const {
+  return xcluster_config_;
 }
 
 Status CatalogManager::TryRemoveFromTablegroup(const TableId& table_id) {

@@ -112,10 +112,12 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
   };
 
   return (
-    <Box className={classes.sectionContainer} data-testid="instance-config-section">
-      <Typography className={classes.sectionHeaderFont}>
-        {t('universeForm.instanceConfig.title')}
-      </Typography>
+    <Box
+      className={classes.sectionContainer}
+      flexDirection="column"
+      data-testid="InstanceConfiguration-Section"
+    >
+      <Typography variant="h4">{t('universeForm.instanceConfig.title')}</Typography>
       <Box width="100%" display="flex" flexDirection="column" mt={4}>
         <Grid container spacing={3}>
           <Grid lg={6} item container>

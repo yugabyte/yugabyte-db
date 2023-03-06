@@ -184,33 +184,17 @@ Status DocRowwiseIterator::Init(TableType table_type, const Slice& sub_doc_key) 
   return Status::OK();
 }
 
-Result<bool> DocRowwiseIterator::InitScanChoices(
+void DocRowwiseIterator::InitScanChoices(
     const DocQLScanSpec& doc_spec, const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key) {
-  scan_choices_ = ScanChoices::Create(doc_read_context_.schema, doc_spec, lower_doc_key,
-    upper_doc_key, doc_spec.prefix_length());
-
-  if (scan_choices_ && scan_choices_->IsInitialPositionKnown()) {
-    // Let's not seek to the lower doc key or upper doc key. We know exactly what we want.
-    RETURN_NOT_OK(AdvanceIteratorToNextDesiredRow());
-    return true;
-  }
-
-  return false;
+  scan_choices_ =
+      ScanChoices::Create(doc_read_context_.schema, doc_spec, lower_doc_key, upper_doc_key);
 }
 
-Result<bool> DocRowwiseIterator::InitScanChoices(
+void DocRowwiseIterator::InitScanChoices(
     const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
     const KeyBytes& upper_doc_key) {
-  scan_choices_ = ScanChoices::Create(doc_read_context_.schema, doc_spec, lower_doc_key,
-    upper_doc_key, doc_spec.prefix_length());
-
-  if (scan_choices_ && scan_choices_->IsInitialPositionKnown()) {
-    // Let's not seek to the lower doc key or upper doc key. We know exactly what we want.
-    RETURN_NOT_OK(AdvanceIteratorToNextDesiredRow());
-    return true;
-  }
-
-  return false;
+  scan_choices_ =
+      ScanChoices::Create(doc_read_context_.schema, doc_spec, lower_doc_key, upper_doc_key);
 }
 
 template <class T>
@@ -251,19 +235,19 @@ Status DocRowwiseIterator::DoInit(const T& doc_spec) {
     }
   }
 
-  if (!VERIFY_RESULT(InitScanChoices(doc_spec,
-        !is_forward_scan_ && has_bound_key_ ? bound_key_ : lower_doc_key,
-        is_forward_scan_ && has_bound_key_ ? bound_key_ : upper_doc_key))) {
-    if (is_forward_scan_) {
-      VLOG(3) << __PRETTY_FUNCTION__ << " Seeking to " << DocKey::DebugSliceToString(lower_doc_key);
-      db_iter_->Seek(lower_doc_key);
+  InitScanChoices(
+      doc_spec,
+      !is_forward_scan_ && has_bound_key_ ? bound_key_ : lower_doc_key,
+      is_forward_scan_ && has_bound_key_ ? bound_key_ : upper_doc_key);
+  if (is_forward_scan_) {
+    VLOG(3) << __PRETTY_FUNCTION__ << " Seeking to " << DocKey::DebugSliceToString(lower_doc_key);
+    db_iter_->Seek(lower_doc_key);
+  } else {
+    // TODO consider adding an operator bool to DocKey to use instead of empty() here.
+    if (!upper_doc_key.empty()) {
+      db_iter_->PrevDocKey(upper_doc_key);
     } else {
-      // TODO consider adding an operator bool to DocKey to use instead of empty() here.
-      if (!upper_doc_key.empty()) {
-        db_iter_->PrevDocKey(upper_doc_key);
-      } else {
-        db_iter_->SeekToLastDocKey();
-      }
+      db_iter_->SeekToLastDocKey();
     }
   }
 
@@ -318,7 +302,8 @@ Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow() const {
 }
 
 Result<bool> DocRowwiseIterator::HasNext() {
-  VLOG(4) << __PRETTY_FUNCTION__;
+  VLOG(4) << __PRETTY_FUNCTION__ << ", has_next_status_: " << has_next_status_ << ", row_ready_: "
+          << row_ready_ << ", done_: " << done_;
 
   // Repeated HasNext calls (without Skip/NextRow in between) should be idempotent:
   // 1. If a previous call failed we returned the same status.
@@ -406,11 +391,11 @@ Result<bool> DocRowwiseIterator::HasNext() {
         // skip all scan targets between the current target and row key (excluding row_key_ itself).
         // Update the target key and iterator and call HasNext again to try the next target.
         if (!VERIFY_RESULT(scan_choices_->SkipTargetsUpTo(row_key_))) {
-          // SkipTargetsUpTo returns false when it fails to decode the key. ValidateSystemKey()
-          // checks if current key is a known system key. This is a temporary fix until we address
-          // GH15304 (https://github.com/yugabyte/yugabyte-db/issues/15304) which will remove key
-          // decoding from ScanChoices completely.
-          RETURN_NOT_OK(ValidateSystemKey());
+          // SkipTargetsUpTo returns false when it fails to decode the key.
+          if (!VERIFY_RESULT(IsColocatedTableTombstoneKey(row_key_))) {
+            return STATUS_FORMAT(
+                Corruption, "Key $0 is not table tombstone key.", row_key_.ToDebugHexString());
+          }
           if (is_forward_scan_) {
             db_iter_->SeekOutOfSubDoc(&iter_key_);
           } else {
@@ -509,6 +494,10 @@ HybridTime DocRowwiseIterator::RestartReadHt() {
   return HybridTime::kInvalid;
 }
 
+HybridTime DocRowwiseIterator::TEST_MaxSeenHt() {
+  return db_iter_->max_seen_ht();
+}
+
 bool DocRowwiseIterator::IsNextStaticColumn() const {
   return doc_read_context_.schema.has_statics() && row_hash_key_.end() + 1 == row_key_.end();
 }
@@ -602,21 +591,6 @@ Status DocRowwiseIterator::DoNextRow(
 
   row_ready_ = false;
   return Status::OK();
-}
-
-Status DocRowwiseIterator::ValidateSystemKey() {
-  // Currently we only have Table tombstone key as system key.
-  DocKeyDecoder decoder(row_key_);
-  if (VERIFY_RESULT(decoder.DecodeColocationId())) {
-    RETURN_NOT_OK(decoder.ConsumeGroupEnd());
-
-    if (decoder.left_input().size() == 0) {
-      return Status::OK();
-    }
-  }
-
-  return STATUS_FORMAT(
-      Corruption, "Key parsing failed for non-system key $0", row_key_.ToDebugHexString());
 }
 
 bool DocRowwiseIterator::LivenessColumnExists() const {

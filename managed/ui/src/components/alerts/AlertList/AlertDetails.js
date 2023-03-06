@@ -1,12 +1,12 @@
 import React, { Component } from 'react';
 import { Row, Col, ButtonGroup, DropdownButton, MenuItem }
   from 'react-bootstrap';
-import './AlertDetails.scss';
-import { isNonAvailable } from '../../../utils/LayoutUtils';
-import { getSeverityLabel } from './AlertUtils';
-import moment from 'moment';
-
-import prometheusIcon from '../../metrics/images/prometheus-icon.svg';
+  import { isNonAvailable } from '../../../utils/LayoutUtils';
+  import { getSeverityLabel } from './AlertUtils';
+  import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+  
+  import prometheusIcon from '../../metrics/images/prometheus-icon.svg';
+  import './AlertDetails.scss';
 
 const findValueforlabel = (labels, labelToFind) => {
   const label = labels.find((l) => l.name === labelToFind);
@@ -118,13 +118,13 @@ export default class AlertDetails extends Component {
                     <Col className="alert-label no-padding" xs={6} md={6} lg={6}>
                       <h6 className="alert-label-header">Start</h6>
                       <div label={alertDetails.createTime} className="alert-label-value">
-                        {moment(alertDetails.createTime).toString()}
+                        {ybFormatDate(alertDetails.createTime)}
                       </div>
                     </Col>
                     <Col className="alert-label no-padding" xs={6} md={6} lg={6}>
                       <h6 className="alert-label-header">End</h6>
                       <div label={alertDetails.acknowledgedTime} className="alert-label-value">
-                        {alertDetails.resolvedTime ? moment(alertDetails.resolvedTime).toString() : '-'}
+                        {alertDetails.resolvedTime ? ybFormatDate(alertDetails.resolvedTime) : '-'}
                       </div>
                     </Col>
                   </Row>
@@ -162,13 +162,13 @@ export default class AlertDetails extends Component {
                   <ul>
                     {alertDetails.resolvedTime && (
                       <li className="alert-history-item">
-                        <div className="content">Alert resolved on {alertDetails.resolvedTime}</div>
+                        <div className="content">Alert resolved on {ybFormatDate(alertDetails.resolvedTime)}</div>
                       </li>
                     )}
                     {alertDetails.acknowledgedTime && (
                       <li className="alert-history-item">
                         <div className="content">
-                          Alert acknowledged on {alertDetails.acknowledgedTime}
+                          Alert acknowledged on {ybFormatDate(alertDetails.acknowledgedTime)}
                         </div>
                       </li>
                     )}
@@ -176,7 +176,7 @@ export default class AlertDetails extends Component {
                       <li className="alert-history-item">
                         <div className="content">
                           <div className="timeline-flow">
-                            Alert Triggered on {alertDetails.createTime}
+                            Alert Triggered on {ybFormatDate(alertDetails.createTime)}
                           </div>
                         </div>
                       </li>

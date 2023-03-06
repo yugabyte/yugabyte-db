@@ -109,7 +109,6 @@ export const useGetAllZones = () => {
 
   useEffect(() => {
     const selectedRegions = new Set(regionList);
-
     const zones = (allRegions || [])
       .filter((region) => selectedRegions.has(region.uuid))
       .flatMap<Placement>((region: any) => {
@@ -147,7 +146,7 @@ export const useNodePlacements = () => {
   const { setValue, getValues } = useFormContext<UniverseFormData>();
   const [
     { universeConfigureTemplate, clusterType, mode },
-    { setUniverseConfigureTemplate, setUniverseResourceTemplate }
+    { setUniverseConfigureTemplate, setUniverseResourceTemplate, setConfigureError }
   ]: any = useContext(UniverseFormContext);
 
   //watchers
@@ -161,8 +160,8 @@ export const useNodePlacements = () => {
   const defaultRegion = useWatch({ name: DEFAULT_REGION_FIELD });
   const defaultMasterRegion = useWatch({ name: MASTERS_IN_DEFAULT_REGION_FIELD });
   const masterPlacement = useWatch({ name: MASTER_PLACEMENT_FIELD });
-  const masterDeviceInfo =  useWatch({ name: MASTER_DEVICE_INFO_FIELD });
-  const masterInstanceType =  useWatch({ name: MASTER_INSTANCE_TYPE_FIELD });
+  const masterDeviceInfo = useWatch({ name: MASTER_DEVICE_INFO_FIELD });
+  const masterInstanceType = useWatch({ name: MASTER_INSTANCE_TYPE_FIELD });
   const tserverK8SNodeResourceSpec = useWatch({ name: TSERVER_K8_NODE_SPEC_FIELD });
   const masterK8SNodeResourceSpec = useWatch({ name: MASTER_K8_NODE_SPEC_FIELD });
   const resetAZ = useWatch({ name: RESET_AZ_FIELD });
@@ -253,7 +252,7 @@ export const useNodePlacements = () => {
         setUniverseConfigureTemplate(data);
         setRegionsChanged(false);
         setNeedPlacement(false);
-
+        setConfigureError(null);
         try {
           let resource = await api.universeResource(data); // set Universe resource template whenever configure is called
           setUniverseResourceTemplate(resource);
@@ -262,6 +261,7 @@ export const useNodePlacements = () => {
         }
       },
       onError: (error) => {
+        setConfigureError(createErrorMessage(error));
         toast.error(createErrorMessage(error), { autoClose: TOAST_AUTO_DISMISS_INTERVAL });
       }
     }
@@ -296,6 +296,18 @@ export const useNodePlacements = () => {
     }
 
     prevPropsCombination.current = propsCombination;
-  }, [instanceType, regionList, totalNodes, replicationFactor, deviceInfo, masterPlacement, masterDeviceInfo, masterInstanceType, resetAZ, tserverK8SNodeResourceSpec, masterK8SNodeResourceSpec]);
+  }, [
+    instanceType,
+    regionList,
+    totalNodes,
+    replicationFactor,
+    deviceInfo,
+    masterPlacement,
+    masterDeviceInfo,
+    masterInstanceType,
+    resetAZ,
+    tserverK8SNodeResourceSpec,
+    masterK8SNodeResourceSpec
+  ]);
   return { isLoading: isFetching };
 };

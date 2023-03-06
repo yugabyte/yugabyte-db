@@ -83,7 +83,7 @@ func TestUnmarshalResponse(t *testing.T) {
 		StatusCode: 200,
 	}
 	var testValue map[string]string
-	data, err := UnmarshalResponse(&testValue, &res)
+	data, err := UnmarshalResponse(context.TODO(), &testValue, &res)
 	if err != nil {
 		t.Fatalf("Unmarshaling error.")
 	}

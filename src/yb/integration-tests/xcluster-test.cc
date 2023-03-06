@@ -47,7 +47,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/integration-tests/twodc_test_base.h"
+#include "yb/integration-tests/xcluster_test_base.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_defaults.h"
@@ -127,25 +127,19 @@ DECLARE_bool(TEST_fail_setup_system_universe_replication);
 namespace yb {
 
 using client::YBClient;
-using client::YBClientBuilder;
-using client::YBColumnSchema;
-using client::YBError;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSession;
 using client::YBTable;
 using client::YBTableAlterer;
-using client::YBTableCreator;
 using client::YBTableName;
-using client::YBTableType;
 using master::MiniMaster;
-using tserver::MiniTabletServer;
 using tserver::XClusterConsumer;
 
 using SessionTransactionPair = std::pair<client::YBSessionPtr, client::YBTransactionPtr>;
 
-struct TwoDCTestParams {
-  explicit TwoDCTestParams(bool transactional_table_, int batch_size_ = 0)
+struct XClusterTestParams {
+  explicit XClusterTestParams(bool transactional_table_, int batch_size_ = 0)
       : transactional_table(transactional_table_)
       , batch_size(batch_size_) {}
 
@@ -153,7 +147,8 @@ struct TwoDCTestParams {
   bool batch_size;
 };
 
-class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDCTestParams> {
+class XClusterTest : public XClusterTestBase,
+                     public testing::WithParamInterface<XClusterTestParams> {
  public:
   Result<std::vector<std::shared_ptr<client::YBTable>>> SetUpWithParams(
       const std::vector<uint32_t>& num_consumer_tablets,
@@ -163,7 +158,7 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
       uint32_t num_tservers = 1) {
     FLAGS_enable_ysql = false;
     FLAGS_transaction_table_num_tablets = 1;
-    TwoDCTestBase::SetUp();
+    XClusterTestBase::SetUp();
     FLAGS_cdc_max_apply_batch_num_records = GetParam().batch_size;
     FLAGS_yb_num_shards_per_tserver = 1;
     bool transactional_table = GetParam().transactional_table;
@@ -223,7 +218,7 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
   Result<YBTableName> CreateTable(
       YBClient* client, const std::string& namespace_name, const std::string& table_name,
       uint32_t num_tablets) {
-    return TwoDCTestBase::CreateTable(client, namespace_name, table_name, num_tablets, &schema_);
+    return XClusterTestBase::CreateTable(client, namespace_name, table_name, num_tablets, &schema_);
   }
 
   Status CreateTable(
@@ -236,7 +231,7 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
 
   Status CreateTable(uint32_t idx, uint32_t num_tablets, YBClient* client, YBSchema schema,
                      std::vector<YBTableName>* tables) {
-    auto table = VERIFY_RESULT(TwoDCTestBase::CreateTable(
+    auto table = VERIFY_RESULT(XClusterTestBase::CreateTable(
         client, kNamespaceName, Format("test_table_$0", idx), num_tablets, &schema));
     tables->push_back(table);
     return Status::OK();
@@ -266,11 +261,20 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
   Status VerifyWrittenRecords(const YBTableName& producer_table,
                               const YBTableName& consumer_table,
                               int timeout_secs = kRpcTimeout) {
-    return LoggedWaitFor([this, producer_table, consumer_table]() -> Result<bool> {
-      auto producer_results = ScanTableToStrings(producer_table, producer_client());
-      auto consumer_results = ScanTableToStrings(consumer_table, consumer_client());
-      return producer_results == consumer_results;
-    }, MonoDelta::FromSeconds(timeout_secs), "Verify written records");
+    std::vector<std::string> producer_results, consumer_results;
+    const auto s = LoggedWaitFor(
+        [this, producer_table, consumer_table, &producer_results,
+         &consumer_results]() -> Result<bool> {
+          producer_results = ScanTableToStrings(producer_table, producer_client());
+          consumer_results = ScanTableToStrings(consumer_table, consumer_client());
+          return producer_results == consumer_results;
+        },
+        MonoDelta::FromSeconds(timeout_secs), "Verify written records");
+    if (!s.ok()) {
+      LOG(ERROR) << "Producer records: " << JoinStrings(producer_results, ",")
+                 << ";Consumer records: " << JoinStrings(consumer_results, ",");
+    }
+    return s;
   }
 
   Status VerifyNumRecords(const YBTableName& table, YBClient* client, size_t expected_size) {
@@ -480,7 +484,7 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
       FLAGS_allow_insecure_connections = false;
       FLAGS_certs_dir = GetCertsDir();
       FLAGS_certs_for_cdc_dir = JoinPathSegments(FLAGS_certs_dir, "xCluster");
-      // TwoDCTestBase::SetupUniverseReplication will copying the certs to the sub directories.
+      // XClusterTestBase::SetupUniverseReplication will copying the certs to the sub directories.
     }
 
     auto tables = VERIFY_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3));
@@ -525,6 +529,65 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
     return Status::OK();
   }
 
+  Status PauseResumeXClusterProducerStreams(
+      const std::vector<std::string>& stream_ids, bool is_paused) {
+    master::PauseResumeXClusterProducerStreamsRequestPB req;
+    master::PauseResumeXClusterProducerStreamsResponsePB resp;
+
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+        &producer_client()->proxy_cache(),
+        VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    for (const auto& stream_id : stream_ids) {
+      req.add_stream_ids(stream_id);
+    }
+    req.set_is_paused(is_paused);
+    RETURN_NOT_OK(master_proxy->PauseResumeXClusterProducerStreams(req, &resp, &rpc));
+    SCHECK(
+        !resp.has_error(), IllegalState,
+        Format(
+            "PauseResumeXClusterProducerStreams returned error: $0", resp.error().DebugString()));
+    return Status::OK();
+  }
+
+  void WriteWorkloadAndVerifyWrittenRows(
+      const std::shared_ptr<client::YBTable>& producer_table,
+      const std::shared_ptr<client::YBTable>& consumer_table, uint32_t start, uint32_t end,
+      bool replication_enabled = true, int timeout = kRpcTimeout) {
+    LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
+    WriteWorkload(start, end, producer_client(), producer_table->name());
+    if (replication_enabled) {
+      ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name(), timeout));
+    } else {
+      ASSERT_NOK(VerifyWrittenRecords(producer_table->name(), consumer_table->name(), timeout));
+    }
+  }
+
+  // Empty stream_ids will pause all streams.
+  void SetPauseAndVerifyWrittenRows(
+      const std::vector<std::string>& stream_ids,
+      const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
+      const std::vector<std::shared_ptr<client::YBTable>>& consumer_tables, uint32_t start,
+      uint32_t end, bool pause = true) {
+    ASSERT_OK(PauseResumeXClusterProducerStreams(stream_ids, pause));
+    // Needs to sleep to wait for heartbeat to propogate.
+    SleepFor(3s * kTimeMultiplier);
+
+    // If stream_ids is empty, then write and test replication on all streams, otherwise write and
+    // test on only those selected in stream_ids.
+    size_t size = stream_ids.size() ? stream_ids.size() : producer_tables.size();
+    for (size_t i = 0; i < size; i++) {
+      const auto& producer_table = producer_tables[i];
+      const auto& consumer_table = consumer_tables[i];
+      // Reduce the timeout time when we don't expect replication to be successful.
+      int timeout = pause ? 10 : kRpcTimeout;
+      WriteWorkloadAndVerifyWrittenRows(
+          producer_table, consumer_table, start, end, !pause, timeout);
+    }
+  }
+
  private:
   server::ClockPtr clock_{new server::HybridClock()};
 
@@ -532,20 +595,20 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
 };
 
 INSTANTIATE_TEST_CASE_P(
-    TwoDCTestParams, TwoDCTest,
+    XClusterTestParams, XClusterTest,
     ::testing::Values(
-        TwoDCTestParams(true /* transactional_table */),
-        TwoDCTestParams(false /* transactional_table */)));
+        XClusterTestParams(true /* transactional_table */),
+        XClusterTestParams(false /* transactional_table */)));
 
-TEST_P(TwoDCTest, SetupUniverseReplication) {
+TEST_P(XClusterTest, SetupUniverseReplication) {
   ASSERT_OK(TestSetupUniverseReplication(EnableTLSEncryption::kFalse));
 }
 
-TEST_P(TwoDCTest, SetupUniverseReplicationWithTLSEncryption) {
+TEST_P(XClusterTest, SetupUniverseReplicationWithTLSEncryption) {
   ASSERT_OK(TestSetupUniverseReplication(EnableTLSEncryption::kTrue));
 }
 
-TEST_P(TwoDCTest, SetupUniverseReplicationErrorChecking) {
+TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, 1));
   rpc::RpcController rpc;
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
@@ -647,7 +710,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationErrorChecking) {
   }
 }
 
-TEST_P(TwoDCTest, SetupUniverseReplicationWithProducerBootstrapId) {
+TEST_P(XClusterTest, SetupUniverseReplicationWithProducerBootstrapId) {
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 3));
@@ -806,7 +869,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationWithProducerBootstrapId) {
 }
 
 // Test for #2250 to verify that replication for tables with the same prefix gets set up correctly.
-TEST_P(TwoDCTest, SetupUniverseReplicationMultipleTables) {
+TEST_P(XClusterTest, SetupUniverseReplicationMultipleTables) {
   // Setup the two clusters without any tables.
   auto tables = ASSERT_RESULT(SetUpWithParams({}, {}, 1));
 
@@ -840,7 +903,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationMultipleTables) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCTest, SetupUniverseReplicationLargeTableCount) {
+TEST_P(XClusterTest, SetupUniverseReplicationLargeTableCount) {
   if (IsSanitizer()) {
     LOG(INFO) << "Skipping slow test";
     return;
@@ -904,7 +967,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationLargeTableCount) {
   ASSERT_TRUE(passed_test);
 }
 
-TEST_P(TwoDCTest, SetupUniverseReplicationBootstrapStateUpdate) {
+TEST_P(XClusterTest, SetupUniverseReplicationBootstrapStateUpdate) {
   constexpr int kNTabletsPerTable = 3;
   constexpr int kNumTables = 5;
   constexpr int kReplicationFactor = 3;
@@ -1026,7 +1089,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationBootstrapStateUpdate) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCTest, BootstrapAndSetupLargeTableCount) {
+TEST_P(XClusterTest, BootstrapAndSetupLargeTableCount) {
   if (IsSanitizer()) {
     LOG(INFO) << "Skipping slow test";
     return;
@@ -1188,7 +1251,7 @@ TEST_P(TwoDCTest, BootstrapAndSetupLargeTableCount) {
   ASSERT_TRUE(passed_test);
 }
 
-TEST_P(TwoDCTest, PollWithConsumerRestart) {
+TEST_P(XClusterTest, PollWithConsumerRestart) {
   // Avoid long delays with node failures so we can run with more aggressive test timing
   FLAGS_replication_failure_delay_exponent = 7; // 2^7 == 128ms
 
@@ -1221,7 +1284,7 @@ TEST_P(TwoDCTest, PollWithConsumerRestart) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCTest, PollWithProducerNodesRestart) {
+TEST_P(XClusterTest, PollWithProducerNodesRestart) {
   // Avoid long delays with node failures so we can run with more aggressive test timing
   FLAGS_replication_failure_delay_exponent = 7; // 2^7 == 128ms
 
@@ -1266,7 +1329,7 @@ TEST_P(TwoDCTest, PollWithProducerNodesRestart) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCTest, PollWithProducerClusterRestart) {
+TEST_P(XClusterTest, PollWithProducerClusterRestart) {
   // Avoid long delays with node failures so we can run with more aggressive test timing
   FLAGS_replication_failure_delay_exponent = 7; // 2^7 == 128ms
 
@@ -1292,7 +1355,7 @@ TEST_P(TwoDCTest, PollWithProducerClusterRestart) {
 }
 
 
-TEST_P(TwoDCTest, PollAndObserveIdleDampening) {
+TEST_P(XClusterTest, PollAndObserveIdleDampening) {
   uint32_t replication_factor = 3, tablet_count = 1, master_count = 1;
   auto tables = ASSERT_RESULT(
       SetUpWithParams({tablet_count}, {tablet_count}, replication_factor,  master_count));
@@ -1414,7 +1477,7 @@ TEST_P(TwoDCTest, PollAndObserveIdleDampening) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCTest, ApplyOperations) {
+TEST_P(XClusterTest, ApplyOperations) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   // Use just one tablet here to more easily catch lower-level write issues with this test.
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));
@@ -1440,24 +1503,24 @@ TEST_P(TwoDCTest, ApplyOperations) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-class TwoDCTestTransactionalOnly : public TwoDCTest {};
+class XClusterTestTransactionalOnly : public XClusterTest {};
 
 INSTANTIATE_TEST_CASE_P(
-    TwoDCTestParams, TwoDCTestTransactionalOnly,
-    ::testing::Values(TwoDCTestParams(true /* transactional_table */)));
+    XClusterTestParams, XClusterTestTransactionalOnly,
+    ::testing::Values(XClusterTestParams(true /* transactional_table */)));
 
-TEST_P(TwoDCTestTransactionalOnly, SetupUniverseReplicationWithTLSEncryption) {
+TEST_P(XClusterTestTransactionalOnly, SetupUniverseReplicationWithTLSEncryption) {
   FLAGS_enable_replicate_transaction_status_table = true;
   ASSERT_OK(TestSetupUniverseReplication(EnableTLSEncryption::kTrue));
 }
 
-TEST_P(TwoDCTestTransactionalOnly, FailedSetupSystemUniverseReplication) {
+TEST_P(XClusterTestTransactionalOnly, FailedSetupSystemUniverseReplication) {
   FLAGS_enable_replicate_transaction_status_table = true;
   FLAGS_TEST_fail_setup_system_universe_replication = true;
   ASSERT_NOK(TestSetupUniverseReplication(EnableTLSEncryption::kFalse));
 }
 
-TEST_P(TwoDCTestTransactionalOnly, ApplyOperationsWithTransactions) {
+TEST_P(XClusterTestTransactionalOnly, ApplyOperationsWithTransactions) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, replication_factor));
 
@@ -1486,7 +1549,7 @@ TEST_P(TwoDCTestTransactionalOnly, ApplyOperationsWithTransactions) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCTestTransactionalOnly, TransactionStatusTable) {
+TEST_P(XClusterTestTransactionalOnly, TransactionStatusTable) {
   FLAGS_enable_replicate_transaction_status_table = true;
   constexpr int kNumTablets = 1;
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
@@ -1524,7 +1587,7 @@ TEST_P(TwoDCTestTransactionalOnly, TransactionStatusTable) {
 
 }
 
-TEST_P(TwoDCTestTransactionalOnly, TransactionStatusTableWithWrites) {
+TEST_P(XClusterTestTransactionalOnly, TransactionStatusTableWithWrites) {
   FLAGS_enable_replicate_transaction_status_table = true;
   FLAGS_TEST_disable_cleanup_applied_transactions = true;
   constexpr int kNumTablets = 1;
@@ -1546,7 +1609,7 @@ TEST_P(TwoDCTestTransactionalOnly, TransactionStatusTableWithWrites) {
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 }
 
-TEST_P(TwoDCTestTransactionalOnly, OnlyApplyTransactionOnCaughtUpTablet) {
+TEST_P(XClusterTestTransactionalOnly, OnlyApplyTransactionOnCaughtUpTablet) {
   FLAGS_enable_replicate_transaction_status_table = true;
   FLAGS_TEST_disable_apply_committed_transactions = true;
   constexpr int kNumTablets = 1;
@@ -1571,7 +1634,7 @@ TEST_P(TwoDCTestTransactionalOnly, OnlyApplyTransactionOnCaughtUpTablet) {
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 }
 
-TEST_P(TwoDCTestTransactionalOnly, TransactionsWithoutApply) {
+TEST_P(XClusterTestTransactionalOnly, TransactionsWithoutApply) {
   // This is a test that should only pass when we use the new intents format along with the txn
   // status table. We do this by disabling replication of APPLY records and ensuring that we can
   // still read records from the committed transaction.
@@ -1592,7 +1655,7 @@ TEST_P(TwoDCTestTransactionalOnly, TransactionsWithoutApply) {
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 }
 
-TEST_P(TwoDCTestTransactionalOnly, UpdateWithinTransaction) {
+TEST_P(XClusterTestTransactionalOnly, UpdateWithinTransaction) {
   constexpr int kNumTablets = 1;
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({kNumTablets}, {kNumTablets}, replication_factor));
@@ -1629,7 +1692,7 @@ TEST_P(TwoDCTestTransactionalOnly, UpdateWithinTransaction) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCTestTransactionalOnly, TransactionsWithRestart) {
+TEST_P(XClusterTestTransactionalOnly, TransactionsWithRestart) {
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, 3));
 
   std::vector<std::shared_ptr<client::YBTable>> producer_tables = { tables[0] };
@@ -1663,7 +1726,7 @@ TEST_P(TwoDCTestTransactionalOnly, TransactionsWithRestart) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCTestTransactionalOnly, MultipleTransactions) {
+TEST_P(XClusterTestTransactionalOnly, MultipleTransactions) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));
 
@@ -1703,7 +1766,7 @@ TEST_P(TwoDCTestTransactionalOnly, MultipleTransactions) {
   }, MonoDelta::FromSeconds(kRpcTimeout), "Consumer cluster cleaned up intents"));
 }
 
-TEST_P(TwoDCTestTransactionalOnly, CleanupAbortedTransactions) {
+TEST_P(XClusterTestTransactionalOnly, CleanupAbortedTransactions) {
   static const int kNumRecordsPerBatch = 5;
   const uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({1 /* num_consumer_tablets */},
@@ -1741,7 +1804,7 @@ TEST_P(TwoDCTestTransactionalOnly, CleanupAbortedTransactions) {
 }
 
 // Make sure when we compact a tablet, we retain intents.
-TEST_P(TwoDCTestTransactionalOnly, NoCleanupOfTransactionsInFlushedFiles) {
+TEST_P(XClusterTestTransactionalOnly, NoCleanupOfTransactionsInFlushedFiles) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));
   std::vector<std::shared_ptr<client::YBTable>> producer_tables;
@@ -1772,7 +1835,7 @@ TEST_P(TwoDCTestTransactionalOnly, NoCleanupOfTransactionsInFlushedFiles) {
 }
 
 
-TEST_P(TwoDCTestTransactionalOnly, ManyToOneTabletMapping) {
+TEST_P(XClusterTestTransactionalOnly, ManyToOneTabletMapping) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {5}, replication_factor));
 
@@ -1788,7 +1851,7 @@ TEST_P(TwoDCTestTransactionalOnly, ManyToOneTabletMapping) {
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name(), 60 /* timeout_secs */));
 }
 
-TEST_P(TwoDCTestTransactionalOnly, OneToManyTabletMapping) {
+TEST_P(XClusterTestTransactionalOnly, OneToManyTabletMapping) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({5}, {2}, replication_factor));
 
@@ -1803,7 +1866,7 @@ TEST_P(TwoDCTestTransactionalOnly, OneToManyTabletMapping) {
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name(), 60 /* timeout_secs */));
 }
 
-TEST_P(TwoDCTestTransactionalOnly, TransactionStatusTableMissingBootstrap) {
+TEST_P(XClusterTestTransactionalOnly, TransactionStatusTableMissingBootstrap) {
   // Make sure that setup fails if we Bootstrap user tables without the transaction status table
   // when enable_replicate_transaction_status_table is set.
   FLAGS_enable_replicate_transaction_status_table = true;
@@ -1838,7 +1901,7 @@ TEST_P(TwoDCTestTransactionalOnly, TransactionStatusTableMissingBootstrap) {
   ASSERT_NOK(VerifyUniverseReplication(kUniverseId, &verify_repl_resp));
 }
 
-TEST_P(TwoDCTestTransactionalOnly, TransactionStatusTableWithBootstrap) {
+TEST_P(XClusterTestTransactionalOnly, TransactionStatusTableWithBootstrap) {
   FLAGS_enable_replicate_transaction_status_table = true;
 
   constexpr int kNumTablets = 1;
@@ -1914,7 +1977,7 @@ TEST_P(TwoDCTestTransactionalOnly, TransactionStatusTableWithBootstrap) {
   ASSERT_OK(VerifyNumRecords(consumer_table->name(), consumer_client(), 20));
 }
 
-TEST_P(TwoDCTest, TestExternalWriteHybridTime) {
+TEST_P(XClusterTest, TestExternalWriteHybridTime) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, replication_factor));
 
@@ -1948,7 +2011,7 @@ TEST_P(TwoDCTest, TestExternalWriteHybridTime) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCTest, BiDirectionalWrites) {
+TEST_P(XClusterTest, BiDirectionalWrites) {
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, 1));
 
   // Setup bi-directional replication.
@@ -1983,7 +2046,7 @@ TEST_P(TwoDCTest, BiDirectionalWrites) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCTest, AlterUniverseReplicationMasters) {
+TEST_P(XClusterTest, AlterUniverseReplicationMasters) {
   // Tablets = Servers + 1 to stay simple but ensure round robin gives a tablet to everyone.
   uint32_t t_count = 2;
   int master_count = 3;
@@ -2074,7 +2137,7 @@ TEST_P(TwoDCTest, AlterUniverseReplicationMasters) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCTest, AlterUniverseReplicationTables) {
+TEST_P(XClusterTest, AlterUniverseReplicationTables) {
   // Setup the consumer and producer cluster.
   auto tables = ASSERT_RESULT(SetUpWithParams({3, 3}, {3, 3}, 1));
   std::vector<std::shared_ptr<client::YBTable>> producer_tables{tables[0], tables[2]};
@@ -2152,7 +2215,7 @@ TEST_P(TwoDCTest, AlterUniverseReplicationTables) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCTest, AlterUniverseReplicationBootstrapStateUpdate) {
+TEST_P(XClusterTest, AlterUniverseReplicationBootstrapStateUpdate) {
   constexpr int kNTabletsPerTable = 3;
   constexpr int kNumTables = 5;
   constexpr int kReplicationFactor = 3;
@@ -2289,7 +2352,7 @@ TEST_P(TwoDCTest, AlterUniverseReplicationBootstrapStateUpdate) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCTest, ToggleReplicationEnabled) {
+TEST_P(XClusterTest, ToggleReplicationEnabled) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, replication_factor));
 
@@ -2316,7 +2379,7 @@ TEST_P(TwoDCTest, ToggleReplicationEnabled) {
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
 }
 
-TEST_P(TwoDCTest, TestDeleteUniverse) {
+TEST_P(XClusterTest, TestDeleteUniverse) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
 
   auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, replication_factor));
@@ -2338,7 +2401,7 @@ TEST_P(TwoDCTest, TestDeleteUniverse) {
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 0));
 }
 
-TEST_P(TwoDCTest, TestWalRetentionSet) {
+TEST_P(XClusterTest, TestWalRetentionSet) {
   FLAGS_cdc_wal_retention_time_secs = 8 * 3600;
 
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
@@ -2377,7 +2440,7 @@ TEST_P(TwoDCTest, TestWalRetentionSet) {
   ASSERT_NE(static_cast<int>(Schema::kColumnNotFound), schema.FindColumn("new_col"));
 }
 
-TEST_P(TwoDCTest, TestProducerUniverseExpansion) {
+TEST_P(XClusterTest, TestProducerUniverseExpansion) {
   // Test that after new node(s) are added to producer universe, we are able to get replicated data
   // from the new node(s).
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, 1));
@@ -2411,7 +2474,7 @@ TEST_P(TwoDCTest, TestProducerUniverseExpansion) {
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 }
 
-TEST_P(TwoDCTest, TestAlterDDLBasic) {
+TEST_P(XClusterTest, TestAlterDDLBasic) {
   SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
 
   uint32_t replication_factor = 1;
@@ -2488,7 +2551,7 @@ TEST_P(TwoDCTest, TestAlterDDLBasic) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_P(TwoDCTest, TestAlterDDLWithRestarts) {
+TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
   SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
 
   uint32_t replication_factor = 3;
@@ -2627,7 +2690,7 @@ TEST_P(TwoDCTest, TestAlterDDLWithRestarts) {
 }
 
 
-TEST_P(TwoDCTest, ApplyOperationsRandomFailures) {
+TEST_P(XClusterTest, ApplyOperationsRandomFailures) {
   SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
 
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
@@ -2668,14 +2731,14 @@ TEST_P(TwoDCTest, ApplyOperationsRandomFailures) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId, producer_client(), producer_cluster()));
 }
 
-class TwoDCTestToggleBatching : public TwoDCTest {};
+class XClusterTestToggleBatching : public XClusterTest {};
 
 INSTANTIATE_TEST_CASE_P(
-    TwoDCTestParams, TwoDCTestToggleBatching,
-    ::testing::Values(TwoDCTestParams(false /* transactional_table */, 0 /* batch_size */),
-                      TwoDCTestParams(false /* transactional_table */, 1 /* batch_size */)));
+    XClusterTestParams, XClusterTestToggleBatching,
+    ::testing::Values(XClusterTestParams(false /* transactional_table */, 0 /* batch_size */),
+                      XClusterTestParams(false /* transactional_table */, 1 /* batch_size */)));
 
-TEST_P(TwoDCTestToggleBatching, TestInsertDeleteWorkloadWithRestart) {
+TEST_P(XClusterTestToggleBatching, TestInsertDeleteWorkloadWithRestart) {
   // Good test for batching, make sure we can handle operations on the same key with different
   // hybrid times. Then, do a restart and make sure we can successfully bootstrap the batched data.
   // In additional, make sure we write exactly num_total_ops / batch_size batches to the cluster to
@@ -2722,7 +2785,7 @@ TEST_P(TwoDCTestToggleBatching, TestInsertDeleteWorkloadWithRestart) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCTest, TestDeleteCDCStreamWithMissingStreams) {
+TEST_P(XClusterTest, TestDeleteCDCStreamWithMissingStreams) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
 
   auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, replication_factor));
@@ -2791,7 +2854,7 @@ TEST_P(TwoDCTest, TestDeleteCDCStreamWithMissingStreams) {
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 0));
 }
 
-TEST_P(TwoDCTest, TestAlterWhenProducerIsInaccessible) {
+TEST_P(XClusterTest, TestAlterWhenProducerIsInaccessible) {
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, 1));
 
   ASSERT_OK(SetupUniverseReplication({tables[0]} /* all producer tables */));
@@ -2820,7 +2883,7 @@ TEST_P(TwoDCTest, TestAlterWhenProducerIsInaccessible) {
   ASSERT_TRUE(alter_resp.has_error());
 }
 
-TEST_P(TwoDCTest, TestFailedUniverseDeletionOnRestart) {
+TEST_P(XClusterTest, TestFailedUniverseDeletionOnRestart) {
   auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3));
 
   std::vector<std::shared_ptr<client::YBTable>> producer_tables;
@@ -2869,7 +2932,7 @@ TEST_P(TwoDCTest, TestFailedUniverseDeletionOnRestart) {
   ASSERT_TRUE(new_resp.has_error());
 }
 
-TEST_P(TwoDCTest, TestFailedDeleteOnRestart) {
+TEST_P(XClusterTest, TestFailedDeleteOnRestart) {
   // Setup the consumer and producer cluster.
   auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3));
 
@@ -2926,7 +2989,7 @@ TEST_P(TwoDCTest, TestFailedDeleteOnRestart) {
 }
 
 
-TEST_P(TwoDCTest, TestFailedAlterUniverseOnRestart) {
+TEST_P(XClusterTest, TestFailedAlterUniverseOnRestart) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_exit_unfinished_merging) = true;
 
   // Setup the consumer and producer cluster.
@@ -2981,7 +3044,7 @@ TEST_P(TwoDCTest, TestFailedAlterUniverseOnRestart) {
   ASSERT_TRUE(new_resp.has_error());
 }
 
-TEST_P(TwoDCTest, TestAlterUniverseRemoveTableAndDrop) {
+TEST_P(XClusterTest, TestAlterUniverseRemoveTableAndDrop) {
   // Create 2 tables and start replication.
   auto tables = ASSERT_RESULT(SetUpWithParams({1, 1}, {1, 1}, 1));
   std::vector<std::shared_ptr<client::YBTable>> producer_tables{tables[0], tables[2]};
@@ -3012,7 +3075,7 @@ TEST_P(TwoDCTest, TestAlterUniverseRemoveTableAndDrop) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCTest, TestNonZeroLagMetricsWithoutGetChange) {
+TEST_P(XClusterTest, TestNonZeroLagMetricsWithoutGetChange) {
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, 1));
   std::shared_ptr<client::YBTable> producer_table = tables[0];
   std::shared_ptr<client::YBTable> consumer_table = tables[1];
@@ -3093,7 +3156,7 @@ TEST_P(TwoDCTest, TestNonZeroLagMetricsWithoutGetChange) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCTest, DeleteTableChecksCQL) {
+TEST_P(XClusterTest, DeleteTableChecksCQL) {
   // Create 3 tables with 1 tablet each.
   constexpr int kNT = 1;
   std::vector<uint32_t> tables_vector = {kNT, kNT, kNT};
@@ -3200,7 +3263,7 @@ TEST_P(TwoDCTest, DeleteTableChecksCQL) {
   }
 }
 
-TEST_P(TwoDCTest, SetupNSUniverseReplicationExtraConsumerTables) {
+TEST_P(XClusterTest, SetupNSUniverseReplicationExtraConsumerTables) {
   // Initial setup: create 2 tables on each side.
   constexpr int kNTabletsPerTable = 3;
   std::vector<uint32_t> table_vector = {kNTabletsPerTable, kNTabletsPerTable};
@@ -3256,7 +3319,7 @@ TEST_P(TwoDCTest, SetupNSUniverseReplicationExtraConsumerTables) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_P(TwoDCTest, SetupNSUniverseReplicationExtraProducerTables) {
+TEST_P(XClusterTest, SetupNSUniverseReplicationExtraProducerTables) {
   // Initial setup: create 2 tables on each side.
   constexpr int kNTabletsPerTable = 3;
   std::vector<uint32_t> table_vector = {kNTabletsPerTable, kNTabletsPerTable};
@@ -3312,7 +3375,7 @@ TEST_P(TwoDCTest, SetupNSUniverseReplicationExtraProducerTables) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_P(TwoDCTest, SetupNSUniverseReplicationTwoNamespace) {
+TEST_P(XClusterTest, SetupNSUniverseReplicationTwoNamespace) {
   // Create 2 tables in one namespace.
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> table_vector = {kNTabletsPerTable, kNTabletsPerTable};
@@ -3358,7 +3421,7 @@ TEST_P(TwoDCTest, SetupNSUniverseReplicationTwoNamespace) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-class TwoDCTestWaitForReplicationDrain : public TwoDCTest {
+class XClusterTestWaitForReplicationDrain : public XClusterTest {
  public:
   void SetUpTablesAndReplication(
       std::vector<std::shared_ptr<client::YBTable>>* producer_tables,
@@ -3397,7 +3460,7 @@ class TwoDCTestWaitForReplicationDrain : public TwoDCTest {
 
   void TearDown() override {
     ASSERT_OK(DeleteUniverseReplication());
-    TwoDCTest::TearDown();
+    XClusterTest::TearDown();
   }
 
   std::shared_ptr<std::promise<Status>> WaitForReplicationDrainAsync(
@@ -3420,11 +3483,11 @@ class TwoDCTestWaitForReplicationDrain : public TwoDCTest {
 };
 
 INSTANTIATE_TEST_CASE_P(
-    TwoDCTestParams, TwoDCTestWaitForReplicationDrain,
-    ::testing::Values(TwoDCTestParams(true /* transactional_table */),
-                      TwoDCTestParams(false /* transactional_table */)));
+    XClusterTestParams, XClusterTestWaitForReplicationDrain,
+    ::testing::Values(XClusterTestParams(true /* transactional_table */),
+                      XClusterTestParams(false /* transactional_table */)));
 
-TEST_P(TwoDCTestWaitForReplicationDrain, TestBlockGetChanges) {
+TEST_P(XClusterTestWaitForReplicationDrain, TestBlockGetChanges) {
   constexpr uint32_t kNumTables = 3;
   constexpr uint32_t kNumTablets = 3;
   constexpr int kRpcTimeoutShort = 30;
@@ -3462,7 +3525,7 @@ TEST_P(TwoDCTestWaitForReplicationDrain, TestBlockGetChanges) {
   ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0));
 }
 
-TEST_P(TwoDCTestWaitForReplicationDrain, TestWithTargetTime) {
+TEST_P(XClusterTestWaitForReplicationDrain, TestWithTargetTime) {
   constexpr uint32_t kNumTables = 3;
   constexpr uint32_t kNumTablets = 3;
   std::vector<std::shared_ptr<client::YBTable>> producer_tables;
@@ -3496,7 +3559,7 @@ TEST_P(TwoDCTestWaitForReplicationDrain, TestWithTargetTime) {
   ASSERT_GT(GetCurrentTimeMicros(), future_checkpoint);
 }
 
-TEST_P(TwoDCTestWaitForReplicationDrain, TestProducerChange) {
+TEST_P(XClusterTestWaitForReplicationDrain, TestProducerChange) {
   constexpr uint32_t kNumTables = 3;
   constexpr uint32_t kNumTablets = 3;
   std::vector<std::shared_ptr<client::YBTable>> producer_tables;
@@ -3536,7 +3599,7 @@ TEST_P(TwoDCTestWaitForReplicationDrain, TestProducerChange) {
   ASSERT_OK(drain_api_future.get());
 }
 
-TEST_P(TwoDCTest, YB_DISABLE_TEST_IN_TSAN(TestPrematureLogGC)) {
+TEST_P(XClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPrematureLogGC)) {
   // Allow WAL segments to be garbage collected regardless of their lifetime.
   FLAGS_TEST_disable_wal_retention_time = true;
 
@@ -3614,6 +3677,112 @@ TEST_P(TwoDCTest, YB_DISABLE_TEST_IN_TSAN(TestPrematureLogGC)) {
   // Verify that the GetReplicationStatus RPC contains the 'REPLICATION_MISSING_OP_ID' error.
   VerifyReplicationError(
     consumer_table->id(), stream_id, ReplicationErrorPb::REPLICATION_MISSING_OP_ID);
+}
+
+TEST_P(XClusterTest, PausingAndResumingReplicationFromProducerSingleTable) {
+  constexpr int kNTabletsPerTable = 3;
+  constexpr int kNumTables = 1;
+  uint32_t kReplicationFactor = NonTsanVsTsan(3, 1);
+  std::vector<uint32_t> tables_vector(kNumTables);
+  for (size_t i = 0; i < kNumTables; i++) {
+    tables_vector[i] = kNTabletsPerTable;
+  }
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, kReplicationFactor));
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+
+  producer_tables.push_back(tables[0]);
+  consumer_tables.push_back(tables[1]);
+
+  // Empty case.
+  ASSERT_OK(PauseResumeXClusterProducerStreams({}, true));
+  ASSERT_OK(PauseResumeXClusterProducerStreams({}, false));
+
+  // Invalid ID case.
+  ASSERT_NOK(PauseResumeXClusterProducerStreams({"invalid_id"}, true));
+  ASSERT_NOK(PauseResumeXClusterProducerStreams({"invalid_id"}, false));
+
+  ASSERT_OK(SetupUniverseReplication(producer_tables));
+  master::IsSetupUniverseReplicationDoneResponsePB is_resp;
+  ASSERT_OK(WaitForSetupUniverseReplication(
+      consumer_cluster(), consumer_client(), kUniverseId, &is_resp));
+
+  std::vector<std::string> stream_ids;
+
+  WriteWorkloadAndVerifyWrittenRows(producer_tables[0], consumer_tables[0], 0, 10);
+
+  // Test pausing all streams (by passing empty streams list) when there is only one stream.
+  SetPauseAndVerifyWrittenRows({}, producer_tables, consumer_tables, 10, 20);
+
+  // Test resuming all streams (by passing empty streams list) when there is only one stream.
+  SetPauseAndVerifyWrittenRows({}, producer_tables, consumer_tables, 20, 30, false);
+
+  // Test pausing stream by ID when there is only one stream by passing non-empty stream_ids.
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_tables[0]->id()));
+  stream_ids.push_back(stream_id);
+  SetPauseAndVerifyWrittenRows(stream_ids, producer_tables, consumer_tables, 30, 40);
+
+  // Test resuming stream by ID when there is only one stream by passing non-empty stream_ids.
+  SetPauseAndVerifyWrittenRows(stream_ids, producer_tables, consumer_tables, 40, 50, false);
+
+  ASSERT_OK(DeleteUniverseReplication());
+}
+
+TEST_P(XClusterTest, PausingAndResumingReplicationFromProducerMultiTable) {
+  constexpr int kNTabletsPerTable = 3;
+  constexpr int kNumTables = 3;
+  uint32_t kReplicationFactor = NonTsanVsTsan(3, 1);
+  std::vector<uint32_t> tables_vector(kNumTables);
+  for (size_t i = 0; i < kNumTables; i++) {
+    tables_vector[i] = kNTabletsPerTable;
+  }
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, kReplicationFactor));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  // Testing on multiple tables.
+  producer_tables.reserve(tables.size() / 2);
+  consumer_tables.reserve(tables.size() / 2);
+  for (size_t i = 0; i < tables.size(); i++) {
+    if (i % 2 == 0) {
+      producer_tables.push_back(tables[i]);
+    } else {
+      consumer_tables.push_back(tables[i]);
+    }
+  }
+
+  std::vector<std::string> stream_ids;
+
+  ASSERT_OK(SetupUniverseReplication(producer_tables));
+  master::IsSetupUniverseReplicationDoneResponsePB is_resp;
+  ASSERT_OK(WaitForSetupUniverseReplication(
+      consumer_cluster(), consumer_client(), kUniverseId, &is_resp));
+
+  SetPauseAndVerifyWrittenRows({}, producer_tables, consumer_tables, 0, 10, false);
+  // Test pausing all streams (by passing empty streams list) when there are multiple streams.
+  SetPauseAndVerifyWrittenRows({}, producer_tables, consumer_tables, 10, 20);
+  // Test resuming all streams (by passing empty streams list) when there are multiple streams.
+  SetPauseAndVerifyWrittenRows({}, producer_tables, consumer_tables, 20, 30, false);
+  // Add the stream IDs of the first two tables to test pausing and resuming just those ones.
+  for (size_t i = 0; i < producer_tables.size() - 1; ++i) {
+    auto stream_id = (string)ASSERT_RESULT(GetCDCStreamID(producer_tables[i]->id()));
+    stream_ids.push_back(stream_id);
+  }
+  // Test pausing replication on the first two tables by passing stream_ids containing their
+  // corresponding xcluster streams.
+  SetPauseAndVerifyWrittenRows(stream_ids, producer_tables, consumer_tables, 30, 40);
+  // Verify that the remaining streams are unpaused still.
+  for (size_t i = stream_ids.size(); i < producer_tables.size(); ++i) {
+    WriteWorkloadAndVerifyWrittenRows(producer_tables[i], consumer_tables[i], 30, 40);
+  }
+  // Test resuming replication on the first two tables by passing stream_ids containing their
+  // corresponding xcluster streams.
+  SetPauseAndVerifyWrittenRows(stream_ids, producer_tables, consumer_tables, 40, 50, false);
+  // Verify that the previously unpaused streams are still replicating.
+  for (size_t i = stream_ids.size(); i < producer_tables.size(); ++i) {
+    WriteWorkloadAndVerifyWrittenRows(producer_tables[i], consumer_tables[i], 40, 50);
+  }
+  ASSERT_OK(DeleteUniverseReplication());
 }
 
 } // namespace yb

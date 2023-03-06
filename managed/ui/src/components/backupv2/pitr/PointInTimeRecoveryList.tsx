@@ -25,6 +25,7 @@ import { PointInTimeRecoveryModal } from './PointInTimeRecoveryModal';
 import { TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { PointInTimeRecoveryDisableModal } from './PointInTimeRecoveryDisableModal';
 import './PointInTimeRecoveryList.scss';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 
 const DEFAULT_SORT_COLUMN = 'dbName';
 const DEFAULT_SORT_DIRECTION = 'ASC';
@@ -174,7 +175,7 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
             <TableHeaderColumn
               dataField="minRecoverTimeInMillis"
               dataFormat={(minTime) => {
-                return minTime ? <FormatUnixTimeStampTimeToTimezone timestamp={minTime} /> : '';
+                return minTime ? ybFormatDate(minTime) : '';
               }}
               dataSort
             >

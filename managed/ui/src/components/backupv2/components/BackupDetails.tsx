@@ -14,7 +14,6 @@ import { Backup_States, IBackup, Keyspace_Table } from '..';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton } from '../../common/forms/fields';
 import {
-  FormatUnixTimeStampTimeToTimezone,
   RevealBadge,
   calculateDuration
 } from '../common/BackupUtils';
@@ -35,6 +34,7 @@ import { YBTag } from '../../common/YBTag';
 import { YBConfirmModal } from '../../modals';
 import { toast } from 'react-toastify';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import './BackupDetails.scss';
 
 interface BackupDetailsProps {
@@ -221,15 +221,17 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               <div>
                 <div className="header-text">Created At</div>
                 <div>
-                  <FormatUnixTimeStampTimeToTimezone
-                    timestamp={backupDetails.commonBackupInfo.createTime}
-                  />
+                  {
+                    ybFormatDate(backupDetails.commonBackupInfo.createTime)
+                  }
                 </div>
               </div>
               <div>
                 <div className="header-text">Expiration</div>
                 <div>
-                  <FormatUnixTimeStampTimeToTimezone timestamp={backupDetails.expiryTime} />
+                  {
+                    ybFormatDate(backupDetails.expiryTime)
+                  }
                 </div>
               </div>
               <span className="flex-divider" />

@@ -4,6 +4,7 @@
 package util
 
 import (
+	"context"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -12,7 +13,7 @@ import (
 func TestSaveCerts(t *testing.T) {
 	certString, keyString := "test-cert", "test-key"
 	config := CurrentConfig()
-	err := SaveCerts(config, certString, keyString, "test1")
+	err := SaveCerts(context.TODO(), config, certString, keyString, "test1")
 	if err != nil {
 		t.Fatalf("Error while saving certs - %s ", err.Error())
 	}
@@ -38,7 +39,7 @@ func TestSaveCerts(t *testing.T) {
 
 func TestCreateJWTToken(t *testing.T) {
 	config := CurrentConfig()
-	_, err := GenerateJWT(config)
+	_, err := GenerateJWT(context.TODO(), config)
 	if err != nil {
 		t.Fatalf("Error generating JWT - %s", err.Error())
 	}
@@ -46,11 +47,11 @@ func TestCreateJWTToken(t *testing.T) {
 
 func TestVerifyJWTToken(t *testing.T) {
 	config := CurrentConfig()
-	jwtToken, err := GenerateJWT(config)
+	jwtToken, err := GenerateJWT(context.TODO(), config)
 	if err != nil {
 		t.Fatalf("Error generating JWT - %s", err.Error())
 	}
-	claims, err := VerifyJWT(config, jwtToken)
+	claims, err := VerifyJWT(context.TODO(), config, jwtToken)
 	if err != nil {
 		t.Fatalf("Error verifying JWT %s", err.Error())
 	}

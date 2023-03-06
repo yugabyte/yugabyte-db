@@ -7,6 +7,7 @@ import {DropdownButton, MenuItem} from "react-bootstrap";
 import {YBMenuItem} from "../../UniverseDetail/compounds/YBMenuItem";
 import {YBButton, YBModal} from "../../../common/forms/fields";
 
+import { ybFormatDate, YBTimeFormats } from "../../../../redesign/helpers/DateUtils";
 import {formatBytes} from "../../../xcluster/ReplicationUtils";
 
 import "./ThirdStep.scss";
@@ -114,7 +115,7 @@ export const ThirdStep = withRouter(({
           closeModal={() => {
             setIsConfirmDeleteOpen(false);
           }}
-          createdOn={deleteBundleObj.creationDate}
+          createdOn={ybFormatDate(deleteBundleObj.creationDate)}
           confirmDelete={() => {
             handleDeleteBundle(deleteBundleObj.bundleUUID);
             setDeleteBundleObj({});
@@ -152,6 +153,7 @@ export const ThirdStep = withRouter(({
             <BootstrapTable data={supportBundles}>
               <TableHeaderColumn
                 dataField="creationDate"
+                dataFormat={(creationDate) => ybFormatDate(creationDate, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP)}
                 isKey={true}
                 className={'node-name-field'}
                 columnClassName={'node-name-field'}
@@ -160,6 +162,7 @@ export const ThirdStep = withRouter(({
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="expirationDate"
+                dataFormat={(expirationDate) => ybFormatDate(expirationDate, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP)}
                 className={'yb-node-status-cell'}
                 columnClassName={'yb-node-status-cell'}
               >

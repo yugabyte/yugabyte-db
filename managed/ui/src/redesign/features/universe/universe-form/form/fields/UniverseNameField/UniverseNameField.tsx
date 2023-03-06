@@ -55,6 +55,7 @@ export const UniverseNameField = ({ disabled }: UniverseNameFieldProps): ReactEl
             autoFocus: true,
             'data-testid': 'UniverseNameField-Input'
           }}
+          placeholder={t('universeForm.cloudConfig.placeholder.enterUniverseName')}
         />
       </Box>
     </Box>

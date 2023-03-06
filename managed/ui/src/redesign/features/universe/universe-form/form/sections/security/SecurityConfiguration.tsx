@@ -2,7 +2,7 @@ import React, { useContext } from 'react';
 import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import { useWatch } from 'react-hook-form';
-import { Box, Grid, Typography, makeStyles } from '@material-ui/core';
+import { Box, Typography, makeStyles } from '@material-ui/core';
 import {
   AssignPublicIPField,
   ClientToNodeTLSField,
@@ -87,10 +87,12 @@ export const SecurityConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
   if (!provider?.code) return null;
 
   return (
-    <Box className={classes.sectionContainer} data-testid="security-config-section">
-      <Typography className={classes.sectionHeaderFont}>
-        {t('universeForm.securityConfig.title')}
-      </Typography>
+    <Box
+      className={classes.sectionContainer}
+      flexDirection="column"
+      data-testid="SecurityConfiguration-Section"
+    >
+      <Typography variant="h4">{t('universeForm.securityConfig.title')}</Typography>
       <Box width="100%" display="flex" flexDirection="column" justifyContent="center">
         {[CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code) && (
           <>
@@ -100,21 +102,13 @@ export const SecurityConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
               </Typography>
 
               <Box className={helperClasses.settingsContainerBorder}>
-                <Grid container>
-                  <Grid lg={6} item container>
-                    <AssignPublicIPField disabled={!isCreatePrimary} />
-                  </Grid>
-                </Grid>
+                <AssignPublicIPField disabled={!isCreatePrimary} />
               </Box>
             </Box>
 
             {currentAccessKeyInfo?.keyInfo?.showSetUpChrony === false && (
               <Box mt={2} ml={2}>
-                <Grid container>
-                  <Grid lg={6} item container>
-                    <TimeSyncField disabled={!isCreateMode} />
-                  </Grid>
-                </Grid>
+                <TimeSyncField disabled={!isCreateMode} />
               </Box>
             )}
           </>
@@ -148,11 +142,7 @@ export const SecurityConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
                 <Box className={helperClasses.settingsContainerDivider}></Box>
 
                 <Box mt={3} ml={2} mb={2}>
-                  <Grid container>
-                    <Grid lg={6} item container>
-                      <YEDISField disabled={!isCreatePrimary} />
-                    </Grid>
-                  </Grid>
+                  <YEDISField disabled={!isCreatePrimary} />
                 </Box>
               </Box>
             </Box>
@@ -170,19 +160,11 @@ export const SecurityConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
                   <YBLabel dataTestId="YEDISField-Label">
                     {t('universeForm.securityConfig.encryptionSettings.encryptionInTransit')}
                   </YBLabel>
-                  <Grid container>
-                    <Grid lg={6} item container>
-                      <NodeToNodeTLSField disabled={!isCreatePrimary} />
-                    </Grid>
-                  </Grid>
+                  <NodeToNodeTLSField disabled={!isCreatePrimary} />
                 </Box>
 
                 <Box mt={3} ml={2}>
-                  <Grid container>
-                    <Grid lg={6} item container>
-                      <ClientToNodeTLSField disabled={!isCreatePrimary} />
-                    </Grid>
-                  </Grid>
+                  <ClientToNodeTLSField disabled={!isCreatePrimary} />
                 </Box>
 
                 {(clientNodeTLSEnabled || nodeNodeTLSEnabled) && (
@@ -200,20 +182,12 @@ export const SecurityConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
                   <YBLabel dataTestId="YEDISField-Label">
                     {t('universeForm.securityConfig.encryptionSettings.encryptionAtRest')}
                   </YBLabel>
-                  <Grid container>
-                    <Grid lg={6} item container>
-                      <EncryptionAtRestField disabled={!isCreatePrimary} />
-                    </Grid>
-                  </Grid>
+                  <EncryptionAtRestField disabled={!isCreatePrimary} />
                 </Box>
 
                 {encryptionEnabled && isPrimary && (
                   <Box mt={2} ml={2} mb={2}>
-                    <Grid container spacing={3}>
-                      <Grid lg={10} item container>
-                        <KMSConfigField disabled={!isCreatePrimary} />
-                      </Grid>
-                    </Grid>
+                    <KMSConfigField disabled={!isCreatePrimary} />
                   </Box>
                 )}
               </Box>
