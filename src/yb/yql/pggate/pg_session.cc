@@ -21,10 +21,17 @@
 #include <memory>
 #include <optional>
 #include <utility>
+#include <fstream>
+#include <stdlib.h>
 
 #include <boost/functional/hash.hpp>
 
 #include "opentelemetry/sdk/version/version.h"
+#include "opentelemetry/exporters/ostream/span_exporter_factory.h"
+#include "opentelemetry/exporters/ostream/span_exporter.h"
+#include "opentelemetry/sdk/trace/simple_processor_factory.h"
+#include "opentelemetry/sdk/trace/tracer_provider_factory.h"
+#include "opentelemetry/trace/provider.h"
 
 #include "yb/client/table_info.h"
 
@@ -56,6 +63,8 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 using namespace std::literals;
+namespace sdktrace = opentelemetry::sdk::trace;
+namespace trace_exporter = opentelemetry::exporter::trace;
 
 DEPRECATE_FLAG(int32, ysql_wait_until_index_permissions_timeout_ms, "11_2022");
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
@@ -437,16 +446,34 @@ Status PgSession::DeleteDBSequences(int64_t db_oid) {
 //--------------------------------------------------------------------------------------------------
 
 Status PgSession::StartTraceForQuery() {
-  LOG(INFO) << "Will get a tracer";
-  this->query_tracer_ = trace::Provider::GetTracerProvider()->GetTracer("pg_session", OPENTELEMETRY_SDK_VERSION);
-  LOG(INFO) << "Got tracer. Will get span";
-  this->query_span_ = this->query_tracer_->StartSpan("HandleRequest");
-  LOG(INFO) << "Got a span";
+  InitTracer();
+  auto provider = opentelemetry::trace::Provider::GetTracerProvider();
+  this->query_tracer_ = provider->GetTracer("pg_session", OPENTELEMETRY_SDK_VERSION);
+  this->query_span_ = this->query_tracer_->StartSpan("Create span : handle request");
+  auto scope = this->query_tracer_->WithActiveSpan(this->query_span_);
+  {
+    auto outer_span = this->query_tracer_->StartSpan("Outer operation");
+    auto outer_scope = this->query_tracer_->WithActiveSpan(outer_span);
+    {
+        auto inner_span = this->query_tracer_->StartSpan("Inner operation");
+        auto inner_scope = this->query_tracer_->WithActiveSpan(inner_span);
+        // ... perform inner operation
+        inner_span->End();
+    }
+    // ... perform outer operation
+    outer_span->End();
+  }
+  {
+    auto sibling_span = this->query_tracer_->StartSpan("Sibling operation");
+    auto sibling_scope = this->query_tracer_->WithActiveSpan(sibling_span);
+    sibling_span->End();
+  }
   return Status::OK();
 }
 
 Status PgSession::StopTraceForQuery() {
   this->query_span_->End();
+  CleanupTracer();
   return Status::OK();
 }
 //--------------------------------------------------------------------------------------------------
@@ -861,6 +888,30 @@ Status PgSession::ValidatePlacement(const std::string& placement_info) {
   req.set_num_replicas(placement.num_replicas);
 
   return pg_client_.ValidatePlacement(&req);
+}
+
+std::string PgSession::GetTraceFileName() {
+  return trace_file_name_base_ + "trace_" + std::to_string(rand()) + ".log";
+}
+
+void PgSession::InitTracer() {
+  trace_file_name_ = GetTraceFileName();
+  std::cout << "Starting tracing log file at: " << trace_file_name_ << std::endl;
+  trace_file_handle_ = std::make_shared<std::ofstream>(std::ofstream(trace_file_name_.c_str()));
+  auto exporter = trace_exporter::OStreamSpanExporterFactory::Create(*trace_file_handle_.get());
+  auto processor = sdktrace::SimpleSpanProcessorFactory::Create(std::move(exporter));
+  std::shared_ptr<opentelemetry::trace::TracerProvider> provider_ =
+      sdktrace::TracerProviderFactory::Create(std::move(processor));
+  trace::Provider::SetTracerProvider(provider_);
+}
+
+void PgSession::CleanupTracer() {
+  if (trace_file_handle_ != nullptr) {
+    std::cout << "Closing tracing log file at: " << trace_file_name_ << std::endl;
+    trace_file_handle_.get()->close();
+    trace_file_handle_.reset();
+    trace_file_handle_ = nullptr;
+  }
 }
 
 template<class Generator>

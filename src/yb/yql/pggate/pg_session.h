@@ -360,6 +360,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   void GetAndResetOperationFlushRpcStats(uint64_t* count, uint64_t* wait_time);
 
+  void InitTracer();
+  void CleanupTracer();
+  std::string GetTraceFileName();
+
  private:
   Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);
   Result<PerformFuture> FlushOperations(BufferableOperations ops, bool transactional);
@@ -428,8 +432,12 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   bool has_write_ops_in_ddl_mode_ = false;
   std::variant<TxnSerialNoPerformInfo> last_perform_on_txn_serial_no_;
 
-  nostd::shared_ptr<trace::Tracer> query_tracer_;
-  nostd::shared_ptr<trace::Span> query_span_;
+  nostd::shared_ptr<opentelemetry::trace::Tracer> query_tracer_;
+  nostd::shared_ptr<opentelemetry::trace::Span> query_span_;
+
+  std::string trace_file_name_base_ = "/home/centos/var/logs/tserver/";
+  std::string trace_file_name_;
+  std::shared_ptr<std::ofstream> trace_file_handle_ = nullptr;
 };
 
 }  // namespace pggate

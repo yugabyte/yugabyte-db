@@ -64,7 +64,15 @@ set(PGGATE_LIBS
     yb_pggate_util
     yb_pggate_flags
     tablet_error
-    pg_client_proto)
+    pg_client_proto
+    opentelemetry_exporter_ostream_span
+    opentelemetry_trace
+    opentelemetry_exporter_in_memory
+    opentelemetry_exporter_ostream_metrics
+    opentelemetry_common
+    opentelemetry_metrics
+    opentelemetry_resources
+    opentelemetry_version)
 
 ADD_YB_LIBRARY(yb_pggate
                SRCS ${PGGATE_SRCS}

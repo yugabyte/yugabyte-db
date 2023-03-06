@@ -384,4 +384,38 @@ macro(yb_find_third_party_dependencies)
   find_package(Cassandra REQUIRED)
   include_directories(SYSTEM ${LIBCASSANDRA_INCLUDE_DIR})
   ADD_THIRDPARTY_LIB(cassandra SHARED_LIB "${LIBCASSANDRA_SHARED_LIB}")
+
+  ## Otel
+  set(OTEL_INCLUDE_DIR "${YB_THIRDPARTY_INSTALLED_DIR}/include")
+  set(OTEL_TRACE_SHARED_LIB "${YB_THIRDPARTY_INSTALLED_DIR_BASE}/uninstrumented/lib/libopentelemetry_trace.so")
+  set(OTEL_EXPORTER_MEMORY_SHARED_LIB "${YB_THIRDPARTY_INSTALLED_DIR_BASE}/uninstrumented/lib/libopentelemetry_exporter_in_memory.so")
+  set(OTEL_EXPORTER_OSTREAM_METRICS_SHARED_LIB "${YB_THIRDPARTY_INSTALLED_DIR_BASE}/uninstrumented/lib/libopentelemetry_exporter_ostream_metrics.so")
+  set(OTEL_EXPORTER_OSTREAM_SPAN_SHARED_LIB "${YB_THIRDPARTY_INSTALLED_DIR_BASE}/uninstrumented/lib/libopentelemetry_exporter_ostream_span.so")
+  set(OTEL_COMMON_SHARED_LIB "${YB_THIRDPARTY_INSTALLED_DIR_BASE}/uninstrumented/lib/libopentelemetry_common.so")
+  set(OTEL_METRICS_SHARED_LIB "${YB_THIRDPARTY_INSTALLED_DIR_BASE}/uninstrumented/lib/libopentelemetry_metrics.so")
+  set(OTEL_RESOURCES_LIB "${YB_THIRDPARTY_INSTALLED_DIR_BASE}/uninstrumented/lib/libopentelemetry_resources.so")
+  set(OTEL_VERSION_SHARED_LIB "${YB_THIRDPARTY_INSTALLED_DIR_BASE}/uninstrumented/lib/libopentelemetry_version.so")
+
+  find_package(opentelemetry-cpp CONFIG REQUIRED)
+  include_directories(SYSTEM ${OTEL_INCLUDE_DIR})
+
+  ADD_THIRDPARTY_LIB(opentelemetry_trace SHARED_LIB "${OTEL_TRACE_SHARED_LIB}")
+  ADD_THIRDPARTY_LIB(opentelemetry_exporter_in_memory SHARED_LIB "${OTEL_EXPORTER_MEMORY_SHARED_LIB}")
+  ADD_THIRDPARTY_LIB(opentelemetry_exporter_ostream_metrics SHARED_LIB "${OTEL_EXPORTER_OSTREAM_METRICS_SHARED_LIB}")
+  ADD_THIRDPARTY_LIB(opentelemetry_exporter_ostream_span SHARED_LIB "${OTEL_EXPORTER_OSTREAM_SPAN_SHARED_LIB}")
+  ADD_THIRDPARTY_LIB(opentelemetry_common SHARED_LIB "${OTEL_COMMON_SHARED_LIB}")
+  ADD_THIRDPARTY_LIB(opentelemetry_metrics SHARED_LIB "${OTEL_METRICS_SHARED_LIB}")
+  ADD_THIRDPARTY_LIB(opentelemetry_resources SHARED_LIB "${OTEL_RESOURCES_LIB}")
+  ADD_THIRDPARTY_LIB(opentelemetry_version SHARED_LIB "${OTEL_VERSION_SHARED_LIB}")
+
+  list(APPEND YB_BASE_LIBS
+    opentelemetry_trace
+    opentelemetry_exporter_in_memory
+    opentelemetry_exporter_ostream_metrics
+    opentelemetry_exporter_ostream_span
+    opentelemetry_common
+    opentelemetry_metrics
+    opentelemetry_resources
+    opentelemetry_version)
+
 endmacro()
