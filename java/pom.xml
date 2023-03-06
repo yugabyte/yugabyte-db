@@ -43,10 +43,10 @@
   <version>0.8.41-SNAPSHOT</version>
   <packaging>pom</packaging>
 
-  <name>YugaByte</name>
+  <name>Yugabyte</name>
 
   <description>
-    YugaByte client, YBCli, CQL.
+    Yugabyte client, YBCli, CQL.
   </description>
 
   <!-- Properties Management -->
