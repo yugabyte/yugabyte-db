@@ -130,6 +130,11 @@ METRIC_DEFINE_counter(tablet, tablet_data_corruptions,
   yb::MetricUnit::kUnits,
   "Number of times this tablet was flagged for corrupted data");
 
+METRIC_DEFINE_counter(tablet, failed_batch_lock,
+  "Batch Lock Timeout",
+  yb::MetricUnit::kUnits,
+  "Number of times that WriteQuery fails to obtain batch lock");
+
 using strings::Substitute;
 
 namespace yb {
@@ -152,7 +157,8 @@ TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& table_entity,
     MINIT(tablet_entity, consistent_prefix_read_requests),
     MINIT(tablet_entity, pgsql_consistent_prefix_read_rows),
     MINIT(tablet_entity, tablet_data_corruptions),
-    MINIT(tablet_entity, rows_inserted) {
+    MINIT(tablet_entity, rows_inserted),
+    MINIT(tablet_entity, failed_batch_lock) {
 }
 #undef MINIT
 
