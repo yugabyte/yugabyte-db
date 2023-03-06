@@ -71,6 +71,7 @@ struct TabletMetrics {
   scoped_refptr<Counter> tablet_data_corruptions;
 
   scoped_refptr<Counter> rows_inserted;
+  scoped_refptr<Counter> failed_batch_lock;
 };
 
 class ScopedTabletMetricsTracker {

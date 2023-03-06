@@ -14,6 +14,13 @@
 #include "yb/integration-tests/cql_test_base.h"
 #include "yb/integration-tests/mini_cluster_utils.h"
 
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/write_query.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
+#include "yb/tablet/tablet_metrics.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
@@ -34,6 +41,7 @@ DECLARE_int32(rpc_workers_limit);
 DECLARE_uint64(transaction_manager_workers_limit);
 DECLARE_uint64(TEST_inject_txn_get_status_delay_ms);
 DECLARE_int64(transaction_abort_check_interval_ms);
+DECLARE_bool(TEST_writequery_stuck_from_callback_leak);
 
 namespace yb {
 
@@ -168,6 +176,72 @@ TEST_F_EX(CqlIndexTest, ConcurrentIndexUpdate, CqlIndexSmallWorkersTest) {
   thread_holder.Stop();
 
   SetAtomicFlag(0, &FLAGS_TEST_inject_txn_get_status_delay_ms);
+}
+
+int64_t GetFailedBatchLockNum(MiniCluster* cluster)  {
+  int64_t failed_batch_lock = 0;
+  auto list = ListTabletPeers(cluster, ListPeersFilter::kAll);
+  for (const auto& peer : list) {
+    if (peer->tablet()->metadata()->table_name() == "t") {
+      auto metrics = peer->tablet()->metrics();
+      if (metrics) {
+        failed_batch_lock += metrics->failed_batch_lock->value();
+      }
+    }
+  }
+  return failed_batch_lock;
+}
+
+TEST_F(CqlIndexTest, WriteQueryStuckAndUpdateOnSameKey) {
+  FLAGS_TEST_writequery_stuck_from_callback_leak = true;
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t(id INT PRIMARY KEY, s TEXT) WITH transactions = { 'enabled' : true };"));
+  ASSERT_OK(session.ExecuteQuery("Create index idx on t(id) WHERE id < 0;"));
+  std::this_thread::sleep_for(5000ms);
+  // Trigger callback leak, which means a WriteQuery never get destroyed.
+  ASSERT_NOK(session.ExecuteQuery("INSERT INTO t(id, s) values(-1, 'test');"));
+  // Validate that the stuck WriteQuery object block the followup update on same key
+  // due to batch lock fail.
+  FLAGS_client_read_write_timeout_ms =
+      narrow_cast<uint32_t>(kCassandraTimeOut.ToMilliseconds());
+  int64_t failed_batch_lock = GetFailedBatchLockNum(cluster_.get());
+  ASSERT_NOK(session.ExecuteQuery("UPDATE t SET s = 'txn' WHERE id = -1;"));
+  std::this_thread::sleep_for(1000ms);
+  ASSERT_EQ(failed_batch_lock+1, GetFailedBatchLockNum(cluster_.get()));
+  SetAtomicFlag(false, &FLAGS_TEST_writequery_stuck_from_callback_leak);
+}
+
+TEST_F(CqlIndexTest, WriteQueryStuckAndVerifyTxnCleanup) {
+  FLAGS_TEST_writequery_stuck_from_callback_leak = true;
+  const size_t kNumTxns = 100;
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t(id INT PRIMARY KEY, s TEXT) WITH transactions = { 'enabled' : true };"));
+  ASSERT_OK(session.ExecuteQuery("Create index idx on t(id) WHERE id < 0;"));
+  std::this_thread::sleep_for(5000ms);
+  // Trigger callback leak, which means a WriteQuery never get destroyed.
+  ASSERT_NOK(session.ExecuteQuery("INSERT INTO t(id, s) values(-1, 'test');"));
+  // Verify the stuck WriteQuery object doesn't block transaction clean up.
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t(id, s) values(0, 'test');"));
+  for (size_t i = 0; i < kNumTxns; i++) {
+    ASSERT_OK(session.ExecuteQuery(Format("START TRANSACTION;"
+                                          " UPDATE t SET s = 'txn$i' WHERE id = 0;"
+                                          "COMMIT;", i)));
+  }
+  std::this_thread::sleep_for(5000ms);
+  size_t total_txns = 0;
+  auto list = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  for (const auto& peer : list) {
+    if (peer->tablet()->metadata()->table_name() == "t") {
+      auto* participant = peer->tablet()->transaction_participant();
+      if (participant) {
+        total_txns += participant->TEST_GetNumRunningTransactions();
+      }
+    }
+  }
+  ASSERT_EQ(0, total_txns);
+  SetAtomicFlag(false, &FLAGS_TEST_writequery_stuck_from_callback_leak);
 }
 
 TEST_F(CqlIndexTest, TestSaturatedWorkers) {
