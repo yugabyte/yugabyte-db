@@ -179,6 +179,7 @@ func (pg Postgres) Stop() {
 }
 
 func (pg Postgres) Restart() {
+	log.Info("Restarting postgres..")
 
 	if common.HasSudoAccess() {
 
