@@ -9,10 +9,16 @@
 
 import axios from 'axios';
 import { ROOT_URL } from '../../../../config';
-import { CustomVariable, IAlertVariablesList } from './ICustomVariables';
+import {
+  CustomVariable,
+  IAlertConfiguration,
+  IAlertConfigurationList,
+  IAlertVariablesList
+} from './ICustomVariables';
 
 export enum ALERT_TEMPLATES_QUERY_KEY {
-  fetchAlertTemplateVariables = 'fetchAlertTemplateVariables'
+  fetchAlertTemplateVariables = 'fetchAlertTemplateVariables',
+  fetchAlertConfigurationList = 'fetchAlertConfigurationList'
 }
 
 export const fetchAlertTemplateVariables = () => {
@@ -35,4 +41,20 @@ export const createCustomAlertTemplteVariable = (variables: CustomVariable[]) =>
 export const deleteCustomAlertTemplateVariable = (variable: CustomVariable) => {
   const cUUID = localStorage.getItem('customerId');
   return axios.delete(`${ROOT_URL}/customers/${cUUID}/alert_template_variables/${variable.uuid}`);
+};
+
+export const fetchAlertConfigList = (payload: Record<string, any>) => {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.post<IAlertConfigurationList>(
+    `${ROOT_URL}/customers/${cUUID}/alert_configurations/list`,
+    { payload }
+  );
+};
+
+export const setVariableValueForAlertconfig = (alertConfig: IAlertConfiguration) => {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.put<IAlertConfigurationList>(
+    `${ROOT_URL}/customers/${cUUID}/alert_configurations/${alertConfig.uuid}`,
+    alertConfig
+  );
 };
