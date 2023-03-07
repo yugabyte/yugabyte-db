@@ -156,9 +156,9 @@ Do the following:
 
 For a list of all the configuration options provided with the Debezium YugabyteDB connector, see [Connector configuration properties](../../../explore/change-data-capture/debezium-connector-yugabytedb/#connector-configuration-properties).
 
-{{< tip title="Enable GFlag to DROP or TRUNCATE" >}}
+{{< tip title="DROP or TRUNCATE tables when CDC is enabled" >}}
 
-The YugabyteDB CDC implementation will not let you DROP or TRUNCATE a table while an active CDC stream is present on the namespace. If you need to perform these operations while CDC is enabled, set the value of a [GFlag](../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags) `enable_delete_truncate_cdcsdk_table` to `true` and then you can DROP or TRUNCATE the table.
+By default, the YugabyteDB CDC implementation does not allow you to DROP or TRUNCATE a table while an active CDC stream is present on the namespace. If you need to perform these operations while CDC is enabled, set the [enable_delete_truncate_cdcsdk_table](../../../reference/configuration/yb-tserver/#enable-delete-truncate-cdcsdk-table) flag to `true` and then you can DROP or TRUNCATE the table.
 
 {{< /tip >}}
 
