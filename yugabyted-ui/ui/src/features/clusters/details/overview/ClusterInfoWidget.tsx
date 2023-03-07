@@ -1,14 +1,8 @@
 import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, Divider, Grid, makeStyles, Paper, Typography } from '@material-ui/core';
-// import { intlFormat } from 'date-fns';
-
-// Local imports
 import type { ClusterData } from '@app/api/src';
-import {
-  roundDecimal,
-  getFaultTolerance,
-} from '@app/helpers';
+import { roundDecimal, getFaultTolerance } from '@app/helpers';
 import { STATUS_TYPES, YBStatus } from '@app/components';
 
 const useStyles = makeStyles((theme) => ({
@@ -43,29 +37,13 @@ interface ClusterInfoWidgetProps {
   cluster: ClusterData;
 }
 
-/* const getDate = (rawDate?: string): string => {
-  if (rawDate) {
-    return intlFormat(new Date(rawDate), {
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: 'numeric',
-      // @ts-ignore: Parameter is not yet supported by `date-fns` but
-      // is supported by underlying Intl.DateTimeFormat. CLOUDGA-5283
-      hourCycle: 'h23'
-    });
-  }
-  return '-';
-}; */
-
 export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
   const classes = useStyles();
   const { t } = useTranslation();
   // const context = useContext(ClusterContext);
 
   const clusterSpec = cluster?.spec;
-  const numNodes = clusterSpec?.cluster_info?.num_nodes ?? 0;
+  const numNodes = clusterSpec?.cluster_info?.num_nodes ?? 0; // TODO: This is same as replication factor?
   const databaseVersion = cluster.info.software_version ?? '';
   const totalRamUsageMb = clusterSpec.cluster_info.node_info.memory_mb ?? 0; // TODO: Use total memory instead of used memory
   const totalDiskSize = clusterSpec.cluster_info.node_info.disk_size_gb ?? 0;

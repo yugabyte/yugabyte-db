@@ -1167,6 +1167,12 @@
           "disk_per_node": "Disk / Node",
           "vpcName": "VPC Name"
         },
+        "gflags": {
+          "title": "G-Flags",
+          "flag": "Flag",
+          "masterValue": "Master value",
+          "tserverValue": "TServer value"
+        },
         "vpcs": {
           "title": "VPCs",
           "region": "Region",

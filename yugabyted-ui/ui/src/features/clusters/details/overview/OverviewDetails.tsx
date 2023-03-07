@@ -5,6 +5,7 @@ import { NodesTab } from '../nodes/NodesTab';
 import { generatePath, Link, Route, Switch, useRouteMatch } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ActivityTab } from '../activities/ActivityTab';
+import { SettingsTab } from '../settings/SettingsTab';
 
 const useStyles = makeStyles((theme) => ({
   tabSectionContainer: {
@@ -37,11 +38,11 @@ const tabList: ITabListItem[] = [
     component: ActivityTab,
     testId: 'ClusterTabList-Activity'
   },
-  // {
-  //   name: 'tabSettings',
-  //   component: SettingsTab,
-  //   testId: 'ClusterTabList-Settings'
-  // },
+  {
+    name: 'tabSettings',
+    component: SettingsTab,
+    testId: 'ClusterTabList-Settings'
+  },
 ];
 
 export const OverviewDetails: FC = () => {

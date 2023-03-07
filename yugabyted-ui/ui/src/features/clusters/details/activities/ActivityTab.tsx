@@ -2,13 +2,11 @@ import React, { FC, useMemo } from 'react';
 import { Box, makeStyles } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { YBTable, YBLoadingBox } from '@app/components';
-import type { ClassNameMap } from '@material-ui/styles';
 import { BadgeVariant, YBBadge } from '@app/components/YBBadge/YBBadge';
 import ArrowRightIcon from '@app/assets/Drilldown.svg';
 
 const useStyles = makeStyles((theme) => ({
     statusComponent: {
-        padding: '8px 0',
         width: 'fit-content'
     },
     arrowComponent: {
@@ -20,7 +18,7 @@ const useStyles = makeStyles((theme) => ({
     },
   }));
 
-const StatusComponent = (classes: ClassNameMap) => (status: BadgeVariant) => {
+const StatusComponent = (classes: ReturnType<typeof useStyles>) => (status: BadgeVariant) => {
     return (
         <Box className={classes.statusComponent}>
             <YBBadge variant={status} />
@@ -28,7 +26,7 @@ const StatusComponent = (classes: ClassNameMap) => (status: BadgeVariant) => {
     );
 }
 
-const ArrowComponent = (classes: ClassNameMap) => () => {
+const ArrowComponent = (classes: ReturnType<typeof useStyles>) => () => {
     return (
         <Box className={classes.arrowComponent}>
             <ArrowRightIcon />
@@ -103,6 +101,7 @@ export const ActivityTab: FC = () => {
                 data={activityData}
                 columns={activityColumns}
                 options={{ pagination: false, rowHover: true }}
+                touchBorder={false}
             />
         </Box>
         : <YBLoadingBox>{t('clusterDetail.activity.noactivity')}</YBLoadingBox>

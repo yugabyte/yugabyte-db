@@ -736,7 +736,8 @@ export const mainTheme = createTheme({
         }
       },
       sizeSmall: {
-        padding: '0 16px',
+        padding: '8px 16px',
+        // padding: '0px 16px',
         // lineHeight: '32px'
       },
       head: {
