@@ -56,20 +56,26 @@ var upgradeCmd = &cobra.Command{
 		common.Upgrade(common.GetVersion())
 		for _, name := range serviceOrder {
 			log.Info("About to upgrade component " + name)
-			services[name].Upgrade()
+			if err := services[name].Upgrade(); err != nil {
+				log.Fatal("Upgrade of " + name + " failed: " + err.Error())
+			}
 			log.Info("Completed upgrade of component " + name)
 		}
 
 		for _, name := range serviceOrder {
 			log.Info("About to restart component " + name)
-			services[name].Stop()
-			services[name].Start()
+			if err := services[name].Restart(); err != nil {
+				log.Fatal("Failed restarting " + name + " after upgrade: " + err.Error())
+			}
 			log.Info("Completed restart of component " + name)
 		}
 
 		var statuses []common.Status
 		for _, service := range services {
-			status := service.Status()
+			status, err := service.Status()
+			if err != nil {
+				log.Fatal("Failed to get status: " + err.Error())
+			}
 			statuses = append(statuses, status)
 			if !common.IsHappyStatus(status) {
 				log.Fatal(status.Service + " is not running! upgrade failed")
@@ -78,9 +84,10 @@ var upgradeCmd = &cobra.Command{
 		common.PrintStatus(statuses...)
 		// Here ends the postgres minor version/no upgrade workflow
 
-		ybaCtl.Install()
+		if err := ybaCtl.Install(); err != nil {
+			log.Fatal("failed to install yba-ctl")
+		}
 		common.PostUpgrade()
-
 	},
 }
 
