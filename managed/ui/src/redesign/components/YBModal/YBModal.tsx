@@ -208,7 +208,7 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
         variant="secondary"
         onClick={handleClose}
         {...cancelBtnProps}
-        data-testid={cancelTestId}
+        data-testid={cancelTestId ?? 'YBModal-CancelButton'}
       >
         {cancelLabel}
       </YBButton>
@@ -233,7 +233,7 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
         type="submit"
         autoFocus
         showSpinner={isSubmitting}
-        data-testid={submitTestId}
+        data-testid={submitTestId ?? 'YBModal-SubmitButton'}
       >
         {submitLabel}
       </YBButton>
@@ -272,7 +272,11 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
                   <div className={classes.modalTitle}>{title}</div>
                 )}
                 {!hideCloseBtn && (
-                  <YBButton className={classes.closeBtn} onClick={handleClose}>
+                  <YBButton
+                    className={classes.closeBtn}
+                    onClick={handleClose}
+                    data-testid="YBModal-CloseButton"
+                  >
                     <i className={`fa fa-remove ${classes.closeBtnText}`}></i>
                   </YBButton>
                 )}

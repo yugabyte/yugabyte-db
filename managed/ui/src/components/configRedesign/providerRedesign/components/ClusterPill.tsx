@@ -1,7 +1,7 @@
 import React from 'react';
 import clsx from 'clsx';
 
-import { assertUnreachableCase } from '../../../../utils/ErrorUtils';
+import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
 
 import { Cluster, ClusterType } from '../../../../redesign/helpers/dtos';
 

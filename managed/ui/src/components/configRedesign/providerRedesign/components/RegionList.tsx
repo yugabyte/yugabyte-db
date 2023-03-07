@@ -14,6 +14,9 @@ import { YBButton } from '../../../common/forms/fields';
 import { CloudVendorRegionField } from '../forms/configureRegion/ConfigureRegionModal';
 import { ProviderCode, CloudVendorProviders } from '../constants';
 import { K8sRegionField } from '../forms/configureRegion/ConfigureK8sRegionModal';
+import { ConfigureOnPremRegionFormValues } from '../forms/configureRegion/ConfigureOnPremRegionModal';
+
+import { SupportedRegionField } from '../forms/configureRegion/types';
 
 import styles from './RegionList.module.scss';
 
@@ -37,8 +40,8 @@ interface K8sRegionListProps extends RegionListCommmonProps {
 }
 interface OnPremRegionListProps extends RegionListCommmonProps {
   providerCode: typeof ProviderCode.ON_PREM;
-  regions: CloudVendorRegionField[];
-  setRegionSelection: (regionSelection: CloudVendorRegionField) => void;
+  regions: ConfigureOnPremRegionFormValues[];
+  setRegionSelection: (regionSelection: ConfigureOnPremRegionFormValues) => void;
 }
 
 type RegionListProps = CloudVendorRegionListProps | K8sRegionListProps | OnPremRegionListProps;
@@ -53,6 +56,7 @@ export const RegionList = (props: RegionListProps) => {
       descriptionText="Add regions to deploy DB nodes"
       onActionButtonClick={showAddRegionFormModal}
       className={clsx(isError && styles.emptyListError)}
+      dataTestIdPrefix="RegionEmptyList"
     />
   ) : (
     <>
@@ -107,6 +111,7 @@ const contextualHelpers = ({
               btnType="button"
               onClick={() => handleEditRegion(row)}
               disabled={disabled}
+              data-testid="RegionList-EditRegion"
             />
             <YBButton
               className={clsx(disabled && styles.disabledButton)}
@@ -116,6 +121,7 @@ const contextualHelpers = ({
               btnType="button"
               onClick={() => handleDeleteRegion(row)}
               disabled={disabled}
+              data-testid="RegionList-DeleteRegion"
             />
           </div>
         );
@@ -149,6 +155,7 @@ const contextualHelpers = ({
               btnType="button"
               onClick={() => handleEditRegion(row)}
               disabled={disabled}
+              data-testid="RegionList-EditRegion"
             />
             <YBButton
               className={clsx(disabled && styles.disabledButton)}
@@ -158,6 +165,51 @@ const contextualHelpers = ({
               btnType="button"
               onClick={() => handleDeleteRegion(row)}
               disabled={disabled}
+              data-testid="RegionList-DeleteRegion"
+            />
+          </div>
+        );
+      };
+      return {
+        handleEditRegion: handleEditRegion,
+        handleDeleteRegion: handleDeleteRegion,
+        formatZones: formatZones,
+        formatRegionActions: formatRegionActions
+      };
+    }
+    case ProviderCode.ON_PREM: {
+      const handleEditRegion = (regionField: ConfigureOnPremRegionFormValues) => {
+        setRegionSelection(regionField);
+        showEditRegionFormModal();
+      };
+      const handleDeleteRegion = (regionField: ConfigureOnPremRegionFormValues) => {
+        setRegionSelection(regionField);
+        showDeleteRegionModal();
+      };
+      const formatZones = (zones: typeof regions[number]['zones']) =>
+        pluralize('zone', zones.length, true);
+      const formatRegionActions = (_: unknown, row: ConfigureOnPremRegionFormValues) => {
+        return (
+          <div className={styles.buttonContainer}>
+            <YBButton
+              className={clsx(disabled && styles.disabledButton)}
+              btnIcon="fa fa-pencil"
+              btnText="Edit"
+              btnClass="btn btn-default"
+              btnType="button"
+              onClick={() => handleEditRegion(row)}
+              disabled={disabled}
+              data-testid="RegionList-EditRegion"
+            />
+            <YBButton
+              className={clsx(disabled && styles.disabledButton)}
+              btnIcon="fa fa-trash"
+              btnText="Delete"
+              btnClass="btn btn-default"
+              btnType="button"
+              onClick={() => handleDeleteRegion(row)}
+              disabled={disabled}
+              data-testid="RegionList-DeleteRegion"
             />
           </div>
         );
@@ -172,10 +224,10 @@ const contextualHelpers = ({
 
     default:
       return {
-        handleEditRegion: (regionField: CloudVendorRegionField | K8sRegionField) => null,
-        handleDeleteRegion: (regionField: CloudVendorRegionField | K8sRegionField) => null,
+        handleEditRegion: (regionField: SupportedRegionField) => null,
+        handleDeleteRegion: (regionField: SupportedRegionField) => null,
         formatZones: (zones: typeof regions[number]['zones']) => '',
-        formatRegionActions: (_: unknown, row: CloudVendorRegionField | K8sRegionField) => ''
+        formatRegionActions: (_: unknown, row: SupportedRegionField) => ''
       };
   }
 };

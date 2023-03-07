@@ -9,14 +9,14 @@ import React from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Link } from 'react-router';
 
-import { Cluster, Universe } from '../../../../redesign/helpers/dtos';
-import { getPrimaryCluster, getReadOnlyClusters } from '../../../../utils/universeUtilsTyped';
+import { Cluster, Universe } from '../../../../../redesign/helpers/dtos';
+import { getPrimaryCluster, getReadOnlyClusters } from '../../../../../utils/universeUtilsTyped';
 import {
   getUniverseStatus,
   getUniverseStatusIcon
-} from '../../../universes/helpers/universeHelpers';
-import { UniverseAlertBadge } from '../../../universes/YBUniverseItem/UniverseAlertBadge';
-import { ClusterPill } from './ClusterPill';
+} from '../../../../universes/helpers/universeHelpers';
+import { UniverseAlertBadge } from '../../../../universes/YBUniverseItem/UniverseAlertBadge';
+import { ClusterPill } from '../../components/ClusterPill';
 
 import styles from './UniverseTable.module.scss';
 

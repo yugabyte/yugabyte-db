@@ -96,10 +96,18 @@ export const KUBERNETES_PROVIDERS_MAP = {
   [KubernetesProviderType.TANZU]: [KubernetesProvider.TANZU]
 } as const;
 
+export const InstanceTypeOperation = {
+  ADD: 'add',
+  EDIT: 'edit'
+} as const;
+export type InstanceTypeOperation = typeof InstanceTypeOperation[keyof typeof InstanceTypeOperation];
+
 /**
  * A field name for storing server errors from form submission.
  */
 export const ASYNC_ERROR = 'asyncError';
+
+export const DEFAULT_SSH_PORT = 22;
 
 // --------------------------------------------------------------------------------------
 // User Facing Labels
@@ -139,4 +147,9 @@ export const KubernetesProviderTypeLabel = {
   [KubernetesProviderType.MANAGED_SERVICE]: 'Managed Kubernetes Service',
   [KubernetesProviderType.OPEN_SHIFT]: 'Red Hat OpenShift',
   [KubernetesProviderType.TANZU]: 'VMWare Tanzu'
+} as const;
+
+export const InstanceTypeOperationLabel = {
+  [InstanceTypeOperation.ADD]: 'Add',
+  [InstanceTypeOperation.EDIT]: 'Edit'
 } as const;

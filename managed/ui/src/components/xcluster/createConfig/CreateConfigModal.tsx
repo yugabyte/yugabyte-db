@@ -20,7 +20,7 @@ import { SelectTargetUniverseStep } from './SelectTargetUniverseStep';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import { api } from '../../../redesign/helpers/api';
 import { getPrimaryCluster, isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
-import { assertUnreachableCase } from '../../../utils/ErrorUtils';
+import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
 import {
   XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN,
   BOOTSTRAP_MIN_FREE_DISK_SPACE_GB,

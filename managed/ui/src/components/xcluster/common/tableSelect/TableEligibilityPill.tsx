@@ -2,7 +2,7 @@ import React from 'react';
 import clsx from 'clsx';
 
 import { XClusterTableEligibility } from '../../constants';
-import { assertUnreachableCase } from '../../../../utils/ErrorUtils';
+import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
 
 import { EligibilityDetails } from '../..';
 

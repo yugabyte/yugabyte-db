@@ -6,25 +6,30 @@
  */
 import React from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+import { ProviderCode } from '../../constants';
 
-import { YBAvailabilityZone } from '../types';
+import { YBAvailabilityZone } from '../../types';
 
 import styles from './ZoneList.module.scss';
 
 interface ZoneListProps {
+  providerCode: ProviderCode;
   zones: YBAvailabilityZone[];
 }
-
-export const ZoneList = ({ zones }: ZoneListProps) => {
+export const ZoneList = ({ providerCode, zones }: ZoneListProps) => {
   return (
-    <div className={styles.bootstrapTableContainer}>
+    <div className={styles.expandComponent}>
       <BootstrapTable tableContainerClass={styles.bootstrapTable} data={zones}>
         <TableHeaderColumn dataField="code" isKey={true} dataSort={true}>
           Zone
         </TableHeaderColumn>
-        <TableHeaderColumn dataField="subnet" dataSort={true}>
-          Subnet
-        </TableHeaderColumn>
+        {([ProviderCode.AWS, ProviderCode.AZU, ProviderCode.GCP] as ProviderCode[]).includes(
+          providerCode
+        ) && (
+          <TableHeaderColumn dataField="subnet" dataSort={true}>
+            Subnet
+          </TableHeaderColumn>
+        )}
       </BootstrapTable>
     </div>
   );

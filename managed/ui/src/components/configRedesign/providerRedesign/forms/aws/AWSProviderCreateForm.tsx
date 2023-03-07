@@ -26,6 +26,7 @@ import {
 } from '../configureRegion/ConfigureRegionModal';
 import {
   ASYNC_ERROR,
+  DEFAULT_SSH_PORT,
   NTPSetupType,
   ProviderCode,
   VPCSetupType,
@@ -47,6 +48,7 @@ import { getYBAHost } from '../../utils';
 import { YBAHost } from '../../../../../redesign/helpers/constants';
 import { CreateInfraProvider } from '../../InfraProvider';
 import { RegionOperation } from '../configureRegion/constants';
+import { NTP_SERVER_REGEX } from '../constants';
 
 import { AWSRegionMutation, YBProviderMutation, AWSAvailabilityZoneMutation } from '../../types';
 
@@ -143,7 +145,14 @@ const VALIDATION_SCHEMA = object().shape({
   }),
   ntpServers: array().when('ntpSetupType', {
     is: NTPSetupType.SPECIFIED,
-    then: array().min(1, 'NTP Servers cannot be empty.')
+    then: array()
+      .min(1, 'NTP Servers cannot be empty.')
+      .of(
+        string().matches(
+          NTP_SERVER_REGEX,
+          'NTP servers must be provided in IPv4, IPv6, or hostname format.'
+        )
+      )
   }),
   regions: array().min(1, 'Provider configurations must contain at least one region.')
 });
@@ -165,7 +174,7 @@ export const AWSProviderCreateForm = ({
     providerCredentialType: ProviderCredentialType.ACCESS_KEY,
     regions: [] as CloudVendorRegionField[],
     sshKeypairManagement: KeyPairManagement.YBA_MANAGED,
-    sshPort: 22,
+    sshPort: DEFAULT_SSH_PORT,
     vpcSetupType: VPCSetupType.EXISTING
   } as const;
   const formMethods = useForm<AWSProviderCreateFormFieldValues>({
@@ -324,12 +333,12 @@ export const AWSProviderCreateForm = ({
                 </>
               )}
               <FormField>
-                <FieldLabel>{`Use DNS Server from Cloud`}</FieldLabel>
+                <FieldLabel>{`Use AWS Route 53 DNS Server`}</FieldLabel>
                 <YBToggleField name="enableHostedZone" control={formMethods.control} />
               </FormField>
               {enableHostedZone && (
                 <FormField>
-                  <FieldLabel>Route 53 Zone ID</FieldLabel>
+                  <FieldLabel>Hosted Zone ID</FieldLabel>
                   <YBInputField control={formMethods.control} name="hostedZoneId" fullWidth />
                 </FormField>
               )}
@@ -375,7 +384,7 @@ export const AWSProviderCreateForm = ({
             </FieldGroup>
             <FieldGroup
               heading="SSH Key Pairs"
-              infoContent="YBA requires SSH access to DB nodes. For public clouds YBA provisions the VM instances as part of the DB node provisioning. The OS images come with a preprovisioned user."
+              infoContent="YBA requires SSH access to DB nodes. For public clouds, YBA provisions the VM instances as part of the DB node provisioning. The OS images come with a preprovisioned user."
             >
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>
@@ -427,7 +436,10 @@ export const AWSProviderCreateForm = ({
               </FormField>
               <FormField>
                 <FieldLabel>NTP Setup</FieldLabel>
-                <NTPConfigField providerCode={ProviderCode.AWS} />
+                <NTPConfigField
+                  isDisabled={formMethods.formState.isSubmitting}
+                  providerCode={ProviderCode.AWS}
+                />
               </FormField>
             </FieldGroup>
           </Box>
@@ -438,19 +450,18 @@ export const AWSProviderCreateForm = ({
               btnType="submit"
               loading={formMethods.formState.isSubmitting}
               disabled={formMethods.formState.isSubmitting}
-              data-testId="AWSProviderCreateForm-SubmitButton"
+              data-testid="AWSProviderCreateForm-SubmitButton"
             />
             <YBButton
               btnText="Back"
               btnClass="btn btn-default"
               onClick={onBack}
               disabled={formMethods.formState.isSubmitting}
-              data-testId="AWSProviderCreateForm-BackButton"
+              data-testid="AWSProviderCreateForm-BackButton"
             />
           </Box>
         </FormContainer>
       </FormProvider>
-      {/* Modals */}
       {isRegionFormModalOpen && (
         <ConfigureRegionModal
           onClose={hideRegionFormModal}

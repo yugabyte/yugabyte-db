@@ -243,7 +243,7 @@ export const GCPProviderEditForm = ({ providerConfig }: GCPProviderEditFormProps
               </FormField>
               <FormField>
                 <FieldLabel>NTP Setup</FieldLabel>
-                <NTPConfigField providerCode={ProviderCode.GCP} />
+                <NTPConfigField isDisabled={true} providerCode={ProviderCode.GCP} />
               </FormField>
             </FieldGroup>
           </Box>

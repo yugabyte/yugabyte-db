@@ -58,11 +58,18 @@ export const deleteItem = <TFieldItem extends FieldItem>(
   }
 };
 
-export const handleAsyncError = <TFieldValues extends FieldValues>(
+/**
+ * Handle server errors on the form component.
+ */
+export const handleFormServerError = <TFieldValues extends FieldValues>(
   error: Error | AxiosError,
   asyncErrorField: Path<TFieldValues>,
   setError: UseFormSetError<TFieldValues>
 ) => {
+  // Currently we handle server errors by setting an error on a form field
+  // provided by the caller. This will cause the form submission to fail since a field
+  // has an error.
+  // It is the responsisbility of the caller to clear this error when they wish to resubmit.
   const errorMessage = axios.isAxiosError(error)
     ? error.response?.data?.error?.message ?? error.message
     : error.message;

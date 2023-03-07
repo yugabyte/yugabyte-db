@@ -87,7 +87,7 @@ export const DeviceInfoField: FC = () => {
   const { formData } = useContext(WizardContext);
   const { data: instanceTypes } = useQuery(
     [QUERY_KEY.getInstanceTypes, formData.cloudConfig.provider?.uuid],
-    () => api.getInstanceTypes(formData.cloudConfig.provider?.uuid),
+    () => api.fetchInstanceTypes(formData.cloudConfig.provider?.uuid),
     { enabled: !!formData.cloudConfig.provider?.uuid }
   );
 
