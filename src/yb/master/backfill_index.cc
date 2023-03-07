@@ -164,13 +164,11 @@ Result<bool> GetPgIndexStatus(
 
   const auto idx_oid = VERIFY_RESULT(GetPgsqlTableOid(idx_id));
 
-  auto iter = VERIFY_RESULT(catalog_tablet->NewRowIterator(projection.CopyWithoutColumnIds(),
-                                                           {} /* read_hybrid_time */,
-                                                           pg_index_id));
+  auto iter = VERIFY_RESULT(catalog_tablet->NewUninitializedDocRowIterator(
+      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_index_id));
 
   // Filtering by 'indexrelid' == idx_oid.
   {
-    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
     PgsqlConditionPB cond;
     cond.add_operands()->set_column_id(indexrelid_col_id);
     cond.set_op(QL_OP_EQUAL);
@@ -184,7 +182,7 @@ Result<bool> GetPgIndexStatus(
                                  boost::none /* hash_code */,
                                  boost::none /* max_hash_code */,
                                  nullptr /* where_expr */);
-    RETURN_NOT_OK(doc_iter->Init(spec));
+    RETURN_NOT_OK(iter->Init(spec));
   }
 
   // Expecting one row at most.

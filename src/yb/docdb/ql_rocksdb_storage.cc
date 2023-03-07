@@ -117,16 +117,14 @@ Status QLRocksDBStorage::CreateIterator(
   return Status::OK();
 }
 
-Status QLRocksDBStorage::InitIterator(YQLRowwiseIteratorIf* iter,
+Status QLRocksDBStorage::InitIterator(DocRowwiseIterator* iter,
                                       const PgsqlReadRequestPB& request,
                                       const Schema& schema,
                                       const QLValuePB& ybctid) const {
   // Populate dockey from ybctid.
   DocKey range_doc_key(schema);
   RETURN_NOT_OK(range_doc_key.DecodeFrom(ybctid.binary_value()));
-  DocRowwiseIterator *doc_iter = static_cast<DocRowwiseIterator*>(iter);
-  RETURN_NOT_OK(doc_iter->Init(DocPgsqlScanSpec(schema, request.stmt_id(), range_doc_key)));
-  return Status::OK();
+  return iter->Init(DocPgsqlScanSpec(schema, request.stmt_id(), range_doc_key));
 }
 
 Status QLRocksDBStorage::GetIterator(

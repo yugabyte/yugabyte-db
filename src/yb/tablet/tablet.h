@@ -392,14 +392,20 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
-  // The returned iterator is not initialized.
-  Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
+  // The returned iterator is not initialized and should be initialized by the caller before usage.
+  Result<std::unique_ptr<docdb::DocRowwiseIterator>> NewUninitializedDocRowIterator(
       const Schema& projection,
       const ReadHybridTime& read_hybrid_time = {},
       const TableId& table_id = "",
       CoarseTimePoint deadline = CoarseTimePoint::max(),
-      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse,
-      const Slice& sub_doc_key = Slice()) const;
+      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse) const;
+
+  // The following functions create new row iterator that is already initialized.
+  Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
+      const Schema& projection,
+      const ReadHybridTime& read_hybrid_time = {},
+      const TableId& table_id = "",
+      CoarseTimePoint deadline = CoarseTimePoint::max()) const;
 
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
       const TableId& table_id) const;
