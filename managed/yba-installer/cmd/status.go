@@ -14,7 +14,7 @@ import (
 
 var statusCmd = &cobra.Command{
 	Use: "status",
-	Short: "The status command prints out the status of service(s) running as " +
+	Short: "Print the status of service(s) running as " +
 		"part of your YugabyteDB Anywhere installation.",
 	Long: `
     The status command is used to print out the information corresponding to the
