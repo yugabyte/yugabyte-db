@@ -124,4 +124,15 @@ A typical migration workflow using yb-voyager consists of the following steps:
       </div>
     </a>
   </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="release-notes/">
+      <div class="head">
+       <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true">
+        <div class="title">What's new</div>
+      </div>
+      <div class="body">
+        Learn about new features, enhancements, and bugs fixes.
+      </div>
+    </a>
+  </div>
 </div>
