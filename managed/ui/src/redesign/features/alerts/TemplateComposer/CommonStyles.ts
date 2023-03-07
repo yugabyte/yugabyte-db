@@ -41,7 +41,21 @@ export const useCommonStyles = makeStyles((theme) => ({
       width: '20px'
     }
   },
+  menuNoBorder: {
+    '& .MuiMenu-paper': {
+      border: 'none'
+    }
+  },
   clickable: {
     cursor: 'pointer'
+  },
+  subText: {
+    fontWeight: 500,
+    fontSize: '11.5px',
+    lineHeight: `${theme.spacing(2)}px`,
+    color: 'rgba(35, 35, 41, 0.4)'
+  },
+  upperCase: {
+    textTransform: 'uppercase'
   }
 }));
