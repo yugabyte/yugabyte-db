@@ -62,13 +62,13 @@ const useStyles = makeStyles((theme) => ({
     color: theme.palette.orange[500]
   },
   formField: {
-    marginTop: '10px',
+    marginTop: theme.spacing(1),
     '&:first-child': {
       marginTop: 0
     }
   },
   manageAvailabilityZoneField: {
-    marginTop: '10px'
+    marginTop: theme.spacing(1)
   }
 }));
 

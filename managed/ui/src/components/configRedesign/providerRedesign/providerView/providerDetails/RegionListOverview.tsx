@@ -9,9 +9,9 @@ import pluralize from 'pluralize';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 
 import { ZoneList } from './ZoneList';
-import { ProviderCode } from '../constants';
+import { ProviderCode } from '../../constants';
 
-import { YBAvailabilityZone, YBProvider, YBRegion } from '../types';
+import { YBAvailabilityZone, YBProvider, YBRegion } from '../../types';
 
 import styles from './RegionListOverview.module.scss';
 
@@ -45,7 +45,9 @@ export const RegionListOverview = ({ providerConfig }: RegionListOverviewProps) 
         tableContainerClass={styles.bootstrapTable}
         data={regionListItems}
         expandableRow={(row: YBRegion) => row.zones.length > 0}
-        expandComponent={(row: YBRegion) => <ZoneList zones={row.zones} />}
+        expandComponent={(row: YBRegion) => (
+          <ZoneList zones={row.zones} providerCode={providerConfig.code} />
+        )}
       >
         <TableHeaderColumn dataField={RegionItemField.NAME} isKey={true} dataSort={true}>
           Region

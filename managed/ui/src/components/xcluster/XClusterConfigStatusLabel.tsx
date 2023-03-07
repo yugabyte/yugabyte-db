@@ -5,7 +5,7 @@ import { XClusterConfigStatus } from './constants';
 import { XClusterConfig } from './XClusterTypes';
 
 import styles from './XClusterConfigStatusLabel.module.scss';
-import { assertUnreachableCase } from '../../utils/ErrorUtils';
+import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 
 interface XClusterConfigStatusProps {
   xClusterConfig: XClusterConfig;

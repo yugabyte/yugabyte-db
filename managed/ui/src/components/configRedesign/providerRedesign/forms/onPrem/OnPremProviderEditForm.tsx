@@ -4,7 +4,6 @@ import { Box, Typography } from '@material-ui/core';
 
 import { YBInputField, YBToggleField } from '../../../../../redesign/components';
 import { YBButton } from '../../../../common/forms/fields';
-import { CloudVendorRegionField } from '../configureRegion/ConfigureRegionModal';
 import { NTPConfigField } from '../../components/NTPConfigField';
 import { RegionList } from '../../components/RegionList';
 import { NTPSetupType, ProviderCode } from '../../constants';
@@ -13,8 +12,8 @@ import { FormContainer } from '../components/FormContainer';
 import { FormField } from '../components/FormField';
 import { FieldLabel } from '../components/FieldLabel';
 import { getNtpSetupType } from '../../utils';
-import { InstanceList } from './InstanceList';
 import { RegionOperation } from '../configureRegion/constants';
+import { ConfigureOnPremRegionFormValues } from '../configureRegion/ConfigureOnPremRegionModal';
 
 import { YBProvider } from '../../types';
 
@@ -28,7 +27,7 @@ interface OnPremProviderEditFormFieldValues {
   ntpSetupType: NTPSetupType;
   providerCredentialType: ProviderCredentialType;
   providerName: string;
-  regions: CloudVendorRegionField[];
+  regions: ConfigureOnPremRegionFormValues[];
   sshKeypairName: string;
   sshPort: number;
   sshPrivateKeyContent: File;
@@ -46,7 +45,7 @@ type ProviderCredentialType = typeof ProviderCredentialType[keyof typeof Provide
 export const OnPremProviderEditForm = ({ providerConfig }: OnPremProviderEditFormProps) => {
   const [, setIsRegionFormModalOpen] = useState<boolean>(false);
   const [, setIsDeleteRegionModalOpen] = useState<boolean>(false);
-  const [, setRegionSelection] = useState<CloudVendorRegionField>();
+  const [, setRegionSelection] = useState<ConfigureOnPremRegionFormValues>();
   const [, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
 
   const defaultValues = {
@@ -54,8 +53,8 @@ export const OnPremProviderEditForm = ({ providerConfig }: OnPremProviderEditFor
     sshKeypairName: providerConfig.allAccessKeys?.[0]?.keyInfo.keyPairName,
     dbNodePublicInternetAccess: !providerConfig.details.airGapInstall,
     ntpSetupType: getNtpSetupType(providerConfig),
-    regions: providerConfig.regions,
     ...(providerConfig.code === ProviderCode.ON_PREM && {
+      regions: providerConfig.regions,
       sshUser: providerConfig.details.sshUser,
       sshPort: providerConfig.details.sshPort,
       ntpServers: providerConfig.details.ntpServers,
@@ -93,35 +92,34 @@ export const OnPremProviderEditForm = ({ providerConfig }: OnPremProviderEditFor
             <YBInputField
               control={formMethods.control}
               name="providerName"
-              required={true}
               disabled={true}
               fullWidth
             />
           </FormField>
-          <FieldGroup
-            heading="Regions"
-            headerAccessories={
-              <YBButton
-                btnIcon="fa fa-plus"
-                btnText="Add Region"
-                btnClass="btn btn-default"
-                btnType="button"
-                onClick={showAddRegionFormModal}
+          <Box width="100%" display="flex" flexDirection="column" gridGap="32px">
+            <FieldGroup
+              heading="Regions"
+              headerAccessories={
+                <YBButton
+                  btnIcon="fa fa-plus"
+                  btnText="Add Region"
+                  btnClass="btn btn-default"
+                  btnType="button"
+                  onClick={showAddRegionFormModal}
+                  disabled={formMethods.formState.isSubmitting}
+                />
+              }
+            >
+              <RegionList
+                providerCode={ProviderCode.ON_PREM}
+                regions={regions}
+                setRegionSelection={setRegionSelection}
+                showAddRegionFormModal={showAddRegionFormModal}
+                showEditRegionFormModal={showEditRegionFormModal}
+                showDeleteRegionModal={showDeleteRegionModal}
                 disabled={formMethods.formState.isSubmitting}
               />
-            }
-          >
-            <RegionList
-              providerCode={ProviderCode.ON_PREM}
-              regions={regions}
-              setRegionSelection={setRegionSelection}
-              showAddRegionFormModal={showAddRegionFormModal}
-              showEditRegionFormModal={showEditRegionFormModal}
-              showDeleteRegionModal={showDeleteRegionModal}
-              disabled={formMethods.formState.isSubmitting}
-            />
-          </FieldGroup>
-          <Box width="100%" display="flex" flexDirection="column" gridGap="32px">
+            </FieldGroup>
             <FieldGroup heading="SSH Key Pairs">
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>
@@ -163,11 +161,8 @@ export const OnPremProviderEditForm = ({ providerConfig }: OnPremProviderEditFor
               </FormField>
               <FormField>
                 <FieldLabel>NTP Setup</FieldLabel>
-                <NTPConfigField providerCode={ProviderCode.ON_PREM} />
+                <NTPConfigField providerCode={ProviderCode.ON_PREM} isDisabled={true} />
               </FormField>
-            </FieldGroup>
-            <FieldGroup heading="Instances">
-              <InstanceList disabled={formMethods.formState.isSubmitting} />
             </FieldGroup>
           </Box>
         </FormContainer>

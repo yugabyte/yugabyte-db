@@ -15,12 +15,13 @@ import styles from './YBDropZone.module.scss';
 export type YBDropZoneProps = {
   actionButtonText?: string;
   className?: string;
-  descriptionText?: string;
-  dragOverText?: string;
-  showHelpText?: boolean;
   dataTestId?: string;
+  descriptionText?: string;
+  disabled?: boolean;
+  dragOverText?: string;
   name?: string;
   noClick?: boolean;
+  showHelpText?: boolean;
 } & (
   | {
       multipleFiles: false;
@@ -37,17 +38,18 @@ export type YBDropZoneProps = {
 const DROP_ZONE_ICON = <i className={`fa fa-upload ${styles.dropZoneIcon}`} />;
 
 export const YBDropZone = ({
-  value,
   actionButtonText,
   className,
+  dataTestId,
   descriptionText,
+  disabled,
   dragOverText,
   multipleFiles,
   onChange,
   name,
   showHelpText = true,
   noClick = true,
-  dataTestId
+  value
 }: YBDropZoneProps) => {
   const onDropAccepted = (acceptedFiles: File[]) => {
     onChange && (multipleFiles === true ? onChange(acceptedFiles) : onChange(acceptedFiles[0]));
@@ -56,7 +58,8 @@ export const YBDropZone = ({
     onDropAccepted,
     multiple: multipleFiles,
     noClick: noClick,
-    noKeyboard: true
+    noKeyboard: true,
+    disabled: disabled
   });
 
   const storedFiles = value ?? acceptedFiles;

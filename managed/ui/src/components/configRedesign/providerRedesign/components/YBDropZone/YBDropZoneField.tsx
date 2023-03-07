@@ -23,6 +23,7 @@ export const YBDropZoneField = <T extends FieldValues>({
   dragOverText,
   multipleFiles = true,
   showHelpText = true,
+  disabled,
   ...useControllerProps
 }: YBDropZoneFieldProps<T>) => {
   const { field, fieldState } = useController(useControllerProps);
@@ -30,15 +31,16 @@ export const YBDropZoneField = <T extends FieldValues>({
   return (
     <Box width="100%">
       <YBDropZone
-        value={field.value}
         actionButtonText={actionButtonText}
         className={clsx(className, fieldState.error && styles.emptyListError)}
+        dataTestId={`YBDropZoneField-${useControllerProps.name}`}
         descriptionText={descriptionText}
+        disabled={disabled}
         dragOverText={dragOverText}
         multipleFiles={multipleFiles}
         onChange={field.onChange}
         showHelpText={showHelpText}
-        dataTestId={`YBDropZoneField-${useControllerProps.name}`}
+        value={field.value}
       />
       {fieldState.error?.message && (
         <FormHelperText error={true}>{fieldState.error?.message}</FormHelperText>

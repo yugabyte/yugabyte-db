@@ -15,7 +15,7 @@ import {
   fetchTaskUntilItCompletes,
   restartXClusterConfig
 } from '../../../actions/xClusterReplication';
-import { assertUnreachableCase } from '../../../utils/ErrorUtils';
+import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
 import { ConfigTableSelect } from '../common/tableSelect/ConfigTableSelect';
 
 import { XClusterConfig, XClusterTableType } from '../XClusterTypes';

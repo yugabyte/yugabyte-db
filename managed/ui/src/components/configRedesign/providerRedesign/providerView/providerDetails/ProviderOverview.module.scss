@@ -1,4 +1,4 @@
-@use '../../../../_style/colors.scss';
+@use '../../../../../_style/colors.scss';
 
 .providerOverviewContainer {
   display: flex;
@@ -17,10 +17,6 @@
     display: flex;
     gap: 80px;
   }
-}
-
-.regionMapContainer {
-  // background-color: #e9eef2;
 }
 
 .regionListContainer {
