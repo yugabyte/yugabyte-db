@@ -131,7 +131,7 @@ A typical migration workflow using yb-voyager consists of the following steps:
         <div class="title">What's New</div>
       </div>
       <div class="body">
-        Refer to the YugabyteDB Voyager release notes for details about the new features, enhancements and bugs fixes.
+        Learn about new features, enhancements, and bugs fixes.
       </div>
     </a>
   </div>
