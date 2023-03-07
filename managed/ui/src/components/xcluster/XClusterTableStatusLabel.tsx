@@ -3,7 +3,7 @@ import { useQuery } from 'react-query';
 import clsx from 'clsx';
 
 import { REPLICATION_LAG_ALERT_NAME, XClusterTableStatus } from './constants';
-import { assertUnreachableCase } from '../../utils/ErrorUtils';
+import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { queryLagMetricsForTable } from '../../actions/xClusterReplication';
 import { getAlertConfigurations } from '../../actions/universe';
 import { getLatestMaxNodeLag } from './ReplicationUtils';

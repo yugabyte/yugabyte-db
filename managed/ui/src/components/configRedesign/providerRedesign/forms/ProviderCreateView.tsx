@@ -5,28 +5,29 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 import React from 'react';
-import { assertUnreachableCase } from '../../../utils/ErrorUtils';
 
-import { KubernetesProviderType, ProviderCode, CloudVendorProviders } from './constants';
-import { AWSProviderCreateForm } from './forms/aws/AWSProviderCreateForm';
-import { AZUProviderCreateForm } from './forms/azu/AZUProviderCreateForm';
-import { GCPProviderCreateForm } from './forms/gcp/GCPProviderCreateForm';
-import { K8sProviderCreateForm } from './forms/k8s/K8sProviderCreateForm';
-import { CreateInfraProvider } from './InfraProvider';
+import { AWSProviderCreateForm } from './aws/AWSProviderCreateForm';
+import { AZUProviderCreateForm } from './azu/AZUProviderCreateForm';
+import { CreateInfraProvider } from '../InfraProvider';
+import { GCPProviderCreateForm } from './gcp/GCPProviderCreateForm';
+import { K8sProviderCreateForm } from './k8s/K8sProviderCreateForm';
+import { KubernetesProviderType, ProviderCode, CloudVendorProviders } from '../constants';
+import { OnPremProviderCreateForm } from './onPrem/OnPremProviderCreateForm';
+import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
 
 interface ProviderCreateViewCommonProps {
   handleOnBack: () => void;
   createInfraProvider: CreateInfraProvider;
 }
-interface CloudVendorProviderCreateViewProps extends ProviderCreateViewCommonProps {
-  providerCode: typeof CloudVendorProviders[number];
+interface GenericProviderCreateViewProps extends ProviderCreateViewCommonProps {
+  providerCode: typeof CloudVendorProviders[number] | typeof ProviderCode.ON_PREM;
 }
 interface K8sProviderCreateViewProps extends ProviderCreateViewCommonProps {
   providerCode: typeof ProviderCode.KUBERNETES;
   kubernetesProviderType: KubernetesProviderType;
 }
 
-type ProviderCreateViewProps = CloudVendorProviderCreateViewProps | K8sProviderCreateViewProps;
+type ProviderCreateViewProps = GenericProviderCreateViewProps | K8sProviderCreateViewProps;
 
 export const ProviderCreateView = (props: ProviderCreateViewProps) => {
   const { createInfraProvider, handleOnBack, providerCode } = props;
@@ -50,6 +51,10 @@ export const ProviderCreateView = (props: ProviderCreateViewProps) => {
           createInfraProvider={createInfraProvider}
           kubernetesProviderType={props.kubernetesProviderType}
         />
+      );
+    case ProviderCode.ON_PREM:
+      return (
+        <OnPremProviderCreateForm onBack={handleOnBack} createInfraProvider={createInfraProvider} />
       );
     default: {
       return assertUnreachableCase(providerCode);

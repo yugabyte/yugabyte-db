@@ -1,23 +1,24 @@
-@use '../../../../_style/colors.scss';
+@use '../../../../../_style/colors.scss';
 
-.bootstrapTableContainer {
+.expandComponent {
   height: fit-content;
-  padding-left: 20px; // TODO: put the padding on the first td of each tr
+  margin-left: 65px;
 
   .bootstrapTable {
     overflow-y: visible;
 
     table > thead > tr > th {
+      padding: 4px 8px 4px 0 !important;
       vertical-align: middle;
 
       border-bottom: 1px solid colors.$YB_GRAY_HOVER !important;
     }
     table > tbody > tr > td {
-      padding: 11px 8px 11px 0 !important;
+      padding: 4px 8px 4px 0 !important;
       vertical-align: middle;
     }
-    // table > tbody > tr:last-child > td {
-    //   border-bottom: none;
-    // }
+    table > tbody > tr:last-child td {
+      border-bottom: none !important;
+    }
   }
 }

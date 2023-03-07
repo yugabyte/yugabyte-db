@@ -27,7 +27,8 @@ import { RegionsCell } from './RegionsCell';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
 import { DeleteProviderConfigModal } from './DeleteProviderConfigModal';
-import { UniverseItem } from './providerDetail/UniverseTable';
+import { UniverseItem } from './providerView/providerDetails/UniverseTable';
+import { usePillStyles } from './utils';
 
 import { Universe } from '../../../redesign/helpers/dtos';
 import { YBProvider, YBRegion } from './types';
@@ -37,19 +38,20 @@ import styles from './ProviderList.module.scss';
 interface ProviderListCommonProps {
   setCurrentView: (newView: ProviderDashboardView) => void;
 }
-interface CloudVendorProviderListProps extends ProviderListCommonProps {
-  providerCode: typeof CloudVendorProviders[number];
+interface GenericProviderListProps extends ProviderListCommonProps {
+  providerCode: typeof CloudVendorProviders[number] | typeof ProviderCode.ON_PREM;
 }
 interface K8sProviderListProps extends ProviderListCommonProps {
   providerCode: typeof ProviderCode.KUBERNETES;
   kubernetesProviderType: KubernetesProviderType;
 }
-type ProviderListProps = CloudVendorProviderListProps | K8sProviderListProps;
+type ProviderListProps = GenericProviderListProps | K8sProviderListProps;
 
 export const ProviderList = (props: ProviderListProps) => {
   const { providerCode, setCurrentView } = props;
   const [isDeleteProviderModalOpen, setIsDeleteProviderModalOpen] = useState<boolean>(false);
   const [deleteProviderConfigSelection, setDeleteProviderConfigSelection] = useState<YBProvider>();
+  const classes = usePillStyles();
   const {
     data: providerList,
     isLoading: isProviderListQueryLoading,
@@ -110,7 +112,11 @@ export const ProviderList = (props: ProviderListProps) => {
         <img src={ellipsisIcon} alt="more" className="ellipsis-icon" />
       </Dropdown.Toggle>
       <Dropdown.Menu>
-        <MenuItem eventKey="1" onClick={() => handleDeleteProviderConfig(row)}>
+        <MenuItem
+          eventKey="1"
+          onClick={() => handleDeleteProviderConfig(row)}
+          data-testid="DeleteConfiguration-button"
+        >
           <YBLabelWithIcon icon="fa fa-trash">Delete Configuration</YBLabelWithIcon>
         </MenuItem>
       </Dropdown.Menu>
@@ -122,15 +128,7 @@ export const ProviderList = (props: ProviderListProps) => {
     return linkedUniverses.length ? (
       <Box display="flex" gridGap="5px">
         <div>In Use</div>
-        <Box
-          height="fit-content"
-          padding="4px 6px"
-          fontSize="10px"
-          borderRadius="6px"
-          bgcolor="#e9eef2"
-        >
-          {linkedUniverses.length}
-        </Box>
+        <div className={classes.pill}>{linkedUniverses.length}</div>
       </Box>
     ) : (
       'Not in Use'
@@ -150,6 +148,7 @@ export const ProviderList = (props: ProviderListProps) => {
       actionButtonText={`Create ${ProviderLabel[providerCode]} Config`}
       descriptionText={`No ${ProviderLabel[providerCode]} config to show`}
       onActionButtonClick={handleCreateProviderAction}
+      dataTestIdPrefix="ProviderEmptyList"
     />
   ) : (
     <>

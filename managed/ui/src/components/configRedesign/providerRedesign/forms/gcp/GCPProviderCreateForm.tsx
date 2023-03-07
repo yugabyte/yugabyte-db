@@ -24,6 +24,7 @@ import { RegionList } from '../../components/RegionList';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import {
   ASYNC_ERROR,
+  DEFAULT_SSH_PORT,
   NTPSetupType,
   ProviderCode,
   VPCSetupType,
@@ -133,9 +134,9 @@ const VALIDATION_SCHEMA = object().shape({
     is: KeyPairManagement.CUSTOM_KEY_PAIR,
     then: string().required('SSH keypair name is required.')
   }),
-  sshPrivateKeyContent: string().when('sshKeypairManagement', {
+  sshPrivateKeyContent: mixed().when('sshKeypairManagement', {
     is: KeyPairManagement.CUSTOM_KEY_PAIR,
-    then: string().required('SSH private key is required.')
+    then: mixed().required('SSH private key is required.')
   }),
 
   ntpServers: array().when('ntpSetupType', {
@@ -162,7 +163,7 @@ export const GCPProviderCreateForm = ({
     providerName: '',
     regions: [] as CloudVendorRegionField[],
     sshKeypairManagement: KeyPairManagement.YBA_MANAGED,
-    sshPort: 22,
+    sshPort: DEFAULT_SSH_PORT,
     vpcSetupType: VPCSetupType.EXISTING
   } as const;
   const formMethods = useForm<GCPProviderCreateFormFieldValues>({
@@ -456,7 +457,10 @@ export const GCPProviderCreateForm = ({
               </FormField>
               <FormField>
                 <FieldLabel>NTP Setup</FieldLabel>
-                <NTPConfigField providerCode={ProviderCode.GCP} />
+                <NTPConfigField
+                  isDisabled={formMethods.formState.isSubmitting}
+                  providerCode={ProviderCode.GCP}
+                />
               </FormField>
             </FieldGroup>
           </Box>
@@ -467,14 +471,14 @@ export const GCPProviderCreateForm = ({
               btnType="submit"
               loading={formMethods.formState.isSubmitting}
               disabled={formMethods.formState.isSubmitting}
-              data-testId="GCPProviderCreateForm-SubmitButton"
+              data-testid="GCPProviderCreateForm-SubmitButton"
             />
             <YBButton
               btnText="Back"
               btnClass="btn btn-default"
               onClick={onBack}
               disabled={formMethods.formState.isSubmitting}
-              data-testId="GCPProviderCreateForm-BackButton"
+              data-testid="GCPProviderCreateForm-BackButton"
             />
           </Box>
         </FormContainer>

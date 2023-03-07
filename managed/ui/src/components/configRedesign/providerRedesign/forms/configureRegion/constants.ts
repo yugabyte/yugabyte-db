@@ -29,3 +29,8 @@ export const K8sCertIssuerTypeLabel = {
   [K8sCertIssuerType.ISSUER]: 'Issuer',
   [K8sCertIssuerType.NONE]: 'None'
 };
+
+export const OnPremRegionFieldLabel = {
+  CODE: 'Region Name',
+  ZONE_NAME: 'Zone Name'
+} as const;

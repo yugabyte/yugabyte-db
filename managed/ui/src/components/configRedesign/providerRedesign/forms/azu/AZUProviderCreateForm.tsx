@@ -23,6 +23,7 @@ import { RegionList } from '../../components/RegionList';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import {
   ASYNC_ERROR,
+  DEFAULT_SSH_PORT,
   NTPSetupType,
   ProviderCode,
   VPCSetupType,
@@ -102,7 +103,7 @@ export const DEFAULT_FORM_VALUES: Partial<AZUProviderCreateFormFieldValues> = {
   providerName: '',
   regions: [] as CloudVendorRegionField[],
   sshKeypairManagement: KeyPairManagement.YBA_MANAGED,
-  sshPort: 22,
+  sshPort: DEFAULT_SSH_PORT,
   vpcSetupType: VPCSetupType.EXISTING
 } as const;
 
@@ -366,7 +367,10 @@ export const AZUProviderCreateForm = ({
               </FormField>
               <FormField>
                 <FieldLabel>NTP Setup</FieldLabel>
-                <NTPConfigField providerCode={ProviderCode.AZU} />
+                <NTPConfigField
+                  isDisabled={formMethods.formState.isSubmitting}
+                  providerCode={ProviderCode.AZU}
+                />
               </FormField>
             </FieldGroup>
           </Box>
@@ -377,14 +381,14 @@ export const AZUProviderCreateForm = ({
               btnType="submit"
               loading={formMethods.formState.isSubmitting}
               disabled={formMethods.formState.isSubmitting}
-              data-testId="AZUProviderCreateForm-SubmitButton"
+              data-testid="AZUProviderCreateForm-SubmitButton"
             />
             <YBButton
               btnText="Back"
               btnClass="btn btn-default"
               onClick={onBack}
               disabled={formMethods.formState.isSubmitting}
-              data-testId="AZUProviderCreateForm-BackButton"
+              data-testid="AZUProviderCreateForm-BackButton"
             />
           </Box>
         </FormContainer>

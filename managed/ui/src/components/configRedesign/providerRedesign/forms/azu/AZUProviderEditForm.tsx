@@ -227,7 +227,7 @@ export const AZUProviderEditForm = ({ providerConfig }: AZUProviderEditFormProps
               </FormField>
               <FormField>
                 <FieldLabel>NTP Setup</FieldLabel>
-                <NTPConfigField providerCode={ProviderCode.AZU} />
+                <NTPConfigField isDisabled={true} providerCode={ProviderCode.AZU} />
               </FormField>
             </FieldGroup>
           </Box>

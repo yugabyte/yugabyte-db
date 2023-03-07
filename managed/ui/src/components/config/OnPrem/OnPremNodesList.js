@@ -444,16 +444,20 @@ class OnPremNodesList extends Component {
       isNonEmptyObject(this.state.nodeToBePrechecked) ? ' ' + this.state.nodeToBePrechecked.ip : ''
     }?`;
     const modalAddressSpecificText = 'IP addresses/hostnames';
+
     return (
       <div className="onprem-node-instances">
-        <span className="buttons pull-right">
-          <YBButton btnText="Add Instances" btnIcon="fa fa-plus" onClick={this.addNodeToList} />
-        </span>
-
-        <YBBreadcrumb to="/config/cloud/onprem" onClick={showProviderView}>
-          On-Premises Datacenter Config
-        </YBBreadcrumb>
-        <h3 className="onprem-node-instances__title">Instances</h3>
+        {!this.props.isRedesignedView && (
+          <>
+            <span className="buttons pull-right">
+              <YBButton btnText="Add Instances" btnIcon="fa fa-plus" onClick={this.addNodeToList} />
+            </span>
+            <YBBreadcrumb to="/config/cloud/onprem" onClick={showProviderView}>
+              On-Premises Datacenter Config
+            </YBBreadcrumb>
+            <h3 className="onprem-node-instances__title">Instances</h3>
+          </>
+        )}
 
         {provisionMessage}
 
