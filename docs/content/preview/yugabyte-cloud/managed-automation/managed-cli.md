@@ -155,7 +155,7 @@ Examples:
 : Name of the cluster to back up.
 
 --retention-period=_days_
-: Retention period for the backup in days (integer).
+: Retention period for the backup in days (integer). Default is 1.
 
 --description=_description_
 : A description of the backup.
