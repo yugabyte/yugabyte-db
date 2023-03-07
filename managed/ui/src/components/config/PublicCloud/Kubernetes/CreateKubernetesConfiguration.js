@@ -134,14 +134,17 @@ class CreateKubernetesConfiguration extends Component {
     this.props
       .fetchKubenetesConfig()
       .then((resp) => {
-        const { KUBECONFIG_PULL_SECRET_NAME, KUBECONFIG_PULL_SECRET_CONTENT, KUBECONFIG_IMAGE_REGISTRY} = resp.data.config;
-        const { regionList } = resp.data;
+        const { KUBECONFIG_PULL_SECRET_NAME, KUBECONFIG_PULL_SECRET_CONTENT, KUBECONFIG_IMAGE_REGISTRY, KUBECONFIG_PROVIDER} = resp.data.config;
+        const { regionList, name} = resp.data;
         const fileObj = new File([KUBECONFIG_PULL_SECRET_CONTENT], KUBECONFIG_PULL_SECRET_NAME, {
           type: 'text/plain',
           lastModified: new Date().getTime()
         });
         setFieldValue('pullSecret', fileObj);
+        setFieldValue('accountName', name);
         setFieldValue('imageRegistry', KUBECONFIG_IMAGE_REGISTRY);
+        const provider = _.find(KUBERNETES_PROVIDERS, { code: KUBECONFIG_PROVIDER.toLowerCase() });
+        setFieldValue('providerType', { label: provider.name, value: provider.code });
 
         const parsedRegionList = regionList.map((r) => {
           let regionCode = {};
