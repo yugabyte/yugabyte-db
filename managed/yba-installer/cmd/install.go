@@ -38,7 +38,9 @@ var installCmd = &cobra.Command{
 
 		for _, name := range serviceOrder {
 			log.Info("About to install component " + name)
-			services[name].Install()
+			if err := services[name].Install(); err != nil {
+				log.Fatal("Failed while installing " + name + ": " + err.Error())
+			}
 			log.Info("Completed installing component " + name)
 		}
 
@@ -46,7 +48,10 @@ var installCmd = &cobra.Command{
 
 		var statuses []common.Status
 		for _, service := range services {
-			status := service.Status()
+			status, err := service.Status()
+			if err != nil {
+				log.Fatal("failed to get status: " + err.Error())
+			}
 			statuses = append(statuses, status)
 			if !common.IsHappyStatus(status) {
 				log.Fatal(status.Service + " is not running! Install might have failed, please check " +
