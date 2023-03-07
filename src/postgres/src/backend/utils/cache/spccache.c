@@ -221,7 +221,12 @@ GeolocationDistance get_tablespace_distance(Oid spcid)
 	text *placement_array = json_get_value(tsp_options_json,
 											"placement_blocks");
 	const int length = get_json_array_length(placement_array);
-	char *keys[4] = {"cloud", "region", "zone", "min_num_replicas"};
+
+	static char *cloudKey = "cloud";
+	static char *regionKey = "region";
+	static char *zoneKey = "zone";
+	static char *leaderPrefKey = "leader_preference";
+
 	const char *current_cloud = YBGetCurrentCloud();
 	const char *current_region = YBGetCurrentRegion();
 	const char *current_zone = YBGetCurrentZone();
@@ -233,17 +238,28 @@ GeolocationDistance get_tablespace_distance(Oid spcid)
 	}
 
 	GeolocationDistance farthest = ZONE_LOCAL;
+	bool leader_pref_exists = false;
 
 	for (size_t i = 0; i < length; i++)
 	{
-		GeolocationDistance current_dist;
 		text *json_element = get_json_array_element(placement_array, i);
+		text *pref = json_get_denormalized_value(json_element, leaderPrefKey);
+		bool preferred = (pref != NULL) && (atoi(text_to_cstring(pref)) == 1);
+
+		/*
+		 * YB: If we've seen a preferred placement,
+		 * skip all non-preferred ones.
+		 */
+		if (!preferred && leader_pref_exists)
+			continue;
+
+		GeolocationDistance current_dist;
 		const char *tsp_cloud = text_to_cstring(
-			json_get_denormalized_value(json_element, keys[0]));
+			json_get_denormalized_value(json_element, cloudKey));
 		const char *tsp_region = text_to_cstring(
-			json_get_denormalized_value(json_element, keys[1]));
+			json_get_denormalized_value(json_element, regionKey));
 		const char *tsp_zone = text_to_cstring(
-			json_get_denormalized_value(json_element, keys[2]));
+			json_get_denormalized_value(json_element, zoneKey));
 
 
 		/* are the current cloud and the given cloud the same */
@@ -271,7 +287,20 @@ GeolocationDistance get_tablespace_distance(Oid spcid)
 		{
 			current_dist = INTER_CLOUD;
 		}
-		farthest = current_dist > farthest ? current_dist : farthest;
+
+		/*
+		 * YB: If this is the first preferred placement we find,
+		 * disregard all previous placements.
+		 */
+		if (preferred && !leader_pref_exists)
+		{
+			leader_pref_exists = true;
+			farthest = current_dist;
+		}
+		else
+		{
+			farthest = current_dist > farthest ? current_dist : farthest;
+		}
 	}
 	return farthest;
 }
