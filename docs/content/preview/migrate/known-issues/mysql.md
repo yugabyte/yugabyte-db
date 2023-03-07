@@ -17,7 +17,7 @@ This page documents known issues you may encounter and suggested workarounds whe
 
 ## Contents
 
-- [Approaching MAX/MIN double precision values are not exported](#approaching-max-min-double-precision-values-are-not-exported)
+- [Approaching MAX/MIN double precision values are not imported](#approaching-max-min-double-precision-values-are-not-imported)
 - [Functional/Expression indexes fail to migrate](#functional-expression-indexes-fail-to-migrate)
 - [Exporting data from MySQL when table names include quotes](#exporting-data-from-mysql-when-table-names-include-quotes)
 - [Spatial datatype migration is not yet supported](#spatial-datatype-migration-is-not-yet-supported)
@@ -28,11 +28,11 @@ This page documents known issues you may encounter and suggested workarounds whe
 - [Multiple declarations of variables in functions](#multiple-declarations-of-variables-in-functions)
 - [Exporting text type columns with default value](#exporting-text-type-columns-with-default-value)
 
-### Approaching MAX/MIN double precision values are not exported
+### Approaching MAX/MIN double precision values are not imported
 
 **GitHub**: [Issue #188](https://github.com/yugabyte/yb-voyager/issues/188)
 
-**Description**: Exporting double precision values near MAX/MIN value may result in an _out of range_ error. This is due to the difference in maximum supported precision values between the two databases. While MySQL supports up to 17 precision values, YugabyteDB supports up to 15.
+**Description**: Importing double precision values near MAX/MIN value may result in an _out of range_ error or the exact values may not be imported. This is due to the difference in maximum supported precision values between the two databases. While MySQL supports up to 17 precision values, YugabyteDB supports up to 15.
 
 ---
 
@@ -235,7 +235,7 @@ p_name varchar(10)
 /* Function definition */
 CREATE OR REPLACE FUNCTION foo (p_id integer) RETURNS varchar AS $body$
   BEGIN
-    RETURN(SELECT p_name FROM bar WHERE p_id=id);
+    RETURN (SELECT p_name FROM bar WHERE p_id=id);
   END;
 $body$
 LANGUAGE PLPGSQL
@@ -258,7 +258,7 @@ CREATE OR REPLACE VIEW v1 AS SELECT foo(bar.id::int) AS p_name FROM bar;
 
 **GitHub**: [Issue #705](https://github.com/yugabyte/yb-voyager/issues/705)
 
-**Description**: If you have a temporary table defined in a function or stored procedure in MySQL and you have a `drop temporary table` statement associated with it, the schema gets exported as is, which is an invalid syntax in YugabyteDB.
+**Description**: If you have a temporary table defined in a function in MySQL and you have a `drop temporary table` statement associated with it, the schema gets exported as is, which is an invalid syntax in YugabyteDB.
 
 **Workaround**: Manually remove the temporary clause from the drop statement.
 
@@ -267,28 +267,29 @@ CREATE OR REPLACE VIEW v1 AS SELECT foo(bar.id::int) AS p_name FROM bar;
 An example schema on the source database is as follows:
 
 ```sql
-/* procedure definition */
+/* function definition */
 delimiter //
-CREATE PROCEDURE foo(p_id int)
-deterministic
+CREATE FUNCTION func (p_id int)
+RETURNS VARCHAR(20)
+READS SQL DATA
   BEGIN
     DROP TEMPORARY TABLE IF EXISTS temp;
     CREATE TEMPORARY TABLE temp(id int, name text);
     INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
-    SELECT name FROM temp;
-  END//
+    RETURN (SELECT name FROM temp);
+END//
 delimiter;
 ```
 
 The exported schema is as follows:
 
 ```sql
-CREATE OR REPLACE PROCEDURE foo (p_id integer) AS $body$
+CREATE OR REPLACE FUNCTION func (p_id integer) RETURNS varchar AS $body$
   BEGIN
     DROP TEMPORARY TABLE IF EXISTS temp;
     CREATE TEMPORARY TABLE temp(id int, name text);
     INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
-    SELECT name FROM temp;
+    RETURN (SELECT name FROM temp);
   END;
 $body$
 LANGUAGE PLPGSQL
@@ -299,12 +300,12 @@ SECURITY DEFINER
 Suggested change to the schema is to remove the temporary clause from the drop statement as follows:
 
 ```sql
-CREATE OR REPLACE PROCEDURE foo (p_id integer) AS $body$
+CREATE OR REPLACE FUNCTION func (p_id integer) RETURNS varchar AS $body$
   BEGIN
     DROP TABLE IF EXISTS temp;
     CREATE TEMPORARY TABLE temp(id int, name text);
     INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
-    SELECT name FROM temp;
+    RETURN (SELECT name FROM temp);
   END;
 $body$
 LANGUAGE PLPGSQL
