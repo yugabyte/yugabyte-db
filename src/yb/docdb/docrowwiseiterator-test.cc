@@ -122,7 +122,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
     auto iter = std::make_unique<DocRowwiseIterator>(
         projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
         pending_op_counter, end_referenced_key_column_index);
-    RETURN_NOT_OK(iter->Init(YQL_TABLE_TYPE));
+    iter->Init(YQL_TABLE_TYPE);
     return iter;
   }
 
