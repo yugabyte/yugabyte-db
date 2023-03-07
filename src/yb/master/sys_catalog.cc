@@ -751,10 +751,9 @@ Status SysCatalogTable::GetTableSchema(
   }
   ReadHybridTime read_time = read_hybrid_time ? read_hybrid_time : ReadHybridTime::Max();
   const Schema& schema = doc_read_context_->schema;
-  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
+  auto doc_iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
       schema.CopyWithoutColumnIds(), read_time, /* table_id= */ "", CoarseTimePoint::max(),
       tablet::AllowBootstrappingState::kTrue));
-  docdb::DocRowwiseIterator* doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
 
   const auto type_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColType));
   const auto entry_id_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColId));
@@ -904,9 +903,8 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
   const std::shared_ptr<tablet::TableInfo> ysql_catalog_table_info =
       VERIFY_RESULT(meta->GetTableInfo(ysql_catalog_table_id));
   const Schema& schema = ysql_catalog_table_info->schema();
-  auto iter = VERIFY_RESULT(tablet->NewRowIterator(schema.CopyWithoutColumnIds(),
-                                                   {} /* read_hybrid_time */,
-                                                   ysql_catalog_table_id));
+  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
+      schema.CopyWithoutColumnIds(), ReadHybridTime(), ysql_catalog_table_id));
 
   // If 'versions' is set we read all rows. If 'catalog_version/last_breaking_version' are set,
   // we only read the global catalog version if db_oid is kInvalidOid, or read the per-db catalog
@@ -934,7 +932,6 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
   // We set up a QL_OP_EQUAL filter to read per-db catalog version. We don't need to set
   // up this filter to read the global catalog version.
   if (!versions && db_oid != kInvalidOid) {
-    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
     PgsqlConditionPB cond;
     cond.add_operands()->set_column_id(db_oid_id);
     cond.set_op(QL_OP_EQUAL);
@@ -943,7 +940,9 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
-    RETURN_NOT_OK(doc_iter->Init(spec));
+    RETURN_NOT_OK(iter->Init(spec));
+  } else {
+    iter->Init(tablet->table_type());
   }
 
   while (VERIFY_RESULT(iter->HasNext())) {
@@ -1196,10 +1195,9 @@ Status SysCatalogTable::ReadPgClassInfo(
   const auto relkind_col_id = VERIFY_RESULT(projection.ColumnIdByName("relkind")).rep();
   const auto tablespace_col_id = VERIFY_RESULT(projection.ColumnIdByName("reltablespace")).rep();
 
-  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
-    projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
+  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
+    projection.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
   {
-    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
     PgsqlConditionPB cond;
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_GREATER_THAN_EQUAL);
@@ -1211,7 +1209,7 @@ Status SysCatalogTable::ReadPgClassInfo(
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
-    RETURN_NOT_OK(doc_iter->Init(spec));
+    RETURN_NOT_OK(iter->Init(spec));
   }
 
   QLTableRow row;
@@ -1321,10 +1319,9 @@ Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t d
                 schema.num_key_columns()));
   const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
   const auto result_col_id = VERIFY_RESULT(projection.ColumnIdByName(column_name)).rep();
-  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
-      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
+  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
+      projection.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
   {
-    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
     PgsqlConditionPB cond;
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_EQUAL);
@@ -1333,7 +1330,7 @@ Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t d
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
-    RETURN_NOT_OK(doc_iter->Init(spec));
+    RETURN_NOT_OK(iter->Init(spec));
   }
 
   // pg_class table contains a row for every database object (tables/indexes/
@@ -1373,10 +1370,9 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
                 schema.num_key_columns()));
   const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
   const auto nspname_col_id = VERIFY_RESULT(projection.ColumnIdByName("nspname")).rep();
-  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
-      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
+  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
+      projection.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
   {
-    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
     PgsqlConditionPB cond;
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_EQUAL);
@@ -1385,7 +1381,7 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
-    RETURN_NOT_OK(doc_iter->Init(spec));
+    RETURN_NOT_OK(iter->Init(spec));
   }
 
   string name;
@@ -1429,10 +1425,9 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttNameTypid
   const auto attname_col_id = VERIFY_RESULT(projection.ColumnIdByName("attname")).rep();
   const auto atttypid_col_id = VERIFY_RESULT(projection.ColumnIdByName("atttypid")).rep();
 
-  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
-      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
+  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
+      projection.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
   {
-    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
     PgsqlConditionPB cond;
     cond.add_operands()->set_column_id(attrelid_col_id);
     cond.set_op(QL_OP_EQUAL);
@@ -1441,7 +1436,7 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttNameTypid
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
         boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
-    RETURN_NOT_OK(doc_iter->Init(spec));
+    RETURN_NOT_OK(iter->Init(spec));
   }
 
   std::unordered_map<string, uint32_t> type_oid_map;
@@ -1505,16 +1500,15 @@ Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
   const auto enumtypid_col_id = VERIFY_RESULT(projection.ColumnIdByName("enumtypid")).rep();
   const auto enumlabel_col_id = VERIFY_RESULT(projection.ColumnIdByName("enumlabel")).rep();
 
-  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
-      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
+  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
+      projection.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
   {
-    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
     const std::vector<docdb::KeyEntryValue> empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         nullptr /* cond */, boost::none /* hash_code */, boost::none /* max_hash_code */,
         nullptr /* where */);
-    RETURN_NOT_OK(doc_iter->Init(spec));
+    RETURN_NOT_OK(iter->Init(spec));
   }
 
   std::unordered_map<uint32_t, string> enumlabel_map;
@@ -1559,10 +1553,9 @@ Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo
   const auto typtype_col_id = VERIFY_RESULT(projection.ColumnIdByName("typtype")).rep();
   const auto typbasetype_col_id = VERIFY_RESULT(projection.ColumnIdByName("typbasetype")).rep();
 
-  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
-      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
+  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
+      projection.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
   {
-    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
     PgsqlConditionPB cond;
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_IN);
@@ -1576,7 +1569,7 @@ Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
         boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
-    RETURN_NOT_OK(doc_iter->Init(spec));
+    RETURN_NOT_OK(iter->Init(spec));
   }
 
   std::unordered_map<uint32_t, PgTypeInfo> type_oid_info_map;
@@ -1793,10 +1786,9 @@ Result<RelIdToAttributesMap> SysCatalogTable::ReadPgAttributeInfo(
   const auto attinhcount_col_id = VERIFY_RESULT(schema.ColumnIdByName("attinhcount")).rep();
   const auto attcollation_col_id = VERIFY_RESULT(schema.ColumnIdByName("attcollation")).rep();
 
-  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
-      schema.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
+  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
+      schema.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
   {
-    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
     PgsqlConditionPB cond;
     cond.add_operands()->set_column_id(attrelid_col_id);
     cond.set_op(QL_OP_IN);
@@ -1808,7 +1800,7 @@ Result<RelIdToAttributesMap> SysCatalogTable::ReadPgAttributeInfo(
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
         boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
-    RETURN_NOT_OK(doc_iter->Init(spec));
+    RETURN_NOT_OK(iter->Init(spec));
   }
 
   RelIdToAttributesMap relid_attribute_map;
@@ -1918,15 +1910,14 @@ Result<RelTypeOIDMap> SysCatalogTable::ReadCompositeTypeFromPgClass(
   const auto reltype_col_id = VERIFY_RESULT(projection.ColumnIdByName("reltype")).rep();
   const auto relkind_col_id = VERIFY_RESULT(projection.ColumnIdByName("relkind")).rep();
 
-  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
-      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
+  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
+      projection.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
   {
-    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
     const std::vector<docdb::KeyEntryValue> empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, nullptr,
         boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
-    RETURN_NOT_OK(doc_iter->Init(spec));
+    RETURN_NOT_OK(iter->Init(spec));
   }
 
   RelTypeOIDMap reltype_oid_map;

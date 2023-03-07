@@ -58,7 +58,7 @@ class QLRocksDBStorage : public YQLStorageIf {
       const ReadHybridTime& read_time,
       YQLRowwiseIteratorIf::UniPtr* iter) const override;
 
-  Status InitIterator(YQLRowwiseIteratorIf* doc_iter,
+  Status InitIterator(DocRowwiseIterator* doc_iter,
                       const PgsqlReadRequestPB& request,
                       const Schema& schema,
                       const QLValuePB& ybctid) const override;
