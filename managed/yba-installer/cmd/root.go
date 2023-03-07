@@ -35,8 +35,10 @@ var rootCmd = &cobra.Command{
 
 // called on module init
 func init() {
-	rootCmd.PersistentFlags().BoolVarP(&force, "force", "f", false, "skip user confirmation")
-	rootCmd.PersistentFlags().StringVar(&logLevel, "log_level", "info", "log level for this command")
+	rootCmd.PersistentFlags().BoolVarP(&force, "force", "f", false,
+		"Run in non-interactive mode. All user confirmations are skipped.")
+	rootCmd.PersistentFlags().StringVar(&logLevel, "log_level", "info", "log level for this command."+
+		" Levels: panic, fatal, error, warn, info, debug, trace.")
 }
 
 func Execute() {
