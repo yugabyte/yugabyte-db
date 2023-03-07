@@ -441,7 +441,8 @@ YbgStatus YbgSplitArrayDatum(uint64_t datum,
 
 	if (ARR_NDIM(arr) != 1 || ARR_HASNULL(arr) || ARR_ELEMTYPE(arr) != type)
 		return YbgStatusCreateError(
-				"Type of given datum array does not match the given type");
+				"Type of given datum array does not match the given type",
+				__FILE__, __LINE__);
 
 	int32 elmlen;
 	bool elmbyval;
@@ -765,7 +766,8 @@ YbgStatus YbgSplitArrayDatum(uint64_t datum,
 		/* TODO: Extend support to other types as well. */
 		default:
 			return YbgStatusCreateError(
-					"Only Text type supported for split of datum of array types");
+					"Only Text type supported for split of datum of array types",
+					__FILE__, __LINE__);
 	}
 	deconstruct_array(arr, type, elmlen, elmbyval, elmalign,
 			  (Datum**)result_datum_array, NULL /* nullsp */, nelems);
