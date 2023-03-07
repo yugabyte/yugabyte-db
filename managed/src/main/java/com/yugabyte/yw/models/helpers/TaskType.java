@@ -440,6 +440,9 @@ public enum TaskType {
 
   CheckMemory(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory.class),
 
+  CheckSoftwareVersion(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion.class),
+
   UpdateMountedDisks(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks.class),
 
   TransferXClusterCerts(com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts.class),
