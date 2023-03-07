@@ -6040,8 +6040,17 @@ is_index_only_refs(List *expr_refs, IndexOptInfo *indexinfo)
 		{
 			if (colref->attno == indexinfo->indexkeys[i])
 			{
-				found = true;
-				break;
+				/*
+				 * If index key can not return, it does not have actual value
+				 * to evaluate the expression.
+				 */
+				if (indexinfo->canreturn[i])
+				{
+					found = true;
+					break;
+				}
+				else
+					return false;
 			}
 		}
 		if (!found)
