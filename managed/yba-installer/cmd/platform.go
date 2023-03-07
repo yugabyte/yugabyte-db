@@ -327,6 +327,7 @@ func (plat Platform) Stop() {
 
 // Restart the YBA platform service.
 func (plat Platform) Restart() {
+	log.Info("Restarting YBA..")
 
 	if common.HasSudoAccess() {
 
