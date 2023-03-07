@@ -62,7 +62,7 @@ Specify the *increment* value to add to the current sequence value to create a n
 
 #### MAXVALUE *maxvalue* | NO MAXVALUE
 
-Specify the maximum value allowed in the sequence. If this value is reached, `nextval()` will return an error. If `NO MAXVALUE` is specified, the default will be used. Default is `2<sup>63</sup> - 1`.
+Specify the maximum value allowed in the sequence. If this value is reached, `nextval()` will return an error. If `NO MAXVALUE` is specified, the default will be used. Default is `2⁶³-1`.
 
 #### START WITH *start*
 
