@@ -30,7 +30,7 @@ Included here are the release notes for the YugabyteDB Voyager v1 release series
 
 * For any syntax error in the data file or CSV file, complete error details such as line number, column, and data is displayed in the output of the import data or import data file commands.
 
-* In this release, for the export data command, the list of table names passed in the `--table-list` and `--exclude-table-list` are, by default, case insensitive. Enclose each name in double quotes to make it case-sensitive.
+* For the `export data` command, the list of table names passed in the `--table-list` and `--exclude-table-list` are, by default, case insensitive. Enclose each name in double quotes to make it case-sensitive.
 
 <!-- For the import data command,the behavior remains unchanged from the previous release. These names are, by default, case-sensitive. No need to enclose them in double-quotes. -->
 
