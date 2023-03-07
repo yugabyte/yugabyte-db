@@ -10,7 +10,9 @@
       "requiredField": "Required field",
       "save": "Save",
       "validateAndSave": "Validate and Save",
-      "yes": "Yes"
+      "yes": "Yes",
+      "close": "Close",
+      "saving": "Saving"
     },
     "commonErrors": {
       "pageNotExist": "Seems like this Page does not exist",
@@ -338,6 +340,13 @@
           "default": "Default",
           "addValuesButton": "Add Values",
           "valuesHelpText": "Define the possible values for the variable. Set one of the values as the <bold>default</bold> to use for all alerts that use the notification template. You can choose a value when configuring the alert policy."
+        },
+        "assignCustomVariableValueModal":{
+          "title": "Assign Variable Value to Alert Policies",
+          "searchHelpText": "For each alert policy, choose the variable value to display in alert notifications.",
+          "searchInputPlaceHolder": "Filter by alert policy name",
+          "menuDefault": "(default)",
+          "tablePolicyHeader": "Alert Policies"
         }
       }
     }

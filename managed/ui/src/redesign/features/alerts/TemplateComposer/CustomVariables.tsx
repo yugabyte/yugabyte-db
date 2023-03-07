@@ -33,6 +33,7 @@ import { useCommonStyles } from './CommonStyles';
 import { YBLoadingCircleIcon } from '../../../../components/common/indicators';
 import { CustomVariable } from './ICustomVariables';
 import { createErrorMessage } from '../../../../utils/ObjectUtils';
+import AssignCustomVariableValueModal from './AssignCustomVariableValueModal';
 
 type CustomVariablesEditorProps = {};
 
@@ -104,6 +105,7 @@ const CustomVariablesEditor = (props: CustomVariablesEditorProps) => {
   const commonStyles = useCommonStyles();
   const { t } = useTranslation();
   const [showCreateCustomVariableModal, setShowCreateCustomVariableModal] = useState(false);
+  const [showAssignVariableValueModal, setShowAssignVariableValueModal] = useState(false);
   const [editCustomVariable, setEditCustomVariable] = useState<CustomVariable>();
   const queryClient = useQueryClient();
 
@@ -212,7 +214,9 @@ const CustomVariablesEditor = (props: CustomVariablesEditorProps) => {
             menuOptions={[
               {
                 text: t('alertCustomTemplates.customVariables.assignVariablesButton'),
-                callback: () => {}
+                callback: () => {
+                  setShowAssignVariableValueModal(true);
+                }
               }
             ]}
           >
@@ -263,6 +267,10 @@ const CustomVariablesEditor = (props: CustomVariablesEditorProps) => {
           setShowCreateCustomVariableModal(false);
         }}
         editValues={editCustomVariable}
+      />
+      <AssignCustomVariableValueModal
+        visible={showAssignVariableValueModal}
+        onHide={() => setShowAssignVariableValueModal(false)}
       />
     </div>
   );
