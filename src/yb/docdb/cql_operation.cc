@@ -882,6 +882,8 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
 }
 
 Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
+  data.doc_write_batch->SetDocReadContext(doc_read_context_);
+
   QLTableRow existing_row;
   if (request_.has_if_expr()) {
     // Check if the if-condition is satisfied.
