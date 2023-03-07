@@ -52,8 +52,7 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           // Promote Auto flags on compatible versions.
           if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.promoteAutoFlag)
               && CommonUtils.isAutoFlagSupported(taskParams().ybSoftwareVersion)) {
-            createPromoteAutoFlagTask(taskParams().ybSoftwareVersion)
-                .setSubTaskGroupType(getTaskSubGroupType());
+            createPromoteAutoFlagTask().setSubTaskGroupType(getTaskSubGroupType());
           }
           // Mark the final software version on the universe
           createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)

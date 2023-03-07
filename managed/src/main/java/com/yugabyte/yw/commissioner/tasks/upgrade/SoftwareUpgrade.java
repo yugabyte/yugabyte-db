@@ -129,7 +129,9 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
           // Promote Auto flags on compatible versions.
           if (confGetter.getConfForScope(universe, UniverseConfKeys.promoteAutoFlag)
               && CommonUtils.isAutoFlagSupported(newVersion)) {
-            createPromoteAutoFlagTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
+            createCheckSoftwareVersionTask(allNodes, newVersion)
+                .setSubTaskGroupType(getTaskSubGroupType());
+            createPromoteAutoFlagTask().setSubTaskGroupType(getTaskSubGroupType());
           }
 
           // Update software version in the universe metadata.

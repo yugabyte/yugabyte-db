@@ -18,6 +18,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -61,6 +62,7 @@ import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
 import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
+import play.libs.Json;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.YBClient;
@@ -211,6 +213,10 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
               0, null, GetAutoFlagsConfigResponsePB.getDefaultInstance());
       lenient().when(mockClient.autoFlagsConfig()).thenReturn(resp);
       lenient().when(mockClient.ping(anyString(), anyInt())).thenReturn(true);
+      ObjectNode objectNode = Json.newObject();
+      objectNode.put("version_number", "2.17.0.0");
+      objectNode.put("build_number", "1");
+      lenient().when(mockApiHelper.getRequest(anyString())).thenReturn(objectNode);
       lenient()
           .when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
           .thenReturn(
