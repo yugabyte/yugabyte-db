@@ -10,12 +10,10 @@ import (
 
 var installCmd = &cobra.Command{
 	Use:   "install",
-	Short: "The install command is installs YugabyteDB Anywhere onto your operating system.",
+	Short: "Install YugabyteDB Anywhere.",
 	Long: `
-        The install command is the main workhorse command for YBA Installer that
-        will install the version of YugabyteDB Anywhere associated with your downloaded version
-        of YBA Installer onto your host Operating System. Can also perform an install while skipping
-        certain preflight checks if desired.
+        The install command will install the version of YugabyteDB Anywhere associated with the
+				downloaded version of YBA Installer onto the local machine.
         `,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -66,7 +64,7 @@ var installCmd = &cobra.Command{
 
 func init() {
 	installCmd.Flags().StringSliceVarP(&skippedPreflightChecks, "skip_preflight", "s",
-		[]string{}, "Preflight checks to skip")
+		[]string{}, "Preflight checks to skip by name")
 	installCmd.Flags().StringVarP(&licensePath, "license-path", "l", "", "path to license file")
 
 	// Install must be run from directory of yba version

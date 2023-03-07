@@ -9,13 +9,12 @@ import (
 
 var upgradeCmd = &cobra.Command{
 	Use:   "upgrade",
-	Short: "The upgrade command is used to upgrade an existing YugabyteDB Anywhere installation.",
+	Short: "Upgrade an existing YugabyteDB Anywhere installation.",
 	Long: `
-   The execution of the upgrade command will upgrade an already installed version of Yugabyte
-   Anywhere present on your operating system, to the upgrade version associated with your download
-	 of YBA Installer. Please make sure that you have installed YugabyteDB Anywhere using the install
-	 command prior to executing the upgrade command.
-   `,
+   The upgrade command will upgrade an already installed version of Yugabyte Anywhere to the
+	 upgrade version associated with your new download of YBA Installer. Please make sure that you
+	 have installed YugabyteDB Anywhere using the install command prior to executing the upgrade
+	 command.`,
 	Args: cobra.NoArgs,
 	// We will use prerun to do some basic setup for the upcoming upgrade.
 	// At this point, its making sure Directory Manager is set to do an upgrade.
@@ -88,7 +87,7 @@ var upgradeCmd = &cobra.Command{
 func init() {
 	// Upgrade can only be run from the new version, not from the installed path
 	upgradeCmd.Flags().StringSliceVarP(&skippedPreflightChecks, "skip_preflight", "s",
-		[]string{}, "Preflight checks to skip")
+		[]string{}, "Preflight checks to skip by name")
 	if !common.RunFromInstalled() {
 		rootCmd.AddCommand(upgradeCmd)
 	}

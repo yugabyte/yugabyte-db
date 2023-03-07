@@ -15,7 +15,8 @@ func cleanCmd() *cobra.Command {
 		Long: `
     	The clean command performs a complete removal of your YugabyteDB Anywhere
     	Instance by stopping all services and (optionally) removing data directories.`,
-		Args: cobra.MaximumNArgs(1),
+		Aliases: []string{"uninstall"},
+		Args:    cobra.MaximumNArgs(1),
 		// Confirm with the user before deleting ALL data.
 		PreRun: func(cmd *cobra.Command, args []string) {
 			if removeData {
