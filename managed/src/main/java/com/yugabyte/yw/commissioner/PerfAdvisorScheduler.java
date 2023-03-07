@@ -198,6 +198,16 @@ public class PerfAdvisorScheduler {
     try {
       run.setStartTime(new Date()).setState(State.RUNNING).save();
       JsonNode databaseNamesResult = queryHelper.listDatabaseNames(universe);
+      if (databaseNamesResult.has("error")) {
+        String errorMessage = databaseNamesResult.get("error").toString();
+        log.error(
+            "Failed to get database names for universe "
+                + universe.getUniverseUUID()
+                + ": "
+                + errorMessage);
+        run.setEndTime(new Date()).setState(State.FAILED).save();
+        return;
+      }
       List<String> databases = new ArrayList<>();
       Iterator<JsonNode> queryIterator = databaseNamesResult.get("result").elements();
       while (queryIterator.hasNext()) {
