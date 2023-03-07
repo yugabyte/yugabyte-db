@@ -620,4 +620,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Allow universe upgrade when nodes are in transit mode",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> promoteAutoFlagsForceFully =
+      new ConfKeyInfo<>(
+          "yb.upgrade.promote_flags_forcefully",
+          ScopeType.UNIVERSE,
+          "Promote AutoFlags Forcefully",
+          "Promote AutoFlags Forcefully during software upgrade",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
