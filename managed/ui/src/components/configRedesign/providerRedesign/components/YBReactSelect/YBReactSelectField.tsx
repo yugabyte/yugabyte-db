@@ -35,7 +35,7 @@ export const YBReactSelectField = <T extends FieldValues>({
   };
   return (
     <Box width="100%">
-      <div data-testId={`YBReactSelectField-${field.name}`}>
+      <div data-testid={`YBReactSelectField-${field.name}`}>
         <Select
           styles={reactSelectStyles}
           name={field.name}

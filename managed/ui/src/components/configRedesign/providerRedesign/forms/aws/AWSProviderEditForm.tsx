@@ -255,7 +255,7 @@ export const AWSProviderEditForm = ({ providerConfig }: AWSProviderEditFormProps
               </FormField>
               <FormField>
                 <FieldLabel>NTP Setup</FieldLabel>
-                <NTPConfigField providerCode={ProviderCode.AWS} />
+                <NTPConfigField isDisabled={true} providerCode={ProviderCode.AWS} />
               </FormField>
             </FieldGroup>
           </Box>

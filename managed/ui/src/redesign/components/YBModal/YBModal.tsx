@@ -102,7 +102,7 @@ const useStyles = makeStyles<Theme, Partial<YBModalProps>>((theme) => ({
   },
   closeBtnText: {
     color: theme.palette.orange[500],
-    fontSize: theme.spacing(4),
+    fontSize: theme.spacing(3),
     lineHeight: '26px'
   },
   actionsInfo: {
@@ -209,7 +209,7 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
         variant="secondary"
         onClick={handleClose}
         {...cancelBtnProps}
-        data-testid={cancelTestId}
+        data-testid={cancelTestId ?? 'YBModal-CancelButton'}
       >
         {cancelLabel}
       </YBButton>
@@ -234,7 +234,7 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
         type="submit"
         autoFocus
         showSpinner={isSubmitting}
-        data-testid={submitTestId}
+        data-testid={submitTestId ?? 'YBModal-SubmitButton'}
       >
         {submitLabel}
       </YBButton>
@@ -273,8 +273,12 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
                   <div className={classes.modalTitle}>{title}</div>
                 )}
                 {!hideCloseBtn && (
-                  <YBButton className={classes.closeBtn} onClick={handleClose}>
-                    <span className={classes.closeBtnText}>x</span>
+                  <YBButton
+                    className={classes.closeBtn}
+                    onClick={handleClose}
+                    data-testid="YBModal-CloseButton"
+                  >
+                    <i className={`fa fa-remove ${classes.closeBtnText}`}></i>
                   </YBButton>
                 )}
               </Typography>

@@ -4,11 +4,24 @@ export const YBTableRelationType = {
   INDEX_TABLE_RELATION: 'INDEX_TABLE_RELATION',
   MATVIEW_TABLE_RELATION: 'MATVIEW_TABLE_RELATION'
 } as const;
-// eslint-disable-next-line no-redeclare
 export type YBTableRelationType = typeof YBTableRelationType[keyof typeof YBTableRelationType];
 
 export const YBAHost = {
   GCP: 'gcp',
   AWS: 'aws',
   SELF_HOSTED: 'selfHosted'
-};
+} as const;
+
+/**
+ * Values are mapped to the sort order strings from
+ * react-boostrap-table ('asc', 'desc').
+ */
+export const SortOrder = {
+  ASCENDING: 'asc',
+  DESCENDING: 'desc'
+} as const;
+export type SortOrder = typeof SortOrder[keyof typeof SortOrder];
+
+export const RuntimeConfigKey = {
+  PROVIDER_REDESIGN_FEATURE_FLAG: 'yb.ui.feature_flags.provider_redesign'
+} as const;

@@ -6,17 +6,17 @@
  */
 import React from 'react';
 
-import { ProviderCode } from '../constants';
+import { ProviderCode } from '../../constants';
 import { RegionListOverview } from './RegionListOverview';
-import { RegionMap } from '../../../maps';
-import { AWSPropertiesOverview } from './aws/AWSPropertiesOverview';
-import { AZUPropertiesOverview } from './azu/AZUPropertiesOverview';
-import { GCPPropertiesOverview } from './gcp/GCPPropertiesOverview';
-import { K8sPropertiesOverview } from './k8s/K8sPropertiesOverview';
-import { OnPremPropertiesOverview } from './onPrem/OnPremPropertiesOverview';
-import { assertUnreachableCase } from '../../../../utils/ErrorUtils';
+import { RegionMap } from '../../../../maps';
+import { AWSPropertiesOverview } from '../aws/AWSPropertiesOverview';
+import { AZUPropertiesOverview } from '../azu/AZUPropertiesOverview';
+import { GCPPropertiesOverview } from '../gcp/GCPPropertiesOverview';
+import { K8sPropertiesOverview } from '../k8s/K8sPropertiesOverview';
+import { OnPremPropertiesOverview } from '../onPrem/OnPremPropertiesOverview';
+import { assertUnreachableCase } from '../../../../../utils/errorHandlingUtils';
 
-import { YBProvider } from '../types';
+import { YBProvider } from '../../types';
 
 import styles from './ProviderOverview.module.scss';
 
@@ -29,7 +29,7 @@ export const ProviderOverview = ({ providerConfig, isProviderInUse }: ProviderOv
   return (
     <div className={styles.providerOverviewContainer}>
       {getProviderPropertiesOverview(providerConfig, isProviderInUse)}
-      <div className={styles.regionMapContainer}>
+      <div>
         <RegionMap
           title="All Supported Regions"
           regions={providerConfig.regions}

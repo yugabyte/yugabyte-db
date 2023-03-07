@@ -53,13 +53,13 @@ const useStyles = makeStyles((theme) => ({
     color: theme.palette.orange[500]
   },
   formField: {
-    marginTop: '10px',
+    marginTop: theme.spacing(1),
     '&:first-child': {
       marginTop: 0
     }
   },
   manageAvailabilityZoneField: {
-    marginTop: '10px'
+    marginTop: theme.spacing(1)
   }
 }));
 
@@ -238,7 +238,7 @@ const getDefaultFormValue = (
   regionSelection: CloudVendorRegionField | undefined
 ) => {
   if (regionSelection === undefined) {
-    return undefined;
+    return { zones: [] };
   }
   const { code: currentRegionCode, ...currentRegion } = regionSelection;
   return {

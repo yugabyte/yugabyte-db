@@ -14,11 +14,11 @@ import {
   XClusterConfigAction,
   XClusterConfigStatus,
   REPLICATION_LAG_ALERT_NAME,
-  SortOrder,
   BROKEN_XCLUSTER_CONFIG_STATUSES
 } from './constants';
 import { api } from '../../redesign/helpers/api';
-import { assertUnreachableCase } from '../../utils/ErrorUtils';
+import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
+import { SortOrder } from '../../redesign/helpers/constants';
 
 import {
   Metrics,

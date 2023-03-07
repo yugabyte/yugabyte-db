@@ -18,11 +18,6 @@ export interface HostInfo {
     | string;
 }
 
-export interface ResourceCreationResponse {
-  resourceUUID: string;
-  taskUUID: string;
-}
-
 export interface PlacementAZ {
   uuid: string;
   name: string;
@@ -292,13 +287,13 @@ export interface Region {
 }
 
 // InstanceType.java
-interface VolumeDetails {
+export interface VolumeDetails {
   volumeSizeGB: number;
   volumeType: 'EBS' | 'SSD' | 'HDD' | 'NVME';
   mountPath: string;
 }
 
-interface InstanceTypeDetails {
+export interface InstanceTypeDetails {
   tenancy: 'Shared' | 'Dedicated' | 'Host' | null;
   volumeDetailsList: VolumeDetails[];
 }
@@ -429,3 +424,18 @@ export interface MetricQueryParams {
 }
 
 // TODO: Need to move the above enums to global dtos file under src/redesign/utils as part of PLAT-7010
+
+// ---------------------------------------------------------------------------
+// Platform Result Types
+// Source: src/main/java/com/yugabyte/yw/forms/PlatformResults.java
+// ---------------------------------------------------------------------------
+export interface YBPTask {
+  resourceUUID: string;
+  taskUUID: string;
+}
+
+export interface YBPSuccess {
+  message: string;
+  success: boolean;
+}
+// ---------------------------------------------------------------------------
