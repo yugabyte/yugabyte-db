@@ -73,11 +73,6 @@ public class HealthCheck extends Model {
         return null;
       }
 
-      public NodeData setTimestamp(Date timestamp) {
-        this.timestampIso = timestamp;
-        return this;
-      }
-
       @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
       @ApiModelProperty(example = "2022-12-12T13:07:18Z")
       public Date getTimestampIso() {
@@ -128,11 +123,6 @@ public class HealthCheck extends Model {
         return timestampIso;
       }
       return null;
-    }
-
-    public Details setTimestamp(Date timestamp) {
-      this.timestampIso = timestamp;
-      return this;
     }
 
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")

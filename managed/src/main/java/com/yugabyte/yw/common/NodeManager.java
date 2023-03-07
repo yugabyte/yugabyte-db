@@ -691,13 +691,13 @@ public class NodeManager extends DevopsBase {
           releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
       if (releaseMetadata != null) {
         ybServerPackage = releaseMetadata.getFilePath(taskParam.getRegion());
-        if (releaseMetadata.s3 != null && releaseMetadata.s3.paths.x86_64 == ybServerPackage) {
+        if (releaseMetadata.s3 != null && releaseMetadata.s3.paths.x86_64.equals(ybServerPackage)) {
           subcommand.add("--s3_remote_download");
         } else if (releaseMetadata.gcs != null
-            && releaseMetadata.gcs.paths.x86_64 == ybServerPackage) {
+            && releaseMetadata.gcs.paths.x86_64.equals(ybServerPackage)) {
           subcommand.add("--gcs_remote_download");
         } else if (releaseMetadata.http != null
-            && releaseMetadata.http.paths.x86_64 == ybServerPackage) {
+            && releaseMetadata.http.paths.x86_64.equals(ybServerPackage)) {
           subcommand.add("--http_remote_download");
           if (StringUtils.isNotBlank(releaseMetadata.http.paths.x86_64_checksum)) {
             subcommand.add("--http_package_checksum");
