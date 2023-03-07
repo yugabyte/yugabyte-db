@@ -35,7 +35,10 @@ var reconfigureCmd = &cobra.Command{
 		}
 
 		for _, name := range serviceOrder {
-			status := services[name].Status()
+			status, err := services[name].Status()
+			if err != nil {
+				log.Fatal("Failed to get status: " + err.Error())
+			}
 			if !common.IsHappyStatus(status) {
 				log.Fatal(status.Service + " is not running! Restart might have failed, please check " +
 					common.YbactlLogFile())
