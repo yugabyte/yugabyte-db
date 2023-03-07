@@ -1,6 +1,9 @@
 #include "postgres.h"
 #include <stdlib.h>
 #include <locale.h>
+
+#if PG_VERSION_NUM <= 150000
+
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
@@ -9,6 +12,8 @@
 #if PG_VERSION_NUM >= 120000
 
 #include "access/table.h"
+
+#endif
 
 #endif
 
@@ -61,6 +66,8 @@ static LocalTransactionId uuid_generate_func_lxid = InvalidLocalTransactionId;
 static char uuid_generate_func_name[30] = "";
 
 static Datum ora_greatest_least(FunctionCallInfo fcinfo, bool greater);
+
+#if PG_VERSION_NUM <= 150000
 
 static Oid
 get_extension_schema(Oid ext_oid)
@@ -116,6 +123,8 @@ get_extension_schema(Oid ext_oid)
 
 	return result;
 }
+
+#endif
 
 static Oid
 get_uuid_generate_func_oid(bool *reset_fmgr)
