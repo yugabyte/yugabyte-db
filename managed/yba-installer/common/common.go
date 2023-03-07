@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/fluxcd/pkg/tar"
 	"github.com/spf13/viper"
 
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common/shell"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
@@ -57,8 +59,6 @@ func createInstallDirs() {
 		filepath.Join(GetBaseInstall(), "data"),
 		filepath.Join(GetBaseInstall(), "data/logs"),
 		GetInstallerSoftwareDir(),
-		filepath.Join(GetInstallerSoftwareDir(), CronDir),
-		filepath.Join(GetInstallerSoftwareDir(), ConfigDir),
 	}
 
 	for _, dir := range createDirs {
@@ -82,8 +82,6 @@ func createInstallDirs() {
 func createUpgradeDirs() {
 	createDirs := []string{
 		GetInstallerSoftwareDir(),
-		filepath.Join(GetInstallerSoftwareDir(), CronDir),
-		filepath.Join(GetInstallerSoftwareDir(), ConfigDir),
 	}
 
 	for _, dir := range createDirs {
@@ -108,25 +106,18 @@ func copyBits(vers string) {
 		GetJavaPackagePath(), GetPostgresPackagePath()}
 
 	for _, file := range neededFiles {
-		_, err := RunBash("bash",
-			[]string{"-c", "cp -p " + file + " " + GetInstallerSoftwareDir()})
-		if err != nil {
+		if err := Copy(file, GetInstallerSoftwareDir(), false, true); err != nil {
 			log.Fatal("failed to copy " + file + ": " + err.Error())
 		}
 	}
 
-	configDirPath := GetTemplatesDir()
-	templateCpCmd := fmt.Sprintf("cp %s/* %s/%s",
-		configDirPath, GetInstallerSoftwareDir(), ConfigDir)
-
-	cronDirPath := GetCronDir()
-	cronCpCmd := fmt.Sprintf("cp %s/* %s/%s",
-		cronDirPath, GetInstallerSoftwareDir(), CronDir)
-
-	if _, err := RunBash("bash", []string{"-c", templateCpCmd}); err != nil {
+	configDest := path.Join(GetInstallerSoftwareDir(), ConfigDir)
+	if err := Copy(GetTemplatesDir(), configDest, true, false); err != nil {
 		log.Fatal("failed to copy config files: " + err.Error())
 	}
-	if _, err := RunBash("bash", []string{"-c", cronCpCmd}); err != nil {
+
+	cronDest := path.Join(GetInstallerSoftwareDir(), CronDir)
+	if err := Copy(GetCronDir(), cronDest, true, false); err != nil {
 		log.Fatal("failed to copy cron scripts: " + err.Error())
 	}
 }
@@ -189,9 +180,10 @@ func SetActiveInstallSymlink() {
 }
 
 func setupJDK() {
-	command1 := "bash"
-	arg1 := []string{"-c", "tar -zxf " + GetJavaPackagePath() + " -C " + GetInstallerSoftwareDir()}
-	RunBash(command1, arg1)
+	out := shell.Run("tar", "-zxf", GetJavaPackagePath(), "-C", GetInstallerSoftwareDir())
+	if !out.SucceededOrLog() {
+		log.Fatal("failed to setup JDK: " + out.Error.Error())
+	}
 }
 
 // When we start Yugaware, we point to the location of our bundled
@@ -199,14 +191,20 @@ func setupJDK() {
 // use the version we provide. Needed for non-root installs as we cannot
 // set the environment variables in the systemd service file any longer.
 func setJDKEnvironmentVariable() {
-	javaExtractedFolderName, err := RunBash("bash",
-		[]string{"-c", "tar -tf " + GetJavaPackagePath() + " | head -n 1"})
-	if err != nil {
-		log.Fatal("failed to setup JDK environment: " + err.Error())
+	tarArgs := []string{
+		"-tf", GetJavaPackagePath(),
+		"|",
+		"head", "-n", "1",
+	}
+	out := shell.RunShell("tar", tarArgs...)
+	out.LogDebug()
+	if !out.SucceededOrLog() {
+		log.Fatal("failed to setup JDK environment: " + out.Error.Error())
 	}
 
-	javaExtractedFolderName = strings.TrimSuffix(strings.ReplaceAll(javaExtractedFolderName,
-		" ", ""), "/")
+	javaExtractedFolderName := strings.TrimSuffix(
+		strings.ReplaceAll(out.StdoutString(), " ", ""),
+		"/")
 	javaHome := GetInstallerSoftwareDir() + javaExtractedFolderName
 	os.Setenv("JAVA_HOME", javaHome)
 }
@@ -218,19 +216,16 @@ func createYugabyteUser() {
 		return
 	}
 
-	command1 := "bash"
-	arg1 := []string{"-c", "id -u " + userName}
-	_, err := RunBash(command1, arg1)
-
-	// We will get an error if the user doesn't exist, as the ID command will fail.
-	if err == nil {
+	// Check if the user exists. id command will have non 0 exit status if the user does not exist.
+	if out := shell.Run("id", "-u", userName); out.Succeeded() {
 		log.Debug("User " + userName + " already exists, skipping user creation.")
 		return
 	}
+
 	if HasSudoAccess() {
-		command2 := "useradd"
-		arg2 := []string{userName}
-		RunBash(command2, arg2)
+		if out := shell.Run("useradd", userName); !out.Succeeded() {
+			log.Fatal("failed to create user " + userName + ": " + out.Error.Error())
+		}
 	} else {
 		log.Fatal("Need sudo access to create yugabyte user.")
 	}

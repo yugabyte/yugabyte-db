@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common/shell"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
@@ -37,11 +37,10 @@ func (p pythonCheck) Execute() Result {
 		Check:  p.name,
 		Status: StatusPassed,
 	}
-	command := "bash"
-	args := []string{"-c", "python3 --version"}
-	output, _ := common.RunBash(command, args)
 
-	outputTrimmed := strings.TrimSuffix(output, "\n")
+	out := shell.Run("python3", "--version")
+
+	outputTrimmed := strings.TrimSuffix(out.StdoutString(), "\n")
 
 	re := regexp.MustCompile(`Python 3.6|Python 3.7|Python 3.8|Python 3.9`)
 
