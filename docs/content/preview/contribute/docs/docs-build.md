@@ -102,6 +102,7 @@ To get the docs site running in a live-reload server on your local machine, run 
 ```sh
 cd yugabyte-db/docs  # Make sure this is YOUR fork.
 npm ci               # Only necessary the first time you clone the repo.
+hugo mod get -u      # Installs Hugo as a dependency of the site.
 hugo mod clean       # Only necessary the first time you clone the repo.
 npm start            # Do this every time to build the docs and launch the live-reload server.
 ```
