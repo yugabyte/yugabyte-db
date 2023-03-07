@@ -165,6 +165,7 @@ func (prom Prometheus) Stop() {
 
 // Restart the prometheus service.
 func (prom Prometheus) Restart() {
+	log.Info("Restarting prometheus..")
 
 	if common.HasSudoAccess() {
 
