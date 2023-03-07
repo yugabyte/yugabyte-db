@@ -32,7 +32,7 @@ For more information on how YugabyteDB handles failures and its impact during tr
 
 1. Connect to your universe using [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh).
 
-1. Create a tablespace to ensure that the leaders for the keys in the example transaction are located in node `127.0.0.2`, so that you can correctly simulate the scenario by stopping that node.
+1. Create a tablespace to ensure that the leaders for the keys in the example transaction are located in node-2, so that you can correctly simulate the scenario by stopping that node.
 
     {{< note title="Note" >}}
 The examples use tablespaces so that the failure scenarios run in a deterministic manner in your cluster setup. YugabytedDB handles transaction failures in the same way either with or without tablespaces.
@@ -57,38 +57,33 @@ The examples use tablespaces so that the failure scenarios run in a deterministi
     ) TABLESPACE txndemo_tablespace;
     ```
 
+    As we have setup leader preference to node-2, all the leaders for `txndemo` table would now be in node-2.
+
+    ![Leaders in node-2](/images/explore/transactions/cluster_with_preferred_leaders.svg)
+
 1. Insert sample data using the following command:
 
     ```plpgsql
     INSERT INTO txndemo SELECT id,10 FROM generate_series(1,5) AS id;
     ```
 
-1. From another terminal of your YugabyteDB home directory, list the tablets in the table to see where the data is located using the following command:
+1. Goto [http://127.0.0.1:7000/tablet-servers]() to list the servers and see where the data is located.
 
-    ```sh
-    ./bin/yb-admin list_tablets ysql.yugabyte txndemo
-    ```
+    ![Leaders in node-2](/images/explore/transactions/leaders-node2.png)
 
-    ```output.sh
-    Tablet-UUID                        Key Range         Leader-IP       Leader-UUID
-    a2b1564eef15417a8d63e57ee930a1b2   [0x0000, 0x5554]  127.0.0.2:9100  0a321a134fce4c95ba433a33f7c16416
-    a6ad12c8c01f474a9bd17914ca705f7e   [0x5555, 0xAAA9]  127.0.0.2:9100  0a321a134fce4c95ba433a33f7c16416
-    60f88495f6034baab6bb418ed3a0917f   [0xAAAA, 0xFFFF]  127.0.0.2:9100  0a321a134fce4c95ba433a33f7c16416
-    ```
-
-    All the leaders are in node `127.0.0.2`, and this is the node that you stop during the following failure scenarios.
+    All the leaders(__3/3__) are in node-2, and this is the node that you stop during the following failure scenarios.
 
 ## Node failure just before a transaction executes a statement
 
 During a transaction, when a row is modified or fetched, YugabyteDB sends the corresponding request to the node containing the row that is being modified or fetched.
 
-In this example, you can see how a transaction completes when the node that is about to receive a [provisional write](../../../architecture/transactions/distributed-txns/#provisional-records) fails by taking down node `127.0.0.2`, as that node has the row the transaction is about to modify.
+In this example, you can see how a transaction completes when the node that is about to receive a [provisional write](../../../architecture/transactions/distributed-txns/#provisional-records) fails by taking down node-2, as that node has the row the transaction is about to modify.
 
 The following diagram illustrates the high-level steps that ensure transactions to succeed when a node fails before receiving the write.
 
 ![Failure of a node before write](/images/explore/transactions/failure_node_before_write.svg)
 
-1. Connect to `127.0.0.1` as follows:
+1. Connect to node-1 as follows:
 
     ```sh
     ./bin/ysqlsh -h 127.0.0.1
@@ -105,28 +100,19 @@ The following diagram illustrates the high-level steps that ensure transactions 
     Time: 2.047 ms
     ```
 
-    The transaction is started, but the row hasn't yet been modified. At this point, no provisional records have been sent to node `127.0.0.2`.
+    The transaction is started, but the row hasn't yet been modified. At this point, no provisional records have been sent to node-2.
 
-1. From another terminal of your YugabyteDB home directory, stop the node at `127.0.0.2`, which has the row with `k=1`.
+1. From another terminal of your YugabyteDB home directory, stop node-2, which has the row with `k=1`.
 
     ```sh
     ./bin/yugabyted stop --base_dir=/tmp/ybd2
     ```
 
-1. List the nodes to verify the node at `127.0.0.2` is gone from the tablet list using the following command:
+1. Goto [http://127.0.0.1:7000/tablet-servers]() to verify that node-2 is gone from the tablet list using the following command:
 
-    ```sh
-    ./bin/yb-admin list_tablets ysql.yugabyte txndemo
-    ```
-
-    ```output.sh
-    Tablet-UUID                        Key Range         Leader-IP       Leader-UUID
-    a2b1564eef15417a8d63e57ee930a1b2   [0x0000, 0x5554]  127.0.0.1:9100  146f4b6440584e2a91d21f18cb17479c
-    a6ad12c8c01f474a9bd17914ca705f7e   [0x5555, 0xAAA9]  127.0.0.1:9100  146f4b6440584e2a91d21f18cb17479c
-    60f88495f6034baab6bb418ed3a0917f   [0xAAAA, 0xFFFF]  127.0.0.1:9100  146f4b6440584e2a91d21f18cb17479c
-    ```
-
-    Notice that the node `127.0.0.2` is gone and a new leader `127.0.0.1` has been elected for all the tablets that were in node `127.0.0.2`.
+    ![Leaders in node-1](/images/explore/transactions/leaders-node1.png)
+ 
+    Notice that node-2 is `DEAD` and a new leader node-1 has been elected for all the tablets that were in node-2.
 
 1. Update the row and commit the transaction as follows:
 
@@ -142,7 +128,7 @@ The following diagram illustrates the high-level steps that ensure transactions 
     Time: 2.964 ms
     ```
 
-    The transaction succeeds even though the node at `127.0.0.2` failed before receiving the provisional write, and the value updates to `20`. The transaction succeeds because a new leader (the node at `127.0.0.1`) gets quickly elected.
+    The transaction succeeds even though node-2 failed before receiving the provisional write, and the value updates to `20`. The transaction succeeds because a new leader (node-1) gets quickly elected.
 
 1. Check the value of the row at `k=1` using the following command:
 
@@ -159,7 +145,7 @@ The following diagram illustrates the high-level steps that ensure transactions 
 
     The row with `k=1` has the new value of `v=20`, confirming the completion of the transaction.
 
-1. From another terminal of your YugabyteDB home directory, restart the node at `127.0.0.2` using the following command.
+1. From another terminal of your YugabyteDB home directory, restart node-2 using the following command.
 
     ```sh
     ./bin/yugabyted start --base_dir=/tmp/ybd2
@@ -199,28 +185,20 @@ The following diagram illustrates the high-level steps that ensure transactions 
     Time: 51.513 ms
     ```
 
-    The update succeeds. This means that the updated row with value `v=30` has been sent to node `127.0.0.2`, but not yet committed.
+    The update succeeds. This means that the updated row with value `v=30` has been sent to node-2, but not yet committed.
 
-1. From another terminal of your YugabyteDB home directory, stop the node at `127.0.0.2`, as this is the node that has received the modified row.
+1. From another terminal of your YugabyteDB home directory, stop node-2, as this is the node that has received the modified row.
 
     ```sh
     ./bin/yugabyted stop --base_dir=/tmp/ybd2
     ```
 
-1. Verify that the node at `127.0.0.2` is not active and that a new leader has been elected for the row with `k=1`. List the nodes as follows:
+1. Goto [http://127.0.0.1:7000/tablet-servers]() to verify that node-2 is gone from the server list and that a new leader has been elected for the row with `k=1`.
 
-    ```sh
-    ./bin/yb-admin list_tablets ysql.yugabyte txndemo
-    ```
+    ![Leaders in node-1](/images/explore/transactions/leaders-node1.png)
+ 
+    Notice that node-2 is `DEAD` and a new leader node-1 has been elected for all the tablets that were in node-2.
 
-    ```output.sh
-    Tablet-UUID                        Key Range         Leader-IP       Leader-UUID
-    a2b1564eef15417a8d63e57ee930a1b2   [0x0000, 0x5554]  127.0.0.1:9100  146f4b6440584e2a91d21f18cb17479c
-    a6ad12c8c01f474a9bd17914ca705f7e   [0x5555, 0xAAA9]  127.0.0.1:9100  146f4b6440584e2a91d21f18cb17479c
-    60f88495f6034baab6bb418ed3a0917f   [0xAAAA, 0xFFFF]  127.0.0.1:9100  146f4b6440584e2a91d21f18cb17479c
-    ```
-
-    Notice that `127.0.0.2` is gone from the list and `127.0.0.1` is now the leader for all the tablets that were in `127.0.0.2`.
 
 1. Commit the transaction as follows:
 
@@ -233,7 +211,7 @@ The following diagram illustrates the high-level steps that ensure transactions 
     Time: 6.243 ms
     ```
 
-    The transaction succeeds even though the node at `127.0.0.2` failed after receiving the provisional write, and the row value updates to `30`. This is because the provisional writes were replicated to the follower tablets and when the leader failed, the newly elected leader already had the provisional writes, which enabled the transaction to continue without disruption.
+    The transaction succeeds even though node-2 failed after receiving the provisional write, and the row value updates to `30`. This is because the provisional writes were replicated to the follower tablets and when the leader failed, the newly elected leader already had the provisional writes, which enabled the transaction to continue without disruption.
 
 1. Check the value of the row at `k=1` using the following command:
 
@@ -250,7 +228,7 @@ The following diagram illustrates the high-level steps that ensure transactions 
 
     The row with `k=1` has the new value of `v=30`, confirming the completion of the transaction.
 
-1. From another terminal of your YugabyteDB home directory, restart the node at `127.0.0.2` using the following command.
+1. From another terminal of your YugabyteDB home directory, restart node-2 using the following command.
 
     ```sh
     ./bin/yugabyted start --base_dir=/tmp/ybd2
@@ -268,7 +246,7 @@ The following diagram illustrates the high-level steps that result in transactio
 
 For this case, you can connect to any node in the cluster; `127.0.0.1` has been chosen in this example.
 
-1. If not already connected, connect to the node at `127.0.0.1` as follows:
+1. If not already connected, connect to node-1 as follows:
 
     ```sh
     ./bin/ysqlsh -h 127.0.0.1
@@ -294,7 +272,7 @@ For this case, you can connect to any node in the cluster; `127.0.0.1` has been 
     Time: 50.624 ms
     ```
 
-1. From another terminal of your YugabyteDB home directory, stop the node at `127.0.0.1` (the node that you have connected to) as follows:
+1. From another terminal of your YugabyteDB home directory, stop node-1 (the node that you have connected to) as follows:
 
     ```sh
     ./bin/yugabyted stop --base_dir=/tmp/ybd1
@@ -342,3 +320,7 @@ For this case, you can connect to any node in the cluster; `127.0.0.1` has been 
 
 You can shut down the local cluster by following the instructions provided in [Destroy a local cluster](../../../reference/configuration/yugabyted/#destroy-a-local-cluster).
 
+## Learn More
+-   [Impact of Failures on a Transaction](../../../architecture/transactions/distributed-txns/#impact-of-failures) - Understand how failures impact the flow of transaction
+-   [Transactions Architecture](../../../architecture/transactions/transactions-overview/) - Understand how transactions are implemented in YugabyteDB.
+-   [Transaction examples](../transactions/distributed-transactions-ysql/) - Try out examples to understand different options associated with a transaction.
