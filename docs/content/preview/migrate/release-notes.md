@@ -26,7 +26,7 @@ Included here are the release notes for the YugabyteDB Voyager v1 release series
 
 * The precision and scale of numeric data types from Oracle are migrated to the target database.
 
-* For PostgreSQL migrations, YB Voyager is not using a password in the `pg_dump` command running in the background, instead, it is internally set as an environment variable to be used by `pg_dump`.
+* For PostgreSQL migrations, YB Voyager no longer uses a password in the `pg_dump` command running in the background. Instead, the password is internally set as an environment variable to be used by `pg_dump`.
 
 * For any syntax error in the data file or CSV file, complete error details such as line number, column, and data are displayed in the output of the `import data` or `import data file` commands.
 
