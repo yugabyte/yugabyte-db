@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.AccessManager.KeyType;
 import com.yugabyte.yw.models.AccessKey;
@@ -124,6 +125,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
         customSecurityGroup,
         customImageId,
         hasSecondarySubnet,
+        false,
         false);
   }
 
@@ -139,6 +141,33 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       boolean hasSecondarySubnet,
       boolean isAddRegion)
       throws InterruptedException {
+    validateCloudBootstrapSuccess(
+        taskParams,
+        zoneInfo,
+        expectedRegions,
+        expectedProviderCode,
+        customAccessKey,
+        customAzMapping,
+        customSecurityGroup,
+        customImageId,
+        hasSecondarySubnet,
+        isAddRegion,
+        false);
+  }
+
+  private void validateCloudBootstrapSuccess(
+      CloudBootstrap.Params taskParams,
+      JsonNode zoneInfo,
+      List<String> expectedRegions,
+      String expectedProviderCode,
+      boolean customAccessKey,
+      boolean customAzMapping,
+      boolean customSecurityGroup,
+      boolean customImageId,
+      boolean hasSecondarySubnet,
+      boolean isAddRegion,
+      boolean armArchitecture)
+      throws InterruptedException {
     Provider provider = Provider.get(taskParams.providerUUID);
     // Mock region metadata.
     mockRegionMetadata(Common.CloudType.valueOf(provider.code));
@@ -148,9 +177,11 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     when(mockCloudQueryHelper.getZones(any(UUID.class), anyString(), anyString()))
         .thenReturn(zoneInfo);
     String defaultImage = "test_image_id";
-    when(mockCloudQueryHelper.getDefaultImage(any(Region.class))).thenReturn(defaultImage);
-    String x86_64 = "x86_64";
-    when(mockCloudQueryHelper.getImageArchitecture(any(Region.class))).thenReturn(x86_64);
+    when(mockCloudQueryHelper.getDefaultImage(any(Region.class), any())).thenReturn(defaultImage);
+    if (expectedProviderCode.equals("aws")) {
+      String arch = armArchitecture ? "aarch64" : "x86_64";
+      when(mockCloudQueryHelper.getImageArchitecture(any(Region.class))).thenReturn(arch);
+    }
     taskParams.providerUUID = provider.uuid;
 
     UUID taskUUID = submitTask(taskParams);
@@ -261,6 +292,8 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       } else {
         assertEquals(r.getYbImage(), defaultImage);
       }
+      // Check Arch info.
+      assertEquals(r.getArchitecture(), metadata.architecture);
     }
   }
 
@@ -271,6 +304,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     CloudBootstrap.Params.PerRegionMetadata perRegionMetadata =
         new CloudBootstrap.Params.PerRegionMetadata();
     perRegionMetadata.vpcId = "test-vpc";
+    perRegionMetadata.architecture = Architecture.valueOf("x86_64");
     taskParams.perRegionMetadata.put("us-west-1", perRegionMetadata);
     validateCloudBootstrapSuccess(
         taskParams, zoneInfo, ImmutableList.of("us-west-1"), "aws", false, false, false, false);
@@ -284,6 +318,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     CloudBootstrap.Params.PerRegionMetadata perRegionMetadata =
         new CloudBootstrap.Params.PerRegionMetadata();
     perRegionMetadata.vpcId = "test-vpc";
+    perRegionMetadata.architecture = Architecture.valueOf("x86_64");
     taskParams.perRegionMetadata.put("us-west-1", perRegionMetadata);
     // Add in the keypair info.
     taskParams.keyPairName = "keypair-name";
@@ -301,6 +336,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     CloudBootstrap.Params.PerRegionMetadata perRegionMetadata =
         new CloudBootstrap.Params.PerRegionMetadata();
     perRegionMetadata.vpcId = "test-vpc";
+    perRegionMetadata.architecture = Architecture.valueOf("x86_64");
     taskParams.perRegionMetadata.put("us-west-1", perRegionMetadata);
     // Add in the keypair info.
     taskParams.keyPairName = "keypair-name";
@@ -316,6 +352,15 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       boolean useSecondarySubnet,
       boolean useCustomImage,
       CloudBootstrap.Params.PerRegionMetadata regionMetadata) {
+    createPerRegionMetadata(region, useSecondarySubnet, useCustomImage, true, regionMetadata);
+  }
+
+  public void createPerRegionMetadata(
+      String region,
+      boolean useSecondarySubnet,
+      boolean useCustomImage,
+      boolean useDefaultArchitecture,
+      CloudBootstrap.Params.PerRegionMetadata regionMetadata) {
     regionMetadata.vpcId = region;
     regionMetadata.azToSubnetIds = new HashMap<>();
     regionMetadata.azToSecondarySubnetIds = new HashMap<>();
@@ -329,6 +374,9 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       regionMetadata.customImageId = region + "-image";
     }
     regionMetadata.customSecurityGroupId = region + "-sg-id";
+    if (useDefaultArchitecture) {
+      regionMetadata.architecture = Architecture.valueOf("x86_64");
+    }
   }
 
   @Test
@@ -559,7 +607,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     CloudBootstrap.Params taskParams = getBaseTaskParams();
     CloudBootstrap.Params.PerRegionMetadata perRegionMetadata =
         new CloudBootstrap.Params.PerRegionMetadata();
-    createPerRegionMetadata(region, false, false, perRegionMetadata);
+    createPerRegionMetadata(region, false, false, false, perRegionMetadata);
     String instanceTemplate = "TestInstanceTemplate";
     perRegionMetadata.instanceTemplate = instanceTemplate;
     taskParams.perRegionMetadata.put(region, perRegionMetadata);
@@ -569,5 +617,28 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     Provider provider = Provider.get(taskParams.providerUUID);
     GCPRegionCloudInfo g = CloudInfoInterface.get(provider.regions.get(0));
     assertEquals(instanceTemplate, g.getInstanceTemplate());
+  }
+
+  @Test
+  public void testCloudBootstrapSuccessAwsAarchArchitecture() throws InterruptedException {
+    JsonNode zoneInfo = Json.parse("{\"us-west-1\": {\"zone-1\": \"subnet-1\"}}");
+    CloudBootstrap.Params taskParams = getBaseTaskParams();
+    CloudBootstrap.Params.PerRegionMetadata perRegionMetadata =
+        new CloudBootstrap.Params.PerRegionMetadata();
+    perRegionMetadata.vpcId = "test-vpc";
+    perRegionMetadata.architecture = Architecture.valueOf("aarch64");
+    taskParams.perRegionMetadata.put("us-west-1", perRegionMetadata);
+    validateCloudBootstrapSuccess(
+        taskParams,
+        zoneInfo,
+        ImmutableList.of("us-west-1"),
+        "aws",
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true);
   }
 }

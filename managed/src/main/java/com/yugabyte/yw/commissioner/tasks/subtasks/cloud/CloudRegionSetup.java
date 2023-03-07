@@ -32,6 +32,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import play.api.Play;
 import play.libs.Json;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class CloudRegionSetup extends CloudTaskBase {
@@ -81,6 +82,10 @@ public class CloudRegionSetup extends CloudTaskBase {
     }
     final Region region = createdRegion;
     String customImageId = taskParams().metadata.customImageId;
+    String architecture =
+        taskParams().metadata.architecture != null
+            ? taskParams().metadata.architecture.name()
+            : null;
     if (customImageId != null && !customImageId.isEmpty()) {
       region.setYbImage(customImageId);
       region.update();
@@ -91,7 +96,7 @@ public class CloudRegionSetup extends CloudTaskBase {
         case gcp:
         case azu:
           // Setup default image, if no custom one was specified.
-          String defaultImage = queryHelper.getDefaultImage(region);
+          String defaultImage = queryHelper.getDefaultImage(region, architecture);
           if (defaultImage == null || defaultImage.isEmpty()) {
             throw new RuntimeException("Could not get default image for region: " + regionCode);
           }
@@ -115,7 +120,9 @@ public class CloudRegionSetup extends CloudTaskBase {
     }
 
     // Attempt to find architecture for AWS providers.
-    if (provider.code.equals(Common.CloudType.aws.toString())) {
+    if (provider.code.equals(Common.CloudType.aws.toString())
+        && (region.getArchitecture() == null
+            || (customImageId != null && !customImageId.isEmpty()))) {
       String arch = queryHelper.getImageArchitecture(region);
       if (arch == null || arch.isEmpty()) {
         log.warn(

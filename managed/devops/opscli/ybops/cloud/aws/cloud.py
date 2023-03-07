@@ -63,11 +63,12 @@ class AwsCloud(AbstractCloud):
     def get_vpc_for_subnet(self, region, subnet):
         return get_vpc_for_subnet(get_client(region), subnet)
 
-    def get_image(self, region=None):
+    def get_image(self, region=None, architecture="x86_64"):
         regions = [region] if region is not None else self.get_regions()
+        imageKey = "arm_image" if architecture == "aarch64" else "image"
         output = {}
         for r in regions:
-            output[r] = self.metadata["regions"][r]["image"]
+            output[r] = self.metadata["regions"][r][imageKey]
         return output
 
     def get_image_arch(self, args):
@@ -253,7 +254,7 @@ class AwsCloud(AbstractCloud):
         result = {}
         for region in self._get_all_regions_or_arg(args.region):
             result[region] = query_vpc(region)
-            result[region]["default_image"] = self.get_image(region).get(region)
+            result[region]["default_image"] = self.get_image(region, args.architecture).get(region)
         return result
 
     def get_current_host_info(self, args):
