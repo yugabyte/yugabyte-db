@@ -127,11 +127,11 @@ A typical migration workflow using yb-voyager consists of the following steps:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="release-notes/">
       <div class="head">
-       <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true">
+       <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true">
         <div class="title">What's New</div>
       </div>
       <div class="body">
-        Learn about the existing issues and workarounds you can do before migrating data using yb-voyager.
+        Refer to the YugabyteDB Voyager release notes for details about the new features, enhancements and bugs fixes.
       </div>
     </a>
   </div>
