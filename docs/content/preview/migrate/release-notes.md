@@ -22,7 +22,7 @@ Included here are the release notes for the YugabyteDB Voyager v1 release series
 
 * Creating the Orafce extension on the target database for Oracle migrations is now available by default.
 
-* Enhanced user creation steps for Oracle to not require `EXECUTE` permissions on `PROCEDURE`, `FUNCTION`, `PACKAGE`, and `PACKAGE BODY` objects.
+* User creation for Oracle no longer requires `EXECUTE` permissions on `PROCEDURE`, `FUNCTION`, `PACKAGE`, and `PACKAGE BODY` objects.
 
 * The precision and scale of numeric data types from Oracle are migrated to the target database.
 
