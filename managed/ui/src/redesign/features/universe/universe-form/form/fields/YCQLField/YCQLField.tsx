@@ -49,7 +49,11 @@ export const YCQLField = ({ disabled, enforceAuth }: YCQLFieldProps): ReactEleme
     <Box display="flex" width="100%" flexDirection="column" data-testid="YCQLField-Container">
       <Box display="flex">
         <YBTooltip
-          title={!ysqlEnabled ? (t('universeForm.instanceConfig.enableYsqlOrYcql') as string) : ''}
+          title={
+            !ysqlEnabled
+              ? (t('universeForm.securityConfig.authSettings.enableYsqlOrYcql') as string)
+              : ''
+          }
           placement="top-start"
         >
           <div>

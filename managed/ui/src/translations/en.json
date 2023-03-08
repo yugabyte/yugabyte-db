@@ -1,6 +1,7 @@
 {
   "translation": {
     "common": {
+      "apply": "Apply",
       "cancel": "Cancel",
       "confirm": "Confirm",
       "create": "Create",
@@ -12,7 +13,28 @@
       "validateAndSave": "Validate and Save",
       "yes": "Yes",
       "close": "Close",
-      "saving": "Saving"
+      "saving": "Saving",
+      "select": "Select",
+      "active": "Active",
+      "none": "None"
+    },
+    "universeActions": {
+      "encryptionAtRest": {
+        "title": "Manage encryption at-Rest",
+        "enableEAR": "Enable encryption at-Rest for this Universe",
+        "kmsConfig": "Key management service config",
+        "selectKMSConfig": "Select key management service config",
+        "rotateKMSConfig": "Rotate key management service config",
+        "universeKey": "Universe Key",
+        "rotateUniverseKey": "Rotate Universe key",
+        "rotateBothWarning": "Rotating Master key and Universe key should be performed at different times.",
+        "earEnabledSuccess": "Encryption-at-rest is enabled successfully.",
+        "earDisabedSuccess": "Encryption-at-rest is disabled.",
+        "universeKeyRotationSuccess": "Successfully rotated universe key.",
+        "masterKeyRotationSuccess": "Successfully rotated master key.",
+        "lastRotatedLabel": "Last rotated: ",
+        "lastActiveKMSLabel": "Last active KMS: "
+      }
     },
     "commonErrors": {
       "pageNotExist": "Seems like this Page does not exist",
@@ -322,14 +344,14 @@
         "addNewVariableText": "Create your own variables with <bold> customized value </bold> to use in the notification templates.",
         "createNewVariableButton": "Create Custom Variable",
         "systemVariables": "System Variables",
-        "assignVariablesButton":"Assign Variable Value to Alert Policies",
+        "assignVariablesButton": "Assign Variable Value to Alert Policies",
         "customVariableContextMenu": {
           "editVariable": "Edit Variable",
           "variableDetails": "Variable Details",
           "deleteVariable": "Delete Variable"
         },
         "variableText": "Variable",
-        "deleteSuccess":"Successfully deleted custom variable <u>{{variable_name}}</u>",
+        "deleteSuccess": "Successfully deleted custom variable <u>{{variable_name}}</u>",
         "createSuccess": "Successfully created custom variable <u>{{variable_name}}</u>",
         "editSuccess": "Successfully edited custom variable <u>{{variable_name}}</u>",
         "createNewVariableModal": {
@@ -341,7 +363,7 @@
           "addValuesButton": "Add Values",
           "valuesHelpText": "Define the possible values for the variable. Set one of the values as the <bold>default</bold> to use for all alerts that use the notification template. You can choose a value when configuring the alert policy."
         },
-        "assignCustomVariableValueModal":{
+        "assignCustomVariableValueModal": {
           "title": "Assign Variable Value to Alert Policies",
           "searchHelpText": "For each alert policy, choose the variable value to display in alert notifications.",
           "searchInputPlaceHolder": "Filter by alert policy name",
