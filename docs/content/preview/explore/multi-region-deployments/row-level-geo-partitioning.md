@@ -301,7 +301,7 @@ txn_type      | debit
 created_at    | 2020-11-07 21:45:26.067444
 ```
 
-However, if you need to query the local partition without specifying the partition column, you can use the function [yb_is_local_table](../../../api/ysql/exprs/func_yb_is_local_table). To implement the same query as above using `yb_is_local_table`, you can do the following:
+However, if you need to query the local partition without specifying the partition column, you can use the function [yb_is_local_table](../../../api/ysql/exprs/geo_partitioning_helper_functions/func_yb_is_local_table). To implement the same query as above using `yb_is_local_table`, you can do the following:
 
 ```sql
 yugabyte=# select * from bank_transactions where yb_is_local_table(tableoid);
