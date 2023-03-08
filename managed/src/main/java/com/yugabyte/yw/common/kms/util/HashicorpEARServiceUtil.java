@@ -50,10 +50,9 @@ public class HashicorpEARServiceUtil {
           returnVault = new VaultTransit(accesor, mountPath, keyType);
           break;
         default:
-          returnVault = null;
           break;
       }
-      LOG.info("Returning Object {}", returnVault.toString());
+      LOG.info("Returning Object {}", returnVault);
       return returnVault;
     }
 
