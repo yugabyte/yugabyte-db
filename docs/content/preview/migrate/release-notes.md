@@ -18,7 +18,7 @@ Included here are the release notes for the YugabyteDB Voyager v1 release series
 
 ### Key enhancements
 
-* When using the `import data` file command with CSV files, YB Voyager now supports any character as an escape character and a quote character in the `--file-opts` flag, such as single quote (') as a `quote_char` and backslash (\) as an `escape_char`, and so on. Previously, YB Voyager only supported double quotes (") as a quote character and an escape character. 
+* When using the `import data` file command with CSV files, YB Voyager now supports any character as an escape character and a quote character in the `--file-opts` flag, such as single quote (`'`) as a `quote_char` and backslash (`\`) as an `escape_char`, and so on. Previously, YB Voyager only supported double quotes (`"`) as a quote character and an escape character.
 
 * Creating the Orafce extension on the target database for Oracle migrations is now available by default.
 
