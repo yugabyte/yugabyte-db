@@ -25,7 +25,8 @@ func CreateBackupScript(outputPath string, dataDir string,
 		log.Debug("Create Backup Script has now been given executable permissions.")
 	}
 
-	args := []string{"create", "--output", outputPath, "--data_dir", dataDir, "--yba_installer"}
+	args := []string{"create", "--output", outputPath, "--data_dir", dataDir,
+		"--yba_installer", "--yba_version", common.GetVersion()}
 	if excludePrometheus {
 		args = append(args, "--exclude-prometheus")
 	}
@@ -36,18 +37,7 @@ func CreateBackupScript(outputPath string, dataDir string,
 		args = append(args, "--verbose")
 	}
 
-	if viper.GetBool("postgres.useExisting.enabled") {
-		args = append(args, "--db_username", viper.GetString("postgres.useExisting.username"))
-		args = append(args, "--db_host", viper.GetString("postgres.useExisting.host"))
-		args = append(args, "--db_port", viper.GetString("postgres.useExisting.port"))
-		// TODO: modify yb platform backup sript to accept a custom password
-	}
-
-	if viper.GetBool("postgres.install.enabled") {
-		args = append(args, "--db_username", "postgres")
-		args = append(args, "--db_host", "localhost")
-		args = append(args, "--db_port", viper.GetString("postgres.install.port"))
-	}
+	addPostgresArgs(args)
 
 	log.Info("Creating a backup of your YugabyteDB Anywhere Installation.")
 	common.RunBash(fileName, args)
@@ -68,21 +58,38 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 
 	args := []string{"restore", "--input", inputPath,
 		"--destination", destination, "--data_dir", destination, "--disable_version_check",
-		"--yba_installer"}
+		"--yba_installer", "--yba_version", common.GetVersion()}
 	if skipRestart {
 		args = append(args, "--skip_restart")
 	}
 	if verbose {
 		args = append(args, "--verbose")
 	}
+	// Add prometheus user
 	if common.HasSudoAccess() {
-		args = append(args, "-u", userName, "-e", userName)
+		args = append(args, "-e", userName)
 	} else {
-		args = append(args, "-u", common.GetCurrentUser(), "-e", common.GetCurrentUser())
+		args = append(args, "-e", common.GetCurrentUser())
 	}
+	addPostgresArgs(args)
 	log.Info("Restoring a backup of your YugabyteDB Anywhere Installation.")
 	common.RunBash(fileName, args)
 
+}
+
+func addPostgresArgs(args []string) {
+	if viper.GetBool("postgres.useExisting.enabled") {
+		args = append(args, "--db_username", viper.GetString("postgres.useExisting.username"))
+		args = append(args, "--db_host", viper.GetString("postgres.useExisting.host"))
+		args = append(args, "--db_port", viper.GetString("postgres.useExisting.port"))
+		// TODO: modify yb platform backup sript to accept a custom password
+	}
+
+	if viper.GetBool("postgres.install.enabled") {
+		args = append(args, "--db_username", "postgres")
+		args = append(args, "--db_host", "localhost")
+		args = append(args, "--db_port", viper.GetString("postgres.install.port"))
+	}
 }
 
 func createBackupCmd() *cobra.Command {

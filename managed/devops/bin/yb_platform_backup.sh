@@ -10,11 +10,27 @@
 
 set -euo pipefail
 
+find_python_executable() {
+  PYTHON_EXECUTABLES=('python3' 'python3.6' \
+    'python3.7' 'python3.8' 'python3.9' 'python' 'python2' 'python2.7')
+  for py_executable in "${PYTHON_EXECUTABLES[@]}"; do
+    if which "$py_executable" > /dev/null 2>&1; then
+      PYTHON_EXECUTABLE="$py_executable"
+      return
+    fi
+  done
+
+  echo "Failed to find python executable."
+  exit 1
+}
+
 SCRIPT_NAME=$(basename "$0")
 USER=$(whoami)
 PLATFORM_DUMP_FNAME="platform_dump.sql"
 PLATFORM_DB_NAME="yugaware"
 PROMETHEUS_SNAPSHOT_DIR="prometheus_snapshot"
+PYTHON_EXECUTABLE=""
+find_python_executable
 # This is the UID for nobody user which is used by the prometheus container as the default user.
 NOBODY_UID=65534
 # When false, we won't stop/start platform and prometheus services when executing the script
@@ -75,7 +91,7 @@ set_prometheus_data_dir() {
     PROMETHEUS_DATA_DIR="${data_dir}/prometheusv2"
   else
     PROMETHEUS_DATA_DIR=$(curl "http://${prometheus_host}:9090/api/v1/status/flags" |
-    python -c "import sys, json; print(json.load(sys.stdin)['data']['storage.tsdb.path'])")
+    ${PYTHON_EXECUTABLE} -c "import sys, json; print(json.load(sys.stdin)['data']['storage.tsdb.path'])")
   fi
   if [[ -z "$PROMETHEUS_DATA_DIR" ]]; then
     echo "Failed to find prometheus data directory"
@@ -108,7 +124,7 @@ create_postgres_backup() {
   # Determine pg_dump path in yba-installer cases where postgres is installed in data_dir.
   if [[ "${yba_installer}" = true ]]; then
     # TODO: Need to pick up from system for bring their own postgres.
-    pg_dump=$(find ${data_dir} -name pg_dump)
+    pg_dump=$(find ${data_dir}/**/${yba_version} -name pg_dump)
   fi
 
   if [[ "${verbose}" = true ]]; then
@@ -143,7 +159,7 @@ restore_postgres_backup() {
 
   # Determine pg_restore path in yba-installer cases where postgres is installed in data_dir.
   if [[ "${yba_installer}" = true ]]; then
-    pg_restore=$(find ${data_dir} -name pg_restore)
+    pg_restore=$(find ${data_dir}/**/${yba_version} -name pg_restore)
   fi
 
   if [[ "${verbose}" = true ]]; then
@@ -281,7 +297,7 @@ create_backup() {
     echo "Creating prometheus snapshot..."
     set_prometheus_data_dir "${prometheus_host}" "${data_dir}"
     snapshot_dir=$(curl -X POST "http://${prometheus_host}:${prometheus_port}/api/v1/admin/tsdb/snapshot" |
-      python -c "import sys, json; print(json.load(sys.stdin)['data']['name'])")
+      ${PYTHON_EXECUTABLE} -c "import sys, json; print(json.load(sys.stdin)['data']['name'])")
     mkdir -p "$data_dir/$PROMETHEUS_SNAPSHOT_DIR"
     run_sudo_cmd "cp -aR ${PROMETHEUS_DATA_DIR}/snapshots/${snapshot_dir} \
     ${data_dir}/${PROMETHEUS_SNAPSHOT_DIR}"
@@ -411,17 +427,17 @@ restore_backup() {
 
   build_command="'import json, sys; print(json.load(sys.stdin)[\"build_number\"])'"
 
-  version="eval cat ${r_path_current} | python -c ${version_command}"
+  version="eval cat ${r_path_current} | ${PYTHON_EXECUTABLE} -c ${version_command}"
 
-  build="eval cat ${r_path_current} | python -c ${build_command}"
+  build="eval cat ${r_path_current} | ${PYTHON_EXECUTABLE} -c ${build_command}"
 
   curr_platform_version=$(${version})-$(${build})
 
   # The version_metadata.json file is always present in a release package, and it would have
   # been stored during create_backup(), so we don't need to check if the file exists before
   # restoring it from the restore path.
-  bp1=$(cat ${r_pth} | python -c ${version_command})
-  bp2=$(cat ${r_pth} | python -c ${build_command})
+  bp1=$(cat ${r_pth} | ${PYTHON_EXECUTABLE} -c ${version_command})
+  bp2=$(cat ${r_pth} | ${PYTHON_EXECUTABLE} -c ${build_command})
   back_plat_version=${bp1}-${bp2}
 
   if [ ${curr_platform_version} != ${back_plat_version} ]
@@ -505,6 +521,7 @@ print_backup_usage() {
   echo "  --k8s_namespace                kubernetes namespace"
   echo "  --k8s_pod                      kubernetes pod"
   echo "  --yba_installer                yba_installer installation (default: false)"
+  echo "  --yba_version                  YBA version being restored"
   echo "  -?, --help                     show create help, then exit"
   echo
 }
@@ -527,6 +544,7 @@ print_restore_usage() {
   echo "  -?, --help                     show restore help, then exit"
   echo "  --disable_version_check        disable the backup version check (default: false)"
   echo "  --yba_installer                yba_installer backup (default: false)"
+  echo "  --yba_version                  YBA version being restored"
   echo
 }
 
@@ -568,6 +586,7 @@ data_dir=/opt/yugabyte
 verbose=false
 disable_version_check=false
 yba_installer=false
+yba_version=""
 
 case $command in
   -?|--help)
@@ -644,6 +663,10 @@ case $command in
         --yba_installer)
           yba_installer=true
           shift
+          ;;
+        --yba_version)
+          yba_version=$2
+          shift 2
           ;;
         -?|--help)
           print_backup_usage
@@ -734,6 +757,10 @@ case $command in
         --yba_installer)
           yba_installer=true
           shift
+          ;;
+        --yba_version)
+          yba_version=$2
+          shift 2
           ;;
         -?|--help)
           print_restore_usage
