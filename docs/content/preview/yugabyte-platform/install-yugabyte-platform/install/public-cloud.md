@@ -1,5 +1,5 @@
 ---
-title: Install YugabyteDB Anywhere Overview
+title: Install YugabyteDB Anywhere on Public Cloud Overview
 headerTitle: Overview
 linkTitle: Overview
 description: Installing YugabyteDB Anywhere on public clouds

@@ -1,5 +1,5 @@
 ---
-title: Security
+title: YugabyteDB Anywhere Security
 headerTitle: Security
 linkTitle: Security
 description: Secure YugabyteDB Anywhere and YugabyteDB universes.

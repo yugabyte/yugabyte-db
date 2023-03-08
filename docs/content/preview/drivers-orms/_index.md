@@ -48,7 +48,7 @@ In addition to the compatible upstream PostgreSQL drivers, YugabyteDB also suppo
   <li>
     <a href="nodejs/" class="orange">
       <i class="fa-brands fa-node-js"></i>
-      NodeJS
+      Node.js
     </a>
   </li>
 
