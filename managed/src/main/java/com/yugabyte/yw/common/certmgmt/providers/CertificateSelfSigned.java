@@ -73,7 +73,7 @@ public class CertificateSelfSigned extends CertificateProviderBase {
     try {
       // Add the security provider in case createSignedCertificate was never called.
       KeyPair newCertKeyPair = CertificateHelper.getKeyPairObject();
-      Boolean syncCertsToDB = username == CertificateHelper.DEFAULT_CLIENT;
+      boolean syncCertsToDB = CertificateHelper.DEFAULT_CLIENT.equals(username);
 
       CertificateInfo certInfo = CertificateInfo.get(rootCA);
       if (certInfo.privateKey == null) {

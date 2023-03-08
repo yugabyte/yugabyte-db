@@ -1840,10 +1840,6 @@
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
         },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
-        },
         "frequencyTimeUnit" : {
           "description" : "Time unit for user input schedule frequency",
           "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
@@ -2210,10 +2206,6 @@
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
         },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
-        },
         "fullChainSizeInBytes" : {
           "description" : "Incremental backups chain size",
           "format" : "int64",
@@ -2496,10 +2488,6 @@
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
-        },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
         },
         "installYbc" : {
           "type" : "boolean"
@@ -2795,10 +2783,6 @@
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
-        },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
         },
         "importedState" : {
           "enum" : [ "NONE", "STARTED", "MASTERS_ADDED", "TSERVERS_ADDED", "IMPORTED" ],
@@ -3386,10 +3370,6 @@
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
-        },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
         },
         "installYbc" : {
           "type" : "boolean"
@@ -4289,10 +4269,6 @@
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
         },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
-        },
         "importedState" : {
           "enum" : [ "NONE", "STARTED", "MASTERS_ADDED", "TSERVERS_ADDED", "IMPORTED" ],
           "type" : "string"
@@ -4940,10 +4916,6 @@
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
-        },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
         },
         "importedState" : {
           "enum" : [ "NONE", "STARTED", "MASTERS_ADDED", "TSERVERS_ADDED", "IMPORTED" ],
@@ -5611,10 +5583,6 @@
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
-        },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
         },
         "fullChainSizeInBytes" : {
           "description" : "Incremental backups chain size",
@@ -7378,10 +7346,6 @@
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
         },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
-        },
         "forceResizeNode" : {
           "type" : "boolean"
         },
@@ -7619,10 +7583,6 @@
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
-        },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
         },
         "importedState" : {
           "enum" : [ "NONE", "STARTED", "MASTERS_ADDED", "TSERVERS_ADDED", "IMPORTED" ],
@@ -7916,10 +7876,6 @@
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
-        },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
         },
         "installYbc" : {
           "type" : "boolean"
@@ -8225,10 +8181,6 @@
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
-        },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
         },
         "installYbc" : {
           "type" : "boolean"
@@ -8663,10 +8615,6 @@
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
         },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
-        },
         "importedState" : {
           "enum" : [ "NONE", "STARTED", "MASTERS_ADDED", "TSERVERS_ADDED", "IMPORTED" ],
           "type" : "string"
@@ -9095,10 +9043,6 @@
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
         },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
-        },
         "importedState" : {
           "enum" : [ "NONE", "STARTED", "MASTERS_ADDED", "TSERVERS_ADDED", "IMPORTED" ],
           "type" : "string"
@@ -9287,10 +9231,6 @@
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
-        },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
         },
         "installYbc" : {
           "type" : "boolean"
@@ -9555,10 +9495,6 @@
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
         },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
-        },
         "forceAll" : {
           "type" : "boolean"
         },
@@ -9779,10 +9715,6 @@
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
-        },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
         },
         "importedState" : {
           "enum" : [ "NONE", "STARTED", "MASTERS_ADDED", "TSERVERS_ADDED", "IMPORTED" ],
@@ -10032,10 +9964,6 @@
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
         },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
-        },
         "importedState" : {
           "enum" : [ "NONE", "STARTED", "MASTERS_ADDED", "TSERVERS_ADDED", "IMPORTED" ],
           "type" : "string"
@@ -10244,10 +10172,6 @@
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
         },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
-        },
         "importedState" : {
           "enum" : [ "NONE", "STARTED", "MASTERS_ADDED", "TSERVERS_ADDED", "IMPORTED" ],
           "type" : "string"
@@ -10452,10 +10376,6 @@
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
-        },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
         },
         "importedState" : {
           "enum" : [ "NONE", "STARTED", "MASTERS_ADDED", "TSERVERS_ADDED", "IMPORTED" ],
@@ -10850,10 +10770,6 @@
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
-        },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
         },
         "importedState" : {
           "enum" : [ "NONE", "STARTED", "MASTERS_ADDED", "TSERVERS_ADDED", "IMPORTED" ],
@@ -11404,10 +11320,6 @@
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
-        },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
         },
         "forceVMImageUpgrade" : {
           "type" : "boolean"
