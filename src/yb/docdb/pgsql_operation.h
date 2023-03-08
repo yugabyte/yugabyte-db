@@ -35,10 +35,10 @@ class PgsqlWriteOperation :
     public DocExprExecutor {
  public:
   PgsqlWriteOperation(std::reference_wrapper<const PgsqlWriteRequestPB> request,
-                      const DocReadContext& doc_read_context,
+                      DocReadContextPtr doc_read_context,
                       const TransactionOperationContext& txn_op_context)
       : DocOperationBase(request),
-        doc_read_context_(doc_read_context),
+        doc_read_context_(std::move(doc_read_context)),
         txn_op_context_(txn_op_context) {
   }
 
@@ -104,7 +104,7 @@ class PgsqlWriteOperation :
 
   //------------------------------------------------------------------------------------------------
   // Context.
-  const DocReadContext& doc_read_context_;
+  DocReadContextPtr doc_read_context_;
   const TransactionOperationContext txn_op_context_;
 
   // Input arguments.
