@@ -33,8 +33,6 @@ namespace master {
 class ListTablesResponsePB;
 class GetTableLocationsResponsePB;
 
-namespace enterprise {
-
 struct KeyRange {
   std::string start_key;
   std::string end_key;
@@ -66,6 +64,5 @@ Status UpdateTabletMappingOnProducerSplit(
     bool* found_all_split_childs,
     cdc::StreamEntryPB* stream_entry);
 
-} // namespace enterprise
 } // namespace master
 } // namespace yb

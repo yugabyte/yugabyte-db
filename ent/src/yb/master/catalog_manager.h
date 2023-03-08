@@ -23,9 +23,8 @@ namespace yb {
 class UniverseKeyRegistryPB;
 
 namespace master {
-namespace enterprise {
-
 struct KeyRange;
+namespace enterprise {
 
 class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorContext {
   typedef yb::master::CatalogManager super;

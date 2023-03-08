@@ -35,8 +35,6 @@ using std::vector;
 
 namespace yb {
 namespace master {
-namespace enterprise {
-
 std::map<std::string, std::string> GetPartitionStartKeyConsumerTabletMapping(
     const std::map<std::string, KeyRange>& consumer_tablet_keys) {
   std::map<std::string, std::string> partitions_map;
@@ -330,6 +328,5 @@ Status UpdateTabletMappingOnProducerSplit(
   return Status::OK();
 }
 
-}  // namespace enterprise
 }  // namespace master
 }  // namespace yb

@@ -33,12 +33,15 @@
 set(YB_PCH_PREFIX integration-tests)
 set(YB_PCH_DEP_LIBS boost_regex opid_proto)
 
+file(COPY
+  ${CMAKE_SOURCE_DIR}/ent/test_certs DESTINATION
+  ${CMAKE_BINARY_DIR}/ent
+  FILE_PERMISSIONS OWNER_WRITE OWNER_READ)
+
 ADD_YB_TEST_LIBRARY(
     cdc_test_util
     SRCS cdc_test_util.cc
     DEPS yb_test_util cdc_service_proto tserver)
-
-YB_INCLUDE_EXTENSIONS()
 
 set(INTEGRATION_TESTS_SRCS
   cluster_itest_util.cc
@@ -60,7 +63,6 @@ set(INTEGRATION_TESTS_SRCS
   xcluster_test_base.cc
   cdcsdk_test_base.cc
   xcluster_ysql_test_base.cc
-  ${INTEGRATION_TESTS_SRCS_EXTENSIONS}
 )
 
 ADD_YB_TEST_LIBRARY(integration-tests SRCS ${INTEGRATION_TESTS_SRCS})
@@ -190,6 +192,9 @@ ADD_YB_TEST(xcluster_ysql-test)
 ADD_YB_TEST(xcluster-test)
 ADD_YB_TEST(xcluster_safe_time-itest)
 ADD_YB_TEST(xcluster_dr-itest)
+ADD_YB_TEST(transaction-test)
+ADD_YB_TEST(encryption-test)
+ADD_YB_TEST(secure_connection_test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)
@@ -220,13 +225,3 @@ ADD_YB_CQL_TEST(cql_geo_transactions-test)
 ADD_YB_CQL_TEST(external_mini_cluster_secure_test)
 
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS_SAVED})
-
-# Additional tests
-if(YB_ENT_CURRENT_SOURCE_DIR)
-  # Set the test source file folder.
-  set(CMAKE_CURRENT_LIST_DIR ${YB_ENT_CURRENT_SOURCE_DIR})
-
-  foreach(test ${INTEGRATION_TESTS_EXTENSIONS_TESTS})
-    ADD_YB_TEST(${test})
-  endforeach()
-endif()

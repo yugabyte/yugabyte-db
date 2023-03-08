@@ -20,8 +20,6 @@
 #include "yb/client/table.h"
 #include "yb/client/table_info.h"
 
-#include "yb/integration-tests/external_mini_cluster_ent.h"
-
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_replication.proxy.h"
 

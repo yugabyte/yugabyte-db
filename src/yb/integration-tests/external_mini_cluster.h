@@ -84,6 +84,10 @@ class OpIdPB;
 class NodeInstancePB;
 class Subprocess;
 
+namespace rpc {
+class SecureContext;
+}
+
 namespace server {
 class ServerStatusPB;
 }  // namespace server
@@ -964,5 +968,11 @@ T ExternalMiniCluster::GetProxy(const ExternalDaemon* daemon) {
 Status RestartAllMasters(ExternalMiniCluster* cluster);
 
 Status CompactTablets(ExternalMiniCluster* cluster);
+
+void StartSecure(
+  std::unique_ptr<ExternalMiniCluster>* cluster,
+  std::unique_ptr<rpc::SecureContext>* secure_context,
+  std::unique_ptr<rpc::Messenger>* messenger,
+  const std::vector<std::string>& master_flags = std::vector<std::string>());
 
 }  // namespace yb
