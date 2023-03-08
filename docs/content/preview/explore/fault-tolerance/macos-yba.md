@@ -1,8 +1,8 @@
 ---
-title: High availability during failures
+title: High availability during failures (local cluster)
 headerTitle: High availability during node and zone failures
 linkTitle: HA during failures
-description: Simulate fault tolerance and resilience in a local YugabyteDB database universe.
+description: Simulate fault tolerance and resilience in a YugabyteDB Anywhere universe.
 headcontent: Keep serving requests through node, zone, and region failures
 menu:
   preview:

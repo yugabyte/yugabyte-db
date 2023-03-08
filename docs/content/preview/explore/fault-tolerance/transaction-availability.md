@@ -32,11 +32,7 @@ For more information on how YugabyteDB handles failures and its impact during tr
 
 1. Connect to your universe using [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh).
 
-1. Create a tablespace to ensure that the leaders for the keys in the example transaction are located in node-2, so that you can correctly simulate the scenario by stopping that node.
-
-    {{< note title="Note" >}}
-The examples use tablespaces so that the failure scenarios run in a deterministic manner in your cluster setup. YugabytedDB handles transaction failures in the same way either with or without tablespaces.
-    {{< /note >}}
+1. Create a tablespace to ensure that the leaders for the keys in the example transaction are located in node-2 as follows:
 
     ```plpgsql
     CREATE TABLESPACE txndemo_tablespace
@@ -46,6 +42,10 @@ The examples use tablespaces so that the failure scenarios run in a deterministi
         {"cloud":"aws","region":"us-east-2","zone":"us-east-2c","min_num_replicas":1,"leader_preference":3}
     ]}');
     ```
+
+    {{< note title="Note" >}}
+The examples use tablespaces so that the failure scenarios run in a deterministic manner in your cluster setup. YugabytedDB handles transaction failures in the same way either with or without tablespaces.
+    {{< /note >}}
 
 1. Create a table in the tablespace using the following command:
 
@@ -57,7 +57,7 @@ The examples use tablespaces so that the failure scenarios run in a deterministi
     ) TABLESPACE txndemo_tablespace;
     ```
 
-    As we have setup leader preference to node-2, all the leaders for `txndemo` table would now be in node-2.
+    Because the leader preference has been set to node-2 (us-east-2b), all the leaders for the `txndemo` table are now in node-2.
 
     ![Leaders in node-2](/images/explore/transactions/cluster_with_preferred_leaders.svg)
 
@@ -67,11 +67,26 @@ The examples use tablespaces so that the failure scenarios run in a deterministi
     INSERT INTO txndemo SELECT id,10 FROM generate_series(1,5) AS id;
     ```
 
-1. Goto [http://127.0.0.1:7000/tablet-servers]() to list the servers and see where the data is located.
+1. Navigate to <http://127.0.0.1:7000/tablet-servers> to list the servers and see where the data is located.
 
     ![Leaders in node-2](/images/explore/transactions/leaders-node2.png)
 
     All the leaders(__3/3__) are in node-2, and this is the node that you stop during the following failure scenarios.
+
+1. Check the value of the row at `k=1` using the following command:
+
+    ```plpgsql
+    SELECT * from txndemo where k=1;
+    ```
+
+    ```output
+      k | v
+    ----+----
+      1 | 10
+    (1 row)
+    ```
+
+    The row with `k=1` has the value of `v=10.
 
 ## Node failure just before a transaction executes a statement
 
@@ -79,7 +94,7 @@ During a transaction, when a row is modified or fetched, YugabyteDB sends the co
 
 In this example, you can see how a transaction completes when the node that is about to receive a [provisional write](../../../architecture/transactions/distributed-txns/#provisional-records) fails by taking down node-2, as that node has the row the transaction is about to modify.
 
-The following diagram illustrates the high-level steps that ensure transactions to succeed when a node fails before receiving the write.
+The following diagram illustrates the high-level steps that ensure transactions succeed when a node fails before receiving the write.
 
 ![Failure of a node before write](/images/explore/transactions/failure_node_before_write.svg)
 
@@ -100,21 +115,21 @@ The following diagram illustrates the high-level steps that ensure transactions 
     Time: 2.047 ms
     ```
 
-    The transaction is started, but the row hasn't yet been modified. At this point, no provisional records have been sent to node-2.
+    The transaction is started, but as yet no row has been modified. At this point, no provisional records have been sent to node-2.
 
-1. From another terminal of your YugabyteDB home directory, stop node-2, which has the row with `k=1`.
+1. From another terminal of your YugabyteDB home directory, stop node-2 as follows:
 
     ```sh
     ./bin/yugabyted stop --base_dir=/tmp/ybd2
     ```
 
-1. Goto [http://127.0.0.1:7000/tablet-servers]() to verify that node-2 is gone from the tablet list using the following command:
+1. Navigate to <http://127.0.0.1:7000/tablet-servers> to verify that node-2 is gone from the tablet list.
 
     ![Leaders in node-1](/images/explore/transactions/leaders-node1.png)
- 
-    Notice that node-2 is `DEAD` and a new leader node-1 has been elected for all the tablets that were in node-2.
 
-1. Update the row and commit the transaction as follows:
+    Node-2 is `DEAD` and a new leader (node-1) has been elected for all the tablets that were in node-2.
+
+1. Update the value of row `k=1` to `20` and commit the transaction as follows:
 
     ```plpgsql
     UPDATE txndemo set v=20 where k=1;
@@ -128,7 +143,7 @@ The following diagram illustrates the high-level steps that ensure transactions 
     Time: 2.964 ms
     ```
 
-    The transaction succeeds even though node-2 failed before receiving the provisional write, and the value updates to `20`. The transaction succeeds because a new leader (node-1) gets quickly elected.
+    The transaction succeeds even though node-2 failed before receiving the provisional write, and the value updates to `20`. The transaction succeeds because a new leader (node-1) is quickly elected after the failure of node-2.
 
 1. Check the value of the row at `k=1` using the following command:
 
@@ -145,7 +160,7 @@ The following diagram illustrates the high-level steps that ensure transactions 
 
     The row with `k=1` has the new value of `v=20`, confirming the completion of the transaction.
 
-1. From another terminal of your YugabyteDB home directory, restart node-2 using the following command.
+1. From another terminal of your YugabyteDB home directory, restart node-2 using the following command:
 
     ```sh
     ./bin/yugabyted start --base_dir=/tmp/ybd2
@@ -155,7 +170,7 @@ The following diagram illustrates the high-level steps that ensure transactions 
 
 As mentioned in the preceding example, when a row is modified or fetched during a transaction, YugabyteDB sends the appropriate statements to the node with the row that is being modified or fetched. In this example, you can see how a transaction completes when the node that has just received a [provisional write](../../../architecture/transactions/distributed-txns/#provisional-records) fails.
 
-The following diagram illustrates the high-level steps that ensure transactions to succeed when a node fails after receiving a statement.
+The following diagram illustrates the high-level steps that ensure transactions succeed when a node fails after receiving a statement.
 
 ![Failure of a node after write](/images/explore/transactions/failure_node_after_write.svg)
 
@@ -185,7 +200,7 @@ The following diagram illustrates the high-level steps that ensure transactions 
     Time: 51.513 ms
     ```
 
-    The update succeeds. This means that the updated row with value `v=30` has been sent to node-2, but not yet committed.
+    The update succeeds. This means that the updated row with value `v=30` has been sent to node-2, but not yet been committed.
 
 1. From another terminal of your YugabyteDB home directory, stop node-2, as this is the node that has received the modified row.
 
@@ -193,12 +208,11 @@ The following diagram illustrates the high-level steps that ensure transactions 
     ./bin/yugabyted stop --base_dir=/tmp/ybd2
     ```
 
-1. Goto [http://127.0.0.1:7000/tablet-servers]() to verify that node-2 is gone from the server list and that a new leader has been elected for the row with `k=1`.
+1. Navigate to <http://127.0.0.1:7000/tablet-servers> to verify that node-2 is gone from the server list and that a new leader has been elected for the row with `k=1`.
 
     ![Leaders in node-1](/images/explore/transactions/leaders-node1.png)
- 
-    Notice that node-2 is `DEAD` and a new leader node-1 has been elected for all the tablets that were in node-2.
 
+    Node-2 is `DEAD` and a new leader (node-1) has been elected for all the tablets that were in node-2.
 
 1. Commit the transaction as follows:
 
@@ -211,7 +225,7 @@ The following diagram illustrates the high-level steps that ensure transactions 
     Time: 6.243 ms
     ```
 
-    The transaction succeeds even though node-2 failed after receiving the provisional write, and the row value updates to `30`. This is because the provisional writes were replicated to the follower tablets and when the leader failed, the newly elected leader already had the provisional writes, which enabled the transaction to continue without disruption.
+    The transaction succeeds even though node-2 failed after receiving the provisional write, and the row value updates to `30`. This is because the provisional writes were replicated to the follower tablets and when the leader failed, the newly elected leader already had the provisional writes, which enabled the transaction to continue without interruption.
 
 1. Check the value of the row at `k=1` using the following command:
 
@@ -236,7 +250,7 @@ The following diagram illustrates the high-level steps that ensure transactions 
 
 ## Failure of the node to which a client has connected
 
-The node to which a client connects acts as the manager for the transaction. The transaction manager coordinates the flow of transactions and maintains the correlation between the client and the transaction-id (a unique identifier for each transaction). YugabyteDB is inherently resilient to node failures as mentioned in the previous two scenarios.
+The node to which a client connects acts as the manager for the transaction. The transaction manager coordinates the flow of transactions and maintains the correlation between the client and the transaction-id (a unique identifier for each transaction). YugabyteDB is inherently resilient to node failures as demonstrated in the preceding two scenarios.
 
 In this example, you can see how a transaction aborts when the transaction manager fails. For more details on the role of the transaction manager, see [Transactional I/O](../../../architecture/transactions/transactional-io-path/#client-requests-transaction).
 
@@ -321,6 +335,7 @@ For this case, you can connect to any node in the cluster; `127.0.0.1` has been 
 You can shut down the local cluster by following the instructions provided in [Destroy a local cluster](../../../reference/configuration/yugabyted/#destroy-a-local-cluster).
 
 ## Learn More
--   [Impact of Failures on a Transaction](../../../architecture/transactions/distributed-txns/#impact-of-failures) - Understand how failures impact the flow of transaction
--   [Transactions Architecture](../../../architecture/transactions/transactions-overview/) - Understand how transactions are implemented in YugabyteDB.
--   [Transaction examples](../transactions/distributed-transactions-ysql/) - Try out examples to understand different options associated with a transaction.
+
+- [Impact of Failures on a Transaction](../../../architecture/transactions/distributed-txns/#impact-of-failures) - Understand how failures impact the flow of transaction
+- [Transactions Architecture](../../../architecture/transactions/transactions-overview/) - Understand how transactions are implemented in YugabyteDB.
+- [Distributed transaction](../../transactions/distributed-transactions-ysql/) - Try out examples to understand different options associated with distributed transactions.
