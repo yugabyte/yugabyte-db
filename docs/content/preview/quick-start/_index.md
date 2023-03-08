@@ -1,5 +1,5 @@
 ---
-title: YugabyteDB Quick Start
+title: YugabyteDB Quick Start for macOS
 headerTitle: Quick start
 linkTitle: Quick start
 headcontent: Create a local cluster on a single host

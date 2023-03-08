@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: Yugabyte Ruby Driver for YCQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: Ruby drivers for YCQL
+description: Connect an application using Yugabyte Ruby Driver for YCQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
