@@ -220,7 +220,7 @@ public class CertificateHelper {
       String certKeyName,
       X509Certificate clientCert,
       PrivateKey pKey,
-      Boolean syncCertsToDB)
+      boolean syncCertsToDB)
       throws IOException {
     CertificateDetails certificateDetails = new CertificateDetails();
 
