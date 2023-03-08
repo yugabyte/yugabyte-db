@@ -76,7 +76,7 @@ yugabyte=# UPDATE t SET v='v1.1' WHERE k='k1';
 ERROR:  All transparent retries exhausted. Operation failed. Try again: bb3aace4-5de2-41f9-981e-d9ca06671419 Conflicts with higher priority transaction: d4dadbf8-ca81-4bbd-b68c-067023f8ee6b
 ```
 
-This operation fails because it conflicts with the row-level lock and as per `Fail-on-Conflict` concurrency control policy, the transaction aborts itselfs because it has a lower priority.
+This operation fails because it conflicts with the row-level lock and as per `Fail-on-Conflict` concurrency control policy, the transaction aborts itself because it has a lower priority.
 
 Note that the error message appears after all [best-effort statement retries](../../../architecture/transactions/concurrency-control/#best-effort-internal-retries-for-first-statement-in-a-transaction) have been exhausted.
 

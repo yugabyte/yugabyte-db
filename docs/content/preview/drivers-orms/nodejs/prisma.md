@@ -2,8 +2,8 @@
 title: Prisma ORM
 headerTitle: Use an ORM
 linkTitle: Use an ORM
-description: NodeJS Prisma ORM support for YugabyteDB
-headcontent: NodeJS ORM support for YugabyteDB
+description: Node.js Prisma ORM support for YugabyteDB
+headcontent: Node.js ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
