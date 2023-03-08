@@ -49,7 +49,7 @@ import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup
 import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
 import { PerfAdvisor } from '../../queries/PerfAdvisor.tsx';
 import { XClusterReplication } from '../../xcluster/XClusterReplication';
-
+import { EncryptionAtRest } from '../../../redesign/features/universe/universe-actions/encryption-at-rest/EncryptionAtRest';
 import './UniverseDetail.scss';
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
@@ -562,6 +562,8 @@ class UniverseDetail extends Component {
       featureFlags.test['enableThirdpartyUpgrade'] ||
       featureFlags.released['enableThirdpartyUpgrade'];
 
+    const isMKREnabled = featureFlags.test['enableMKR'] || featureFlags.released['enableMKR'];
+
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
         {showAlert && (
@@ -909,14 +911,26 @@ class UniverseDetail extends Component {
           universe={currentUniverse.data}
           type="primary"
         />
-        <EncryptionKeyModalContainer
-          modalVisible={showModal && visibleModal === 'manageKeyModal'}
-          onHide={closeModal}
-          handleSubmitKey={this.handleSubmitManageKey}
-          currentUniverse={currentUniverse}
-          name={currentUniverse.data.name}
-          uuid={currentUniverse.data.universeUUID}
-        />
+        {isMKREnabled ? (
+          <EncryptionAtRest
+            open={showModal && visibleModal === 'manageKeyModal'}
+            onClose={() => {
+              closeModal();
+              this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+            }}
+            universeDetails={currentUniverse.data}
+          />
+        ) : (
+          <EncryptionKeyModalContainer
+            modalVisible={showModal && visibleModal === 'manageKeyModal'}
+            onHide={closeModal}
+            handleSubmitKey={this.handleSubmitManageKey}
+            currentUniverse={currentUniverse}
+            name={currentUniverse.data.name}
+            uuid={currentUniverse.data.universeUUID}
+          />
+        )}
+
         <Measure onMeasure={this.onResize.bind(this)}>
           <YBTabsWithLinksPanel
             defaultTab={defaultTab}
