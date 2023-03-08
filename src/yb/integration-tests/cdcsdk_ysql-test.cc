@@ -6372,6 +6372,601 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIsUnderCDCSDKReplicationField
   check_is_under_cdc_sdk_replication(false);
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithDropColumns)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  // ASSERT_OK(CreateColocatedObjects(&test_cluster_));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLEGROUP tg1"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test1(id1 int primary key, value_2 int, value_3 int) TABLEGROUP tg1;"));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE test2(id2 int primary key, value_2 int, value_3 int, "
+                         "value_4 int) TABLEGROUP tg1;"));
+
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  std::string table_id = table.table_id();
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 30;
+  for (int i = 0; i < insert_count; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1, $2)", i, i + 1, i + 2));
+    ASSERT_OK(
+        conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
+  }
+
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test1", kValue2ColumnName));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
+  SleepFor(MonoDelta::FromSeconds(10));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count);
+
+  int expected_key1 = 0;
+  int expected_key2 = 0;
+  int ddl_count = 0;
+  std::unordered_set<string> ddl_tables;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::INSERT) {
+      if (record.row_message().table() == "test1") {
+        ASSERT_EQ(record.row_message().new_tuple_size(), 3);
+        ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
+        expected_key1++;
+      } else if (record.row_message().table() == "test2") {
+        ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+        ASSERT_EQ(expected_key2, record.row_message().new_tuple(0).datum_int32());
+        expected_key2++;
+      }
+    } else if (record.row_message().op() == RowMessage::DDL) {
+      ddl_tables.insert(record.row_message().table());
+      ddl_count++;
+    }
+  }
+  ASSERT_EQ(insert_count, expected_key1);
+  ASSERT_EQ(insert_count, expected_key2);
+  ASSERT_EQ(ddl_count, 4);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithAddColumns)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLEGROUP tg1"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test1(id1 int primary key, value_1 int, value_2 int) TABLEGROUP tg1;"));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE test2(id2 int primary key, value_1 int, value_2 int, "
+                         "value_3 int) TABLEGROUP tg1;"));
+
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  std::string table_id = table.table_id();
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 30;
+  for (int i = 0; i < insert_count; ++i) {
+      LOG(INFO) << "Inserting entry " << i;
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1, $2)", i, i + 1, i + 2));
+      ASSERT_OK(
+          conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
+  }
+
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test2", kValue4ColumnName));
+  SleepFor(MonoDelta::FromSeconds(30));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  insert_count = 60;
+  for (int i = 30; i < insert_count; ++i) {
+      LOG(INFO) << "Inserting entry " << i;
+      ASSERT_OK(
+          conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO test2 VALUES ($0, $1, $2, $3, $4)", i, i + 1, i + 2, i + 3, i + 4));
+  }
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count);
+
+  int expected_key1 = 0;
+  int expected_key2 = 0;
+  int ddl_count = 0;
+  std::unordered_set<string> ddl_tables;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const auto record = change_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == RowMessage::INSERT) {
+      if (record.row_message().table() == "test1") {
+        ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
+        if (expected_key1 >= 0 && expected_key1 < 30) {
+          ASSERT_EQ(record.row_message().new_tuple_size(), 3);
+        } else {
+          ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+        }
+        expected_key1++;
+      } else if (record.row_message().table() == "test2") {
+        ASSERT_EQ(expected_key2, record.row_message().new_tuple(0).datum_int32());
+        if (expected_key2 >= 0 && expected_key2 < 30) {
+          ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+        } else {
+          ASSERT_EQ(record.row_message().new_tuple_size(), 5);
+        }
+        expected_key2++;
+      }
+    } else if (record.row_message().op() == RowMessage::DDL) {
+      ddl_tables.insert(record.row_message().table());
+      ddl_count++;
+    }
+  }
+  ASSERT_EQ(insert_count, expected_key1);
+  ASSERT_EQ(insert_count, expected_key2);
+  ASSERT_EQ(ddl_count, 4);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithAddAndDropColumns)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, true));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key, value_1 int, value_2 int);"));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE test2(id2 int primary key, value_1 int, value_2 int, "
+                         "value_3 int);"));
+
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  std::string table_id = table.table_id();
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 30;
+  for (int i = 0; i < insert_count; ++i) {
+    LOG(INFO) << "Inserting entry " << i;
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1, $2)", i, i + 1, i + 2));
+    ASSERT_OK(
+        conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
+  }
+
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName));
+  SleepFor(MonoDelta::FromSeconds(30));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  insert_count = 60;
+  for (int i = 30; i < insert_count; ++i) {
+      LOG(INFO) << "Inserting entry " << i;
+      ASSERT_OK(
+          conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1)", i, i + 1));
+  }
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count);
+
+  int expected_key1 = 0;
+  int expected_key2 = 0;
+  int ddl_count = 0;
+  std::unordered_set<string> ddl_tables;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const auto record = change_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == RowMessage::INSERT) {
+      if (record.row_message().table() == "test1") {
+        ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
+        if (expected_key1 >= 0 && expected_key1 < 30) {
+          ASSERT_EQ(record.row_message().new_tuple_size(), 3);
+        } else {
+          ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+        }
+        expected_key1++;
+      } else if (record.row_message().table() == "test2") {
+        ASSERT_EQ(expected_key2, record.row_message().new_tuple(0).datum_int32());
+        if (expected_key2 >= 0 && expected_key2 < 30) {
+          ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+        } else {
+          ASSERT_EQ(record.row_message().new_tuple_size(), 2);
+        }
+        expected_key2++;
+      }
+    } else if (record.row_message().op() == RowMessage::DDL) {
+      ddl_tables.insert(record.row_message().table());
+      ddl_count++;
+    }
+  }
+  ASSERT_EQ(insert_count, expected_key1);
+  ASSERT_EQ(insert_count, expected_key2);
+  ASSERT_EQ(ddl_count, 5);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAndRestart)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, true));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key, value_1 int, value_2 int);"));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE test2(id2 int primary key, value_1 int, value_2 int, "
+                         "value_3 int);"));
+
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  std::string table_id = table.table_id();
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 30;
+  for (int i = 0; i < insert_count; ++i) {
+      LOG(INFO) << "Inserting entry " << i;
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1, $2)", i, i + 1, i + 2));
+      ASSERT_OK(
+          conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
+  }
+
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count);
+
+  int expected_key1 = 0;
+  int expected_key2 = 0;
+  int ddl_count = 0;
+  std::unordered_set<string> ddl_tables;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const auto record = change_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == RowMessage::INSERT) {
+      if (record.row_message().table() == "test1") {
+        ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
+        ASSERT_EQ(record.row_message().new_tuple_size(), 3);
+        expected_key1++;
+      } else if (record.row_message().table() == "test2") {
+        ASSERT_EQ(expected_key2, record.row_message().new_tuple(0).datum_int32());
+        ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+        expected_key2++;
+      }
+    } else if (record.row_message().op() == RowMessage::DDL) {
+      ddl_tables.insert(record.row_message().table());
+      ddl_count++;
+    }
+  }
+  ASSERT_EQ(insert_count, expected_key1);
+  ASSERT_EQ(insert_count, expected_key2);
+  ASSERT_EQ(ddl_count, 5);
+
+  for (int idx = 0; idx < 1; idx++) {
+    test_cluster()->mini_tablet_server(idx)->Shutdown();
+    ASSERT_OK(test_cluster()->mini_tablet_server(idx)->Start());
+    ASSERT_OK(test_cluster()->mini_tablet_server(idx)->WaitStarted());
+  }
+  LOG(INFO) << "All nodes restarted";
+
+  conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  insert_count = 60;
+  for (int i = 30; i < insert_count; ++i) {
+      LOG(INFO) << "Inserting entry " << i;
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1, $2)", i, i + 1, i + 2));
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1)", i, i + 1));
+  }
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false,
+      /* timeout_secs = */ 30, /* is_compaction = */ false));
+
+  // Call get changes.
+  change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+  record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count/2);
+
+  expected_key1 = 30;
+  expected_key2 = 30;
+  ddl_count = 0;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const auto record = change_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == RowMessage::INSERT) {
+      if (record.row_message().table() == "test1") {
+        ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
+        ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+        expected_key1++;
+      } else if (record.row_message().table() == "test2") {
+        ASSERT_EQ(expected_key2, record.row_message().new_tuple(0).datum_int32());
+        ASSERT_EQ(record.row_message().new_tuple_size(), 2);
+        expected_key2++;
+      }
+    } else if (record.row_message().op() == RowMessage::DDL) {
+      ddl_tables.insert(record.row_message().table());
+      ddl_count++;
+    }
+  }
+  ASSERT_EQ(insert_count, expected_key1);
+  ASSERT_EQ(insert_count, expected_key2);
+  ASSERT_EQ(ddl_count, 2);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAndLeaderSwitch)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  FLAGS_enable_load_balancing = false;
+  ASSERT_OK(SetUpWithParams(3, 1, true));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key, value_1 int, value_2 int);"));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE test2(id2 int primary key, value_1 int, value_2 int, "
+                         "value_3 int);"));
+
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  std::string table_id = table.table_id();
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 30;
+  for (int i = 0; i < insert_count; ++i) {
+    LOG(INFO) << "Inserting entry " << i;
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1, $2)", i, i + 1, i + 2));
+    ASSERT_OK(
+        conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
+  }
+
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false,
+      /* timeout_secs = */ 30, /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count);
+
+  int expected_key1 = 0;
+  int expected_key2 = 0;
+  int ddl_count = 0;
+  std::unordered_set<string> ddl_tables;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const auto record = change_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == RowMessage::INSERT) {
+      if (record.row_message().table() == "test1") {
+        ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
+        ASSERT_EQ(record.row_message().new_tuple_size(), 3);
+        expected_key1++;
+      } else if (record.row_message().table() == "test2") {
+        ASSERT_EQ(expected_key2, record.row_message().new_tuple(0).datum_int32());
+        ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+        expected_key2++;
+      }
+    } else if (record.row_message().op() == RowMessage::DDL) {
+      ddl_tables.insert(record.row_message().table());
+      ddl_count++;
+    }
+  }
+  ASSERT_EQ(insert_count, expected_key1);
+  ASSERT_EQ(insert_count, expected_key2);
+  ASSERT_EQ(ddl_count, 5);
+
+  size_t first_leader_index = -1;
+  size_t first_follower_index = -1;
+  GetTabletLeaderAndAnyFollowerIndex(tablets, &first_leader_index, &first_follower_index);
+  if (first_leader_index == 0) {
+    // We want to avoid the scenario where the first TServer is the leader, since we want to shut
+    // the leader TServer down and call GetChanges. GetChanges will be called on the cdc_proxy
+    // based on the first TServer's address and we want to avoid the network issues.
+    ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+  }
+  ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+
+  conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  insert_count = 60;
+  for (int i = 30; i < insert_count; ++i) {
+    LOG(INFO) << "Inserting entry " << i;
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1, $2)", i, i + 1, i + 2));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1)", i, i + 1));
+  }
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false,
+      /* timeout_secs = */ 30, /* is_compaction = */ false));
+
+  // Call get changes.
+  change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+  record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count / 2);
+
+  expected_key1 = 30;
+  expected_key2 = 30;
+  ddl_count = 0;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const auto record = change_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == RowMessage::INSERT) {
+      if (record.row_message().table() == "test1") {
+        ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
+        ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+        expected_key1++;
+      } else if (record.row_message().table() == "test2") {
+        ASSERT_EQ(expected_key2, record.row_message().new_tuple(0).datum_int32());
+        ASSERT_EQ(record.row_message().new_tuple_size(), 2);
+        expected_key2++;
+      }
+    } else if (record.row_message().op() == RowMessage::DDL) {
+      ddl_tables.insert(record.row_message().table());
+      ddl_count++;
+    }
+  }
+  ASSERT_EQ(insert_count, expected_key1);
+  ASSERT_EQ(insert_count, expected_key2);
+  ASSERT_EQ(ddl_count, 2);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithRepeatedRequestFromOpId)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  FLAGS_enable_load_balancing = false;
+  ASSERT_OK(SetUpWithParams(3, 1, true));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key, value_1 int, value_2 int);"));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE test2(id2 int primary key, value_1 int, value_2 int, "
+                         "value_3 int);"));
+
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  std::string table_id = table.table_id();
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 30;
+  for (int i = 0; i < insert_count; ++i) {
+    LOG(INFO) << "Inserting entry " << i;
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1, $2)", i, i + 1, i + 2));
+    ASSERT_OK(
+        conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
+  }
+
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName));
+
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false,
+      /* timeout_secs = */ 30, /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count);
+
+  int expected_key1 = 0;
+  int expected_key2 = 0;
+  int ddl_count = 0;
+  std::unordered_set<string> ddl_tables;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const auto record = change_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == RowMessage::INSERT) {
+      if (record.row_message().table() == "test1") {
+        ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
+        ASSERT_EQ(record.row_message().new_tuple_size(), 3);
+        expected_key1++;
+      } else if (record.row_message().table() == "test2") {
+        ASSERT_EQ(expected_key2, record.row_message().new_tuple(0).datum_int32());
+        ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+        expected_key2++;
+      }
+    } else if (record.row_message().op() == RowMessage::DDL) {
+      ddl_tables.insert(record.row_message().table());
+      ddl_count++;
+    }
+  }
+  ASSERT_EQ(insert_count, expected_key1);
+  ASSERT_EQ(insert_count, expected_key2);
+  ASSERT_EQ(ddl_count, 5);
+
+  conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  insert_count = 60;
+  for (int i = 30; i < insert_count; ++i) {
+    LOG(INFO) << "Inserting entry " << i;
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1, $2)", i, i + 1, i + 2));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1)", i, i + 1));
+  }
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false,
+      /* timeout_secs = */ 30, /* is_compaction = */ false));
+
+  // Call get changes.
+  auto repeat_checkpoint = &change_resp.cdc_sdk_checkpoint();
+  change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+  record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count / 2);
+
+  // Call get changes again with the same from_op_id.
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, repeat_checkpoint));
+
+  expected_key1 = 30;
+  expected_key2 = 30;
+  ddl_count = 0;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const auto record = change_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == RowMessage::INSERT) {
+      if (record.row_message().table() == "test1") {
+        ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
+        ASSERT_EQ(record.row_message().new_tuple_size(), 4);
+        expected_key1++;
+      } else if (record.row_message().table() == "test2") {
+        ASSERT_EQ(expected_key2, record.row_message().new_tuple(0).datum_int32());
+        ASSERT_EQ(record.row_message().new_tuple_size(), 2);
+        expected_key2++;
+      }
+    } else if (record.row_message().op() == RowMessage::DDL) {
+      ddl_tables.insert(record.row_message().table());
+      ddl_count++;
+    }
+  }
+  ASSERT_EQ(insert_count, expected_key1);
+  ASSERT_EQ(insert_count, expected_key2);
+  ASSERT_EQ(ddl_count, 2);
+}
+
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestExplicitCheckpointGetChangesRequest)) {
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   auto tablets = ASSERT_RESULT(SetUpCluster());
