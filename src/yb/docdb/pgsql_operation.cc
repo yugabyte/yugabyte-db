@@ -1375,20 +1375,24 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
   CoarseTimePoint stop_scan = deadline - FLAGS_ysql_scan_deadline_margin_ms * 1ms;
 
   // Fetching data.
-  int match_count = 0;
-  QLTableRow table_row;
-  YQLScanCallback callback = [&](const QLTableRow& row) -> Result<ContinueScan> {
+  size_t match_count = 0;
+  QLTableRow row;
+  while (fetched_rows < row_count_limit && VERIFY_RESULT(iter->HasNext()) &&
+         !scan_time_exceeded) {
+    row.Clear();
     bool is_match = true;
 
-    const QLTableRow* row_ptr = &row;
     if (request_.has_index_request()) {
+      // Index scan over colocated table case, get next index row
+      RETURN_NOT_OK(iter->NextRow(&row));
+
       // Check index conditions
       RETURN_NOT_OK(index_expr_exec.Exec(row, nullptr, &is_match));
 
       if (!is_match) {
         // If no match continue with next tuple from the iterator.
         VLOG(1) << "Row filtered out by colocated index condition";
-        return ContinueScan::kTrue;
+        continue;
       }
 
       // Index matches the condition, get the ybctid of the target row.
@@ -1410,37 +1414,33 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
         }
       }
       // Remove table row currently held by the variable.
-      table_row.Clear();
+      row.Clear();
       // Fetch main table row
-      RETURN_NOT_OK(table_iter_->NextRow(&table_row));
-
-      row_ptr = &table_row;
+      RETURN_NOT_OK(table_iter_->NextRow(&row));
+    } else {
+      // Fetch main table row
+      RETURN_NOT_OK(iter->NextRow(&row));
     }
 
     // Match the row with the where condition before adding to the row block.
-    RETURN_NOT_OK(doc_expr_exec.Exec(*row_ptr, nullptr, &is_match));
+    RETURN_NOT_OK(doc_expr_exec.Exec(row, nullptr, &is_match));
 
     if (!is_match) {
       VLOG(1) << "Row filtered out by the condition";
-      return ContinueScan::kTrue;
+      continue;
     }
 
-    match_count++;
+    ++match_count;
     if (request_.is_aggregate()) {
-      RETURN_NOT_OK(EvalAggregate(*row_ptr));
+      RETURN_NOT_OK(EvalAggregate(row));
     } else {
-      RETURN_NOT_OK(PopulateResultSet(*row_ptr, result_buffer));
+      RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
       ++fetched_rows;
     }
 
     // Check if we are running out of time
     scan_time_exceeded = CoarseMonoClock::now() >= stop_scan;
-
-    return (fetched_rows < row_count_limit && !scan_time_exceeded) ? ContinueScan::kTrue
-                                                                   : ContinueScan::kFalse;
-  };
-
-  RETURN_NOT_OK(iter->Iterate(std::move(callback)));
+  }
 
   VLOG(1) << "Stopped iterator after " << match_count << " matches, "
           << fetched_rows << " rows fetched";
