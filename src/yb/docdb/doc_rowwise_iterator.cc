@@ -161,8 +161,7 @@ void DocRowwiseIterator::SetupProjectionSubkeys() {
   std::sort(projection_subkeys_.begin(), projection_subkeys_.end());
 }
 
-DocRowwiseIterator::~DocRowwiseIterator() {
-}
+DocRowwiseIterator::~DocRowwiseIterator() = default;
 
 Status DocRowwiseIterator::Init(TableType table_type, const Slice& sub_doc_key) {
   db_iter_ = CreateIntentAwareIterator(
@@ -638,20 +637,6 @@ Status DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) {
   RETURN_NOT_OK(doc_key.FullyDecodeFrom(row_key_));
   *sub_doc_key = SubDocKey(doc_key, read_time_.read);
   DVLOG(3) << "Next SubDocKey: " << sub_doc_key->ToString();
-  return Status::OK();
-}
-
-Status DocRowwiseIterator::Iterate(const YQLScanCallback& callback) {
-  QLTableRow row;
-  while (VERIFY_RESULT(HasNext())) {
-    row.Clear();
-
-    RETURN_NOT_OK(DoNextRow(boost::none, &row));
-    if (!VERIFY_RESULT(callback(row))) {
-      break;
-    }
-  }
-
   return Status::OK();
 }
 
