@@ -166,19 +166,14 @@ HybridScanChoices::HybridScanChoices(
   range_cols_scan_options_.resize(filter_length);
 
   current_scan_target_ranges_.resize(range_cols_scan_options_.size());
+
   current_scan_target_.Clear();
+
+  // Initialize current_scan_target_ranges_
   for (size_t i = 0; i < range_cols_scan_options_.size(); i++) {
     current_scan_target_ranges_[i] = range_cols_scan_options_.at(i).begin();
-    if (is_forward_scan_) {
-      current_scan_target_ranges_[i]->lower().AppendToKey(&current_scan_target_);
-    } else {
-      current_scan_target_ranges_[i]->upper().AppendToKey(&current_scan_target_);
-    }
   }
 
-  if (!is_forward_scan_) {
-    KeyEntryValue(KeyEntryType::kHighest).AppendToKey(&current_scan_target_);
-  }
   schema_num_keys_ = schema.num_range_key_columns();
 }
 
@@ -360,6 +355,9 @@ Result<bool> HybridScanChoices::SkipTargetsUpTo(const Slice& new_target) {
       VLOG(1) << "Failed to decode the key: " << decode_status;
       // We return false to give the caller a chance to validate and skip past any keys that scan
       // choices should not be aware of before calling this again.
+
+      // current_scan_target_ is left in a corrupted state so we must clear it.
+      current_scan_target_.Clear();
       return false;
     }
 
