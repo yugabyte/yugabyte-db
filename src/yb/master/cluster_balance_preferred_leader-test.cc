@@ -37,14 +37,14 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
  private:
   TSDescriptorVector GenerateDefaultTsDesc() {
     TSDescriptorVector ts_descs = {
-        SetupTSEnt("0000", "a", ""), SetupTSEnt("1111", "b", ""), SetupTSEnt("2222", "c", "")};
+        SetupTS("0000", "a", ""), SetupTS("1111", "b", ""), SetupTS("2222", "c", "")};
     return ts_descs;
   }
 
   TSDescriptorVector Generate5NodeTsDesc() {
     TSDescriptorVector ts_descs = {
-        SetupTSEnt("0000", "a", ""), SetupTSEnt("1111", "b", ""), SetupTSEnt("2222", "c", ""),
-        SetupTSEnt("3333", "d", ""), SetupTSEnt("4444", "e", "")};
+        SetupTS("0000", "a", ""), SetupTS("1111", "b", ""), SetupTS("2222", "c", ""),
+        SetupTS("3333", "d", ""), SetupTS("4444", "e", "")};
     return ts_descs;
   }
 
@@ -231,11 +231,11 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
     // RF = 3 + 1, 4 TS, 3 AZ, 4 tablets.
     // Normal setup.
     // then create new node in az1 with all replicas.
-    SetupClusterConfigEnt(
+    SetupClusterConfig(
         {"a", "b", "c"} /* az list */, {"a"} /* read only */, {} /* affinitized leaders */,
         &replication_info_);
-    ts_descs_.push_back(SetupTSEnt("3333", "a", read_only_placement_uuid /* placement_uuid */));
-    ts_descs_.push_back(SetupTSEnt("4444", "a", read_only_placement_uuid /* placement_uuid */));
+    ts_descs_.push_back(SetupTS("3333", "a", read_only_placement_uuid /* placement_uuid */));
+    ts_descs_.push_back(SetupTS("4444", "a", read_only_placement_uuid /* placement_uuid */));
 
     // Adding all read_only replicas.
     for (const auto& tablet : tablets_) {
@@ -280,10 +280,10 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
     PrepareTestState(ts_descs);
 
     // RF = 3 + 1, 4 TS, 3 AZ, 4 tablets.
-    SetupClusterConfigEnt(
+    SetupClusterConfig(
         {"a", "b", "c"} /* az list */, {"a"} /* read only */, {} /* affinitized leaders */,
         &replication_info_);
-    ts_descs_.push_back(SetupTSEnt("3333", "a", read_only_placement_uuid));
+    ts_descs_.push_back(SetupTS("3333", "a", read_only_placement_uuid));
 
     // Adding all read_only replicas.
     for (const auto& tablet : tablets_) {
@@ -486,8 +486,8 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
 
   void TestBalancingMultiNodeAffinitizedLeader() {
     TSDescriptorVector ts_descs = {
-        SetupTSEnt("0000", "a", ""), SetupTSEnt("1111", "a", ""), SetupTSEnt("2222", "b", ""),
-        SetupTSEnt("3333", "c", ""), SetupTSEnt("4444", "d", "")};
+        SetupTS("0000", "a", ""), SetupTS("1111", "a", ""), SetupTS("2222", "b", ""),
+        SetupTS("3333", "c", ""), SetupTS("4444", "d", "")};
     PrepareTestState(ts_descs);
 
     PrepareAffinitizedLeaders({{"a"}, {"b"}});
@@ -554,8 +554,8 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
 
   void TestBalancingWithLeaderBlacklist() {
     TSDescriptorVector ts_descs = {
-        SetupTSEnt("0000", "a", ""), SetupTSEnt("1111", "a", ""), SetupTSEnt("2222", "b", ""),
-        SetupTSEnt("3333", "c", ""), SetupTSEnt("4444", "d", "")};
+        SetupTS("0000", "a", ""), SetupTS("1111", "a", ""), SetupTS("2222", "b", ""),
+        SetupTS("3333", "c", ""), SetupTS("4444", "d", "")};
     PrepareTestState(ts_descs);
 
     RemoveReplica(tablets_[0].get(), ts_descs[1]);
