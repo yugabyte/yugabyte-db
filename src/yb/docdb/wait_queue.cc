@@ -262,7 +262,6 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
     UniqueLock l(mutex_);
     if (handle_ != rpcs_.InvalidHandle()) {
       (**handle_).Abort();
-      rpcs_.Unregister(&handle_);
     }
   }
 
