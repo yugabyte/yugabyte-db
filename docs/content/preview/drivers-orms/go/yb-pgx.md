@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: YugabyteDB PGX Smart Driver for YSQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: Go drivers for YSQL
+description: Connect a Go application using YugabyteDB PGX Smart Driver
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:

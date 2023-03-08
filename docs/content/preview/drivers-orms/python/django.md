@@ -1,7 +1,8 @@
 ---
-title: Use an ORM
+title: Django ORM
+headerTitle: Use an ORM
 linkTitle: Use an ORM
-description: Django ORM support for YugabyteDB
+description: Python Django ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:

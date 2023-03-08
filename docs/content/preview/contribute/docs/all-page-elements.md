@@ -152,7 +152,7 @@ These pills automatically re-flow based on page width; just keep adding list ite
   <li>
     <a href="../../../develop/build-apps/nodejs/cloud-ysql-node/" class="orange">
       <i class="fa-brands fa-node-js"></i>
-      NodeJS
+      Node.js
     </a>
   </li>
 
