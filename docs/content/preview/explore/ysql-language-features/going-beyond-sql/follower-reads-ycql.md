@@ -9,6 +9,7 @@ aliases:
   - /preview/explore/follower-reads/
   - /preview/explore/high-performance/tunable-reads/
   - /preview/explore/multi-region-deployments/follower-reads-ycql/
+  - /preview/explore/follower-reads/fr-ycql/
 menu:
   preview:
     identifier: follower-reads-ycql
