@@ -119,9 +119,13 @@ class ChangeMetadataOperation
 
   Status Prepare(IsLeaderSide is_leader_side) override;
 
+  Status Apply(int64_t leader_term, Status* complete_status);
+
  private:
+
   // Starts the ChangeMetadataOperation by assigning it a timestamp.
   Status DoReplicated(int64_t leader_term, Status* complete_status) override;
+
   Status DoAborted(const Status& status) override;
 
   log::Log* const log_;

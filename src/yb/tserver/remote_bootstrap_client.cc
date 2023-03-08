@@ -374,6 +374,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
             .colocated = colocated,
             .snapshot_schedules = {},
             .hosted_services = hosted_services,
+            .last_change_metadata_op_id = OpId::Min(),
         },
         data_root_dir, wal_root_dir);
     if (ts_manager != nullptr && !create_result.ok()) {
@@ -388,10 +389,13 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
       RETURN_NOT_OK(DeletedColumn::FromPB(col_pb, &col));
       deleted_cols.push_back(col);
     }
+    // OpId::Invalid() is used to indicate the callee to not
+    // set last_change_metadata_op_id field of tablet metadata.
     meta_->SetSchema(schema,
                      IndexMap(table.indexes()),
                      deleted_cols,
-                     table.schema_version());
+                     table.schema_version(),
+                     OpId::Invalid());
 
     // Replace rocksdb_dir in the received superblock with our rocksdb_dir.
     kv_store->set_rocksdb_dir(meta_->rocksdb_dir());

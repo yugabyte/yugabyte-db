@@ -77,6 +77,7 @@
 #include "yb/util/trace.h"
 
 DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
+DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 
 using std::shared_ptr;
 using std::string;
@@ -707,7 +708,8 @@ RaftGroupMetadata::RaftGroupMetadata(
       cdc_sdk_min_checkpoint_op_id_(OpId::Invalid()),
       cdc_sdk_safe_time_(HybridTime::kInvalid),
       log_prefix_(consensus::MakeTabletLogPrefix(raft_group_id_, fs_manager_->uuid())),
-      hosted_services_(data.hosted_services) {
+      hosted_services_(data.hosted_services),
+      last_change_metadata_op_id_(data.last_change_metadata_op_id) {
   CHECK(data.table_info->schema().has_column_ids());
   CHECK_GT(data.table_info->schema().num_key_columns(), 0);
   kv_store_.tables.emplace(primary_table_id_, data.table_info);
@@ -832,6 +834,13 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
       for (auto& service_kind : superblock.hosted_stateful_services()) {
         hosted_services_.insert((StatefulServiceKind)service_kind);
       }
+    }
+    // If new code is reading old data then this field won't exist. In such cases,
+    // we start with an invalid value of -1.-1.
+    if (superblock.has_last_change_metadata_op_id()) {
+      last_change_metadata_op_id_ = OpId::FromPB(superblock.last_change_metadata_op_id());
+    } else {
+      last_change_metadata_op_id_ = OpId::Invalid();
     }
   }
 
@@ -976,6 +985,10 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
     }
   }
 
+  if (last_change_metadata_op_id_.valid()) {
+    last_change_metadata_op_id_.ToPB(pb.mutable_last_change_metadata_op_id());
+  }
+
   superblock->Swap(&pb);
 }
 
@@ -983,15 +996,17 @@ void RaftGroupMetadata::SetSchema(const Schema& schema,
                                   const IndexMap& index_map,
                                   const std::vector<DeletedColumn>& deleted_cols,
                                   const SchemaVersion version,
+                                  const OpId& op_id,
                                   const TableId& table_id) {
   std::lock_guard<MutexType> lock(data_mutex_);
-  SetSchemaUnlocked(schema, index_map, deleted_cols, version, table_id);
+  SetSchemaUnlocked(schema, index_map, deleted_cols, version, op_id, table_id);
 }
 
 void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
                                   const IndexMap& index_map,
                                   const std::vector<DeletedColumn>& deleted_cols,
                                   const SchemaVersion version,
+                                  const OpId& op_id,
                                   const TableId& table_id) {
   DCHECK(data_mutex_.is_locked());
   DCHECK(schema.has_column_ids());
@@ -1033,6 +1048,15 @@ void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
                       << " from \n" << AsString(it->second)
                       << " to \n" << AsString(new_table_info);
   it->second.swap(new_table_info);
+  // Update op id if it is a change metadata operation.
+  // We don't update if the passed op id is invalid. Cases when this will happen:
+  // 1. If we are replaying during tablet bootstrap and last_change_metadata_op_id
+  // was invalid - For e.g. after upgrade when new code reads old data.
+  // In such a case, we ensure that we are no worse than old code's behavior
+  // which essentially implies that we mute this new logic until
+  // we get a new change metadata operation request post tablet bootstrap.
+  // 2. During remote bootstrap in RemoteBootstrapClient::Start.
+  SetLastChangeMetadataOperationOpIdUnlocked(op_id);
 }
 
 void RaftGroupMetadata::SetPartitionSchema(const PartitionSchema& partition_schema) {
@@ -1044,13 +1068,15 @@ void RaftGroupMetadata::SetPartitionSchema(const PartitionSchema& partition_sche
 }
 
 void RaftGroupMetadata::SetTableName(
-    const string& namespace_name, const string& table_name, const TableId& table_id) {
+    const string& namespace_name, const string& table_name,
+    const OpId& op_id, const TableId& table_id) {
   std::lock_guard<MutexType> lock(data_mutex_);
-  SetTableNameUnlocked(namespace_name, table_name, table_id);
+  SetTableNameUnlocked(namespace_name, table_name, op_id, table_id);
 }
 
 void RaftGroupMetadata::SetTableNameUnlocked(
-    const string& namespace_name, const string& table_name, const TableId& table_id) {
+    const string& namespace_name, const string& table_name,
+    const OpId& op_id, const TableId& table_id) {
   DCHECK(data_mutex_.is_locked());
   auto& tables = kv_store_.tables;
   auto& id = table_id.empty() ? primary_table_id_ : table_id;
@@ -1058,16 +1084,17 @@ void RaftGroupMetadata::SetTableNameUnlocked(
   DCHECK(it != tables.end());
   it->second->namespace_name = namespace_name;
   it->second->table_name = table_name;
+  SetLastChangeMetadataOperationOpIdUnlocked(op_id);
 }
 
 void RaftGroupMetadata::SetSchemaAndTableName(
     const Schema& schema, const IndexMap& index_map,
     const std::vector<DeletedColumn>& deleted_cols,
     const SchemaVersion version, const std::string& namespace_name,
-    const std::string& table_name, const TableId& table_id) {
+    const std::string& table_name, const OpId& op_id, const TableId& table_id) {
   std::lock_guard<MutexType> lock(data_mutex_);
-  SetSchemaUnlocked(schema, index_map, deleted_cols, version, table_id);
-  SetTableNameUnlocked(namespace_name, table_name, table_id);
+  SetSchemaUnlocked(schema, index_map, deleted_cols, version, op_id, table_id);
+  SetTableNameUnlocked(namespace_name, table_name, op_id, table_id);
 }
 
 void RaftGroupMetadata::AddTable(const std::string& table_id,
@@ -1078,7 +1105,8 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
                                  const IndexMap& index_map,
                                  const PartitionSchema& partition_schema,
                                  const boost::optional<IndexInfo>& index_info,
-                                 const SchemaVersion schema_version) {
+                                 const SchemaVersion schema_version,
+                                 const OpId& op_id) {
   DCHECK(schema.has_column_ids());
   Primary primary(table_id == primary_table_id_);
   TableInfoPtr new_table_info = std::make_shared<TableInfo>(log_prefix_,
@@ -1108,6 +1136,7 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
     kv_store_.UpdateColocationMap(new_table_info);
     return;
   }
+
   const auto& existing_table = *iter->second;
   VLOG_WITH_PREFIX(1) << "Updating to Schema version " << schema_version << " from\n"
                       << AsString(existing_table) << "\nto\n"
@@ -1135,9 +1164,11 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
   CHECK(!schema.colocation_id() || kv_store_.colocation_to_table.count(schema.colocation_id()))
       << "Missing entry in colocation table: " << schema.colocation_id() << ", "
       << AsString(kv_store_.colocation_to_table);
+
+  SetLastChangeMetadataOperationOpIdUnlocked(op_id);
 }
 
-void RaftGroupMetadata::RemoveTable(const TableId& table_id) {
+void RaftGroupMetadata::RemoveTable(const TableId& table_id, const OpId& op_id) {
   std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
   auto it = tables.find(table_id);
@@ -1148,6 +1179,7 @@ void RaftGroupMetadata::RemoveTable(const TableId& table_id) {
     }
     tables.erase(it);
   }
+  SetLastChangeMetadataOperationOpIdUnlocked(op_id);
 }
 
 string RaftGroupMetadata::data_root_dir() const {
@@ -1693,6 +1725,26 @@ Status CheckCanServeTabletData(const RaftGroupMetadata& metadata) {
         TabletDataState_Name(data_state));
   }
   return Status::OK();
+}
+
+OpId RaftGroupMetadata::LastChangeMetadataOperationOpId() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return last_change_metadata_op_id_;
+}
+
+void RaftGroupMetadata::SetLastChangeMetadataOperationOpIdUnlocked(const OpId& op_id) {
+  if (FLAGS_TEST_invalidate_last_change_metadata_op) {
+    last_change_metadata_op_id_ = OpId::Invalid();
+    return;
+  }
+  if (op_id.valid()) {
+    last_change_metadata_op_id_ = op_id;
+  }
+}
+
+void RaftGroupMetadata::SetLastChangeMetadataOperationOpId(const OpId& op_id) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  SetLastChangeMetadataOperationOpIdUnlocked(op_id);
 }
 
 } // namespace tablet
