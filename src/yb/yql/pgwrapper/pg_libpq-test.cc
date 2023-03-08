@@ -40,6 +40,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/consensus.proxy.h"
+
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
@@ -126,6 +128,13 @@ class PgLibPqTest : public LibPqTestBase {
       const string database_name,
       const int timeout_secs,
       bool colocated,
+      const bool test_backward_compatibility,
+      const string tablegroup_name = "");
+
+  void FlushTablesAndCreateData(
+      const string database_name,
+      const int timeout_secs,
+      bool colocated,
       const string tablegroup_name = "");
 
   void AddTSToLoadBalanceSingleInstance(
@@ -148,6 +157,8 @@ class PgLibPqTest : public LibPqTestBase {
       GetParentTableTabletLocation getParentTableTabletLocation);
 
   Status TestDuplicateCreateTableRequest(PGConn conn);
+ private:
+  Result<PGConn> RestartTSAndConnectToPostgres(int ts_idx, const std::string& db_name);
 };
 
 static Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name) {
@@ -1535,7 +1546,20 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TxnConflictsForTablegroups)) {
       "test_tgroup" /* tablegroup_name */);
 }
 
-void PgLibPqTest::FlushTablesAndPerformBootstrap(
+Result<PGConn> PgLibPqTest::RestartTSAndConnectToPostgres(
+    int ts_idx, const std::string& db_name) {
+  cluster_->tablet_server(ts_idx)->Shutdown();
+
+  LOG(INFO) << "Restart tserver " << ts_idx;
+  RETURN_NOT_OK(cluster_->tablet_server(ts_idx)->Restart());
+  RETURN_NOT_OK(cluster_->WaitForTabletsRunning(cluster_->tablet_server(ts_idx),
+      MonoDelta::FromSeconds(60 * kTimeMultiplier)));
+
+  pg_ts = cluster_->tablet_server(ts_idx);
+  return ConnectToDB(db_name);
+}
+
+void PgLibPqTest::FlushTablesAndCreateData(
     const string database_name,
     const int timeout_secs,
     bool colocated,
@@ -1547,13 +1571,15 @@ void PgLibPqTest::FlushTablesAndPerformBootstrap(
   } else {
     ASSERT_OK(conn_new.ExecuteFormat("CREATE TABLE foo (i int) tablegroup $0", tablegroup_name));
   }
-
   ASSERT_OK(conn_new.Execute("INSERT INTO foo VALUES (10)"));
 
   // Flush tablets; requests from here on will be replayed from the WAL during bootstrap.
   auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), database_name, "foo"));
   ASSERT_OK(client->FlushTables(
-      {table_id}, false /* add_indexes */, timeout_secs, false /* is_compaction */));
+      {table_id},
+      false /* add_indexes */,
+      timeout_secs,
+      false /* is_compaction */));
 
   // ALTER requires foo's table id to be in the TS raft metadata
   ASSERT_OK(conn_new.Execute("ALTER TABLE foo ADD c char"));
@@ -1561,30 +1587,70 @@ void PgLibPqTest::FlushTablesAndPerformBootstrap(
   // but DROP will remove foo's table id from the TS raft metadata
   ASSERT_OK(conn_new.Execute("DROP TABLE foo"));
   ASSERT_OK(conn_new.Execute("CREATE TABLE bar (c char)"));
+}
 
-  // Restart a TS that serves this tablet so we do a local bootstrap and replay WAL files.
-  // Ensure we don't crash here due to missing table info in metadata when replaying the ALTER.
-  ASSERT_NO_FATALS(cluster_->tablet_server(0)->Shutdown());
+void PgLibPqTest::FlushTablesAndPerformBootstrap(
+    const string database_name,
+    const int timeout_secs,
+    bool colocated,
+    const bool test_backward_compatibility,
+    const string tablegroup_name) {
 
-  LOG(INFO) << "Start tserver";
-  ASSERT_OK(cluster_->tablet_server(0)->Restart());
-  ASSERT_OK(cluster_->WaitForTabletsRunning(cluster_->tablet_server(0),
-      MonoDelta::FromSeconds(60)));
+  FlushTablesAndCreateData(database_name, timeout_secs, colocated, tablegroup_name);
+  {
+    // Restart a TS that serves this tablet so we do a local bootstrap and replay WAL files.
+    // Ensure we don't crash here due to missing table info in metadata when replaying the ALTER.
+    auto conn_after = ASSERT_RESULT(RestartTSAndConnectToPostgres(0, database_name));
+    auto res = ASSERT_RESULT(conn_after.FetchValue<int64_t>("SELECT COUNT(*) FROM bar"));
+    ASSERT_EQ(res, 0);
+  }
 
-  // Ensure the rest of the WAL replayed successfully.
-  PGConn conn_after = ASSERT_RESULT(ConnectToDB(database_name));
-  auto res = ASSERT_RESULT(conn_after.FetchValue<int64_t>("SELECT COUNT(*) FROM bar"));
-  ASSERT_EQ(res, 0);
+  // Subsequent bootstraps should have the last_change_metadata_op_id set but
+  // they should also not crash.
+  if (test_backward_compatibility) {
+    ASSERT_OK(cluster_->SetFlagOnTServers("TEST_invalidate_last_change_metadata_op", "false"));
+    {
+      auto conn_after = ASSERT_RESULT(RestartTSAndConnectToPostgres(0, database_name));
+      auto res = ASSERT_RESULT(conn_after.FetchValue<int64_t>("SELECT COUNT(*) FROM bar"));
+      ASSERT_EQ(res, 0);
+
+      ASSERT_OK(conn_after.Execute("CREATE TABLE bar2 (c char)"));
+      ASSERT_OK(conn_after.Execute("ALTER TABLE bar2 RENAME COLUMN c to d"));
+    }
+    auto conn_after = ASSERT_RESULT(RestartTSAndConnectToPostgres(0, database_name));
+
+    auto res = ASSERT_RESULT(conn_after.FetchValue<int64_t>("SELECT COUNT(*) FROM bar"));
+    ASSERT_EQ(res, 0);
+    res = ASSERT_RESULT(conn_after.FetchValue<int64_t>("SELECT COUNT(*) FROM bar2"));
+    ASSERT_EQ(res, 0);
+  }
 }
 
 // Ensure tablet bootstrap doesn't crash when replaying change metadata operations
 // for a deleted colocated table. This is a regression test for #6096.
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReplayDeletedTableInColocatedDB)) {
-  PGConn conn = ASSERT_RESULT(Connect());
   const string database_name = "test_db";
-  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", database_name));
+  {
+    PGConn conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", database_name));
+  }
   FlushTablesAndPerformBootstrap(
-      "test_db" /* database_name */, 30 /* timeout_secs */, true /* colocated */);
+      database_name /* database_name */, 30 /* timeout_secs */,
+      true /* colocated */, false /* test_backward_compatibility */);
+}
+
+// Ensure tablet bootstrap doesn't crash when replaying change metadata operations
+// for a deleted colocated table after an upgrade from older versions.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReplayDeletedTableInColocatedDBPostUpgrade)) {
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_invalidate_last_change_metadata_op", "true"));
+  const string database_name = "test_db";
+  {
+    PGConn conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", database_name));
+  }
+  FlushTablesAndPerformBootstrap(
+      database_name /* database_name */, 30 /* timeout_secs */,
+      true /* colocated */, true /* test_backward_compatibility */);
 }
 
 // Ensure tablet bootstrap doesn't crash when replaying change metadata operations
@@ -1597,12 +1663,12 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReplayDeletedTableInTablegroups)) {
       "test_db" /* database_name */,
       30 /* timeout_secs */,
       true /* colocated */,
+      false /* test_backward_compatibility */,
       "test_tgroup" /* tablegroup_name */);
 }
 
 class PgLibPqDuplicateClientCreateTableTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    PgLibPqTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back("--TEST_duplicate_create_table_request=true");
     options->extra_tserver_flags.push_back(Format("--yb_client_admin_operation_timeout_sec=$0",
                                                   30));
@@ -1638,6 +1704,120 @@ TEST_F_EX(PgLibPqTest, DuplicateCreateTableRequestInColocatedDB,
   PGConn conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", database_name));
   ASSERT_OK(TestDuplicateCreateTableRequest(ASSERT_RESULT(ConnectToDB(database_name))));
+}
+
+
+class PgLibPqRbsTests : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // colocated database.
+    options->extra_master_flags.push_back("--ysql_legacy_colocated_database_creation=false");
+    options->extra_master_flags.push_back("--tserver_unresponsive_timeout_ms=2000");
+    options->extra_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=5");
+    options->extra_tserver_flags.push_back("--skip_flushed_entries=false");
+  }
+};
+
+TEST_F(PgLibPqRbsTests, YB_DISABLE_TEST_IN_TSAN(ReplayRemoteBootstrappedTablet)) {
+  const string database_name = "test_db";
+  {
+    PGConn conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", database_name));
+  }
+  FlushTablesAndCreateData(
+      database_name /* database_name */, 30 /* timeout_secs */, true /* colocated */);
+
+  // Stop a tserver and wait for it to be removed from quorum.
+  cluster_->tablet_server(2)->Shutdown();
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  master::NamespaceIdentifierPB filter;
+  client::YBTableName table_name;
+  filter.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+  filter.set_name(database_name);
+  auto tables = ASSERT_RESULT(client->ListUserTables(filter));
+  for (const auto& table : tables) {
+    if (table.table_name() == "bar") {
+      LOG(INFO) << "Complete table details for bar table " << table.ToString();
+      table_name = table;
+    }
+  }
+
+  master::TabletLocationsPB colocated_tablet;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB> tablets;
+    RETURN_NOT_OK(client->GetTablets(
+        table_name, -1, &tablets, /* partition_list_version =*/ nullptr,
+        RequireTabletsRunning::kTrue));
+    EXPECT_EQ(tablets.size(), 1);
+    colocated_tablet = tablets[0];
+    LOG(INFO) << "Got tablet " << colocated_tablet.ShortDebugString();
+    return colocated_tablet.replicas_size() == 2;
+  }, 60s * kTimeMultiplier, "wait for replica count to become 2"));
+
+  // Add a tserver, it should get remote bootstrapped and not crash.
+  ASSERT_OK(cluster_->AddTabletServer(ExternalMiniClusterOptions::kDefaultStartCqlProxy, {}));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto tablets = VERIFY_RESULT(cluster_->GetTablets(cluster_->tablet_server(3)));
+    bool found = false;
+    for (const auto& tablet : tablets) {
+      if (tablet.tablet_id() == colocated_tablet.tablet_id()) {
+        LOG(INFO) << "Found tablet " << tablet.ShortDebugString();
+        found = true;
+        break;
+      }
+    }
+    return found;
+  }, 60s * kTimeMultiplier, "Wait for tablet to be present on tserver"));
+}
+
+class PgLibPqTest3Masters: public PgLibPqTest {
+  int GetNumMasters() const override {
+    return 3;
+  }
+};
+
+TEST_F(PgLibPqTest3Masters, YB_DISABLE_TEST_IN_TSAN(TabletBootstrapReplayChangeMetadataOp)) {
+  const std::string kDatabaseName = "testdb";
+
+  // Get details about a master that is not the leader.
+  auto follower_idx = ASSERT_RESULT(cluster_->GetFirstNonLeaderMasterIndex());
+  std::string follower_uuid = cluster_->master(follower_idx)->uuid();
+
+  // Set flag to skip apply on this follower.
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->master(follower_idx), "TEST_ignore_apply_change_metadata_on_followers", "true"));
+
+  // Now create a database. This will trigger a bunch of ADD_TABLE change metadata
+  // operations for the pg system tables which will only get applied on the leader
+  // and 1 follower and not on the other follower due to the flag.
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
+  LOG(INFO) << "Database created successfully";
+
+  // Reset the flag.
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->master(follower_idx), "TEST_ignore_apply_change_metadata_on_followers", "false"));
+
+  // Shutdown and restart this follower now. During tablet bootstrap it should apply
+  // these ADD_TABLE change metadata operations thus rebuilding state of the created
+  // database completely and correctly.
+  cluster_->master(follower_idx)->Shutdown();
+  ASSERT_OK(cluster_->master(follower_idx)->Restart());
+  LOG(INFO) << follower_idx << " has been restarted";
+
+  // Wait for this master to join back the cluster.
+  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+
+  // Stepdown the leader to this follower. If the above tablet bootstrap replayed
+  // everything correctly, the created database should be usable now.
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader(follower_uuid));
+  LOG(INFO) << follower_idx << " is the leader";
+
+  // Try to connect to the new db and issue a few commands.
+  PGConn conn_new = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn_new.Execute("CREATE TABLE foo (i int)"));
+  ASSERT_OK(conn_new.Execute("INSERT INTO foo VALUES (10)"));
 }
 
 class PgLibPqTablegroupTest : public PgLibPqTest {
@@ -3702,7 +3882,8 @@ TEST_F_EX(PgLibPqTest,
   const string database_name = "test_db";
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", database_name));
   FlushTablesAndPerformBootstrap(
-      "test_db" /* database_name */, 30 /* timeout_secs */, true /* colocated */);
+      "test_db" /* database_name */, 30 /* timeout_secs */, true /* colocated */,
+      false /* test_backward_compatibility */);
 }
 
 class PgLibPqLegacyColocatedDBTestSmallTSTimeout : public PgLibPqTestSmallTSTimeout {

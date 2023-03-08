@@ -607,31 +607,38 @@ ConsensusServiceProxy ExternalMiniCluster::GetConsensusProxy(ExternalDaemon* ext
   return GetProxy<ConsensusServiceProxy>(external_deamon);
 }
 
-Status ExternalMiniCluster::StepDownMasterLeader(TabletServerErrorPB::Code* error_code) {
+Status ExternalMiniCluster::StepDownMasterLeader(
+    TabletServerErrorPB::Code* error_code, const std::string& new_leader_uuid) {
   ExternalMaster* leader = GetLeaderMaster();
   string leader_uuid = leader->uuid();
   auto host_port = leader->bound_rpc_addr();
   LeaderStepDownRequestPB lsd_req;
   lsd_req.set_tablet_id(yb::master::kSysCatalogTabletId);
   lsd_req.set_dest_uuid(leader_uuid);
+  if (!new_leader_uuid.empty()) {
+    lsd_req.set_new_leader_uuid(new_leader_uuid);
+  }
   LeaderStepDownResponsePB lsd_resp;
   RpcController lsd_rpc;
   lsd_rpc.set_timeout(opts_.timeout);
   ConsensusServiceProxy proxy(proxy_cache_.get(), host_port);
   RETURN_NOT_OK(proxy.LeaderStepDown(lsd_req, &lsd_resp, &lsd_rpc));
   if (lsd_resp.has_error()) {
-    LOG(ERROR) << "LeaderStepDown for " << leader_uuid << " received error "
-               << lsd_resp.error().ShortDebugString();
+    LOG(ERROR) << "LeaderStepDown for " << leader_uuid << " for destination " << new_leader_uuid
+               << " received error " << lsd_resp.error().ShortDebugString();
     *error_code = lsd_resp.error().code();
     return StatusFromPB(lsd_resp.error().status());
   }
 
-  LOG(INFO) << "Leader at host/port '" << host_port << "' step down complete.";
+  LOG(INFO) << "Leader at host/port '" << host_port
+            << " stepped down in favor of node with uuid "
+            << new_leader_uuid;
 
   return Status::OK();
 }
 
-Status ExternalMiniCluster::StepDownMasterLeaderAndWaitForNewLeader() {
+Status ExternalMiniCluster::StepDownMasterLeaderAndWaitForNewLeader(
+    const std::string& new_leader_uuid) {
   ExternalMaster* leader = GetLeaderMaster();
   string old_leader_uuid = leader->uuid();
   string leader_uuid = old_leader_uuid;
@@ -641,7 +648,7 @@ Status ExternalMiniCluster::StepDownMasterLeaderAndWaitForNewLeader() {
   // while loop will not be needed once JIRA ENG-49 is fixed.
   int iter = 1;
   while (leader_uuid == old_leader_uuid) {
-    Status s = StepDownMasterLeader(&error_code);
+    Status s = StepDownMasterLeader(&error_code, new_leader_uuid);
     // If step down hits any error except not-ready, exit.
     if (!s.ok() && error_code != TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN) {
       return s;
