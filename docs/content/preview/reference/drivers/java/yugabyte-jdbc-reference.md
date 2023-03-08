@@ -4,6 +4,8 @@ linkTitle: JDBC Drivers
 description: JDBC Drivers for YSQL
 headcontent: JDBC Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
+aliases:
+  - /preview/reference/drivers/yugabytedb-jdbc-driver/
 menu:
   preview:
     name: JDBC Drivers
