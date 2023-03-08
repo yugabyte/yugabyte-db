@@ -157,13 +157,6 @@ public class Util {
     return inetAddrs;
   }
 
-  public static String redactString(String input) {
-    String length = ((Integer) input.length()).toString();
-    String regex = "(.)" + "{" + length + "}";
-    String output = input.replaceAll(regex, REDACT);
-    return output;
-  }
-
   public static String redactYsqlQuery(String input) {
     return input.replaceAll(
         YSQL_PASSWORD_KEYWORD + " (.+?)';", String.format("%s %s;", YSQL_PASSWORD_KEYWORD, REDACT));
