@@ -29,6 +29,7 @@ const useStyles = makeStyles((theme) => ({
     display: 'flex',
     gap: theme.spacing(0.5),
     alignItems: 'center',
+    width: 'fit-content',
   }),
   icon: {
     height: "14px",

@@ -1098,6 +1098,15 @@
         "pauseCluster": "Pause Cluster",
         "resumeCluster": "Resume Cluster",
         "unknown": "Unknown",
+        "details": {
+          "title": "Activity Details",
+          "operationName": "Operation Name",
+          "status": "Operation Status",
+          "jobID": "Job ID",
+          "startTime": "Start Time",
+          "elapsedTime": "Elapsed Time",
+          "progress": "Progress"
+        },
         "statusEnum": {
           "failed": "Failed",
           "completed": "Completed",

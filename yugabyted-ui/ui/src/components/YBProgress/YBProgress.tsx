@@ -5,7 +5,7 @@ const useStyles = makeStyles<Theme, ProgressProps>((theme: Theme) => ({
   root: {
     flexGrow: 1,
     height: theme.spacing(1.5),
-    borderRadius: theme.spacing(0.2),
+    borderRadius: theme.spacing(0.4),
   },
   colorPrimary: {
     backgroundColor: theme.palette.grey[200],
