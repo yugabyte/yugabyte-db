@@ -214,6 +214,11 @@ message RaftGroupReplicaSuperBlockPB {
 
   // Is this tablet currently a being replicated with cdc.
   optional bool is_under_cdc_sdk_replication = 36;
+
+  // OpId of the last change metadata operation performed on this tablet.
+  // This value is used to determine if a particular raft op should be replayed
+  // during local tablet bootstrap of the tablet.
+  optional OpIdPB last_change_metadata_op_id = 37;
 }
 
 message FilePB {
