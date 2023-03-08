@@ -41,7 +41,7 @@ type: indexpage
   <li>
     <a href="nodejs/yugabyte-pg-reference/" class="orange">
       <i class="fa-brands fa-node-js"></i>
-      NodeJS
+      Node.js
     </a>
   </li>
 

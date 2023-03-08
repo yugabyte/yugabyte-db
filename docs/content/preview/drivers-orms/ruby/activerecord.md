@@ -1,7 +1,8 @@
 ---
-title: Use an ORM
+title: Active Record ORM
+headerTitle: Use an ORM
 linkTitle: Use an ORM
-description: Active Record ORM support for YugabyteDB
+description: Ruby Active Record ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:

@@ -1,5 +1,5 @@
 ---
-title: Alerts and monitoring
+title: Alerts and monitoring in YugabyteDB Managed
 headerTitle: Alerts and monitoring
 linkTitle: Alerts and monitoring
 description: Set alerts and monitor your YugabyteDB Managed clusters.
