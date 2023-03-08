@@ -27,7 +27,6 @@ using std::string;
 
 namespace yb {
 namespace master {
-namespace enterprise {
 
 Result<std::string> DecryptUniverseKeyRegistry(const Slice& s, const Slice& universe_key) {
   string output;
@@ -99,6 +98,5 @@ Status RotateUniverseKey(const Slice& old_universe_key,
   return Status::OK();
 }
 
-} // namespace enterprise
 } // namespace master
 } // namespace yb

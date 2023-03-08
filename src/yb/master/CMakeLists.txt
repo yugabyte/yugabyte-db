@@ -72,6 +72,7 @@ include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 set(MASTER_SRCS
   async_flush_tablets_task.cc
   async_rpc_tasks.cc
+  async_snapshot_tasks.cc
   auto_flags_orchestrator.cc
   master_call_home.cc
   backfill_index.cc
@@ -80,6 +81,8 @@ set(MASTER_SRCS
   catalog_entity_info.cc
   catalog_manager_bg_tasks.cc
   catalog_loaders.cc
+  cdc_consumer_registry_service.cc
+  cdc_rpc_tasks.cc
   scoped_leader_shared_lock.cc
   cluster_balance.cc
   cluster_balance_util.cc
@@ -88,6 +91,7 @@ set(MASTER_SRCS
   flush_manager.cc
   master.cc
   master_admin_service.cc
+  master_backup_service.cc
   master_client_service.cc
   master_cluster_service.cc
   master_dcl_service.cc
@@ -103,6 +107,7 @@ set(MASTER_SRCS
   mini_master.cc
   master_snapshot_coordinator.cc
   restoration_state.cc
+  restore_sys_catalog_state.cc
   snapshot_coordinator_context.cc
   snapshot_schedule_state.cc
   snapshot_state.cc
@@ -116,6 +121,7 @@ set(MASTER_SRCS
   tasks_tracker.cc
   ts_descriptor.cc
   ts_manager.cc
+  universe_key_registry_service.cc
   util/yql_vtable_helpers.cc
   xcluster/xcluster_consumer_metrics.cc
   xcluster/xcluster_safe_time_service.cc
@@ -216,6 +222,9 @@ ADD_YB_TEST(sys_catalog-test)
 Add_YB_TEST(table_index-test)
 ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
 ADD_YB_TEST(stateful_service-test)
+ADD_YB_TEST(restore_sys_catalog_state_test)
+ADD_YB_TEST(cluster_balance_preferred_leader-test)
+ADD_YB_TEST(master_xrepl-test)
 
 foreach(ADDITIONAL_TEST ${MASTER_ADDITIONAL_TESTS})
   ADD_YB_TEST(${ADDITIONAL_TEST})

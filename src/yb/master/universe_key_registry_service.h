@@ -24,8 +24,6 @@ namespace master {
 
 class EncryptionInfoPB;
 
-namespace enterprise {
-
 // Decrypt the universe key registry s, with universe key universe_key.
 Result<std::string> DecryptUniverseKeyRegistry(const Slice& s, const Slice& universe_key);
 
@@ -35,6 +33,5 @@ Status RotateUniverseKey(const Slice& old_universe_key,
                          const std::string& new_key_version_id,
                          bool enable,
                          EncryptionInfoPB* encryption_info);
-} // namespace enterprise
 } // namespace master
 } // namespace yb

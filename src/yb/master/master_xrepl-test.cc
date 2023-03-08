@@ -24,7 +24,7 @@
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_defaults.h"
 
-#include "../../src/yb/master/master-test_base.h"
+#include "yb/master/master-test_base.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
@@ -34,15 +34,13 @@ DECLARE_bool(disable_truncate_table);
 
 namespace yb {
 namespace master {
-namespace enterprise {
-
 constexpr const char* kTableName = "cdc_table";
 static const Schema kTableSchema({ ColumnSchema("key", INT32),
                                    ColumnSchema("v1", UINT64),
                                    ColumnSchema("v2", STRING) },
                                  1);
 
-class MasterTestEnt  : public MasterTestBase {
+class MasterTestXRepl  : public MasterTestBase {
  protected:
   Status CreateCDCStream(const TableId& table_id, CDCStreamId* stream_id);
   Status GetCDCStream(const CDCStreamId& stream_id, GetCDCStreamResponsePB* resp);
@@ -58,7 +56,7 @@ class MasterTestEnt  : public MasterTestBase {
 
 };
 
-Status MasterTestEnt::CreateCDCStream(const TableId& table_id, CDCStreamId* stream_id) {
+Status MasterTestXRepl::CreateCDCStream(const TableId& table_id, CDCStreamId* stream_id) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
 
@@ -86,7 +84,7 @@ Status MasterTestEnt::CreateCDCStream(const TableId& table_id, CDCStreamId* stre
   return Status::OK();
 }
 
-Status MasterTestEnt::GetCDCStream(const CDCStreamId& stream_id, GetCDCStreamResponsePB* resp) {
+Status MasterTestXRepl::GetCDCStream(const CDCStreamId& stream_id, GetCDCStreamResponsePB* resp) {
   GetCDCStreamRequestPB req;
   req.set_stream_id(stream_id);
 
@@ -97,7 +95,7 @@ Status MasterTestEnt::GetCDCStream(const CDCStreamId& stream_id, GetCDCStreamRes
   return Status::OK();
 }
 
-Status MasterTestEnt::DeleteCDCStream(const CDCStreamId& stream_id) {
+Status MasterTestXRepl::DeleteCDCStream(const CDCStreamId& stream_id) {
   DeleteCDCStreamRequestPB req;
   DeleteCDCStreamResponsePB resp;
   req.add_stream_id(stream_id);
@@ -109,7 +107,7 @@ Status MasterTestEnt::DeleteCDCStream(const CDCStreamId& stream_id) {
   return Status::OK();
 }
 
-Status MasterTestEnt::ListCDCStreams(ListCDCStreamsResponsePB* resp) {
+Status MasterTestXRepl::ListCDCStreams(ListCDCStreamsResponsePB* resp) {
   ListCDCStreamsRequestPB req;
 
   RETURN_NOT_OK(proxy_replication_->ListCDCStreams(req, resp, ResetAndGetController()));
@@ -119,7 +117,7 @@ Status MasterTestEnt::ListCDCStreams(ListCDCStreamsResponsePB* resp) {
   return Status::OK();
 }
 
-Status MasterTestEnt::SetupUniverseReplication(
+Status MasterTestXRepl::SetupUniverseReplication(
     const std::string& producer_id, const std::vector<std::string>& producer_master_addrs,
     const std::vector<TableId>& tables) {
   SetupUniverseReplicationRequestPB req;
@@ -147,7 +145,7 @@ Status MasterTestEnt::SetupUniverseReplication(
   return Status::OK();
 }
 
-Status MasterTestEnt::GetUniverseReplication(
+Status MasterTestXRepl::GetUniverseReplication(
     const std::string& producer_id, GetUniverseReplicationResponsePB* resp) {
   GetUniverseReplicationRequestPB req;
   req.set_producer_id(producer_id);
@@ -159,7 +157,7 @@ Status MasterTestEnt::GetUniverseReplication(
   return Status::OK();
 }
 
-Status MasterTestEnt::DeleteUniverseReplication(const std::string& producer_id) {
+Status MasterTestXRepl::DeleteUniverseReplication(const std::string& producer_id) {
   DeleteUniverseReplicationRequestPB req;
   DeleteUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_id);
@@ -171,7 +169,7 @@ Status MasterTestEnt::DeleteUniverseReplication(const std::string& producer_id) 
   return Status::OK();
 }
 
-TEST_F(MasterTestEnt, TestDisableTruncation) {
+TEST_F(MasterTestXRepl, TestDisableTruncation) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_truncate_table) = true;
   TableId table_id;
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
@@ -179,7 +177,7 @@ TEST_F(MasterTestEnt, TestDisableTruncation) {
   EXPECT_TRUE(s.IsNotSupported());
 }
 
-TEST_F(MasterTestEnt, TestCreateCDCStreamInvalidTable) {
+TEST_F(MasterTestXRepl, TestCreateCDCStreamInvalidTable) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
 
@@ -190,7 +188,7 @@ TEST_F(MasterTestEnt, TestCreateCDCStreamInvalidTable) {
   ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
 }
 
-TEST_F(MasterTestEnt, TestCreateCDCStream) {
+TEST_F(MasterTestXRepl, TestCreateCDCStream) {
   TableId table_id;
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
@@ -203,7 +201,7 @@ TEST_F(MasterTestEnt, TestCreateCDCStream) {
   ASSERT_EQ(resp.stream().table_id().Get(0), table_id);
 }
 
-TEST_F(MasterTestEnt, TestDeleteCDCStream) {
+TEST_F(MasterTestXRepl, TestDeleteCDCStream) {
   TableId table_id;
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
@@ -223,7 +221,7 @@ TEST_F(MasterTestEnt, TestDeleteCDCStream) {
   ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
 }
 
-TEST_F(MasterTestEnt, TestDeleteTableWithCDCStream) {
+TEST_F(MasterTestXRepl, TestDeleteTableWithCDCStream) {
   TableId table_id;
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
@@ -243,7 +241,7 @@ TEST_F(MasterTestEnt, TestDeleteTableWithCDCStream) {
 }
 
 // Just disabled on sanitizers because it doesn't need to run often. It's just a unit test.
-TEST_F(MasterTestEnt, YB_DISABLE_TEST_IN_SANITIZERS(TestDeleteCDCStreamNoForceDelete)) {
+TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_SANITIZERS(TestDeleteCDCStreamNoForceDelete)) {
   // #12255.  Added 'force_delete' flag, but only run this check if the client code specifies it.
   TableId table_id;
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
@@ -281,7 +279,7 @@ TEST_F(MasterTestEnt, YB_DISABLE_TEST_IN_SANITIZERS(TestDeleteCDCStreamNoForceDe
   ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
 }
 
-TEST_F(MasterTestEnt, TestListCDCStreams) {
+TEST_F(MasterTestXRepl, TestListCDCStreams) {
   TableId table_id;
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
@@ -295,7 +293,7 @@ TEST_F(MasterTestEnt, TestListCDCStreams) {
   ASSERT_EQ(stream_id, resp.streams(0).stream_id());
 }
 
-TEST_F(MasterTestEnt, TestSetupUniverseReplication) {
+TEST_F(MasterTestXRepl, TestSetupUniverseReplication) {
   std::string producer_id = "producer_universe";
   std::vector<std::string> producer_masters {"127.0.0.1:7100"};
   std::vector<std::string> tables {"some_table_id"};
@@ -316,7 +314,7 @@ TEST_F(MasterTestEnt, TestSetupUniverseReplication) {
   ASSERT_EQ(resp.entry().tables(0), "some_table_id");
 }
 
-TEST_F(MasterTestEnt, TestDeleteUniverseReplication) {
+TEST_F(MasterTestXRepl, TestDeleteUniverseReplication) {
   std::string producer_id = "producer_universe";
   std::vector<std::string> producer_masters {"127.0.0.1:7100"};
   std::vector<std::string> tables {"some_table_id"};
@@ -336,6 +334,5 @@ TEST_F(MasterTestEnt, TestDeleteUniverseReplication) {
   ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
 }
 
-} // namespace enterprise
 } // namespace master
 } // namespace yb

@@ -91,7 +91,7 @@ Status EncryptionManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequest
         : to_string(boost::uuids::random_generator()());
   }
 
-  RETURN_NOT_OK(enterprise::RotateUniverseKey(Slice(old_universe_key), Slice(new_universe_key),
+  RETURN_NOT_OK(RotateUniverseKey(Slice(old_universe_key), Slice(new_universe_key),
                                               new_key_version_id, req->encryption_enabled(),
                                               encryption_info));
 
@@ -114,7 +114,7 @@ Status EncryptionManager::IsEncryptionEnabled(const EncryptionInfoPB& encryption
   // Decrypt the universe key registry to get the latest version id.
   auto universe_key = VERIFY_RESULT(GetLatestUniverseKey(&encryption_info));
   auto decrypted_registry =
-      VERIFY_RESULT(enterprise::DecryptUniverseKeyRegistry(
+      VERIFY_RESULT(DecryptUniverseKeyRegistry(
           encryption_info.universe_key_registry_encoded(), Slice(universe_key)));
   auto universe_key_registry =
       VERIFY_RESULT(pb_util::ParseFromSlice<encryption::UniverseKeyRegistryPB>(decrypted_registry));
@@ -176,7 +176,7 @@ Status EncryptionManager::FillHeartbeatResponseEncryption(
       LOG(WARNING) << "Leader master does not have universe key.";
       return Status::OK();
     }
-    decrypted = VERIFY_RESULT(enterprise::DecryptUniverseKeyRegistry(decrypted_registry, *res));
+    decrypted = VERIFY_RESULT(DecryptUniverseKeyRegistry(decrypted_registry, *res));
     decrypted_registry = Slice(decrypted);
   }
 
