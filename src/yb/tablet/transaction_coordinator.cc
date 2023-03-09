@@ -209,7 +209,8 @@ class TransactionState {
       : context_(*context),
         id_(id),
         log_prefix_(BuildLogPrefix(parent_log_prefix, id)),
-        last_touch_(last_touch) {
+        last_touch_(last_touch),
+        aborted_subtxn_info_(std::make_shared<const SubtxnSetAndPB>()) {
   }
 
   ~TransactionState() {
@@ -384,7 +385,14 @@ class TransactionState {
     }
   }
 
-  const SubtxnSetPB& GetAbortedSubTransactionSetPB() const { return aborted_; }
+  Status UpdateAbortedSubtxnSetAndPB(const ::yb::LWSubtxnSetPB& aborted_subtxn_set_pb) {
+    aborted_subtxn_info_ = VERIFY_RESULT(SubtxnSetAndPB::Create(aborted_subtxn_set_pb));
+    return Status::OK();
+  }
+
+  const std::shared_ptr<const SubtxnSetAndPB>& GetAbortedSubtxnInfo() const {
+    return aborted_subtxn_info_;
+  }
 
   Result<TransactionStatusResult> GetStatus(
       std::vector<ExpectedTabletBatches>* expected_tablet_batches) const {
@@ -510,7 +518,7 @@ class TransactionState {
             context_.NotifyApplying({
                 .tablet = tablet.first,
                 .transaction = id_,
-                .aborted = aborted_,
+                .aborted = GetAbortedSubtxnInfo()->pb(),
                 .commit_time = commit_time_,
                 .sealed = status_ == TransactionStatus::SEALED ,
                 .is_external = is_external() });
@@ -763,7 +771,7 @@ class TransactionState {
     is_external_ = data.state.has_external_hybrid_time();
 
     // TODO(savepoints) Savepoints with sealed transactions is not yet tested
-    data.state.aborted().ToGoogleProtobuf(&aborted_);
+    RETURN_NOT_OK(UpdateAbortedSubtxnSetAndPB(data.state.aborted()));
     VLOG_WITH_PREFIX(4) << "Seal time: " << commit_time_;
     status_ = TransactionStatus::SEALED;
 
@@ -801,7 +809,7 @@ class TransactionState {
     last_touch_ = data.hybrid_time;
     commit_time_ = data.hybrid_time;
     first_entry_raft_index_ = data.op_id.index;
-    data.state.aborted().ToGoogleProtobuf(&aborted_);
+    RETURN_NOT_OK(UpdateAbortedSubtxnSetAndPB(data.state.aborted()));
     is_external_ = data.state.has_external_hybrid_time();
 
     involved_tablets_.reserve(data.state.tablets().size());
@@ -861,7 +869,7 @@ class TransactionState {
     // Asynchronous heartbeats don't include aborted sub-txn set (and hence the set is empty), so
     // avoid updating in those cases.
     if (!data.state.aborted().set().empty()) {
-      data.state.aborted().ToGoogleProtobuf(&aborted_);
+      RETURN_NOT_OK(UpdateAbortedSubtxnSetAndPB(data.state.aborted()));
     }
 
     return Status::OK();
@@ -885,7 +893,7 @@ class TransactionState {
         context_.NotifyApplying({
             .tablet = tablet.first,
             .transaction = id_,
-            .aborted = aborted_,
+            .aborted = GetAbortedSubtxnInfo()->pb(),
             .commit_time = commit_time_,
             .sealed = status_ == TransactionStatus::SEALED,
             .is_external = is_external()});
@@ -951,7 +959,7 @@ class TransactionState {
   int64_t first_entry_raft_index_ = std::numeric_limits<int64_t>::max();
 
   // Metadata tracking aborted subtransaction IDs in this transaction.
-  SubtxnSetPB aborted_;
+  std::shared_ptr<const SubtxnSetAndPB> aborted_subtxn_info_;
 
   // The operation that we a currently replicating in RAFT.
   // It is owned by TransactionDriver (that will be renamed to OperationDriver).
@@ -1034,6 +1042,24 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     }
   }
 
+  // Note: IsAnySubtxnActive returns the result from a consistent state of the transaction, and does
+  // not reflect real time status. It could happen that the function returns true and the txn gets
+  // aborted/removed just after that. The subsequent call to IsAnySubtxnActive would return false.
+  bool IsAnySubtxnActive(const TransactionId& transaction_id,
+                         const SubtxnSet& subtxn_set) override {
+    std::shared_ptr<const SubtxnSetAndPB> aborted_subtxn_info;
+    {
+      std::lock_guard lock(managed_mutex_);
+      auto it = managed_transactions_.find(transaction_id);
+      if (it == managed_transactions_.end()) {
+        return false;
+      }
+      aborted_subtxn_info = it->GetAbortedSubtxnInfo();
+    }
+
+    return !aborted_subtxn_info->set().Contains(subtxn_set);
+  }
+
   void Shutdown() {
     deadlock_detection_poller_.Shutdown();
     deadlock_detector_.Shutdown();
@@ -1101,7 +1127,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         if (it != managed_transactions_.end() &&
             (txn_status_with_ht.status == TransactionStatus::COMMITTED ||
              txn_status_with_ht.status == TransactionStatus::PENDING)) {
-          *mutable_aborted_set_pb = it->GetAbortedSubTransactionSetPB();
+          *mutable_aborted_set_pb = it->GetAbortedSubtxnInfo()->pb();
         }
       }
       postponed_leader_actions.Swap(&postponed_leader_actions_);
