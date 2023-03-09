@@ -1460,6 +1460,9 @@ public class PlacementInfoUtil {
 
   private static void applyDedicatedModeChanges(
       Universe universe, Cluster cluster, UniverseDefinitionTaskParams taskParams) {
+    if (cluster.clusterType != PRIMARY) {
+      return;
+    }
     Set<NodeDetails> clusterNodes =
         taskParams
             .nodeDetailsSet
