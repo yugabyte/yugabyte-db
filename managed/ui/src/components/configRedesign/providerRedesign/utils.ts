@@ -34,7 +34,7 @@ export const getYBAHost = (hostInfo: HostInfo) => {
   if (!(typeof hostInfo.gcp === 'string' || hostInfo.gcp instanceof String)) {
     return YBAHost.GCP;
   }
-  if (!(typeof hostInfo.gcp === 'string' || hostInfo.gcp instanceof String)) {
+  if (!(typeof hostInfo.aws === 'string' || hostInfo.aws instanceof String)) {
     return YBAHost.AWS;
   }
   return YBAHost.SELF_HOSTED;
