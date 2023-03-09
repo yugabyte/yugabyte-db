@@ -13,7 +13,7 @@ const useYBLabelStyles = makeStyles((theme) => ({
     alignItems: 'center',
     display: 'flex',
     fontSize: '13px',
-    fontWeight: 500,
+    fontWeight: 400,
     fontFamily: 'Inter',
     color: theme.palette.ybacolors.labelBackground,
     fontStyle: 'normal'
