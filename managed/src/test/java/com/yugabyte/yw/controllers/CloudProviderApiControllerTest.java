@@ -771,8 +771,13 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     cloudInfoJson.set("aws", awsCloudInfoJson);
     detailsJson.set("cloudInfo", cloudInfoJson);
     bodyJson.set("details", detailsJson);
+    ArrayNode regionsList = Json.newArray();
+    ObjectNode region = Json.newObject();
+    region.put("code", "us-west-2");
+    regionsList.add(region);
+    bodyJson.set("regions", regionsList);
     when(mockAWSCloudImpl.checkKeysExists(any())).thenReturn(false, true);
-    when(mockAWSCloudImpl.getStsClientOrBadRequest(any()))
+    when(mockAWSCloudImpl.getStsClientOrBadRequest(any(), any()))
         .thenThrow(
             new PlatformServiceException(
                 BAD_REQUEST, "AWS access and secret keys validation failed: Invalid role"),
@@ -811,9 +816,14 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     cloudInfoJson.set("aws", awsCloudInfoJson);
     detailsJson.set("cloudInfo", cloudInfoJson);
     bodyJson.set("details", detailsJson);
-    when(mockAWSCloudImpl.getStsClientOrBadRequest(any()))
+    ArrayNode regionsList = Json.newArray();
+    ObjectNode region = Json.newObject();
+    region.put("code", "us-west-2");
+    regionsList.add(region);
+    bodyJson.set("regions", regionsList);
+    when(mockAWSCloudImpl.getStsClientOrBadRequest(any(), any()))
         .thenReturn(new GetCallerIdentityResult());
-    when(mockAWSCloudImpl.getHostedZoneOrBadRequest(any(), anyString()))
+    when(mockAWSCloudImpl.getHostedZoneOrBadRequest(any(), any(), anyString()))
         .thenThrow(
             new PlatformServiceException(BAD_REQUEST, "Hosted Zone validation failed: Invalid ID"));
     Result result = assertPlatformException(() -> createProvider(bodyJson));
@@ -835,7 +845,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     bodyJson.set("details", detailsJson);
     bodyJson.put("sshPrivateKeyContent", "key_content");
     bodyJson.put("keyPairName", "test1");
-    when(mockAWSCloudImpl.getStsClientOrBadRequest(any()))
+    when(mockAWSCloudImpl.getStsClientOrBadRequest(any(), any()))
         .thenReturn(new GetCallerIdentityResult());
     when(mockAWSCloudImpl.getPrivateKeyAlgoOrBadRequest(anyString())).thenReturn("DSA");
     Result result = assertPlatformException(() -> createProvider(bodyJson));
@@ -856,7 +866,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     cloudInfoJson.set("aws", awsCloudInfoJson);
     detailsJson.set("cloudInfo", cloudInfoJson);
     bodyJson.set("details", detailsJson);
-    when(mockAWSCloudImpl.getStsClientOrBadRequest(any()))
+    when(mockAWSCloudImpl.getStsClientOrBadRequest(any(), any()))
         .thenReturn(new GetCallerIdentityResult());
     ObjectNode regionAWSCloudInfo = Json.newObject();
     regionAWSCloudInfo.put("ybImage", "image_id");

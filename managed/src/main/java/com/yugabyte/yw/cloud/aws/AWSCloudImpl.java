@@ -118,15 +118,19 @@ public class AWSCloudImpl implements CloudAPI {
         .build();
   }
 
-  public AmazonRoute53 getRoute53Client(Provider provider) {
+  public AmazonRoute53 getRoute53Client(Provider provider, String regionCode) {
     AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(provider);
-    return AmazonRoute53ClientBuilder.standard().withCredentials(credentialsProvider).build();
+    return AmazonRoute53ClientBuilder.standard()
+        .withCredentials(credentialsProvider)
+        .withRegion(regionCode)
+        .build();
   }
 
-  public AWSSecurityTokenService getStsClient(Provider provider) {
+  public AWSSecurityTokenService getStsClient(Provider provider, String regionCode) {
     AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(provider);
     return AWSSecurityTokenServiceClientBuilder.standard()
         .withCredentials(credentialsProvider)
+        .withRegion(regionCode)
         .build();
   }
 
@@ -679,9 +683,9 @@ public class AWSCloudImpl implements CloudAPI {
     return new NodeID(name, uuid);
   }
 
-  public GetCallerIdentityResult getStsClientOrBadRequest(Provider provider) {
+  public GetCallerIdentityResult getStsClientOrBadRequest(Provider provider, Region region) {
     try {
-      AWSSecurityTokenService stsClient = getStsClient(provider);
+      AWSSecurityTokenService stsClient = getStsClient(provider, region.code);
       return stsClient.getCallerIdentity(new GetCallerIdentityRequest());
     } catch (SdkClientException e) {
       LOG.error("AWS Provider validation failed: ", e);
@@ -716,9 +720,10 @@ public class AWSCloudImpl implements CloudAPI {
     }
   }
 
-  public GetHostedZoneResult getHostedZoneOrBadRequest(Provider provider, String hostedZoneId) {
+  public GetHostedZoneResult getHostedZoneOrBadRequest(
+      Provider provider, Region region, String hostedZoneId) {
     try {
-      AmazonRoute53 route53Client = getRoute53Client(provider);
+      AmazonRoute53 route53Client = getRoute53Client(provider, region.code);
       GetHostedZoneRequest request = new GetHostedZoneRequest().withId(hostedZoneId);
       return route53Client.getHostedZone(request);
     } catch (AmazonServiceException e) {
