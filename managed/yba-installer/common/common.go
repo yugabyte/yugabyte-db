@@ -398,16 +398,18 @@ func WaitForYBAReady() {
 		defer resp.Body.Close()
 	}
 
-	// Validate version
-	if err == nil {
-		var result map[string]string
-		json.NewDecoder(resp.Body).Decode(&result)
-		if result["version"] != GetVersion() {
-			log.Fatal(fmt.Sprintf("Running YBA version %s does not match expected version %s",
-				result["version"], GetVersion()))
+	// Validate version in prod
+	if os.Getenv("YBA_MODE") != "dev" {
+		if err == nil {
+			var result map[string]string
+			json.NewDecoder(resp.Body).Decode(&result)
+			if result["version"] != GetVersion() {
+				log.Fatal(fmt.Sprintf("Running YBA version %s does not match expected version %s",
+					result["version"], GetVersion()))
+			}
+		} else {
+			log.Fatal(fmt.Sprintf("Error waiting for YBA ready: %s", err.Error()))
 		}
-	} else {
-		log.Fatal(fmt.Sprintf("Error waiting for YBA ready: %s", err.Error()))
 	}
 
 }
