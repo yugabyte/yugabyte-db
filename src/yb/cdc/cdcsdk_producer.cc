@@ -47,11 +47,6 @@ DEFINE_RUNTIME_bool(enable_single_record_update, true,
     "Enable packing updates corresponding to a row in single CDC record");
 
 DEFINE_RUNTIME_bool(
-    cdc_before_image_mandatory, true,
-    "Need before image for change record, if 'false' and we don't find the before image for the "
-    "record we will fill up with empty values");
-
-DEFINE_RUNTIME_bool(
     cdc_populate_safepoint_record, false,
     "If 'true' we will also send a 'SAFEPOINT' record at the end of each GetChanges call.");
 
@@ -231,7 +226,7 @@ Status PopulateBeforeImage(
   const auto log_prefix = tablet->LogPrefix();
   docdb::DocReadContext doc_read_context(log_prefix, tablet->table_type(), schema, schema_version);
   docdb::DocRowwiseIterator iter(
-      schema, doc_read_context, TransactionOperationContext(), docdb,
+      schema, *tablet->GetDocReadContext(), TransactionOperationContext(), docdb,
       CoarseTimePoint::max() /* deadline */, read_time);
 
   const docdb::DocKey& doc_key = decoded_primary_key.doc_key();
@@ -244,7 +239,7 @@ Status PopulateBeforeImage(
   auto result = iter.HasNext();
   if (result.ok() && *result) {
     RETURN_NOT_OK(iter.NextRow(&row));
-  } else if (FLAGS_cdc_before_image_mandatory && !FLAGS_ysql_enable_packed_row) {
+  } else {
     return result.ok()
                ? STATUS_FORMAT(
                      InternalError,
