@@ -198,7 +198,9 @@ export const K8sProviderCreateForm = ({
     }
     if (providerPayload) {
       await createInfraProvider(providerPayload, {
-        onError: (error) => handleFormServerError(error, ASYNC_ERROR, formMethods.setError)
+        mutateOptions: {
+          onError: (error) => handleFormServerError(error, ASYNC_ERROR, formMethods.setError)
+        }
       });
     }
   };

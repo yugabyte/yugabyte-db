@@ -230,6 +230,7 @@ export const AWSProviderEditForm = ({ providerConfig }: AWSProviderEditFormProps
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
+                  inputProps={{ min: 0, max: 65535 }}
                   disabled={true}
                   fullWidth
                 />

@@ -5,11 +5,12 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 import React, { useState } from 'react';
-import axios, { AxiosError } from 'axios';
-import { Box, FormHelperText, Typography } from '@material-ui/core';
+import { AxiosError } from 'axios';
+import { Box, CircularProgress, FormHelperText, makeStyles, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, mixed, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
+import { useSelector } from 'react-redux';
 
 import {
   OptionProps,
@@ -49,8 +50,14 @@ import { YBAHost } from '../../../../../redesign/helpers/constants';
 import { CreateInfraProvider } from '../../InfraProvider';
 import { RegionOperation } from '../configureRegion/constants';
 import { NTP_SERVER_REGEX } from '../constants';
+import { YBBanner, YBBannerVariant } from '../../../../common/descriptors';
+import { YBButton as YBRedesignedButton } from '../../../../../redesign/components';
+import { isAxiosError } from '../../../../../utils/errorHandlingUtils';
+import { isNonEmptyObject } from '../../../../../utils/ObjectUtils';
+import { getInvalidFields } from './utils';
 
 import { AWSRegionMutation, YBProviderMutation, AWSAvailabilityZoneMutation } from '../../types';
+import { YBBeanValidationError, YBPError } from '../../../../../redesign/helpers/dtos';
 
 interface AWSProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
@@ -77,6 +84,24 @@ export interface AWSProviderCreateFormFieldValues {
 
   [ASYNC_ERROR]: string;
 }
+
+export type QuickValidationErrorKeys = {
+  [keyString: string]: string[];
+};
+
+const useStyles = makeStyles(() => ({
+  errorList: {
+    '& li': {
+      listStyle: 'disc',
+      '&:not(:first-child)': {
+        marginTop: '12px'
+      }
+    }
+  },
+  loadingIcon: {
+    color: '#1890FF'
+  }
+}));
 
 const ProviderCredentialType = {
   HOST_INSTANCE_IAM_ROLE: 'hostInstanceIAMRole',
@@ -165,6 +190,12 @@ export const AWSProviderCreateForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<CloudVendorRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const featureFlags = useSelector((state: any) => state.featureFlags);
+  const [
+    quickValidationErrors,
+    setQuickValidationErrors
+  ] = useState<QuickValidationErrorKeys | null>(null);
+  const classes = useStyles();
 
   const defaultValues: Partial<AWSProviderCreateFormFieldValues> = {
     dbNodePublicInternetAccess: true,
@@ -181,6 +212,72 @@ export const AWSProviderCreateForm = ({
     defaultValues: defaultValues,
     resolver: yupResolver(VALIDATION_SCHEMA)
   });
+
+  const constructProviderPayload = async (
+    formValues: AWSProviderCreateFormFieldValues
+  ): Promise<YBProviderMutation> => ({
+    code: ProviderCode.AWS,
+    name: formValues.providerName,
+    ...(formValues.sshKeypairManagement === KeyPairManagement.CUSTOM_KEY_PAIR && {
+      ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
+      ...(formValues.sshPrivateKeyContent && {
+        sshPrivateKeyContent: (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
+      })
+    }),
+    details: {
+      airGapInstall: !formValues.dbNodePublicInternetAccess,
+      cloudInfo: {
+        [ProviderCode.AWS]: {
+          awsAccessKeyID: formValues.accessKeyId,
+          awsAccessKeySecret: formValues.secretAccessKey,
+          awsHostedZoneId: formValues.hostedZoneId
+        }
+      },
+      ntpServers: formValues.ntpServers,
+      setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
+      sshPort: formValues.sshPort,
+      sshUser: formValues.sshUser
+    },
+    regions: formValues.regions.map<AWSRegionMutation>((regionFormValues) => ({
+      code: regionFormValues.code,
+      details: {
+        cloudInfo: {
+          [ProviderCode.AWS]: {
+            securityGroupId: regionFormValues.securityGroupId,
+            vnet: regionFormValues.vnet,
+            ybImage: regionFormValues.ybImage
+          }
+        }
+      },
+      zones: regionFormValues.zones?.map<AWSAvailabilityZoneMutation>((azFormValues) => ({
+        code: azFormValues.code,
+        name: azFormValues.code,
+        subnet: azFormValues.subnet
+      }))
+    }))
+  });
+
+  const clearErrors = () => {
+    formMethods.clearErrors(ASYNC_ERROR);
+    setQuickValidationErrors(null);
+  };
+  const onFormSubmit = async (
+    formValues: AWSProviderCreateFormFieldValues,
+    shouldValidate = true
+  ) => {
+    clearErrors();
+    const providerPayload = await constructProviderPayload(formValues);
+    await createInfraProvider(providerPayload, {
+      shouldValidate: shouldValidate,
+      mutateOptions: { onError: handleFormServerError }
+    });
+  };
+  const onFormValidateAndSubmit: SubmitHandler<AWSProviderCreateFormFieldValues> = async (
+    formValues
+  ) => await onFormSubmit(formValues, !!featureFlags.test.enableAWSProviderValidation);
+  const onFormForceSubmit: SubmitHandler<AWSProviderCreateFormFieldValues> = async (formValues) =>
+    await onFormSubmit(formValues, false);
+
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
 
   if (hostInfoQuery.isLoading || hostInfoQuery.isIdle) {
@@ -208,57 +305,39 @@ export const AWSProviderCreateForm = ({
   const hideRegionFormModal = () => {
     setIsRegionFormModalOpen(false);
   };
-
-  const handleAsyncError = (error: Error | AxiosError) => {
-    const errorMessage = axios.isAxiosError(error)
-      ? error.response?.data?.error?.message ?? error.message
-      : error.message;
-    formMethods.setError(ASYNC_ERROR, errorMessage);
+  const skipValidationAndSubmit = () => {
+    onFormForceSubmit(formMethods.getValues());
   };
 
-  const onFormSubmit: SubmitHandler<AWSProviderCreateFormFieldValues> = async (formValues) => {
-    const providerPayload: YBProviderMutation = {
-      code: ProviderCode.AWS,
-      name: formValues.providerName,
-      ...(formValues.sshKeypairManagement === KeyPairManagement.CUSTOM_KEY_PAIR && {
-        ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-        ...(formValues.sshPrivateKeyContent && {
-          sshPrivateKeyContent: (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
+  const handleFormServerError = (error: Error | AxiosError<YBBeanValidationError | YBPError>) => {
+    if (
+      featureFlags.test.enableAWSProviderValidation &&
+      isAxiosError<YBBeanValidationError | YBPError>(error) &&
+      !(
+        typeof error.response?.data.error === 'string' ||
+        error.response?.data.error instanceof String
+      ) &&
+      isNonEmptyObject(error.response?.data.error)
+    ) {
+      // Handle YBBeanValidationError
+      setQuickValidationErrors(error.response?.data.error ?? null);
+      const invalidFields = error.response?.data.error
+        ? getInvalidFields(error.response?.data.error)
+        : [];
+      invalidFields.forEach((fieldName) =>
+        formMethods.setError(fieldName, {
+          type: 'server',
+          message:
+            'Validation Error. See the field validation failure at the bottom of the page for more details.'
         })
-      }),
-      details: {
-        airGapInstall: !formValues.dbNodePublicInternetAccess,
-        cloudInfo: {
-          [ProviderCode.AWS]: {
-            awsAccessKeyID: formValues.accessKeyId,
-            awsAccessKeySecret: formValues.secretAccessKey,
-            awsHostedZoneId: formValues.hostedZoneId
-          }
-        },
-        ntpServers: formValues.ntpServers,
-        setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-        sshPort: formValues.sshPort,
-        sshUser: formValues.sshUser
-      },
-      regions: formValues.regions.map<AWSRegionMutation>((regionFormValues) => ({
-        code: regionFormValues.code,
-        details: {
-          cloudInfo: {
-            [ProviderCode.AWS]: {
-              securityGroupId: regionFormValues.securityGroupId,
-              vnet: regionFormValues.vnet,
-              ybImage: regionFormValues.ybImage
-            }
-          }
-        },
-        zones: regionFormValues.zones?.map<AWSAvailabilityZoneMutation>((azFormValues) => ({
-          code: azFormValues.code,
-          name: azFormValues.code,
-          subnet: azFormValues.subnet
-        }))
-      }))
-    };
-    await createInfraProvider(providerPayload, { onError: handleAsyncError });
+      );
+    }
+
+    // Set form error to fail form submission.
+    formMethods.setError(ASYNC_ERROR, {
+      type: 'server',
+      message: error.message ?? 'Server reported error.'
+    });
   };
 
   const credentialOptions: OptionProps[] = [
@@ -298,7 +377,10 @@ export const AWSProviderCreateForm = ({
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
-        <FormContainer name="awsProviderForm" onSubmit={formMethods.handleSubmit(onFormSubmit)}>
+        <FormContainer
+          name="awsProviderForm"
+          onSubmit={formMethods.handleSubmit(onFormValidateAndSubmit)}
+        >
           <Typography variant="h3">Create AWS Provider Configuration</Typography>
           <FormField providerNameField={true}>
             <FieldLabel>Provider Name</FieldLabel>
@@ -376,11 +458,11 @@ export const AWSProviderCreateForm = ({
                 disabled={formMethods.formState.isSubmitting}
                 isError={!!formMethods.formState.errors.regions}
               />
-              {formMethods.formState.errors.regions?.message && (
+              {formMethods.formState.errors.regions?.message ? (
                 <FormHelperText error={true}>
                   {formMethods.formState.errors.regions?.message}
                 </FormHelperText>
-              )}
+              ) : null}
             </FieldGroup>
             <FieldGroup
               heading="SSH Key Pairs"
@@ -396,6 +478,7 @@ export const AWSProviderCreateForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
+                  inputProps={{ min: 0, max: 65535 }}
                   fullWidth
                 />
               </FormField>
@@ -442,13 +525,52 @@ export const AWSProviderCreateForm = ({
                 />
               </FormField>
             </FieldGroup>
+            {!!featureFlags.test.enableAWSProviderValidation && !!quickValidationErrors && (
+              <YBBanner variant={YBBannerVariant.DANGER}>
+                <Typography variant="body1">Fields failed validation:</Typography>
+                <ul className={classes.errorList}>
+                  {Object.entries(quickValidationErrors).map(([keyString, errors]) => {
+                    return (
+                      <li key={keyString}>
+                        {keyString.replace(/^(data\.)/, '')}
+                        <ul>
+                          {errors.map((error, index) => (
+                            <li key={index}>{error}</li>
+                          ))}
+                        </ul>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <YBRedesignedButton
+                  variant="secondary"
+                  onClick={skipValidationAndSubmit}
+                  data-testid="AWSProviderCreateForm-SkipValidationButton"
+                >
+                  Ignore and save provider configuration anyway
+                </YBRedesignedButton>
+              </YBBanner>
+            )}
+            {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
+              <Box display="flex" gridGap="5px" marginLeft="auto">
+                <CircularProgress size={16} color="primary" thickness={5} />
+                {!!featureFlags.test.enableAWSProviderValidation && (
+                  <Typography variant="body2" color="primary">
+                    Validating provider configuration fields... usually take 5-30s to complete.
+                  </Typography>
+                )}
+              </Box>
+            )}
           </Box>
           <Box marginTop="16px">
             <YBButton
-              btnText="Create Provider Configuration"
+              btnText={
+                featureFlags.test.enableAWSProviderValidation
+                  ? 'Validate and Save Configuration'
+                  : 'Create Provider Configuration'
+              }
               btnClass="btn btn-default save-btn"
               btnType="submit"
-              loading={formMethods.formState.isSubmitting}
               disabled={formMethods.formState.isSubmitting}
               data-testid="AWSProviderCreateForm-SubmitButton"
             />
