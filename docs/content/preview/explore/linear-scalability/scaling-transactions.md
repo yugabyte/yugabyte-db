@@ -99,6 +99,4 @@ Navigate to the [simulation application UI](http://127.0.0.1:8000/) to see the n
 
 ![Latency and throughput graph after stopping node 4](/images/ce/stop-node-graph.png)
 
-## Clean up
-
-You can shut down the local cluster by following the instructions provided in [Destroy a local cluster](../../../reference/configuration/yugabyted/#destroy-a-local-cluster).
+{{% explore-cleanup-local %}}

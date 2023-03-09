@@ -330,7 +330,7 @@ For this case, you can connect to any node in the cluster; `127.0.0.1` has been 
 
     The transaction fails; the row does not get the intended value of `40`, and still retains the old value of `30`. When the transaction manager fails before a commit happens, the transaction is lost. At this point, it's the application's responsibility to restart the transaction.
 
-{{< explore-cleanup >}}
+{{% explore-cleanup-local %}}
 
 ## Learn More
 

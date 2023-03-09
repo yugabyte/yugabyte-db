@@ -44,7 +44,7 @@ Note that the examples are deliberately simplified. In many of the scenarios, yo
 
 The process of undoing data changes involves creating and taking a snapshot of a table, and then performing a restore from either an absolute or relative time.
 
-Before attempting a restore, you need to confirm that there is no restore in progress for the subject keyspace or table; if multiple restore commands are issued, the data might enter an inconsistent state. For details, see [Restore to a point in time](../../../manage/backup-restore/point-in-time-recovery/#restore-to-a-point-in-time).  
+Before attempting a restore, you need to confirm that there is no restore in progress for the subject keyspace or table; if multiple restore commands are issued, the data might enter an inconsistent state. For details, see [Restore to a point in time](../../../manage/backup-restore/point-in-time-recovery/#restore-to-a-point-in-time).
 
 ### Create and snapshot a table
 
@@ -242,7 +242,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 1. Restore back to a time before this table was created, as described in [Restore from a relative time](#restore-from-a-relative-time).
 
-1. Due to a ycqlsh caching issue, to check the effect of this change, you need to drop out of your current ycqlsh session and log back in.
+1. Due to a ycqlsh caching issue, to check the effect of this change you need to drop out of your current ycqlsh session and log back in.
 
 1. Check that table t2 is gone:
 
@@ -278,7 +278,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 1. Restore back to a time before this table was altered, as described in [Restore from a relative time](#restore-from-a-relative-time).
 
-1. Due to a ycqlsh caching issue, to check the effect of this change, you need to drop out of your current ycqlsh session and log back in.
+1. Due to a ycqlsh caching issue, to check the effect of this change you need to drop out of your current ycqlsh session and log back in.
 
 1. Check that the v2 column is gone:
 
@@ -319,7 +319,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 1. Restore back to a time before this table was altered, as described in [Restore from a relative time](#restore-from-a-relative-time).
 
-1. Due to a ycqlsh caching issue, to check the effect of this change, you need to drop out of your current ycqlsh session and log back in.
+1. Due to a ycqlsh caching issue, to check the effect of this change you need to drop out of your current ycqlsh session and log back in.
 
 1. Verify that the salary column is back:
 
@@ -355,7 +355,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 1. Restore back to a time before this index was created.
 
-1. Due to a ycqlsh caching issue, to check the effect of this change, you need to drop out of your current ycqlsh session and log back in.
+1. Due to a ycqlsh caching issue, to check the effect of this change you need to drop out of your current ycqlsh session and log back in.
 
 1. Verify that the index is gone:
 

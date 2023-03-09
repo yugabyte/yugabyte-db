@@ -81,4 +81,4 @@ With the loss of the node, which also represents the loss of an entire fault dom
 
 Despite the loss of an entire fault domain, there is no impact on the application because no data is lost; previously replicated data on the remaining nodes is used to serve application requests.
 
-{{% explore-cleanup %}}
+{{% explore-cleanup-local %}}

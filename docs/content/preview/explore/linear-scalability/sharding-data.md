@@ -364,36 +364,4 @@ The key has been written to one of the tablets. In this example, the tablet's UU
 
     ![Auto-sharding when adding three nodes](/images/ce/sharding_6nodes.png)
 
-### Clean up
-
-Execute the following commands to shut down the local universe:
-
-```sh
-./bin/yugabyted destroy \
-                  --base_dir=/tmp/ybd1
-```
-
-```sh
-./bin/yugabyted destroy \
-                  --base_dir=/tmp/ybd2
-```
-
-```sh
-./bin/yugabyted destroy \
-                  --base_dir=/tmp/ybd3
-```
-
-```sh
-./bin/yugabyted destroy \
-                  --base_dir=/tmp/ybd4
-```
-
-```sh
-./bin/yugabyted destroy \
-                  --base_dir=/tmp/ybd5
-```
-
-```sh
-./bin/yugabyted destroy \
-                  --base_dir=/tmp/ybd6
-```
+{{% explore-cleanup-local %}}

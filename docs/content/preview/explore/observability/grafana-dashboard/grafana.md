@@ -56,10 +56,4 @@ The following is a YCQL OPS and latency metrics:
 
   ![Grafana YCQL-OPS](/images/ce/graf-ycql-ops.png "YCQL-OPS")
 
-## Clean up (optional)
-
-Optionally, you can shut down the local cluster you created earlier.
-
-```sh
-$ ./bin/yugabyted destroy
-```
+{{% explore-cleanup-local %}}

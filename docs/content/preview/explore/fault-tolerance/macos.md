@@ -73,4 +73,4 @@ It may take close to 60 seconds to display the updated network diagram. You can 
 
 Despite the loss of an entire fault domain, there is no impact on the application because no data is lost; previously replicated data on the remaining nodes is used to serve application requests.
 
-{{% explore-cleanup %}}
+{{% explore-cleanup-local %}}

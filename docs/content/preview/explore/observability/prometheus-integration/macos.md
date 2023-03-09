@@ -156,9 +156,7 @@ avg(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcess
 
 ![Prometheus Write Latency](/images/ce/prom-write-latency.png)
 
-## Clean up
-
-You can shut down the local cluster by following the instructions provided in [Destroy a local cluster](../../../../reference/configuration/yugabyted/#destroy-a-local-cluster).
+{{% explore-cleanup-local %}}
 
 ## What's next?
 
