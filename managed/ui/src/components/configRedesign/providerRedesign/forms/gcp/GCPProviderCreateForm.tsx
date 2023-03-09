@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { Box, FormHelperText, Typography } from '@material-ui/core';
 import { yupResolver } from '@hookform/resolvers/yup';
-import axios, { AxiosError } from 'axios';
 import { useQuery } from 'react-query';
 import { array, mixed, object, string } from 'yup';
 
@@ -31,7 +30,7 @@ import {
   VPCSetupTypeLabel
 } from '../../constants';
 import { FieldGroup } from '../components/FieldGroup';
-import { addItem, deleteItem, editItem, readFileAsText } from '../utils';
+import { addItem, deleteItem, editItem, handleFormServerError, readFileAsText } from '../utils';
 import { FormContainer } from '../components/FormContainer';
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
 import { FormField } from '../components/FormField';
@@ -180,13 +179,6 @@ export const GCPProviderCreateForm = ({
     return <YBErrorIndicator customErrorMessage="Error fetching host info." />;
   }
 
-  const handleAsyncError = (error: Error | AxiosError) => {
-    const errorMessage = axios.isAxiosError(error)
-      ? error.response?.data?.error?.message ?? error.message
-      : error.message;
-    formMethods.setError(ASYNC_ERROR, errorMessage);
-  };
-
   const onFormSubmit: SubmitHandler<GCPProviderCreateFormFieldValues> = async (formValues) => {
     formMethods.clearErrors(ASYNC_ERROR);
 
@@ -264,7 +256,11 @@ export const GCPProviderCreateForm = ({
         )
       }))
     };
-    await createInfraProvider(providerPayload, { onError: handleAsyncError });
+    await createInfraProvider(providerPayload, {
+      mutateOptions: {
+        onError: (error) => handleFormServerError(error, ASYNC_ERROR, formMethods.setError)
+      }
+    });
   };
 
   const showAddRegionFormModal = () => {
@@ -410,6 +406,7 @@ export const GCPProviderCreateForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
+                  inputProps={{ min: 0, max: 65535 }}
                   fullWidth
                 />
               </FormField>

@@ -22,10 +22,10 @@ import {
 import { ProviderListView } from './ProviderListView';
 import { fetchTaskUntilItCompletes } from '../../../actions/xClusterReplication';
 import { ProviderCreateView } from './forms/ProviderCreateView';
-import { useCreateProvider } from '../../../redesign/helpers/hooks';
+import { useCreateProvider, UseCreateProviderParams } from '../../../redesign/helpers/hooks';
 
 import { YBProviderMutation } from './types';
-import { YBPTask } from '../../../redesign/helpers/dtos';
+import { YBBeanValidationError, YBPError, YBPTask } from '../../../redesign/helpers/dtos';
 
 import styles from './InfraProvider.module.scss';
 
@@ -41,11 +41,14 @@ type InfraProviderProps =
 export type CreateInfraProvider = (
   values: YBProviderMutation,
   options?: {
-    onSettled?: (data: YBPTask | undefined) => void;
-    onSuccess?: (data: YBPTask) => void;
-    onError?: (error: Error | AxiosError) => void;
+    shouldValidate?: boolean;
+    mutateOptions?: MutateOptions<
+      YBPTask,
+      Error | AxiosError<YBBeanValidationError | YBPError>,
+      UseCreateProviderParams
+    >;
   }
-) => void;
+) => Promise<YBPTask>;
 
 export const ProviderDashboardView = {
   LIST: 'list',
@@ -90,19 +93,20 @@ export const InfraProvider = (props: InfraProviderProps) => {
     return <YBErrorIndicator customErrorMessage="Error fetching provider list" />;
   }
 
-  const createInfraProvider = async (
-    values: YBProviderMutation,
-    mutateOptions?: MutateOptions<YBPTask, Error | AxiosError, YBProviderMutation>
-  ) => {
-    createProviderMutation.mutate(values, {
-      ...mutateOptions,
-      onSuccess: (response, variables, context) => {
-        if (isFunction(mutateOptions?.onSuccess)) {
-          mutateOptions?.onSuccess(response, variables, context);
+  const createInfraProvider: CreateInfraProvider = async (values, options) => {
+    const { shouldValidate = false, mutateOptions } = options ?? {};
+    return createProviderMutation.mutateAsync(
+      { values: values, shouldValidate: shouldValidate },
+      {
+        ...mutateOptions,
+        onSuccess: (response, variables, context) => {
+          if (isFunction(mutateOptions?.onSuccess)) {
+            mutateOptions?.onSuccess(response, variables, context);
+          }
+          setCurrentView(ProviderDashboardView.LIST);
         }
-        setCurrentView(ProviderDashboardView.LIST);
       }
-    });
+    );
   };
   const handleOnBack = () => {
     setCurrentView(DEFAULT_VIEW);
