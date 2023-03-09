@@ -66,6 +66,7 @@ using namespace std::literals;
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(enable_pg_savepoints);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(rocksdb_use_logging_iterator);
 
@@ -3184,6 +3185,20 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST(PerfScanG7RangePK100Columns), PgMiniRf1Pac
     s.stop();
     LOG(INFO) << kNumScansPerIteration << " scan(s) took: " << AsString(s.elapsed());
   }
+}
+
+class PgMiniTestNoSavePoints : public PgMiniTest {
+ public:
+  void SetUp() override {
+    FLAGS_enable_pg_savepoints = 0;
+    PgMiniTest::SetUp();
+  }
+};
+
+TEST_F(PgMiniTestNoSavePoints, YB_DISABLE_TEST_IN_TSAN(TestSavePointCanBeDisabled)) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_NOK(conn1.Execute("SAVEPOINT A"))
+      << "setting FLAGS_enable_pg_savepoints to false should have made SAVEPOINT produce an error";
 }
 
 } // namespace pgwrapper
