@@ -47,17 +47,21 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     checkMissingKeys(provider);
 
     // validate access
-    try {
-      awsCloudImpl.getStsClientOrBadRequest(provider);
-    } catch (PlatformServiceException e) {
-      if (e.getHttpStatus() == BAD_REQUEST) {
-        if (awsCloudImpl.checkKeysExists(provider)) {
-          throwBeanValidatorError("KEYS", e.getMessage());
-        } else {
-          throwBeanValidatorError("IAM", e.getMessage());
+    if (provider.regions != null && !provider.regions.isEmpty()) {
+      for (Region region : provider.regions) {
+        try {
+          awsCloudImpl.getStsClientOrBadRequest(provider, region);
+        } catch (PlatformServiceException e) {
+          if (e.getHttpStatus() == BAD_REQUEST) {
+            if (awsCloudImpl.checkKeysExists(provider)) {
+              throwBeanValidatorError("KEYS", e.getMessage());
+            } else {
+              throwBeanValidatorError("IAM", e.getMessage());
+            }
+          }
+          throw e;
         }
       }
-      throw e;
     }
 
     // validate SSH private key content
@@ -83,16 +87,20 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     }
 
     // validate hosted zone id
-    try {
-      String hostedZoneId = provider.details.cloudInfo.aws.awsHostedZoneId;
-      if (!StringUtils.isEmpty(hostedZoneId)) {
-        awsCloudImpl.getHostedZoneOrBadRequest(provider, hostedZoneId);
+    if (provider.regions != null && !provider.regions.isEmpty()) {
+      for (Region region : provider.regions) {
+        try {
+          String hostedZoneId = provider.details.cloudInfo.aws.awsHostedZoneId;
+          if (!StringUtils.isEmpty(hostedZoneId)) {
+            awsCloudImpl.getHostedZoneOrBadRequest(provider, region, hostedZoneId);
+          }
+        } catch (PlatformServiceException e) {
+          if (e.getHttpStatus() == BAD_REQUEST) {
+            throwBeanValidatorError("HOSTED_ZONE", e.getMessage());
+          }
+          throw e;
+        }
       }
-    } catch (PlatformServiceException e) {
-      if (e.getHttpStatus() == BAD_REQUEST) {
-        throwBeanValidatorError("HOSTED_ZONE", e.getMessage());
-      }
-      throw e;
     }
 
     // validate Region and its details
@@ -183,7 +191,6 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
           for (IpPermission ipPermission : securityGroup.getIpPermissions()) {
             Integer fromPort = ipPermission.getFromPort();
             Integer toPort = ipPermission.getToPort();
-            System.out.println("*****fromPort: " + fromPort + "*****ToPort: " + toPort);
             if (fromPort == null || toPort == null) {
               continue;
             }
