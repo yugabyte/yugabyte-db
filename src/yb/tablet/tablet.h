@@ -61,6 +61,7 @@
 #include "yb/tablet/operation_filter.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/transaction_intent_applier.h"
+#include "yb/tablet/tablet_retention_policy.h"
 
 #include "yb/tserver/tserver_fwd.h"
 
@@ -581,7 +582,14 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Status ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reason,
       docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
 
-  docdb::DocDB doc_db() const { return { regular_db_.get(), intents_db_.get(), &key_bounds_ }; }
+  docdb::DocDB doc_db() const {
+    return {
+        regular_db_.get(),
+        intents_db_.get(),
+        &key_bounds_,
+        retention_policy_.get(),
+        metrics_.get() };
+  }
 
   // Returns approximate middle key for tablet split:
   // - for hash-based partitions: encoded hash code in order to split by hash code.

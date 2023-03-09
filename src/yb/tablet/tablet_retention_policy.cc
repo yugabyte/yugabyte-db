@@ -97,6 +97,15 @@ HybridTime TabletRetentionPolicy::UpdateCommittedHistoryCutoff(HybridTime value)
 }
 
 HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
+  return DoGetRetentionDirective(/* update_committed_history */ true);
+}
+
+HistoryRetentionDirective TabletRetentionPolicy::StatelessRetentionDirective() {
+  return DoGetRetentionDirective(/* update_committed_history */ false);
+}
+
+HistoryRetentionDirective TabletRetentionPolicy::DoGetRetentionDirective(
+    bool update_committed_history) {
   HybridTime history_cutoff;
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -104,7 +113,9 @@ HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
       history_cutoff = SanitizeHistoryCutoff(committed_history_cutoff_);
     } else {
       history_cutoff = EffectiveHistoryCutoff();
-      committed_history_cutoff_ = std::max(history_cutoff, committed_history_cutoff_);
+      if (update_committed_history) {
+        committed_history_cutoff_ = std::max(history_cutoff, committed_history_cutoff_);
+      }
     }
   }
 

@@ -41,6 +41,7 @@ namespace docdb {
 
 class IntentAwareIterator;
 class ScanChoices;
+struct FetchKeyResult;
 
 // An SQL-mapped-to-document-DB iterator.
 class DocRowwiseIterator : public YQLRowwiseIteratorIf {
@@ -159,7 +160,15 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
 
   bool is_initialized_ = false;
 
+  // Increments statistics for total keys found, obsolete keys (past cutoff or no) if applicable.
+  //
+  // Obsolete keys include keys that are tombstoned, TTL expired, and read-time filtered.
+  // If an obsolete key has a write time before the current history cutoff, records
+  // a separate statistic in addition as they can be cleaned in a compaction.
+  Status IncrementKeyFoundStats(const bool obsolete, const Result<FetchKeyResult>& key_data);
+
   const std::unique_ptr<Schema> projection_owner_;
+
   // Used to maintain ownership of projection_.
   // Separate field is used since ownership could be optional.
   const Schema& projection_;
@@ -239,6 +248,12 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   bool ignore_ttl_ = false;
 
   bool debug_dump_ = false;
+
+  // History cutoff is derived from the retention policy (if present) for statistics
+  // collection.
+  // If no retention policy is present, an "invalid" history cutoff will be used by default
+  // (i.e. all write times will be before the cutoff).
+  HybridTime history_cutoff_;
 };
 
 }  // namespace docdb
