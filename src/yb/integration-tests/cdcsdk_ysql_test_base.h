@@ -116,6 +116,7 @@ DECLARE_int32(cdcsdk_table_processing_limit_per_run);
 DECLARE_int32(cdc_snapshot_batch_size);
 DECLARE_bool(TEST_cdc_snapshot_failure);
 DECLARE_bool(ysql_enable_packed_row);
+DECLARE_uint64(ysql_packed_row_size_limit);
 DECLARE_bool(cdc_populate_safepoint_record);
 DECLARE_string(vmodule);
 

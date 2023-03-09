@@ -24,14 +24,6 @@ using rpc::RpcController;
 
 namespace cdc {
 
-namespace {
-
-void DisableYsqlPackedRow() {
-  ASSERT_OK(SET_FLAG(ysql_enable_packed_row, false));
-}
-
-}
-
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBaseFunctions)) {
   // setting up a cluster with 3 RF
   ASSERT_OK(SetUpWithParams(3, 1, false /* colocated */));
@@ -189,8 +181,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardMultiColUpdateWithAuto
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleStreams)) {
-  DisableYsqlPackedRow();
-
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
 
@@ -205,6 +195,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {3, 3, 3, 1, 0, 0};
+  const uint32_t expected_packed_row_count[] = {3, 5, 1, 1, 0, 0};
 
   uint32_t count_1[] = {0, 0, 0, 0, 0, 0};
   uint32_t count_2[] = {0, 0, 0, 0, 0, 0};
@@ -219,6 +210,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
   RowMessage::Op expected_record_types_1[] = {
       RowMessage::DDL, RowMessage::INSERT, RowMessage::UPDATE, RowMessage::INSERT,
       RowMessage::DELETE};
+  RowMessage::Op expected_packed_row_record_types_1[] = {
+      RowMessage::DDL, RowMessage::INSERT, RowMessage::INSERT, RowMessage::INSERT,
+      RowMessage::DELETE};
 
   // Catch up both streams.
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id_1, tablets));
@@ -231,13 +225,21 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
 
   for (uint32_t i = 0; i < record_size_1; ++i) {
     const CDCSDKProtoRecordPB record = change_resp_1.cdc_sdk_proto_records(i);
-    ASSERT_EQ(record.row_message().op(), expected_record_types_1[i]);
+    if (FLAGS_ysql_enable_packed_row) {
+      ASSERT_EQ(record.row_message().op(), expected_packed_row_record_types_1[i]);
+    } else {
+      ASSERT_EQ(record.row_message().op(), expected_record_types_1[i]);
+    }
     CheckRecord(record, expected_records_1[i], count_1);
   }
 
   for (uint32_t i = 0; i < record_size_2; ++i) {
     const CDCSDKProtoRecordPB record = change_resp_2.cdc_sdk_proto_records(i);
-    ASSERT_EQ(record.row_message().op(), expected_record_types_1[i]);
+    if (FLAGS_ysql_enable_packed_row) {
+      ASSERT_EQ(record.row_message().op(), expected_packed_row_record_types_1[i]);
+    } else {
+      ASSERT_EQ(record.row_message().op(), expected_record_types_1[i]);
+    }
     CheckRecord(record, expected_records_1[i], count_2);
   }
 
@@ -273,6 +275,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
 
   ExpectedRecord expected_records_3[] = {{0, 0}, {4, 1}};
   RowMessage::Op expected_record_types_3[] = {RowMessage::DDL, RowMessage::UPDATE};
+  RowMessage::Op expected_packed_row_record_types_3[] = {RowMessage::DDL, RowMessage::INSERT};
 
   // Call GetChanges on stream 1.
   previous_checkpoint_1 = change_resp_1.cdc_sdk_checkpoint();
@@ -282,7 +285,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
 
   for (uint32_t i = 0; i < record_size_1; ++i) {
     const CDCSDKProtoRecordPB record = change_resp_1.cdc_sdk_proto_records(i);
-    ASSERT_EQ(record.row_message().op(), expected_record_types_3[i]);
+    if (FLAGS_ysql_enable_packed_row) {
+      ASSERT_EQ(record.row_message().op(), expected_packed_row_record_types_3[i]);
+    } else {
+      ASSERT_EQ(record.row_message().op(), expected_record_types_3[i]);
+    }
     CheckRecord(record, expected_records_3[i], count_1);
   }
 
@@ -300,13 +307,21 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
       CheckRecordWithThreeColumns(
           record, expected_records_2[i], count_2, false, {}, validate_three_columns_2[i]);
     } else {
-      ASSERT_EQ(record.row_message().op(), expected_record_types_3[i - records_missed_by_stream_2]);
+      if (FLAGS_ysql_enable_packed_row) {
+        ASSERT_EQ(
+            record.row_message().op(),
+            expected_packed_row_record_types_3[i - records_missed_by_stream_2]);
+      } else {
+        ASSERT_EQ(
+            record.row_message().op(), expected_record_types_3[i - records_missed_by_stream_2]);
+      }
+
       CheckRecord(record, expected_records_3[i - records_missed_by_stream_2], count_2);
     }
   }
 
-  CheckCount(expected_count, count_1);
-  CheckCount(expected_count, count_2);
+  CheckCount(FLAGS_ysql_enable_packed_row ? expected_packed_row_count : expected_count, count_1);
+  CheckCount(FLAGS_ysql_enable_packed_row ? expected_packed_row_count : expected_count, count_2);
 }
 
 // Insert 3 rows, update 2 of them.
@@ -1207,7 +1222,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamSingleTser
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamMultiTserver)) {
-  DisableYsqlPackedRow();
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -1238,7 +1252,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamMultiTserv
 TEST_F(
     CDCSDKYsqlTest,
     YB_DISABLE_TEST_IN_TSAN(TestCleanupMultiStreamDeleteSingleStreamSingleTserver)) {
-  DisableYsqlPackedRow();
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
   ASSERT_OK(SetUpWithParams(1, 1, false));
