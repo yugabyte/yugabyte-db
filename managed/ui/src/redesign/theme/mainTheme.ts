@@ -578,7 +578,10 @@ export const mainTheme = createTheme({
     MuiDialogActions: {
       root: {
         background: colors.grey[200],
-        padding: '16px'
+        padding: '16px',
+        '& .MuiButtonBase-root': {
+          height: 44
+        }
       }
     },
     MuiTooltip: {

@@ -40,6 +40,15 @@
       "pageNotExist": "Seems like this Page does not exist",
       "pageNotFound": "Page not found"
     },
+    "config": {
+      "security": {
+        "encryptionAtRest": {
+          "deleteKmsConfig": "Delete Configuration",
+          "deleteConfigConfirmText": "Are you sure you want to delete <0>{{configName}}</0> configuration?",
+          "deleteConfigWarning": "Before deleting this configuration make sure it's not being used by any backups. Note that in order to restore a backup with deleted KMS config <0></0> you'll need to create a new KMS config with the same master key details."
+        }
+      }
+    },
     "universeForm": {
       "master": "Master",
       "tserver": "TServer",
