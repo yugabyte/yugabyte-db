@@ -189,6 +189,7 @@
         "instanceType": "Instance Type",
         "k8NumCores": "Number of Cores",
         "k8Memory": "Memory (GB)",
+        "useSpotInstance": "Use Spot Instances",
         "kmsConfig": "Key Management Service Config",
         "kmsConfigPlaceHolder": "Select Configuration",
         "provisionedIops": "Provisioned IOPS",

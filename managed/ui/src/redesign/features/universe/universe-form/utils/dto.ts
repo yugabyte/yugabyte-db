@@ -132,6 +132,7 @@ export interface UserIntent {
   tserverGFlags?: Record<string, any>;
   universeOverrides?: string;
   azOverrides?: Record<string, string>;
+  useSpotInstance?: boolean | null;
 }
 
 export interface Cluster {
@@ -455,6 +456,7 @@ export interface CloudConfigFormValue {
 
 export interface InstanceConfigFormValue {
   instanceType: string | null;
+  useSpotInstance?: boolean | null;
   masterInstanceType?: string | null;
   deviceInfo: DeviceInfo | null;
   masterDeviceInfo?: DeviceInfo | null;
@@ -547,6 +549,7 @@ export const DEFAULT_CLOUD_CONFIG: CloudConfigFormValue = {
 export const DEFAULT_INSTANCE_CONFIG: InstanceConfigFormValue = {
   instanceType: null,
   masterInstanceType: null,
+  useSpotInstance: null,
   deviceInfo: null,
   masterDeviceInfo: null,
   tserverK8SNodeResourceSpec: null,
