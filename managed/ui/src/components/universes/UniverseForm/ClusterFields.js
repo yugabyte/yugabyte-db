@@ -425,8 +425,8 @@ export default class ClusterFields extends Component {
           'async.enableEncryptionAtRest': encryptionAtRestEnabled,
           'async.useSystemd': userIntent.useSystemd,
           'async.tlsCertificateId': universeDetails.rootCA,
-          'async.numNodes' : userIntent.numNodes,
-          'async.replicationFactor' : userIntent.replicationFactor,
+          'async.numNodes': userIntent.numNodes,
+          'async.replicationFactor': userIntent.replicationFactor
         });
       }
       if (userIntent && providerUUID) {
@@ -1323,15 +1323,14 @@ export default class ClusterFields extends Component {
       }
     } = this.props;
 
-    if(value === null ) return;
+    if (value === null) return;
 
     let valToUpdate = value;
 
-    if(value > ASYNC_MAX_REPLICATION_FACTOR){
+    if (value > ASYNC_MAX_REPLICATION_FACTOR) {
       toast.error(`Max Repilcation factor supported is ${ASYNC_MAX_REPLICATION_FACTOR}`);
       valToUpdate = ASYNC_MAX_REPLICATION_FACTOR;
-    }
-    else if(value < ASYNC_MIN_REPLICATION_FACTOR){
+    } else if (value < ASYNC_MIN_REPLICATION_FACTOR) {
       toast.error(`Min Repilcation factor supported is ${ASYNC_MIN_REPLICATION_FACTOR}`);
       valToUpdate = ASYNC_MIN_REPLICATION_FACTOR;
     }
@@ -2706,18 +2705,28 @@ export default class ClusterFields extends Component {
                         maxVal={ASYNC_MAX_REPLICATION_FACTOR}
                         onInputChanged={this.replicationFactorChanged}
                         className={
-                          getPromiseState(this.props.universe.universeConfigTemplate).isLoading() || getPromiseState(cloud.instanceTypes).isLoading()
+                          getPromiseState(this.props.universe.universeConfigTemplate).isLoading() ||
+                          getPromiseState(cloud.instanceTypes).isLoading()
                             ? 'readonly'
                             : ''
                         }
                         input={{
-                          onKeyDown:(e) => {
-                            (getPromiseState(this.props.universe.universeConfigTemplate).isLoading() || getPromiseState(cloud.instanceTypes).isLoading()) && e.preventDefault();
+                          name: `${clusterType}.replicationFactor`,
+                          onKeyDown: (e) => {
+                            (getPromiseState(
+                              this.props.universe.universeConfigTemplate
+                            ).isLoading() ||
+                              getPromiseState(cloud.instanceTypes).isLoading()) &&
+                              e.preventDefault();
                           }
                         }}
                         onInputBlur={(e) => {
-                          if (isEmptyString(e.target.value)) { this.replicationFactorChanged(ASYNC_MIN_REPLICATION_FACTOR); }
-                          if (Number(e.target.value) !== this.state.replicationFactor) { this.replicationFactorChanged(e.target.value); }
+                          if (isEmptyString(e.target.value)) {
+                            this.replicationFactorChanged(ASYNC_MIN_REPLICATION_FACTOR);
+                          }
+                          if (Number(e.target.value) !== this.state.replicationFactor) {
+                            this.replicationFactorChanged(e.target.value);
+                          }
                         }}
                         val={Number(this.state.replicationFactor)}
                         disabled={isReadOnlyOnEdit}
