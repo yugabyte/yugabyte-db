@@ -26,7 +26,7 @@ import org.apache.commons.io.FileUtils;
 public class FileDataService {
 
   private static final List<String> FILE_DIRECTORY_TO_SYNC =
-      ImmutableList.of("keys", "certs", "licenses", "node-agent");
+      ImmutableList.of("keys", "certs", "licenses", "node-agent/certs");
 
   private final RuntimeConfGetter confGetter;
   private final ConfigHelper configHelper;
