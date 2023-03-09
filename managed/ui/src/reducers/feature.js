@@ -26,7 +26,8 @@ const initialStateFeatureInTest = {
   enableRestore: false,
   enablePrefillKubeConfig: false,
   enableNewUI: true, // feature flag to enable new revamped UI,
-  enableCustomEmailTemplates: false
+  enableCustomEmailTemplates: false,
+  enableAWSProviderValidation: false
 };
 
 const initialStateFeatureReleased = {

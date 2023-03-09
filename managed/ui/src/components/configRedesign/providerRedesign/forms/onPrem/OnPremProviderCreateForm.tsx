@@ -159,7 +159,9 @@ export const OnPremProviderCreateForm = ({
     };
 
     await createInfraProvider(providerPayload, {
-      onError: (error) => handleFormServerError(error, ASYNC_ERROR, formMethods.setError)
+      mutateOptions: {
+        onError: (error) => handleFormServerError(error, ASYNC_ERROR, formMethods.setError)
+      }
     });
   };
 

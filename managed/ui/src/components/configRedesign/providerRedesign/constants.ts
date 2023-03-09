@@ -109,6 +109,16 @@ export const ASYNC_ERROR = 'asyncError';
 
 export const DEFAULT_SSH_PORT = 22;
 
+export const AWSValidationKey = {
+  ACCESS_KEY_CREDENTIALS: 'KEYS',
+  IAM_CREDENTIALS: 'IAM',
+  SSH_PRIVATE_KEY_CONTENT: 'SSH_PRIVATE_KEY_CONTENT',
+  NTP_SERVERS: 'NTP_SERVERS',
+  HOSTED_ZONE_ID: 'HOSTED_ZONE',
+  REGION: 'REGION'
+} as const;
+export type AWSValidationKey = typeof AWSValidationKey[keyof typeof AWSValidationKey];
+
 // --------------------------------------------------------------------------------------
 // User Facing Labels
 // --------------------------------------------------------------------------------------
