@@ -72,6 +72,9 @@ struct TabletMetrics {
 
   scoped_refptr<Counter> rows_inserted;
   scoped_refptr<Counter> failed_batch_lock;
+  scoped_refptr<Counter> docdb_keys_found;
+  scoped_refptr<Counter> docdb_obsolete_keys_found;
+  scoped_refptr<Counter> docdb_obsolete_keys_found_past_cutoff;
 };
 
 class ScopedTabletMetricsTracker {

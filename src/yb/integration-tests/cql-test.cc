@@ -27,6 +27,7 @@
 #include "yb/rocksdb/db.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
@@ -536,6 +537,98 @@ TEST_F_EX(CqlTest, CompactRanges, CqlRF1Test) {
 
   ASSERT_OK(cluster_->FlushTablets());
   ASSERT_OK(cluster_->CompactTablets());
+}
+
+TEST_F_EX(CqlTest, DocDBKeyMetrics, CqlRF1Test) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 1;
+  constexpr int kNumRows = 10;
+  ActivateCompactionTimeLogging(cluster_.get());
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  std::string expr = "CREATE TABLE t (i INT, j INT, x INT";
+  expr += ", PRIMARY KEY (i, j)) WITH CLUSTERING ORDER BY (j ASC)";
+  ASSERT_OK(session.ExecuteQuery(expr));
+
+  // Insert 10 rows, flush, and then select all 10.
+  expr = "INSERT INTO t (i, j, x) VALUES (?, ?, ?);";
+  auto insert_prepared = ASSERT_RESULT(session.Prepare(expr));
+  for (int i = 1; i <= kNumRows; ++i) {
+    auto stmt = insert_prepared.Bind();
+    stmt.Bind(0, i);
+    stmt.Bind(1, i);
+    stmt.Bind(2, 123);
+    ASSERT_OK(session.Execute(stmt));
+  }
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(session.ExecuteQuery("SELECT * FROM t;"));
+
+  // Find the counters for the tablet leader.
+  scoped_refptr<Counter> total_keys;
+  scoped_refptr<Counter> obsolete_keys;
+  scoped_refptr<Counter> obsolete_past_cutoff;
+  for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    auto* metrics = peer->tablet()->metrics();
+    if (!metrics || metrics->docdb_keys_found->value() == 0) {
+      continue;
+    }
+    total_keys = metrics->docdb_keys_found;
+    obsolete_keys = metrics->docdb_obsolete_keys_found;
+    obsolete_past_cutoff = metrics->docdb_obsolete_keys_found_past_cutoff;
+  }
+  // Ensure we've found the tablet leader, and that we've seen 10 total keys (no obsolete).
+  ASSERT_NE(total_keys, nullptr);
+  auto expected_total_keys = kNumRows;
+  auto expected_obsolete_keys = 0;
+  auto expected_obsolete_past_cutoff = 0;
+  ASSERT_EQ(total_keys->value(), expected_total_keys);
+  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
+  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
+
+  // Delete one row, then flush.
+  ASSERT_OK(session.ExecuteQuery("DELETE FROM t WHERE i = 1;"));
+  ASSERT_OK(cluster_->FlushTablets());
+  expected_total_keys += 1;
+  expected_obsolete_keys += 1;
+
+  // Select all rows again. Should still see 10 total, 1 obsolete, but none obsolete past
+  // the history cutoff window.
+  ASSERT_OK(session.ExecuteQuery("SELECT * FROM t;"));
+  expected_total_keys += kNumRows;
+  ASSERT_EQ(total_keys->value(), expected_total_keys);
+  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
+  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
+
+  // Wait 1 second for history retention to expire. Then try reading again. Expect 1 obsolete.
+  std::this_thread::sleep_for(1s);
+  ASSERT_OK(session.ExecuteQuery("SELECT * FROM t;"));
+  expected_total_keys += kNumRows;
+  expected_obsolete_keys += 1;
+  expected_obsolete_past_cutoff += 1;
+  ASSERT_EQ(total_keys->value(), expected_total_keys);
+  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
+  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
+
+  // Set history retention to 900 for the rest of the test to make sure we don't exceed it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 900;
+  // Delete 2 more rows, then get the first row. Should see 3 keys, one of which is obsolete.
+  // Obsolete past history cutoff should not change.
+  ASSERT_OK(session.ExecuteQuery("DELETE FROM t WHERE i = 1;"));
+  ASSERT_OK(session.ExecuteQuery("DELETE FROM t WHERE i = 5;"));
+  ASSERT_OK(session.ExecuteQuery("DELETE FROM t WHERE i = 10;"));
+  ASSERT_OK(cluster_->FlushTablets());
+  expected_total_keys += 3;
+  expected_obsolete_keys += 1;
+  ASSERT_EQ(total_keys->value(), expected_total_keys);
+  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
+  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
+
+  // Do another full range query. Obsolete keys increases by 3, total keys by 10.
+  ASSERT_OK(session.ExecuteQuery("SELECT * FROM t;"));
+  expected_total_keys += kNumRows;
+  expected_obsolete_keys += 3;
+  ASSERT_EQ(total_keys->value(), expected_total_keys);
+  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
+  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
 }
 
 TEST_F(CqlTest, ManyColumns) {
