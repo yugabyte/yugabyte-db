@@ -3,14 +3,13 @@ import { Box, Grid, makeStyles, Typography, useTheme } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { YBTable, YBLoadingBox, YBModal, YBProgress, YBCodeBlock } from '@app/components';
 import { BadgeVariant, YBBadge } from '@app/components/YBBadge/YBBadge';
-import ArrowRightIcon from '@app/assets/Drilldown.svg';
+import ArrowRightIcon from '@app/assets/caret-right-circle.svg';
 
 const useStyles = makeStyles((theme) => ({
   arrowComponent: {
-    padding: '8px 0',
     textAlign: 'end',
     '& svg': {
-      paddingTop: theme.spacing(0.25),
+      marginTop: theme.spacing(0.25),
     }
   },
   activityDetailBox: {

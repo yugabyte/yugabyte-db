@@ -6,6 +6,7 @@ import { generatePath, Link, Route, Switch, useRouteMatch } from 'react-router-d
 import { useTranslation } from 'react-i18next';
 import { ActivityTab } from '../activities/ActivityTab';
 import { SettingsTab } from '../settings/SettingsTab';
+import { QueryParamProvider } from 'use-query-params';
 
 const useStyles = makeStyles((theme) => ({
   tabSectionContainer: {
@@ -73,11 +74,13 @@ export const OverviewDetails: FC = () => {
       </div>
 
       <Box mt={2}>
-        <Switch>
-          {tabList.map((tab) => (
-            <Route key={tab.name} path={`${path}/${tab.name}/:subTab?`} component={tab.component} />
-          ))}
-        </Switch>
+        <QueryParamProvider ReactRouterRoute={Route}>
+          <Switch>
+            {tabList.map((tab) => (
+              <Route key={tab.name} path={`${path}/${tab.name}/:subTab?`} component={tab.component} />
+            ))}
+          </Switch>
+        </QueryParamProvider>
       </Box>
     </Box>
   );

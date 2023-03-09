@@ -1,7 +1,8 @@
 import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Box, Divider, Grid, makeStyles, Paper, Typography } from '@material-ui/core';
+import { Box, Divider, Grid, Link, makeStyles, Paper, Typography } from '@material-ui/core';
 import type { ClusterData } from '@app/api/src';
+import { Link as RouterLink } from 'react-router-dom';
 import { roundDecimal, getFaultTolerance } from '@app/helpers';
 import { STATUS_TYPES, YBStatus } from '@app/components';
 
@@ -30,6 +31,12 @@ const useStyles = makeStyles((theme) => ({
   value: {
     paddingTop: theme.spacing(0.36),
     textAlign: 'start'
+  },
+  link: {
+    '&:link, &:focus, &:active, &:visited, &:hover': {
+      textDecoration: 'none',
+      color: theme.palette.text.primary
+    }
   }
 }));
 
@@ -90,97 +97,99 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
 
   return (
     <Paper className={classes.clusterInfo}>
-      <Box display="flex">
-        <Box flexGrow={3}>
-          <Grid container spacing={4}>
-            <Grid item xs={4}>
-              <Typography variant="subtitle2" className={classes.label}>
-                {t('clusters.faultTolerance')}
-              </Typography>
-              <Typography variant="body2" className={classes.value}>
-                {getFaultTolerance(clusterSpec?.cluster_info?.fault_tolerance, t)}
-              </Typography>
-            </Grid>
-            <Grid item xs={4}>
-              <Typography variant="subtitle2" className={classes.label}>
-                {t('clusterDetail.overview.replicationFactor')}
-              </Typography>
-              <Typography variant="body2" className={classes.value}>
-                {numNodes}
-              </Typography>
-            </Grid>
-            <Grid item xs={4}>
-              <Typography variant="subtitle2" className={classes.label}>
-                {t('clusterDetail.overview.databaseVersion')}
-              </Typography>
-              <Typography variant="body2" className={classes.value}>
-                {`v${databaseVersion}`}
-              </Typography>
-            </Grid>
-          </Grid>
-          <Divider orientation="horizontal" className={classes.dividerHorizontal} />
-          <Grid container spacing={4}>
-            <Grid item xs={4}>
-              <Typography variant="subtitle2" className={classes.label}>
-                {t('clusterDetail.overview.totalvCPU')}
-              </Typography>
-              <Typography variant="body2" className={classes.value}>
-                {totalCores}
-              </Typography>
-            </Grid>
-            <Grid item xs={4}>
-              <Typography variant="subtitle2" className={classes.label}>
-                {t('clusterDetail.overview.totalMemory')}
-              </Typography>
-              <Typography variant="body2" className={classes.value}>
-                {getRamUsageText(totalRamUsageMb)}
-              </Typography>
-            </Grid>
-            <Grid item xs={4}>
-              <Typography variant="subtitle2" className={classes.label}>
-                {t('clusterDetail.overview.totalDiskSize')}
-              </Typography>
-              <Typography variant="body2" className={classes.value}>
-              {getDiskSizeText(totalDiskSize)}
-              </Typography>
-            </Grid>
-          </Grid>
-        </Box>
-        <Divider orientation="vertical" className={classes.dividerVertical} flexItem />
-        <Box flexGrow={1}>
-          <Grid container spacing={4}>
-            <Grid item xs={12}>
-              <Typography variant="subtitle2" className={classes.label}>
-                {t('clusters.encryption')}
-              </Typography>
-              <Box display="flex">
-                {!encryptionAtRest && !encryptionInTransit &&
-                  <YBStatus type={STATUS_TYPES.WARNING}/>
-                }
-                <Typography variant="body2" className={classes.value}>
-                  {encryption}
+      <Link className={classes.link} component={RouterLink} to="tabSettings">
+        <Box display="flex">
+          <Box flexGrow={3}>
+            <Grid container spacing={4}>
+              <Grid item xs={4}>
+                <Typography variant="subtitle2" className={classes.label}>
+                  {t('clusters.faultTolerance')}
                 </Typography>
-              </Box>
-            </Grid>
-          </Grid>
-          <Box className={classes.dividerHorizontal} />
-          <Grid container spacing={4}>
-            <Grid item xs={12}>
-              <Typography variant="subtitle2" className={classes.label}>
-                {t('clusterDetail.overview.authentication')}
-              </Typography>
-              <Box display="flex">
-                {!encryptionAtRest && !encryptionInTransit &&
-                  <YBStatus type={STATUS_TYPES.WARNING}/>
-                }
                 <Typography variant="body2" className={classes.value}>
-                  {authentication}
+                  {getFaultTolerance(clusterSpec?.cluster_info?.fault_tolerance, t)}
                 </Typography>
-              </Box>
+              </Grid>
+              <Grid item xs={4}>
+                <Typography variant="subtitle2" className={classes.label}>
+                  {t('clusterDetail.overview.replicationFactor')}
+                </Typography>
+                <Typography variant="body2" className={classes.value}>
+                  {numNodes}
+                </Typography>
+              </Grid>
+              <Grid item xs={4}>
+                <Typography variant="subtitle2" className={classes.label}>
+                  {t('clusterDetail.overview.databaseVersion')}
+                </Typography>
+                <Typography variant="body2" className={classes.value}>
+                  {`v${databaseVersion}`}
+                </Typography>
+              </Grid>
             </Grid>
-          </Grid>
+            <Divider orientation="horizontal" className={classes.dividerHorizontal} />
+            <Grid container spacing={4}>
+              <Grid item xs={4}>
+                <Typography variant="subtitle2" className={classes.label}>
+                  {t('clusterDetail.overview.totalvCPU')}
+                </Typography>
+                <Typography variant="body2" className={classes.value}>
+                  {totalCores}
+                </Typography>
+              </Grid>
+              <Grid item xs={4}>
+                <Typography variant="subtitle2" className={classes.label}>
+                  {t('clusterDetail.overview.totalMemory')}
+                </Typography>
+                <Typography variant="body2" className={classes.value}>
+                  {getRamUsageText(totalRamUsageMb)}
+                </Typography>
+              </Grid>
+              <Grid item xs={4}>
+                <Typography variant="subtitle2" className={classes.label}>
+                  {t('clusterDetail.overview.totalDiskSize')}
+                </Typography>
+                <Typography variant="body2" className={classes.value}>
+                {getDiskSizeText(totalDiskSize)}
+                </Typography>
+              </Grid>
+            </Grid>
+          </Box>
+          <Divider orientation="vertical" className={classes.dividerVertical} flexItem />
+          <Box flexGrow={1}>
+            <Grid container spacing={4}>
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" className={classes.label}>
+                  {t('clusters.encryption')}
+                </Typography>
+                <Box display="flex">
+                  {!encryptionAtRest && !encryptionInTransit &&
+                    <YBStatus type={STATUS_TYPES.WARNING}/>
+                  }
+                  <Typography variant="body2" className={classes.value}>
+                    {encryption}
+                  </Typography>
+                </Box>
+              </Grid>
+            </Grid>
+            <Box className={classes.dividerHorizontal} />
+            <Grid container spacing={4}>
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" className={classes.label}>
+                  {t('clusterDetail.overview.authentication')}
+                </Typography>
+                <Box display="flex">
+                  {!encryptionAtRest && !encryptionInTransit &&
+                    <YBStatus type={STATUS_TYPES.WARNING}/>
+                  }
+                  <Typography variant="body2" className={classes.value}>
+                    {authentication}
+                  </Typography>
+                </Box>
+              </Grid>
+            </Grid>
+          </Box>
         </Box>
-      </Box>
+      </Link>
     </Paper>
   );
 };

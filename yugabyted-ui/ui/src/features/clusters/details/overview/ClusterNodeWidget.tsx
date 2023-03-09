@@ -112,39 +112,45 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
               {t('clusterDetail.nodes.total')}
             </Typography>
           </div>
-          <div className={clsx(classes.section, classes.sectionBorder)}>
-            <Box display="flex" gridGap={7}>
-              <Typography variant="h4" className={classes.value}>
-                {fetchingNodes ? <div className={classes.loadingCount} /> : healthyNodes}
+          <Link className={classes.link} component={RouterLink} to="tabNodes?filter=running">
+            <div className={clsx(classes.section, classes.sectionBorder)}>
+              <Box display="flex" gridGap={7}>
+                <Typography variant="h4" className={classes.value}>
+                  {fetchingNodes ? <div className={classes.loadingCount} /> : healthyNodes}
+                </Typography>
+                <YBStatus type={STATUS_TYPES.SUCCESS}/>
+              </Box>
+              <Typography variant="body2" className={classes.label}>
+                {t('clusterDetail.nodes.running')}
               </Typography>
-              <YBStatus type={STATUS_TYPES.SUCCESS}/>
-            </Box>
-            <Typography variant="body2" className={classes.label}>
-              {t('clusterDetail.nodes.running')}
-            </Typography>
-          </div>
-          <div className={classes.section}>
-            <Box display="flex" gridGap={7}>
-              <Typography variant="h4" className={classes.value}>
-                {fetchingNodes ? <div className={classes.loadingCount} /> : deadNodes.length}
+            </div>
+          </Link>
+          <Link className={classes.link} component={RouterLink} to="tabNodes?filter=down">
+            <div className={classes.section}>
+              <Box display="flex" gridGap={7}>
+                <Typography variant="h4" className={classes.value}>
+                  {fetchingNodes ? <div className={classes.loadingCount} /> : deadNodes.length}
+                </Typography>
+                <YBStatus type={STATUS_TYPES.FAILED}/>
+              </Box>
+              <Typography variant="body2" className={classes.label}>
+                {t('clusterDetail.nodes.down')}
               </Typography>
-              <YBStatus type={STATUS_TYPES.FAILED}/>
-            </Box>
-            <Typography variant="body2" className={classes.label}>
-              {t('clusterDetail.nodes.down')}
-            </Typography>
-          </div>
-          <div className={clsx(classes.section, classes.sectionBorder)}>
-            <Box display="flex" gridGap={7}>
-              <Typography variant="h4" className={classes.value}>
-                {fetchingNodes ? <div className={classes.loadingCount} /> : bootstrappingNodes.length}
+            </div>
+          </Link>
+          <Link className={classes.link} component={RouterLink} to="tabNodes?filter=bootstrapping">
+            <div className={clsx(classes.section, classes.sectionBorder)}>
+              <Box display="flex" gridGap={7}>
+                <Typography variant="h4" className={classes.value}>
+                  {fetchingNodes ? <div className={classes.loadingCount} /> : bootstrappingNodes.length}
+                </Typography>
+                <YBStatus type={STATUS_TYPES.IN_PROGRESS}/>
+              </Box>
+              <Typography variant="body2" className={classes.label}>
+                {t('clusterDetail.nodes.bootstrapping')}
               </Typography>
-              <YBStatus type={STATUS_TYPES.IN_PROGRESS}/>
-            </Box>
-            <Typography variant="body2" className={classes.label}>
-              {t('clusterDetail.nodes.bootstrapping')}
-            </Typography>
-          </div>
+            </div>
+          </Link>
         </Grid>
         <Divider orientation="horizontal" variant="middle" className={classes.divider} />
         <ClusterTabletWidget health={health} />
