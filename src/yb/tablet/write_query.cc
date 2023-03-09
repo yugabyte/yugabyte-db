@@ -228,6 +228,9 @@ void WriteQuery::Complete(const Status& status) {
 
 void WriteQuery::ExecuteDone(const Status& status) {
   scoped_read_operation_.Reset();
+  // Release the request_scope_ here to prevent it from blocking transaction
+  // cleanup in TransactionParticipant.
+  request_scope_ = RequestScope();
   switch (execute_mode_) {
     case ExecuteMode::kSimple:
       SimpleExecuteDone(status);
