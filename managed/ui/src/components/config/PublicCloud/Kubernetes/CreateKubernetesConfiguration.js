@@ -109,8 +109,9 @@ class CreateKubernetesConfiguration extends Component {
         });
         // TODO: fetch the service account name from the kubeconfig.
 
-        if (isNonEmptyObject(pullSecretFile)) {
+        if (typeof pullSecretFile?.name==='string') {
           const pullSecretYaml = JsYaml.load(configs[0]);
+
           Object.assign(providerConfig, {
             KUBECONFIG_IMAGE_PULL_SECRET_NAME:
               pullSecretYaml.metadata && pullSecretYaml.metadata.name,
@@ -224,7 +225,7 @@ class CreateKubernetesConfiguration extends Component {
         .required('Config name is Required')
         .matches(ACCEPTABLE_CHARS, 'Config Name cannot contain special characters except - and _'),
 
-      serviceAccount: Yup.string().required('Service Account name is Required'),
+      serviceAccount: Yup.string(),
 
       kubeConfig: Yup.mixed().nullable(),
 
