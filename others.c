@@ -67,7 +67,7 @@ static char uuid_generate_func_name[30] = "";
 
 static Datum ora_greatest_least(FunctionCallInfo fcinfo, bool greater);
 
-#if PG_VERSION_NUM <= 150000
+#if PG_VERSION_NUM < 160000
 
 static Oid
 get_extension_schema(Oid ext_oid)
