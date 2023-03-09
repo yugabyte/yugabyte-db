@@ -207,7 +207,7 @@ DEFINE_UNKNOWN_int64(time_based_wal_gc_clock_delta_usec, 0,
              "skewed hybrid clock, because the clock used for time-based WAL GC is the wall clock, "
              "not hybrid clock.");
 
-DEFINE_UNKNOWN_int64(reuse_unclosed_segment_threshold, 512_KB,
+DEFINE_UNKNOWN_int64(reuse_unclosed_segment_threshold, -1,
             "If the last left in-progress segment size is smaller or equal to this threshold, "
             "Log will reuse this last segment as writable active_segment at startup."
             "Otherwise, Log will create a new segment. If the value is negative, it means"
