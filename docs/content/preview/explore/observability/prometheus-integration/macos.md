@@ -13,11 +13,7 @@ type: docs
 
 You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time-series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint. For details on the metrics targets for YugabyteDB, see [Prometheus monitoring](../../../../reference/configuration/default-ports/#prometheus-monitoring).
 
-{{< note title="Setup" >}}
-
-Local multi-node cluster. See [Set up YugabyteDB universe](../../../../explore/#set-up-yugabytedb-universe).
-
-{{< /note >}}
+{{% explore-setup-single-local %}}
 
 ## Prerequisites
 
@@ -124,7 +120,7 @@ Paste the following expressions into the **Expression** box and click **Execute*
 
 ### Throughput
 
-> Read IOPS
+**Read IOPS**
 
 ```sh
 sum(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="SelectStmt"}[1m]))
@@ -132,52 +128,37 @@ sum(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcess
 
 ![Prometheus Read IOPS](/images/ce/prom-read-iops.png)
 
-> Write IOPS
+**Write IOPS**
 
 ```sh
 sum(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="InsertStmt"}[1m]))
 ```
 
-![Prometheus Read IOPS](/images/ce/prom-write-iops.png)
+![Prometheus Write IOPS](/images/ce/prom-write-iops.png)
 
 ### Latency
 
-> Read Latency (in microseconds)
+**Read Latency (in microseconds)**
 
 ```sh
 avg(irate(rpc_latency_sum{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="SelectStmt"}[1m])) /
 avg(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="SelectStmt"}[1m]))
 ```
 
-![Prometheus Read IOPS](/images/ce/prom-read-latency.png)
+![Prometheus Read Latency](/images/ce/prom-read-latency.png)
 
-> Write Latency (in microseconds)
+**Write Latency (in microseconds)**
 
 ```sh
 avg(irate(rpc_latency_sum{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="InsertStmt"}[1m])) /
 avg(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="InsertStmt"}[1m]))
 ```
 
-![Prometheus Read IOPS](/images/ce/prom-write-latency.png)
+![Prometheus Write Latency](/images/ce/prom-write-latency.png)
 
-## Clean up (optional)
+## Clean up
 
-Optionally, you can shut down a local cluster as follows:
-
-```sh
-./bin/yugabyted destroy \
-                  --base_dir=node-1
-```
-
-```sh
-./bin/yugabyted destroy \
-                  --base_dir=node-2
-```
-
-```sh
-./bin/yugabyted destroy \
-                  --base_dir=node-3
-```
+You can shut down the local cluster by following the instructions provided in [Destroy a local cluster](../../../../reference/configuration/yugabyted/#destroy-a-local-cluster).
 
 ## What's next?
 

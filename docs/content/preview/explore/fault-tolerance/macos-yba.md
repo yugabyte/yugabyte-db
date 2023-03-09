@@ -31,11 +31,11 @@ The examples are based on the YB Workload Simulator application, which uses the 
   </li>
 </ul>
 
-### Set up a cluster
+## Set up a universe
 
 Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a single region three-node universe in YugabyteDB Anywhere, connect the [YB Workload Simulator](../../#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as latency and throughput charts for the running workload.
 
-### Observe even load across all nodes
+## Observe even load across all nodes
 
 You can use YugabyteDB Anywhere to view per-node statistics for the universe, as follows:
 
@@ -55,7 +55,7 @@ You can use YugabyteDB Anywhere to view per-node statistics for the universe, as
 
    ![Latency and throughput with 3 nodes](/images/ce/simulation-graph-cloud.png)
 
-### Simulate a node failure
+## Simulate a node failure
 
 You can stop one of the nodes to simulate the loss of a zone, as follows:
 
@@ -63,7 +63,7 @@ You can stop one of the nodes to simulate the loss of a zone, as follows:
 
 1. Select **Nodes**, find the node to be removed, and then click its corresponding **Actions > Stop Processes**.
 
-### Observe workload remains available
+## Observe workload remains available
 
 1. Verify the details by selecting **Nodes**. Expect to see that the load has been moved off the stopped node and redistributed to the remaining nodes, as shown in the following illustration:
 
@@ -81,6 +81,4 @@ With the loss of the node, which also represents the loss of an entire fault dom
 
 Despite the loss of an entire fault domain, there is no impact on the application because no data is lost; previously replicated data on the remaining nodes is used to serve application requests.
 
-### Clean up
-
-You can delete your universe by following instructions provided in [Delete a universe](../../../yugabyte-platform/manage-deployments/delete-universe/).
+{{% explore-cleanup %}}

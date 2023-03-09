@@ -31,11 +31,11 @@ The examples are based on the YB Workload Simulator application, which uses the 
   </li>
 </ul>
 
-### Set up a cluster
+## Set up a universe
 
 Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a single region three-node universe, connect the [YB Workload Simulator](../../#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as latency and throughput charts for the running workload.
 
-### Observe even load across all nodes
+## Observe even load across all nodes
 
 To view a table of per-node statistics for the universe, navigate to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page. The following illustration shows the total read and write IOPS per node:
 
@@ -47,7 +47,7 @@ To view the latency and throughput on the universe while the workload is running
 
 ![Latency and throughput with 3 nodes](/images/ce/fault-tolerance-latency-throughput.png)
 
-### Simulate a node failure
+## Simulate a node failure
 
 Stop one of the nodes to simulate the loss of a zone, as follows:
 
@@ -55,7 +55,7 @@ Stop one of the nodes to simulate the loss of a zone, as follows:
 ./bin/yugabyted stop --base_dir=/tmp/ybd2
 ```
 
-### Observe workload remains available
+## Observe workload remains available
 
 Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the statistics update.
 
@@ -73,6 +73,4 @@ It may take close to 60 seconds to display the updated network diagram. You can 
 
 Despite the loss of an entire fault domain, there is no impact on the application because no data is lost; previously replicated data on the remaining nodes is used to serve application requests.
 
-### Clean up
-
-You can shut down the local cluster by following the instructions provided in [Destroy a local cluster](../../../reference/configuration/yugabyted/#destroy-a-local-cluster).
+{{% explore-cleanup %}}

@@ -38,7 +38,9 @@ This document demonstrates how YugabyteDB can scale seamlessly while running a r
   </li>
 </ul>
 
-Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a single region three-node universe in YugabyteDB Anywhere, connect the [YB Workload Simulator](../../#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as Latency and Throughput charts for the running workload.
+## Set up a universe
+
+Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a three-node universe in YugabyteDB Anywhere, connect the [YB Workload Simulator](../../#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as Latency and Throughput charts for the running workload.
 
 ## Observe IOPS per node
 
@@ -48,19 +50,19 @@ You can use YugabyteDB Anywhere to view per-node statistics for the universe, as
 
 1. Select **Nodes** to view the total read and write IOPS per node and other statistics, as shown in the following illustration:
 
-   ![Read and write IOPS with 3 nodes](/images/ce/transactions_anywhere_observe1.png)
+    ![Read and write IOPS with 3 nodes](/images/ce/transactions_anywhere_observe1.png)
 
-   Note that both the reads and the writes are approximately the same across all the nodes, indicating uniform load.
+    Note that both the reads and the writes are approximately the same across all the nodes, indicating uniform load.
 
 1. Select **Metrics** to view charts such as YSQL operations per second and latency, as shown in the following illustration:
 
-   ![Performance charts for 3 nodes](/images/ce/transactions_anywhere_chart.png)
+    ![Performance charts for 3 nodes](/images/ce/transactions_anywhere_chart.png)
 
 1. Navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8080/) to view the latency and throughput on the universe while the workload is running, as per the following illustration:
 
-   ![Latency and throughput with 3 nodes](/images/ce/simulation-graph-cloud.png)
+    ![Latency and throughput with 3 nodes](/images/ce/simulation-graph-cloud.png)
 
-## Add node and observe linear scale-out
+## Add a node
 
 You can add a node to the universe in YugabyteDB Anywhere as follows:
 
@@ -70,9 +72,11 @@ You can add a node to the universe in YugabyteDB Anywhere as follows:
 
 1. Click **Save**. Note that the scaling operation can take several minutes.
 
-1. Verify that the node has been added by selecting **Nodes**, as per the following illustration:
+## Observe linear scale-out
 
-   ![Read and write IOPS with 4 nodes](/images/ce/add-node-anywhere.png)
+Verify that the node has been added by selecting **Nodes**, as per the following illustration:
+
+![Read and write IOPS with 4 nodes](/images/ce/add-node-anywhere.png)
 
 Shortly, you should see the new node performing a comparable number of reads and writes as the other nodes. The tablets are also distributed evenly across all four nodes.
 
@@ -86,7 +90,7 @@ Alternatively, you can navigate to the [YB Workload Simulator application UI](ht
 
 ![Latency and throughput graph with 4 nodes](/images/ce/add-node-graph-cloud.png)
 
-## Remove node and observe linear scale-in
+## Remove a node
 
 You can remove a node from the universe as follows:
 
@@ -94,11 +98,13 @@ You can remove a node from the universe as follows:
 
 1. Select **Nodes**, find the node to be removed, and then click its corresponding **Actions > Remove Node**.
 
-1. Verify that the details by selecting **Nodes**. The scale-in operation can take several minutes and expect to see that the load has been moved off the removed node and redistributed to the remaining nodes.
+## Observe linear scale-in
 
-1. Navigate to **Metrics** to observe a slight spike and drop in the latency and YSQL Ops / Sec charts when the node is removed, and then both return to normal, as shown in the following illustration:
+Verify that the details by selecting **Nodes**. The scale-in operation can take several minutes and expect to see that the load has been moved off the removed node and redistributed to the remaining nodes.
 
-   ![Performance metrics with 4th node dead](/images/ce/stop-node-chart-anywhere.png)
+Navigate to **Metrics** to observe a slight spike and drop in the latency and YSQL Ops / Sec charts when the node is removed, and then both return to normal, as shown in the following illustration:
+
+![Performance metrics with 4th node dead](/images/ce/stop-node-chart-anywhere.png)
 
 Alternatively, you can navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8080/) to see the node being removed from the network diagram when it is stopped. Also notice a slight spike and drop in the latency and throughput, both of which resume immediately, as shown in the following illustration:
 
