@@ -1955,6 +1955,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     ArrayNode clustersJsonArray = Json.newArray().add(Json.toJson(cluster));
     bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
     r.disableRegionAndZones();
     Result result = assertPlatformException(() -> sendCreateRequest(bodyJson));
     assertErrorResponse(result, "Region region-1 is deleted");
