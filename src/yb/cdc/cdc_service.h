@@ -122,6 +122,10 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Result<TabletCheckpoint> TEST_GetTabletInfoFromCache(const ProducerTabletInfo& producer_tablet);
 
+  void GetCheckpointForColocatedTable(
+      const GetCheckpointForColocatedTableRequestPB* req,
+      GetCheckpointForColocatedTableResponsePB* resp, rpc::RpcContext context) override;
+
   // Update peers in other tablet servers about the latest minimum applied cdc index for a specific
   // tablet.
   void UpdateCdcReplicatedIndex(
@@ -233,11 +237,23 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<CDCSDKCheckpointPB> GetLastCDCSDKCheckpoint(
       const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session);
 
+  Status GetCDCSDKCheckpointsForColocatedTable(
+      const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session,
+      google::protobuf::RepeatedPtrField<::yb::cdc::TableCheckpointInfoPB>*
+          table_checkpoint_details);
+
   Result<std::vector<std::pair<std::string, std::string>>> GetDBStreamInfo(
       const std::string& db_stream_id, const client::YBSessionPtr& session);
 
   Result<std::string> GetCdcStreamId(
       const ProducerTabletInfo& producer_tablet, const std::shared_ptr<client::YBSession>& session);
+
+  Status InsertRowForColocatedTableInCDCStateTable(
+      const ProducerTabletInfo& producer_tablet,
+      const TableId& colocated_table_id,
+      const OpId& commit_op_id,
+      const HybridTime& cdc_sdk_safe_time,
+      const client::YBSessionPtr& session);
 
   Status UpdateCheckpointAndActiveTime(
       const ProducerTabletInfo& producer_tablet,
@@ -249,7 +265,8 @@ class CDCServiceImpl : public CDCServiceIf {
       bool force_update = false,
       const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid,
       const bool is_snapshot = false,
-      const std::string& snapshot_key = "");
+      const std::string& snapshot_key = "",
+      const TableId& colocated_table_id = "");
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> GetTablets(
       const CDCStreamId& stream_id);

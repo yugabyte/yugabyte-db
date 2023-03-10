@@ -1974,7 +1974,8 @@ HybridTime Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadl
 }
 
 Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIterator(
-    const Schema& projection, const ReadHybridTime& time, const string& next_key) {
+    const Schema& projection, const ReadHybridTime& time, const string& next_key,
+    const TableId& table_id) {
   VLOG_WITH_PREFIX(2) << "The nextKey is " << next_key;
 
   docdb::KeyBytes encoded_next_key;
@@ -1986,7 +1987,7 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
     VLOG_WITH_PREFIX(2) << "The nextKey doc is " << encoded_next_key;
   }
   return NewRowIterator(
-      projection, time, "", CoarseTimePoint::max(), AllowBootstrappingState::kFalse,
+      projection, time, table_id, CoarseTimePoint::max(), AllowBootstrappingState::kFalse,
       encoded_next_key);
 }
 
