@@ -144,8 +144,7 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.DownloadingSoftware, taskParams().nodePrefix);
 
-    SubTaskGroup downloadTaskGroup =
-        getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup downloadTaskGroup = createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
       downloadTaskGroup.addSubTask(
           getAnsibleConfigureServerTask(

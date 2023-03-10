@@ -54,8 +54,7 @@ public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
   }
 
   private SubTaskGroup addPersistKubernetesOverridesTask() {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("UpdateAndPersistKubernetesOverrides", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateAndPersistKubernetesOverrides");
     UpdateAndPersistKubernetesOverrides.Params params =
         new UpdateAndPersistKubernetesOverrides.Params();
     params.universeUUID = taskParams().universeUUID;

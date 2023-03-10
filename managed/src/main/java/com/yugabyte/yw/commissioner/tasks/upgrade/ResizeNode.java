@@ -306,8 +306,7 @@ public class ResizeNode extends UpgradeTaskBase {
   }
 
   private SubTaskGroup createChangeInstanceTypeTask(NodeDetails node, String instanceType) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("ChangeInstanceType", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("ChangeInstanceType");
     ChangeInstanceType.Params params = new ChangeInstanceType.Params();
 
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
