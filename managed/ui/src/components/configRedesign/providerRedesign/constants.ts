@@ -45,6 +45,12 @@ export type KubernetesProviderTab = Exclude<
   typeof KubernetesProviderType.DEPRECATED
 >;
 
+export const ArchitectureType = {
+  X86_64: 'x86_64',
+  ARM64: 'aarch64'
+} as const;
+export type ArchitectureType = typeof ArchitectureType[keyof typeof ArchitectureType];
+
 // --------------------------------------------------------------------------------------
 // Route Constants
 // --------------------------------------------------------------------------------------
@@ -53,11 +59,13 @@ export const PROVIDER_ROUTE_PREFIX = `${CONFIG_ROUTE_PREFIX}/${ConfigTabKey.INFR
 // --------------------------------------------------------------------------------------
 // Provider Field & Form Constants
 // --------------------------------------------------------------------------------------
-export const ArchitectureType = {
-  X86_64: 'x86_64',
-  ARM64: 'aarch64'
+
+export const YBImageType = {
+  X86_64: ArchitectureType.X86_64,
+  ARM64: ArchitectureType.ARM64,
+  CUSTOM_AMI: 'customAMI'
 } as const;
-export type ArchitectureType = typeof ArchitectureType[keyof typeof ArchitectureType];
+export type YBImageType = typeof YBImageType[keyof typeof YBImageType];
 
 export const NTPSetupType = {
   CLOUD_VENDOR: 'cloudVendor',
