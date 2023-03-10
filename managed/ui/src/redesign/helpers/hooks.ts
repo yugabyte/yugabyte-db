@@ -70,6 +70,32 @@ export const useCreateProvider = (
     }
   );
 
+type UseDeleteProviderParams = {
+  providerUUID: string;
+};
+export const useDeleteProvider = (
+  queryClient: QueryClient,
+  mutationOptions?: MutationOptions<YBPTask, Error | AxiosError, UseDeleteProviderParams>
+) =>
+  useMutation(({ providerUUID }: UseDeleteProviderParams) => api.deleteProvider(providerUUID), {
+    ...mutationOptions,
+    onSuccess: (response, variables, context) => {
+      if (mutationOptions?.onSuccess) {
+        mutationOptions.onSuccess(response, variables, context);
+      } else {
+        queryClient.invalidateQueries(providerQueryKey.ALL, { exact: true });
+        queryClient.invalidateQueries(providerQueryKey.detail(variables.providerUUID), {
+          exact: true
+        });
+      }
+    },
+    onError: (error, variables, context) => {
+      mutationOptions?.onError
+        ? mutationOptions.onError(error, variables, context)
+        : handleServerError(error);
+    }
+  });
+
 type CreateInstanceTypeParams = {
   providerUUID: string;
   instanceType: InstanceTypeMutation;

@@ -139,10 +139,10 @@ class ApiService {
     return axios.get<YBProvider[]>(requestUrl).then((resp) => resp.data);
   };
 
-  deleteProvider = (providerUUID: string | undefined) => {
+  deleteProvider = (providerUUID: string) => {
     if (providerUUID) {
       const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}`;
-      return axios.delete(requestURL);
+      return axios.delete<YBPTask>(requestURL).then((response) => response.data);
     }
     return Promise.reject('Failed to delete provider: No provider UUID provided.');
   };
