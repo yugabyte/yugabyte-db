@@ -7012,5 +7012,217 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestExplicitCheckpointGetChangesR
       OpId(change_resp.cdc_sdk_checkpoint().term(), change_resp.cdc_sdk_checkpoint().index()));
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSnapshotForColocatedTablet)) {
+  FLAGS_cdc_snapshot_batch_size = 100;
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, true /* colocated */));
+
+  // ASSERT_OK(CreateColocatedObjects(&test_cluster_));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key, value_2 int, value_3 int);"));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE test2(id2 int primary key, value_2 int, value_3 int, "
+                         "value_4 int);"));
+
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  const int64_t snapshot_recrods_per_table = 500;
+  for (int i = 0; i < snapshot_recrods_per_table; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1, $2)", i, i + 1, i + 2));
+    ASSERT_OK(
+        conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
+  }
+
+  auto get_colocated_table_id = [&](const std::string& req_table_name) -> string {
+    for (const auto& peer : test_cluster()->GetTabletPeers(0)) {
+      for (const auto& table_id : peer->tablet_metadata()->GetAllColocatedTables()) {
+        auto table_name = peer->tablet_metadata()->table_name(table_id);
+        if (table_name == req_table_name) {
+          return table_id;
+        }
+      }
+    }
+    return "";
+  };
+
+  auto verify_all_snapshot_records = [&](GetChangesResponsePB& initial_change_resp,
+                                         const TableId& req_table_id, const TableName& table_name) {
+    bool first_call = true;
+    int64_t seen_snapshot_records = 0;
+    GetChangesResponsePB change_resp;
+    while (true) {
+      if (first_call) {
+        change_resp =
+            ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &initial_change_resp, req_table_id));
+        first_call = false;
+      } else {
+        change_resp =
+            ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp, req_table_id));
+      }
+
+      for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+        if (record.row_message().op() == RowMessage::READ) {
+          seen_snapshot_records += 1;
+          ASSERT_EQ(record.row_message().table(), table_name);
+        }
+      }
+
+      if (change_resp.cdc_sdk_checkpoint().key().empty() &&
+          change_resp.cdc_sdk_checkpoint().write_id() == 0 &&
+          change_resp.cdc_sdk_checkpoint().snapshot_time() == 0) {
+        ASSERT_EQ(seen_snapshot_records, snapshot_recrods_per_table);
+        break;
+      }
+    }
+  };
+
+  auto req_table_id = get_colocated_table_id("test1");
+  ASSERT_NE(req_table_id, "");
+  // Assert that we get all records from the second table: "test1".
+  GetChangesResponsePB initial_change_resp =
+      ASSERT_RESULT(GetChangesFromCDCSnapshot(stream_id, tablets));
+  GetChangesResponsePB change_resp;
+  verify_all_snapshot_records(initial_change_resp, req_table_id, "test1");
+  LOG(INFO) << "Verified snapshot records for table: test1";
+
+  // Assert that we get all records from the second table: "test2".
+  req_table_id = get_colocated_table_id("test2");
+  ASSERT_NE(req_table_id, "");
+  verify_all_snapshot_records(initial_change_resp, req_table_id, "test2");
+  LOG(INFO) << "Verified snapshot records for table: test2";
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointForColocatedTable)) {
+  FLAGS_cdc_snapshot_batch_size = 100;
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, true /* colocated */));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key, value_2 int, value_3 int);"));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE test2(id2 int primary key, value_2 int, value_3 int, "
+                         "value_4 int);"));
+
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  const int64_t snapshot_recrods_per_table = 500;
+  for (int i = 0; i < snapshot_recrods_per_table; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1, $2)", i, i + 1, i + 2));
+    ASSERT_OK(
+        conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
+  }
+
+  auto get_colocated_table_id = [&](const std::string& req_table_name) -> string {
+    for (const auto& peer : test_cluster()->GetTabletPeers(0)) {
+      for (const auto& table_id : peer->tablet_metadata()->GetAllColocatedTables()) {
+        auto table_name = peer->tablet_metadata()->table_name(table_id);
+        if (table_name == req_table_name) {
+          return table_id;
+        }
+      }
+    }
+    return "";
+  };
+
+  auto verify_snapshot_checkpoint = [&](const GetChangesResponsePB& initial_change_resp,
+                                        const TableId& req_table_id) {
+    bool first_call = true;
+    GetChangesResponsePB change_resp;
+    GetChangesResponsePB next_change_resp;
+
+    while (true) {
+      if (first_call) {
+        next_change_resp =
+            ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &initial_change_resp, req_table_id));
+      } else {
+        next_change_resp =
+            ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp, req_table_id));
+      }
+
+      auto resp = ASSERT_RESULT(GetCheckpointForColocatedTable(stream_id, tablets[0].tablet_id()));
+      uint64 expected_snapshot_time = 0;
+      for (const auto& checkpoint_detail : resp.table_checkpoint_details()) {
+        if (!checkpoint_detail.has_table_id()) {
+          expected_snapshot_time = checkpoint_detail.checkpoint().snapshot_time();
+          break;
+        }
+      }
+      ASSERT_GE(expected_snapshot_time, 0);
+
+      bool found_required_table_record = false;
+      for (const auto& checkpoint_detail : resp.table_checkpoint_details()) {
+        if (!checkpoint_detail.has_table_id()) {
+          continue;
+        }
+        if (checkpoint_detail.table_id() == req_table_id) {
+          if (first_call) {
+            ASSERT_EQ(
+                checkpoint_detail.checkpoint().term(),
+                initial_change_resp.cdc_sdk_checkpoint().term());
+            ASSERT_EQ(
+                checkpoint_detail.checkpoint().index(),
+                initial_change_resp.cdc_sdk_checkpoint().index());
+            ASSERT_EQ(checkpoint_detail.checkpoint().key(), "");
+            first_call = false;
+          } else {
+            ASSERT_EQ(
+                checkpoint_detail.checkpoint().term(), change_resp.cdc_sdk_checkpoint().term());
+            ASSERT_EQ(
+                checkpoint_detail.checkpoint().index(), change_resp.cdc_sdk_checkpoint().index());
+            ASSERT_EQ(checkpoint_detail.checkpoint().key(), change_resp.cdc_sdk_checkpoint().key());
+            ASSERT_EQ(checkpoint_detail.checkpoint().snapshot_time(), expected_snapshot_time);
+          }
+
+          change_resp = next_change_resp;
+          found_required_table_record = true;
+          break;
+        }
+      }
+      ASSERT_TRUE(found_required_table_record);
+
+      if (change_resp.cdc_sdk_checkpoint().key().empty() &&
+          change_resp.cdc_sdk_checkpoint().write_id() == 0 &&
+          change_resp.cdc_sdk_checkpoint().snapshot_time() == 0) {
+        break;
+      }
+    }
+  };
+
+  auto req_table_id = get_colocated_table_id("test1");
+  ASSERT_NE(req_table_id, "");
+  // Assert that we get all records from the second table: "test1".
+  GetChangesResponsePB initial_change_resp =
+      ASSERT_RESULT(GetChangesFromCDCSnapshot(stream_id, tablets));
+  verify_snapshot_checkpoint(initial_change_resp, req_table_id);
+  LOG(INFO) << "Verified snapshot records for table: test1";
+
+  // Assert that we get all records from the second table: "test2".
+  req_table_id = get_colocated_table_id("test2");
+  ASSERT_NE(req_table_id, "");
+  verify_snapshot_checkpoint(initial_change_resp, req_table_id);
+  LOG(INFO) << "Verified snapshot records for table: test2";
+}
+
 }  // namespace cdc
 }  // namespace yb

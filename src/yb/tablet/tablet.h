@@ -407,7 +407,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> CreateCDCSnapshotIterator(
       const Schema& projection,
       const ReadHybridTime& time,
-      const std::string& next_key);
+      const std::string& next_key,
+      const TableId& table_id = "");
   //------------------------------------------------------------------------------------------------
   // Makes RocksDB Flush.
   Status Flush(FlushMode mode,

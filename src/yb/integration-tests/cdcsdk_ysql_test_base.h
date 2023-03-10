@@ -936,14 +936,15 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<GetChangesResponsePB> UpdateCheckpoint(
       const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      GetChangesResponsePB* change_resp) {
+      const GetChangesResponsePB* change_resp,
+      const TableId table_id = "") {
     GetChangesRequestPB change_req2;
     GetChangesResponsePB change_resp2;
     PrepareChangeRequest(
         &change_req2, stream_id, tablets, 0, change_resp->cdc_sdk_checkpoint().index(),
         change_resp->cdc_sdk_checkpoint().term(), change_resp->cdc_sdk_checkpoint().key(),
         change_resp->cdc_sdk_checkpoint().write_id(),
-        change_resp->cdc_sdk_checkpoint().snapshot_time());
+        change_resp->cdc_sdk_checkpoint().snapshot_time(), table_id);
     RpcController get_changes_rpc;
     RETURN_NOT_OK(cdc_proxy_->GetChanges(change_req2, &change_resp2, &get_changes_rpc));
     if (change_resp2.has_error()) {
@@ -976,7 +977,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       GetChangesRequestPB* change_req, const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const int tablet_idx = 0, int64 index = 0, int64 term = 0, std::string key = "",
-      int32_t write_id = 0, int64 snapshot_time = 0) {
+      int32_t write_id = 0, int64 snapshot_time = 0, const TableId table_id = "") {
     change_req->set_stream_id(stream_id);
     change_req->set_tablet_id(tablets.Get(tablet_idx).tablet_id());
     change_req->mutable_from_cdc_sdk_checkpoint()->set_index(index);
@@ -984,6 +985,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     change_req->mutable_from_cdc_sdk_checkpoint()->set_key(key);
     change_req->mutable_from_cdc_sdk_checkpoint()->set_write_id(write_id);
     change_req->mutable_from_cdc_sdk_checkpoint()->set_snapshot_time(snapshot_time);
+    if (!table_id.empty()) {
+      change_req->set_table_id(table_id);
+    }
   }
 
   void PrepareChangeRequest(
@@ -1060,6 +1064,22 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     }
 
     return st;
+  }
+
+  Result<GetCheckpointForColocatedTableResponsePB> GetCheckpointForColocatedTable(
+      const CDCStreamId& stream_id, const TabletId& tablet_id) {
+    RpcController get_checkpoint_for_colocated_table_rpc;
+    GetCheckpointForColocatedTableRequestPB req;
+    GetCheckpointForColocatedTableResponsePB resp;
+    auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
+    get_checkpoint_for_colocated_table_rpc.set_deadline(deadline);
+
+    req.set_stream_id(stream_id);
+    req.set_tablet_id(tablet_id);
+    RETURN_NOT_OK(cdc_proxy_->GetCheckpointForColocatedTable(
+        req, &resp, &get_checkpoint_for_colocated_table_rpc));
+
+    return resp;
   }
 
   Result<std::vector<OpId>> GetCDCCheckpoint(
