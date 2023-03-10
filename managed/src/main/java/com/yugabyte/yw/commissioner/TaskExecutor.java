@@ -15,7 +15,6 @@ import com.google.inject.Provider;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTableYbc;
 import com.yugabyte.yw.common.DrainableMap;
 import com.yugabyte.yw.common.ShutdownHookHandler;
 import com.yugabyte.yw.common.Util;
