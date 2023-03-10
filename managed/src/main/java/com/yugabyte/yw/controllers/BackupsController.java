@@ -678,6 +678,13 @@ public class BackupsController extends AuthenticatedController {
       value = "Delete backups V2",
       response = YBPTasks.class,
       nickname = "deleteBackupsV2")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "deleteBackup",
+          value = "Parameters of the backup to be deleted",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.DeleteBackupParams",
+          required = true))
   public Result deleteYb(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DeleteBackupParams deleteBackupParams = parseJsonAndValidate(DeleteBackupParams.class);
