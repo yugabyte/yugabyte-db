@@ -1,6 +1,6 @@
 ---
-title: Architecting for High Availability
-headerTitle: Architecting for High Availability
+title: Architecting High Availability
+headerTitle: Architect highly availabile applications
 linkTitle: 10. High Availability
 description: Learn how to architect Highly Available applications in YugabyteDB YSQL.
 menu:
@@ -13,62 +13,67 @@ type: docs
 
 ## Ensuring HA of transactions
 
-Failures are inevitable. You have to design your applications to take appropriate actions on the failure of statements so that your applications are Highly Available to your users. YugabyteDB returns various error codes for errors that happen during transaction processing. YugabyteDB supports different levels of Isolation during a transaction. Although certain errors are very specific to certain isolation levels, most errors are common across multiple isolation levels.  
+As failures are inevitable, design your applications to take appropriate actions on the failed statements to ensure they are highly available. YugabyteDB returns various error codes for errors that occur during transaction processing. YugabyteDB supports different levels of isolation during a transaction. Although some errors are very specific to certain isolation levels, most errors are common across multiple isolation levels.
 
-Here we will understand the scenarios which cause them and the methods how they should be handled by the applications.
-
+The following scenarios describe the causes for failures, and the required methods to be handled by the applications.
 
 ## Types of Error Codes
 
-Return codes typically fall into `3`  categories.
+Return codes typically fall into the following three categories:
 
-1. __`WARNING`__ : Informational messages that explain why a statement failed. Most client libraries would hide these from the user but one might notice these when executed directly on a terminal. The program can continue without interruption but would need to be modified to avoid the re-occurence of the message. Eg:
+1. __`WARNING`__ : Informational messages that explain why a statement failed.
+
+     Most client libraries hide warnings but you might notice the messages when you execute statements directly from a terminal. The statement execution can continue without interruption but would need to be modified to avoid the re-occurence of the message as described in the following example:
 
     ```output.plpgsql
-    -- When a BEGIN statement is issued inside a transaction
+    -- When a BEGIN statement is issued inside a transaction.
     WARNING:  25001: there is already a transaction in progress
     ```
 
+1. __`ERROR`__ : Errors are returned when a transaction cannot continue further and has to be restarted by the client.
 
-1. __`ERROR`__ : These are returned when the transaction cannot continue further and has to be restarted by the client. These errors need to be handled by the application and take appropriate action. We will dive deeper into these in the next section. Eg:
+    These errors need to be handled by the application and take appropriate action.
 
     ```output.plpgsql
-    -- When multiple transactions are modifying the same key
+    -- When multiple transactions are modifying the same key.
     ERROR:  40001: Operation expired: Transaction XXXX expired or aborted by a conflict
     ```
 
-1. __`FATAL`__ : These messages are returned to notify that the connection to the server has been disconnected. At this point, the application should reconnect to the server. Eg:
+    For more details, refer to [Transaction retries](#transaction-retries).
+
+1. __`FATAL`__ : Fatal messages are returned to notify that the connection to a server has been disconnected. At this point, the application should reconnect to the server. For example,
 
     ```output.plpgsql
     -- When the application takes a long time to issue a statement in the middle of a transaction
     FATAL:  25P03: terminating connection due to idle-in-transaction timeout
     ```
 
-## Setup 
-For the purpose of examples lets setup a simple table.
-1. Create the table.
-    ```plpgsql
-    CREATE TABLE txndemo (
-      k int,
-      V int,
-      PRIMARY KEY(k)
-    );
-    ```
+## Setup
 
-1. Add some data to it.
-    ```
-    INSERT INTO txndemo VALUES (1,10),(2,10),(3,10),(4,10),(5,10);
-    ```
+Consider the following table format with some data for the following scenarios:
 
+```sql
+CREATE TABLE txndemo (
+  k int,
+  V int,
+  PRIMARY KEY(k)
+);
+```
+
+```sql
+INSERT INTO txndemo VALUES (1,10),(2,10),(3,10),(4,10),(5,10);
+```
 
 ## Transaction Retries
+
 Most errors that happen due to conflicts, deadlocks can be restarted. Let's look at such scenarios.
 
 ### 25P02 - InFailedSqlTransaction
+
 This error is thrown when a statement is issued after an error has already happened in a transaction. The error message would be similar to:
 
 ```output.plpgsql
-ERROR:  25P02: current transaction is aborted, commands ignored until end of transaction block 
+ERROR:  25P02: current transaction is aborted, commands ignored until end of transaction block
 ```
 
 The only valid statements at this point would be `ROLLBACK` or `COMMIT`. The correct way to handle this to handle the actual error and then issue a rollback.
@@ -95,7 +100,7 @@ except psycopg2.errors.InFailedSqlTransaction as e:
   cursor.execute("ROLLBACK")
 ```
 
-### 25P03 - Idle Timeout 
+### 25P03 - Idle Timeout
 When an application takes a long time between two statements within a transaction, it might hit the `idle_in_transaction_session_timeout` timeout. Setting this timeout is useful to avoid deadlock scenarios where applications acquire locks and then hang unintentionally. Once that timeout is reached, the connection is disconnected and the client would have to reconnect. The typical error message would be:
 
 ```
@@ -125,7 +130,7 @@ cxn = psycopg2.connect(connstr)
 
 max_attempts = 10   # max no.of retries
 sleep_time = 0.002  # 2 ms - base sleep time
-backoff = 2         # 
+backoff = 2         #
 
 attempt = 0
 while attempt < max_attempts:
