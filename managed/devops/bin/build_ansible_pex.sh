@@ -10,13 +10,23 @@
 
 set -e
 
-. "${BASH_SOURCE%/*}"/bin/common.sh
+. "${BASH_SOURCE%/*}/common.sh"
+PEX_ENV_FOLDER="pexEnv"
 
 # Ansible PEX Generation Steps.
 cd "$yb_devops_home/pex"
 
-# Remove existing pexEnv
-rm -rf "pexEnv"
+force="${1:-}"
+
+if [[ "$force" == "--force" ]]; then
+  # Remove existing pexEnv
+  rm -rf "$PEX_ENV_FOLDER"
+elif [[ -d $PEX_ENV_FOLDER ]]; then
+  fatal "$PEX_ENV_FOLDER already generated, skipping recreation."
+fi
+
+echo "Rebuilding pex env for ansible."
+
 
 # Build pex docker image if doesn't exist.
 docker inspect "$DOCKER_IMAGE_NAME" > /dev/null 2>&1 || docker build -t "$DOCKER_IMAGE_NAME" .
