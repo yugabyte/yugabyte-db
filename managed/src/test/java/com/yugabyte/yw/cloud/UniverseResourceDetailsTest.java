@@ -11,6 +11,11 @@ import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_SIZE;
 import static com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import static com.yugabyte.yw.common.ApiUtils.getDummyDeviceInfo;
 import static com.yugabyte.yw.common.ApiUtils.getDummyUserIntent;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.BeingDecommissioned;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Decommissioned;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Stopped;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Terminated;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Terminating;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToBeRemoved;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -333,20 +338,68 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   }
 
   @Test
-  public void testAddPriceWithRemovingOneNode() throws Exception {
+  public void testAddPricePausedUniverse() throws Exception {
+    UniverseDefinitionTaskParams params = setUpValidEBS(StorageType.GP3);
+    params.universePaused = true;
+    params.nodeDetailsSet.forEach(node -> node.state = Stopped);
+
+    UniverseResourceDetails details = new UniverseResourceDetails();
+    details.gp3FreePiops = 3000;
+    details.gp3FreeThroughput = 125;
+    details.addPrice(params, context);
+    double expectedEbsPrice =
+        Double.parseDouble(
+            String.format(
+                "%.4f",
+                3
+                    * (numVolumes
+                        * (((diskIops - 3000) * piopsPrice)
+                            + (volumeSize * sizePrice)
+                            + ((throughput - 125) * throughputPrice / 1024)))));
+    // We're only accounted for drives in case universe is paused.
+    assertThat(details.ebsPricePerHour, equalTo(expectedEbsPrice));
+    assertThat(details.pricePerHour, equalTo(expectedEbsPrice));
+  }
+
+  @Test
+  public void testAddPriceWithTerminatedNode() throws Exception {
     UniverseDefinitionTaskParams params =
         setUpValidSSD(
             4,
             (node, index) -> {
+              if (index == 2) {
+                node.state = Terminating;
+              }
               if (index == 3) {
-                node.state = ToBeRemoved;
+                node.state = Terminating;
               }
             });
 
     UniverseResourceDetails details = new UniverseResourceDetails();
     details.addPrice(params, context);
     assertThat(details.ebsPricePerHour, equalTo(0.0));
-    double expectedPrice = Double.parseDouble(String.format("%.4f", 3 * instancePrice));
+    double expectedPrice = Double.parseDouble(String.format("%.4f", 2 * instancePrice));
+    assertThat(details.pricePerHour, equalTo(expectedPrice));
+  }
+
+  @Test
+  public void testAddPriceWithDecommissionedNode() throws Exception {
+    UniverseDefinitionTaskParams params =
+        setUpValidSSD(
+            4,
+            (node, index) -> {
+              if (index == 2) {
+                node.state = Decommissioned;
+              }
+              if (index == 3) {
+                node.state = BeingDecommissioned;
+              }
+            });
+
+    UniverseResourceDetails details = new UniverseResourceDetails();
+    details.addPrice(params, context);
+    assertThat(details.ebsPricePerHour, equalTo(0.0));
+    double expectedPrice = Double.parseDouble(String.format("%.4f", 2 * instancePrice));
     assertThat(details.pricePerHour, equalTo(expectedPrice));
   }
 
