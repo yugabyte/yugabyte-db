@@ -28,6 +28,7 @@
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/index.h"
+#include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_attribute.h"
@@ -784,6 +785,41 @@ YBCDropTable(Relation relation)
 	}
 }
 
+/*
+ * This function is inspired by RelationSetNewRelfilenode() in
+ * backend/utils/cache/relcache.c It updates the tuple corresponding to the
+ * truncated relation in pg_class in the sys cache.
+ */
+static void
+YbOnTruncateUpdateCatalog(Relation rel)
+{
+	Relation	  pg_class;
+	HeapTuple	  tuple;
+	Form_pg_class classform;
+
+	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
+
+	tuple = SearchSysCacheCopy1(RELOID, ObjectIdGetDatum(RelationGetRelid(rel)));
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "could not find tuple for relation %u", RelationGetRelid(rel));
+	classform = (Form_pg_class) GETSTRUCT(tuple);
+
+	if (rel->rd_rel->relkind != RELKIND_SEQUENCE)
+	{
+		classform->relpages = 0;
+		classform->reltuples = 0;
+		classform->relallvisible = 0;
+	}
+
+	CatalogTupleUpdate(pg_class, &tuple->t_self, tuple);
+
+	heap_freetuple(tuple);
+	heap_close(pg_class, RowExclusiveLock);
+
+	/* This makes the pg_class row change visible. */
+	CommandCounterIncrement();
+}
+
 void
 YbTruncate(Relation rel)
 {
@@ -816,6 +852,9 @@ YbTruncate(Relation rel)
 		HandleYBStatus(YBCPgExecTruncateTable(handle));
 	}
 
+	/* Update catalog metadata of the truncated table */
+	YbOnTruncateUpdateCatalog(rel);
+
 	if (!rel->rd_rel->relhasindex)
 		return;
 
@@ -825,16 +864,19 @@ YbTruncate(Relation rel)
 	foreach(lc, indexlist)
 	{
 		Oid indexId = lfirst_oid(lc);
-
-		/* PK index is not secondary index, skip */
-		if (indexId == rel->rd_pkindex)
-			continue;
-
 		/*
 		 * Lock level doesn't fully work in YB.  Since YB TRUNCATE is already
 		 * considered to not be transaction-safe, it doesn't really matter.
 		 */
 		Relation indexRel = index_open(indexId, AccessExclusiveLock);
+
+		/* PK index is not secondary index, perform only catalog update */
+		if (indexId == rel->rd_pkindex) {
+			YbOnTruncateUpdateCatalog(indexRel);
+			index_close(indexRel, AccessExclusiveLock);
+			continue;
+		}
+
 		YbTruncate(indexRel);
 		index_close(indexRel, AccessExclusiveLock);
 	}
