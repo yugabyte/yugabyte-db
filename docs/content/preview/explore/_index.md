@@ -75,7 +75,9 @@ You can run examples using a universe set up on your local machine or in a cloud
 
 To run the examples, you need to create a single- or multi-node universe.
 
-For testing and learning YugabyteDB on your computer, use the [yugabyted](../reference/configuration/yugabyted/) utility to create and manage universes.
+For testing and learning YugabyteDB, use the [yugabyted](../reference/configuration/yugabyted/) utility to create and manage universes.
+
+The following instructions show how to _simulate_ a single- or multi-node universe on a single computer. To deploy an actual multi-zone universe using yugabyted, follow the instructions in [Create a multi-zone cluster](../reference/configuration/yugabyted/#create-a-multi-zone-cluster).
 
 {{< tabpane text=true >}}
 
@@ -101,8 +103,6 @@ For more information, refer to [Quick Start](../quick-start/linux/#create-a-loca
   {{% /tab %}}
 
   {{% tab header="Multi-node universe" lang="Multi-node universe" %}}
-
-The following instructions show how to simulate a multi-node universe on a single computer. To deploy a true multi-node universe, follow the instructions in [Deploy](../deploy/).
 
 If a local universe is currently running, first [destroy it](../reference/configuration/yugabyted/#destroy-a-local-cluster).
 

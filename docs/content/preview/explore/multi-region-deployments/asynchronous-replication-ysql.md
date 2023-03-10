@@ -245,11 +245,4 @@ The following is an example command:
 
 For details, see [alter_universe_replication](../../../admin/yb-admin/#alter-universe-replication).
 
-## Clean up
-
-To destroy the simulated data centers and remove their associated directories, use the `yugabyted destroy` command as follows:
-
-```sh
-./bin/yugabyted destroy --base_dir=/tmp/ybd1
-./bin/yugabyted destroy --base_dir=/tmp/ybd2
-```
+{{% explore-cleanup-local %}}
