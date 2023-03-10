@@ -18,7 +18,7 @@ resources:
     url: /preview/releases/yba-releases/
   - title: FAQ
     url: /preview/faq/yugabyte-platform/
-  - title: Free trial
+  - title: yugabyte.com
     url: https://www.yugabyte.com/anywhere/
 ---
 
