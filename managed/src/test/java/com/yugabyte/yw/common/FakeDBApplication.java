@@ -38,6 +38,7 @@ import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.mvc.Http;
 import play.mvc.Result;
+import org.yb.client.YBClient;
 
 public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public Commissioner mockCommissioner = mock(Commissioner.class);
@@ -76,6 +77,8 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public YbcUpgrade mockYbcUpgrade = mock(YbcUpgrade.class);
   public YbcManager mockYbcManager = mock(YbcManager.class);
   public AWSCloudImpl mockAWSCloudImpl = mock(AWSCloudImpl.class);
+  public YBClient mockYBClient = mock(YBClient.class);
+  public SwamperHelper mockSwamperHelper = mock(SwamperHelper.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -113,6 +116,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
                 .overrides(bind(YBClientService.class).toInstance(mockService))
+                .overrides(bind(YBClient.class).toInstance(mockYBClient))
                 .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
                 .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
                 .overrides(bind(YamlWrapper.class).toInstance(mockYamlWrapper))
@@ -132,7 +136,8 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(YbcClientService.class).toInstance(mockYbcClientService))
                 .overrides(bind(YbcManager.class).toInstance(mockYbcManager))
                 .overrides(bind(YbcUpgrade.class).toInstance(mockYbcUpgrade))
-                .overrides(bind(AWSCloudImpl.class).toInstance(mockAWSCloudImpl)))
+                .overrides(bind(AWSCloudImpl.class).toInstance(mockAWSCloudImpl))
+                .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper)))
         .build();
   }
 
