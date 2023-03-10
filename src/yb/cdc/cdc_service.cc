@@ -16,6 +16,8 @@
 #include <chrono>
 #include <memory>
 
+#include <boost/algorithm/string.hpp>
+#include <boost/lexical_cast.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/member.hpp>
@@ -1675,7 +1677,8 @@ void CDCServiceImpl::GetChanges(
     status = GetChangesForCDCSDK(
         req->stream_id(), req->tablet_id(), cdc_sdk_from_op_id, record, tablet_peer, mem_tracker,
         *enum_map_result, *composite_atts_map, client(), &msgs_holder, resp, &commit_timestamp,
-        &cached_schema_details, &last_streamed_op_id, &last_readable_index, get_changes_deadline);
+        &cached_schema_details, &last_streamed_op_id, &last_readable_index, req->table_id(),
+        get_changes_deadline);
     // This specific error from the docdb_pgapi layer is used to identify enum cache entry is
     // out of date, hence we need to repopulate.
     if (status.IsCacheMissError()) {
@@ -1702,7 +1705,8 @@ void CDCServiceImpl::GetChanges(
       status = GetChangesForCDCSDK(
           req->stream_id(), req->tablet_id(), cdc_sdk_from_op_id, record, tablet_peer, mem_tracker,
           *enum_map_result, *composite_atts_map, client(), &msgs_holder, resp, &commit_timestamp,
-          &cached_schema_details, &last_streamed_op_id, &last_readable_index, get_changes_deadline);
+          &cached_schema_details, &last_streamed_op_id, &last_readable_index, req->table_id(),
+          get_changes_deadline);
     }
     // This specific error indicates that a tablet split occured on the tablet.
     if (status.IsTabletSplit()) {
@@ -1755,6 +1759,7 @@ void CDCServiceImpl::GetChanges(
       (record.checkpoint_type == EXPLICIT && got_explicit_checkpoint_from_request)) {
     bool is_snapshot = false;
     bool force_update = false;
+    bool is_colocated = tablet_peer->tablet_metadata()->colocated();
     OpId snapshot_op_id = OpId::Invalid();
     std::string snapshot_key = "";
     // If snapshot operation or before image is enabled, don't allow compaction.
@@ -1776,6 +1781,20 @@ void CDCServiceImpl::GetChanges(
                     << ", we will update the checkpoint: " << snapshot_op_id
                     << ", cdcsdk safe time: " << cdc_sdk_safe_time;
         }
+
+        // If this is the first 'GetChanges'call with snapshot_key empty and the table_id set in the
+        // request, this means this is the first snapshot call for a colocated tablet with the
+        // requested table_id.
+        if (snapshot_key.empty() && req->has_table_id() && record.source_type == CDCSDK &&
+            is_colocated) {
+          RPC_STATUS_RETURN_ERROR(
+              InsertRowForColocatedTableInCDCStateTable(
+                  producer_tablet, req->table_id(), snapshot_op_id, cdc_sdk_safe_time, session),
+              resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+          LOG(INFO) << "Added row in cdc_state table for stream: " << producer_tablet.stream_id
+                    << ", tablet: " << producer_tablet.tablet_id
+                    << ", colocated table: " << req->table_id();
+        }
       }
 
       // In IMPLICIT mode the from_op_id itself will be the checkpoint.
@@ -1790,9 +1809,9 @@ void CDCServiceImpl::GetChanges(
 
       RPC_STATUS_RETURN_ERROR(
           UpdateCheckpointAndActiveTime(
-              producer_tablet, OpId::FromPB(resp->checkpoint().op_id()),
-              commit_op_id, session, last_record_hybrid_time,
-              record.source_type, force_update, cdc_sdk_safe_time, is_snapshot, snapshot_key),
+              producer_tablet, OpId::FromPB(resp->checkpoint().op_id()), commit_op_id, session,
+              last_record_hybrid_time, record.source_type, force_update, cdc_sdk_safe_time,
+              is_snapshot, snapshot_key, (is_snapshot && is_colocated) ? req->table_id() : ""),
           resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     }
 
@@ -1925,6 +1944,11 @@ void CDCServiceImpl::UpdateCDCMetrics() {
   for (const auto& row : client::TableRange(**cdc_state_table_result, options)) {
     auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
     auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
+    // Ignore rows added for colocated tables.
+    if (stream_id.find('_') != string::npos) {
+      continue;
+    }
+
     auto tablet_peer = context_->LookupTablet(tablet_id);
     if (!tablet_peer) {
       continue;
@@ -2243,10 +2267,15 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       master::kCdcLastReplicationTime, master::kCdcData};
 
   for (const auto& row : client::TableRange(**cdc_state_table_result, options)) {
-    count++;
-    auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
     auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
+    // We ignore rows added for colocated tables.
+    if (stream_id.find('_') != string::npos) {
+      continue;
+    }
+
+    auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
     auto checkpoint = row.column(master::kCdcCheckpointIdx).string_value();
+    count++;
 
     // Find the minimum checkpoint op_id per tablet. This minimum op_id
     // will be passed to LEADER and it's peers for log cache eviction and clean the consumed intents
@@ -2920,7 +2949,6 @@ void CDCServiceImpl::GetCheckpoint(
     RPC_RESULT_RETURN_ERROR(result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
     result->ToPB(resp->mutable_checkpoint()->mutable_op_id());
-
   } else {
     // CDCSDK Source type
     auto result = GetLastCDCSDKCheckpoint(producer_tablet, session);
@@ -2938,6 +2966,40 @@ void CDCServiceImpl::GetCheckpoint(
       resp->set_snapshot_time(last_cdcsdk_checkpoint.snapshot_time());
     }
   }
+  context.RespondSuccess();
+}
+
+void CDCServiceImpl::GetCheckpointForColocatedTable(
+    const GetCheckpointForColocatedTableRequestPB* req,
+    GetCheckpointForColocatedTableResponsePB* resp, rpc::RpcContext context) {
+  if (!CheckOnline(req, resp, &context)) {
+    return;
+  }
+
+  RPC_CHECK_AND_RETURN_ERROR(
+      req->has_tablet_id(),
+      STATUS(InvalidArgument, "Tablet ID is required to get CDC checkpoint"),
+      resp->mutable_error(),
+      CDCErrorPB::INVALID_REQUEST,
+      context);
+  RPC_CHECK_AND_RETURN_ERROR(
+      req->has_stream_id(),
+      STATUS(InvalidArgument, "Stream ID is required to get CDC checkpoint"),
+      resp->mutable_error(),
+      CDCErrorPB::INVALID_REQUEST,
+      context);
+
+  // Check that requested tablet_id is part of the CDC stream.
+  ProducerTabletInfo producer_tablet = {"" /* UUID */, req->stream_id(), req->tablet_id()};
+  auto s = CheckTabletValidForStream(producer_tablet);
+  RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+
+  auto session = client()->NewSession();
+
+  auto status = GetCDCSDKCheckpointsForColocatedTable(
+      producer_tablet, session, resp->mutable_table_checkpoint_details());
+  RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+
   context.RespondSuccess();
 }
 
@@ -3798,6 +3860,79 @@ Result<OpId> CDCServiceImpl::GetLastCheckpoint(
   return OpId(cdc_sdk_checkpoint.term(), cdc_sdk_checkpoint.index());
 }
 
+Status CDCServiceImpl::GetCDCSDKCheckpointsForColocatedTable(
+    const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session,
+    google::protobuf::RepeatedPtrField<::yb::cdc::TableCheckpointInfoPB>*
+        table_checkpoint_details) {
+  auto cdc_state_table = VERIFY_RESULT(GetCdcStateTable());
+  CDCSDKCheckpointPB cdcsdk_checkpoint_pb;
+
+  DCHECK(!producer_tablet.stream_id.empty() && !producer_tablet.tablet_id.empty());
+
+  const auto read_op = cdc_state_table->NewReadOp();
+  auto* const req = read_op->mutable_request();
+  QLAddStringHashValue(req, producer_tablet.tablet_id);
+
+  cdc_state_table->AddColumns({master::kCdcTabletId}, req);
+  cdc_state_table->AddColumns({master::kCdcStreamId}, req);
+  cdc_state_table->AddColumns({master::kCdcCheckpoint}, req);
+  cdc_state_table->AddColumns({master::kCdcData}, req);
+
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  RETURN_NOT_OK(RefreshCacheOnFail(session->ReadSync(read_op)));
+  auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
+  if (row_block->row_count() == 0) {
+    LOG(WARNING) << "Did not find any row in the cdc state table for tablet: "
+                 << producer_tablet.tablet_id << ", stream " << producer_tablet.stream_id;
+    cdcsdk_checkpoint_pb.set_term(0);
+    cdcsdk_checkpoint_pb.set_index(0);
+    cdcsdk_checkpoint_pb.set_key("");
+    cdcsdk_checkpoint_pb.set_snapshot_time(0);
+
+    return Status::OK();
+  }
+
+  for (size_t cur_row_idx = 0; cur_row_idx < row_block->row_count(); ++cur_row_idx) {
+    const auto& cur_row = row_block->row(cur_row_idx);
+    bool colocated_table_row = false;
+    std::string table_id;
+    std::vector<std::string> strs;
+    const auto& cur_stream_id = cur_row.column(master::kCdcStreamIdIdx).string_value();
+    if (cur_stream_id.find('_') != string::npos) {
+      colocated_table_row = true;
+      boost::split(strs, cur_stream_id, boost::is_any_of("_"));
+      table_id = strs[1];
+      if (strs[0] != producer_tablet.stream_id) {
+        continue;
+      }
+    }
+
+    auto op_id_result = OpId::FromString(cur_row.column(master::kCdcCheckpointIdx).string_value());
+    RETURN_NOT_OK(op_id_result);
+    OpId cdcsdk_op_id = op_id_result.get();
+
+    auto new_table_checkpoint = table_checkpoint_details->Add();
+    new_table_checkpoint->mutable_checkpoint()->set_term(cdcsdk_op_id.term);
+    new_table_checkpoint->mutable_checkpoint()->set_index(cdcsdk_op_id.index);
+
+    auto& map_value = cur_row.column(master::kCdcDataIdx).map_value();
+    if (colocated_table_row) {
+      new_table_checkpoint->set_table_id(table_id);
+      auto snapshot_key_result = GetValueFromMap(map_value, kCDCSDKSnapshotKey);
+      if (snapshot_key_result.ok()) {
+        new_table_checkpoint->mutable_checkpoint()->set_key(snapshot_key_result.get());
+      }
+    }
+
+    auto safe_time_result = GetIntValueFromMap<uint64_t>(map_value, kCDCSDKSafeTime);
+    if (safe_time_result.ok()) {
+      new_table_checkpoint->mutable_checkpoint()->set_snapshot_time(safe_time_result.get());
+    }
+  }
+
+  return Status::OK();
+}
+
 bool RecordHasValidOp(const CDCSDKProtoRecordPB& record) {
   return record.row_message().op() == RowMessage_Op_INSERT ||
          record.row_message().op() == RowMessage_Op_UPDATE ||
@@ -3907,6 +4042,39 @@ bool CDCServiceImpl::IsCDCSDKSnapshotBootstrapRequest(const CDCSDKCheckpointPB& 
          req_checkpoint.snapshot_time() == 0;
 }
 
+Status CDCServiceImpl::InsertRowForColocatedTableInCDCStateTable(
+    const ProducerTabletInfo& producer_tablet,
+    const TableId& colocated_table_id,
+    const OpId& commit_op_id,
+    const HybridTime& cdc_sdk_safe_time,
+    const client::YBSessionPtr& session) {
+  auto cdc_state = VERIFY_RESULT(GetCdcStateTable());
+  const auto op = cdc_state->NewInsertOp();
+  auto* const req = op->mutable_request();
+  DCHECK(
+      !producer_tablet.stream_id.empty() && !producer_tablet.tablet_id.empty() &&
+      !colocated_table_id.empty());
+
+  // We will store a string of the format: '<tablet_id>_<table_id>' in the cdc_state table under the
+  // tablet_id column.
+  QLAddStringHashValue(req, producer_tablet.tablet_id);
+  QLAddStringRangeValue(req, producer_tablet.stream_id + "_" + colocated_table_id);
+  cdc_state->AddStringColumnValue(req, master::kCdcCheckpoint, commit_op_id.ToString());
+  cdc_state->AddTimestampColumnValue(req, master::kCdcLastReplicationTime, 0);
+
+  auto column_id = cdc_state->ColumnId(master::kCdcData);
+  auto map_value_pb = client::AddMapColumn(req, column_id);
+  client::AddMapEntryToColumn(
+      map_value_pb, kCDCSDKSafeTime, ToString(cdc_sdk_safe_time.ToUint64()));
+  client::AddMapEntryToColumn(map_value_pb, kCDCSDKSnapshotKey, "");
+
+  session->Apply(op);
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  RETURN_NOT_OK(session->TEST_Flush());
+
+  return Status::OK();
+}
+
 Status CDCServiceImpl::UpdateCheckpointAndActiveTime(
     const ProducerTabletInfo& producer_tablet,
     const OpId& sent_op_id,
@@ -3917,15 +4085,30 @@ Status CDCServiceImpl::UpdateCheckpointAndActiveTime(
     const bool force_update,
     const HybridTime& cdc_sdk_safe_time,
     const bool is_snapshot,
-    const std::string& snapshot_key) {
+    const std::string& snapshot_key,
+    const TableId& colocated_table_id) {
   bool update_cdc_state = impl_->UpdateCheckpoint(producer_tablet, sent_op_id, commit_op_id);
-  if (update_cdc_state || force_update) {
+  if (!update_cdc_state && !force_update) {
+    return Status::OK();
+  }
+
+  bool update_colocated_row = is_snapshot && !colocated_table_id.empty();
+  // In case of updating the checkpoint during snapshot process of a colocated table, we will first
+  // need to update the checkpoint for the colocated table (i.e kCdcStreamId column has
+  // streamId_TableId), and then update the active time of the tablet row. In all other cases this
+  // we will only have to update a single row.
+  for (int i = 0; i < 2; i++) {
     auto cdc_state = VERIFY_RESULT(GetCdcStateTable());
     const auto op = cdc_state->NewUpdateOp();
     auto* const req = op->mutable_request();
     DCHECK(!producer_tablet.stream_id.empty() && !producer_tablet.tablet_id.empty());
+
     QLAddStringHashValue(req, producer_tablet.tablet_id);
-    QLAddStringRangeValue(req, producer_tablet.stream_id);
+    if (update_colocated_row) {
+      QLAddStringRangeValue(req, producer_tablet.stream_id + "_" + colocated_table_id);
+    } else {
+      QLAddStringRangeValue(req, producer_tablet.stream_id);
+    }
 
     cdc_state->AddStringColumnValue(req, master::kCdcCheckpoint, commit_op_id.ToString());
     // If we have a last record hybrid time, use that for physical time. If not, it means we're
@@ -3946,6 +4129,8 @@ Status CDCServiceImpl::UpdateCheckpointAndActiveTime(
           map_value_pb, kCDCSDKSafeTime, ToString(cdc_sdk_safe_time.ToUint64()));
       if (is_snapshot) {
         // The 'GetChanges' call bootstrapping snapshot will have snapshot key empty.
+        // In cases of taking snapshot for a colocated table, we will only update the "snapshot_key"
+        // in the rows for meant each colocated tableId.
         client::AddMapEntryToColumn(map_value_pb, kCDCSDKSnapshotKey, ToString(snapshot_key));
       }
 
@@ -3962,6 +4147,12 @@ Status CDCServiceImpl::UpdateCheckpointAndActiveTime(
     condition->set_op(QL_OP_EXISTS);
     // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
     RETURN_NOT_OK(RefreshCacheOnFail(session->ApplyAndFlushSync(op)));
+
+    if (!update_colocated_row) {
+      break;
+    } else {
+      update_colocated_row = false;
+    }
   }
 
   return Status::OK();

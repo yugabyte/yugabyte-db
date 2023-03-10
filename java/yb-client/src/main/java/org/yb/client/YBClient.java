@@ -1619,10 +1619,11 @@ public class YBClient implements AutoCloseable {
                                              long index, byte[] key,
                                              int write_id, long time,
                                              boolean needSchemaInfo,
-                                             CdcSdkCheckpoint explicitCheckpoint) throws Exception {
+                                             CdcSdkCheckpoint explicitCheckpoint,
+                                             String tableId) throws Exception {
     Deferred<GetChangesResponse> d = asyncClient.getChangesCDCSDK(
       table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo,
-      explicitCheckpoint);
+      explicitCheckpoint, tableId);
     return d.join(2*getDefaultAdminOperationTimeoutMs());
   }
 
@@ -1690,6 +1691,14 @@ public class YBClient implements AutoCloseable {
    */
   public FlushTableResponse flushTable(String tableId) throws Exception {
     Deferred<FlushTableResponse> d = asyncClient.flushTable(tableId);
+    return d.join(2*getDefaultAdminOperationTimeoutMs());
+  }
+
+  public GetCheckpointForColocatedTableResponse
+    getCheckpointForColocatedTable(YBTable table, String streamId,
+                                   String tabletId) throws Exception {
+    Deferred<GetCheckpointForColocatedTableResponse> d =
+      asyncClient.getCheckpointForColocatedTableResponse(table, streamId, tabletId);
     return d.join(2*getDefaultAdminOperationTimeoutMs());
   }
 
