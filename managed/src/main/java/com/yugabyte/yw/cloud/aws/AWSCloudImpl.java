@@ -78,6 +78,7 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -199,23 +200,12 @@ public class AWSCloudImpl implements CloudAPI {
   public boolean isValidCredsKms(ObjectNode config, UUID customerUUID) {
     try {
       if (config.has(AwsKmsAuthConfigField.CMK_ID.fieldName)) {
-        String cmkId = config.get(AwsKmsAuthConfigField.CMK_ID.fieldName).asText();
-        AWSKMS kmsClient = AwsEARServiceUtil.getKMSClient(null, config);
-
-        // Test if key exists
-        DescribeKeyResult describeKeyResult = AwsEARServiceUtil.describeKey(config, cmkId);
-
-        // Test if GenerateDataKeyWithoutPlaintext permission exists
-        byte[] randomEncryptedBytes =
-            AwsEARServiceUtil.generateDataKey(null, config, cmkId, "AES", 256);
-
-        // Test if Decrypt permission exists
-        byte[] decryptedBytes =
-            AwsEARServiceUtil.decryptUniverseKey(null, randomEncryptedBytes, config);
-
-        if (decryptedBytes != null && decryptedBytes.length > 0) {
+        try {
+          KeyProvider.AWS.getServiceInstance().refreshKmsWithService(null, config);
+          LOG.info("Validated AWS KMS creds for customer '{}'", customerUUID);
           return true;
-        } else {
+        } catch (Exception e) {
+          LOG.error("Cannot validate AWS KMS creds.", e);
           return false;
         }
       } else {

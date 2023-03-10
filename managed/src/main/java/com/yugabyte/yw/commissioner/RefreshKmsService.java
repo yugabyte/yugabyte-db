@@ -47,7 +47,7 @@ public class RefreshKmsService {
       try {
         encryptionAtRestManager
             .getServiceInstance(kmsConfig.keyProvider.name())
-            .refreshService(kmsConfig.configUUID);
+            .refreshKms(kmsConfig.configUUID);
       } catch (Exception e) {
         log.error(
             String.format("Error running KMS Refresh Service on KMS config '%s'.", kmsConfig.name),
