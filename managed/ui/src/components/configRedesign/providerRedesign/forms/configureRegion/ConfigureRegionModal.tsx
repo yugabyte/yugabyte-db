@@ -17,7 +17,7 @@ import {
   ExposedAZProperties,
   ConfigureAvailabilityZoneField
 } from './ConfigureAvailabilityZoneField';
-import { ProviderCode, VPCSetupType } from '../../constants';
+import { ProviderCode, VPCSetupType, YBImageType } from '../../constants';
 import { RegionOperation } from './constants';
 import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
 import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
@@ -29,6 +29,7 @@ interface ConfigureRegionModalProps extends YBModalProps {
   providerCode: ProviderCode;
   regionOperation: RegionOperation;
 
+  ybImageType?: YBImageType;
   regionSelection?: CloudVendorRegionField;
   vpcSetupType?: VPCSetupType;
 }
@@ -64,10 +65,11 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 export const ConfigureRegionModal = ({
-  onRegionSubmit,
+  ybImageType,
   onClose,
-  regionOperation,
+  onRegionSubmit,
   providerCode,
+  regionOperation,
   regionSelection,
   vpcSetupType,
   ...modalProps
@@ -79,9 +81,9 @@ export const ConfigureRegionModal = ({
       providerCode === ProviderCode.AZU ? 'Security Group Name (Optional)' : 'Security Group ID',
     ybImage:
       providerCode === ProviderCode.AWS
-        ? 'Custom AMI ID (Optional)'
+        ? 'Custom AMI ID (Optional Override)'
         : providerCode === ProviderCode.AZU
-        ? 'Marketplace Image URN/Shared Gallery Image ID (optional)'
+        ? 'Marketplace Image URN/Shared Gallery Image ID (Optional)'
         : 'Custom Machine Image ID (Optional)',
     sharedSubnet: 'Shared Subnet'
   };
@@ -90,7 +92,7 @@ export const ConfigureRegionModal = ({
     regionData: true,
     vnet: providerCode !== ProviderCode.GCP && vpcSetupType === VPCSetupType.EXISTING,
     securityGroupId: providerCode !== ProviderCode.GCP && vpcSetupType === VPCSetupType.EXISTING,
-    ybImage: true,
+    ybImage: providerCode !== ProviderCode.AWS || ybImageType === YBImageType.CUSTOM_AMI,
     sharedSubnet: providerCode === ProviderCode.GCP,
     zones: providerCode !== ProviderCode.GCP
   };

@@ -83,7 +83,6 @@ export const AWSProviderEditForm = ({ providerConfig }: AWSProviderEditFormProps
 
   const defaultValues = {
     providerName: providerConfig.name,
-
     sshKeypairName: providerConfig.allAccessKeys?.[0]?.keyInfo.keyPairName,
     dbNodePublicInternetAccess: !providerConfig.details.airGapInstall,
     ntpSetupType: getNtpSetupType(providerConfig),
