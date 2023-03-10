@@ -66,6 +66,7 @@ You will need the IP addresses of the nodes in the cluster for the next step.
 ## Configure DB connection parameters (optional)
 
 Workload configuration like IP addresses of the nodes, number of warehouses and number of loader threads can be controlled by command line arguments.
+
 Other options like username, password, port, etc. can be changed using the configuration file at `config/workload_all.xml`, if needed.
 
 ```xml
@@ -78,7 +79,7 @@ Other options like username, password, port, etc. can be changed using the confi
 
 **Latest TPCC code:** Use the latest enhancements to the Yugabyte TPCC application. You can either download the latest released version, or you can clone the repository and build from source to get the very latest changes.
 
-**Pre-compacting tables:** Pre-compact tables with the [yb-admin]({{< relref "/preview/admin/yb-admin.md" >}}) utility's `compact_table` command.
+**Pre-compacting tables:** Pre-compact tables with the [yb-admin](../../admin/yb-admin/) utility's `compact_table` command.
 
 **Warming the database:** Use the `--warmup-time-secs` flag when you call the execute phase of the TPCC benchmark.
 
