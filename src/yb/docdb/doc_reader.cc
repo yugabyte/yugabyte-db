@@ -112,6 +112,33 @@ Slice NullSlice() {
 
 } // namespace
 
+Result<DocHybridTime> GetTableTombstoneTime(
+    const Slice& root_doc_key, const DocDB& doc_db,
+    const TransactionOperationContext& txn_op_context,
+    CoarseTimePoint deadline, const ReadHybridTime& read_time) {
+  if (root_doc_key[0] == KeyEntryTypeAsChar::kColocationId ||
+      root_doc_key[0] == KeyEntryTypeAsChar::kTableId) {
+    DocKey table_id;
+    RETURN_NOT_OK(table_id.DecodeFrom(root_doc_key, DocKeyPart::kUpToId));
+
+    auto table_id_encoded = table_id.Encode();
+    auto iter = CreateIntentAwareIterator(
+        doc_db, BloomFilterMode::USE_BLOOM_FILTER, table_id_encoded.AsSlice(),
+        rocksdb::kDefaultQueryId, txn_op_context, deadline, read_time);
+    iter->Seek(table_id_encoded);
+
+    Slice value;
+    DocHybridTime doc_ht = DocHybridTime::kMin;
+    RETURN_NOT_OK(iter->FindLatestRecord(table_id_encoded, &doc_ht, &value));
+    if (VERIFY_RESULT(Value::IsTombstoned(value))) {
+      SCHECK_NE(doc_ht, DocHybridTime::kInvalid, Corruption,
+                "Invalid hybrid time for table tombstone");
+      return doc_ht;
+    }
+  }
+  return DocHybridTime::kInvalid;
+}
+
   // TODO(dtxn) scan through all involved transactions first to cache statuses in a batch,
   // so during building subdocument we don't need to request them one by one.
   // TODO(dtxn) we need to restart read with scan_ht = commit_ht if some transaction was committed
@@ -136,10 +163,12 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
   DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", sub_doc_key.ToDebugHexString(),
                   iter->read_time().ToString());
   iter->SeekToLastDocKey();
+
   SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE);
   DocDBTableReader doc_reader(
       iter.get(), deadline, projection, TableType::YQL_TABLE_TYPE, schema_packing_storage);
-  RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(sub_doc_key));
+  RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(VERIFY_RESULT(docdb::GetTableTombstoneTime(
+      sub_doc_key, doc_db, txn_op_context, deadline, read_time))));
 
   iter->Seek(sub_doc_key);
   SubDocument result;
@@ -174,29 +203,9 @@ void DocDBTableReader::SetTableTtl(const Schema& table_schema) {
   table_expiration_ = Expiration(TableTTL(table_schema));
 }
 
-Status DocDBTableReader::UpdateTableTombstoneTime(const Slice& root_doc_key) {
-  if (root_doc_key[0] == KeyEntryTypeAsChar::kColocationId ||
-      root_doc_key[0] == KeyEntryTypeAsChar::kTableId) {
-    // Update table_tombstone_time based on what is written to RocksDB if its not already set.
-    // Otherwise, just accept its value.
-    // TODO -- this is a bit of a hack to allow DocRowwiseIterator to pass along the table tombstone
-    // time read at a previous invocation of this same code. If instead the DocRowwiseIterator owned
-    // an instance of SubDocumentReaderBuilder, and this method call was hoisted up to that level,
-    // passing around this table_tombstone_time would no longer be necessary.
-    DocKey table_id;
-    RETURN_NOT_OK(table_id.DecodeFrom(root_doc_key, DocKeyPart::kUpToId));
-    iter_->Seek(table_id);
-
-    Slice value;
-    auto table_id_encoded = table_id.Encode();
-    DocHybridTime doc_ht = DocHybridTime::kMin;
-
-    RETURN_NOT_OK(iter_->FindLatestRecord(table_id_encoded, &doc_ht, &value));
-    if (VERIFY_RESULT(Value::IsTombstoned(value))) {
-      SCHECK_NE(doc_ht, DocHybridTime::kInvalid, Corruption,
-                "Invalid hybrid time for table tombstone");
-      table_tombstone_time_ = doc_ht;
-    }
+Status DocDBTableReader::UpdateTableTombstoneTime(DocHybridTime doc_ht) {
+  if (doc_ht.is_valid()) {
+    table_tombstone_time_ = doc_ht;
   }
   return Status::OK();
 }

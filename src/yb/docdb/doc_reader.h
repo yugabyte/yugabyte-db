@@ -41,6 +41,13 @@ YB_STRONGLY_TYPED_BOOL(IsFlatDoc);
 
 class IntentAwareIterator;
 
+// Get table tombstone time from doc_db. If the table is not a colocated table as indicated
+// by the provided root_doc_key, this method returns DocHybridTime::kInvalid.
+Result<DocHybridTime> GetTableTombstoneTime(
+    const Slice& root_doc_key, const DocDB& doc_db,
+    const TransactionOperationContext& txn_op_context,
+    CoarseTimePoint deadline, const ReadHybridTime& read_time);
+
 // Returns the whole SubDocument below some node identified by subdocument_key.
 // subdocument_key should not have a timestamp.
 // Before the function is called, if seek_fwd_suffices is true, the iterator is expected to be
@@ -81,9 +88,9 @@ class DocDBTableReader {
       TableType table_type,
       std::reference_wrapper<const SchemaPackingStorage> schema_packing_storage);
 
-  // Updates expiration/overwrite data based on table tombstone time. If the table is not a
-  // colocated table as indicated by the provided root_doc_key, this method is a no-op.
-  Status UpdateTableTombstoneTime(const Slice& root_doc_key);
+  // Updates expiration/overwrite data based on table tombstone time.
+  // If the given doc_ht is DocHybridTime::kInvalid, this method is a no-op.
+  Status UpdateTableTombstoneTime(DocHybridTime doc_ht);
 
   // Determine based on the provided schema if there is a table-level TTL and use the computed value
   // in any subsequently read SubDocuments. This call also turns on row-level TTL tracking for

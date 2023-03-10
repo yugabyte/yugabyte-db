@@ -98,6 +98,8 @@ DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 
+DECLARE_bool(rocksdb_disable_compactions);
+
 namespace yb {
 namespace pgwrapper {
 namespace {
@@ -874,6 +876,45 @@ class PgMiniSmallWriteBufferTest : public PgMiniTest {
     PgMiniTest::SetUp();
   }
 };
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TruncateColocatedBigTable)) {
+  // Simulate truncating a big colocated table with multiple sst files flushed to disk.
+  // To repro issue https://github.com/yugabyte/yugabyte-db/issues/15206
+  // When using bloom filter, it might fail to find the table tombstone because it's stored in
+  // a different sst file than the key is currently seeking.
+
+  FLAGS_rocksdb_disable_compactions = true;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("create tablegroup tg1"));
+  ASSERT_OK(conn.Execute("create table t1(k int primary key) tablegroup tg1"));
+  const auto& peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+  tablet::TabletPeerPtr tablet_peer = nullptr;
+  for (auto peer : peers) {
+    if (peer->shared_tablet()->doc_db().regular) {
+      tablet_peer = peer;
+      break;
+    }
+  }
+  ASSERT_NE(tablet_peer, nullptr);
+
+  // Insert 2 rows, and flush.
+  ASSERT_OK(conn.Execute("insert into t1 values (1)"));
+  ASSERT_OK(conn.Execute("insert into t1 values (2)"));
+  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+
+  // Truncate the table, and flush. Tabletombstone should be in a seperate sst file.
+  ASSERT_OK(conn.Execute("TRUNCATE t1"));
+  SleepFor(1s);
+  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+
+  // Check if the row still visible.
+  auto res = conn.FetchValue<int>("select k from t1 where k = 1");
+  ASSERT_NOK(res);
+  ASSERT_TRUE(res.status().message().Contains("Fetched 0 rows, while 1 expected"));
+
+  // Check if hit dup key error.
+  ASSERT_OK(conn.Execute("insert into t1 values (1)"));
+}
 
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallWriteBufferTest) {
   const std::string kTableName = "key_value";
