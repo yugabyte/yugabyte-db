@@ -62,7 +62,7 @@ public class CreateTableSpacesInUniverse extends UniverseTaskBase {
   }
 
   private SubTaskGroup createTableSpacesTask() {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("CreateTablespaces", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CreateTablespaces");
     CreateTableSpaces task = createTask(CreateTableSpaces.class);
     CreateTableSpaces.Params params = taskParams();
     task.initialize(params);

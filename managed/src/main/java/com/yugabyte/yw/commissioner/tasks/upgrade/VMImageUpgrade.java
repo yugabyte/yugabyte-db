@@ -181,7 +181,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   private SubTaskGroup createRootVolumeCreationTasks(Collection<NodeDetails> nodes) {
     Map<UUID, List<NodeDetails>> rootVolumesPerAZ =
         nodes.stream().collect(Collectors.groupingBy(n -> n.azUuid));
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("CreateRootVolumes", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CreateRootVolumes");
 
     rootVolumesPerAZ.forEach(
         (key, value) -> {
@@ -228,7 +228,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   }
 
   private SubTaskGroup createRootVolumeReplacementTask(NodeDetails node) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("ReplaceRootVolume", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("ReplaceRootVolume");
     ReplaceRootVolume.Params replaceParams = new ReplaceRootVolume.Params();
     replaceParams.nodeName = node.nodeName;
     replaceParams.azUuid = node.azUuid;

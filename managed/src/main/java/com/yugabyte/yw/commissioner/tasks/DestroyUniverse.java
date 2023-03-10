@@ -146,8 +146,7 @@ public class DestroyUniverse extends UniverseTaskBase {
   }
 
   public SubTaskGroup createRemoveUniverseEntryTask() {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("RemoveUniverseEntry", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("RemoveUniverseEntry");
     Params params = new Params();
     // Add the universe uuid.
     params.universeUUID = taskParams().universeUUID;
@@ -165,8 +164,7 @@ public class DestroyUniverse extends UniverseTaskBase {
 
   public SubTaskGroup createDeleteCertificatesTaskGroup(
       UniverseDefinitionTaskParams universeDetails) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("DeleteCertificates", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("DeleteCertificates");
 
     // Create the task to delete rootCerts.
     DeleteCertificate rootCertDeletiontask =

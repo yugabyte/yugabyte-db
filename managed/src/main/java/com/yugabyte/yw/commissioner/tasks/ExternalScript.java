@@ -18,11 +18,10 @@ public class ExternalScript extends AbstractTaskBase {
 
   @Override
   public void run() {
-    createThreadpool();
+    RunExternalScript task = null;
     try {
-      SubTaskGroup subTaskGroup =
-          getTaskExecutor().createSubTaskGroup("RunExternalScript", executor);
-      RunExternalScript task = createTask(RunExternalScript.class);
+      SubTaskGroup subTaskGroup = createSubTaskGroup("RunExternalScript");
+      task = createTask(RunExternalScript.class);
       task.initialize(params());
       subTaskGroup.addSubTask(task);
       getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -30,7 +29,9 @@ public class ExternalScript extends AbstractTaskBase {
     } catch (Exception e) {
       throw new RuntimeException(e);
     } finally {
-      executor.shutdownNow();
+      if (task != null) {
+        task.terminate();
+      }
     }
   }
 }
