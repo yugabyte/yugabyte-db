@@ -42,6 +42,8 @@ using std::shared_ptr;
 using namespace std::literals;
 using namespace std::placeholders;
 
+DECLARE_int32(TEST_rpc_reactor_index_for_init_failure_simulation);
+
 namespace yb {
 namespace rpc {
 
@@ -81,6 +83,16 @@ class ReactorTest : public RpcTestBase {
   AutoShutdownMessengerHolder messenger_;
   CountDownLatch latch_;
 };
+
+TEST_F_EX(ReactorTest, MessengerInitFailure, YBTest) {
+  MessengerBuilder builder("test-msgr");
+  // Test Reactor::Init failure in very first Messenger's reactor
+  FLAGS_TEST_rpc_reactor_index_for_init_failure_simulation = 0;
+  ASSERT_NOK(builder.Build());
+  // Test Reactor::Init failure in second Messenger's reactor
+  FLAGS_TEST_rpc_reactor_index_for_init_failure_simulation = 1;
+  ASSERT_NOK(builder.Build());
+}
 
 TEST_F(ReactorTest, TestFunctionIsCalled) {
   auto task_id = messenger_->ScheduleOnReactor(
