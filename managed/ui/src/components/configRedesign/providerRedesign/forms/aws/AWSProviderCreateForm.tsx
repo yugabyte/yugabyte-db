@@ -26,6 +26,7 @@ import {
   CloudVendorRegionField
 } from '../configureRegion/ConfigureRegionModal';
 import {
+  YBImageType,
   ASYNC_ERROR,
   DEFAULT_SSH_PORT,
   NTPSetupType,
@@ -81,6 +82,8 @@ export interface AWSProviderCreateFormFieldValues {
   sshPrivateKeyContent: File;
   sshUser: string;
   vpcSetupType: VPCSetupType;
+  ybImage: string;
+  ybImageType: YBImageType;
 
   [ASYNC_ERROR]: string;
 }
@@ -138,6 +141,23 @@ const VPC_SETUP_OPTIONS: OptionProps[] = [
   }
 ];
 
+const YBImageTypeLabel = {
+  [YBImageType.ARM64]: 'Default AArch64 AMI',
+  [YBImageType.X86_64]: 'Default x86 AMI',
+  [YBImageType.CUSTOM_AMI]: 'Custom AMI'
+};
+const YB_IMAGE_TYPE_OPTIONS: OptionProps[] = [
+  {
+    value: YBImageType.X86_64,
+    label: YBImageTypeLabel[YBImageType.X86_64]
+  },
+  { value: YBImageType.ARM64, label: YBImageTypeLabel[YBImageType.ARM64] },
+  {
+    value: YBImageType.CUSTOM_AMI,
+    label: YBImageTypeLabel[YBImageType.CUSTOM_AMI]
+  }
+];
+
 const VALIDATION_SCHEMA = object().shape({
   providerName: string()
     .required('Provider Name is required.')
@@ -163,10 +183,13 @@ const VALIDATION_SCHEMA = object().shape({
     is: KeyPairManagement.CUSTOM_KEY_PAIR,
     then: mixed().required('SSH private key is required.')
   }),
-
   hostedZoneId: string().when('enableHostedZone', {
     is: true,
     then: string().required('Route 53 zone id is required.')
+  }),
+  ybImage: string().when('ybImageType', {
+    is: YBImageType.CUSTOM_AMI,
+    then: string().required('Custom AMI type is required.')
   }),
   ntpServers: array().when('ntpSetupType', {
     is: NTPSetupType.SPECIFIED,
@@ -206,7 +229,8 @@ export const AWSProviderCreateForm = ({
     regions: [] as CloudVendorRegionField[],
     sshKeypairManagement: KeyPairManagement.YBA_MANAGED,
     sshPort: DEFAULT_SSH_PORT,
-    vpcSetupType: VPCSetupType.EXISTING
+    vpcSetupType: VPCSetupType.EXISTING,
+    ybImageType: YBImageType.X86_64
   } as const;
   const formMethods = useForm<AWSProviderCreateFormFieldValues>({
     defaultValues: defaultValues,
@@ -243,9 +267,13 @@ export const AWSProviderCreateForm = ({
       details: {
         cloudInfo: {
           [ProviderCode.AWS]: {
+            ...(formValues.ybImageType === YBImageType.CUSTOM_AMI
+              ? {
+                  ybImage: regionFormValues.ybImage ? regionFormValues.ybImage : formValues.ybImage
+                }
+              : { arch: formValues.ybImageType }),
             securityGroupId: regionFormValues.securityGroupId,
-            vnet: regionFormValues.vnet,
-            ybImage: regionFormValues.ybImage
+            vnet: regionFormValues.vnet
           }
         }
       },
@@ -373,7 +401,7 @@ export const AWSProviderCreateForm = ({
   );
   const enableHostedZone = formMethods.watch('enableHostedZone', defaultValues.enableHostedZone);
   const vpcSetupType = formMethods.watch('vpcSetupType', defaultValues.vpcSetupType);
-
+  const ybImageType = formMethods.watch('ybImageType', defaultValues.ybImageType);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -439,6 +467,23 @@ export const AWSProviderCreateForm = ({
                 />
               }
             >
+              <FormField>
+                <FieldLabel>AMI Type</FieldLabel>
+                <YBRadioGroupField
+                  name="ybImageType"
+                  control={formMethods.control}
+                  options={YB_IMAGE_TYPE_OPTIONS}
+                  orientation={RadioGroupOrientation.HORIZONTAL}
+                />
+              </FormField>
+              {ybImageType === YBImageType.CUSTOM_AMI && (
+                <FormField>
+                  <FieldLabel infoContent="This AMI will be used for all regions. A per-region override is available in the 'Add region' modal.">
+                    Custom Default AMI
+                  </FieldLabel>
+                  <YBInputField control={formMethods.control} name="ybImage" fullWidth />
+                </FormField>
+              )}
               <FormField>
                 <FieldLabel>VPC Setup</FieldLabel>
                 <YBRadioGroupField
@@ -593,6 +638,7 @@ export const AWSProviderCreateForm = ({
           regionOperation={regionOperation}
           regionSelection={regionSelection}
           vpcSetupType={vpcSetupType}
+          ybImageType={ybImageType}
         />
       )}
       <DeleteRegionModal
