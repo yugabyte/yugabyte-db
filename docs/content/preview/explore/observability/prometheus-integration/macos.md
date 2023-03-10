@@ -13,13 +13,17 @@ type: docs
 
 You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time-series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint. For details on the metrics targets for YugabyteDB, see [Prometheus monitoring](../../../../reference/configuration/default-ports/#prometheus-monitoring).
 
-{{% explore-setup-single-local %}}
+## Setup
 
-## Prerequisites
+### Download and install Prometheus
 
 [Download Prometheus](https://prometheus.io/download/) and refer to [Get Started with Prometheus](https://prometheus.io/docs/prometheus/latest/getting_started/) for installation instructions.
 
-## Run the YugabyteDB workload generator
+### Create a universe
+
+Follow the [setup instructions](../../../#set-up-yugabytedb-universe) to start a local multi-node universe.
+
+### Run the YugabyteDB workload generator
 
 Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) JAR file (`yb-sample-apps.jar`) using the following command:
 
@@ -37,7 +41,7 @@ java -jar ./yb-sample-apps.jar \
     --num_threads_write 1
 ```
 
-## Prepare Prometheus configuration file
+### Prepare Prometheus configuration file
 
 From your Prometheus home directory, create a file `yugabytedb.yml` and add the following:
 
@@ -100,7 +104,7 @@ scrape_configs:
           export_type: "redis_export"
 ```
 
-## Start Prometheus server
+### Start Prometheus server
 
 Start the Prometheus server from the Prometheus home directory as follows:
 
@@ -155,8 +159,6 @@ avg(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcess
 ```
 
 ![Prometheus Write Latency](/images/ce/prom-write-latency.png)
-
-{{% explore-cleanup-local %}}
 
 ## What's next?
 

@@ -72,7 +72,7 @@ You can add a node to the universe in YugabyteDB Anywhere as follows:
 
 1. Click **Save**. Note that the scaling operation can take several minutes.
 
-## Observe linear scale-out
+### Observe linear scale-out
 
 Verify that the node has been added by selecting **Nodes**, as per the following illustration:
 
@@ -98,7 +98,7 @@ You can remove a node from the universe as follows:
 
 1. Select **Nodes**, find the node to be removed, and then click its corresponding **Actions > Remove Node**.
 
-## Observe linear scale-in
+### Observe linear scale-in
 
 Verify that the details by selecting **Nodes**. The scale-in operation can take several minutes and expect to see that the load has been moved off the removed node and redistributed to the remaining nodes.
 
