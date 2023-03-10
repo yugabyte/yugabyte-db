@@ -328,12 +328,12 @@ public class AzuEARServiceUtil {
    * @throws RuntimeException if wrap and unwrap operations don't give same output as original
    */
   public void testWrapAndUnwrapKey(ObjectNode authConfig) throws RuntimeException {
-    byte[] fakeKeyBytes = new byte[20];
+    byte[] fakeKeyBytes = new byte[32];
     new Random().nextBytes(fakeKeyBytes);
     byte[] wrappedKey = wrapKey(authConfig, fakeKeyBytes);
     byte[] unwrappedKey = unwrapKey(authConfig, wrappedKey);
     if (!Arrays.equals(fakeKeyBytes, unwrappedKey)) {
-      String errMsg = "Wrap and unwrap operations gave different key than the original fake key.";
+      String errMsg = "Wrap and unwrap operations gave different key in AZU KMS.";
       log.error(errMsg);
       throw new RuntimeException(errMsg);
     }

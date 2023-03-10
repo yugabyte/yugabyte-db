@@ -170,6 +170,12 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
   }
 
   @Override
+  public void refreshKmsWithService(UUID configUUID, ObjectNode authConfig) throws Exception {
+    // Smart key is deprecated - will not be adding new features to it.
+    throw new UnsupportedOperationException("Unimplemented method 'refreshKmsWithService'");
+  }
+
+  @Override
   public ObjectNode getKeyMetadata(UUID configUUID) {
     ObjectNode keyMetadata = new ObjectMapper().createObjectNode();
 
