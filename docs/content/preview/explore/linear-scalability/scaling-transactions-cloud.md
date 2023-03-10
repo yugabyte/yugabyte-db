@@ -38,10 +38,9 @@ This document demonstrates how YugabyteDB can scale seamlessly while running a r
   </li>
 </ul>
 
+## Set up a cluster
 
-{{% explore-setup-multi-cloud %}}
-
-Follow the setup instructions to start a three-node cluster in YugabyteDB Managed, connect the YB Workload Simulator application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
+Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a multi-node cluster in YugabyteDB Managed, connect the [YB Workload Simulator](../../#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
 
 ## Observe IOPS per node
 
@@ -61,7 +60,7 @@ To view the latency and throughput on the cluster while the workload is running,
 
 ![Latency and throughput with 3 nodes](/images/ce/simulation-graph-cloud.png)
 
-## Add node and observe linear scale-out
+## Add a node
 
 You can add a node to the cluster in YugabyteDB Managed as follows:
 
@@ -72,6 +71,8 @@ You can add a node to the cluster in YugabyteDB Managed as follows:
 1. Click **Confirm and Save Changes** when you are done.
 
 The scaling operation can take several minutes, during which time some cluster operations are not available.
+
+## Observe linear scale-out
 
 Verify that the node has been added on the cluster **Nodes** tab.
 
@@ -89,7 +90,7 @@ Alternatively, you can navigate to the [simulation application UI](http://127.0.
 
 ![Latency and throughput graph with 4 nodes](/images/ce/add-node-graph-cloud.png)
 
-## Remove node and observe linear scale-in
+## Remove a node
 
 You can remove a node from the cluster in YugabyteDB Managed as follows:
 
@@ -100,6 +101,8 @@ You can remove a node from the cluster in YugabyteDB Managed as follows:
 1. Click **Confirm and Save Changes** when you are done.
 
 Again, the scale operation can take several minutes, during which time some cluster operations are not available.
+
+## Observe linear scale-in
 
 Verify the details by selecting the **Nodes** tab. The load is moved off the removed node and redistributed to the other nodes.
 
