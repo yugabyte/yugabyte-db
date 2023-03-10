@@ -326,8 +326,24 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
     }
   }
 
-  public void refreshService(UUID configUUID) {
-    // Do Nothing - optionally override sub classes when required.
+  public abstract void refreshKmsWithService(UUID configUUID, ObjectNode authConfig)
+      throws Exception;
+
+  public void refreshKms(UUID configUUID) {
+    LOG.debug("Starting refresh {} KMS with KMS config '{}'.", this.keyProvider.name(), configUUID);
+    try {
+      ObjectNode authConfig = getAuthConfig(configUUID);
+      refreshKmsWithService(configUUID, authConfig);
+      LOG.info(
+          "Refreshed {} KMS successfully with config '{}'.", this.keyProvider.name(), configUUID);
+    } catch (Exception e) {
+      final String errMsg =
+          String.format(
+              "Error occurred while refreshing %s KMS config '%s'.",
+              this.keyProvider.name(), configUUID);
+      LOG.error(errMsg, e);
+      throw new RuntimeException(errMsg, e);
+    }
   }
 
   public abstract ObjectNode getKeyMetadata(UUID configUUID);

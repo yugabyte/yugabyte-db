@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil.GcpKmsAuthConfigField;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Audit;
@@ -44,6 +45,8 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiResponse;
+import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
 import java.util.Arrays;
 import java.util.Base64;
@@ -51,7 +54,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -553,6 +555,28 @@ public class EncryptionAtRestController extends AuthenticatedController {
     } catch (Exception e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
+  }
+
+  @ApiOperation(value = "Refresh KMS Config", response = YBPSuccess.class)
+  @ApiResponses(
+      @ApiResponse(
+          code = 500,
+          message = "If there is an error refreshing the KMS config.",
+          response = YBPError.class))
+  public Result refreshKMSConfig(UUID customerUUID, UUID configUUID) {
+    LOG.info(
+        "Refreshing KMS configuration '{}' for customer '{}'.",
+        configUUID.toString(),
+        customerUUID.toString());
+    KmsConfig kmsConfig = KmsConfig.getOrBadRequest(configUUID);
+    keyManager.getServiceInstance(kmsConfig.keyProvider.name()).refreshKms(configUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.KMSConfig, configUUID.toString(), Audit.ActionType.Refresh);
+    return YBPSuccess.withMessage(
+        String.format(
+            "Successfully refreshed %s KMS config '%s'.",
+            kmsConfig.keyProvider.name(), configUUID));
   }
 
   @ApiOperation(

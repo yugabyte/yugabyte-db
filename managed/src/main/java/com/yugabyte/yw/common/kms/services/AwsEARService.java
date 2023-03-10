@@ -10,9 +10,13 @@
 
 package com.yugabyte.yw.common.kms.services;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
+import com.amazonaws.services.kms.AWSKMS;
+import com.amazonaws.services.kms.model.DescribeKeyResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.algorithms.AwsAlgorithm;
@@ -209,6 +213,33 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
       if (AwsEARServiceUtil.getAlias(configUUID, aliasName) != null) {
         AwsEARServiceUtil.deleteAlias(configUUID, aliasName);
       }
+    }
+  }
+
+  @Override
+  public void refreshKmsWithService(UUID configUUID, ObjectNode authConfig) throws Exception {
+    if (!authConfig.has(AwsKmsAuthConfigField.CMK_ID.fieldName)) {
+      throw new RuntimeException(
+          String.format(
+              "Field '{}' is missing in AWS KMS config '%s'.",
+              AwsKmsAuthConfigField.CMK_ID.fieldName, configUUID));
+    }
+    // Test if you can get KMS client.
+    String cmkId = authConfig.get(AwsKmsAuthConfigField.CMK_ID.fieldName).asText();
+    AWSKMS kmsClient = AwsEARServiceUtil.getKMSClient(null, authConfig);
+    // Test if key exists.
+    DescribeKeyResult describeKeyResult = AwsEARServiceUtil.describeKey(authConfig, cmkId);
+    // Test if GenerateDataKeyWithoutPlaintext permission exists.
+    byte[] randomEncryptedBytes =
+        AwsEARServiceUtil.generateDataKey(null, authConfig, cmkId, "AES", 256);
+    // Test if Decrypt permission exists.
+    byte[] decryptedBytes =
+        AwsEARServiceUtil.decryptUniverseKey(null, randomEncryptedBytes, authConfig);
+
+    if (decryptedBytes == null || decryptedBytes.length < 0) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("Could not get decrypted bytes in AWS KMS config '%s'.", configUUID));
     }
   }
 
