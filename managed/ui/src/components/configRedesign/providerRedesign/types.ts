@@ -375,9 +375,9 @@ export interface OnPremRegion extends Region {
 // ---------------------------------------------------------------------------
 
 interface AWSRegionCloudInfoBase {
+  arch?: ArchitectureType;
   securityGroupId?: string;
   vnet?: string;
-
   ybImage?: string;
 }
 type AWSRegionCloudInfoMutation = AWSRegionCloudInfoBase;
@@ -385,6 +385,7 @@ interface AWSRegionCloudInfo extends AWSRegionCloudInfoBase {
   arch: ArchitectureType;
   securityGroupId: string;
   vnet: string;
+  ybImage?: string;
 }
 
 interface AZURegionCloudInfoBase {
