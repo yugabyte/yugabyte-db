@@ -72,8 +72,8 @@ try:
 
         if args.rebuild_pex:
             logging.info("Rebuilding pex for node agent.")
-            rebuild_pex_script = os.path.join(devops_home, "build_ansible_pex.sh")
-            subprocess.check_call([rebuild_pex_script], shell=True)
+            rebuild_pex_script = os.path.join(devops_home, "bin", "build_ansible_pex.sh")
+            subprocess.check_call([rebuild_pex_script, '--force'])
     for platform in NODE_AGENT_PLATFORMS:
         parts = platform.split("/")
         packaged_file = os.path.join(args.source_dir, "build",
