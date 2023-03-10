@@ -15,12 +15,16 @@
 
 #pragma once
 
-#include <memory>
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/slice.h"
 
 namespace yb {
 namespace rpc {
+
+struct MessengerShutdownDeleter {
+  void operator()(Messenger* messenger) const;
+};
 
 // Returns slice pointing to global buffer for reading data which we want to ignore, for example in
 // case of hitting memory limit.
