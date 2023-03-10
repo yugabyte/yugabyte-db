@@ -1,6 +1,6 @@
 ---
-title: Architecting High Availability
-headerTitle: Architect highly availabile applications
+title: Architect highly availabile applications
+headerTitle: Architecting High Availability
 linkTitle: 10. High Availability
 description: Learn how to architect Highly Available applications in YugabyteDB YSQL.
 menu:
@@ -66,17 +66,17 @@ INSERT INTO txndemo VALUES (1,10),(2,10),(3,10),(4,10),(5,10);
 
 ## Transaction Retries
 
-Most errors that happen due to conflicts, deadlocks can be restarted. Let's look at such scenarios.
+Consider the scenarios where deadlocks can be restarted for most errors that occur due to conflicts.
 
 ### 25P02 - InFailedSqlTransaction
 
-This error is thrown when a statement is issued after an error has already happened in a transaction. The error message would be similar to:
+This error occurs when a statement is issued after there's already an error in a transaction. The error message would be similar to the following:
 
 ```output.plpgsql
 ERROR:  25P02: current transaction is aborted, commands ignored until end of transaction block
 ```
 
-The only valid statements at this point would be `ROLLBACK` or `COMMIT`. The correct way to handle this to handle the actual error and then issue a rollback.
+The only valid statements at this point would be `ROLLBACK` or `COMMIT`. The correct way to handle this is to resolve the actual error and then issue a rollback.
 
 ```python
 connstr = 'postgresql://yugabyte@localhost:5433/yugabyte'
@@ -101,63 +101,65 @@ except psycopg2.errors.InFailedSqlTransaction as e:
 ```
 
 ### 25P03 - Idle Timeout
-When an application takes a long time between two statements within a transaction, it might hit the `idle_in_transaction_session_timeout` timeout. Setting this timeout is useful to avoid deadlock scenarios where applications acquire locks and then hang unintentionally. Once that timeout is reached, the connection is disconnected and the client would have to reconnect. The typical error message would be:
 
-```
+When an application takes a long time between two statements in a transaction, it might hit the `idle_in_transaction_session_timeout` timeout. Set this timeout to avoid deadlock scenarios where applications acquire locks and then hang unintentionally. After the timeout is reached, the connection is disconnected and the client would have to reconnect. A typical error message would be as follows:
+
+```output
 FATAL:  25P03: terminating connection due to idle-in-transaction timeout
 ```
 
 ### 40001 - SerializationFailure
 
-Serialization Failure happens when multiple transactions are updating the same set of keys(conflict) or when transactions are waiting on each other(deadlock). The typical error messages are :
+Serialization Failure happens when multiple transactions are updating the same set of keys (conflict), or when transactions are waiting for each other (deadlock). The error messages could be one of the following types:
 
-On Conflict, certain transactions are retried. But once the retry limit is reached, an error is thrown.
+- During a conflict, certain transactions are retried. However, after the retry limit is reached, an error occurs as follows:
 
-```output.plpgsql
-ERROR:  40001: All transparent retries exhausted.
-```
+    ```output.plpgsql
+    ERROR:  40001: All transparent retries exhausted.
+    ```
 
-All transactions are given a dynamic priority. When a deadlock is detected, the transaction with lower priority is automatically killed. At this time, the client might receive a message similar to this:
+- All transactions are given a dynamic priority. When a deadlock is detected, the transaction with lower priority is automatically killed. For this scenario, the client might receive a message similar to the following:
 
-```output.plpgsql
-ERROR:  40001: Operation expired: Heartbeat: Transaction XXXX expired or aborted by a conflict
-```
+    ```output.plpgsql
+    ERROR:  40001: Operation expired: Heartbeat: Transaction XXXX expired or aborted by a conflict
+    ```
 
-The right way to handle this error is with a retry loop with exponential backoff as below.
-```python
-connstr = 'postgresql://yugabyte@localhost:5433/yugabyte'
-cxn = psycopg2.connect(connstr)
+    The correct way to handle this error is with a retry loop with exponential backoff as follows:
 
-max_attempts = 10   # max no.of retries
-sleep_time = 0.002  # 2 ms - base sleep time
-backoff = 2         #
+    ```python
+    connstr = 'postgresql://yugabyte@localhost:5433/yugabyte'
+    cxn = psycopg2.connect(connstr)
 
-attempt = 0
-while attempt < max_attempts:
-  attempt += 1
-  try :
-    cursor = cxn.cursor()
-    cursor.execute("BEGIN ISOLATION LEVEL SERIALIZABLE");
-    cursor.execute("UPDATE txndemo set v=20 WHERE k=1;");
-    cursor.execute("COMMIT");
-    break
-  except psycopg2.errors.SerializationFailure as e:
-    print(e)
-    cursor.execute("ROLLBACK")
-    if attempt < max_attempts:
-      time.sleep(sleep_time)
-      sleep_time *= backoff
+    max_attempts = 10   # max no.of retries
+    sleep_time = 0.002  # 2 ms - base sleep time
+    backoff = 2
 
-```
-
+    attempt = 0
+    while attempt < max_attempts:
+      attempt += 1
+      try :
+        cursor = cxn.cursor()
+        cursor.execute("BEGIN ISOLATION LEVEL SERIALIZABLE");
+        cursor.execute("UPDATE txndemo set v=20 WHERE k=1;");
+        cursor.execute("COMMIT");
+        break
+      except psycopg2.errors.SerializationFailure as e:
+        print(e)
+        cursor.execute("ROLLBACK")
+        if attempt < max_attempts:
+          time.sleep(sleep_time)
+          sleep_time *= backoff
+    ```
 
 ## Non-Retriable Errors
-Even though most transactions can be retried on most error scenarios , There are situatione where retrying the transaction will not resolve these issue. Eg. Errors thrown when statements are issued out of place. These statements have to be fixed in code to continue further.
+
+Although most transactions can be retried on most erroneous scenarios, there are cases where retrying a transaction will not resolve an issue. For example, errors can occur when statements are issued out of place. These statements have to be fixed in code to continue further.
 
 ### Error - 25001
-Transaction level isolation should be specified before the first statement of the transaction is executed. If not this error is thrown.
 
-```
+Transaction level isolation should be specified before the first statement of the transaction is executed. If not the following error occurs:
+
+```output
 yugabyte@yugabyte=# BEGIN;
 BEGIN
 Time: 0.797 ms
@@ -170,9 +172,10 @@ Time: 3.808 ms
 ```
 
 ### Error - 25006
-This error is thrown when a row is modified after specifying a transaction to be `READ ONLY`.
 
-```
+This error occurs when a row is modified after specifying a transaction to be `READ ONLY` as follows:
+
+```output
 yugabyte@yugabyte=# BEGIN READ ONLY;
 BEGIN
 Time: 1.095 ms
@@ -182,18 +185,18 @@ Time: 4.417 ms
 
 ```
 
-
 ## Special Cases
 
 ### Read Committed Isolation Level
 
-In [Read Committed](../../architecture/transactions/read-committed/) isolation level, clients do not need to retry or handle Serialization errors. On conflicts, the server retries indefinitely based on the [retry options](../../architecture/transactions/read-committed/#performance-tuning) and [Wait-On-Conflict](../../architecture/transactions/concurrency-control/#wait-on-conflict) policy.
+In [Read Committed isolation level](../../../architecture/transactions/read-committed/), clients do not need to retry or handle serialization errors. During conflicts, the server retries indefinitely based on the [retry options](../../../architecture/transactions/read-committed/#performance-tuning) and [Wait-On-Conflict](../../../architecture/transactions/concurrency-control/#wait-on-conflict) policy.
 
-To avoid  getting stuck in a wait loop because of starvation, it is suggested that the user use a reasonable timeout for the statements as:
+To avoid getting stuck in a wait loop because of starvation, it is recommended to use a reasonable timeout for statements similar to the following:
 
-```
+```sql
 SET statement_timeout = '10s';
 ```
 
-### Defferable Property
-When a transaction is in `SERIALIZABLE` isolation level and `READ ONLY` mode, if the transaction property `DEFERRABLE` is set, then that transaction executes with much lower overhead and is never canceled because of a serialization failure. This can be used for batch or long-running jobs.
+### Deferrable Property
+
+When a transaction is in `SERIALIZABLE` isolation level and `READ ONLY` mode, if the transaction property `DEFERRABLE` is set, then that transaction executes with much lower overhead and is never canceled because of a serialization failure. This property can be used for batch or long-running jobs.
