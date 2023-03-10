@@ -80,7 +80,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
   const currentCustomer = useSelector(customerSelector);
   const { test, released } = useSelector(featureFlags);
   const globalRuntimeConfigs = useQuery(['globalRuntimeConfigs'], () =>
-    fetchGlobalRunTimeConfigs().then((res: any) => res.data)
+    fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
   );
   const isCongifUIEnabled =
     globalRuntimeConfigs?.data?.configEntries?.find(
