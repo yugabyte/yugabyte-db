@@ -16,13 +16,14 @@ import os.path
 import re
 import shutil
 import urllib.request as urllib_request
+import urllib.error
 import uuid
 
 # Constants
 RUN_ACTION = "run"
 ATTACH_ACTION = "attach"
 DETACH_ACTION = "detach"
-SOFT_DELETE = "delete"
+DELETE = "delete"
 UUID4_REGEX = re.compile("[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
 
 
@@ -45,6 +46,10 @@ def parse_arguments():
         "-u",
         "--univ_uuid", required=True,
         help="Universe's uuid for universe to be attached/detached/deleted.")
+
+    parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        required=False, default=False, help="Enable verbose logging.")
 
     file_parent_parser = argparse.ArgumentParser(add_help=False)
     file_parent_parser.add_argument(
@@ -87,8 +92,8 @@ def parse_arguments():
         ATTACH_ACTION, parents=[attach_parent_parser, file_parent_parser],
         help="Populate target platform with universe metadata using tar gz.")
     delete_parser = subparsers.add_parser(
-        SOFT_DELETE, parents=[detach_parent_parser],
-        help="Perform a soft delete of the universe on the source platform.")
+        DELETE, parents=[detach_parent_parser],
+        help="Perform a delete of the universe on the source platform.")
 
     args = vars(parser.parse_args())
 
@@ -128,17 +133,20 @@ class YBAttachDetach:
         -ts ad09f10f-c377-4cdf-985c-898d13eae783 -ps http://167.123.191.88:9000
         -f /tmp/universe-export-spec.tar.gz -s -td 4abb151c-3020-43fb-bd04-f6a63934e4e5
         -pd http://10.150.7.155:9000
+
+
+    Can enable verbose logging for debugging purposes by passing -v before the action.
     """
 
     def __init__(self, args):
         self.action_map = {
             DETACH_ACTION: self.run_detach,
             ATTACH_ACTION: self.run_attach,
-            SOFT_DELETE: self.run_soft_delete
+            DELETE: self.run_delete_metadata
         }
         self.name = args.get("name")
         if self.name == RUN_ACTION:
-            self.actions = [DETACH_ACTION, ATTACH_ACTION, SOFT_DELETE]
+            self.actions = [DETACH_ACTION, ATTACH_ACTION, DELETE]
         else:
             self.actions = [args.get("name")]
         self.universe_uuid = args.get("univ_uuid")
@@ -163,10 +171,12 @@ class YBAttachDetach:
             "X-AUTH-YW-API-TOKEN": self.api_token_src,
             "Content-Type": "application/json"
         }
+        logging.debug("Url: %s", url)
+        logging.debug("Request body: %s", data)
         req = urllib_request.Request(
             url=url, method="POST", headers=headers,
             data=json.dumps(data).encode())
-        with urllib_request.urlopen(req) as response, open(self.file, "wb") as file:
+        with open_url(req) as response, open(self.file, "wb") as file:
             shutil.copyfileobj(response, file)
         logging.info("Completed detaching universe.")
 
@@ -183,16 +193,26 @@ class YBAttachDetach:
             "Content-Type": "application/json"
         }
         data = bytes(form)
+        logging.debug("Url: %s", url)
+        logging.debug("Request body: %s", form)
         req = urllib_request.Request(
             url=url, method="POST", headers=headers, data=data)
         req.add_header('Content-type', form.get_content_type())
-        urllib_request.urlopen(req)
-
+        open_url(req)
         logging.info("Completed attaching universe.")
 
-    def run_soft_delete(self):
+    def run_delete_metadata(self):
         """Delete universe metadata from source platform"""
-        pass
+        logging.info("Removing universe metadata from source platform...")
+        url = self._get_delete_metadata_url()
+        headers = {
+            "X-AUTH-YW-API-TOKEN": self.api_token_src,
+            "Content-Type": "application/json"
+        }
+        logging.debug("url: %s", url)
+        req = urllib_request.Request(url=url, method="POST", headers=headers)
+        open_url(req)
+        logging.info("Completed removing universe metadata from source platform.")
 
     def run(self):
         """Performs the required action(s) and throw error if failed."""
@@ -217,12 +237,20 @@ class YBAttachDetach:
             f"{customer_uuid}/universes/{self.universe_uuid}/import")
         return attach_url
 
+    def _get_delete_metadata_url(self):
+        customer_uuid = self._get_customer_uuid(self.api_token_src, self.platform_host_src)
+        base_url = f"{self.platform_host_src}/api/v1"
+        delete_url = (
+            f"{base_url}/customers/"
+            f"{customer_uuid}/universes/{self.universe_uuid}/delete_metadata")
+        return delete_url
+
     def validate_arguments(self):
         """Simple validation of the arguments passed in."""
         if not is_valid_uuid(self.universe_uuid):
             raise ValueError("Invalid universe uuid passed in.")
 
-        if self.name == DETACH_ACTION or self.name == RUN_ACTION or self.name == SOFT_DELETE:
+        if self.name == DETACH_ACTION or self.name == RUN_ACTION or self.name == DELETE:
             if not is_valid_uuid(self.api_token_src):
                 raise ValueError("Invalid api_token_src passed in.")
 
@@ -239,17 +267,35 @@ class YBAttachDetach:
             "Content-Type": "application/json"
         }
         url = self._get_session_info_url(platform_host)
+        logging.debug("Url: %s", url)
         req = urllib_request.Request(
             url=url, method="GET", headers=headers)
-        with urllib_request.urlopen(req) as response:
+        with open_url(req) as response:
             data = response.read()
             session_info = json.loads(data.decode('utf-8'))
+            logging.debug("Response: %s", session_info)
             return session_info["customerUUID"]
 
     def _get_session_info_url(self, platform_host):
         base_url = f"{platform_host}/api/v1"
         session_info_url = f"{base_url}/session_info"
         return session_info_url
+
+
+def open_url(request):
+    """Make request to desired url and print verbose logs if needed"""
+    try:
+        resp = urllib_request.urlopen(request)
+        logging.debug("Success Status %s", resp.code)
+        return resp
+    except urllib.error.HTTPError as err:
+        logging.debug("Error Status %s", err.code)
+        logging.debug("Error Reason %s", err.reason)
+        logging.debug("Error Response %s", err.read().decode())
+        raise err
+    except urllib.error.URLError as err:
+        logging.debug("Error Reason %s", err.reason)
+        raise err
 
 
 class MultiPartForm:
@@ -328,6 +374,8 @@ class MultiPartForm:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
     cmd_args = parse_arguments()
+    if cmd_args.get("verbose"):
+        logging.getLogger().setLevel(logging.DEBUG)
 
     yb_attach_detach = YBAttachDetach(cmd_args)
     yb_attach_detach.run()

@@ -11,6 +11,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
@@ -210,6 +211,12 @@ public class Backup extends Model {
   @Column(nullable = false)
   public UUID customerUUID;
 
+  @JsonProperty
+  public UUID getCustomerUUID() {
+    return customerUUID;
+  }
+
+  @JsonIgnore
   public void setCustomerUUID(UUID customerUUID) {
     this.customerUUID = customerUUID;
     this.backupInfo.customerUuid = customerUUID;
@@ -277,6 +284,7 @@ public class Backup extends Model {
     return expiry;
   }
 
+  @JsonIgnore
   private void setExpiry(long timeBeforeDeleteFromPresent) {
     this.expiry = new Date(System.currentTimeMillis() + timeBeforeDeleteFromPresent);
   }

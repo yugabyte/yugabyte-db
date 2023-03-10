@@ -4,8 +4,11 @@ package com.yugabyte.yw.models;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.ebean.Ebean;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
@@ -16,11 +19,14 @@ import io.ebean.RawSqlBuilder;
 import io.ebean.SqlUpdate;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.stream.Collectors;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -90,6 +96,12 @@ public class NodeInstance extends Model {
     return nodeDetails;
   }
 
+  @JsonProperty
+  public String getNodeName() {
+    return nodeName;
+  }
+
+  @JsonIgnore
   public void setNodeName(String name) {
     nodeName = name;
     // This parses the JSON if first time accessing details.
@@ -142,6 +154,26 @@ public class NodeInstance extends Model {
     query.setRawSql(rawSql);
     List<NodeInstance> list = query.findList();
     return list;
+  }
+
+  public static List<NodeInstance> listByUniverse(UUID universeUUID) {
+    Optional<Universe> optUniverse = Universe.maybeGet(universeUUID);
+    if (!optUniverse.isPresent()) {
+      return Collections.emptyList();
+    }
+    Universe universe = optUniverse.get();
+    UUID providerUUID =
+        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+    Set<UUID> nodeUUIDS =
+        universe.getNodes().stream().map(NodeDetails::getNodeUuid).collect(Collectors.toSet());
+    List<NodeInstance> nodeInstances = NodeInstance.listByProvider(providerUUID);
+    List<NodeInstance> filteredInstances =
+        nodeInstances
+            .stream()
+            .filter(instance -> nodeUUIDS.contains(instance.getNodeUuid()))
+            .collect(Collectors.toList());
+
+    return filteredInstances;
   }
 
   public static int deleteByProvider(UUID providerUUID) {
