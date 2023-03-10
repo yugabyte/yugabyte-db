@@ -326,23 +326,32 @@ public class NodeDetails {
   }
 
   @JsonIgnore
-  public boolean isActive() {
+  public boolean isNodeRunning() {
     return !(state == NodeState.Unreachable
         || state == NodeState.MetricsUnavailable
-        || state == NodeState.ToBeRemoved
-        || state == NodeState.Removing
-        || state == NodeState.Removed
-        || state == NodeState.Starting
-        || state == NodeState.Stopping
-        || state == NodeState.Stopped
+        || state == NodeState.ToBeAdded
         || state == NodeState.Adding
         || state == NodeState.BeingDecommissioned
         || state == NodeState.Decommissioned
-        || state == NodeState.SystemdUpgrade
         || state == NodeState.Terminating
-        || state == NodeState.Terminated
-        || state == NodeState.Rebooting
-        || state == NodeState.HardRebooting);
+        || state == NodeState.Terminated);
+  }
+
+  @JsonIgnore
+  public boolean isActive() {
+    // TODO For some reason ToBeAdded node is treated as 'Active', which it's not the case.
+    // Need to better figure out the meaning of 'Active' - and it's usage - as currently it's used
+    // for master selection, for example.
+    return (isNodeRunning() || state == NodeState.ToBeAdded)
+        && !(state == NodeState.ToBeRemoved
+            || state == NodeState.Removing
+            || state == NodeState.Removed
+            || state == NodeState.Starting
+            || state == NodeState.Stopping
+            || state == NodeState.Stopped
+            || state == NodeState.SystemdUpgrade
+            || state == NodeState.Rebooting
+            || state == NodeState.HardRebooting);
   }
 
   @JsonIgnore
