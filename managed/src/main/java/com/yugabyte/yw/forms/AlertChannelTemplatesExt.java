@@ -9,7 +9,7 @@ import lombok.experimental.Accessors;
 
 @Data
 @Accessors(chain = true)
-@ApiModel("Alert channel templates with defaults")
+@ApiModel("Alert channel templates ext with default values")
 public class AlertChannelTemplatesExt {
   @JsonUnwrapped AlertChannelTemplates channelTemplates;
 

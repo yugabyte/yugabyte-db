@@ -262,7 +262,7 @@
       "required" : [ "configurationType", "configurationUuid", "createTime", "customerUUID", "definitionUuid", "labels", "message", "name", "severity", "severityIndex", "sourceName", "sourceUUID", "state", "stateIndex" ],
       "type" : "object"
     },
-    "Alert channel templates with defaults" : {
+    "Alert channel templates ext with default values" : {
       "properties" : {
         "customerUUID" : {
           "description" : "Customer UUID",
@@ -3996,6 +3996,35 @@
         }
       },
       "required" : [ "dbName", "password", "username", "ycqlAdminPassword", "ycqlAdminUsername", "ysqlAdminPassword", "ysqlAdminUsername" ],
+      "type" : "object"
+    },
+    "DeleteBackupInfo" : {
+      "properties" : {
+        "backupUUID" : {
+          "description" : "backup UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "storageConfigUUID" : {
+          "description" : "storage config UUID",
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "backupUUID" ],
+      "type" : "object"
+    },
+    "DeleteBackupParams" : {
+      "properties" : {
+        "deleteBackupInfos" : {
+          "description" : "Backups to be deleted",
+          "items" : {
+            "$ref" : "#/definitions/DeleteBackupInfo"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [ "deleteBackupInfos" ],
       "type" : "object"
     },
     "Details" : {
@@ -12279,7 +12308,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/Alert channel templates with defaults"
+                "$ref" : "#/definitions/Alert channel templates ext with default values"
               },
               "type" : "array"
             }
@@ -12341,7 +12370,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Alert channel templates with defaults"
+              "$ref" : "#/definitions/Alert channel templates ext with default values"
             }
           }
         },
@@ -13455,6 +13484,14 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "description" : "Parameters of the backup to be deleted",
+          "in" : "body",
+          "name" : "deleteBackup",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/DeleteBackupParams"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -15064,6 +15101,36 @@
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "delete",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete a cloud provider",
+        "tags" : [ "Cloud providers" ]
+      },
       "get" : {
         "description" : "",
         "operationId" : "getProvider",
