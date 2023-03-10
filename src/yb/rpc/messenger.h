@@ -307,7 +307,7 @@ class Messenger : public ProxyContext {
   explicit Messenger(const MessengerBuilder &bld);
 
   Reactor* RemoteToReactor(const Endpoint& remote, uint32_t idx = 0);
-  Status Init();
+  Status Init(const MessengerBuilder &bld);
 
   void BreakConnectivity(const IpAddress& address, bool incoming, bool outgoing);
   void RestoreConnectivity(const IpAddress& address, bool incoming, bool outgoing);
