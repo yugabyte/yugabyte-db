@@ -9,6 +9,7 @@ export const K8sRegionFieldLabel = {
   CERT_ISSUER_NAME: 'Cert-Manager Issuer Name',
   KUBE_CONFIG_CONTENT: 'Kube Config',
   KUBE_DOMAIN: 'Kube Domain',
+  STORAGE_CLASSES: 'Storage Classes',
   KUBE_NAMESPACE: 'Kube Namespace',
   KUBE_POD_ADDRESS_TEMPLATE: 'Kube Pod Address Template',
   OVERRIDES: 'Overrides',
