@@ -4,20 +4,18 @@ headerTitle: Enable high availability
 linkTitle: Enable high availability
 description: Enable high availability
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: platform-high-availability
-    parent: manage-deployments
+    parent: administer-yugabyte-platform
     weight: 40
 type: docs
 ---
 
-YugabyteDB's distributed architecture enables database clusters (also referred to as universes) to have extremely high availability.
+YugabyteDB Anywhere high availability (HA) is an active-standby model for multiple YugabyteDB Anywhere instances. YugabyteDB Anywhere HA uses YugabyteDB's distributed architecture to replicate your YugabyteDB Anywhere data across multiple virtual machines (VM), ensuring that you can recover quickly from a VM failure and continue to manage and monitor your universes, with your configuration and metrics data intact.
 
-YugabyteDB Anywhere high availability is an active-standby model for multiple YugabyteDB Anywhere instances. Your YugabyteDB Anywhere data is replicated across multiple virtual machines (VM), ensuring that you can recover quickly from a VM failure and continue to manage and monitor your universes, with your configuration and metrics data intact.
+Each HA cluster includes a single active YugabyteDB Anywhere instance and at least one standby YugabyteDB Anywhere instance, configured as follows:
 
-Each high-availability cluster includes a single active YugabyteDB Anywhere instance and at least one standby YugabyteDB Anywhere instance, configured as follows:
-
-- The active instance runs normally, but also pushes out backups of its state to all of the standby instances in the high-availability cluster.
+- The active instance runs normally, but also pushes out backups of its state to all of the standby instances in the HA cluster.
 - A standby instance is completely passive while in standby mode and cannot be used for managing or monitoring clusters until you manually promote it to active.
 
 Backups from the active instance are periodically taken and pushed to standby instances at a configurable frequency (no more than once per minute). The active instance also creates and sends one-off backups to standby instances whenever a task completes (such as creating a new universe). Metrics are duplicated to standby instances using Prometheus federation. Standby instances retain ten most recent backups on disk.
@@ -26,12 +24,11 @@ When you promote a standby instance to active, YugabyteDB Anywhere restores your
 
 ## Prerequisites
 
-Before configuring a high-availability cluster, ensure that you have the following:
+Before configuring a HA cluster for your YugabyteDB Anywhere instances, ensure that you have the following:
 
-- YugabyteDB Anywhere version 2.5.3.1 or later.
-- [Multiple YugabyteDB Anywhere instances](../../install-yugabyte-platform/) to be used in the high-availability cluster.
-- YugabyteDB Anywhere VMs can connect to each other over the port that YugabyteDB Anywhere is typically reachable (port 80 and 443, for example).
-- All YugabyteDB Anywhere instances are running the same version of YugabyteDB Anywhere software. Note that it is generally recommended to upgrade all YugabyteDB Anywhere instances in the high-availability cluster at approximately the same time.
+- [Multiple YugabyteDB Anywhere instances](../../install-yugabyte-platform/) to be used in the HA cluster.
+- YugabyteDB Anywhere VMs can connect to each other over the port that YugabyteDB Anywhere UI is typically reachable (port 80 and 443, for example).
+- All YugabyteDB Anywhere instances are running the same version of YugabyteDB Anywhere software. Note that it is generally recommended to upgrade all YugabyteDB Anywhere instances in the HA cluster at approximately the same time.
 
 ## Configure the active instance
 
@@ -61,13 +58,13 @@ Your active instance is now configured.
 
 Note that the HTTPS connection requires a peer certificate which you can add by navigating to **Replication Configuration > Overview** of the configured active instance and clicking **Add a peer certificate**, as per the following illustration:
 
-![High availability instance](/images/yp/high-availability/ha-configured.png)
+![High availability active instance](/images/yp/high-availability/ha-configured.png)
 
 For information on how to export peer certificates on Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
 
 ## Configure standby instances
 
-After the active instance has been configured, you can configure one or more standby instances by repeating the following steps for each standby instance you wish to add to the high-availability cluster:
+After the active instance has been configured, you can configure one or more standby instances by repeating the following steps for each standby instance you wish to add to the HA cluster:
 
 1. Navigate to **Admin > High Availability > Replication Configuration** and select **Standby**, as per the following illustration:
 
@@ -83,13 +80,13 @@ After the active instance has been configured, you can configure one or more sta
 
 1. Click **Continue** on the **Add Standby Instance** dialog.
 
-1. Switch back to the new standby instance, wait for a replication interval to pass, and then refresh the page. The other instances in the high-availability cluster should now appear in the list of instances.
+1. Switch back to the new standby instance, wait for a replication interval to pass, and then refresh the page. The other instances in the HA cluster should now appear in the list of instances.
 
 Your standby instances are now configured.
 
 Note that the HTTPS connection requires a peer certificate which you can add by navigating to **Replication Configuration > Overview** of the configured standby instance and clicking **Add a peer certificate**, as per the following illustration:
 
-![High availability instance](/images/yp/high-availability/ha-configured-standby.png)
+![High availability standby instance](/images/yp/high-availability/ha-configured-standby.png)
 
 For information on how to export peer certificates on Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
 
@@ -109,11 +106,11 @@ You should be able to see that all of the data has been restored into the instan
 
 ## Check results
 
-During a high-availability backup, the entire YugabyteDB Anywhere state is copied. If your universes are visible through YugabyteDB Anywhere UI and the replication timestamps are increasing, the backup is successful.
+During a HA backup, the entire YugabyteDB Anywhere state is copied. If your universes are visible through YugabyteDB Anywhere UI and the replication timestamps are increasing, the backup is successful.
 
 ## Upgrade instances
 
-All instances involved in high availability should be of the same YugabyteDB Anywhere version. If the versions are different, an attempt to promote a standby instance using a YugabyteDB Anywhere backup from an active instance may result in errors.
+All instances involved in HA should be of the same YugabyteDB Anywhere version. If the versions are different, an attempt to promote a standby instance using a YugabyteDB Anywhere backup from an active instance may result in errors.
 
 Even though you can perform an upgrade of all YugabyteDB Anywhere instances simultaneously and there are no explicit ordering requirements regarding upgrades of active and standby instances, it is recommended to follow these general guidelines:
 
@@ -123,18 +120,18 @@ Even though you can perform an upgrade of all YugabyteDB Anywhere instances simu
 
 The following is the detailed upgrade procedure:
 
-1. Stop the high-availability synchronization. This ensures that only backups of the original YugabyteDB Anywhere version are synchronized to the standby instance.
+1. Stop the HA synchronization. This ensures that only backups of the original YugabyteDB Anywhere version are synchronized to the standby instance.
 1. Upgrade the active instance. Expect a momentary lapse in availability for the duration of the upgrade. If the upgrade is successful, proceed to step 3. If the upgrade fails, perform the following:
 
     - Decommission the faulty active instance in the active-standby pair.
     - Promote the standby instance.
     - Do not attempt to upgrade until the root cause of the upgrade failure is determined.
-    - Delete the high-availability configuration and bring up another standby instance at the original YugabyteDB Anywhere version and reconfigure high availability.
+    - Delete the HA configuration and bring up another standby instance at the original YugabyteDB Anywhere version and reconfigure HA.
     - After the root cause of failure has been established, repeat the upgrade process starting from step 1. Depending on the cause of failure and its solution, this may involve a different YugabyteDB Anywhere version to which to upgrade.
 
 1. On the upgraded instance, perform post-upgrade validation tests that may include creating or editing a universe, backups, and so on.
 1. Upgrade the standby instance.
-1. Enable high-availability synchronization.
+1. Enable HA synchronization.
 1. Optionally, promote the standby instance with the latest backup synchronized from the YugabyteDB Anywhere version to which to upgrade.
 
 The following diagram provides a graphical representation of the upgrade procedure:
@@ -151,21 +148,21 @@ The following table provides the terminology mapping between the upgrade diagram
 
 ## Remove a standby instance
 
-To remove a standby instance from a high-availability cluster, you need to remove it from the active instance's list, and then delete the configuration from the instance to be removed, as follows:
+To remove a standby instance from a HA cluster, you need to remove it from the active instance's list, and then delete the configuration from the instance to be removed, as follows:
 
 1. On the active instance's list, click **Delete Instance** for the standby instance to be removed.
 
-1. On the standby instance you wish to remove from the high-availability cluster, click **Delete Configuration** on the **Admin** tab.
+1. On the standby instance you wish to remove from the HA cluster, click **Delete Configuration** on the **Admin** tab.
 
 The standby instance is now a standalone instance again.
 
-After you have returned a standby instance to standalone mode, the information on the instance is likely to be out of date, which can lead to incorrect behavior. It is recommended to wipe out the state information before using it in standalone mode. For assistance with resetting the state of a standby instance that you removed from a high-availability cluster, contact Yugabyte Support.
+After you have returned a standby instance to standalone mode, the information on the instance is likely to be out of date, which can lead to incorrect behavior. It is recommended to wipe out the state information before using it in standalone mode. For assistance with resetting the state of a standby instance that you removed from a HA cluster, contact Yugabyte Support.
 
 ## Limitations
 
-If you are using custom ports for Prometheus in your YugabyteDB Anywhere installation and the YugabyteDB Anywhere instance is configured for high availability with other YugabyteDB Anywhere instances, then the following limitation applies:
+If you are using custom ports for Prometheus in your YugabyteDB Anywhere installation and the YugabyteDB Anywhere instance is configured for HA with other YugabyteDB Anywhere instances, then the following limitation applies:
 
-- All YugabyteDB Anywhere instances configured under high availability must use the same custom port.
+- All YugabyteDB Anywhere instances configured under HA must use the same custom port.
 
     The default Prometheus port for YugabyteDB Anywhere is `9090`. Custom ports are configured through the settings section of the Replicated installer UI that is typically available at `https://<yugabyteanywhere-ip>:8800/`.
 

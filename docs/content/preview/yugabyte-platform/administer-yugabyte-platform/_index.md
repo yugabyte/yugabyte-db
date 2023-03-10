@@ -41,4 +41,16 @@ type: indexpage
     </a>
   </div>
 
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="high-availability/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
+        <div class="title">Enable high availability</div>
+      </div>
+      <div class="body">
+        Enable YugabyteDB Anywhere's high-availability features.
+      </div>
+    </a>
+  </div>
+
 </div>
