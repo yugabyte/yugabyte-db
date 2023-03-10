@@ -436,7 +436,8 @@ Result<bool> DocRowwiseIterator::HasNext() {
       doc_reader_ = std::make_unique<DocDBTableReader>(
           db_iter_.get(), deadline_, &projection_subkeys_, table_type_,
           doc_read_context_.schema_packing_storage);
-      RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(doc_key));
+      RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
+          VERIFY_RESULT(GetTableTombstoneTime(doc_key))));
       if (!ignore_ttl_) {
         doc_reader_->SetTableTtl(doc_read_context_.schema);
       }
