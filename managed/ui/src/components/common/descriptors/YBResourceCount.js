@@ -42,8 +42,7 @@ export default class YBResourceCount extends PureComponent {
       pluralizeUnit,
       separatorLine,
       icon,
-      sizePrefix,
-      isDedicatedNodes
+      sizePrefix
     } = this.props;
     const displayUnit =
       unit && pluralizeUnit
@@ -61,24 +60,11 @@ export default class YBResourceCount extends PureComponent {
 
     return (
       <div className={'yb-resource-count ' + classNames}>
-        {label && isDedicatedNodes && <div className="yb-resource-count-label">{label}</div>}
-        <div
-          style={{
-            float: isDedicatedNodes ? 'right' : 'inherit',
-            fontSize: isDedicatedNodes ? '28px' : '32px'
-          }}
-          className="yb-resource-count-size"
-        >
+        {label && <div className="yb-resource-count-label">{label}</div>}
+        <div className="yb-resource-count-size">
           {sizePrefix && <span className="yb-resource-count-size-prefix">{sizePrefix}</span>}
           {size}
-          {kind && inline && (
-            <div
-              style={{ fontSize: isDedicatedNodes ? '12px' : '18px' }}
-              className="yb-resource-count-kind"
-            >
-              {displayKind}
-            </div>
-          )}
+          {kind && inline && <div className="yb-resource-count-kind">{displayKind}</div>}
           {displayUnit && <span className="yb-resource-count-unit">{displayUnit}</span>}
         </div>
         {separatorLine && <div className="yb-resource-separator-line" />}
