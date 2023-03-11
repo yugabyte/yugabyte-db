@@ -14,7 +14,6 @@
 
 namespace yb {
 namespace cdc {
-namespace enterprise {
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentPersistencyAfterTabletSplit)) {
   FLAGS_update_min_cdc_indices_interval_secs = 1;
@@ -1277,6 +1276,5 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionCommitAfterTabletS
   ASSERT_GE(child1_record_count + child2_record_count, 200);
 }
 
-}  // namespace enterprise
 }  // namespace cdc
 }  // namespace yb
