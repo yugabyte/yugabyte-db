@@ -1130,6 +1130,7 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
   std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
   auto [iter, inserted] = tables.emplace(table_id, new_table_info);
+  SetLastChangeMetadataOperationOpIdUnlocked(op_id);
   if (inserted) {
     VLOG_WITH_PREFIX(1) << "Added table with schema version " << schema_version << "\n"
                         << AsString(new_table_info);
@@ -1164,8 +1165,6 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
   CHECK(!schema.colocation_id() || kv_store_.colocation_to_table.count(schema.colocation_id()))
       << "Missing entry in colocation table: " << schema.colocation_id() << ", "
       << AsString(kv_store_.colocation_to_table);
-
-  SetLastChangeMetadataOperationOpIdUnlocked(op_id);
 }
 
 void RaftGroupMetadata::RemoveTable(const TableId& table_id, const OpId& op_id) {

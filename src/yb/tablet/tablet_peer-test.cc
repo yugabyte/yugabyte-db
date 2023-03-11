@@ -465,6 +465,21 @@ TEST_F(TabletPeerTest, TestGCEmptyLog) {
   ASSERT_OK(tablet_peer_->RunLogGC());
 }
 
+TEST_F(TabletPeerTest, TestAddTableUpdatesLastChangeMetadataOpId) {
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet_safe());
+  TableInfoPB table_info;
+  table_info.set_table_id("00004000000030008000000000004020");
+  table_info.set_table_name("test");
+  table_info.set_table_type(PGSQL_TABLE_TYPE);
+  ColumnSchema col("a", UINT32);
+  ColumnId col_id(1);
+  Schema schema({col}, {col_id}, 1);
+  SchemaToPB(schema, table_info.mutable_schema());
+  OpId op_id(100, 5);
+  ASSERT_OK(tablet->AddTable(table_info, op_id));
+  ASSERT_EQ(tablet->metadata()->LastChangeMetadataOperationOpId(), op_id);
+}
+
 class TabletPeerProtofBufSizeLimitTest : public TabletPeerTest {
  public:
   TabletPeerProtofBufSizeLimitTest() : TabletPeerTest(GetSimpleTestSchema()) {
