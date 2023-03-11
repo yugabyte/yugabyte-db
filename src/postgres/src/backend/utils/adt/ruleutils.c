@@ -1099,7 +1099,7 @@ pg_get_triggerdef_worker(Oid trigid, bool pretty)
  * This includes "hidden" reloptions like colocation_id.
  */
 static void
-YbAppendIndexReloptions(StringInfoData buf,
+YbAppendIndexReloptions(StringInfo buf,
 						Oid index_oid,
 						YbTableProperties yb_table_properties)
 {
@@ -1112,23 +1112,22 @@ YbAppendIndexReloptions(StringInfoData buf,
 
 	if (has_reloptions || has_colocation_id)
 	{
-		appendStringInfo(&buf, " WITH (");
+		appendStringInfo(buf, " WITH (");
 
 		if (has_reloptions)
 		{
-			appendStringInfo(&buf, "%s", str);
+			appendStringInfo(buf, "%s", str);
 			pfree(str);
 		}
 
 		if (has_reloptions && has_colocation_id)
-			appendStringInfo(&buf, ", ");
+			appendStringInfo(buf, ", ");
 
 		if (has_colocation_id)
-			appendStringInfo(&buf, "colocation_id=%u", yb_table_properties->colocation_id);
+			appendStringInfo(buf, "colocation_id=%u", yb_table_properties->colocation_id);
 
-		appendStringInfo(&buf, ")");
+		appendStringInfo(buf, ")");
 	}
-
 }
 
 /* ----------
@@ -1499,7 +1498,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		if (includeYbMetadata && IsYBRelation(indexrel) &&
 			!idxrec->indisprimary)
 		{
-			YbAppendIndexReloptions(buf, indexrelid, YbGetTableProperties(indexrel));
+			YbAppendIndexReloptions(&buf, indexrelid, YbGetTableProperties(indexrel));
 		}
 
 		/*
@@ -2257,7 +2256,7 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 					Relation indexrel = index_open(indexId, AccessShareLock);
 
 					if (IsYBRelation(indexrel) && conForm->contype != CONSTRAINT_PRIMARY)
-						YbAppendIndexReloptions(buf, indexId, YbGetTableProperties(indexrel));
+						YbAppendIndexReloptions(&buf, indexId, YbGetTableProperties(indexrel));
 
 					Oid			tblspc;
 
