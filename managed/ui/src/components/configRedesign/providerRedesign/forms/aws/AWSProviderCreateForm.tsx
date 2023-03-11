@@ -334,7 +334,7 @@ export const AWSProviderCreateForm = ({
     setIsRegionFormModalOpen(false);
   };
   const skipValidationAndSubmit = () => {
-    formMethods.handleSubmit(onFormForceSubmit);
+    onFormForceSubmit(formMethods.getValues());
   };
 
   const handleFormServerError = (error: Error | AxiosError<YBBeanValidationError | YBPError>) => {
