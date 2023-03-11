@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.common.services;
 
+import com.google.inject.Inject;
+import com.yugabyte.yw.common.services.config.YbClientConfig;
+import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
 import javax.inject.Singleton;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -11,6 +14,8 @@ import org.yb.client.YBClient;
 @Singleton
 public class LocalYBClientService implements YBClientService {
   public static final Logger LOG = LoggerFactory.getLogger(LocalYBClientService.class);
+
+  @Inject private YbClientConfigFactory ybcClientConfigFactory;
 
   @Override
   public synchronized YBClient getClient(String masterHostPorts) {
@@ -40,12 +45,12 @@ public class LocalYBClientService implements YBClientService {
   }
 
   private YBClient getNewClient(String masterHPs, String certFile) {
-    YBClientService.Config config = new YBClientService.Config(masterHPs, certFile);
+    YbClientConfig config = ybcClientConfigFactory.create(masterHPs, certFile);
     return getClientWithConfig(config);
   }
 
   @Override
-  public YBClient getClientWithConfig(Config config) {
+  public YBClient getClientWithConfig(YbClientConfig config) {
     if (config == null || StringUtils.isBlank(config.getMasterHostPorts())) {
       return null;
     }
