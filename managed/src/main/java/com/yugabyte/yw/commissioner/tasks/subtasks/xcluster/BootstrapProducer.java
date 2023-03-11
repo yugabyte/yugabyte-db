@@ -4,10 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.services.config.YbClientConfig;
-import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
@@ -27,17 +24,9 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
   public static final long MINIMUM_ADMIN_OPERATION_TIMEOUT_MS_FOR_BOOTSTRAP = 120000;
   public static final long MINIMUM_SOCKET_READ_TIMEOUT_MS_FOR_BOOTSTRAP = 120000;
 
-  private final RuntimeConfGetter confGetter;
-  private final YbClientConfigFactory ybcClientConfigFactory;
-
   @Inject
-  protected BootstrapProducer(
-      BaseTaskDependencies baseTaskDependencies,
-      RuntimeConfGetter confGetter,
-      YbClientConfigFactory ybcClientConfigFactory) {
+  protected BootstrapProducer(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.confGetter = confGetter;
-    this.ybcClientConfigFactory = ybcClientConfigFactory;
   }
 
   public static class Params extends XClusterConfigTaskParams {
@@ -77,15 +66,15 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
     String sourceUniverseCertificate = sourceUniverse.getCertificateNodetoNode();
     // Bootstrapping producer might be slower compared to other operations, and it has to have a
     // minimum of 120 seconds timeout.
-    YbClientConfig clientConfig =
-        ybcClientConfigFactory.create(
+    YBClientService.Config clientConfig =
+        new YBClientService.Config(
             sourceUniverseMasterAddresses,
             sourceUniverseCertificate,
             Math.max(
-                confGetter.getGlobalConf(GlobalConfKeys.ybcAdminOperationTimeoutMs),
+                YBClientService.Config.DEFAULT_ADMIN_OPERATION_TIMEOUT_MS,
                 MINIMUM_ADMIN_OPERATION_TIMEOUT_MS_FOR_BOOTSTRAP),
             Math.max(
-                confGetter.getGlobalConf(GlobalConfKeys.ybcSocketReadTimeoutMs),
+                YBClientService.Config.DEFAULT_SOCKET_READ_TIMEOUT_MS,
                 MINIMUM_SOCKET_READ_TIMEOUT_MS_FOR_BOOTSTRAP));
     try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
       // Set bootstrap creation time.
