@@ -35,7 +35,7 @@ The GitHub issue template starts your issue title with `[docs]` for faster scann
 
 ## Make changes
 
-If you spot a problem on a page, the **Contribute** button has an **Edit this page** option that takes you to the page in GitHub. If you are signed in, you can edit the page and propose the change. GitHub will automatically create a branch for you.
+If you spot a problem on a page (typos, spelling and grammar, minor page updates, broken links, and so on) the **Contribute** button has an **Edit this page** option that takes you to the page in GitHub. If you are signed in, you can edit the page and propose the change. GitHub will automatically create a branch for you.
 
 For more complex changes, you'll need to build the docs and submit pull requests.
 
