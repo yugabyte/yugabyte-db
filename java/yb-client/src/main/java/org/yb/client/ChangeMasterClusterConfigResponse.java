@@ -37,9 +37,4 @@ public class ChangeMasterClusterConfigResponse extends YRpcResponse {
 
     return serverError.getStatus().getMessage();
   }
-
-  // Get the error code of the error, if an error happened.
-  public MasterTypes.MasterErrorPB.Code ErrorCode() {
-    return serverError == null ? null : serverError.code;
-  }
 }
