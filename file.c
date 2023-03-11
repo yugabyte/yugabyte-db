@@ -29,6 +29,13 @@
 #include "storage/fd.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
+
+#ifdef WIN32
+
+#include "utils/pg_locale.h"
+
+#endif
+
 #include "orafce.h"
 #include "builtins.h"
 
@@ -188,6 +195,36 @@ IO_EXCEPTION(void)
 }
 
 /*
+ * On WIN32 platform multibyte chars are not supported by
+ * fopen function. Instead we can use _wfopen functin. The
+ * arguments are of wchar strings, and should to use UTF16
+ * charset. Conversion fro server encoding to wide strings
+ * is provided by function char2wchar (tested only for UTF8)
+ */
+#ifdef WIN32
+
+static wchar_t *
+to_wchar(const char *str)
+{
+	size_t		nbytes;
+	wchar_t	   *buff;
+
+	nbytes = strlen(str);
+
+	if ((nbytes + 1) > INT_MAX / sizeof(wchar_t))
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory")));
+
+	buff = (wchar_t *) palloc((nbytes + 1) * sizeof(wchar_t));
+	char2wchar(buff, nbytes + 1, str, nbytes, 0);
+
+	return buff;
+}
+
+#endif
+
+/*
  * FUNCTION UTL_FILE.FOPEN(location text,
  *			   filename text,
  *			   open_mode text,
@@ -271,7 +308,28 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 #if NOT_USED
 	fullname = convert_encoding_server_to_platform(fullname);
 #endif
+
+#ifndef WIN32
+
 	file = fopen(fullname, mode);
+
+#else
+
+	if (pg_database_encoding_max_length() > 1)
+	{
+		wchar_t	   *_fullname = to_wchar(fullname);
+		wchar_t	   *_mode = to_wchar(mode);
+
+		file = _wfopen(_fullname, _mode);
+
+		pfree(_fullname);
+		pfree(_mode);
+	}
+	else
+		file = fopen(fullname, mode);
+
+#endif
+
 	if (!file)
 		IO_EXCEPTION();
 
