@@ -2552,12 +2552,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
-   * Creates a task to upgrade desired ybc version on a universe.
+   * Creates a task to upgrade desired ybc version on a k8s universe.
    *
    * @param universeUUID universe on which ybc need to be upgraded
    * @param ybcVersion desired ybc version
-   * @param validateOnlyMasterLeader flag to check only if master leader node's ybc is upgraded or
-   *     not
    */
   public SubTaskGroup createUpgradeYbcTaskOnK8s(UUID universeUUID, String ybcSoftwareVersion) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpgradeYbc");
