@@ -53,6 +53,7 @@ import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
 import com.yugabyte.yw.common.ybflyway.YBFlywayInit;
 import com.yugabyte.yw.controllers.MetricGrafanaController;
 import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
@@ -156,6 +157,8 @@ public class Module extends AbstractModule {
       bind(GcpEARServiceUtil.class).asEagerSingleton();
       bind(YbcUpgrade.class).asEagerSingleton();
     }
+
+    bind(YbClientConfigFactory.class).asEagerSingleton();
   }
 
   @Provides

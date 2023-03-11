@@ -4,7 +4,9 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
-import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.services.config.YbClientConfig;
+import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
@@ -23,10 +25,21 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
 
   public static final long MINIMUM_ADMIN_OPERATION_TIMEOUT_MS_FOR_BOOTSTRAP = 120000;
   public static final long MINIMUM_SOCKET_READ_TIMEOUT_MS_FOR_BOOTSTRAP = 120000;
+  public static final String YBC_ADMIN_OPERATION_TIMEOUT_MS =
+      "ybc.timeout.admin_operation_timeout_ms";
+  public static final String YBC_SOCKET_READ_TIMEOUT_MS = "ybc.timeout.socket_read_timeout_ms";
+
+  private final RuntimeConfigFactory runtimeConfigFactory;
+  private final YbClientConfigFactory ybcClientConfigFactory;
 
   @Inject
-  protected BootstrapProducer(BaseTaskDependencies baseTaskDependencies) {
+  protected BootstrapProducer(
+      BaseTaskDependencies baseTaskDependencies,
+      RuntimeConfigFactory runtimeConfigFactory,
+      YbClientConfigFactory ybcClientConfigFactory) {
     super(baseTaskDependencies);
+    this.runtimeConfigFactory = runtimeConfigFactory;
+    this.ybcClientConfigFactory = ybcClientConfigFactory;
   }
 
   public static class Params extends XClusterConfigTaskParams {
@@ -66,15 +79,15 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
     String sourceUniverseCertificate = sourceUniverse.getCertificateNodetoNode();
     // Bootstrapping producer might be slower compared to other operations, and it has to have a
     // minimum of 120 seconds timeout.
-    YBClientService.Config clientConfig =
-        new YBClientService.Config(
+    YbClientConfig clientConfig =
+        ybcClientConfigFactory.create(
             sourceUniverseMasterAddresses,
             sourceUniverseCertificate,
             Math.max(
-                YBClientService.Config.DEFAULT_ADMIN_OPERATION_TIMEOUT_MS,
+                runtimeConfigFactory.globalRuntimeConf().getInt(YBC_ADMIN_OPERATION_TIMEOUT_MS),
                 MINIMUM_ADMIN_OPERATION_TIMEOUT_MS_FOR_BOOTSTRAP),
             Math.max(
-                YBClientService.Config.DEFAULT_SOCKET_READ_TIMEOUT_MS,
+                runtimeConfigFactory.globalRuntimeConf().getInt(YBC_SOCKET_READ_TIMEOUT_MS),
                 MINIMUM_SOCKET_READ_TIMEOUT_MS_FOR_BOOTSTRAP));
     try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
       // Set bootstrap creation time.
