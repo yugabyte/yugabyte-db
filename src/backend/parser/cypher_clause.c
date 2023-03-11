@@ -2508,6 +2508,23 @@ static Query *transform_cypher_match_pattern(cypher_parsestate *cpstate,
     query = makeNode(Query);
     query->commandType = CMD_SELECT;
 
+    if(self->optional == true && clause->next)
+    {
+        cypher_clause *next = clause->next;
+        if (is_ag_node(next->self, cypher_match))
+        {
+            cypher_match *next_self = (cypher_match *)next->self;
+            if (!next_self->optional)
+            {
+                ereport(ERROR,
+                        (errcode(ERRCODE_SYNTAX_ERROR),
+                         errmsg("MATCH cannot follow OPTIONAL MATCH"),
+                         parser_errposition(pstate,
+                                            exprLocation((Node *) next_self))));
+            }
+        }
+    }
+
     // If there is no previous clause, transform to a general MATCH clause.
     if (self->optional == true && clause->prev != NULL)
     {

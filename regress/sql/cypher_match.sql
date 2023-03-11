@@ -621,6 +621,20 @@ SELECT * FROM cypher('cypher_match', $$
     ORDER BY n, p, m, q
  $$) AS (n agtype, r agtype, p agtype, m agtype, s agtype, q agtype);
 
+-- Tests to catch match following optional match logic
+-- this syntax is invalid in cypher
+SELECT * FROM cypher('cypher_match', $$
+	OPTIONAL MATCH (n)
+    MATCH (m)
+    RETURN n,m
+ $$) AS (n agtype, m agtype);
+
+SELECT * FROM cypher('cypher_match', $$
+	MATCH (n)
+	OPTIONAL MATCH (m)
+    MATCH (o)
+    RETURN n,m
+ $$) AS (n agtype, m agtype);
 
 --
 -- Tests retrieving Var from some parent's cpstate during transformation
