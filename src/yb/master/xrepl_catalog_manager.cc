@@ -23,6 +23,7 @@
 #include "yb/gutil/bind_helpers.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/cdc_consumer_registry_service.h"
 #include "yb/master/cdc_rpc_tasks.h"
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
@@ -45,8 +46,7 @@ using std::string;
 using namespace std::literals;
 using std::vector;
 
-DEFINE_RUNTIME_int32(
-    cdc_wal_retention_time_secs, 4 * 3600,
+DEFINE_RUNTIME_int32(cdc_wal_retention_time_secs, 4 * 3600,
     "WAL retention time in seconds to be used for tables for which a CDC stream was created.");
 
 DEFINE_RUNTIME_int32(cdc_state_table_num_tablets, 0,
@@ -114,7 +114,6 @@ namespace yb {
 using client::internal::RemoteTabletServer;
 
 namespace master {
-namespace enterprise {
 static const string kSystemXClusterReplicationId = "system";
 
 ////////////////////////////////////////////////////////////
@@ -1981,23 +1980,23 @@ Status CatalogManager::SetupUniverseReplication(
       s = cdc_rpc->client()->GetColocatedTabletSchemaByParentTableId(
           req->producer_table_ids(i), tables_info,
           Bind(
-              &enterprise::CatalogManager::GetColocatedTabletSchemaCallback, Unretained(this),
-              ri->id(), tables_info, table_id_to_bootstrap_id));
+              &CatalogManager::GetColocatedTabletSchemaCallback, Unretained(this), ri->id(),
+              tables_info, table_id_to_bootstrap_id));
     } else if (IsTablegroupParentTableId(req->producer_table_ids(i))) {
       auto tablegroup_id = GetTablegroupIdFromParentTableId(req->producer_table_ids(i));
       auto tables_info = std::make_shared<std::vector<client::YBTableInfo>>();
       s = cdc_rpc->client()->GetTablegroupSchemaById(
           tablegroup_id, tables_info,
           Bind(
-              &enterprise::CatalogManager::GetTablegroupSchemaCallback, Unretained(this), ri->id(),
-              tables_info, tablegroup_id, table_id_to_bootstrap_id));
+              &CatalogManager::GetTablegroupSchemaCallback, Unretained(this), ri->id(), tables_info,
+              tablegroup_id, table_id_to_bootstrap_id));
     } else {
       auto table_info = std::make_shared<client::YBTableInfo>();
       s = cdc_rpc->client()->GetTableSchemaById(
           req->producer_table_ids(i), table_info,
           Bind(
-              &enterprise::CatalogManager::GetTableSchemaCallback, Unretained(this), ri->id(),
-              table_info, table_id_to_bootstrap_id));
+              &CatalogManager::GetTableSchemaCallback, Unretained(this), ri->id(), table_info,
+              table_id_to_bootstrap_id));
     }
 
     if (!s.ok()) {
@@ -2020,8 +2019,8 @@ Status CatalogManager::SetupUniverseReplication(
     Status s = cdc_rpc->client()->GetYBTableInfo(
         transaction_status_table, table_info,
         Bind(
-            &enterprise::CatalogManager::GetTableSchemaCallback, Unretained(this), system_ri->id(),
-            table_info, table_id_to_bootstrap_id));
+            &CatalogManager::GetTableSchemaCallback, Unretained(this), system_ri->id(), table_info,
+            table_id_to_bootstrap_id));
     if (!s.ok()) {
       MarkUniverseReplicationFailed(system_ri, s);
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
@@ -2218,15 +2217,15 @@ Status CatalogManager::CreateCdcStreamsIfReplicationValidated(
         cdc_rpc->client()->GetCDCStream(
             producer_bootstrap_id, table_id, stream_options,
             std::bind(
-                &enterprise::CatalogManager::GetCDCStreamCallback, this, producer_bootstrap_id,
-                table_id, stream_options, universe->id(), table, cdc_rpc, std::placeholders::_1,
+                &CatalogManager::GetCDCStreamCallback, this, producer_bootstrap_id, table_id,
+                stream_options, universe->id(), table, cdc_rpc, std::placeholders::_1,
                 stream_update_infos, update_infos_lock));
       } else {
         cdc_rpc->client()->CreateCDCStream(
             table, options,
             std::bind(
-                &enterprise::CatalogManager::AddCDCStreamToUniverseAndInitConsumer, this,
-                universe->id(), table, std::placeholders::_1, nullptr /* on_success_cb */));
+                &CatalogManager::AddCDCStreamToUniverseAndInitConsumer, this, universe->id(), table,
+                std::placeholders::_1, nullptr /* on_success_cb */));
       }
     }
   }
@@ -5574,6 +5573,5 @@ bool CatalogManager::RetainedByXRepl(const TabletId& tablet_id) {
   return retained_by_xcluster_.contains(tablet_id) || retained_by_cdcsdk_.contains(tablet_id);
 }
 
-}  // namespace enterprise
 }  // namespace master
 }  // namespace yb

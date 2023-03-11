@@ -23,6 +23,8 @@
 #include "yb/common/pg_system_attr.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/master/cdc_consumer_registry_service.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
@@ -153,85 +155,10 @@ using client::internal::RemoteTabletServer;
 using client::internal::RemoteTabletPtr;
 
 namespace master {
-namespace enterprise {
-
-////////////////////////////////////////////////////////////
-// Snapshot Loader
-////////////////////////////////////////////////////////////
-
-class SnapshotLoader : public Visitor<PersistentSnapshotInfo> {
- public:
-  explicit SnapshotLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
-
-  Status Visit(const SnapshotId& snapshot_id, const SysSnapshotEntryPB& metadata) override {
-    if (TryFullyDecodeTxnSnapshotId(snapshot_id)) {
-      // Transaction aware snapshots should be already loaded.
-      return Status::OK();
-    }
-    return VisitNonTransactionAwareSnapshot(snapshot_id, metadata);
-  }
-
-  Status VisitNonTransactionAwareSnapshot(
-      const SnapshotId& snapshot_id, const SysSnapshotEntryPB& metadata) {
-
-    // Setup the snapshot info.
-    auto snapshot_info = make_scoped_refptr<SnapshotInfo>(snapshot_id);
-    auto l = snapshot_info->LockForWrite();
-    l.mutable_data()->pb.CopyFrom(metadata);
-
-    // Add the snapshot to the IDs map (if the snapshot is not deleted).
-    auto emplace_result = catalog_manager_->non_txn_snapshot_ids_map_.emplace(
-        snapshot_id, std::move(snapshot_info));
-    CHECK(emplace_result.second) << "Snapshot already exists: " << snapshot_id;
-
-    LOG(INFO) << "Loaded metadata for snapshot (id=" << snapshot_id << "): "
-              << emplace_result.first->second->ToString() << ": " << metadata.ShortDebugString();
-    l.Commit();
-    return Status::OK();
-  }
-
- private:
-  CatalogManager *catalog_manager_;
-
-  DISALLOW_COPY_AND_ASSIGN(SnapshotLoader);
-};
 
 ////////////////////////////////////////////////////////////
 // CatalogManager
 ////////////////////////////////////////////////////////////
-
-CatalogManager::~CatalogManager() {
-  if (StartShutdown()) {
-    CompleteShutdown();
-  }
-}
-
-void CatalogManager::CompleteShutdown() {
-  snapshot_coordinator_.Shutdown();
-  // Call shutdown on base class before exiting derived class destructor
-  // because BgTasks is part of base & uses this derived class on Shutdown.
-  super::CompleteShutdown();
-}
-
-Status CatalogManager::RunLoaders(int64_t term) {
-  RETURN_NOT_OK(super::RunLoaders(term));
-
-  // Clear the snapshots.
-  non_txn_snapshot_ids_map_.clear();
-
-  ClearXReplState();
-
-  LOG_WITH_FUNC(INFO) << "Loading snapshots into memory.";
-  unique_ptr<SnapshotLoader> snapshot_loader(new SnapshotLoader(this));
-  RETURN_NOT_OK_PREPEND(
-      sys_catalog_->Visit(snapshot_loader.get()),
-      "Failed while visiting snapshots in sys catalog");
-
-  RETURN_NOT_OK(LoadXReplStream());
-  RETURN_NOT_OK(LoadUniverseReplication());
-
-  return Status::OK();
-}
 
 Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
                                       CreateSnapshotResponsePB* resp,
@@ -2955,12 +2882,6 @@ Status CatalogManager::RestoreSnapshotSchedule(
   return snapshot_coordinator_.RestoreSnapshotSchedule(id, ht, resp, leader_ready_term(), deadline);
 }
 
-void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
-  super::DumpState(out, on_disk_dump);
-
-  // TODO: dump snapshots
-}
-
 template <typename Registry, typename Mutex>
 bool ShouldResendRegistry(
     const std::string& ts_uuid, bool has_registration, Registry* registry, Mutex* mutex) {
@@ -3212,11 +3133,6 @@ Result<RemoteTabletServer *> CatalogManager::GetLeaderTServer(
   return ts;
 }
 
-void CatalogManager::Started() {
-  super::Started();
-  snapshot_coordinator_.Start();
-}
-
 Result<SnapshotSchedulesToObjectIdsMap> CatalogManager::MakeSnapshotSchedulesToObjectIdsMap(
     SysRowEntryType type) {
   return snapshot_coordinator_.MakeSnapshotSchedulesToObjectIdsMap(type);
@@ -3234,11 +3150,6 @@ bool CatalogManager::IsPitrActive() {
   return snapshot_coordinator_.IsPitrActive();
 }
 
-void CatalogManager::SysCatalogLoaded(int64_t term) {
-  super::SysCatalogLoaded(term);
-  snapshot_coordinator_.SysCatalogLoaded(term);
-}
-
 Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
   BlacklistSet blacklist = VERIFY_RESULT(BlacklistSetFromPB());
   TSDescriptorVector ts_descs;
@@ -3253,10 +3164,5 @@ void CatalogManager::PrepareRestore() {
   is_catalog_loaded_ = false;
 }
 
-void CatalogManager::ReenableTabletSplitting(const std::string& feature) {
-  super::ReenableTabletSplittingInternal(feature);
-}
-
-}  // namespace enterprise
 }  // namespace master
 }  // namespace yb

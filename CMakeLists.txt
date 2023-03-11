@@ -586,7 +586,6 @@ file(MAKE_DIRECTORY "${EXECUTABLE_OUTPUT_PATH}")
 
 # Generated sources always have higher priority than even the "ent" directory include files.
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/src)
-include_directories(ent/src)
 include_directories(src)
 
 enable_testing()

@@ -18,7 +18,6 @@ using std::vector;
 
 namespace yb {
 namespace master {
-namespace enterprise {
 
 class TestCDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
  public:
@@ -137,6 +136,5 @@ TEST_F(SysCatalogTest, TestSysCatalogUniverseReplicationOperations) {
   ASSERT_EQ(0, loader->universes.size());
 }
 
-} // namespace enterprise
 } // namespace master
 } // namespace yb

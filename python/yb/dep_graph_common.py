@@ -178,11 +178,9 @@ class DepGraphConf:
     build_type: str
     yb_src_root: str
     src_dir_path: str
-    ent_src_dir_path: str
     rel_path_base_dirs: Set[str]
     incomplete_build: bool
     file_regex: Optional[str]
-    src_dir_paths: List[str]
     never_run_build: bool
 
     # Extra arguments to pass to yb_build.sh.
@@ -204,7 +202,6 @@ class DepGraphConf:
         self.build_type = get_build_type_from_build_root(self.build_root)
         self.yb_src_root = ensure_yb_src_root_from_build_root(self.build_root)
         self.src_dir_path = os.path.join(self.yb_src_root, 'src')
-        self.ent_src_dir_path = os.path.join(self.yb_src_root, 'ent', 'src')
         self.rel_path_base_dirs = {self.build_root, os.path.join(self.src_dir_path, 'yb')}
         self.incomplete_build = incomplete_build
 
@@ -214,11 +211,9 @@ class DepGraphConf:
         elif file_name_glob:
             self.file_regex = fnmatch.translate('*/' + file_name_glob)
 
-        self.src_dir_paths = [self.src_dir_path, self.ent_src_dir_path]
-
-        for dir_path in self.src_dir_paths:
-            if not os.path.isdir(dir_path):
-                raise RuntimeError("Directory does not exist, or is not a directory: %s" % dir_path)
+        if not os.path.isdir(self.src_dir_path):
+            raise IOError(
+                "Directory does not exist, or is not a directory: %s" % self.src_dir_path)
         self.build_args = build_args
         self.never_run_build = never_run_build
 
