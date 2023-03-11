@@ -100,7 +100,7 @@ class DataCenterConfiguration extends Component {
           activeTab={activeTab}
           routePrefix="/config/"
           id="config-tab-panel"
-          className="data-center-config-tab"
+          className="universe-detail data-center-config-tab"
         >
           {isAvailable(currentCustomer.data.features, 'config.infra') && (
             <Tab eventKey="cloud" title="Infrastructure" key="cloud-config">
