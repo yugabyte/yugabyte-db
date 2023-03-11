@@ -58,31 +58,31 @@ public class ListSnapshotSchedulesRequest extends YRpc<ListSnapshotSchedulesResp
         final ListSnapshotSchedulesResponsePB.Builder respBuilder =
                 ListSnapshotSchedulesResponsePB.newBuilder();
         readProtobuf(callResponse.getPBMessage(), respBuilder);
+        boolean hasErr = respBuilder.hasError();
         MasterTypes.MasterErrorPB serverError =
-                respBuilder.hasError() ? respBuilder.getError() : null;
+                hasErr ? respBuilder.getError() : null;
 
         List<SnapshotScheduleInfo> snapshotScheduleInfoList = new ArrayList<>();
-        for (SnapshotScheduleInfoPB schedule: respBuilder.getSchedulesList()) {
+        if (!hasErr) {
+            for (SnapshotScheduleInfoPB schedule: respBuilder.getSchedulesList()) {
+                SnapshotScheduleInfo snapshotScheduleInfo;
+                UUID scheduleUUID = SnapshotUtil.convertToUUID(schedule.getId());
+                SnapshotScheduleOptionsPB snapshotScheduleOptions = schedule.getOptions();
+                SnapshotScheduleFilterPB snapshotScheduleFilter =
+                        snapshotScheduleOptions.getFilter();
+                long intervalInSecs = snapshotScheduleOptions.getIntervalSec();
+                long retentionDurationInSecs = snapshotScheduleOptions.getRetentionDurationSec();
 
-            SnapshotScheduleInfo snapshotScheduleInfo;
-
-            UUID scheduleUUID = SnapshotUtil.convertToUUID(schedule.getId());
-
-            SnapshotScheduleOptionsPB snapshotScheduleOptions = schedule.getOptions();
-            SnapshotScheduleFilterPB snapshotScheduleFilter = snapshotScheduleOptions.getFilter();
-            long intervalInSecs = snapshotScheduleOptions.getIntervalSec();
-            long retentionDurationInSecs = snapshotScheduleOptions.getRetentionDurationSec();
-
-            List<SnapshotInfo> snapshotInfoList = new ArrayList<>();
-            for (SnapshotInfoPB snapshot: schedule.getSnapshotsList()) {
-                snapshotInfoList.add(SnapshotUtil.parseSnapshotInfoPB(snapshot));
+                List<SnapshotInfo> snapshotInfoList = new ArrayList<>();
+                for (SnapshotInfoPB snapshot: schedule.getSnapshotsList()) {
+                    snapshotInfoList.add(SnapshotUtil.parseSnapshotInfoPB(snapshot));
+                }
+                snapshotScheduleInfo =
+                        new SnapshotScheduleInfo(scheduleUUID, intervalInSecs,
+                                retentionDurationInSecs, snapshotInfoList);
+                snapshotScheduleInfoList.add(snapshotScheduleInfo);
             }
-            snapshotScheduleInfo =
-                    new SnapshotScheduleInfo(scheduleUUID, intervalInSecs,
-                            retentionDurationInSecs, snapshotInfoList);
-            snapshotScheduleInfoList.add(snapshotScheduleInfo);
         }
-
         ListSnapshotSchedulesResponse response =
                 new ListSnapshotSchedulesResponse(deadlineTracker.getElapsedMillis(),
                         masterUUID, serverError, snapshotScheduleInfoList);

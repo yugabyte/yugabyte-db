@@ -146,16 +146,7 @@ public class PitrController extends AuthenticatedController {
     checkCompatibleYbVersion(
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
     if (universe.getUniverseDetails().universePaused) {
-      pitrConfigList = PitrConfig.getByUniverseUUID(universeUUID);
-      long currentTimeMillis = System.currentTimeMillis();
-      pitrConfigList
-          .stream()
-          .forEach(
-              p -> {
-                p.setState(State.UNKNOWN);
-                p.setMinRecoverTimeInMillis(currentTimeMillis);
-                p.setMaxRecoverTimeInMillis(currentTimeMillis);
-              });
+      pitrConfigList = createPitrConfigsWithUnknownState(universeUUID);
     } else {
       try {
         client = ybClientService.getClient(masterHostPorts, certificate);
@@ -168,22 +159,26 @@ public class PitrController extends AuthenticatedController {
         ybClientService.closeClient(client, masterHostPorts);
       }
 
-      for (SnapshotScheduleInfo snapshotScheduleInfo : scheduleInfoList) {
-        PitrConfig pitrConfig = PitrConfig.get(snapshotScheduleInfo.getSnapshotScheduleUUID());
-        if (pitrConfig == null) {
-          continue;
+      if (scheduleResp.hasError()) {
+        pitrConfigList = createPitrConfigsWithUnknownState(universeUUID);
+      } else {
+        for (SnapshotScheduleInfo snapshotScheduleInfo : scheduleInfoList) {
+          PitrConfig pitrConfig = PitrConfig.get(snapshotScheduleInfo.getSnapshotScheduleUUID());
+          if (pitrConfig == null) {
+            continue;
+          }
+          boolean pitrStatus =
+              BackupUtil.allSnapshotsSuccessful(snapshotScheduleInfo.getSnapshotInfoList());
+          long currentTimeMillis = System.currentTimeMillis();
+          long minTimeInMillis =
+              Math.max(
+                  currentTimeMillis - pitrConfig.getRetentionPeriod() * 1000L,
+                  pitrConfig.getCreateTime().getTime());
+          pitrConfig.setMinRecoverTimeInMillis(minTimeInMillis);
+          pitrConfig.setMaxRecoverTimeInMillis(currentTimeMillis);
+          pitrConfig.setState(pitrStatus ? State.COMPLETE : State.FAILED);
+          pitrConfigList.add(pitrConfig);
         }
-        boolean pitrStatus =
-            BackupUtil.allSnapshotsSuccessful(snapshotScheduleInfo.getSnapshotInfoList());
-        long currentTimeMillis = System.currentTimeMillis();
-        long minTimeInMillis =
-            Math.max(
-                currentTimeMillis - pitrConfig.getRetentionPeriod() * 1000L,
-                pitrConfig.getCreateTime().getTime());
-        pitrConfig.setMinRecoverTimeInMillis(minTimeInMillis);
-        pitrConfig.setMaxRecoverTimeInMillis(currentTimeMillis);
-        pitrConfig.setState(pitrStatus ? State.COMPLETE : State.FAILED);
-        pitrConfigList.add(pitrConfig);
       }
     }
     return PlatformResults.withData(pitrConfigList);
@@ -330,5 +325,19 @@ public class PitrController extends AuthenticatedController {
           "PITR feature not supported on universe DB version lower than "
               + PITR_COMPATIBLE_DB_VERSION);
     }
+  }
+
+  private List<PitrConfig> createPitrConfigsWithUnknownState(UUID universeUUID) {
+    List<PitrConfig> pitrConfigList = PitrConfig.getByUniverseUUID(universeUUID);
+    long currentTimeMillis = System.currentTimeMillis();
+    pitrConfigList
+        .stream()
+        .forEach(
+            p -> {
+              p.setState(State.UNKNOWN);
+              p.setMinRecoverTimeInMillis(currentTimeMillis);
+              p.setMaxRecoverTimeInMillis(currentTimeMillis);
+            });
+    return pitrConfigList;
   }
 }

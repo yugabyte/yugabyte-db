@@ -59,11 +59,16 @@ public class RestoreSnapshotScheduleRequest extends YRpc<RestoreSnapshotSchedule
         final RestoreSnapshotScheduleResponsePB.Builder respBuilder =
                 RestoreSnapshotScheduleResponsePB.newBuilder();
         readProtobuf(callResponse.getPBMessage(), respBuilder);
+        boolean hasErr = respBuilder.hasError();
         MasterTypes.MasterErrorPB serverError =
-                respBuilder.hasError() ? respBuilder.getError() : null;
+                hasErr ? respBuilder.getError() : null;
 
-        UUID restorationUUID = SnapshotUtil.convertToUUID(respBuilder.getRestorationId());
-        UUID snapshotUUID = SnapshotUtil.convertToUUID(respBuilder.getSnapshotId());
+        UUID snapshotUUID = null;
+        UUID restorationUUID = null;
+        if (!hasErr) {
+            restorationUUID = SnapshotUtil.convertToUUID(respBuilder.getRestorationId());
+            snapshotUUID = SnapshotUtil.convertToUUID(respBuilder.getSnapshotId());
+        }
         RestoreSnapshotScheduleResponse response =
                 new RestoreSnapshotScheduleResponse(deadlineTracker.getElapsedMillis(),
                         masterUUID, serverError, restorationUUID, snapshotUUID);

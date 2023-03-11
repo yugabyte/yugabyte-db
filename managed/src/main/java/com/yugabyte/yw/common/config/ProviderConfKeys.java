@@ -332,4 +332,13 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Use spot instances instead of On-Demand during universe creation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> enableYbcOnK8s =
+      new ConfKeyInfo<>(
+          "ybc.k8s.enabled",
+          ScopeType.PROVIDER,
+          "Enable YBC on K8S",
+          "To enable ybc on k8s universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
 }
