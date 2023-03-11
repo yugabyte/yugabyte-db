@@ -462,7 +462,7 @@ class KeyManagementConfiguration extends Component {
                     component={YBFormDropZone}
                     name={'cmkPolicyContent'}
                     title={'Upload CMK Policy'}
-                    disableClick={!!values.cmk_id}
+                    disabled={!!values.cmk_id}
                   />
                 </div>
               </OverlayTrigger>

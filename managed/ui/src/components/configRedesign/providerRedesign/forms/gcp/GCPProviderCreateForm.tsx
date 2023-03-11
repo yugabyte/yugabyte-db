@@ -42,6 +42,7 @@ import { api, hostInfoQueryKey } from '../../../../../redesign/helpers/api';
 import { getYBAHost } from '../../utils';
 import { YBAHost } from '../../../../../redesign/helpers/constants';
 import { RegionOperation } from '../configureRegion/constants';
+import { toast } from 'react-toastify';
 
 import { GCPRegionMutation, GCPAvailabilityZoneMutation, YBProviderMutation } from '../../types';
 
@@ -189,7 +190,12 @@ export const GCPProviderCreateForm = ({
     ) {
       const googleServiceAccountText = await readFileAsText(formValues.googleServiceAccount);
       if (googleServiceAccountText) {
-        googleServiceAccount = JSON.parse(googleServiceAccountText);
+        try {
+          googleServiceAccount = JSON.parse(googleServiceAccountText);
+        } catch (error) {
+          toast.error(`An error occured while parsing the service account JSON: ${error}`);
+          return;
+        }
       }
     }
 
