@@ -22,16 +22,35 @@ SET search_path TO ag_catalog;
 
 SELECT create_graph('cypher_unwind');
 
+-- Create nodes and relations
+
 SELECT * FROM cypher('cypher_unwind', $$
-    UNWIND [1, 2, 3] AS i RETURN i
+    CREATE (n {name: 'node1', a: [1, 2, 3]}),
+           (m {name: 'node2', a: [4, 5, 6]}),
+           (o {name: 'node3', a: [7, 8, 9]}),
+           (n)-[:KNOWS]->(m),
+           (m)-[:KNOWS]->(o)
 $$) as (i agtype);
 
 SELECT * FROM cypher('cypher_unwind', $$
-    CREATE ({a: [1, 2, 3]}), ({a: [4, 5, 6]})
+    MATCH (n)
+    RETURN n
+$$) as (i agtype);
+
+--
+-- Test UNWIND clause
+--
+
+SELECT * FROM cypher('cypher_unwind', $$
+    UNWIND [1, 2, 3] AS i
+    RETURN i
 $$) as (i agtype);
 
 SELECT * FROM cypher('cypher_unwind', $$
-    MATCH (n) WITH n.a AS a UNWIND a AS i RETURN *
+    MATCH (n)
+    WITH n.a AS a
+    UNWIND a AS i
+    RETURN *
 $$) as (i agtype, j agtype);
 
 SELECT * FROM cypher('cypher_unwind', $$
@@ -41,11 +60,70 @@ SELECT * FROM cypher('cypher_unwind', $$
     RETURN y
 $$) as (i agtype);
 
+-- UNWIND vertices
+
 SELECT * FROM cypher('cypher_unwind', $$
-    WITH [{id: 0, label:'', properties:{}}::vertex, {id: 1, label:'', properties:{}}::vertex] as n
-    UNWIND n as a
-    SET a.i = 1
-    RETURN a
+    MATCH p=(n)-[:KNOWS]->(m)
+    UNWIND nodes(p) as node
+    RETURN node
 $$) as (i agtype);
+
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH p=(n)-[:KNOWS]->(m)
+    UNWIND nodes(p) as node
+    RETURN node.name
+$$) as (i agtype);
+
+-- UNWIND edges
+
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH p=(n)-[:KNOWS]->(m)
+    UNWIND relationships(p) as relation
+    RETURN relation
+$$) as (i agtype);
+
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH p=(n)-[:KNOWS]->(m)
+    UNWIND relationships(p) as relation
+    RETURN type(relation)
+$$) as (i agtype);
+
+-- UNWIND paths (vle)
+
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH p=({name:'node1'})-[e:KNOWS*]->({name:'node3'})
+    UNWIND [p] as path
+    RETURN path
+$$) as (i agtype);
+
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH p=({name:'node1'})-[e:KNOWS*]->({name:'node3'})
+    UNWIND [p] as path
+    RETURN relationships(path)
+$$) as (i agtype);
+
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH p=({name:'node1'})-[e:KNOWS*]->({name:'node3'})
+    UNWIND [p] as path
+    UNWIND relationships(path) as edge
+    RETURN edge
+$$) as (i agtype);
+
+-- Unwind with SET clause
+
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH p=(n)-[:KNOWS]->(m)
+    UNWIND nodes(p) as node
+    SET node.type = 'vertex'
+$$) as (i agtype);
+
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH (n)
+    RETURN n
+$$) as (i agtype);
+
+--
+-- Clean up
+--
 
 SELECT drop_graph('cypher_unwind', true);

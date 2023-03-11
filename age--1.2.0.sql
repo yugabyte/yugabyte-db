@@ -4162,10 +4162,10 @@ IMMUTABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_catalog.age_unnest(agtype, block_types boolean = false)
-    RETURNS SETOF agtype
-    LANGUAGE c
-    IMMUTABLE
+CREATE FUNCTION ag_catalog.age_unnest(agtype)
+RETURNS SETOF agtype
+LANGUAGE c
+IMMUTABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
