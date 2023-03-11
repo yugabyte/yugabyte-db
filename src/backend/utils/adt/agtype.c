@@ -10031,14 +10031,11 @@ Datum age_range(PG_FUNCTION_ARGS)
 PG_FUNCTION_INFO_V1(age_unnest);
 /*
  * Function to convert the Array type of Agtype into each row. It is used for
- * Cypher `UNWIND` clause, but considering the situation in which the user can
- * directly use this function in vanilla PGSQL, put a second parameter related
- * to this.
+ * Cypher `UNWIND` clause.
  */
 Datum age_unnest(PG_FUNCTION_ARGS)
 {
     agtype *agtype_arg = AG_GET_ARG_AGTYPE_P(0);
-    bool block_types = PG_GETARG_BOOL(1);
     ReturnSetInfo *rsi;
     Tuplestorestate *tuple_store;
     TupleDesc tupdesc;
@@ -10089,15 +10086,6 @@ Datum age_unnest(PG_FUNCTION_ARGS)
             Datum values[1];
             bool nulls[1] = {false};
             agtype *val = agtype_value_to_agtype(&v);
-
-            if (block_types && (
-                    v.type == AGTV_VERTEX || v.type == AGTV_EDGE || v.type == AGTV_PATH))
-            {
-                ereport(ERROR,
-                        (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                                errmsg("UNWIND clause does not support agtype %s",
-                                       agtype_value_type_to_string(v.type))));
-            }
 
             /* use the tmp context so we can clean up after each tuple is done */
             old_cxt = MemoryContextSwitchTo(tmp_cxt);
