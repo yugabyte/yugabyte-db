@@ -3,7 +3,7 @@
   free available library PL/Vision. Please look www.quest.com
 
   Original author: Steven Feuerstein, 1996 - 2002
-  PostgreSQL implementation author: Pavel Stehule, 2006-2022
+  PostgreSQL implementation author: Pavel Stehule, 2006-2023
 
   This module is under BSD Licence
 
