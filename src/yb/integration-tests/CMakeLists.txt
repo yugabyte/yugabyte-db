@@ -34,8 +34,8 @@ set(YB_PCH_PREFIX integration-tests)
 set(YB_PCH_DEP_LIBS boost_regex opid_proto)
 
 file(COPY
-  ${CMAKE_SOURCE_DIR}/ent/test_certs DESTINATION
-  ${CMAKE_BINARY_DIR}/ent
+  ${CMAKE_SOURCE_DIR}/test_certs DESTINATION
+  ${CMAKE_BINARY_DIR}
   FILE_PERMISSIONS OWNER_WRITE OWNER_READ)
 
 ADD_YB_TEST_LIBRARY(
