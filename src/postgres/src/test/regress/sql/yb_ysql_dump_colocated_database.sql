@@ -8,6 +8,10 @@ CREATE TABLE tbl2 (k INT PRIMARY KEY, v INT, v2 TEXT);
 CREATE UNIQUE INDEX ON tbl (v DESC);
 CREATE INDEX ON tbl2 (v2);
 
+-- Colocated Partial Indexes
+CREATE UNIQUE INDEX partial_unique_idx ON tbl (v DESC) WITH (colocation_id = 40000) WHERE v >= 100 AND v <= 200;
+CREATE INDEX partial_idx ON tbl2 (k ASC, v DESC) WITH (colocation_id = 40001) WHERE k > 10 AND k < 20 AND v > 200;
+
 -- Table and Index opt out colocation
 CREATE TABLE tbl3 (k INT PRIMARY KEY, v INT) WITH (COLOCATION = false);
 CREATE UNIQUE INDEX ON tbl3 (v HASH);
