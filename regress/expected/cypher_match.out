@@ -1256,6 +1256,25 @@ SELECT * FROM cypher('cypher_match', $$
  "nobody"   |               |            | "anybody"  |               | 
 (12 rows)
 
+-- Tests to catch match following optional match logic
+-- this syntax is invalid in cypher
+SELECT * FROM cypher('cypher_match', $$
+	OPTIONAL MATCH (n)
+    MATCH (m)
+    RETURN n,m
+ $$) AS (n agtype, m agtype);
+ERROR:  MATCH cannot follow OPTIONAL MATCH
+LINE 1: SELECT * FROM cypher('cypher_match', $$
+                                              ^
+SELECT * FROM cypher('cypher_match', $$
+	MATCH (n)
+	OPTIONAL MATCH (m)
+    MATCH (o)
+    RETURN n,m
+ $$) AS (n agtype, m agtype);
+ERROR:  MATCH cannot follow OPTIONAL MATCH
+LINE 1: SELECT * FROM cypher('cypher_match', $$
+                                              ^
 --
 -- Tests retrieving Var from some parent's cpstate during transformation
 --
