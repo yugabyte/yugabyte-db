@@ -332,7 +332,7 @@ endif()
 # Unit tests
 #######################################
 
-set(YB_TEST_LINK_LIBS yb_test_util gutil gmock gtest ${YB_TEST_LINK_LIBS_EXTENSIONS}
+set(YB_TEST_LINK_LIBS yb_test_util gutil gmock gtest
     ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(atomic-test)
 ADD_YB_TEST(flags/auto_flags-test)

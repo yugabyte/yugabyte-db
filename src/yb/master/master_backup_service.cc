@@ -22,7 +22,7 @@
       const BOOST_PP_CAT(method, RequestPB)* req, \
       BOOST_PP_CAT(method, ResponsePB)* resp, \
       rpc::RpcContext rpc) { \
-    HandleIn(req, resp, &rpc, &enterprise::CatalogManager::method, \
+    HandleIn(req, resp, &rpc, &CatalogManager::method, \
              __FILE__, __LINE__, __func__, HoldCatalogLock::kTrue); \
   }
 
