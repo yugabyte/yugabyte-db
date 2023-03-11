@@ -74,7 +74,9 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
             masterAddresses,
             newIntent,
             isReadOnlyCluster,
-            taskParams().useNewHelmNamingStyle);
+            taskParams().useNewHelmNamingStyle,
+            universe.isYbcEnabled(),
+            universe.getUniverseDetails().ybcSoftwareVersion);
       }
 
       // persist the changes to the universe

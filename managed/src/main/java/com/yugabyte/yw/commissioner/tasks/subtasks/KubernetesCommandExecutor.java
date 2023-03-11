@@ -56,6 +56,7 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -961,7 +962,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     tserverOverrides.put("start_redis_proxy", String.valueOf(primaryClusterIntent.enableYEDIS));
     if (primaryClusterIntent.enableYSQL && primaryClusterIntent.enableYSQLAuth) {
       tserverOverrides.put("ysql_enable_auth", "true");
-      tserverOverrides.put("ysql_hba_conf_csv", "local all yugabyte trust");
+      Map<String, Object> DEFAULT_YSQL_HBA_CONF_MAP =
+          Collections.singletonMap(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
+      GFlagsUtil.mergeCSVs(
+          GFlagsUtil.YSQL_HBA_CONF_CSV, tserverOverrides, DEFAULT_YSQL_HBA_CONF_MAP);
     }
     if (primaryClusterIntent.enableYCQL && primaryClusterIntent.enableYCQLAuth) {
       tserverOverrides.put("use_cassandra_authentication", "true");
