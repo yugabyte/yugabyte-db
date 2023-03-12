@@ -123,10 +123,17 @@
 /* YB includes. */
 #include "catalog/pg_authid.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_policy.h"
+#include "catalog/pg_rewrite.h"
+#include "catalog/pg_statistic_ext.h"
 #include "commands/dbcommands.h"
+#include "commands/view.h"
 #include "commands/ybccmds.h"
 #include "executor/ybcModifyTable.h"
+#include "parser/analyze.h"
 #include "pg_yb_utils.h"
+#include "statistics/statistics.h"
+#include "utils/regproc.h"
 
 /*
  * ON COMMIT action list
@@ -525,7 +532,13 @@ static void refuseDupeIndexAttach(Relation parentIdx, Relation partIdx,
 					  Relation partitionTbl);
 static void update_relispartition(Relation classRel, Oid relationId,
 					  bool newval);
-
+static void ybCopyMiscMetadata(Relation oldRel, Relation newRel,
+							   AttrNumber* attmap);
+static void ybCopyPolicyObjects(Relation oldRel, Relation newRel,
+								AttrNumber* attmap);
+static void ybCopyStats(Oid oldRelid, RangeVar *newRel, Oid newRelid,
+						AttrNumber *attmap);
+static void ybReplaceViewQueries(List *view_oids, List *view_queries);
 
 /* ----------------------------------------------------------------
  *		DefineRelation
@@ -7721,6 +7734,7 @@ YBCloneRelationSetPrimaryKey(Relation old_rel, IndexStmt* stmt, ObjectAddress* r
 
 	MemoryContext oldcxt, per_tup_cxt;
 	ObjectAddress local_result_addr = InvalidObjectAddress, address;
+	List          *view_oids = NIL, *view_queries = NIL;
 
 	Assert(IsYBRelation(old_rel));
 
@@ -7779,6 +7793,9 @@ YBCloneRelationSetPrimaryKey(Relation old_rel, IndexStmt* stmt, ObjectAddress* r
 	                                                     temp_old_suffix /* label */,
 	                                                     namespace_oid,
 	                                                     false /* isconstraint */);
+
+	/* Get dependent views' queries before we rename the table. */
+	yb_get_dependent_views(old_relid, &view_oids, &view_queries);
 
 	/*
 	 * PHASE 1
@@ -8312,6 +8329,39 @@ YBCloneRelationSetPrimaryKey(Relation old_rel, IndexStmt* stmt, ObjectAddress* r
 
 	/*
 	 * PHASE 8
+	 * -------
+	 * Update pg_statistic and pg_statistic_ext entries.
+	 */
+	
+	RangeVar *new_rel_rangevar = makeRangeVar(pstrdup(namespace_name),
+											  pstrdup(orig_table_name),
+											  -1 /* location */);
+	ybCopyStats(old_relid, new_rel_rangevar, new_relid, new2old_attmap);
+
+	/*
+	 * PHASE 9
+	 * -------
+	 * Copy policy objects.
+	 */
+	ybCopyPolicyObjects(old_rel, new_rel, new2old_attmap);
+
+
+	/*
+	 * PHASE 10
+	 * -------
+	 * Update views' and materialized views' rules to reference the new table.
+	 */
+	ybReplaceViewQueries(view_oids, view_queries);
+
+	/*
+	 * PHASE 11
+	 * -------
+	 * Copy pg_class and pg_attribute metadata.
+	 */
+	ybCopyMiscMetadata(old_rel, new_rel, old2new_attmap);
+
+	/*
+	 * PHASE 12
 	 * -------
 	 * Drop the old table.
 	 *
@@ -17534,4 +17584,425 @@ update_relispartition(Relation classRel, Oid relationId, bool newval)
 
 	if (opened)
 		heap_close(classRel, RowExclusiveLock);
+}
+
+/*
+ * Used in YB during ALTER TABLE ADD/DROP primary key to copy some metadata
+ * from the old relation to the new relation (specifically, pg_class.relacl,
+ * pg_class.relrowsecurity, pg_class.reltuples, pg_attribute.attacl,
+ * pg_attribute.attstattarget).
+ */
+static void
+ybCopyMiscMetadata(Relation oldRel, Relation newRel, AttrNumber* attmap)
+{
+	Oid			  old_relid = RelationGetRelid(oldRel);
+	Oid			  new_relid = RelationGetRelid(newRel);
+
+	/*
+	 * Copy relacl, relrowsecurity and reltuples values from the old relation's
+	 * pg_class tuple.
+	 */
+	Datum		  values[Natts_pg_class];
+	bool		  nulls[Natts_pg_class];
+	bool		  replaces[Natts_pg_class];
+	bool		  is_null;
+	Datum		  acl_datum;
+	HeapTuple	  old_rel_tuple, new_rel_old_tuple, new_rel_new_tuple;
+	Form_pg_class old_rel_form;
+	Relation	  pg_class =
+		heap_open(RelationRelationId, RowExclusiveLock);
+
+	memset(values, 0, sizeof(values));
+	memset(nulls, false, sizeof(nulls));
+	memset(replaces, false, sizeof(replaces));
+
+	old_rel_tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(old_relid));
+	old_rel_form = (Form_pg_class) GETSTRUCT(old_rel_tuple);
+	new_rel_old_tuple =
+		SearchSysCache1(RELOID, ObjectIdGetDatum(new_relid));
+
+	acl_datum = SysCacheGetAttr(RELOID, old_rel_tuple,
+								Anum_pg_class_relacl, &is_null);
+
+	/* Copy relacl value. */
+	if (!is_null)
+	{
+		values[Anum_pg_class_relacl - 1] =
+			PointerGetDatum(aclcopy(DatumGetAclP(acl_datum)));
+		replaces[Anum_pg_class_relacl - 1] = true;
+	}
+	else
+		nulls[Anum_pg_class_relacl - 1] = true;
+
+	/* Copy reltuples value. */
+	values[Anum_pg_class_reltuples - 1] =
+		Float4GetDatum(old_rel_form->reltuples);
+	replaces[Anum_pg_class_reltuples - 1] = true;
+
+	/* Copy relrowsecurity value. */
+	values[Anum_pg_class_relrowsecurity - 1] =
+		old_rel_form->relrowsecurity;
+	replaces[Anum_pg_class_relrowsecurity - 1] = true;
+
+	/* Create modified tuple with the new values. */
+	new_rel_new_tuple = heap_modify_tuple(new_rel_old_tuple,
+											RelationGetDescr(pg_class),
+											values, nulls, replaces);
+
+	/* Update new relation's pg_class tuple. */
+	CatalogTupleUpdate(pg_class, &new_rel_new_tuple->t_self,
+						new_rel_new_tuple);
+
+	heap_freetuple(new_rel_new_tuple);
+	ReleaseSysCache(new_rel_old_tuple);
+	ReleaseSysCache(old_rel_tuple);
+	heap_close(pg_class, RowExclusiveLock);
+
+	/*
+	 * Copy attacl and attstattarget values from old relation's attributes'
+	 * pg_attribute entries.
+	 */
+	Relation	pg_attribute =
+		heap_open(AttributeRelationId, RowExclusiveLock);
+	for (int attno = 1; attno <= RelationGetDescr(newRel)->natts; attno++)
+	{
+		Datum			  values[Natts_pg_attribute];
+		bool			  nulls[Natts_pg_attribute];
+		bool			  replaces[Natts_pg_attribute];
+		bool			  is_null;
+		Datum			  acl_datum;
+		HeapTuple		  old_rel_att_tuple, new_rel_att_tuple,
+							new_rel_new_att_tuple;
+		Form_pg_attribute old_rel_attform;
+
+		memset(values, 0, sizeof(values));
+		memset(nulls, false, sizeof(nulls));
+		memset(replaces, false, sizeof(replaces));
+
+		old_rel_att_tuple = SearchSysCache2(
+			ATTNUM,
+			ObjectIdGetDatum(old_relid),
+			Int16GetDatum(attmap[attno - 1]));
+		old_rel_attform = (Form_pg_attribute) GETSTRUCT(old_rel_att_tuple);
+		acl_datum = heap_getattr(old_rel_att_tuple,
+									Anum_pg_attribute_attacl,
+									RelationGetDescr(pg_attribute),
+									&is_null);
+
+		/* Copy attacl value. */
+		if (!is_null)
+		{
+			values[Anum_pg_attribute_attacl - 1] =
+				PointerGetDatum(aclcopy(DatumGetAclP(acl_datum)));
+			replaces[Anum_pg_attribute_attacl - 1] = true;
+		}
+		else
+			nulls[Anum_pg_attribute_attacl - 1] = true;
+
+		/* Copy attstattarget value. */
+		values[Anum_pg_attribute_attstattarget - 1] =
+			old_rel_attform->attstattarget;
+		replaces[Anum_pg_attribute_attstattarget - 1] = true;
+
+		new_rel_att_tuple = 
+			SearchSysCache2(ATTNUM,
+							ObjectIdGetDatum(new_relid),
+							Int16GetDatum(attno));
+
+		new_rel_new_att_tuple =
+			heap_modify_tuple(new_rel_att_tuple,
+								RelationGetDescr(pg_attribute),
+								values, nulls, replaces);
+
+		/* Update new relation's attribute's pg_attribute tuple. */
+		CatalogTupleUpdate(pg_attribute, &new_rel_new_att_tuple->t_self,
+							new_rel_new_att_tuple);
+
+		heap_freetuple(new_rel_new_att_tuple);
+		ReleaseSysCache(new_rel_att_tuple);
+		ReleaseSysCache(old_rel_att_tuple);
+	}
+	heap_close(pg_attribute, RowExclusiveLock);
+}
+
+/*
+ * Used in YB to replace views' queries.
+ */
+static void
+ybReplaceViewQueries(List *view_oids, List *view_queries)
+{
+	ListCell *oid_cell, *def_cell;
+	forboth(oid_cell, view_oids, def_cell, view_queries)
+	{
+		char *query_str = (char *) lfirst(def_cell);
+		RawStmt *rawstmt =
+			(RawStmt *) linitial(raw_parser(query_str));
+		Query *viewParse = parse_analyze(rawstmt, query_str, NULL, 0, NULL);
+		StoreViewQuery(lfirst_oid(oid_cell), viewParse, true);
+	}
+}
+
+/*
+ * Used in YB during ALTER TABLE ADD/DROP primary key to make copies of the old
+ * relation's policy objects for the new relation. This function is adapted
+ * from CreatePolicy().
+ */
+static void
+ybCopyPolicyObjects(Relation oldRel, Relation newRel, AttrNumber* attmap)
+{
+	Relation		pg_policy;
+	ScanKeyData		key;
+	HeapTuple		old_policy_tuple;
+	SysScanDesc		scan;
+
+	pg_policy = heap_open(PolicyRelationId, RowExclusiveLock);
+	ScanKeyInit(&key, Anum_pg_policy_polrelid, BTEqualStrategyNumber,
+				F_OIDEQ, ObjectIdGetDatum(RelationGetRelid(oldRel)));
+	scan = systable_beginscan(pg_policy, PolicyPolrelidPolnameIndexId,
+							  true, NULL, 1, &key);
+
+	while (HeapTupleIsValid(old_policy_tuple = systable_getnext(scan)))
+	{
+		Datum		values[Natts_pg_policy];
+		bool		nulls[Natts_pg_policy];
+		bool		replaces[Natts_pg_policy];
+		bool		is_null = false;
+		bool		found_whole_row  = false;
+		Oid			new_policy_oid;
+		HeapTuple	new_policy_tuple;
+		ObjectAddress myself, target;
+		Node		*qual = NULL, *with_check = NULL;
+		Form_pg_policy pol_form = (Form_pg_policy) GETSTRUCT(old_policy_tuple);
+
+		memset(values, 0, sizeof(values));
+		memset(nulls, false, sizeof(nulls));
+		memset(replaces, false, sizeof(replaces));
+
+		values[Anum_pg_policy_polrelid - 1] =
+			ObjectIdGetDatum(RelationGetRelid(newRel));
+		replaces[Anum_pg_policy_polrelid - 1 ] = true;
+
+		Datum qual_datum = heap_getattr(old_policy_tuple,
+										Anum_pg_policy_polqual,
+										RelationGetDescr(pg_policy),
+										&is_null);
+
+		if (!is_null)
+		{
+			qual = map_variable_attnos(
+						stringToNode(TextDatumGetCString(qual_datum)),
+						1,
+						0,
+						attmap,
+						RelationGetDescr(oldRel)->natts,
+						RelationGetForm(newRel)->reltype,
+						&found_whole_row);
+
+			/* There can never be a whole-row reference here. */
+			if (found_whole_row)
+				elog(ERROR, "unexpected whole-row reference found in USING"
+							"clause of policy %s",
+							NameStr(pol_form->polname));
+
+			values[Anum_pg_policy_polqual - 1] = 
+				CStringGetTextDatum(nodeToString(qual));
+			replaces[Anum_pg_policy_polqual - 1] = true;
+		}
+		else
+			nulls[Anum_pg_policy_polqual - 1] = true;
+
+		Datum with_check_datum = heap_getattr(old_policy_tuple,
+											  Anum_pg_policy_polwithcheck,
+											  RelationGetDescr(pg_policy),
+											  &is_null);
+
+		if (!is_null)
+		{
+			with_check = map_variable_attnos(
+							stringToNode(
+								TextDatumGetCString(with_check_datum)),
+							1,
+							0,
+							attmap,
+							RelationGetDescr(oldRel)->natts,
+							RelationGetForm(newRel)->reltype,
+							&found_whole_row);
+
+			/* There can never be a whole-row reference here. */
+			if (found_whole_row)
+				elog(ERROR, "unexpected whole-row reference found in "
+							"WITH CHECK clause of policy %s",
+							NameStr(pol_form->polname));
+
+			values[Anum_pg_policy_polwithcheck - 1] =
+				CStringGetTextDatum(nodeToString(with_check));
+			replaces[Anum_pg_policy_polwithcheck - 1] = true;
+		}
+		else
+			nulls[Anum_pg_policy_polwithcheck - 1] = true;
+
+		new_policy_tuple = heap_modify_tuple(old_policy_tuple,
+											 RelationGetDescr(pg_policy),
+											 values, nulls, replaces);
+
+		HeapTupleSetOid(new_policy_tuple, InvalidOid);
+
+		new_policy_oid = CatalogTupleInsert(pg_policy, new_policy_tuple);
+
+		/* Record dependencies. */
+		target.classId = RelationRelationId;
+		target.objectId = RelationGetRelid(newRel);
+		target.objectSubId = 0;
+
+		myself.classId = PolicyRelationId;
+		myself.objectId = new_policy_oid;
+		myself.objectSubId = 0;
+
+		/* 
+		 * Record a dependency between the policy and the table the policy
+		 * is on.
+		 */
+		recordDependencyOn(&myself, &target, DEPENDENCY_AUTO);
+
+		/* 
+		 * Create dummy parse state and insert the target relation as its sole
+		 * rangetable entry so that we can call recordDependencyOnExpr to
+		 * record dependencies on the policy's qual and with_check.
+		 */
+		ParseState *pstate = make_parsestate(NULL);
+		RangeTblEntry *rte =
+			addRangeTableEntryForRelation(pstate, newRel, NULL, false, true);
+		addRTEtoQuery(pstate, rte, true, true, true);
+
+		recordDependencyOnExpr(&myself, qual, pstate->p_rtable,
+							   DEPENDENCY_NORMAL);
+		recordDependencyOnExpr(&myself, with_check, pstate->p_rtable,
+							   DEPENDENCY_NORMAL);
+
+		Datum role_datum = heap_getattr(old_policy_tuple,
+										Anum_pg_policy_polroles,
+										RelationGetDescr(pg_policy),
+										&is_null);
+		if (!is_null)
+		{
+			/* Record role dependencies. */
+			ArrayType *arr = DatumGetArrayTypeP(role_datum);
+			Oid 	  *roles = (Oid *) ARR_DATA_PTR(arr);
+
+			if (arr)
+			{
+				target.classId = AuthIdRelationId;
+				target.objectSubId = 0;
+				for (int i = 0; i < ARR_DIMS(arr)[0]; i++)
+				{
+					target.objectId = DatumGetObjectId(roles[i]);
+					/* no dependency if public */
+					if (target.objectId != ACL_ID_PUBLIC)
+						recordSharedDependencyOn(&myself, &target,
+												 SHARED_DEPENDENCY_POLICY);
+				}
+			}
+		}
+	}
+	systable_endscan(scan);
+	heap_close(pg_policy, RowExclusiveLock);
+}
+
+/*
+ * Used in YB during ALTER TABLE ADD/DROP primary key to make copies of the
+ * old relation's extended statistics objects and statistics for
+ * the new relation.
+ */
+static void
+ybCopyStats(Oid oldRelid, RangeVar *newRel, Oid newRelid, AttrNumber* attmap)
+{
+	Relation		pg_statistic, pg_statistic_ext;
+	HeapTuple		tuple;
+	ScanKeyData		key;
+	SysScanDesc		scan;
+
+	/* Copy extended statistics objects. */
+	pg_statistic_ext = heap_open(StatisticExtRelationId, RowExclusiveLock);
+	ScanKeyInit(&key, Anum_pg_statistic_ext_stxrelid, BTEqualStrategyNumber,
+				F_OIDEQ, ObjectIdGetDatum(oldRelid));
+	scan = systable_beginscan(pg_statistic_ext,
+							  StatisticExtRelidIndexId,
+							  true,
+							  NULL,
+							  1 ,
+							  &key);
+
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+	{
+		CreateStatsStmt *stmt;
+		HeapTuple		stat_ext_tuple;
+
+		/* 
+		 * We need to rename the ext. stats object so that we can create
+		 * a new one with the original name. Later, the old stats object
+		 * will be dropped along with the old table.
+		 */
+		Form_pg_statistic_ext stat_ext_form =
+			(Form_pg_statistic_ext) GETSTRUCT(tuple);
+		const char *orig_stats_name =
+			pstrdup(NameStr(stat_ext_form->stxname));
+		const char *temp_old_stats_name =
+			YbChooseExtendedStatisticName(orig_stats_name,
+										  NULL /* name2 */,
+										  "temp_old" /* label */,
+										  stat_ext_form->stxnamespace);
+
+		stat_ext_tuple = heap_copytuple(tuple);
+		stat_ext_form = (Form_pg_statistic_ext) GETSTRUCT(stat_ext_tuple);
+		namestrcpy(&(stat_ext_form->stxname), temp_old_stats_name);
+		CatalogTupleUpdate(pg_statistic_ext,
+						   &stat_ext_tuple->t_self, stat_ext_tuple);
+		CommandCounterIncrement();
+
+		/* Create the new ext. stats object. */
+		stmt = YbGenerateClonedExtStatsStmt(
+			newRel, oldRelid, HeapTupleGetOid(tuple));
+		stmt->defnames = stringToQualifiedNameList(orig_stats_name);
+		CreateStatistics(stmt);
+	}
+	systable_endscan(scan);
+	heap_close(pg_statistic_ext, RowExclusiveLock);
+
+	/* Copy pg_statistic entries with updated starelid and staattnum values. */
+	pg_statistic =  heap_open(StatisticRelationId, RowExclusiveLock);
+	ScanKeyInit(&key, Anum_pg_statistic_starelid, BTEqualStrategyNumber,
+				F_OIDEQ, ObjectIdGetDatum(oldRelid));
+	scan = systable_beginscan(pg_statistic, StatisticRelidAttnumInhIndexId,
+							  true, NULL, 1, &key);
+
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+	{
+		Form_pg_statistic stat_form = (Form_pg_statistic) GETSTRUCT(tuple);
+		Datum		values[Natts_pg_statistic];
+		bool		nulls[Natts_pg_statistic];
+		bool		replaces[Natts_pg_statistic];
+		HeapTuple	newtuple;
+
+		memset(values, 0, sizeof(values));
+		memset(nulls, false, sizeof(nulls));
+		memset(replaces, false, sizeof(replaces));
+
+		/* Set starelid to new relation's OID. */
+		values[Anum_pg_statistic_starelid - 1] = ObjectIdGetDatum(newRelid);
+		replaces[Anum_pg_statistic_starelid - 1 ] = true;
+
+		/* Set staattnum to reflect new relation's attribute numbering. */
+		values[Anum_pg_statistic_staattnum - 1] =
+			Int16GetDatum(attmap[stat_form->staattnum - 1]);
+		replaces[Anum_pg_statistic_staattnum - 1] = true;
+
+		newtuple = heap_modify_tuple(tuple, RelationGetDescr(pg_statistic),
+		 							 values, nulls, replaces);
+
+		/* Insert new pg_statistic entry. */
+		CatalogTupleInsert(pg_statistic, newtuple);
+		heap_freetuple(newtuple);
+	}
+	systable_endscan(scan);
+	heap_close(pg_statistic, RowExclusiveLock);
 }

@@ -4313,6 +4313,16 @@ transformPartitionBoundValue(ParseState *pstate, A_Const *con,
 	return (Const *) value;
 }
 
+/*
+ * YB wrapper for invoking the static generateClonedExtStatsStmt function.
+ */
+CreateStatsStmt *
+YbGenerateClonedExtStatsStmt(RangeVar *heapRel, Oid heapRelid,
+							 Oid source_statsid)
+{
+	return generateClonedExtStatsStmt(heapRel, heapRelid, source_statsid);
+}
+
 void
 YBTransformPartitionSplitValue(ParseState *pstate,
 							   List *split_point,

@@ -917,6 +917,44 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
     }
   }
 
+  private void policiesAndPermissionsVerification(Statement stmt1,
+                                                  Statement stmt2) throws Exception {
+    assertQuery(stmt1, "SELECT * FROM nopk", new Row(2, "user1"));
+    runInvalidQuery(stmt2, "SELECT * FROM nopk", "permission denied for table nopk");
+    assertQuery(stmt2, "SELECT id FROM nopk", new Row(3));
+  }
+
+  @Test
+  public void policiesAndPermissions() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("CREATE TABLE nopk (id int, drop_me int, username text)");
+      stmt.executeUpdate("CREATE USER user1");
+      stmt.executeUpdate("CREATE USER user2");
+      // user1 can perform all DMLs on nopk.
+      stmt.executeUpdate("GRANT ALL ON nopk TO user1");
+      // user2 can only SELECT id from nopk.
+      stmt.executeUpdate("GRANT SELECT (id) ON nopk TO user2");
+      stmt.executeUpdate(
+            "INSERT INTO nopk(id, username) VALUES (1, 'yugabyte'), (2, 'user1'), (3, 'user2')");
+      // create policy p that only lets users see rows which have the username col set to their
+      // user.
+      stmt.executeUpdate("CREATE POLICY p ON nopk FOR SELECT TO user1, user2 USING" +
+                         "(username = CURRENT_USER)");
+      stmt.executeUpdate("ALTER TABLE nopk ENABLE ROW LEVEL SECURITY");
+      stmt.executeUpdate("ALTER TABLE nopk DROP COLUMN drop_me");
+      try (Connection conn1 = getConnectionBuilder().withUser("user1").connect();
+           Connection conn2 = getConnectionBuilder().withUser("user2").connect();) {
+            Statement stmt1 = conn1.createStatement();
+            Statement stmt2 = conn2.createStatement();
+            policiesAndPermissionsVerification(stmt1, stmt2);
+            alterAddPrimaryKeyId(stmt, "nopk");
+            policiesAndPermissionsVerification(stmt1, stmt2);
+            alterDropPrimaryKey(stmt, "nopk");
+            policiesAndPermissionsVerification(stmt1, stmt2);
+      }
+    }
+  }
+
   @Test
   public void triggers() throws Exception {
     try (Statement stmt = connection.createStatement()) {
@@ -993,6 +1031,56 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
       assertQuery(stmt, "SELECT pg_get_userbyid(relowner) FROM pg_class WHERE relname = 'nopk'",
           new Row("new_user"));
     }
+  }
+
+  @Test
+  public void statistics() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("CREATE TABLE nopk (id int, drop_me int, t int)");
+      stmt.executeUpdate("INSERT INTO nopk VALUES (1, 1, 1)");
+      stmt.executeUpdate("CREATE STATISTICS s1(dependencies) on id, t from nopk");
+      stmt.executeUpdate("ALTER TABLE nopk ALTER id SET STATISTICS 1234");
+      stmt.executeUpdate("ANALYZE nopk");
+      stmt.executeUpdate("ALTER TABLE nopk DROP COLUMN drop_me");
+      // TODO(fizaa): ALTER TABLE ADD PRIMARY KEY sets reltuples to 0 (see GH #15884).
+      // To avoid test failures until the issue is fixed, set reltuples to 0 before adding the pk.
+      executeSystemTableDml(stmt, "UPDATE pg_class SET reltuples = 0 WHERE relname = 'nopk'"
+                            + " AND relnamespace = 'public'::regnamespace");
+      statisticsVerification(stmt);
+      alterAddPrimaryKeyId(stmt, "nopk");
+      statisticsVerification(stmt);
+      stmt.executeUpdate("ANALYZE nopk");
+      alterDropPrimaryKey(stmt, "nopk");
+      statisticsVerification(stmt);
+    }
+  }
+
+  private void statisticsVerification(Statement stmt) throws Exception {
+    assertQuery(stmt, "SELECT stxname FROM pg_statistic_ext", new Row("s1"));
+    String getOid = "SELECT 'nopk'::regclass::oid";
+    long Oid = getSingleRow(stmt.executeQuery(getOid)).getLong(0);
+    assertRowList(stmt, "SELECT starelid FROM pg_statistic",
+        Arrays.asList(new Row(Oid), new Row(Oid)));
+  }
+
+  @Test
+  public void viewsAndMaterializedViews() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("CREATE TABLE nopk (id int)");
+      stmt.executeUpdate("INSERT INTO nopk VALUES (1)");
+      stmt.executeUpdate("CREATE VIEW v AS SELECT * FROM nopk");
+      stmt.executeUpdate("CREATE MATERIALIZED VIEW mv AS SELECT * FROM nopk");
+      viewsAndMaterializedViewsVerification(stmt);
+      alterAddPrimaryKeyId(stmt, "nopk");
+      viewsAndMaterializedViewsVerification(stmt);
+      alterDropPrimaryKey(stmt, "nopk");
+      viewsAndMaterializedViewsVerification(stmt);
+    }
+  }
+
+  private void viewsAndMaterializedViewsVerification(Statement stmt) throws Exception {
+    assertQuery(stmt, "SELECT * FROM v", new Row(1));
+    assertQuery(stmt, "SELECT * FROM mv", new Row(1));
   }
 
   /**
