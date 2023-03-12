@@ -228,7 +228,8 @@ to_wchar(const char *str)
  * FUNCTION UTL_FILE.FOPEN(location text,
  *			   filename text,
  *			   open_mode text,
- *			   max_linesize integer)
+ *			   max_linesize integer
+ *			   [, encoding text ])
  *          RETURNS UTL_FILE.FILE_TYPE;
  *
  * The FOPEN function opens specified file and returns file handle.
@@ -305,9 +306,6 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 	 * closed at the end of (sub)transactions, but we want to keep them open
 	 * for oracle compatibility.
 	 */
-#if NOT_USED
-	fullname = convert_encoding_server_to_platform(fullname);
-#endif
 
 #ifndef WIN32
 
@@ -447,7 +445,6 @@ get_line(FILE *f, size_t max_linesize, int encoding, bool *iseof)
 	return result;
 }
 
-
 /*
  * FUNCTION UTL_FILE.GET_LINE(file UTL_TYPE.FILE_TYPE, line int DEFAULT NULL)
  *          RETURNS text;
@@ -487,7 +484,6 @@ utl_file_get_line(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TEXT_P(result);
 }
-
 
 /*
  * FUNCTION UTL_FILE.GET_NEXTLINE(file UTL_TYPE.FILE_TYPE)
@@ -735,7 +731,6 @@ utl_file_putf(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(true);
 }
 
-
 /*
  * FUNCTION UTL_FILE.FFLUSH(file UTL_FILE.FILE_TYPE)
  *          RETURNS void;
@@ -757,7 +752,6 @@ utl_file_fflush(PG_FUNCTION_ARGS)
 
 	PG_RETURN_VOID();
 }
-
 
 /*
  * FUNCTION UTL_FILE.FCLOSE(file UTL_FILE.FILE_TYPE)
@@ -798,7 +792,6 @@ utl_file_fclose(PG_FUNCTION_ARGS)
 	PG_RETURN_NULL();
 }
 
-
 /*
  * FUNCTION UTL_FILE.FCLOSE_ALL()
  *          RETURNS void
@@ -830,7 +823,6 @@ utl_file_fclose_all(PG_FUNCTION_ARGS)
 
 	PG_RETURN_VOID();
 }
-
 
 /*
  * utl_file_dir security .. is solved with aux. table.
@@ -950,7 +942,6 @@ safe_named_location(text *location)
 
 	return result;
 }
-
 
 /*
  * get_safe_path - make a fullpath and check security.
