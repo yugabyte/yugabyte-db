@@ -1869,6 +1869,9 @@ public class NodeManager extends DevopsBase {
           if (taskParam.force) {
             commandArgs.add("--force");
           }
+          if (taskParam.useSystemd) {
+            commandArgs.add("--systemd_services");
+          }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }
