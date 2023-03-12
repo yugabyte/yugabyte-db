@@ -198,7 +198,7 @@ IO_EXCEPTION(void)
  * On WIN32 platform multibyte chars are not supported by
  * fopen function. Instead we can use _wfopen functin. The
  * arguments are of wchar strings, and should to use UTF16
- * charset. Conversion fro server encoding to wide strings
+ * charset. Conversion from server encoding to wide strings
  * is provided by function char2wchar (tested only for UTF8)
  */
 #ifdef WIN32
