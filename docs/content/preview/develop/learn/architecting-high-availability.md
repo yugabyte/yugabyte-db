@@ -14,7 +14,7 @@ type: docs
 
 Although failures are inevitable, you can design your applications to take appropriate action when statements fail to ensure they are highly available.
 
-YugabyteDB returns various error codes for errors that occur during transaction processing. In general, the error codes can be classified into the following three types:
+YugabyteDB returns [standard PostgreSQL error codes](https://www.postgresql.org/docs/11/errcodes-appendix.html) for errors that occur during transaction processing. In general, the error codes can be classified into the following three types:
 
 1. __`WARNING`__ : Informational messages that explain why a statement failed.
 
