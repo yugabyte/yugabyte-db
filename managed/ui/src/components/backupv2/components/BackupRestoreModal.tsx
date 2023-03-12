@@ -16,6 +16,7 @@
 //
 
 import React, { FC, useState } from 'react';
+import _ from 'lodash';
 import { Alert, Col, Row } from 'react-bootstrap';
 import {
   getKMSConfigs,
@@ -29,10 +30,7 @@ import {
   ICommonBackupInfo
 } from '..';
 import { YBModalForm } from '../../common/forms';
-import {
-  KEYSPACE_VALIDATION_REGEX,
-  SPINNER_ICON
-} from '../common/BackupUtils';
+import { KEYSPACE_VALIDATION_REGEX, SPINNER_ICON } from '../common/BackupUtils';
 
 import { Field, FieldArray } from 'formik';
 import { useMutation, useQuery } from 'react-query';
@@ -123,9 +121,9 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
 
   const kmsConfigList = kmsConfigs
     ? kmsConfigs.map((config: any) => {
-      const labelName = config.metadata.provider + ' - ' + config.metadata.name;
-      return { value: config.metadata.configUUID, label: labelName };
-    })
+        const labelName = config.metadata.provider + ' - ' + config.metadata.name;
+        return { value: config.metadata.configUUID, label: labelName };
+      })
     : [];
 
   const restore = useMutation(
@@ -178,7 +176,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
   );
 
   const footerActions = [
-    () => { },
+    () => {},
     () => {
       setCurrentStep(currentStep - 1);
       setOverrideSubmitLabel(TEXT_RENAME_DATABASE);
@@ -194,7 +192,10 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
     parallelThreads: 1,
     backup: backup_details,
     keyspaces: Array(backup_details?.commonBackupInfo.responseList.length).fill(''),
-    kmsConfigUUID: null,
+    kmsConfigUUID:
+      kmsConfigList.find(
+        (config: any) => config.value === backup_details?.commonBackupInfo.kmsConfigUUID
+      ) ?? null,
     should_rename_keyspace: false,
     disable_keyspace_rename: false,
     allow_YCQL_conflict_keyspace: false
@@ -308,11 +309,11 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
     keyspaces:
       currentStep === 1
         ? Yup.array(
-          Yup.string().matches(KEYSPACE_VALIDATION_REGEX, {
-            message: 'Invalid keyspace name',
-            excludeEmptyString: true
-          })
-        )
+            Yup.string().matches(KEYSPACE_VALIDATION_REGEX, {
+              message: 'Invalid keyspace name',
+              excludeEmptyString: true
+            })
+          )
         : Yup.array(Yup.string()),
     parallelThreads: Yup.number()
       .min(1, 'Parallel threads should be greater than or equal to 1')
@@ -401,7 +402,7 @@ function RestoreChooseUniverseForm({
 }: {
   backup_details: IBackup;
   universeList: IUniverse[];
-  kmsConfigList: any;
+  kmsConfigList: Record<string, any>[];
   setFieldValue: Function;
   values: Record<string, any>;
   validateTablesAndRestore: Function;
@@ -410,6 +411,19 @@ function RestoreChooseUniverseForm({
   errors: Record<string, string>;
 }) {
   let sourceUniverseNameAtFirst: IUniverse[] = [];
+
+  //kms config used in the universe while taking backup
+  const isEncryptedBackup = _.has(backup_details.commonBackupInfo, 'kmsConfigUUID');
+  const kmsIdDuringBackup = kmsConfigList.find(
+    (config: Record<string, any>) => config?.value === backup_details.commonBackupInfo.kmsConfigUUID
+  );
+  if (kmsIdDuringBackup) {
+    //move currently active kms to top of the list
+    kmsConfigList = kmsConfigList.filter(
+      (config: Record<string, any>) => config.value !== kmsIdDuringBackup.value
+    );
+    kmsConfigList.unshift(kmsIdDuringBackup);
+  }
 
   if (universeList && universeList.length > 0) {
     sourceUniverseNameAtFirst = [...universeList.filter((u) => u.universeUUID)];
@@ -541,8 +555,76 @@ function RestoreChooseUniverseForm({
             component={YBFormSelect}
             label={'KMS Configuration (Optional)'}
             options={kmsConfigList}
+            components={{
+              // eslint-disable-next-line react/display-name
+              Option: (props: any) => {
+                if (isEncryptedBackup && props.data.value === kmsIdDuringBackup?.value) {
+                  return (
+                    <components.Option {...props} className="active-kms">
+                      <span className="kms-used">{props.data.label}</span>{' '}
+                      <StatusBadge
+                        statusType={Badge_Types.DELETED}
+                        customLabel="Used during backup"
+                      />
+                    </components.Option>
+                  );
+                }
+                return <components.Option {...props} />;
+              },
+              SingleValue: ({ data }: { data: any }) => {
+                if (isEncryptedBackup && data.value === kmsIdDuringBackup?.value) {
+                  return (
+                    <>
+                      <span className="storage-cfg-name">{data.label}</span> &nbsp;
+                      <StatusBadge
+                        statusType={Badge_Types.DELETED}
+                        customLabel="Used during backup"
+                      />
+                    </>
+                  );
+                }
+                return data.label;
+              }
+            }}
+            styles={{
+              singleValue: (props: any) => {
+                return { ...props, display: 'flex' };
+              }
+            }}
             isClearable
           />
+
+          {isEncryptedBackup && !kmsIdDuringBackup ? (
+            // kms used during backup is deleted
+            <div className="deleted-kms-warning">
+              <Alert bsStyle="warning" className="pre-provision-message">
+                <div>
+                  <i className="fa fa-exclamation-triangle warning-icon md-icon" /> &nbsp;
+                </div>
+                <div>
+                  <div className="helper-text">
+                    KMS configuration file for this backup has been deleted. In order to restore
+                    <br /> this backup first create a KMS configuration with the exact settings.
+                    Once
+                    <br /> created, come back and select the newly created KMS configuration from
+                    the
+                    <br /> list above.
+                  </div>
+                  <br />
+                  <div className="deleted-key-title">Deleted KMS configuration UUID:</div>
+                  <div className="deleted-key">
+                    {backup_details?.commonBackupInfo?.kmsConfigUUID}
+                  </div>
+                </div>
+              </Alert>
+            </div>
+          ) : (
+            <span className="kms-helper-text">
+              For a successful restore, the KMS configuration used for restore should be the same{' '}
+              <br />
+              KMS configuration used during backup creation.
+            </span>
+          )}
         </Col>
       </Row>
       {backup_details.backupType !== TableType.REDIS_TABLE_TYPE && (
@@ -551,8 +633,9 @@ function RestoreChooseUniverseForm({
             <Field
               name="should_rename_keyspace"
               component={YBCheckBox}
-              label={`Rename databases in this backup before restoring (${values['disable_keyspace_rename'] ? 'Required' : 'Optional'
-                })`}
+              label={`Rename databases in this backup before restoring (${
+                values['disable_keyspace_rename'] ? 'Required' : 'Optional'
+              })`}
               input={{
                 checked: values['should_rename_keyspace'],
                 onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -628,8 +711,8 @@ export function RenameKeyspace({
           values.backup.commonBackupInfo.responseList.map(
             (keyspace: Keyspace_Table, index: number) =>
               values['searchText'] &&
-                keyspace.keyspace &&
-                !keyspace.keyspace.includes(values['searchText']) ? null : (
+              keyspace.keyspace &&
+              !keyspace.keyspace.includes(values['searchText']) ? null : (
                 // eslint-disable-next-line react/jsx-indent
                 <Row key={index}>
                   <Col lg={6} className="keyspaces-input no-padding">
