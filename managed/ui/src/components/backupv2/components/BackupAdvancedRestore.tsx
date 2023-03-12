@@ -443,6 +443,11 @@ function RestoreForm({
               options={kmsConfigList}
               isClearable
             />
+            <span className="kms-helper-text">
+              For a successful restore, the KMS configuration used for restore should be the same{' '}
+              <br />
+              KMS configuration used during backup creation.
+            </span>
           </Col>
         </Row>
       </div>

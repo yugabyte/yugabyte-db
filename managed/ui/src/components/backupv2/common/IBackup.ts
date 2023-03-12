@@ -57,6 +57,7 @@ export interface ICommonBackupInfo {
   totalBackupSizeInBytes?: number;
   updateTime: string;
   parallelism: number;
+  kmsConfigUUID?: string;
 }
 
 export interface IBackup {
