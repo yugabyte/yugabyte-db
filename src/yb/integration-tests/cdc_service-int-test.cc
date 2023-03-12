@@ -21,6 +21,7 @@
 #include "yb/client/client-test-util.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
+#include "yb/docdb/docdb_test_util.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/walltime.h"
@@ -584,6 +585,7 @@ TEST_F(CDCServiceTest, TestDeleteCDCStream) {
 }
 
 TEST_F(CDCServiceTest, TestSafeTime) {
+  docdb::DisableYcqlPackedRow();
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = true;
 
@@ -703,6 +705,7 @@ TEST_F(CDCServiceTest, TestMetricsOnDeletedReplication) {
 
 
 TEST_F(CDCServiceTest, TestGetChanges) {
+  docdb::DisableYcqlPackedRow();
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = true;
 
@@ -836,6 +839,7 @@ TEST_F(CDCServiceTest, TestGetChanges) {
 }
 
 TEST_F(CDCServiceTest, TestGetChangesWithDeadline) {
+  docdb::DisableYcqlPackedRow();
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_get_changes_honor_deadline) = true;
@@ -949,6 +953,7 @@ class CDCServiceTestMultipleServersOneTablet : public CDCServiceTest {
 
 TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure) {
   // Test that the metric value is not time since epoch after a leadership change.
+  docdb::DisableYcqlPackedRow();
   SetAtomicFlag(0, &FLAGS_cdc_state_checkpoint_update_interval_ms);
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = false;
@@ -992,6 +997,7 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure) {
 }
 
 TEST_F(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
+  docdb::DisableYcqlPackedRow();
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = true;
 
@@ -1207,6 +1213,7 @@ TEST_F(CDCServiceTestMultipleServers, TestListTablets) {
 }
 
 TEST_F(CDCServiceTestMultipleServers, TestGetChangesProxyRouting) {
+  docdb::DisableYcqlPackedRow();
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
   // Figure out [1] all tablets and [2] which ones are local to the first server.
@@ -1307,6 +1314,7 @@ TEST_F(CDCServiceTestMultipleServers, TestGetChangesProxyRouting) {
 }
 
 TEST_F(CDCServiceTest, TestOnlyGetLocalChanges) {
+  docdb::DisableYcqlPackedRow();
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
   std::string tablet_id = GetTablet();
@@ -1474,6 +1482,7 @@ TEST_F(CDCServiceTest, TestCheckpointUpdatedForRemoteRows) {
 // This also tests for #2897 to ensure that cdc_state table checkpoint is not overwritten to 0.0
 // in case the consumer does not send from checkpoint.
 TEST_F(CDCServiceTest, TestCheckpointUpdate) {
+  docdb::DisableYcqlPackedRow();
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
 
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
@@ -1596,6 +1605,7 @@ class CDCServiceTestMaxRentionTime : public CDCServiceTest {
 };
 
 TEST_F(CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime) {
+  docdb::DisableYcqlPackedRow();
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
   std::string tablet_id = GetTablet();
@@ -1794,6 +1804,7 @@ class CDCServiceTestMinSpace : public CDCServiceTest {
 };
 
 TEST_F(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
+  docdb::DisableYcqlPackedRow();
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
   std::string tablet_id = GetTablet();
@@ -2063,6 +2074,7 @@ void CDCServiceTestThreeServers::GetFirstTabletIdAndLeaderPeer(TabletId* tablet_
 // Test that whenever a leader change happens (forced here by shutting down the tablet leader),
 // next leader correctly reads the minimum applied cdc index by reading the cdc_state table.
 TEST_F(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
+  docdb::DisableYcqlPackedRow();
   constexpr int kNRecords = 30;
   constexpr int kGettingLeaderTimeoutSecs = 20;
 
@@ -2154,6 +2166,8 @@ class CDCServiceLowRpc: public CDCServiceTest {
 };
 
 TEST_F(CDCServiceLowRpc, TestGetChangesRpcMax) {
+  docdb::DisableYcqlPackedRow();
+
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
   std::string tablet_id = GetTablet();

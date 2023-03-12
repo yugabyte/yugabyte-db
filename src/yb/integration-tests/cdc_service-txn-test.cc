@@ -23,6 +23,7 @@
 
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
+#include "yb/docdb/docdb_test_util.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
 
@@ -136,6 +137,8 @@ TEST_F(CDCServiceTxnTest, TestGetChanges) {
   // T4: APPLYING TXN2
   // T5: APPLYING TXN1
   // T6: WRITE K4
+  docdb::DisableYcqlPackedRow();
+
   auto session = CreateSession();
   ASSERT_RESULT(WriteRow(session, 10000 /* key */, 10000 /* value */, WriteOpType::INSERT,
                          Flush::kTrue));
@@ -229,6 +232,7 @@ TEST_F(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
   // A subsequent call to GetChanges after the transaction is committed should get the
   // rows committed by transaction.
 
+  docdb::DisableYcqlPackedRow();
   static const int32_t kNumIntentsToWrite = 3;
   static const int32_t kStartKey = 10000;
   // Get tablet ID.
@@ -302,6 +306,7 @@ TEST_F(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
 }
 
 TEST_F(CDCServiceTxnTest, MetricsTest) {
+  docdb::DisableYcqlPackedRow();
   static const int32_t entry_to_add = 100;
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);

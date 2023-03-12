@@ -103,15 +103,16 @@ target_link_libraries(tablet-split-itest-base integration-tests ql-dml-test-base
 
 # Tests
 set(YB_TEST_LINK_LIBS
+    cql_test_util
     integration-tests
-    yb_client
-    yb_tools_util
+    master_test_common
     ql-dml-test-base
     rpc_test_util
-    master_test_common
-    yb_common_test_util
     tablet-split-itest-base
-    cql_test_util
+    yb_client
+    yb_common_test_util
+    yb_docdb_test_common
+    yb_tools_util
     ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(alter_table-test)
