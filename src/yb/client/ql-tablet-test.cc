@@ -39,6 +39,7 @@
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/docdb_test_util.h"
 
 #include "yb/gutil/casts.h"
 
@@ -1649,6 +1650,12 @@ TEST_F(QLTabletTest, FollowerRestartDuringWrite) {
 }
 
 TEST_F_EX(QLTabletTest, DataBlockKeyValueEncoding, QLTabletRf1Test) {
+  // Key encoding gives benefits only when keys are nearly similar, for instance different columns
+  // of the same row.
+  // For packed row the benefit is smaller, so we disable packed row for this test, to check
+  // whether encoding works at all.
+  docdb::DisableYcqlPackedRow();
+
   constexpr auto kNumRows = 4000;
   constexpr auto kNumRowsPerBatch = 100;
   // We are testing delta encoding, but not compression.

@@ -2202,6 +2202,9 @@ SubDocKey(DocKey([], ["k6"]), [HT{ physical: 9000 }]) -> "v6"; ttl: 0.009s
 }
 
 TEST_P(DocDBTestWrapper, TTLCompactionTest) {
+  // This test does not have schema, so cannot use with packed row.
+  DisableYcqlPackedRow();
+
   const DocKey doc_key(KeyEntryValues("k1"));
   const MonoDelta one_ms = 1ms;
   const HybridTime t0 = 1000_usec_ht;
@@ -2462,10 +2465,14 @@ SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> 
 
   // Major compact.
   FullyCompactHistoryBefore(10000_usec_ht);
-  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+  auto fmt = YcqlPackedRowEnabled()
+      ? R"#(
+SubDocKey(DocKey($0, [], ["r1"]), [HT{ physical: 5000 }]) -> { }
+      )#"
+      :  R"#(
 SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
-      )#",
-      IdToString(id)));
+      )#";
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(fmt, IdToString(id)));
 }
 
 TEST_F(DocDBTestQl, ColocatedTableTombstoneCompaction) {
@@ -3210,6 +3217,8 @@ SubDocKey(DocKey([], ["mydockey"]), [ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff; \
 }
 
 TEST_P(DocDBTestWrapper, TestDisambiguationOnWriteId) {
+  DisableYcqlPackedRow();
+
   // Set a column and then delete the entire row in the same write batch. The row disappears.
   auto dwb = MakeDocWriteBatch();
   ASSERT_OK(dwb.SetPrimitive(

@@ -34,6 +34,7 @@
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/docdb_test_util.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -162,6 +163,7 @@ DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 
 namespace yb {
+
 class TabletSplitITestWithIsolationLevel : public TabletSplitITest,
                                            public testing::WithParamInterface<IsolationLevel> {
  public:
@@ -245,6 +247,9 @@ class TabletSplitNoBlockCacheITest : public TabletSplitITest {
 };
 
 TEST_F_EX(TabletSplitITest, TestInitiatesCompactionAfterSplit, TabletSplitNoBlockCacheITest) {
+  // This test is very tight to SST file byte size, so disable packed row to keep current checks.
+  docdb::DisableYcqlPackedRow();
+
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 5;
   constexpr auto kNumRows = kDefaultNumRows;
@@ -3465,6 +3470,7 @@ TEST_P(TabletSplitSingleBlockITest, SplitSingleDataBlockOneRestartTablet) {
 }
 
 TEST_P(TabletSplitSingleBlockITest, SplitSingleDataBlockMultiLevelTablet) {
+  docdb::DisableYcqlPackedRow();
   // Required to simulate a case with num levels > 1 and top block restarts num == 1.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_index_block_restart_interval) = 4;
 
