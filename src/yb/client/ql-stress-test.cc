@@ -72,6 +72,7 @@ DECLARE_bool(TEST_combine_batcher_errors);
 DECLARE_bool(allow_preempting_compactions);
 DECLARE_bool(detect_duplicates_for_retryable_requests);
 DECLARE_bool(enable_ondisk_compression);
+DECLARE_bool(ycql_enable_packed_row);
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_max_write_waiters);
@@ -418,13 +419,13 @@ void QLStressTest::TestRetryWrites(bool restarts) {
                 expected_leaders, &total_entries),
       15s, "Retryable requests cleanup and leader wait"));
 
-  // We have 2 entries per row.
+  size_t entries_per_row = FLAGS_ycql_enable_packed_row ? 1 : 2;
   if (FLAGS_detect_duplicates_for_retryable_requests) {
-    ASSERT_EQ(total_entries, written_keys * 2);
+    ASSERT_EQ(total_entries, written_keys * entries_per_row);
   } else {
     // If duplicate request tracking is disabled, then total_entries should be greater than
     // written keys, otherwise test does not work.
-    ASSERT_GT(total_entries, written_keys * 2);
+    ASSERT_GT(total_entries, written_keys * entries_per_row);
   }
 
   ASSERT_GE(written_keys, RegularBuildVsSanitizers(100, 40));

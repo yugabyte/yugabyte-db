@@ -392,4 +392,6 @@ Status WaitForPeersAreFullyCompacted(
 // Multiple calls will result in duplicate logging.
 void ActivateCompactionTimeLogging(MiniCluster* cluster);
 
+void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
+
 }  // namespace yb

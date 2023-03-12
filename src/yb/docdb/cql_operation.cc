@@ -68,7 +68,14 @@ DEFINE_UNKNOWN_bool(ycql_disable_index_updating_optimization, false,
             "the index data.");
 TAG_FLAG(ycql_disable_index_updating_optimization, advanced);
 
-DEFINE_UNKNOWN_bool(ycql_enable_packed_row, false, "Whether packed row is enabled for YCQL.");
+#ifdef NDEBUG
+constexpr bool kYcqlPackedRowEnabled = false;
+#else
+constexpr bool kYcqlPackedRowEnabled = true;
+#endif
+
+DEFINE_RUNTIME_bool(ycql_enable_packed_row, kYcqlPackedRowEnabled,
+                    "Whether packed row is enabled for YCQL.");
 
 DEFINE_UNKNOWN_uint64(
     ycql_packed_row_size_limit, 0,
