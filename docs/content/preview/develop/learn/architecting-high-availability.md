@@ -312,7 +312,7 @@ This ensures that the priority assigned to your transaction is in the range `[0.
 
 ## Learn more
 
-- [Transaction Isolation Levels](../../../architecture/transactions/isolation-levels/) - Various isolation levels supported by YugabyteDB.
-- [Concurrency Control](../../../architecture/transactions/concurrency-control/) - Policies to handle conflicts between transactions.
+- [Transaction isolation levels](../../../architecture/transactions/isolation-levels/) - Various isolation levels supported by YugabyteDB.
+- [Concurrency control](../../../architecture/transactions/concurrency-control/) - Policies to handle conflicts between transactions.
 - [Transaction priorities](../../../architecture/transactions/transaction-priorities/) - Priority buckets for transactions.
 - [Transaction options](../../../explore/transactions/distributed-transactions-ysql/#transaction-options) - options supported by transactions.
