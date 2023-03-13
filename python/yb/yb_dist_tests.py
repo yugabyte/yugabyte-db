@@ -316,6 +316,7 @@ ARCHIVED_PATHS_IN_BUILD_DIR = [
     'lib',
     'postgres',
     'share',
+    'test_certs',
     'auto_flags.json',
     'version_metadata.json',
     'linuxbrew_path.txt',
