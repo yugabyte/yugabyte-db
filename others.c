@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <locale.h>
 
-#if PG_VERSION_NUM <= 150000
+#if PG_VERSION_NUM < 160000
 
 #include "access/genam.h"
 #include "access/heapam.h"
