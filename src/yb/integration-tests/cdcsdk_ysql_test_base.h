@@ -119,6 +119,7 @@ DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_packed_row_size_limit);
 DECLARE_bool(cdc_populate_safepoint_record);
 DECLARE_string(vmodule);
+DECLARE_int32(ysql_num_shards_per_tserver);
 
 namespace yb {
 
