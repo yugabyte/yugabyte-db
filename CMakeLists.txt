@@ -584,7 +584,7 @@ file(MAKE_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 set(EXECUTABLE_OUTPUT_PATH "${YB_BUILD_ROOT}/bin")
 file(MAKE_DIRECTORY "${EXECUTABLE_OUTPUT_PATH}")
 
-# Generated sources always have higher priority than even the "ent" directory include files.
+# Generated sources always have higher priority.
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/src)
 include_directories(src)
 
@@ -814,8 +814,6 @@ add_subdirectory(src/yb/rocksutil)
 add_subdirectory(src/yb/docdb)
 add_subdirectory(src/yb/yql)
 add_subdirectory(src/yb/cdc)
-
-include("${YB_SRC_ROOT}/ent/CMakeLists.txt")
 
 # Note "yb-server", without the "t" -- this is not a typo. "yb-server" is the unified LTO executable
 # that contains the functionality of both yb-master and yb-tserver, and yb-master/yb-tserver are
