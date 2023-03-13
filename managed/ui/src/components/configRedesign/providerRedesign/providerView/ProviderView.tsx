@@ -17,8 +17,8 @@ import { PROVIDER_ROUTE_PREFIX } from '../constants';
 import { ProviderDetails } from './providerDetails/ProviderDetails';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { YBLabelWithIcon } from '../../../common/descriptors';
-import { api, providerQueryKey } from '../../../../redesign/helpers/api';
-import { getIntraProviderTab } from '../utils';
+import { api, providerQueryKey, universeQueryKey } from '../../../../redesign/helpers/api';
+import { getInfraProviderTab, getLinkedUniverses } from '../utils';
 
 import styles from './ProviderView.module.scss';
 
@@ -32,15 +32,23 @@ export const ProviderView = ({ providerUUID }: ProviderViewProps) => {
   const providerQuery = useQuery(providerQueryKey.detail(providerUUID), () =>
     api.fetchProvider(providerUUID)
   );
-  if (providerQuery.isLoading || providerQuery.isIdle) {
+  const universeListQuery = useQuery(universeQueryKey.ALL, () => api.fetchUniverseList());
+
+  if (
+    providerQuery.isLoading ||
+    providerQuery.isIdle ||
+    universeListQuery.isLoading ||
+    universeListQuery.isIdle
+  ) {
     return <YBLoading />;
   }
 
   if (providerQuery.isError) {
     return <YBErrorIndicator customErrorMessage="Error fetching provider." />;
   }
-
-  const providerConfig = providerQuery.data;
+  if (universeListQuery.isError) {
+    return <YBErrorIndicator customErrorMessage="Error fetching universe list." />;
+  }
 
   const showDeleteProviderModal = () => {
     setIsDeleteProviderModalOpen(true);
@@ -53,6 +61,9 @@ export const ProviderView = ({ providerUUID }: ProviderViewProps) => {
     browserHistory.goBack();
   };
 
+  const providerConfig = providerQuery.data;
+  const universeList = universeListQuery.data;
+  const linkedUniverses = getLinkedUniverses(providerConfig.uuid, universeList);
   return (
     <div className={styles.viewContainer}>
       <div className={styles.header}>
@@ -64,17 +75,21 @@ export const ProviderView = ({ providerUUID }: ProviderViewProps) => {
           id="provider-overview-actions"
           pullRight
         >
-          <MenuItem eventKey="1" onClick={showDeleteProviderModal}>
+          <MenuItem
+            eventKey="1"
+            onClick={showDeleteProviderModal}
+            disabled={linkedUniverses.length > 0}
+          >
             <YBLabelWithIcon icon="fa fa-trash">Delete Configuration</YBLabelWithIcon>
           </MenuItem>
         </DropdownButton>
       </div>
-      <ProviderDetails providerConfig={providerConfig} />
+      <ProviderDetails linkedUniverses={linkedUniverses} providerConfig={providerConfig} />
       <DeleteProviderConfigModal
         open={isDeleteProviderModalOpen}
         onClose={hideDeleteProviderModal}
         providerConfig={providerConfig}
-        redirectURL={`/${PROVIDER_ROUTE_PREFIX}/${getIntraProviderTab(providerConfig)}`}
+        redirectURL={`/${PROVIDER_ROUTE_PREFIX}/${getInfraProviderTab(providerConfig)}`}
       />
     </div>
   );
