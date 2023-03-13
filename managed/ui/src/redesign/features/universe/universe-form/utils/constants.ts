@@ -13,6 +13,7 @@ export const DEFAULT_REGION_FIELD = 'cloudConfig.defaultRegion';
 export const MASTERS_IN_DEFAULT_REGION_FIELD = 'cloudConfig.mastersInDefaultRegion';
 export const MASTER_PLACEMENT_FIELD = 'cloudConfig.masterPlacement';
 export const RESET_AZ_FIELD = 'cloudConfig.resetAZConfig';
+export const USER_AZSELECTED_FIELD = 'cloudConfig.userAZSelected';
 
 //Instance config
 export const INSTANCE_TYPE_FIELD = 'instanceConfig.instanceType';

@@ -1,7 +1,7 @@
 import React, { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useFieldArray, useWatch, Controller } from 'react-hook-form';
-import { Box, Typography, MenuItem, makeStyles } from '@material-ui/core';
+import { Box, Typography, MenuItem, makeStyles, IconButton } from '@material-ui/core';
 import { YBButton, YBSelect, YBLabel, YBCheckbox, YBInput } from '../../../../../../components';
 import { YBLoadingCircleIcon } from '../../../../../../../components/common/indicators';
 import { PlacementStatus } from './PlacementStatus';
@@ -12,8 +12,11 @@ import {
   PLACEMENTS_FIELD,
   PROVIDER_FIELD,
   RESET_AZ_FIELD,
+  USER_AZSELECTED_FIELD,
   MASTER_PLACEMENT_FIELD
 } from '../../../utils/constants';
+//Icons
+import { CloseSharp } from '@material-ui/icons';
 import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface PlacementsFieldProps {
@@ -43,7 +46,7 @@ const useStyles = makeStyles((theme) => ({
     margin: theme.spacing(0, 1)
   },
   preferredColumn: {
-    width: 100,
+    width: 80,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'flex-start'
@@ -70,7 +73,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
   const unUsedZones = useGetUnusedZones(allZones); //return unused AZ
   const { isLoading } = useNodePlacements(); // Places Nodes
 
-  const { fields, update, append } = useFieldArray({
+  const { fields, update, append, remove } = useFieldArray({
     control,
     name: PLACEMENTS_FIELD
   });
@@ -123,7 +126,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
       const prefferedAZField = `${PLACEMENTS_FIELD}.${index}.isAffinitized` as any;
 
       return (
-        <Box flex={1} display="flex" mb={2} flexDirection="row" key={field.id}>
+        <Box flex={1} display="flex" mb={2} flexDirection="row" alignItems="center" key={field.id}>
           <Box className={helperClasses.nameColumn}>
             <YBSelect
               fullWidth
@@ -183,6 +186,19 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
               />
             </Box>
           )}
+          <Box flexShrink={1}>
+            <IconButton
+              color="default"
+              size="medium"
+              data-testid={`PlacementsField-RemoveButton${index}`}
+              onClick={() => {
+                remove(index);
+                setValue(USER_AZSELECTED_FIELD, true);
+              }}
+            >
+              <CloseSharp />
+            </IconButton>
+          </Box>
         </Box>
       );
     });
@@ -213,14 +229,20 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
               variant="primary"
               disabled={isLoading}
               data-testid="PlacementsField-AddAZButton"
-              onClick={() =>
+              onClick={() => {
+                const initialCount = 0;
+                const totalNodesinAz = fields
+                  .map((e) => e.numNodesInAZ)
+                  .reduce((prev, cur) => prev + cur, initialCount);
+                const remainingAZ = getValues(REPLICATION_FACTOR_FIELD) - totalNodesinAz;
                 append({
                   ...unUsedZones[0],
-                  numNodesInAZ: 1,
+                  numNodesInAZ: remainingAZ || 0,
                   replicationFactor: 1,
                   isAffinitized: true
-                })
-              }
+                });
+                setValue(USER_AZSELECTED_FIELD, true);
+              }}
             >
               {t('universeForm.cloudConfig.addZoneButton')}
             </YBButton>
@@ -236,6 +258,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
       <Box
         display="flex"
         marginTop={15}
+        width="600px"
         alignItems={'center'}
         flexDirection={'column'}
         data-testid="PlacementsField-Loader"
