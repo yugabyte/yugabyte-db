@@ -46,9 +46,10 @@
 #include "yb/common/partition.h"
 #include "yb/common/placement_info.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/common/ql_protocol_util.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
