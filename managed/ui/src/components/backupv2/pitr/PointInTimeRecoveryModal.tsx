@@ -206,14 +206,8 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
         return (
           <>
             <div className="notice">
-              You may recover {config.dbName} to any time between{' '}
-              <b>
-                {ybFormatDate(minTime)}
-              </b>{' '}
-              and{' '}
-              <b>
-                {ybFormatDate(maxTime)}
-              </b>
+              You may recover {config.dbName} to any time between <b>{ybFormatDate(minTime)}</b> and{' '}
+              <b>{ybFormatDate(maxTime)}</b>
             </div>
             <Row>
               <Col lg={6} className="no-padding">
@@ -223,63 +217,63 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
                   type="radio"
                 >
                   {() => (
-                      <div
-                        className={clsx('pitr-custom-radio center-align', {
-                          active: values['recovery_time_mode'] === RECOVERY_MODE.RELATIVE
-                        })}
-                      >
-                        <input
-                          type="radio"
-                          checked={values['recovery_time_mode'] === RECOVERY_MODE.RELATIVE}
-                          onClick={() => {
-                            setFieldValue('recovery_time_mode', RECOVERY_MODE.RELATIVE, true);
+                    <div
+                      className={clsx('pitr-custom-radio center-align', {
+                        active: values['recovery_time_mode'] === RECOVERY_MODE.RELATIVE
+                      })}
+                    >
+                      <input
+                        type="radio"
+                        checked={values['recovery_time_mode'] === RECOVERY_MODE.RELATIVE}
+                        onClick={() => {
+                          setFieldValue('recovery_time_mode', RECOVERY_MODE.RELATIVE, true);
+                        }}
+                        id="PitrRelativeRecovery"
+                      />
+                      <div className="relative-time-mode">
+                        <Field
+                          name="recovery_interval"
+                          component={YBNumericInput}
+                          input={{
+                            onChange: (val: number) =>
+                              setFieldValue('recovery_interval', val, true),
+                            value: values['recovery_interval'],
+                            id: 'PitrRecoveryInterval'
                           }}
-                          id="PitrRelativeRecovery"
+                          minwidth="80px"
+                          minVal={1}
                         />
-                        <div className="relative-time-mode">
-                          <Field
-                            name="recovery_interval"
-                            component={YBNumericInput}
-                            input={{
-                              onChange: (val: number) =>
-                                setFieldValue('recovery_interval', val, true),
-                              value: values['recovery_interval'],
-                              id:"PitrRecoveryInterval"
-                            }}
-                            minwidth="80px"
-                            minVal={1}
-                          />
-                          <Field
-                            className="recovery_duration"
-                            component={YBFormSelect}
-                            options={DURATION_OPTIONS}
-                            width={140}
-                            name="recovery_duration"
-                            id="PitrRecoveryDuration"
-                          />
-                          <span>Ago</span>
-                          <div className="break" />
-                          {values['recovery_time_mode'] === RECOVERY_MODE.RELATIVE && error ? (
-                            // eslint-disable-next-line react/jsx-indent
-                            <div className="pitr-error-text">
-                              <CautionIcon />
-                              &nbsp;{error}
-                            </div>
-                          ) : (
-                            <div className="pitr-info-text">
-                              Will recover to:{' '}
-                              {
-                                ybFormatDate(getFinalTimeStamp({
-                                  ...values,
-                                  recovery_time_mode: RECOVERY_MODE.RELATIVE
-                                }))
-                              }
-                            </div>
-                          )}
-                        </div>
+                        <Field
+                          className="recovery_duration"
+                          component={YBFormSelect}
+                          options={DURATION_OPTIONS}
+                          width={140}
+                          name="recovery_duration"
+                          id="PitrRecoveryDuration"
+                        />
+                        <span>Ago</span>
+                        <div className="break" />
+                        {values['recovery_time_mode'] === RECOVERY_MODE.RELATIVE && error ? (
+                          // eslint-disable-next-line react/jsx-indent
+                          <div className="pitr-error-text">
+                            <CautionIcon />
+                            &nbsp;{error}
+                          </div>
+                        ) : (
+                          <div className="pitr-info-text">
+                            Will recover to:{' '}
+                            {ybFormatDate(
+                              getFinalTimeStamp({
+                                ...values,
+                                recovery_time_mode: RECOVERY_MODE.RELATIVE
+                              })
+                            )}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </Field>
+                    </div>
+                  )}
+                </Field>
               </Col>
             </Row>
             <Row>
@@ -291,65 +285,65 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
                   }
                   type="radio"
                 >
-                   {() => (
-                      <div
-                        className={clsx('pitr-custom-radio center-align', {
-                          active: values['recovery_time_mode'] === RECOVERY_MODE.EXACT
-                        })}
-                      >
-                        <input
-                          type="radio"
-                          checked={values['recovery_time_mode'] === RECOVERY_MODE.EXACT}
-                          onClick={() => {
-                            setFieldValue('recovery_time_mode', RECOVERY_MODE.EXACT, true);
-                            !values.customDate && setFieldValue('customDate', new Date());
-                            !values.customTime && setFieldValue('customTime', new Date());
-                          }}
-                          id="PitrAbsoluteRecovery"
-                        />
-                        <div className="exact-time-mode">
-                          <Row>
-                            <Col xs={6} className="no-padding">
-                              Date
-                              <DatePicker
-                                placeholder="Pick a time"
-                                format={DATE_FORMAT}
-                                value={values.customDate}
-                                max={new Date()}
-                                defaultValue={new Date()}
-                                onChange={(dt: Date) =>
-                                  setFieldValue('customDate' as never, dt, true)
-                                }
-                                id="PitrRecoveryDateSelector"
-                              />
-                            </Col>
+                  {() => (
+                    <div
+                      className={clsx('pitr-custom-radio center-align', {
+                        active: values['recovery_time_mode'] === RECOVERY_MODE.EXACT
+                      })}
+                    >
+                      <input
+                        type="radio"
+                        checked={values['recovery_time_mode'] === RECOVERY_MODE.EXACT}
+                        onClick={() => {
+                          setFieldValue('recovery_time_mode', RECOVERY_MODE.EXACT, true);
+                          !values.customDate && setFieldValue('customDate', new Date());
+                          !values.customTime && setFieldValue('customTime', new Date());
+                        }}
+                        id="PitrAbsoluteRecovery"
+                      />
+                      <div className="exact-time-mode">
+                        <Row>
+                          <Col xs={6} className="no-padding">
+                            Date
+                            <DatePicker
+                              placeholder="Pick a time"
+                              format={DATE_FORMAT}
+                              value={values.customDate}
+                              max={new Date()}
+                              defaultValue={new Date()}
+                              onChange={(dt: Date) =>
+                                setFieldValue('customDate' as never, dt, true)
+                              }
+                              id="PitrRecoveryDateSelector"
+                            />
+                          </Col>
 
-                            <Col xs={6} className="no-padding">
-                              Time
-                              <TimePicker
-                                defaultValue={new Date()}
-                                value={values.customTime}
-                                onChange={(time: Date) =>
-                                  setFieldValue('customTime' as never, time, true)
-                                }
-                                id="PitrRecoveryTimeSelector"
-                              />
-                            </Col>
-                          </Row>
+                          <Col xs={6} className="no-padding">
+                            Time
+                            <TimePicker
+                              defaultValue={new Date()}
+                              value={values.customTime}
+                              onChange={(time: Date) =>
+                                setFieldValue('customTime' as never, time, true)
+                              }
+                              id="PitrRecoveryTimeSelector"
+                            />
+                          </Col>
+                        </Row>
 
-                          <Row>
-                            <div className="break" />
-                            {values['recovery_time_mode'] === RECOVERY_MODE.EXACT && error && (
-                              <div className="pitr-error-text">
-                                <CautionIcon />
-                                &nbsp;{error}
-                              </div>
-                            )}
-                          </Row>
-                        </div>
+                        <Row>
+                          <div className="break" />
+                          {values['recovery_time_mode'] === RECOVERY_MODE.EXACT && error && (
+                            <div className="pitr-error-text">
+                              <CautionIcon />
+                              &nbsp;{error}
+                            </div>
+                          )}
+                        </Row>
                       </div>
-                    )}
-                  </Field>
+                    </div>
+                  )}
+                </Field>
               </Col>
             </Row>
             <Row></Row>

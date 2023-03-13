@@ -21,10 +21,7 @@ import copy from 'copy-to-clipboard';
 import { toast } from 'react-toastify';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { YBLoadingCircleIcon } from '../../common/indicators';
-import {
-  BACKUP_REFETCH_INTERVAL,
-  calculateDuration,
-} from '../common/BackupUtils';
+import { BACKUP_REFETCH_INTERVAL, calculateDuration } from '../common/BackupUtils';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { TableType } from '../../../redesign/helpers/dtos';

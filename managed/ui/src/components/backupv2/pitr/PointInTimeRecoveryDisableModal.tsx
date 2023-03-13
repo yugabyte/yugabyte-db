@@ -101,9 +101,7 @@ export const PointInTimeRecoveryDisableModal: FC<PointInTimeRecoveryDisableModal
                 <Col sm={6} className="config-row-label">
                   Earliest Recoverable Time
                 </Col>
-                <Col sm={6}>
-                  {ybFormatDate(minTime)}
-                </Col>
+                <Col sm={6}>{ybFormatDate(minTime)}</Col>
               </Row>
             </div>
           </>
