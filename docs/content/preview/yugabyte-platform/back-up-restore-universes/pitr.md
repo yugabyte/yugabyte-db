@@ -1,7 +1,8 @@
 ---
+title: Point-in-time recovery in YugabyteDB Anywhere
 headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
-description: Point-in-time recovery
+description: Using Point-in-time recovery in YugabyteDB Anywhere
 menu:
   preview_yugabyte-platform:
     parent: back-up-restore-universes
@@ -42,7 +43,7 @@ You can recover a snapshot to a specific point in time as follows:
 
 1. Navigate to **Point-in-time Recovery**.
 
-2. Find the database or keyspace whose snapshot you want to recover, click its corresponding **...** (More), and select **Recover to a Point in Time**.
+2. Find the database or keyspace whose snapshot you want to recover, click the three dots (**...**) to display its actions, and select **Recover to a Point in Time**.
 
 3. In the **Recover dbname to a point in time** dialog shown in the following illustration, specify the recovery time parameters that fall within your predefined retention period:
 
@@ -56,7 +57,7 @@ You can disable PITR as follows:
 
 1. Navigate to **Point-in-time Recovery**.
 
-2. Find the database or keyspace for which you to disable PITR, click its corresponding **...** (More), and then select **Disable Point-in-Time Recovery**.
+2. Find the database or keyspace for which you to disable PITR, click the three dots (**...**) to display its actions, and then select **Disable Point-in-Time Recovery**.
 
 3. Use the dialog shown in the following illustration to confirm that your intention is to disable PITR for the database or keyspace:
 
