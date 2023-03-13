@@ -310,16 +310,16 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
         sudo sysctl kernel.core_pattern=/home/yugabyte/cores/core_%e.%p >> /etc/sysctl.conf
         ```
 
-    1. Configure the parameter `vm.max_map_count` as the root user using the following command:
+    1. Configure the parameter `vm.max_map_count` as follows:
 
         ```sh
-        sysctl -w vm.max_map_count=262144
+        sudo sysctl -w vm.max_map_count=262144
+        sudo bash -c 'sysctl vm.max_map_count=262144 >> /etc/sysctl.conf'
         ```
 
-    1. Update the parameter value in `/etc/sysctl.conf` file and validate it as follows:
+    1. Validate the change as follows:
 
         ```sh
-        sudo bash -c 'sysctl vm.max_map_count=262144 >> /etc/sysctl.conf'
         sysctl vm.max_map_count
         ```
 
