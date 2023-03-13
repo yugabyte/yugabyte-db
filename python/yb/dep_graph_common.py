@@ -816,10 +816,6 @@ class DependencyGraph:
                 proto_rel_path = node.path_rel_to_src_root()
                 if proto_rel_path:
                     proto_rel_path = proto_rel_path[:-6]
-                    if proto_rel_path.startswith('ent/'):
-                        # Remove the 'ent/' prefix because there is no separate 'ent/' prefix
-                        # in the build directory.
-                        proto_rel_path = proto_rel_path[4:]
                     if proto_rel_path in proto_node_by_rel_path:
                         raise RuntimeError(
                             "Multiple .proto nodes found that share the same "
