@@ -196,6 +196,23 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
+    // Update disk size if there is a change
+    boolean diskSizeChanged =
+        !curIntent.deviceInfo.volumeSize.equals(newIntent.deviceInfo.volumeSize);
+    if (diskSizeChanged) {
+      log.info(
+          "Creating task for disk size change from {} to {}",
+          curIntent.deviceInfo.volumeSize,
+          newIntent.deviceInfo.volumeSize);
+      createResizeDiskTask(
+          universe.name,
+          curPlacement,
+          masterAddresses,
+          newIntent,
+          isReadOnlyCluster,
+          newNamingStyle);
+    }
+
     boolean instanceTypeChanged = false;
     if (!curIntent.instanceType.equals(newIntent.instanceType)) {
       List<String> masterResourceChangeInstances = Arrays.asList("dev", "xsmall");
@@ -351,23 +368,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       createModifyBlackListTask(
               new ArrayList<>(tserversToRemove), false /* isAdd */, false /* isLeaderBlacklist */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-    }
-
-    // Finally, update disk size if there is a change
-    boolean diskSizeChanged =
-        !curIntent.deviceInfo.volumeSize.equals(newIntent.deviceInfo.volumeSize);
-    if (diskSizeChanged) {
-      log.info(
-          "Creating task for disk size change from {} to {}",
-          curIntent.deviceInfo.volumeSize,
-          newIntent.deviceInfo.volumeSize);
-      createResizeDiskTask(
-          universe.name,
-          newPlacement,
-          masterAddresses,
-          newIntent,
-          isReadOnlyCluster,
-          newNamingStyle);
     }
 
     // Update the universe to the new state.
