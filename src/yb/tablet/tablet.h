@@ -79,7 +79,6 @@ namespace yb {
 class FsManager;
 class MemTracker;
 class MetricEntity;
-class RowChangeList;
 
 namespace server {
 class Clock;

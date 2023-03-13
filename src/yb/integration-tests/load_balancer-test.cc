@@ -15,7 +15,7 @@
 
 #include "yb/client/client.h"
 
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_wire_protocol.h"
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"

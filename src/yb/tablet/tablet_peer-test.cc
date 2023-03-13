@@ -34,8 +34,8 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/hybrid_time.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_fwd.h"

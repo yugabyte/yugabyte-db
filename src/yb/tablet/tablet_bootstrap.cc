@@ -39,8 +39,8 @@
 #include <boost/preprocessor/stringize.hpp>
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"

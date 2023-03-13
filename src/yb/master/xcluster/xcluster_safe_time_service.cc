@@ -15,19 +15,22 @@
 #include "yb/client/async_initializer.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
+#include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
-#include "yb/common/wire_protocol.h"
+
+#include "yb/common/ql_wire_protocol.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
-#include "yb/client/schema.h"
-#include "yb/client/table_handle.h"
 
 using std::min;
 

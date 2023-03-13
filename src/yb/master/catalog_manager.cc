@@ -82,6 +82,7 @@
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
 #include "yb/common/ql_type.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"

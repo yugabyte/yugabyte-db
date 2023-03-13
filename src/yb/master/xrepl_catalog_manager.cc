@@ -16,9 +16,12 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/pg_system_attr.h"
-#include "yb/docdb/docdb_pgapi.h"
 #include "yb/common/ql_type.h"
+#include "yb/common/ql_wire_protocol.h"
+
+#include "yb/docdb/docdb_pgapi.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/bind_helpers.h"
 #include "yb/master/catalog_entity_info.h"

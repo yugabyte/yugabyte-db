@@ -16,6 +16,7 @@
 #include "yb/client/client-internal.h"
 #include "yb/client/schema-internal.h"
 
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 

@@ -35,8 +35,8 @@
 #include <glog/logging.h>
 
 #include "yb/common/index.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"

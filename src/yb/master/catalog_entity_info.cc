@@ -36,6 +36,7 @@
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/partition.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/cdc_rpc_tasks.h"
