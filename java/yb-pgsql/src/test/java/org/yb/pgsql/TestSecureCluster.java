@@ -46,7 +46,7 @@ public class TestSecureCluster extends BasePgSQLTest {
     super();
     FileSystem fs = FileSystems.getDefault();
     srcCertsDir = fs.getPath(TestUtils.getBinDir()).resolve(
-        fs.getPath("../ent/test_certs")).toString();
+        fs.getPath("../test_certs")).toString();
     certsDir = fs.getPath(TestUtils.getBaseTmpDir()).toString();
     FileUtils.copyDirectory(new File(srcCertsDir), new File(certsDir));
     useIpWithCertificate = true;
