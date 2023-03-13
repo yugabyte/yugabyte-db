@@ -12,7 +12,9 @@
 
 #pragma once
 
+#ifdef YB_GOOGLE_TCMALLOC
 #include <tcmalloc/malloc_extension.h>
+#endif
 
 #include <cstdint>
 #include <string>
