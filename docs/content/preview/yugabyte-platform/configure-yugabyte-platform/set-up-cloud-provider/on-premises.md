@@ -303,10 +303,25 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
 
 1. If running on a virtual machine, execute the following to tune kernel settings:
 
-    ```sh
-    sudo bash -c 'sysctl vm.swappiness=0 >> /etc/sysctl.conf'
-    sudo sysctl kernel.core_pattern=/home/yugabyte/cores/core_%e.%p >> /etc/sysctl.conf
-    ```
+    1. Configure the parameter `vm.swappiness` as follows:
+
+        ```sh
+        sudo bash -c 'sysctl vm.swappiness=0 >> /etc/sysctl.conf'
+        sudo sysctl kernel.core_pattern=/home/yugabyte/cores/core_%e.%p >> /etc/sysctl.conf
+        ```
+
+    1. Configure the parameter `vm.max_map_count` as the root user using the following command:
+
+        ```sh
+        sysctl -w vm.max_map_count=262144
+        ```
+
+    1. Update the parameter value in `/etc/sysctl.conf` file and validate it as follows:
+
+        ```sh
+        sudo bash -c 'sysctl vm.max_map_count=262144 >> /etc/sysctl.conf'
+        sysctl vm.max_map_count
+        ```
 
 1. Perform the following to prepare and mount the data volume (separate partition for database data):
 
