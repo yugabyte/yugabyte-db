@@ -12,11 +12,13 @@ menu:
 type: docs
 ---
 
-Although failures are inevitable, you can design your applications to take appropriate action when statements fail to ensure they are highly available.
+As failures are inevitable, design your applications to take appropriate actions on the failed statements to ensure they are highly available. YugabyteDB returns various error codes for errors that occur during transaction processing. Most of the error codes align well with the standard [postgres error codes](https://www.postgresql.org/docs/current/errcodes-appendix.html#:~:text=Class%2040%20%E2%80%94%20Transaction%20Rollback), although there are subtle differences in how they are manifested.
 
-YugabyteDB returns [standard PostgreSQL error codes](https://www.postgresql.org/docs/11/errcodes-appendix.html) for errors that occur during transaction processing. In general, the error codes can be classified into the following three types:
+Also, YugabyteDB supports different [isolation levels](../../../explore/transactions/isolation-levels/) during a transaction. Although some errors are very specific to certain transaction isolation levels, most errors are common across multiple isolation levels. In general, the error codes can be classified into three types.
 
 1. __`WARNING`__ : Informational messages that explain why a statement failed.
+
+     Most client libraries hide warnings but you might notice the messages when you execute statements directly from a terminal. The statement execution can continue without interruption but would need to be modified to avoid the re-occurence of the message. For example,
 
     ```output.plpgsql
     -- When a BEGIN statement is issued inside a transaction
@@ -71,7 +73,7 @@ Follow the [setup instructions](../../../explore#tabs-00-00) to start a single l
 
 The server retries failed transactions automatically whenever possible. However, in some scenarios, a server-side retry is not possible. For example, when the retry limit has been reached or the transaction is not in a valid state. In these cases, it is the client's responsibility to retry the transaction at the application layer. Most transaction errors that happen due to conflicts and deadlocks can be restarted by the client. The following scenarios describe the causes of failures, and the required methods to be handled by the applications.
 
-### Client-side retry
+YugabyteDB will retry failed transactions automatically whenever possible without client intervention. There would be scenarios where a server side retry is not fit. eg. The retry limit has been reached or the transaction is not in a valid state. At this juncture it would be the client's responsibility to retry the transaction at the application layer. Most transaction errors that happen due to conflicts and deadlocks can be restarted by the client. The following scenarios describe the causes for failures, and the required methods to be handled by the applications.
 
 Execute the transaction in a `try..catch` block in a loop. When a re-tryable failure happens, issue `ROLLBACK` and then retry the transaction. To avoid overloading the server and ending up in an indefinite loop, wait for a period of time between retires and limit the number of retries. The following illustrates a typical client-side retry implementation:
 
@@ -123,7 +125,7 @@ cxn = psycopg2.connect(connstr)
 
 max_attempts = 10   # max no.of retries
 sleep_time = 0.002  # 2 ms - base sleep time
-backoff = 2         # 
+backoff = 2         # exponential multiplier
 
 attempt = 0
 while attempt < max_attempts:
@@ -176,7 +178,7 @@ except psycopg2.errors.InFailedSqlTransaction as e:
   cursor.execute("ROLLBACK")
 ```
 
-Normally the `INVALID TXN STATEMENT` would throw a `SyntaxError` exception. For the sake of this example, the code (incorrectly) catches the error and ignores it. The next `UPDATE` statement, even though valid, will fail with an `InFailedSqlTransaction` exception. This could be avoided by handling the actual error and issuing a `ROLLBACK`. In this case, a retry won't help because it is a SyntaxError, but there might be scenarios where the transaction would succeed when retried.
+The `INVALID TXN STATEMENT` would throw a `SyntaxError` exception. The code (in-correctly) catches this and ignores it. The next `update` statement, even though valid,  will fail with an `InFailedSqlTransaction` exception. This could be avoided by handling the actual error and issuing a `ROLLBACK`. In this case, a retry would not help as it is a SyntaxError, but there might be scenarios, where the transaction would succeed when retried.
 
 ## Non-retriable errors
 
@@ -230,18 +232,20 @@ Time: 1.095 ms
 UPDATE txndemo SET v=20 WHERE k=1;
 ```
 
-```output.plpgsql
+```plpgsql.output
 ERROR:  25006: cannot execute UPDATE in a read-only transaction
 Time: 4.417 ms
 ```
 
 ## Performance tuning
 
-### Statement timeout
+## Availability Tuning
 
 In [READ COMMITTED isolation level](../../../architecture/transactions/read-committed/), clients do not need to retry or handle serialization errors. During conflicts, the server retries indefinitely based on the [retry options](../../../architecture/transactions/read-committed/#performance-tuning) and [Wait-On-Conflict](../../../architecture/transactions/concurrency-control/#wait-on-conflict) policy.
 
-To avoid getting stuck in a wait loop because of starvation, use a reasonable timeout for the statements similar to the following:
+In [READ COMMITTED isolation level](../../architecture/transactions/read-committed/), clients do not need to retry or handle serialization errors. During conflicts, the server retries indefinitely based on the [retry options](../../../architecture/transactions/read-committed/#performance-tuning) and [Wait-On-Conflict](../../../architecture/transactions/concurrency-control/#wait-on-conflict) policy.
+
+To avoid getting stuck in a wait loop because of starvation, it is recommended to use a reasonable timeout for the statements similar to the following:
 
 ```plpgsql
 SET statement_timeout = '10s';
@@ -279,7 +283,7 @@ Setting this timeout can avoid deadlock scenarios where applications acquire loc
 
 ### Deferrable property
 
-When a transaction is in `SERIALIZABLE` isolation level and `READ ONLY` mode, and the transaction property `DEFERRABLE` is set, then that transaction executes with much lower overhead and is never canceled because of a serialization failure. This can be used for batch or long-running jobs. For example:
+When a transaction is in `SERIALIZABLE` isolation level and `READ ONLY` mode, if the transaction property `DEFERRABLE` is set, then that transaction executes with much lower overhead and is never canceled because of a serialization failure. This can be used for batch or long-running jobs, which need a consistent snapshot of the database without interfering or being intefered by other transactions. Eg.
 
 ```plpgsql
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE;
@@ -301,7 +305,7 @@ show yb_transaction_priority;
  0.000000000 (Normal priority transaction)
 ```
 
-The priority value is bound by two settings, `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`. If an application would like a specific transaction to be given higher priority, it can issue statements as follows:
+The priority value is bound by two settings, namely `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`. If an application would like a specific transaction to be given higher priority, it can issue statements like:
 
 ```plpgsql
 SET yb_transaction_priority_lower_bound=0.9;
@@ -312,7 +316,7 @@ This ensures that the priority assigned to your transaction is in the range `[0.
 
 ## Learn more
 
-- [Transaction isolation levels](../../../architecture/transactions/isolation-levels/) - Various isolation levels supported by YugabyteDB.
-- [Concurrency control](../../../architecture/transactions/concurrency-control/) - Policies to handle conflicts between transactions.
-- [Transaction priorities](../../../architecture/transactions/transaction-priorities/) - Priority buckets for transactions.
-- [Transaction options](../../../explore/transactions/distributed-transactions-ysql/#transaction-options) - options supported by transactions.
+- [Transaction Isolation Levels](../../../architecture/transactions/isolation-levels/) - Various isolation levels supported by YugabyteDB.
+- [Concurrency Control](../../../architecture/transactions/concurrency-control/) - Policies to handle conflicts between transactions.
+- [Transaction priorities](../../../architecture/transactions/concurrency-control/) - Priority buckets for transactions.
+- [Transaction options](../../../explore/transactions/distributed-transactions-ysql/#transaction-options) - Options supported by transactions.
