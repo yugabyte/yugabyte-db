@@ -18,9 +18,10 @@ import { YBLoading } from '../../common/indicators';
 import { YBTable } from '../../common/YBTable';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
 import {
+  BACKUP_REFETCH_INTERVAL,
   CALDENDAR_ICON,
   DATE_FORMAT,
-  ENTITY_NOT_AVAILABLE,
+  ENTITY_NOT_AVAILABLE
 } from '../common/BackupUtils';
 import { TIME_RANGE_STATE } from '../common/IBackup';
 import { IRestore, RESTORE_STATUS_OPTIONS } from '../common/IRestore';
@@ -83,6 +84,7 @@ export const Restore: FC<RestoreProps> = ({ universeUUID, type }) => {
       DEFAULT_SORT_COLUMN,
       sortDirection,
       [],
+      type === 'ACCOUNT_LEVEL',
       universeUUID
     ],
     () =>
@@ -95,8 +97,12 @@ export const Restore: FC<RestoreProps> = ({ universeUUID, type }) => {
         DEFAULT_SORT_COLUMN,
         sortDirection,
         [],
+        type === 'ACCOUNT_LEVEL',
         universeUUID
-      )
+      ),
+    {
+      refetchInterval: BACKUP_REFETCH_INTERVAL
+    }
   );
 
   const isFilterApplied = () => {
@@ -211,7 +217,7 @@ export const Restore: FC<RestoreProps> = ({ universeUUID, type }) => {
             pagination: true
           };
         }}
-        fetchInfo={{ dataTotalSize: restoreList?.data.length ?? 10 }}
+        fetchInfo={{ dataTotalSize: restoreList?.data.totalCount ?? 10 }}
         hover
       >
         <TableHeaderColumn dataField="restoreUUID" isKey={true} hidden={true} />
