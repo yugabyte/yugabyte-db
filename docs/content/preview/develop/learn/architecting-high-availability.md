@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-As failures are inevitable, design your applications to take appropriate actions on the failed statements to ensure they are highly available. YugabyteDB returns various error codes for errors that occur during transaction processing. Most of the error codes align well with the standard [postgres error codes](https://www.postgresql.org/docs/current/errcodes-appendix.html#:~:text=Class%2040%20%E2%80%94%20Transaction%20Rollback), although there are subtle differences in how they are manifested.
+YugabytedDB provides strong [ACID](../acid-transactions-ysql/) guarantees. Due to this, failures during transactions are inevitable. You need to design your applications to take appropriate actions on the failed statements to ensure they are highly available. YugabyteDB returns various error codes for errors that occur during transaction processing. Most of the error codes align well with the standard [postgres error codes](https://www.postgresql.org/docs/current/errcodes-appendix.html#:~:text=Class%2040%20%E2%80%94%20Transaction%20Rollback), although there are subtle differences in how they are manifested.
 
 Also, YugabyteDB supports different [isolation levels](../../../explore/transactions/isolation-levels/) during a transaction. Although some errors are very specific to certain transaction isolation levels, most errors are common across multiple isolation levels. In general, the error codes can be classified into three types.
 
@@ -69,11 +69,17 @@ Follow the [setup instructions](../../../explore#tabs-00-00) to start a single l
     INSERT INTO txndemo VALUES (1,10),(2,10),(3,10),(4,10),(5,10);
     ```
 
-## Transaction retries
+## Transaction Retries
 
-The server retries failed transactions automatically whenever possible. However, in some scenarios, a server-side retry is not possible. For example, when the retry limit has been reached or the transaction is not in a valid state. In these cases, it is the client's responsibility to retry the transaction at the application layer. Most transaction errors that happen due to conflicts and deadlocks can be restarted by the client. The following scenarios describe the causes of failures, and the required methods to be handled by the applications.
+### Automatic Retries
 
-YugabyteDB will retry failed transactions automatically whenever possible without client intervention. There would be scenarios where a server side retry is not fit. eg. The retry limit has been reached or the transaction is not in a valid state. At this juncture it would be the client's responsibility to retry the transaction at the application layer. Most transaction errors that happen due to conflicts and deadlocks can be restarted by the client. The following scenarios describe the causes for failures, and the required methods to be handled by the applications.
+YugabyteDB will retry failed transactions automatically on the server side whenever possible without client intervention. These happen even on single statements, which are implicitly considered as transactions. In [Read Committed](/#statement-timeout) isolation mode, the server retries indefinitely. 
+
+There would be scenarios where a server side retry is not fit. eg. The retry limit has been reached or the transaction is not in a valid state. At this juncture it would be the client's responsibility to retry the transaction at the application layer.
+
+### Client-side Retry
+
+Most transaction errors that happen due to conflicts and deadlocks can be restarted by the client. The following scenarios describe the causes for failures, and the required methods to be handled by the applications.
 
 Execute the transaction in a `try..catch` block in a loop. When a re-tryable failure happens, issue `ROLLBACK` and then retry the transaction. To avoid overloading the server and ending up in an indefinite loop, wait for a period of time between retires and limit the number of retries. The following illustrates a typical client-side retry implementation:
 
@@ -210,7 +216,7 @@ Time: 10.416 ms
 SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 ```
 
-```output.plpgsql
+```plpgsql.output
 ERROR:  25001: SET TRANSACTION ISOLATION LEVEL must be called before any query
 Time: 3.808 ms
 ```
@@ -237,9 +243,9 @@ ERROR:  25006: cannot execute UPDATE in a read-only transaction
 Time: 4.417 ms
 ```
 
-## Performance tuning
+## Availability tuning
 
-## Availability Tuning
+### Statement timeout
 
 In [READ COMMITTED isolation level](../../../architecture/transactions/read-committed/), clients do not need to retry or handle serialization errors. During conflicts, the server retries indefinitely based on the [retry options](../../../architecture/transactions/read-committed/#performance-tuning) and [Wait-On-Conflict](../../../architecture/transactions/concurrency-control/#wait-on-conflict) policy.
 
