@@ -51,7 +51,7 @@
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_wire_protocol.h"
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/log_anchor_registry.h"

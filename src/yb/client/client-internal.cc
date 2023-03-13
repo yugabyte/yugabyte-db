@@ -57,7 +57,7 @@
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/placement_info.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_wire_protocol.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"

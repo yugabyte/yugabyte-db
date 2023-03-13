@@ -44,8 +44,8 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.messages.h"

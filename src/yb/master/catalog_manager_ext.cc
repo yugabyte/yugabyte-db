@@ -17,10 +17,17 @@
 #include <unordered_set>
 #include <google/protobuf/util/message_differencer.h>
 
-#include "yb/common/common_fwd.h"
 #include "yb/common/constants.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/ql_name.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/ql_type_util.h"
+#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema.h"
+
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
@@ -42,13 +49,6 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
-#include "yb/common/ql_name.h"
-#include "yb/common/ql_type.h"
-#include "yb/common/ql_type_util.h"
-#include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
 
 #include "yb/docdb/consensus_frontier.h"

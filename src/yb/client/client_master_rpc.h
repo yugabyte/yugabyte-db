@@ -16,6 +16,8 @@
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_error.h"
 
