@@ -99,7 +99,7 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
           </Box>
         )}
       </Box>
-      <Box width="600px" mt={isLargeDevice ? 0 : 4}>
+      <Box mt={isLargeDevice ? 0 : 4}>
         <PlacementsField disabled={false} isPrimary={isPrimary} />
       </Box>
     </Box>
