@@ -31,6 +31,7 @@ export enum NodeType {
 }
 
 export interface CpuMeasureQueryData {
+  suggestion?: string;
   maxNodeName: string;
   maxNodeValue: number;
   otherNodesAvgValue: number;
@@ -40,8 +41,9 @@ export interface CpuMeasureRecommendation {
   summary: React.ReactNode | string;
 }
 
-export interface CpuUsageRecommendation {
+export interface CustomRecommendation {
   summary: React.ReactNode | string;
+  suggestion: string;
 }
 
 export interface IndexSchemaQueryData {
@@ -63,6 +65,7 @@ export interface NodeDistributionData {
 }
 
 export interface QueryLoadData {
+  suggestion: string;
   maxNodeName: string;
   percentDiff: number;
   maxNodeDistribution: NodeDistributionData;
@@ -74,12 +77,99 @@ export interface QueryLoadRecommendation {
   summary: React.ReactNode | string;
 }
 
-export enum RecommendationTypeEnum {
-  All = 'All',
-  SchemaSuggestion = 'SchemaSuggestion',
-  QueryLoadSkew = 'QueryLoadSkew',
-  IndexSuggestion = 'IndexSuggestion',
-  ConnectionSkew = 'ConnectionSkew',
-  CpuSkew = 'CpuSkew',
-  CpuUsage = 'CpuUsage'
+export enum RecommendationType {
+  ALL = 'ALL',
+  RANGE_SHARDING = 'RANGE_SHARDING',
+  CPU_USAGE = 'CPU_USAGE',
+  CONNECTION_SKEW = 'CONNECTION_SKEW',
+  QUERY_LOAD_SKEW = 'QUERY_LOAD_SKEW',
+  UNUSED_INDEX = 'UNUSED_INDEX',
+  CPU_SKEW = 'CPU_SKEW',
+  HOT_SHARD = 'HOT_SHARD',
+}
+
+export enum SortDirection {
+  ASC = 'ASC',
+  DESC = 'DESC'
+}
+
+const EntityType = {
+  NODE: 'NODE',
+  DATABASE: 'DATABASE',
+  TABLE: 'TABLE',
+  INDEX: 'INDEX',
+  UNIVERSE:  'UNIVERSE'
+} as const;
+export type EntityType = typeof EntityType[keyof typeof EntityType];
+
+const RecommendationPriority = {
+  HIGH: 'HIGH',
+  MEDIUM: 'MEDIUM',
+  LOW: 'LOW'
+} as const;
+export type RecommendationPriority = typeof RecommendationPriority[keyof typeof RecommendationPriority];
+
+const RecommendationState = {
+  OPEN: 'OPEN',
+  HIDDEN: 'HIDDEN',
+  RESOLVED: 'RESOLVED'
+} as const;
+export type RecommendationState = typeof RecommendationState[keyof typeof RecommendationState];
+
+interface HighestNodeQueryLoadDetails {
+  DeleteStmt: number;
+  InsertStmt: number;
+  SelectStmt: number;
+  UpdateStmt: number
+}
+
+interface OtherNodeQueryLoadDetails extends HighestNodeQueryLoadDetails { }
+
+export interface RecommendationInfo {
+  // CPU Skew and CPU Usage
+  timeInterval?: number;
+  highestNodeCpu?: number;
+  otherNodeCount?: number;
+  highestNodeName?: string;
+  otherNodesAvgCpu?: string;
+
+  // Connection Skew
+  node_with_highest_connection_count?: number;
+  avg_connection_count_of_other_nodes?: number;
+  details?: any;
+
+  // Query Load Skew
+  node_with_highest_query_load_details?: HighestNodeQueryLoadDetails;
+  other_nodes_average_query_load_details?: OtherNodeQueryLoadDetails;
+
+  // Hot Shard
+  table_name_with_hot_shard?: string;
+  database_name_with_hot_shard?: string;
+  node_with_hot_shard?: string;
+  avg_query_count_of_other_nodes?: number;
+}
+
+interface TableData {
+  data: PerfRecommendationData[];
+}
+
+export interface PerfRecommendationData {
+  type: RecommendationType;
+  observation?: string;
+  suggestion?: string;
+  entityType?: EntityType;
+  target: string;
+  recommendationInfo?: RecommendationInfo;
+  recommendationState?: RecommendationState;
+  recommendationPriority?: RecommendationPriority;
+  recommendationTimestamp?: number;
+  isStale?: boolean;
+  new?: boolean
+}
+
+export interface IndexAndShardingRecommendationData {
+  type: RecommendationType;
+  target: string;
+  indicator: number;
+  table: TableData;
 }

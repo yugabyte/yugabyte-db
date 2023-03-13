@@ -3,10 +3,10 @@ import { useTranslation } from 'react-i18next';
 
 import lightBulbIcon from '../images/lightbulb.svg';
 import { EXTERNAL_LINKS } from '../helpers/const';
-import { CpuUsageRecommendation } from '../../../redesign/utils/dtos';
+import { CustomRecommendation } from '../../../redesign/utils/dtos';
 import './styles.scss';
 
-export const CpuUsage: FC<CpuUsageRecommendation> = ({ summary }) => {
+export const CustomRecommendations: FC<CustomRecommendation> = ({ summary, suggestion }) => {
   const { t } = useTranslation();
   return (
     <div>
@@ -17,11 +17,11 @@ export const CpuUsage: FC<CpuUsageRecommendation> = ({ summary }) => {
           <span className="learnPerfAdvisorText">
             {t('clusterDetail.performance.advisor.Recommendation')}
             {t('clusterDetail.performance.advisor.Separator')}
-            {t('clusterDetail.performance.advisor.RebalanceAndTroubleshoot')}
+            {suggestion}
             <a
               target="_blank"
               className="learnSchemaSuggestion"
-              href={EXTERNAL_LINKS.PERF_ADVISOR_DOCS_LINK}
+              href={EXTERNAL_LINKS.CPU_SKEW_AND_USAGE}
               rel="noopener noreferrer"
             >
               {t('clusterDetail.performance.advisor.LearnHow')}
