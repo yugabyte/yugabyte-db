@@ -215,10 +215,7 @@ class GenPch:
             return path
 
         while len(path) != 0:
-            if path.startswith('ent/'):
-                path = path[4:]
-            else:
-                path = os.path.dirname(path)
+            path = os.path.dirname(path)
             if path in self.libs:
                 return path
         return None
