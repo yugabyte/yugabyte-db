@@ -457,6 +457,7 @@ Status PopulateCDCSDKIntentRecord(
   bool colocated = tablet->metadata()->colocated();
   Schema schema = Schema();
   SchemaVersion schema_version = std::numeric_limits<uint32_t>::max();
+  SchemaPackingStorage schema_packing_storage(tablet->table_type());
 
   if (!colocated) {
     const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
@@ -464,11 +465,10 @@ Status PopulateCDCSDKIntentRecord(
         client, tablet->metadata()->table_id(), resp));
     schema = *schema_details.schema;
     schema_version = schema_details.schema_version;
+    schema_packing_storage.AddSchema(schema_version, schema);
   }
 
   std::string table_name = tablet->metadata()->table_name();
-  SchemaPackingStorage schema_packing_storage(tablet->table_type());
-  schema_packing_storage.AddSchema(schema_version, schema);
   Slice prev_key;
   CDCSDKProtoRecordPB proto_record;
   RowMessage* row_message = proto_record.mutable_row_message();
@@ -1200,10 +1200,12 @@ Status ProcessIntents(
   IntraTxnWriteId write_id = 0;
 
   // Need to populate the CDCSDKRecords
-  RETURN_NOT_OK(PopulateCDCSDKIntentRecord(
-      op_id, transaction_id, *keyValueIntents, metadata, tablet_peer, enum_oid_label_map,
-      composite_atts_map, cached_schema_details, resp, consumption, &write_id, &reverse_index_key,
-      commit_time, client));
+  if (!keyValueIntents->empty()) {
+    RETURN_NOT_OK(PopulateCDCSDKIntentRecord(
+        op_id, transaction_id, *keyValueIntents, metadata, tablet_peer, enum_oid_label_map,
+        composite_atts_map, cached_schema_details, resp, consumption, &write_id, &reverse_index_key,
+        commit_time, client));
+  }
 
   SetTermIndex(op_id.term, op_id.index, checkpoint);
 
