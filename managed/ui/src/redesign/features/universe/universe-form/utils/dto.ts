@@ -448,6 +448,7 @@ export interface CloudConfigFormValue {
   placements: Placement[];
   defaultRegion?: string | null;
   resetAZConfig?: boolean;
+  userAZSelected?: boolean;
   mastersInDefaultRegion?: boolean;
   masterPlacement?: MasterPlacementMode;
 }
@@ -539,7 +540,8 @@ export const DEFAULT_CLOUD_CONFIG: CloudConfigFormValue = {
   defaultRegion: null,
   mastersInDefaultRegion: false,
   masterPlacement: MasterPlacementMode.COLOCATED,
-  resetAZConfig: false
+  resetAZConfig: false,
+  userAZSelected: false
 };
 
 export const DEFAULT_INSTANCE_CONFIG: InstanceConfigFormValue = {
