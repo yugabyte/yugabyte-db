@@ -14,38 +14,36 @@ type: docs
 
 YugabytedDB provides strong [ACID](../acid-transactions-ysql/) guarantees. Due to this, failures during transactions are inevitable. You need to design your applications to take appropriate actions on the failed statements to ensure they are highly available. YugabyteDB returns various error codes for errors that occur during transaction processing. Most of the error codes align well with the standard [postgres error codes](https://www.postgresql.org/docs/current/errcodes-appendix.html#:~:text=Class%2040%20%E2%80%94%20Transaction%20Rollback), although there are subtle differences in how they are manifested.
 
-Also, YugabyteDB supports different [isolation levels](../../../explore/transactions/isolation-levels/) during a transaction. Although some errors are very specific to certain transaction isolation levels, most errors are common across multiple isolation levels. In general, the error codes can be classified into three types.
+Also, YugabyteDB supports different [isolation levels](../../../explore/transactions/isolation-levels/) during a transaction. Although some errors are very specific to certain transaction isolation levels, most errors are common across multiple isolation levels.
 
-1. __`WARNING`__ : Informational messages that explain why a statement failed.
+In general, the error codes can be classified into the following three types:
 
-     Most client libraries hide warnings but you might notice the messages when you execute statements directly from a terminal. The statement execution can continue without interruption but would need to be modified to avoid the re-occurence of the message. For example,
+1. __`WARNING`__ : Informational messages that explain why a statement failed. For example:
 
-    ```output.plpgsql
+    ```output
     -- When a BEGIN statement is issued inside a transaction
     WARNING:  25001: there is already a transaction in progress
     ```
 
     Most client libraries hide warnings but you might notice the messages when you execute statements directly from a terminal. Statement execution can continue without interruption, but would need to be modified to avoid the re-occurence of the message.
 
-1. __`ERROR`__ : Errors are returned when a transaction cannot continue and has to be restarted by the client.
+1. __`ERROR`__ : Errors are returned when a transaction cannot continue and has to be restarted by the client. For example:
 
-    ```output.plpgsql
+    ```output
     -- When multiple transactions are modifying the same key.
     ERROR:  40001: Operation expired: Transaction XXXX expired or aborted by a conflict
     ```
 
     These errors need to be handled by the application to take appropriate action.
 
-1. __`FATAL`__ : Fatal messages are returned to notify that the connection to a server has been disconnected.
+1. __`FATAL`__ : Fatal messages are returned to notify that the connection to a server has been disconnected. For example:
 
-    ```output.plpgsql
+    ```output
     -- When the application takes a long time to issue a statement in the middle of a transaction.
     FATAL:  25P03: terminating connection due to idle-in-transaction timeout
     ```
 
     At this point, the application should reconnect to the server.
-
-YugabyteDB also supports different [isolation levels](../../../explore/transactions/isolation-levels/) during a transaction. While some errors are specific to certain transaction isolation levels, most errors are common across multiple isolation levels.
 
 The following examples illustrate failure scenarios and techniques you can use to handle these failures in your applications.
 
@@ -69,15 +67,15 @@ Follow the [setup instructions](../../../explore#tabs-00-00) to start a single l
     INSERT INTO txndemo VALUES (1,10),(2,10),(3,10),(4,10),(5,10);
     ```
 
-## Transaction Retries
+## Transaction retries
 
-### Automatic Retries
+### Automatic retries
 
-YugabyteDB will retry failed transactions automatically on the server side whenever possible without client intervention. These happen even on single statements, which are implicitly considered as transactions. In [Read Committed](/#statement-timeout) isolation mode, the server retries indefinitely. 
+YugabyteDB will retry failed transactions automatically on the server side whenever possible without client intervention. These happen even on single statements, which are implicitly considered as transactions. In [Read Committed](#statement-timeout) isolation mode, the server retries indefinitely.
 
-There would be scenarios where a server side retry is not fit. eg. The retry limit has been reached or the transaction is not in a valid state. At this juncture it would be the client's responsibility to retry the transaction at the application layer.
+There would be scenarios where a server side retry is not fit. For example, the retry limit has been reached or the transaction is not in a valid state. At this juncture it would be the client's responsibility to retry the transaction at the application layer.
 
-### Client-side Retry
+### Client-side retry
 
 Most transaction errors that happen due to conflicts and deadlocks can be restarted by the client. The following scenarios describe the causes for failures, and the required methods to be handled by the applications.
 
@@ -113,13 +111,13 @@ SerializationFailure errors happen when multiple transactions are updating the s
 
 - During a conflict, certain transactions are retried. However, after the retry limit is reached, an error occurs as follows:
 
-    ```output.plpgsql
+    ```output
     ERROR:  40001: All transparent retries exhausted.
     ```
 
 - All transactions are given a dynamic priority. When a deadlock is detected, the transaction with lower priority is automatically killed. For this scenario, the client might receive a message similar to the following:
 
-    ```output.plpgsql
+    ```output
     ERROR:  40001: Operation expired: Heartbeat: Transaction XXXX expired or aborted by a conflict
     ```
 
@@ -139,7 +137,7 @@ while attempt < max_attempts:
   try :
     cursor = cxn.cursor()
     cursor.execute("BEGIN ISOLATION LEVEL SERIALIZABLE");
-    cursor.execute("UPDATE txndemo set v=20 WHERE k=1;");
+    cursor.execute("UPDATE txndemo SET v=20 WHERE k=1;");
     cursor.execute("COMMIT");
     break
   except psycopg2.errors.SerializationFailure as e:
@@ -156,7 +154,7 @@ When the `UPDATE` or `COMMIT` fails because of `SerializationFailure`, the code 
 
 This error occurs when a statement is issued after there's already an error in a transaction. The error message would be similar to the following:
 
-```output.plpgsql
+```output
 ERROR:  25P02: current transaction is aborted, commands ignored until end of transaction block
 ```
 
@@ -184,7 +182,7 @@ except psycopg2.errors.InFailedSqlTransaction as e:
   cursor.execute("ROLLBACK")
 ```
 
-The `INVALID TXN STATEMENT` would throw a `SyntaxError` exception. The code (in-correctly) catches this and ignores it. The next `update` statement, even though valid,  will fail with an `InFailedSqlTransaction` exception. This could be avoided by handling the actual error and issuing a `ROLLBACK`. In this case, a retry would not help as it is a SyntaxError, but there might be scenarios, where the transaction would succeed when retried.
+The `INVALID TXN STATEMENT` would throw a `SyntaxError` exception. The code (in-correctly) catches this and ignores it. The next `update` statement, even though valid, will fail with an `InFailedSqlTransaction` exception. This could be avoided by handling the actual error and issuing a `ROLLBACK`. In this case, a retry would not help as it is a SyntaxError, but there might be scenarios where the transaction would succeed when retried.
 
 ## Non-retriable errors
 
@@ -198,7 +196,7 @@ Transaction level isolation should be specified before the first statement of th
 BEGIN;
 ```
 
-```output.plpgsql
+```output
 BEGIN
 Time: 0.797 ms
 ```
@@ -207,7 +205,7 @@ Time: 0.797 ms
 UPDATE txndemo SET v=20 WHERE k=1;
 ```
 
-```output.plpgsql
+```output
 UPDATE 0
 Time: 10.416 ms
 ```
@@ -216,7 +214,7 @@ Time: 10.416 ms
 SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 ```
 
-```plpgsql.output
+```output
 ERROR:  25001: SET TRANSACTION ISOLATION LEVEL must be called before any query
 Time: 3.808 ms
 ```
@@ -229,7 +227,7 @@ This error occurs when a row is modified after specifying a transaction to be `R
 BEGIN READ ONLY;
 ```
 
-```output.plpgsql
+```output
 BEGIN
 Time: 1.095 ms
 ```
@@ -238,7 +236,7 @@ Time: 1.095 ms
 UPDATE txndemo SET v=20 WHERE k=1;
 ```
 
-```plpgsql.output
+```output
 ERROR:  25006: cannot execute UPDATE in a read-only transaction
 Time: 4.417 ms
 ```
@@ -248,8 +246,6 @@ Time: 4.417 ms
 ### Statement timeout
 
 In [READ COMMITTED isolation level](../../../architecture/transactions/read-committed/), clients do not need to retry or handle serialization errors. During conflicts, the server retries indefinitely based on the [retry options](../../../architecture/transactions/read-committed/#performance-tuning) and [Wait-On-Conflict](../../../architecture/transactions/concurrency-control/#wait-on-conflict) policy.
-
-In [READ COMMITTED isolation level](../../architecture/transactions/read-committed/), clients do not need to retry or handle serialization errors. During conflicts, the server retries indefinitely based on the [retry options](../../../architecture/transactions/read-committed/#performance-tuning) and [Wait-On-Conflict](../../../architecture/transactions/concurrency-control/#wait-on-conflict) policy.
 
 To avoid getting stuck in a wait loop because of starvation, it is recommended to use a reasonable timeout for the statements similar to the following:
 
@@ -263,7 +259,7 @@ This ensures that the transaction would not be blocked for more than 10 seconds.
 
 When an application takes a long time between two statements in a transaction or just hangs, it could be still holding the locks on the [provisional records](../../../architecture/transactions/distributed-txns/#provisional-records) during that period. It would hit a timeout if the `idle_in_transaction_session_timeout` is set accordingly. After that timeout is reached, the connection is disconnected and the client would have to reconnect. The typical error message would be:
 
-```output.plpgsql
+```output
 FATAL:  25P03: terminating connection due to idle-in-transaction timeout
 ```
 
@@ -279,7 +275,7 @@ To view the current value, use the following command:
 SHOW idle_in_transaction_session_timeout;
 ```
 
-```output.plpgsql
+```output
  idle_in_transaction_session_timeout
 -------------------------------------
  10s
@@ -289,7 +285,7 @@ Setting this timeout can avoid deadlock scenarios where applications acquire loc
 
 ### Deferrable property
 
-When a transaction is in `SERIALIZABLE` isolation level and `READ ONLY` mode, if the transaction property `DEFERRABLE` is set, then that transaction executes with much lower overhead and is never canceled because of a serialization failure. This can be used for batch or long-running jobs, which need a consistent snapshot of the database without interfering or being intefered by other transactions. Eg.
+When a transaction is in `SERIALIZABLE` isolation level and `READ ONLY` mode, if the transaction property `DEFERRABLE` is set, then that transaction executes with much lower overhead and is never canceled because of a serialization failure. This can be used for batch or long-running jobs, which need a consistent snapshot of the database without interfering or being interfered with by other transactions. For example:
 
 ```plpgsql
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE;
@@ -302,16 +298,16 @@ COMMIT;
 As noted, all transactions are dynamically assigned a priority. This is a value in the range of `[0.0, 1.0]`. The current priority can be fetched using the `yb_transaction_priority` setting as follows:
 
 ```plpgsql
-show yb_transaction_priority;
+SHOW yb_transaction_priority;
 ```
 
-```output.plpgsql
+```output
           yb_transaction_priority
 -------------------------------------------
  0.000000000 (Normal priority transaction)
 ```
 
-The priority value is bound by two settings, namely `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`. If an application would like a specific transaction to be given higher priority, it can issue statements like:
+The priority value is bound by two settings, namely `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`. If an application would like a specific transaction to be given higher priority, it can issue statements like the following:
 
 ```plpgsql
 SET yb_transaction_priority_lower_bound=0.9;
@@ -322,7 +318,7 @@ This ensures that the priority assigned to your transaction is in the range `[0.
 
 ## Learn more
 
-- [Transaction Isolation Levels](../../../architecture/transactions/isolation-levels/) - Various isolation levels supported by YugabyteDB.
-- [Concurrency Control](../../../architecture/transactions/concurrency-control/) - Policies to handle conflicts between transactions.
-- [Transaction priorities](../../../architecture/transactions/concurrency-control/) - Priority buckets for transactions.
+- [Transaction isolation levels](../../../architecture/transactions/isolation-levels/) - Various isolation levels supported by YugabyteDB.
+- [Concurrency control](../../../architecture/transactions/concurrency-control/) - Policies to handle conflicts between transactions.
+- [Transaction priorities](../../../architecture/transactions/transaction-priorities/) - Priority buckets for transactions.
 - [Transaction options](../../../explore/transactions/distributed-transactions-ysql/#transaction-options) - Options supported by transactions.
