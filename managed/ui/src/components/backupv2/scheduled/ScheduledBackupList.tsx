@@ -363,21 +363,13 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
             <Col lg={3}>
               <div className="info-title">Last backup</div>
               <div className="info-val">
-                {schedule.prevCompletedTask ? (
-                  ybFormatDate(schedule.prevCompletedTask)
-                ) : (
-                  '-'
-                )}
+                {schedule.prevCompletedTask ? ybFormatDate(schedule.prevCompletedTask) : '-'}
               </div>
             </Col>
             <Col lg={3}>
               <div className="info-title">Next backup</div>
               <div className="info-val">
-                {schedule.nextExpectedTask ? (
-                  ybFormatDate(schedule.nextExpectedTask)
-                ) : (
-                  '-'
-                )}
+                {schedule.nextExpectedTask ? ybFormatDate(schedule.nextExpectedTask) : '-'}
               </div>
             </Col>
           </Row>

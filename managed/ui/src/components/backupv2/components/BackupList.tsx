@@ -25,7 +25,7 @@ import {
   CALDENDAR_ICON,
   convertArrayToMap,
   DATE_FORMAT,
-  ENTITY_NOT_AVAILABLE,
+  ENTITY_NOT_AVAILABLE
 } from '../common/BackupUtils';
 import { BackupCancelModal, BackupDeleteModal } from './BackupDeleteModal';
 import { BackupRestoreModal } from './BackupRestoreModal';
@@ -544,9 +544,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="expiryTime"
-            dataFormat={(time) =>
-              time ? ybFormatDate(time) : "Won't Expire"
-            }
+            dataFormat={(time) => (time ? ybFormatDate(time) : "Won't Expire")}
             width="20%"
           >
             Expiration

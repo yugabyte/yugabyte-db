@@ -13,10 +13,7 @@ import { Link } from 'react-router';
 import { Backup_States, IBackup, Keyspace_Table } from '..';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton } from '../../common/forms/fields';
-import {
-  RevealBadge,
-  calculateDuration
-} from '../common/BackupUtils';
+import { RevealBadge, calculateDuration } from '../common/BackupUtils';
 import {
   IncrementalTableBackupList,
   YCQLTableList,
@@ -220,19 +217,11 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               )}
               <div>
                 <div className="header-text">Created At</div>
-                <div>
-                  {
-                    ybFormatDate(backupDetails.commonBackupInfo.createTime)
-                  }
-                </div>
+                <div>{ybFormatDate(backupDetails.commonBackupInfo.createTime)}</div>
               </div>
               <div>
                 <div className="header-text">Expiration</div>
-                <div>
-                  {
-                    ybFormatDate(backupDetails.expiryTime)
-                  }
-                </div>
+                <div>{ybFormatDate(backupDetails.expiryTime)}</div>
               </div>
               <span className="flex-divider" />
               <div className="details-storage-config">

@@ -23,7 +23,6 @@ import {
   ThrottleParameters
 } from './IBackup';
 
-
 export function getBackupsList(
   page = 0,
   limit = 10,
