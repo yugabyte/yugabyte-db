@@ -143,10 +143,7 @@ public class TokenAuthenticator extends Action.Simple {
     // Allow for disabling authentication on proxy endpoint so that
     // Prometheus can scrape database nodes.
     if (Pattern.matches(
-            String.format(
-                "^.*/universes/%s/proxy/%s/(metrics|prometheus-metrics)$",
-                patternForUUID, patternForHost),
-            path)
+            String.format("^.*/universes/%s/proxy/%s/(.*)$", patternForUUID, patternForHost), path)
         && !config.getBoolean("yb.security.enable_auth_for_proxy_metrics")) {
       return delegate.call(ctx);
     }
