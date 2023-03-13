@@ -192,6 +192,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         curPlacement = new KubernetesPlacement(curPI, isReadOnlyCluster);
     Provider provider = Provider.getOrBadRequest(UUID.fromString(newIntent.provider));
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+    boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
     // Update disk size if there is a change
     boolean diskSizeChanged =
@@ -201,13 +202,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           "Creating task for disk size change from {} to {}",
           curIntent.deviceInfo.volumeSize,
           newIntent.deviceInfo.volumeSize);
-      createResizeDiskTask(
-          universe.name,
-          curPlacement,
-          masterAddresses,
-          newIntent,
-          isReadOnlyCluster,
-          newNamingStyle);
+      createResizeDiskTask(curPlacement, masterAddresses, newIntent, isReadOnlyCluster);
     }
 
     boolean instanceTypeChanged = false;
@@ -254,7 +249,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             isMultiAZ,
             isReadOnlyCluster);
 
-    boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
     PlacementInfo activeZones = new PlacementInfo();
     for (UUID currAZs : curPlacement.configs.keySet()) {
       PlacementInfoUtil.addPlacementZone(currAZs, activeZones);
