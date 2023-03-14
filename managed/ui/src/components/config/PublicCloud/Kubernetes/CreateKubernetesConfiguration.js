@@ -12,7 +12,7 @@ import { YBButton, YBFormSelect, YBFormInput, YBFormDropZone } from '../../../co
 import { toast } from 'react-toastify';
 
 import YBInfoTip from '../../../common/descriptors/YBInfoTip';
-import { isNonEmptyObject } from '../../../../utils/ObjectUtils';
+import { isNonEmptyObject, isDefinedNotNull } from '../../../../utils/ObjectUtils';
 import { readUploadedFile } from '../../../../utils/UniverseUtils';
 import { KUBERNETES_PROVIDERS, REGION_DICT } from '../../../../config';
 import AddRegionList from './AddRegionList';
@@ -108,9 +108,8 @@ class CreateKubernetesConfiguration extends Component {
         });
         // TODO: fetch the service account name from the kubeconfig.
 
-        if (typeof pullSecretFile?.name==='string') {
+        if (isDefinedNotNull(pullSecretFile)) {
           const pullSecretYaml = JsYaml.load(configs[0]);
-
           Object.assign(providerConfig, {
             KUBECONFIG_IMAGE_PULL_SECRET_NAME:
               pullSecretYaml.metadata && pullSecretYaml.metadata.name,
