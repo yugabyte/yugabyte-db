@@ -1,7 +1,7 @@
 ---
 title: Debezium and CDC in YugabyteDB
 linkTitle: Debezium
-description: Debezium is an open source distributed platform used to capture the changes in a database.
+description: Using Debezium for CDC in YugabyteDB.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /preview/integrations/cdc/

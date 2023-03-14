@@ -1,8 +1,8 @@
 ---
-title: Synchronous multi region (3+ regions)
+title: Synchronous multi region (3+ regions) in YugabyteDB Managed
 headerTitle: Synchronous multi region (3+ regions)
 linkTitle: Synchronous (3+ regions)
-description: Global data distributed using synchronous replication across regions.
+description: Global data distributed using synchronous replication across regions using YugabyteDB Managed.
 headcontent: Distribute data synchronously across regions
 menu:
   preview:
