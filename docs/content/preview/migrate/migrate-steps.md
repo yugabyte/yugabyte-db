@@ -1,8 +1,8 @@
 ---
-title: Steps to migrate your database
+title: Steps to migrate your database using YugabyteDB Voyager
 headerTitle: Migration steps
 linkTitle: Migration steps
-description: Run the steps to ensure a successful migration.
+description: Run the steps to ensure a successful migration using YugabyteDB Voyager.
 menu:
   preview:
     identifier: migrate-steps
