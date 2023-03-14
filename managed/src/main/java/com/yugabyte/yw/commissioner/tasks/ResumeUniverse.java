@@ -98,7 +98,7 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
 
       createStartMasterProcessTasks(masterNodeList);
 
-      if (EncryptionAtRestUtil.getNumKeyRotations(universe.universeUUID) > 0) {
+      if (EncryptionAtRestUtil.getNumUniverseKeys(universe.universeUUID) > 0) {
         createSetActiveUniverseKeysTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
