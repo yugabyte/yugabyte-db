@@ -113,6 +113,7 @@ export const ActivityTab: FC = () => {
       label: t('clusterDetail.activity.activity'),
       options: {
         setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
+        setCellProps: () => ({ style: { padding: '8px 16px' }}),
       }
     },
     {
@@ -121,6 +122,7 @@ export const ActivityTab: FC = () => {
       options: {
         customBodyRender: StatusComponent(),
         setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
+        setCellProps: () => ({ style: { padding: '8px 16px' }}),
       }
     },
     {
@@ -128,6 +130,7 @@ export const ActivityTab: FC = () => {
       label: t('clusterDetail.activity.starttime'),
       options: {
         setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
+        setCellProps: () => ({ style: { padding: '8px 16px' }}),
       }
     },
     {
@@ -135,6 +138,7 @@ export const ActivityTab: FC = () => {
       label: t('clusterDetail.activity.endtime'),
       options: {
         setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
+        setCellProps: () => ({ style: { padding: '8px 16px' }}),
       }
     },
     {

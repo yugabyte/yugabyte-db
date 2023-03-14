@@ -240,7 +240,7 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
         </NavLinkWithDisable>
         <NavLinkWithDisable
           disabled={isDisabled}
-          to={`/databases`}
+          to={`/databases/tabYsql`}
           isActive={(_, location) => /^\/databases/.test(location.pathname)}
           className={classes.link}
           activeClassName={classes.linkActive}
