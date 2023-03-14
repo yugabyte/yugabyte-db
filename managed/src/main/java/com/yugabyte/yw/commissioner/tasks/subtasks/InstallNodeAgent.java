@@ -142,7 +142,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
     sb.setLength(0);
     sb.append("rm -rf /tmp/node-agent-installer.sh /root/node-agent");
     sb.append(" && tar -zxf ").append(installerFiles.getPackagePath());
-    sb.append(" --strip-components=3 -C /tmp */node-agent-installer.sh");
+    sb.append(" --strip-components=3 -C /tmp --wildcards */node-agent-installer.sh");
     sb.append(" && chmod +x /tmp/node-agent-installer.sh");
     sb.append(" && mv -f ").append(baseTargetDir).append("/node-agent");
     sb.append(" ").append(taskParams().nodeAgentHome);
