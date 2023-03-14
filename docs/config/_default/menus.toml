@@ -217,7 +217,7 @@
   url = "/preview/migrate/release-notes/"
   [main.params]
     excludeVersion = true
-    imageUrl = "/icons/scalability.svg"
+    imageUrl = "/images/migrate/migration-icon.svg"
 
 ########## Bottom menu for left navigation
 

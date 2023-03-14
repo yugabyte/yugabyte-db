@@ -1,8 +1,8 @@
 ---
-title: Oracle
+title: Oracle source database
 linkTitle: Oracle
 headcontent: Known issues when migrating data from Oracle.
-description: Refer to the known issues when migrating data using YugabyteDB Voyager and suggested workarounds.
+description: Refer to the Oracle issues when migrating data using YugabyteDB Voyager.
 menu:
   preview:
     identifier: oracle-issues
