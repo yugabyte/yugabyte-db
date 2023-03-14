@@ -13,7 +13,7 @@ type: docs
 
 YugabyteDB Managed uses volume encryption for all data at rest, including your account data and your clusters and their backups. Data is AES-256 encrypted using native cloud provider technologies - S3 and EBS volume encryption for AWS, and server-side and persistent disk encryption for GCP. Volume encryption keys are managed by the cloud provider and anchored by hardware security appliances.
 
-In addition to cloud provider volume encryption, you can enable YugabyteDB encryption at rest (EAR) for clusters. When enabled, your cluster (including backups) is encrypted using a customer managed key (CMK) residing in a cloud provider Key Management Service (KMS). (Currently, only AWS KMS is supported, for clusters deployed in AWS.) You can grant YugabyteDB Managed access to the key with the requisite permissions to perform cryptographic operations using the key to secure the databases in your clusters.
+In addition to cloud provider volume encryption, you can enable YugabyteDB encryption at rest (EAR) for clusters. When enabled, your cluster (including backups) is encrypted using a customer managed key (CMK) residing in a cloud provider Key Management Service (KMS). (Currently, only AWS KMS is supported.) You can grant YugabyteDB Managed access to the key with the requisite permissions to perform cryptographic operations using the key to secure the databases in your clusters.
 
 You can enable YugabyteDB EAR for a cluster as follows:
 
@@ -24,7 +24,7 @@ You must be signed in as an Admin user to manage cluster EAR.
 
 ## Limitations
 
-- Currently, EAR is only supported for clusters deployed in AWS and using AWS KMS.
+- Currently, EAR is only supported for AWS KMS.
 - You cannot remove encryption from clusters that have EAR enabled.
 - After EAR is enabled for a cluster, you cannot change keys.
 
@@ -32,19 +32,24 @@ You must be signed in as an Admin user to manage cluster EAR.
 
 ### AWS
 
-- CMK created in AWS KMS.
+- Single-region symmetric encryption key created in AWS KMS. The key resource should have the following permissions:
+  - kms:Encrypt
+  - kms:Decrypt
+  - kms:GenerateDataKeyWithoutPlaintext
+  - kms:DescribeKey
+  - kms:ListAliases
 - Amazon Resource Name (ARN) of the CMK.
-- An access key for an [IAM identity](https://docs.aws.amazon.com/IAM/latest/UserGuide/id.html) with permissions for the CMK. An access key consists of an access key ID and the secret access key. For more information, refer to [Managing access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html) in the AWS documentation.
+- An access key for an [IAM identity](https://docs.aws.amazon.com/IAM/latest/UserGuide/id.html) with permission to encrypt and decrypt using the CMK. An access key consists of an access key ID and the secret access key. For more information, refer to [Managing access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html) in the AWS documentation.
 
 For more information on AWS KMS, refer to [AWS Key Management Service](https://docs.aws.amazon.com/kms/) in the AWS documentation.
 
 ## Encrypt a cluster
 
-You can enable EAR for clusters deployed in AWS as follows:
+You can enable EAR for clusters as follows:
 
 1. On the cluster **Settings** tab, select **Encryption at rest**.
 1. Click **Enable Encryption**.
-1. Enter the ARN of the CMK to use to encrypt the cluster.
+1. Enter the ARN of the AWS CMK to use to encrypt the cluster.
 1. Enter the Access key of an IAM identity with permissions for the CMK. An access key consists of an access key ID and the secret access key.
 1. Click **Encrypt**.
 
