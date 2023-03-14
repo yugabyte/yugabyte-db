@@ -130,6 +130,7 @@ extern PGDLLEXPORT Datum ora_get_platform(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_get_status(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_greatest(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_least(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_sys_guid(PG_FUNCTION_ARGS);
 
 /* from pipe.c */
 extern PGDLLEXPORT Datum dbms_pipe_pack_message_text(PG_FUNCTION_ARGS);
