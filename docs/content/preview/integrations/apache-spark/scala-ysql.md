@@ -1,8 +1,8 @@
 ---
-title: Build a Scala application using Apache Spark and YugabyteDB
+title: Build Scala applications using Apache Spark and YugabyteDB YSQL
+headerTitle: Build a Scala application using Apache Spark and YugabyteDB 
 linkTitle: YSQL
-description: Build a Scala application using Apache Spark and YugabyteDB
-aliases:
+description: Learn how to build a Scala application using Apache Spark and YugabyteDB YSQL
 menu:
   preview_integrations:
     identifier: apache-spark-1-scala-ysql
