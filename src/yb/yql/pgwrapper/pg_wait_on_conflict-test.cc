@@ -53,6 +53,8 @@ DECLARE_uint64(transactions_status_poll_interval_ms);
 DECLARE_int32(TEST_sleep_amidst_iterating_blockers_ms);
 DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_uint64(refresh_waiter_timeout_ms);
+DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(ysql_enable_pack_full_row_update);
 
 using namespace std::literals;
 
@@ -944,6 +946,48 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestWaiterTxnReRunConflictResol
   ASSERT_OK(conn3.Execute("UPDATE foo SET v2=v2+1000 WHERE k=1"));
   ASSERT_FALSE(
       conn3.Execute("UPDATE foo SET v2=v2+1000 WHERE k=2").ok() && status_future.get().ok());
+}
+
+class PgWaitQueuePackedRowTest : public PgWaitQueuesTest {
+  void SetUp() override {
+    FLAGS_ysql_enable_packed_row = true;
+    PgWaitQueuesTest::SetUp();
+  }
+
+  size_t NumTabletServers() override {
+    return 1;
+  }
+};
+
+TEST_F(PgWaitQueuePackedRowTest, YB_DISABLE_TEST_IN_TSAN(TestKeyShareAndUpdate)) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE foo (key INT, value INT, PRIMARY KEY (key) INCLUDE (value))"));
+  ASSERT_OK(conn.Execute("INSERT INTO foo VALUES (1, 1);"));
+
+  // txn1: update a non-key column.
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION"));
+  ASSERT_OK(conn.Execute("UPDATE foo SET value = 2 WHERE key = 1"));
+
+  std::atomic<bool> txn_finished = false;
+  // txn2: do select-for-keyshare on the same row, should be able to lock and get the value.
+  std::thread th([&] {
+    auto conn2 = ASSERT_RESULT(Connect());
+    auto value = conn2.FetchValue<int>(
+        "select value from foo where key = 1 for key share");
+    ASSERT_OK(value);
+    ASSERT_EQ(value.get(), 1);
+    txn_finished.store(true);
+  });
+
+  ASSERT_OK(WaitFor([&] {
+    return txn_finished.load();
+  }, 5s * kTimeMultiplier, "txn doing select-for-share to be committed"));
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  th.join();
 }
 
 } // namespace pgwrapper
