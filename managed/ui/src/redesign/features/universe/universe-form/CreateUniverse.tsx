@@ -124,7 +124,7 @@ export const CreateUniverse: FC = () => {
       configurePayload.clusters?.push({
         clusterType: ClusterType.ASYNC,
         userIntent: getUserIntent({
-          formData: { ...asyncData, instanceTags: primaryData.instanceTags } //copy primary user tags to RR while creation
+          formData: { ...asyncData, ...getPrimaryInheritedValues(primaryData) } //copy primary field values (inherited fields) to RR during fresh Universe+RR creation
         }),
         placementInfo: {
           cloudList: [
