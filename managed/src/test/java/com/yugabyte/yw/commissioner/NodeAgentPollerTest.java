@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.NodeAgentForm;
@@ -54,11 +55,11 @@ import org.mockito.junit.MockitoJUnitRunner;
 public class NodeAgentPollerTest extends FakeDBApplication {
   @Mock private Config mockAppConfig;
   @Mock private ConfigHelper mockConfigHelper;
+  @Mock private RuntimeConfGetter mockConfGetter;
   @Mock private PlatformExecutorFactory mockPlatformExecutorFactory;
   @Mock private PlatformScheduler mockPlatformScheduler;
   @Mock private NodeAgentClient mockNodeAgentClient;
 
-  @Mock RuntimeConfGetter mockConfGetter;
   private NodeAgentManager nodeAgentManager;
   private NodeAgentHandler nodeAgentHandler;
   private NodeAgentPoller nodeAgentPoller;
@@ -67,16 +68,21 @@ public class NodeAgentPollerTest extends FakeDBApplication {
   @Before
   public void setup() {
     customer = ModelFactory.testCustomer();
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentPollerInterval)))
+        .thenReturn(Duration.ofSeconds(3));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.maxParallelNodeAgentUpgrades)))
+        .thenReturn(1);
     nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper, mockConfGetter);
     nodeAgentHandler = new NodeAgentHandler(mockAppConfig, nodeAgentManager, mockNodeAgentClient);
     nodeAgentPoller =
         new NodeAgentPoller(
-            mockAppConfig,
             mockConfigHelper,
+            mockConfGetter,
             mockPlatformExecutorFactory,
             mockPlatformScheduler,
             nodeAgentManager,
             mockNodeAgentClient);
+    nodeAgentPoller.init();
     nodeAgentHandler.enableConnectionValidation(false);
     when(mockAppConfig.getString(eq("yb.storage.path"))).thenReturn("/tmp");
   }

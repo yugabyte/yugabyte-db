@@ -28,14 +28,16 @@
 #include "yb/util/monotime.h"
 
 // This file contains utility functions that can be shared between client and master code.
-static constexpr const char* kTablegroupParentTableNameSuffix = ".tablegroup.parent.tablename";
 static constexpr const char* kColocatedDbParentTableIdSuffix = ".colocated.parent.uuid";
 static constexpr const char* kColocatedDbParentTableNameSuffix = ".colocated.parent.tablename";
 static constexpr const char* kTablegroupParentTableIdSuffix = ".tablegroup.parent.uuid";
+static constexpr const char* kTablegroupParentTableNameSuffix = ".tablegroup.parent.tablename";
 // ID && name of a tablegroup for Colocation GA contain string "colocation".
 // We keep string "tablegroup" in ID && name of user-created tablegroups in non-colocated databases.
 static constexpr const char* kColocationParentTableIdSuffix = ".colocation.parent.uuid";
 static constexpr const char* kColocationParentTableNameSuffix = ".colocation.parent.tablename";
+// The name of the default underlying tablegroup in a colocated database.
+static constexpr const char* kDefaultTablegroupName = "default";
 
 static constexpr const char* kDBTypePrefixUnknown = "unknown";
 static constexpr const char* kDBTypePrefixCql = "ycql";
@@ -99,6 +101,8 @@ bool IsColocationParentTableId(const TableId& table_id);
 
 // Is this a parent dummy table ID created for a colocated database?
 bool IsColocatedDbParentTableId(const TableId& table_id);
+
+bool IsColocatedDbParentTableName(const TableName& table_name);
 
 TableId GetColocatedDbParentTableId(const TableId& table_id);
 

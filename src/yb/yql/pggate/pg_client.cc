@@ -19,6 +19,8 @@
 #include "yb/client/tablet_server.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/gutil/casts.h"
 
 #include "yb/rpc/poller.h"
@@ -440,8 +442,11 @@ class PgClient::Impl {
       if (result.status.ok()) {
         result.status = data->Process();
       }
-      if (result.status.ok() && data->resp.has_catalog_read_time()) {
-        result.catalog_read_time = ReadHybridTime::FromPB(data->resp.catalog_read_time());
+      if (result.status.ok()) {
+        if (data->resp.has_catalog_read_time()) {
+          result.catalog_read_time = ReadHybridTime::FromPB(data->resp.catalog_read_time());
+        }
+        result.used_in_txn_limit = HybridTime::FromPB(data->resp.used_in_txn_limit_ht());
       }
       data->callback(result);
     });

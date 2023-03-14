@@ -36,9 +36,12 @@
 #include <boost/algorithm/string/replace.hpp>
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/split.h"
+#include "yb/util/flags/flag_tags.h"
 
-#if defined(YB_TCMALLOC_ENABLED) && defined(YB_GPERFTOOLS_TCMALLOC)
+#if defined(YB_GPERFTOOLS_TCMALLOC)
 #include <gperftools/heap-profiler.h>
+#elif defined(YB_GOOGLE_TCMALLOC)
+#include <tcmalloc/malloc_extension.h>
 #endif
 
 #include <boost/algorithm/string/case_conv.hpp>
@@ -48,6 +51,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
 
@@ -57,6 +61,7 @@ using std::endl;
 using std::string;
 using std::unordered_set;
 using std::vector;
+using yb::operator"" _MB;
 
 // Because every binary initializes its flags here, we use it as a convenient place
 // to offer some global flags as well.
@@ -65,14 +70,18 @@ DEFINE_UNKNOWN_bool(dump_metrics_json, false,
             "by this binary.");
 TAG_FLAG(dump_metrics_json, hidden);
 
-DEFINE_UNKNOWN_bool(enable_process_lifetime_heap_profiling, false, "Enables heap "
-    "profiling for the lifetime of the process. Profile output will be stored in the "
-    "directory specified by -heap_profile_path. Enabling this option will disable the "
-    "on-demand/remote server profile handlers.");
+DEFINE_NON_RUNTIME_bool(enable_process_lifetime_heap_profiling, false, "Enables heap "
+    "profiling for the lifetime of the process. If Gperftools TCMalloc is being used, profile "
+    "output will be stored in the directory specified by -heap_profile_path, and enabling this "
+    "option will disable the on-demand profiling in /pprof/heap. If Google TCMalloc is being used, "
+    "the sample rate will be set to profiler_sample_freq_bytes.");
 TAG_FLAG(enable_process_lifetime_heap_profiling, stable);
 TAG_FLAG(enable_process_lifetime_heap_profiling, advanced);
+DEFINE_NON_RUNTIME_int64(profiler_sample_freq_bytes, 10_MB, "The frequency at which Google "
+    "TCMalloc should sample allocations (if enable_process_lifetime_heap_profiling is set to "
+    "true).");
 
-DEFINE_UNKNOWN_string(heap_profile_path, "", "Output path to store heap profiles. If not set " \
+DEFINE_RUNTIME_string(heap_profile_path, "", "Output path to store heap profiles. If not set " \
     "profiles are stored in /tmp/<process-name>.<pid>.<n>.heap.");
 TAG_FLAG(heap_profile_path, stable);
 TAG_FLAG(heap_profile_path, advanced);
@@ -468,11 +477,15 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(heap_profile_path, path));
   }
 
-#if defined(YB_TCMALLOC_ENABLED) && defined(YB_GPERFTOOLS_TCMALLOC)
   if (FLAGS_enable_process_lifetime_heap_profiling) {
+#ifdef YB_GPERFTOOLS_TCMALLOC
     HeapProfilerStart(FLAGS_heap_profile_path.c_str());
-  }
+#elif defined(YB_GOOGLE_TCMALLOC)
+    LOG(INFO) << Format("Setting TCMalloc profiler sampling frequency to $0 bytes",
+        FLAGS_profiler_sample_freq_bytes);
+    tcmalloc::MallocExtension::SetProfileSamplingRate(FLAGS_profiler_sample_freq_bytes);
 #endif
+  }
 }
 
 bool RefreshFlagsFile(const std::string& filename) {

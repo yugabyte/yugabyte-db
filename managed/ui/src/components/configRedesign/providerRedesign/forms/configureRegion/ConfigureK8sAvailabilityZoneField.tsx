@@ -13,16 +13,16 @@ import { useFieldArray, useFormContext } from 'react-hook-form';
 import { K8sRegionField } from './ConfigureK8sRegionModal';
 import { K8sCertIssuerType, K8sCertIssuerTypeLabel, K8sRegionFieldLabel } from './constants';
 import { OptionProps, YBInputField, YBRadioGroupField } from '../../../../../redesign/components';
-// import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
+import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 
 interface ConfigureK8sAvailabilityZoneFieldProps {
   isSubmitting: boolean;
   className?: string;
 }
 
-const useStyles = makeStyles(() => ({
+const useStyles = makeStyles((theme) => ({
   formField: {
-    marginTop: '10px',
+    marginTop: theme.spacing(1),
     '&:first-child': {
       marginTop: 0
     }
@@ -30,16 +30,25 @@ const useStyles = makeStyles(() => ({
   zonesContainer: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '10px',
+    gap: theme.spacing(1),
 
-    marginTop: '10px'
+    marginTop: theme.spacing(1)
   },
   zoneConfigContainer: {
     display: 'flex',
-    gap: '10px'
+    gap: theme.spacing(1)
   },
   addZoneButton: {
-    marginTop: '10px'
+    marginTop: theme.spacing(1)
+  },
+  removeZoneButton: {
+    marginTop: theme.spacing(1),
+    padding: theme.spacing(1, 2, 1, 2),
+    backgroundColor: 'red',
+    color: 'white',
+    '& i': {
+      color: 'white'
+    }
   }
 }));
 
@@ -64,7 +73,7 @@ export const ConfigureK8sAvailabilityZoneField = ({
 }: ConfigureK8sAvailabilityZoneFieldProps) => {
   const classes = useStyles();
   const { control, watch } = useFormContext<K8sRegionField>();
-  const { fields, append } = useFieldArray({ control, name: 'zones' });
+  const { fields, append, remove } = useFieldArray({ control, name: 'zones' });
 
   const addZoneField = () => {
     append({ code: '', certIssuerType: K8sCertIssuerType.NONE });
@@ -86,7 +95,7 @@ export const ConfigureK8sAvailabilityZoneField = ({
                 fullWidth
               />
             </div>
-            {/* <div className={classes.formField}>
+            <div className={classes.formField}>
               <div>{K8sRegionFieldLabel.KUBE_CONFIG_CONTENT}</div>
               <YBDropZoneField
                 name={`zones.${index}.kubeConfigContent`}
@@ -95,9 +104,9 @@ export const ConfigureK8sAvailabilityZoneField = ({
                 multipleFiles={false}
                 showHelpText={false}
               />
-            </div> */}
+            </div>
             <div className={classes.formField}>
-              <div>{K8sRegionFieldLabel.KUBE_DOMAIN}</div>
+              <div>{K8sRegionFieldLabel.STORAGE_CLASSES}</div>
               <YBInputField
                 control={control}
                 name={`zones.${index}.kubernetesStorageClasses`}
@@ -164,19 +173,25 @@ export const ConfigureK8sAvailabilityZoneField = ({
                 />
               </div>
             )}
+            <YBButton
+              className={classes.removeZoneButton}
+              btnIcon="fa fa-trash-o"
+              btnText="Delete Zone"
+              onClick={() => remove(index)}
+            />
           </div>
         ))}
+        <YBButton
+          className={classes.addZoneButton}
+          btnIcon="fa fa-plus"
+          btnText="Add Zone"
+          btnClass="btn btn-default"
+          btnType="button"
+          onClick={addZoneField}
+          disabled={isSubmitting}
+          data-testid="ConfigureK8sAvailabilityZoneField-AddZoneButton"
+        />
       </div>
-      <YBButton
-        className={classes.addZoneButton}
-        btnIcon="fa fa-plus"
-        btnText="Add Zone"
-        btnClass="btn btn-default"
-        btnType="button"
-        onClick={addZoneField}
-        disabled={isSubmitting}
-        data-testId="ConfigureK8sAvailabilityZoneField-AddZoneButton"
-      />
     </div>
   );
 };

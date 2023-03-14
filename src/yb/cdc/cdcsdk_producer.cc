@@ -16,8 +16,9 @@
 
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
-#include "yb/common/wire_protocol.h"
+
 #include "yb/common/ql_expr.h"
+#include "yb/common/ql_wire_protocol.h"
 
 #include "yb/consensus/consensus.messages.h"
 
@@ -33,6 +34,8 @@
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 
+#include "yb/tablet/tablet_metadata.h"
+
 using std::string;
 
 DEFINE_RUNTIME_int32(cdc_snapshot_batch_size, 250, "Batch size for the snapshot operation in CDC");
@@ -41,13 +44,9 @@ DEFINE_RUNTIME_bool(stream_truncate_record, false, "Enable streaming of TRUNCATE
 
 DECLARE_int64(cdc_intent_retention_ms);
 
-DEFINE_RUNTIME_bool(enable_single_record_update, true,
-    "Enable packing updates corresponding to a row in single CDC record");
-
 DEFINE_RUNTIME_bool(
-    cdc_before_image_mandatory, true,
-    "Need before image for change record, if 'false' and we don't find the before image for the "
-    "record we will fill up with empty values");
+    enable_single_record_update, true,
+    "Enable packing updates corresponding to a row in single CDC record");
 
 DEFINE_RUNTIME_bool(
     cdc_populate_safepoint_record, false,
@@ -222,14 +221,14 @@ Status PopulateBeforeImage(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const ReadHybridTime& read_time,
     RowMessage* row_message, const EnumOidLabelMap& enum_oid_label_map,
     const CompositeAttsMap& composite_atts_map, const docdb::SubDocKey& decoded_primary_key,
-     const Schema& schema, const SchemaVersion schema_version) {
+    const Schema& schema, const SchemaVersion schema_version) {
   auto tablet = tablet_peer->shared_tablet();
   auto docdb = tablet->doc_db();
 
   const auto log_prefix = tablet->LogPrefix();
   docdb::DocReadContext doc_read_context(log_prefix, tablet->table_type(), schema, schema_version);
   docdb::DocRowwiseIterator iter(
-      schema, doc_read_context, TransactionOperationContext(), docdb,
+      schema, *tablet->GetDocReadContext(), TransactionOperationContext(), docdb,
       CoarseTimePoint::max() /* deadline */, read_time);
 
   const docdb::DocKey& doc_key = decoded_primary_key.doc_key();
@@ -242,7 +241,7 @@ Status PopulateBeforeImage(
   auto result = iter.HasNext();
   if (result.ok() && *result) {
     RETURN_NOT_OK(iter.NextRow(&row));
-  } else if (FLAGS_cdc_before_image_mandatory && !FLAGS_ysql_enable_packed_row) {
+  } else {
     return result.ok()
                ? STATUS_FORMAT(
                      InternalError,
@@ -331,6 +330,113 @@ HybridTime GetCDCSDKSafeTimeForTarget(
   return leader_safe_time;
 }
 
+void SetTableProperties(
+    const TablePropertiesPB& table_properties,
+    CDCSDKTablePropertiesPB* cdc_sdk_table_properties_pb) {
+  cdc_sdk_table_properties_pb->set_default_time_to_live(table_properties.default_time_to_live());
+  cdc_sdk_table_properties_pb->set_num_tablets(table_properties.num_tablets());
+  cdc_sdk_table_properties_pb->set_is_ysql_catalog_table(table_properties.is_ysql_catalog_table());
+}
+
+void SetColumnInfo(const ColumnSchemaPB& column, CDCSDKColumnInfoPB* column_info) {
+  column_info->set_name(column.name());
+  column_info->mutable_type()->CopyFrom(column.type());
+  column_info->set_is_key(column.is_key());
+  column_info->set_is_hash_key(column.is_hash_key());
+  column_info->set_is_nullable(column.is_nullable());
+  column_info->set_oid(column.pg_type_oid());
+}
+
+void FillDDLInfo(
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    const SchemaDetails current_schema_details,
+    const TableName table_name,
+    GetChangesResponsePB* resp) {
+  const SchemaVersion& schema_version = current_schema_details.schema_version;
+  SchemaPB schema_pb;
+  SchemaToPB(*current_schema_details.schema, &schema_pb);
+  CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
+  RowMessage* row_message = proto_record->mutable_row_message();
+  row_message->set_op(RowMessage_Op_DDL);
+  row_message->set_table(table_name);
+  for (const auto& column : schema_pb.columns()) {
+    CDCSDKColumnInfoPB* column_info;
+    column_info = row_message->mutable_schema()->add_column_info();
+    SetColumnInfo(column, column_info);
+  }
+
+  row_message->set_schema_version(schema_version);
+  row_message->set_pgschema_name(schema_pb.pgschema_name());
+  CDCSDKTablePropertiesPB* cdc_sdk_table_properties_pb =
+      row_message->mutable_schema()->mutable_tab_info();
+
+  SetTableProperties(schema_pb.table_properties(), cdc_sdk_table_properties_pb);
+}
+
+Result<TableName> GetColocatedTableName(
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const TableId& req_table_id) {
+  for (auto const& cur_table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+    if (cur_table_id != req_table_id) {
+      continue;
+    }
+
+    const auto& tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+    return tablet->metadata()->table_name(cur_table_id);
+  }
+
+  return STATUS_FORMAT(InternalError, "Could not find name for table with id: ", req_table_id);
+}
+
+Result<SchemaDetails> GetOrPopulateRequiredSchemaDetails(
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer, uint64 read_hybrid_time,
+    SchemaDetailsMap* cached_schema_details, client::YBClient* client, const TableId& req_table_id,
+    GetChangesResponsePB* resp) {
+  auto iter = cached_schema_details->find(req_table_id);
+  if (iter != cached_schema_details->end()) {
+    return iter->second;
+  }
+
+  for (auto const& cur_table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+    if (cur_table_id != req_table_id) {
+      continue;
+    }
+
+    auto tablet_result = tablet_peer->shared_tablet_safe();
+    RETURN_NOT_OK(tablet_result);
+
+    auto tablet = *tablet_result;
+    auto table_name = tablet->metadata()->table_name(cur_table_id);
+    // Ignore the DDL information of the parent table.
+    if (tablet->metadata()->colocated() &&
+        boost::ends_with(table_name, kTablegroupParentTableNameSuffix)) {
+      continue;
+    }
+
+    auto result = client->GetTableSchemaFromSysCatalog(cur_table_id, read_hybrid_time);
+    // Failed to get specific schema version from the system catalog, use the latest
+    // schema version for the key-value decoding.
+    if (!result.ok()) {
+      (*cached_schema_details)[cur_table_id] = SchemaDetails{
+          .schema_version = tablet->metadata()->schema_version(cur_table_id),
+          .schema = tablet->metadata()->schema(cur_table_id)};
+      LOG(WARNING) << "Failed to get the specific schema version from system catalog for table: "
+                   << table_name << " with read hybrid time: " << read_hybrid_time;
+    } else {
+      (*cached_schema_details)[cur_table_id] = SchemaDetails{
+          .schema_version = result->second, .schema = std::make_shared<Schema>(result->first)};
+      VLOG(1) << "Found schema version:" << result->second << " for table : " << table_name
+              << " from system catalog table with read hybrid time: " << read_hybrid_time;
+    }
+
+    const auto& schema_details = (*cached_schema_details)[cur_table_id];
+    FillDDLInfo(tablet_peer, schema_details, table_name, resp);
+
+    return schema_details;
+  }
+
+  return STATUS_FORMAT(InternalError, "Did not find schema for table: ", req_table_id);
+}
+
 // Populate CDC record corresponding to WAL batch in ReplicateMsg.
 Status PopulateCDCSDKIntentRecord(
     const OpId& op_id,
@@ -340,19 +446,30 @@ Status PopulateCDCSDKIntentRecord(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const EnumOidLabelMap& enum_oid_label_map,
     const CompositeAttsMap& composite_atts_map,
+    SchemaDetailsMap* cached_schema_details,
     GetChangesResponsePB* resp,
     ScopedTrackedConsumption* consumption,
     IntraTxnWriteId* write_id,
     std::string* reverse_index_key,
-    Schema* old_schema,
-    SchemaVersion schema_version,
-    const uint64_t& commit_time) {
+    const uint64_t& commit_time,
+    client::YBClient* client) {
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+
   bool colocated = tablet->metadata()->colocated();
-  Schema& schema = *old_schema;
-  std::string table_name = tablet->metadata()->table_name();
+  Schema schema = Schema();
+  SchemaVersion schema_version = std::numeric_limits<uint32_t>::max();
   SchemaPackingStorage schema_packing_storage(tablet->table_type());
-  schema_packing_storage.AddSchema(schema_version, schema);
+
+  if (!colocated) {
+    const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
+        tablet_peer, intents.begin()->intent_ht.hybrid_time().ToUint64(), cached_schema_details,
+        client, tablet->metadata()->table_id(), resp));
+    schema = *schema_details.schema;
+    schema_version = schema_details.schema_version;
+    schema_packing_storage.AddSchema(schema_version, schema);
+  }
+
+  std::string table_name = tablet->metadata()->table_name();
   Slice prev_key;
   CDCSDKProtoRecordPB proto_record;
   RowMessage* row_message = proto_record.mutable_row_message();
@@ -458,8 +575,14 @@ Status PopulateCDCSDKIntentRecord(
 
       if (colocated) {
         auto colocation_id = decoded_key.doc_key().colocation_id();
-        schema = *tablet->metadata()->schema("", colocation_id);
-        schema_version = tablet->metadata()->schema_version("", colocation_id);
+        auto table_info = CHECK_RESULT(tablet->metadata()->GetTableInfo("", colocation_id));
+
+        const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
+            tablet_peer, intents.begin()->intent_ht.hybrid_time().ToUint64(), cached_schema_details,
+            client, table_info->table_id, resp));
+
+        schema = *schema_details.schema;
+        schema_version = schema_details.schema_version;
         table_name = tablet->metadata()->table_name("", colocation_id);
         schema_packing_storage = SchemaPackingStorage(tablet->table_type());
         schema_packing_storage.AddSchema(schema_version, schema);
@@ -590,9 +713,9 @@ Status PopulateCDCSDKIntentRecord(
         if ((metadata.record_type == cdc::CDCRecordType::ALL) &&
             (row_message->op() == RowMessage_Op_UPDATE)) {
           VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
-                    << " with read time: " << ReadHybridTime::FromUint64(commit_time)
-                    << " cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
-                    << " for change record type: " << row_message->op();
+                  << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                  << " cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
+                  << " for change record type: " << row_message->op();
           if (commit_time > 0) {
             auto hybrid_time = commit_time - 1;
             auto result = PopulateBeforeImage(
@@ -675,21 +798,30 @@ Status PopulateCDCSDKWriteRecord(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const EnumOidLabelMap& enum_oid_label_map,
     const CompositeAttsMap& composite_atts_map,
+    SchemaDetailsMap* cached_schema_details,
     GetChangesResponsePB* resp,
-    const Schema& current_schema,
-    const SchemaVersion current_schema_version) {
+    client::YBClient* client) {
   auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   const auto& batch = msg->write().write_batch();
   CDCSDKProtoRecordPB* proto_record = nullptr;
   RowMessage* row_message = nullptr;
   docdb::SubDocKey prev_decoded_key;
-  bool colocated = tablet_ptr->metadata()->colocated();
   // Write batch may contain records from different rows.
   // For CDC, we need to split the batch into 1 CDC record per row of the table.
   // We'll use DocDB key hash to identify the records that belong to the same row.
   Slice prev_key;
-  Schema schema = current_schema;
-  SchemaVersion schema_version = current_schema_version;
+
+  bool colocated = tablet_ptr->metadata()->colocated();
+  Schema schema = Schema();
+  SchemaVersion schema_version = std::numeric_limits<uint32_t>::max();
+  if (!colocated) {
+    const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
+        tablet_peer, msg->hybrid_time(), cached_schema_details, client,
+        tablet_ptr->metadata()->table_id(), resp));
+    schema = *schema_details.schema;
+    schema_version = schema_details.schema_version;
+  }
+
   std::string table_name = tablet_ptr->metadata()->table_name();
   SchemaPackingStorage schema_packing_storage(tablet_ptr->table_type());
   schema_packing_storage.AddSchema(schema_version, schema);
@@ -719,8 +851,13 @@ Status PopulateCDCSDKWriteRecord(
       RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, docdb::HybridTimeRequired::kFalse));
       if (colocated) {
         auto colocation_id = decoded_key.doc_key().colocation_id();
-        schema = *tablet_ptr->metadata()->schema("", colocation_id);
-        schema_version = tablet_ptr->metadata()->schema_version("", colocation_id);
+        auto table_info = CHECK_RESULT(tablet_ptr->metadata()->GetTableInfo("", colocation_id));
+
+        const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
+            tablet_peer, msg->hybrid_time(), cached_schema_details, client, (*table_info).table_id,
+            resp));
+        schema = *schema_details.schema;
+        schema_version = schema_details.schema_version;
         table_name = tablet_ptr->metadata()->table_name("", colocation_id);
         schema_packing_storage = SchemaPackingStorage(tablet_ptr->table_type());
         schema_packing_storage.AddSchema(schema_version, schema);
@@ -884,23 +1021,6 @@ Status PopulateCDCSDKWriteRecord(
   return Status::OK();
 }
 
-void SetTableProperties(
-    const TablePropertiesPB& table_properties,
-    CDCSDKTablePropertiesPB* cdc_sdk_table_properties_pb) {
-  cdc_sdk_table_properties_pb->set_default_time_to_live(table_properties.default_time_to_live());
-  cdc_sdk_table_properties_pb->set_num_tablets(table_properties.num_tablets());
-  cdc_sdk_table_properties_pb->set_is_ysql_catalog_table(table_properties.is_ysql_catalog_table());
-}
-
-void SetColumnInfo(const ColumnSchemaPB& column, CDCSDKColumnInfoPB* column_info) {
-  column_info->set_name(column.name());
-  column_info->mutable_type()->CopyFrom(column.type());
-  column_info->set_is_key(column.is_key());
-  column_info->set_is_hash_key(column.is_hash_key());
-  column_info->set_is_nullable(column.is_nullable());
-  column_info->set_oid(column.pg_type_oid());
-}
-
 Status PopulateCDCSDKDDLRecord(
     const ReplicateMsgPtr& msg, CDCSDKProtoRecordPB* proto_record, const string& table_name,
     const Schema& schema) {
@@ -925,8 +1045,7 @@ Status PopulateCDCSDKDDLRecord(
   }
 
   CDCSDKTablePropertiesPB* cdc_sdk_table_properties_pb;
-  const auto* table_properties =
-      &msg->change_metadata_request().schema().table_properties();
+  const auto* table_properties = &msg->change_metadata_request().schema().table_properties();
 
   cdc_sdk_table_properties_pb = row_message->mutable_schema()->mutable_tab_info();
   row_message->set_schema_version(msg->change_metadata_request().schema_version());
@@ -1042,8 +1161,7 @@ Status ProcessIntents(
     std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
     docdb::ApplyTransactionState* stream_state,
     client::YBClient* client,
-    std::shared_ptr<Schema>* cached_schema,
-    SchemaVersion* cached_schema_version,
+    SchemaDetailsMap* cached_schema_details,
     const uint64_t& commit_time) {
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   if (stream_state->key.empty() && stream_state->write_id == 0) {
@@ -1066,34 +1184,10 @@ Status ProcessIntents(
         transaction_id);
   }
 
-  Schema current_schema = **cached_schema;
   for (auto& keyValue : *keyValueIntents) {
     docdb::SubDocKey sub_doc_key;
     CHECK_OK(
         sub_doc_key.FullyDecodeFrom(Slice(keyValue.key_buf), docdb::HybridTimeRequired::kFalse));
-    if (!(**cached_schema).initialized()) {
-      auto result = client->GetTableSchemaFromSysCatalog(
-          tablet->metadata()->table_id(),
-          keyValue.intent_ht.hybrid_time().ToUint64());
-      // Failed to get specific schema version from the system catalog, use the latest
-      // schema version for the key-value decoding.
-      if (!result.ok()) {
-        current_schema.CopyFrom(*tablet->schema().get());
-        *cached_schema_version = tablet->metadata()->schema_version();
-        LOG(DFATAL)
-            << "Failed to get the specific schema version from system catalog for table: "
-            << tablet->metadata()->table_name()
-            << " with read hybrid time: " << keyValue.intent_ht.hybrid_time().ToUint64();
-      } else {
-        current_schema = result->first;
-        *cached_schema_version = result->second;
-        *cached_schema = std::make_shared<Schema>(result->first);
-        VLOG(1) << "Found schema version:" << *cached_schema_version
-                << " for table : " << tablet->metadata()->table_name()
-                << " from system catalog table with read hybrid time: "
-                << keyValue.intent_ht.hybrid_time().ToUint64();
-      }
-    }
     Slice value_slice = keyValue.value_buf;
     RETURN_NOT_OK(docdb::ValueControlFields::Decode(&value_slice));
     auto value_type = docdb::DecodeValueEntryType(value_slice);
@@ -1107,10 +1201,12 @@ Status ProcessIntents(
   IntraTxnWriteId write_id = 0;
 
   // Need to populate the CDCSDKRecords
-  RETURN_NOT_OK(PopulateCDCSDKIntentRecord(
-      op_id, transaction_id, *keyValueIntents, metadata, tablet_peer, enum_oid_label_map,
-      composite_atts_map, resp, consumption, &write_id, &reverse_index_key, &current_schema,
-      *cached_schema_version, commit_time));
+  if (!keyValueIntents->empty()) {
+    RETURN_NOT_OK(PopulateCDCSDKIntentRecord(
+        op_id, transaction_id, *keyValueIntents, metadata, tablet_peer, enum_oid_label_map,
+        composite_atts_map, cached_schema_details, resp, consumption, &write_id, &reverse_index_key,
+        commit_time, client));
+  }
 
   SetTermIndex(op_id.term, op_id.index, checkpoint);
 
@@ -1127,14 +1223,12 @@ Status PopulateCDCSDKSnapshotRecord(
     GetChangesResponsePB* resp,
     const QLTableRow* row,
     const Schema& schema,
-    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    const TableName& table_name,
     ReadHybridTime time,
     const EnumOidLabelMap& enum_oid_label_map,
     const CompositeAttsMap& composite_atts_map) {
   CDCSDKProtoRecordPB* proto_record = nullptr;
   RowMessage* row_message = nullptr;
-  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
-  const std::string& table_name = tablet->metadata()->table_name();
 
   proto_record = resp->add_cdc_sdk_proto_records();
   row_message = proto_record->mutable_row_message();
@@ -1183,50 +1277,6 @@ Status PopulateCDCSDKSafepointOpRecord(
   return Status::OK();
 }
 
-void FillDDLInfo(
-    const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const Schema& current_schema,
-    const SchemaVersion current_schema_version, GetChangesResponsePB* resp) {
-  SchemaVersion schema_version;
-  for (auto const& table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
-    auto tablet_result = tablet_peer->shared_tablet_safe();
-    if (!tablet_result.ok()) {
-      LOG(WARNING) << tablet_result.status();
-      continue;
-    }
-    auto tablet = *tablet_result;
-    auto table_name = tablet->metadata()->table_name(table_id);
-    // Ignore the DDL information of the parent table.
-    if (tablet->metadata()->colocated() &&
-        boost::ends_with(table_name, kTablegroupParentTableNameSuffix)) {
-      continue;
-    }
-    SchemaPB schema_pb;
-    if (tablet->metadata()->colocated()) {
-       schema_version = tablet->metadata()->schema_version(table_id);
-       SchemaToPB(*tablet->metadata()->schema(table_id).get(), &schema_pb);
-    } else {
-      schema_version = current_schema_version;
-      SchemaToPB(current_schema, &schema_pb);
-    }
-    CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
-    RowMessage* row_message = proto_record->mutable_row_message();
-    row_message->set_op(RowMessage_Op_DDL);
-    row_message->set_table(table_name);
-    for (const auto& column : schema_pb.columns()) {
-      CDCSDKColumnInfoPB* column_info;
-      column_info = row_message->mutable_schema()->add_column_info();
-      SetColumnInfo(column, column_info);
-    }
-
-    row_message->set_schema_version(schema_version);
-    row_message->set_pgschema_name(schema_pb.pgschema_name());
-    CDCSDKTablePropertiesPB* cdc_sdk_table_properties_pb =
-        row_message->mutable_schema()->mutable_tab_info();
-
-    SetTableProperties(schema_pb.table_properties(), cdc_sdk_table_properties_pb);
-  }
-}
-
 bool VerifyTabletSplitOnParentTablet(
     const TableId& table_id, const TabletId& tablet_id, client::YBClient* client) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -1264,10 +1314,10 @@ Status GetChangesForCDCSDK(
     consensus::ReplicateMsgsHolder* msgs_holder,
     GetChangesResponsePB* resp,
     uint64_t* commit_timestamp,
-    std::shared_ptr<Schema>* cached_schema,
-    SchemaVersion* cached_schema_version,
+    SchemaDetailsMap* cached_schema_details,
     OpId* last_streamed_op_id,
     int64_t* last_readable_opid_index,
+    const TableId& colocated_table_id,
     const CoarseTimePoint deadline) {
   OpId op_id{from_op_id.term(), from_op_id.index()};
   VLOG(1) << "The from_op_id from GetChanges is  " << op_id << " for tablet_id: " << tablet_id;
@@ -1285,6 +1335,7 @@ Status GetChangesForCDCSDK(
         << "Could not compute safe time: " << leader_safe_time.status();
     leader_safe_time = HybridTime::kInvalid;
   }
+  auto table_name = tablet_ptr->metadata()->table_name();
 
   auto ht_of_last_returned_message = HybridTime::kInvalid;
   HaveMoreMessages have_more_messages(false);
@@ -1331,6 +1382,7 @@ Status GetChangesForCDCSDK(
       // Snapshot is already taken.
       HybridTime ht;
       time = ReadHybridTime::FromUint64(from_op_id.snapshot_time());
+      *leader_safe_time = HybridTime(from_op_id.snapshot_time());
       nextKey = from_op_id.key();
       VLOG(1) << "The after snapshot term " << from_op_id.term() << "index  " << from_op_id.index()
               << "key " << from_op_id.key() << "snapshot time " << from_op_id.snapshot_time();
@@ -1341,39 +1393,26 @@ Status GetChangesForCDCSDK(
             ServiceUnavailable, "CDC snapshot is failed for tablet: $0 ", tablet_id);
       }
 
-      Schema schema = **cached_schema;
-      SchemaVersion schema_version = *cached_schema_version;
-      if (!(**cached_schema).initialized()) {
-        auto result = client->GetTableSchemaFromSysCatalog(
-            tablet_ptr->metadata()->table_id(), std::numeric_limits<uint64_t>::max());
-        // Failed to get specific schema version from the system catalog, use the latest
-        // schema version for the key-value decoding.
-        if (!result.ok()) {
-          schema = *tablet_ptr->schema().get();
-          schema_version = tablet_ptr->metadata()->schema_version();
-          LOG(WARNING) << "Failed to get the latest schema version from system catalog for table: "
-                       << tablet_ptr->metadata()->table_name()
-                       << ", with tablet: " << tablet_id
-                       << ", and stream: " << stream_id;
-        } else {
-          schema = result->first;
-          schema_version = result->second;
-          *cached_schema = std::make_shared<Schema>(std::move(result->first));
-          *cached_schema_version = result->second;
-        }
+      const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
+          tablet_peer, std::numeric_limits<uint64_t>::max(), cached_schema_details, client,
+          colocated_table_id.empty() ? tablet_ptr->metadata()->table_id() : colocated_table_id,
+          resp));
+
+      if (!colocated_table_id.empty()) {
+        table_name = VERIFY_RESULT(GetColocatedTableName(tablet_peer, colocated_table_id));
       }
-      FillDDLInfo(tablet_peer, schema, schema_version, resp);
 
       int limit = FLAGS_cdc_snapshot_batch_size;
       int fetched = 0;
       std::vector<QLTableRow> rows;
       QLTableRow row;
       auto iter = VERIFY_RESULT(tablet_ptr->CreateCDCSnapshotIterator(
-          schema.CopyWithoutColumnIds(), time, nextKey));
+          (*schema_details.schema).CopyWithoutColumnIds(), time, nextKey, colocated_table_id));
       while (VERIFY_RESULT(iter->HasNext()) && fetched < limit) {
         RETURN_NOT_OK(iter->NextRow(&row));
         RETURN_NOT_OK(PopulateCDCSDKSnapshotRecord(
-            resp, &row, schema, tablet_peer, time, enum_oid_label_map, composite_atts_map));
+            resp, &row, *schema_details.schema, table_name, time, enum_oid_label_map,
+            composite_atts_map));
         fetched++;
       }
       docdb::SubDocKey sub_doc_key;
@@ -1435,7 +1474,7 @@ Status GetChangesForCDCSDK(
     RETURN_NOT_OK(ProcessIntents(
         op_id, transaction_id, stream_metadata, enum_oid_label_map, composite_atts_map, resp,
         &consumption, &checkpoint, tablet_peer, &keyValueIntents, &stream_state, client,
-        cached_schema, cached_schema_version, commit_timestamp));
+        cached_schema_details, commit_timestamp));
 
     if (checkpoint.write_id() == 0 && checkpoint.key().empty()) {
       last_streamed_op_id->term = checkpoint.term();
@@ -1467,9 +1506,8 @@ Status GetChangesForCDCSDK(
       }
       have_more_messages = read_ops.have_more_messages;
 
-      Schema current_schema;
+      Schema current_schema = *tablet_ptr->metadata()->schema();
       bool pending_intents = false;
-      bool schema_streamed = false;
 
       if (read_ops.messages.empty()) {
         VLOG_WITH_FUNC(1) << "Did not get any messages with current batch of 'read_ops'."
@@ -1481,31 +1519,6 @@ Status GetChangesForCDCSDK(
       for (const auto& msg : read_ops.messages) {
         last_seen_op_id.term = msg->id().term();
         last_seen_op_id.index = msg->id().index();
-        if (!schema_streamed && !(**cached_schema).initialized()) {
-          auto result = client->GetTableSchemaFromSysCatalog(
-              tablet_ptr->metadata()->table_id(), msg->hybrid_time());
-          // Failed to get specific schema version from the system catalog, use the latest
-          // schema version for the key-value decoding.
-          if (!result.ok()) {
-            current_schema.CopyFrom(*tablet_ptr->schema().get());
-            *cached_schema_version = tablet_ptr->metadata()->schema_version();
-            LOG(DFATAL)
-                << "Failed to get the specific schema version from system catalog for table: "
-                << tablet_ptr->metadata()->table_name()
-                << " with read hybrid time: " << msg->hybrid_time();
-          } else {
-            current_schema = result->first;
-            *cached_schema_version = result->second;
-          }
-          VLOG(1) << "Found schema version:" << *cached_schema_version
-                  << " for table : " << tablet_ptr->metadata()->table_name()
-                  << " from system catalog table with read hybrid time: " << msg->hybrid_time();
-          schema_streamed = true;
-          *cached_schema = std::make_shared<Schema>(std::move(current_schema));
-          FillDDLInfo(tablet_peer, current_schema, *cached_schema_version, resp);
-        } else {
-          current_schema = **cached_schema;
-        }
 
         switch (msg->op_type()) {
           case consensus::OperationType::UPDATE_TRANSACTION_OP:
@@ -1524,8 +1537,7 @@ Status GetChangesForCDCSDK(
               RETURN_NOT_OK(ProcessIntents(
                   op_id, txn_id, stream_metadata, enum_oid_label_map, composite_atts_map, resp,
                   &consumption, &checkpoint, tablet_peer, &intents, &new_stream_state, client,
-                  cached_schema, cached_schema_version,
-                  msg->transaction_state().commit_hybrid_time()));
+                  cached_schema_details, msg->transaction_state().commit_hybrid_time()));
 
               if (new_stream_state.write_id != 0 && !new_stream_state.key.empty()) {
                 pending_intents = true;
@@ -1545,8 +1557,8 @@ Status GetChangesForCDCSDK(
             *commit_timestamp = msg->hybrid_time();
             if (!batch.has_transaction()) {
               RETURN_NOT_OK(PopulateCDCSDKWriteRecord(
-                  msg, stream_metadata, tablet_peer, enum_oid_label_map, composite_atts_map, resp,
-                  current_schema, *cached_schema_version));
+                  msg, stream_metadata, tablet_peer, enum_oid_label_map, composite_atts_map,
+                  cached_schema_details, resp, client));
 
               SetCheckpoint(
                   msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
@@ -1557,39 +1569,50 @@ Status GetChangesForCDCSDK(
           case consensus::OperationType::CHANGE_METADATA_OP: {
             RETURN_NOT_OK(SchemaFromPB(
                 msg->change_metadata_request().schema().ToGoogleProtobuf(), &current_schema));
-            const std::string& table_name = tablet_ptr->metadata()->table_name();
-            *cached_schema = std::make_shared<Schema>(std::move(current_schema));
-            // CHANGE_METADATA_OP read can be an entry from the past unsuccessful
-            // alter schema operation and there is no way to distinguish successful vs unsuccessful
-            // CHANGE_METADATA_OP, cross-compare the schema version against the schema we read
-            // from system catalog based on the specific read_hybrid_time.
-            *cached_schema_version = msg->change_metadata_request().schema_version();
-            auto result = client->GetTableSchemaFromSysCatalog(
-                tablet_ptr->metadata()->table_id(), msg->hybrid_time());
+            TabletId table_id = tablet_ptr->metadata()->table_id();
+            if (tablet_ptr->metadata()->colocated()) {
+              auto table_info = CHECK_RESULT(tablet_ptr->metadata()->GetTableInfo(
+                  msg->change_metadata_request().alter_table_id().ToBuffer()));
+              table_id = table_info->table_id;
+              table_name = table_info->table_name;
+            }
+
+            // We cross-verify the scheam details from the replicated message with the schema
+            // details from the SysCatalog table.
+            auto previous_schema_version = std::numeric_limits<uint32_t>::max();
+            uint32_t changed_schema_version;
+            {
+              auto iter = cached_schema_details->find(table_id);
+              if (iter != cached_schema_details->end()) {
+                previous_schema_version = iter->second.schema_version;
+              }
+            }
+
+            (*cached_schema_details)[table_id] = SchemaDetails{
+                .schema_version = msg->change_metadata_request().schema_version(),
+                .schema = std::make_shared<Schema>(std::move(current_schema))};
+            changed_schema_version = msg->change_metadata_request().schema_version();
+            auto result = client->GetTableSchemaFromSysCatalog(table_id, msg->hybrid_time());
             if (!result.ok()) {
               LOG(WARNING)
                   << "Failed to get the specific schema version from system catalog for table: "
-                  << tablet_ptr->metadata()->table_name()
+                  << table_name
                   << " proceedings with the table schema version got with CHANGE_METADATA_OP.";
-            } else if (*cached_schema_version != result->second) {
+            } else if ((*cached_schema_details)[table_id].schema_version != result->second) {
               current_schema = result->first;
-              *cached_schema = std::make_shared<Schema>(result->first);
-              *cached_schema_version = result->second;
+              (*cached_schema_details)[table_id] = SchemaDetails{
+                  .schema_version = result->second,
+                  .schema = std::make_shared<Schema>(result->first)};
+              changed_schema_version = result->second;
             }
-            if ((resp->cdc_sdk_proto_records_size() > 0 &&
-                 resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1)
-                         .row_message()
-                         .op() == RowMessage_Op_DDL)) {
-              if ((resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1)
-                       .row_message()
-                       .schema_version() != *cached_schema_version)) {
-                RETURN_NOT_OK(PopulateCDCSDKDDLRecord(
-                    msg, resp->add_cdc_sdk_proto_records(), table_name, current_schema));
-              }
-            } else {
+
+            if (previous_schema_version != changed_schema_version &&
+                !boost::ends_with(table_name, kTablegroupParentTableNameSuffix) &&
+                !boost::ends_with(table_name, kColocationParentTableNameSuffix)) {
               RETURN_NOT_OK(PopulateCDCSDKDDLRecord(
                   msg, resp->add_cdc_sdk_proto_records(), table_name, current_schema));
             }
+
             SetCheckpoint(
                 msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
             checkpoint_updated = true;
@@ -1638,8 +1661,7 @@ Status GetChangesForCDCSDK(
                           << ", for parent tablet: " << tablet_id
                           << ", and if we did not see any other records we will report the tablet "
                              "split to the client";
-                SetCheckpoint(
-                    op_id.term, op_id.index, 0, "", 0, &checkpoint, last_streamed_op_id);
+                SetCheckpoint(op_id.term, op_id.index, 0, "", 0, &checkpoint, last_streamed_op_id);
                 checkpoint_updated = true;
                 split_op_id = op_id;
               }

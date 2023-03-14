@@ -7,6 +7,12 @@
   height: 30px;
 }
 
+.universe-tables-list {
+  .content-panel .container > .body {
+    margin: 50px 0 0 auto;
+  }
+}
+
 .table-search-bar {
   position: relative;
   width: 200px;
@@ -89,4 +95,9 @@
   th {
     vertical-align: middle !important;
   }
+}
+
+.refresh-table-list-btn {
+  padding: 10px 12px 9px;
+  margin-right: 16px;
 }

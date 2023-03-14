@@ -118,7 +118,7 @@ public class Universe extends Model {
   // Tracks when the universe was created.
   @Constraints.Required
   @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   public Date creationDate;
 
   // The universe name.

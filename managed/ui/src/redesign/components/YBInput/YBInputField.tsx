@@ -10,14 +10,15 @@ export const YBInputField = <T extends FieldValues>(props: YBInputFieldProps<T>)
     field: { ref, ...fieldProps },
     fieldState
   } = useController({ name, rules, defaultValue, control, shouldUnregister });
-
+  const { inputProps } = ybInputProps;
   return (
     <YBInput
       {...fieldProps}
-      inputProps={{
-        'data-testid': `YBInputField-${name}`
-      }}
       {...ybInputProps}
+      inputProps={{
+        'data-testid': `YBInputField-${name}`,
+        ...inputProps
+      }}
       inputRef={ref}
       error={!!fieldState.error}
       helperText={fieldState.error?.message ?? ybInputProps.helperText}

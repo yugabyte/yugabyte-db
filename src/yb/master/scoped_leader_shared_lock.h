@@ -88,12 +88,6 @@ class ScopedLeaderSharedLock {
       int line_number,
       const char* function_name);
 
-  explicit ScopedLeaderSharedLock(
-      enterprise::CatalogManager* catalog,
-      const char* file_name,
-      int line_number,
-      const char* function_name);
-
   ~ScopedLeaderSharedLock();
 
   void Unlock();

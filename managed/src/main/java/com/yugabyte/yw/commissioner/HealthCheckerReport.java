@@ -120,7 +120,8 @@ public class HealthCheckerReport {
       }
 
       boolean hasError = jsonNode.get("has_error").asBoolean();
-      nodeReport.checks.add(new CheckItem(hasError, jsonNode.get("timestamp").asText(), jsonNode));
+      nodeReport.checks.add(
+          new CheckItem(hasError, jsonNode.get("timestamp_iso").asText(), jsonNode));
       nodeReport.hasError |= hasError;
       nodeReport.hasWarning |= jsonNode.get("has_warning").asBoolean();
     }
@@ -170,7 +171,7 @@ public class HealthCheckerReport {
     String timestamp =
         String.format(
             "<span style=\"color:black;font-size:10px;\">%s</span>",
-            report.path("timestamp").asText());
+            report.path("timestamp_iso").asText());
 
     String header =
         String.format(

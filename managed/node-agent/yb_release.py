@@ -17,7 +17,7 @@ from ybops.common.exceptions import YBOpsRuntimeError
 """
 
 # Supported platforms for node-agent.
-NODE_AGENT_PLATFORMS = set(["darwin/amd64", "linux/amd64", "linux/arm64"])
+NODE_AGENT_PLATFORMS = set(["linux/amd64", "linux/arm64"])
 
 
 def filter_function(version, filename):
@@ -50,6 +50,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--source_dir', help='Source code directory.', required=True)
 parser.add_argument('--destination', help='Copy release to Destination directory.', required=True)
 parser.add_argument('--pre_release', help='Generate pre-release packages.', action='store_true')
+parser.add_argument('--rebuild_pex', help='Rebuild pex for node agent',
+                    action='store_true')
 args = parser.parse_args()
 
 try:
@@ -62,6 +64,16 @@ try:
     process_env = os.environ.copy()
     process_env["NODE_AGENT_PLATFORMS"] = ' '.join(NODE_AGENT_PLATFORMS)
     subprocess.check_call([build_script, 'clean', 'build', 'package', version], env=process_env)
+    # Rebuild minimal pex for node agent.
+    if args.pre_release:
+        devops_home = os.getenv('DEVOPS_HOME')
+        if devops_home is None:
+            raise YBOpsRuntimeError("DEVOPS_HOME not found")
+
+        if args.rebuild_pex:
+            logging.info("Rebuilding pex for node agent.")
+            rebuild_pex_script = os.path.join(devops_home, "bin", "build_ansible_pex.sh")
+            subprocess.check_call([rebuild_pex_script, '--force'])
     for platform in NODE_AGENT_PLATFORMS:
         parts = platform.split("/")
         packaged_file = os.path.join(args.source_dir, "build",
@@ -82,7 +94,7 @@ try:
                     for member in tarfile:
                         repackaged_tarfile.addfile(member, tarfile.extractfile(member))
 
-                repackaged_tarfile.add("../devops", arcname="{}/devops".format(version),
+                repackaged_tarfile.add(devops_home, arcname="{}/devops".format(version),
                                        filter=lambda x: x if filter_function(version, x.name)
                                        else None)
 
@@ -90,12 +102,19 @@ try:
                 for file in os.listdir(thirdparty_folder):
                     filepath = os.path.join(thirdparty_folder, file)
                     if os.path.isfile(filepath):
-                        repackaged_tarfile.add(filepath, "{}/thirdparty/{}".format(version, file))
+                        repackaged_tarfile.add(filepath,
+                                               "{}/thirdparty/{}".format(version, file))
 
             shutil.move(repackaged_file, packaged_file)
 
         logging.info("Copying file {} to {}".format(release_file, args.destination))
         shutil.copy(release_file, args.destination)
+    # Delete ansible only pex.
+    if args.pre_release and args.rebuild_pex:
+        logging.info("Deleting ansible only pex after packaging.")
+        pex_path = os.path.join(devops_home, "pex", "pexEnv")
+        if os.path.isdir(pex_path):
+            shutil.rmtree(pex_path)
 
 except (OSError, shutil.SameFileError) as e:
     log_message(logging.ERROR, e)

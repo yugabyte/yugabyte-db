@@ -63,6 +63,7 @@ static const char* const kNamespaceId = "NAMESPACEID";
 static const char* const kTableId = "TABLEID";
 static const char* const kCDCSDKSafeTime = "cdc_sdk_safe_time";
 static const char* const kCDCSDKActiveTime = "active_time";
+static const char* const kCDCSDKSnapshotKey = "snapshot_key";
 struct TabletCheckpoint {
   OpId op_id;
   // Timestamp at which the op ID was last updated.
@@ -113,12 +114,17 @@ class CDCServiceImpl : public CDCServiceIf {
       const ListTabletsRequestPB* req, ListTabletsResponsePB* resp, rpc::RpcContext rpc) override;
   void GetChanges(
       const GetChangesRequestPB* req, GetChangesResponsePB* resp, rpc::RpcContext rpc) override;
+  bool IsReplicationPausedForStream(const std::string& stream_id) const EXCLUDES(mutex_);
   void GetCheckpoint(
       const GetCheckpointRequestPB* req,
       GetCheckpointResponsePB* resp,
       rpc::RpcContext rpc) override;
 
   Result<TabletCheckpoint> TEST_GetTabletInfoFromCache(const ProducerTabletInfo& producer_tablet);
+
+  void GetCheckpointForColocatedTable(
+      const GetCheckpointForColocatedTableRequestPB* req,
+      GetCheckpointForColocatedTableResponsePB* resp, rpc::RpcContext context) override;
 
   // Update peers in other tablet servers about the latest minimum applied cdc index for a specific
   // tablet.
@@ -197,6 +203,17 @@ class CDCServiceImpl : public CDCServiceIf {
   // Marks the CDC enable flag as true.
   void SetCDCServiceEnabled();
 
+  static bool IsCDCSDKSnapshotRequest(const CDCSDKCheckpointPB& req_checkpoint);
+
+  static bool IsCDCSDKSnapshotBootstrapRequest(const CDCSDKCheckpointPB& req_checkpoint);
+
+  // Sets paused producer XCluster streams.
+  void SetPausedXClusterProducerStreams(
+      const ::google::protobuf::Map<std::string, bool>& paused_producer_stream_ids,
+      uint32_t xcluster_config_version);
+
+  uint32_t GetXClusterConfigVersion() const;
+
  private:
   FRIEND_TEST(CDCServiceTest, TestMetricsOnDeletedReplication);
   FRIEND_TEST(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure);
@@ -217,11 +234,26 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<OpId> GetLastCheckpoint(
       const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session);
 
+  Result<CDCSDKCheckpointPB> GetLastCDCSDKCheckpoint(
+      const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session);
+
+  Status GetCDCSDKCheckpointsForColocatedTable(
+      const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session,
+      google::protobuf::RepeatedPtrField<::yb::cdc::TableCheckpointInfoPB>*
+          table_checkpoint_details);
+
   Result<std::vector<std::pair<std::string, std::string>>> GetDBStreamInfo(
       const std::string& db_stream_id, const client::YBSessionPtr& session);
 
   Result<std::string> GetCdcStreamId(
       const ProducerTabletInfo& producer_tablet, const std::shared_ptr<client::YBSession>& session);
+
+  Status InsertRowForColocatedTableInCDCStateTable(
+      const ProducerTabletInfo& producer_tablet,
+      const TableId& colocated_table_id,
+      const OpId& commit_op_id,
+      const HybridTime& cdc_sdk_safe_time,
+      const client::YBSessionPtr& session);
 
   Status UpdateCheckpointAndActiveTime(
       const ProducerTabletInfo& producer_tablet,
@@ -231,7 +263,10 @@ class CDCServiceImpl : public CDCServiceIf {
       uint64_t last_record_hybrid_time,
       const CDCRequestSource& request_source = CDCRequestSource::CDCSDK,
       bool force_update = false,
-      const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid);
+      const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid,
+      const bool is_snapshot = false,
+      const std::string& snapshot_key = "",
+      const TableId& colocated_table_id = "");
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> GetTablets(
       const CDCStreamId& stream_id);
@@ -455,6 +490,10 @@ class CDCServiceImpl : public CDCServiceIf {
 
   // True when the server is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};
+
+  std::unordered_set<std::string> paused_xcluster_producer_streams_ GUARDED_BY(mutex_);
+
+  uint32_t xcluster_config_version_ GUARDED_BY(mutex_) = 0;
 };
 
 }  // namespace cdc

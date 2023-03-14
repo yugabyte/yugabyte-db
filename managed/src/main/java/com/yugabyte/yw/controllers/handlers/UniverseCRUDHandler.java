@@ -69,6 +69,7 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Ebean;
 import java.util.ArrayList;
@@ -438,7 +439,17 @@ public class UniverseCRUDHandler {
     boolean cloudEnabled =
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
-
+    // Verify that there are no nodes in unknown cluster
+    for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
+      if (taskParams.getClusterByUuid(nodeDetails.placementUuid) == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Unknown cluster "
+                + nodeDetails.placementUuid
+                + " for node with idx "
+                + nodeDetails.nodeIdx);
+      }
+    }
     for (Cluster c : taskParams.clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
       // Set the provider code.
@@ -452,6 +463,7 @@ public class UniverseCRUDHandler {
         c.userIntent.enableExposingService =
             UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED;
       }
+      validateRegionsAndZones(provider, c);
 
       // Set the node exporter config based on the provider
       if (!c.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
@@ -476,6 +488,7 @@ public class UniverseCRUDHandler {
       }
 
       PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
+      PlacementInfoUtil.finalSanityCheckConfigure(c, taskParams.getNodesInCluster(c.uuid));
     }
 
     if (taskParams.getPrimaryCluster() != null) {
@@ -561,8 +574,6 @@ public class UniverseCRUDHandler {
           taskType = TaskType.CreateKubernetesUniverse;
           universe.updateConfig(
               ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
-          universe.save(); // RFC should we remove this? we are saving later in the method.
-          // Moreover We might reject the create request in following statements.
           // This flag will be used for testing purposes as well. Don't remove.
           if (confGetter.getGlobalConf(GlobalConfKeys.useNewHelmNaming)) {
             if (Util.compareYbVersions(primaryIntent.ybSoftwareVersion, "2.15.4.0") >= 0) {
@@ -634,7 +645,7 @@ public class UniverseCRUDHandler {
           ImmutableMap.of(
               Universe.TAKE_BACKUPS, "true",
               Universe.KEY_CERT_HOT_RELOADABLE, "true"));
-      universe.save();
+
       // If cloud enabled and deployment AZs have two subnets, mark the cluster as a
       // non legacy cluster for proper operations.
       if (cloudEnabled) {
@@ -643,7 +654,6 @@ public class UniverseCRUDHandler {
         AvailabilityZone zone = provider.regions.get(0).zones.get(0);
         if (zone.secondarySubnet != null) {
           universe.updateConfig(ImmutableMap.of(Universe.DUAL_NET_LEGACY, "false"));
-          universe.save();
         }
       }
 
@@ -722,6 +732,35 @@ public class UniverseCRUDHandler {
       return updateCluster(customer, u, taskParams);
     } else {
       return updatePrimaryCluster(customer, u, taskParams);
+    }
+  }
+
+  private static void validateRegionsAndZones(Provider provider, Cluster cluster) {
+    Map<UUID, Region> regionMap =
+        provider.regions.stream().collect(Collectors.toMap(r -> r.uuid, r -> r));
+    if (cluster.placementInfo == null) {
+      return; // Otherwise tests are failing
+    }
+
+    for (PlacementInfo.PlacementCloud placementCloud : cluster.placementInfo.cloudList) {
+      for (PlacementInfo.PlacementRegion placementRegion : placementCloud.regionList) {
+        Region region = regionMap.get(placementRegion.uuid);
+        LOG.debug("Checking " + placementRegion.code + " -> " + region.isActive());
+        if (!region.isActive()) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Region " + placementRegion.code + " is deleted");
+        }
+
+        Map<UUID, AvailabilityZone> zones =
+            region.zones.stream().collect(Collectors.toMap(z -> z.uuid, z -> z));
+        for (PlacementInfo.PlacementAZ placementAZ : placementRegion.azList) {
+          AvailabilityZone zone = zones.get(placementAZ.uuid);
+          if (!zone.isActive()) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Availability zone " + zone.code + " is deleted");
+          }
+        }
+      }
     }
   }
 
@@ -936,7 +975,9 @@ public class UniverseCRUDHandler {
               + universe.universeUUID);
     }
 
-    for (Cluster cluster : taskParams.clusters) validateUserTags(customer, cluster.userIntent);
+    for (Cluster cluster : taskParams.clusters) {
+      validateUserTags(customer, cluster.userIntent);
+    }
 
     if (universe.isYbcEnabled()) {
       taskParams.installYbc = true;
@@ -1073,8 +1114,6 @@ public class UniverseCRUDHandler {
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     taskParams.clusters.add(primaryCluster);
     validateConsistency(primaryCluster, readOnlyCluster);
-
-    boolean isCloud = runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
 
     // Set the provider code.
     Provider provider =

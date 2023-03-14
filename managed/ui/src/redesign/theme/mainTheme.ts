@@ -91,6 +91,10 @@ export const mainTheme = createTheme({
       fontSize: 15,
       fontWeight: 700
     },
+    h6: {
+      fontSize: 14,
+      fontWeight: 500
+    },
     body1: {
       fontSize: 13,
       fontWeight: 600
@@ -213,8 +217,8 @@ export const mainTheme = createTheme({
         backgroundColor: colors.common.white,
         border: `1px solid ${colors.ybacolors.ybGray}`,
         '&:hover': {
-          backgroundColor: colors.ybacolors.ybGrayHover,
-          borderColor: colors.ybacolors.ybGrayHover
+          backgroundColor: colors.ybacolors.ybBorderGray,
+          borderColor: colors.ybacolors.ybBorderGray
         },
         '&:active': {
           backgroundColor: colors.ybacolors.ybDarkGray2,
@@ -255,7 +259,7 @@ export const mainTheme = createTheme({
     },
     MuiCheckbox: {
       root: {
-      '& .MuiSvgIcon-root': {
+        '& .MuiSvgIcon-root': {
           width: 16,
           height: 16,
           color: colors.primary[600]
@@ -574,7 +578,10 @@ export const mainTheme = createTheme({
     MuiDialogActions: {
       root: {
         background: colors.grey[200],
-        padding: '16px'
+        padding: '16px',
+        '& .MuiButtonBase-root': {
+          height: 44
+        }
       }
     },
     MuiTooltip: {

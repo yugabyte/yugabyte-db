@@ -15,14 +15,6 @@
 namespace yb {
 namespace cdc {
 
-namespace {
-
-void DisableYsqlPackedRow() {
-  ASSERT_OK(SET_FLAG(ysql_enable_packed_row, false));
-}
-
-}
-
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestModifyPrimaryKeyBeforeImage)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   auto tablets = ASSERT_RESULT(SetUpCluster());
@@ -61,7 +53,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestModifyPrimaryKeyBeforeImage))
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaChangeBeforeImage)) {
-  DisableYsqlPackedRow();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -94,8 +85,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaChangeBeforeImage)) {
       {4, 5, 6}, {1, 99, INT_MAX}, {4, 99, 6},      {4, 99, 66}};
   ExpectedRecordWithThreeColumns expected_before_image_records[] = {
       {}, {}, {1, 2, INT_MAX}, {}, {1, 3, INT_MAX}, {}, {1, 4, INT_MAX}, {4, 5, 6}, {4, 99, 6}};
-  ExpectedRecordWithThreeColumns expected_before_image_records_with_packed_row[] = {
-      {}, {}, {0, 0, 0}, {}, {0, 0, 0}, {}, {0, 0, 0}, {4, 5, 6}, {4, 99, 6}};
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
@@ -106,15 +95,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaChangeBeforeImage)) {
     const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
     if (i <= 6) {
       CheckRecordWithThreeColumns(
-          record, expected_records[i], count, true,
-          FLAGS_ysql_enable_packed_row ? expected_before_image_records_with_packed_row[i]
-                                       : expected_before_image_records[i]);
+          record, expected_records[i], count, true, expected_before_image_records[i]);
     } else {
       CheckRecordWithThreeColumns(
-          record, expected_records[i], count, true,
-          FLAGS_ysql_enable_packed_row ? expected_before_image_records_with_packed_row[i]
-                                       : expected_before_image_records[i],
-          true);
+          record, expected_records[i], count, true, expected_before_image_records[i], true);
     }
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
@@ -754,7 +738,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndBefo
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColumnDropBeforeImage)) {
-  DisableYsqlPackedRow();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -776,6 +759,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColumnDropBeforeImage)) {
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {3, 1, 2, 0, 0, 0};
+  const uint32_t packed_row_expected_count[] = {3, 2, 1, 0, 0, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
   ExpectedRecordWithThreeColumns expected_records[] = {
@@ -793,13 +777,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColumnDropBeforeImage)) {
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
 
-  CheckCount(expected_count, count);
+  CheckCount(
+      FLAGS_ysql_enable_packed_row ? packed_row_expected_count : expected_count, count);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionUpdateRowsWithBeforeImage)) {
   EnableVerboseLoggingForModule("cdc_service", 1);
   EnableVerboseLoggingForModule("cdcsdk_producer", 1);
-  DisableYsqlPackedRow();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
@@ -858,7 +842,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionUpdateRowsWit
         // Old tuples validations
         ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(), 0);
         ASSERT_EQ(record.row_message().old_tuple(1).datum_int32(), 0);
-
+        ASSERT_EQ(record.row_message().old_tuple(2).datum_int32(), 0);
         // New tuples validations
         ASSERT_GT(record.row_message().new_tuple(0).datum_int32(), 0);
         ASSERT_LE(record.row_message().new_tuple(0).datum_int32(), 4000);
@@ -877,6 +861,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionUpdateRowsWit
         ASSERT_EQ(
             record.row_message().new_tuple(1).datum_int32(),
             record.row_message().old_tuple(1).datum_int32() + 1);
+
+        ASSERT_EQ(
+            record.row_message().new_tuple(2).datum_int32(),
+            record.row_message().old_tuple(2).datum_int32());
+
         ASSERT_EQ(record.row_message().table(), kTableName);
         update_count += 1;
       }
@@ -972,6 +961,92 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionDeleteRowsWit
   }
   LOG(INFO) << "Total insert count: " << insert_count << " update counts: " << delete_count;
   ASSERT_EQ(insert_count, 2 * delete_count);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleTableAlterWithBeforeImage)) {
+  FLAGS_ysql_enable_packed_row = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::ALL));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Enable packing
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_packed_row_size_limit) = 1_KB;
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 2)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 2)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (3, 2)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (4, 2)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 INT"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 3 WHERE key = 1"));
+
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count[] = {2, 4, 1, 0, 0, 0};
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+  const uint32_t expected_count_packed_row[] = {2, 4, 1, 0, 0, 0};
+
+  ExpectedRecordWithThreeColumns expected_records[] = {
+      {0, 0, INT_MAX}, {1, 2, INT_MAX}, {2, 2, INT_MAX}, {3, 2, INT_MAX},
+      {4, 2, INT_MAX}, {0, 0, INT_MAX}, {1, 3, INT_MAX}};
+  ExpectedRecordWithThreeColumns expected_before_image_records[] = {
+      {}, {}, {}, {}, {}, {}, {1, 2, INT_MAX}};
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+    CheckRecordWithThreeColumns(
+        record, expected_records[i], count, true, expected_before_image_records[i]);
+  }
+  LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
+  CheckCount(FLAGS_ysql_enable_packed_row ? expected_count_packed_row : expected_count, count);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = false;
+  constexpr int kCompactionTimeoutSec = 60;
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false,
+      /* timeout_secs = */ kCompactionTimeoutSec, /* is_compaction = */ true));
+
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+
+  // Disable packing
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 4 WHERE key = 1"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 5 WHERE key = 1"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value_2"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 5 WHERE key = 1"));
+  ASSERT_OK(conn.Execute("DELETE FROM test_table WHERE key = 1"));
+
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count_2[] = {1, 0, 3, 1, 0, 0};
+  const uint32_t expected_count_packed_row_2[] = {1, 1, 2, 1, 0, 0};
+  uint32_t count_2[] = {0, 0, 0, 0, 0, 0};
+
+  ExpectedRecordWithThreeColumns expected_records_2[] = {
+      {1, 3, 4}, {1, 3, 5}, {0, 0, INT_MAX}, {1, 5, INT_MAX}, {1, INT_MAX, INT_MAX}};
+  ExpectedRecordWithThreeColumns expected_before_image_records_2[] = {
+      {1, 3, INT_MAX}, {1, 3, 4}, {}, {1, 3, INT_MAX}, {1, 5, INT_MAX}};
+
+  GetChangesResponsePB change_resp_2 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+  uint32_t record_size_2 = change_resp_2.cdc_sdk_proto_records_size();
+  for (uint32_t i = 0; i < record_size_2; ++i) {
+    const CDCSDKProtoRecordPB record = change_resp_2.cdc_sdk_proto_records(i);
+    CheckRecordWithThreeColumns(
+        record, expected_records_2[i], count_2, true, expected_before_image_records_2[i]);
+  }
+  LOG(INFO) << "Got " << count_2[1] << " insert record and " << count_2[2] << " update record";
+  CheckCount(
+      FLAGS_ysql_enable_packed_row ? expected_count_packed_row_2 : expected_count_2, count_2);
 }
 
 }  // namespace cdc

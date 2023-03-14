@@ -47,7 +47,6 @@
 
 #include "yb/common/partition.h"
 #include "yb/common/placement_info.h"
-#include "yb/common/wire_protocol.h"
 #include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/macros.h"

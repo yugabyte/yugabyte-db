@@ -199,7 +199,7 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     // are reported.
     ts->Shutdown();
     ASSERT_OK(cluster_->mini_master()->Restart());
-    ASSERT_OK(ts->Start());
+    ASSERT_OK(ts->Start(tserver::WaitTabletsBootstrapped::kFalse));
     ASSERT_OK(cluster_->WaitForTabletServerCount(1));
 
     ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_1, 1, &locs));

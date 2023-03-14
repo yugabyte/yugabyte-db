@@ -239,6 +239,11 @@ bool IsColocatedDbParentTableId(const TableId& table_id) {
       boost::algorithm::ends_with(table_id, kColocatedDbParentTableIdSuffix);
 }
 
+bool IsColocatedDbParentTableName(const TableName& table_name) {
+  return table_name.find(kColocatedDbParentTableNameSuffix) == 32 &&
+      boost::algorithm::ends_with(table_name, kColocatedDbParentTableNameSuffix);
+}
+
 TableId GetColocatedDbParentTableId(const NamespaceId& database_id) {
   DCHECK(IsIdLikeUuid(database_id)) << database_id;
   return database_id + kColocatedDbParentTableIdSuffix;

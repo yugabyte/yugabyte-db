@@ -10,12 +10,13 @@
 import React, { useState } from 'react';
 import moment from 'moment';
 import { useSelector } from 'react-redux';
-import { keyBy, mapValues } from 'lodash';
+import { keyBy, mapValues, capitalize, lowerCase } from 'lodash';
 import { Backup_Options_Type, IBackup, IStorageConfig, IUniverse } from './IBackup';
 import { Backup_States } from '../common/IBackup';
 import { Alert } from 'react-bootstrap';
 import { TableType } from '../../../redesign/helpers/dtos';
 import './BackupUtils.scss';
+import { MILLISECONDS_IN } from '../scheduled/ScheduledBackupUtils';
 
 export const BACKUP_REFETCH_INTERVAL = 20 * 1000;
 
@@ -25,7 +26,7 @@ export const BACKUP_REFETCH_INTERVAL = 20 * 1000;
  * @param endtime end time
  * @returns diff between the dates
  */
-export const calculateDuration = (startTime: number, endtime: number): string => {
+export const calculateDuration = (startTime: string, endtime: string): string => {
   const start = moment(startTime);
   const end = moment(endtime);
 
@@ -197,6 +198,21 @@ export const convertBackupToFormValues = (backup: IBackup, storage_config: IStor
       name: storage_config.name
     };
   }
+
+  if(backup.expiryTime) {
+    formValues['retention_interval'] = Math.ceil((backup.hasIncrementalBackups ? 
+      Date.parse(backup.expiryTime) - backup.lastIncrementalBackupTime : 
+      Date.parse(backup.expiryTime) - Date.parse(backup.commonBackupInfo.createTime)) / MILLISECONDS_IN[backup.expiryTimeUnit]);
+    const interval_type = capitalize(lowerCase(backup.expiryTimeUnit));
+    formValues['retention_interval_type'] = {value: interval_type, label: interval_type};
+    formValues['keep_indefinitely'] = false;
+  }
+  else {
+    formValues['keep_indefinitely'] = true;
+  }
+
+  formValues['scheduleName'] = backup.scheduleName;
+  formValues['backupObj'] = backup;
 
   return formValues;
 };

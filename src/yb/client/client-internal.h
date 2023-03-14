@@ -43,7 +43,6 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/transaction.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_admin.fwd.h"

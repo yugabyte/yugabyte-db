@@ -24,17 +24,24 @@ interface ConfigureAvailabilityZoneFieldProps {
 
 export type ExposedAZProperties = Pick<CloudVendorAvailabilityZoneMutation, 'code' | 'subnet'>;
 
-const useStyles = makeStyles(() => ({
+const useStyles = makeStyles((theme) => ({
   zonesContainer: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '10px',
+    gap: theme.spacing(1),
 
-    marginTop: '10px'
+    marginTop: theme.spacing(1)
   },
   zoneConfigContainer: {
     display: 'flex',
-    gap: '10px'
+    gap: theme.spacing(1)
+  },
+  removeZoneButton: {
+    backgroundColor: 'red',
+    padding: theme.spacing(1, 2, 1, 2),
+    '& i': {
+      color: 'white'
+    }
   }
 }));
 
@@ -105,12 +112,12 @@ export const ConfigureAvailabilityZoneField = ({
         btnType="button"
         onClick={addZone}
         disabled={isSubmitting || zoneCodeOptions === undefined}
-        data-testId="ConfigureAvailabilityZonField-AddZoneButton"
+        data-testid="ConfigureAvailabilityZonField-AddZoneButton"
       />
       <div className={classes.zonesContainer}>
         {selectedZones.map((zone, index) => (
           <div className={classes.zoneConfigContainer} key={zone.code || index}>
-            <div data-testId="ConfigureAvailabilityZonField-ZoneDropdown">
+            <div data-testid="ConfigureAvailabilityZonField-ZoneDropdown">
               <Select
                 styles={zoneSelectStyles}
                 options={selectZoneCodeOptions}
@@ -126,16 +133,17 @@ export const ConfigureAvailabilityZoneField = ({
               value={zone.subnet}
               onChange={(e) => handleSubnetChange(e.target.value, index)}
               fullWidth
-              data-testId="ConfigureAvailabilityZonField-SubnetInput"
+              data-testid="ConfigureAvailabilityZonField-SubnetInput"
             />
             <YBButton
+              className={classes.removeZoneButton}
               btnIcon="fa fa-trash-o"
               btnType="button"
               onClick={(e: any) => {
                 handleZoneDelete(index);
                 e.currentTarget.blur();
               }}
-              data-testId="ConfigureAvailabilityZonField-DeleteZoneButton"
+              data-testid="ConfigureAvailabilityZonField-DeleteZoneButton"
             />
           </div>
         ))}

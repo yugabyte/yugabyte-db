@@ -129,7 +129,7 @@ ycqlsh:example> BEGIN TRANSACTION
 ycqlsh:example> SELECT account_name, account_type, balance, writetime(balance) FROM accounts;
 ```
 
-```
+```output
  account_name | account_type | balance | writetime(balance)
 --------------+--------------+---------+--------------------
          John |     checking |     100 |   1523314002218558
@@ -138,12 +138,9 @@ ycqlsh:example> SELECT account_name, account_type, balance, writetime(balance) F
         Smith |      savings |    2000 |   1523313964363056
 ```
 
-
-
-{{< note Type="Note" >}}
+{{< note title="Note" >}}
 `BEGIN/END TRANSACTION` doesn't currently support `RETURNS STATUS AS ROW`.
 {{< /note >}}
-
 
 ## See also
 

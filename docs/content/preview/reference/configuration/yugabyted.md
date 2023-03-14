@@ -691,6 +691,8 @@ To destroy a local multi-node cluster, use the `destroy` command with the `--bas
 ./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3
 ```
 
+If the cluster has more than three nodes, execute a `destroy --base_dir=<path to directory>` command for each additional node until all nodes are destroyed.
+
 ### Create a single-node cluster
 
 Create a single-node cluster with a given base directory. Note the need to provide a fully-qualified directory path for the `base_dir` parameter.

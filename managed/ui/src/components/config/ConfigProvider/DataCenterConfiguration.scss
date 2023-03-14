@@ -9,15 +9,19 @@
   padding-top: 20px;
 
   .tab-pane {
-    padding-bottom: 60px;
+    padding-bottom: 80px;
   }
 }
 
-#config-tab-panel-redesign .config-tabs .tab-content {
+#cloud-config-tab-panel.config-tabs.redesign .tab-content {
   min-height: 400px;
   padding: 0;
 
   background-color: colors.$YB_BACKGROUND;
+
+  .tab-pane {
+    padding-bottom: 0px;
+  }
 }
 
 .provider-config-container {

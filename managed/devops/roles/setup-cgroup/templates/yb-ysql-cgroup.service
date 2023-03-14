@@ -1,0 +1,9 @@
+[Unit]
+Description=Yugabyte ysql cgroup manager
+Before=yb-tserver.service
+
+[Service]
+Type=oneshot
+ExecStart=mkdir -p /sys/fs/cgroup/{{cgroup_path}}
+ExecStart=bash -c 'echo {{pg_max_mem_mb}}M > /sys/fs/cgroup/{{cgroup_path}}/{{mem_max}}'
+ExecStart=bash -c 'echo {{pg_max_mem_mb}}M > /sys/fs/cgroup/{{cgroup_path}}/{{mem_swap_max}}'

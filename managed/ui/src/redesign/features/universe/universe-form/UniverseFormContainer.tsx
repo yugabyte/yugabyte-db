@@ -1,9 +1,11 @@
 import React, { createContext, FC } from 'react';
 import { useQuery } from 'react-query';
 import { useMethods } from 'react-use';
+import { useSelector } from 'react-redux';
+import { useTranslation } from 'react-i18next';
 import { RouteComponentProps } from 'react-router-dom';
 import { Box } from '@material-ui/core';
-import { YBLoading } from '../../../../components/common/indicators';
+import { YBErrorIndicator, YBLoading } from '../../../../components/common/indicators';
 import { CreateReadReplica } from './CreateRR';
 import { CreateUniverse } from './CreateUniverse';
 import { EditReadReplica } from './EditRR';
@@ -27,6 +29,7 @@ export interface UniverseFormContextState {
   isLoading: boolean; // To safeguard against bad defaults
   newUniverse: boolean; // Fresh Universe ( set to true only in Primary + RR flow )
   universeResourceTemplate: UniverseResource | null;
+  universeConfigureError: string | null;
 }
 
 const initialState: UniverseFormContextState = {
@@ -37,7 +40,8 @@ const initialState: UniverseFormContextState = {
   mode: ClusterModes.CREATE,
   isLoading: true,
   newUniverse: false,
-  universeResourceTemplate: null
+  universeResourceTemplate: null,
+  universeConfigureError: null
 };
 
 //Avoiding using global state since we are using react-query
@@ -60,6 +64,10 @@ const createFormMethods = (contextState: UniverseFormContextState) => ({
   setAsyncFormData: (data: UniverseFormData): UniverseFormContextState => ({
     ...contextState,
     asyncFormData: data
+  }),
+  setConfigureError: (data: string | null): UniverseFormContextState => ({
+    ...contextState,
+    universeConfigureError: data
   }),
   toggleClusterType: (type: ClusterType): UniverseFormContextState => ({
     ...contextState,
@@ -93,6 +101,9 @@ export const UniverseFormContainer: FC<RouteComponentProps<{}, UniverseFormConta
   const classes = useFormMainStyles();
   const universeContextData = useMethods(createFormMethods, initialState) as any;
   const { type: CLUSTER_TYPE, mode: MODE, uuid } = params;
+  const { t } = useTranslation();
+  const currentCustomer = useSelector((state: any) => state.customer.currentCustomer);
+  const customerUUID = currentCustomer?.data?.uuid;
 
   //route has it in lower case & enum has it in upper case
   const mode = MODE?.toUpperCase();
@@ -104,9 +115,14 @@ export const UniverseFormContainer: FC<RouteComponentProps<{}, UniverseFormConta
     api.getProvidersList
   );
 
-  //prefetch runtime configs
-  const { isLoading: isRuntimeConfigsLoading } = useQuery(QUERY_KEY.fetchGlobalRunTimeConfigs, () =>
+  //Prefetch Global and Customer scope runtime configs
+  const { isLoading: isGlobalConfigsLoading } = useQuery(QUERY_KEY.fetchGlobalRunTimeConfigs, () =>
     api.fetchRunTimeConfigs(true)
+  );
+
+  const { isLoading: isCustomerConfigsLoading } = useQuery(
+    [QUERY_KEY.fetchCustomerRunTimeConfigs, customerUUID],
+    () => api.fetchRunTimeConfigs(true, customerUUID)
   );
 
   const switchInternalRoutes = () => {
@@ -122,10 +138,16 @@ export const UniverseFormContainer: FC<RouteComponentProps<{}, UniverseFormConta
     else if (mode === ClusterModes.EDIT && clusterType === ClusterType.ASYNC)
       return <EditReadReplica uuid={uuid} />;
     //Page not found
-    else return <div>Page not found</div>;
+    else
+      return (
+        <YBErrorIndicator
+          customErrorMessage={t('commonErrors.pageNotExist')}
+          showRecoveryMsg={true}
+        />
+      );
   };
 
-  if (isProviderLoading || isRuntimeConfigsLoading) return <YBLoading />;
+  if (isProviderLoading || isGlobalConfigsLoading || isCustomerConfigsLoading) return <YBLoading />;
   else
     return (
       <UniverseFormContext.Provider value={universeContextData}>

@@ -26,9 +26,9 @@ API keys are [role-specific](../manage-access/#user-roles); keys assigned a Deve
 
 You must be signed in as an Admin user to create and revoke API keys.
 
-The **API Keys** tab of the **Admin** page displays a list of API keys created for your account that includes the key name, key status, the user that created the key, and the date it was created, last used, and expires.
+The **API Keys** tab under **Access Control** on the **Admin** page displays a list of API keys created for your account that includes the key name, key status, the user that created the key, and the date it was created, last used, and expires.
 
-![API Keys](/images/yb-cloud/cloud-admin-apikeys.png)
+![API Keys](/images/yb-cloud/managed-admin-apikeys.png)
 
 To view API key details, select an API key in the list to display the **API Key Details** sheet.
 
@@ -36,7 +36,7 @@ To view API key details, select an API key in the list to display the **API Key 
 
 To create an API key:
 
-1. On the **API Keys** tab of the **Admin** page, click **Create API Key**.
+1. Navigate to **Admin > Access Control > API Keys**, and click **Create API Key**.
 
 1. Enter a name and description for the key.
 

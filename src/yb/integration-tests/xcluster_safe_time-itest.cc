@@ -36,7 +36,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/tsan_util.h"
-#include "yb/integration-tests/twodc_test_base.h"
+#include "yb/integration-tests/xcluster_test_base.h"
 #include "yb/client/table.h"
 
 using std::string;
@@ -70,8 +70,8 @@ auto GetSafeTime(tserver::TabletServer* tserver, const NamespaceId& namespace_id
 }
 }  // namespace
 
-class XClusterSafeTimeTest : public TwoDCTestBase {
-  typedef TwoDCTestBase super;
+class XClusterSafeTimeTest : public XClusterTestBase {
+  typedef XClusterTestBase super;
 
  public:
   void SetUp() override {
@@ -285,9 +285,9 @@ TEST_F(XClusterSafeTimeTest, LagInSafeTime) {
   ASSERT_OK(WaitForSafeTime(ht_2));
 }
 
-class XClusterConsistencyTest : public XClusterYsqlTest {
+class XClusterConsistencyTest : public XClusterYsqlTestBase {
  public:
-  typedef XClusterYsqlTest super;
+  typedef XClusterYsqlTestBase super;
   void SetUp() override {
     // Skip in TSAN as InitDB times out.
     YB_SKIP_TEST_IN_TSAN();
@@ -728,7 +728,7 @@ TEST_F_EX(
   ASSERT_OK(ValidateConsumerRows(consumer_table1_->name(), 2 * kNumRecordsPerBatch));
 }
 
-class XClusterSingleClusterTest : public XClusterYsqlTest {
+class XClusterSingleClusterTest : public XClusterYsqlTestBase {
  protected:
   // Setup just the producer cluster table
   void SetUp() override {
@@ -737,7 +737,7 @@ class XClusterSingleClusterTest : public XClusterYsqlTest {
 
     FLAGS_enable_replicate_transaction_status_table = true;
 
-    XClusterYsqlTest::SetUp();
+    XClusterYsqlTestBase::SetUp();
     MiniClusterOptions opts;
     opts.num_masters = kMasterCount;
     opts.num_tablet_servers = kTServerCount;

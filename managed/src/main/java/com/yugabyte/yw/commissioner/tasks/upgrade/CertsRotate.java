@@ -134,8 +134,7 @@ public class CertsRotate extends UpgradeTaskBase {
   }
 
   private void createUniverseUpdateRootCertTask(UpdateRootCertAction updateAction) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("UniverseUpdateRootCert", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseUpdateRootCert");
     UniverseUpdateRootCert.Params params = new UniverseUpdateRootCert.Params();
     params.universeUUID = taskParams().universeUUID;
     params.rootCA = taskParams().rootCA;
@@ -298,8 +297,7 @@ public class CertsRotate extends UpgradeTaskBase {
         Collections.singletonMap(Universe.KEY_CERT_HOT_RELOADABLE, Boolean.TRUE.toString());
     task.initialize(params);
 
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("UpdateUniverseConfig", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateUniverseConfig");
     subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

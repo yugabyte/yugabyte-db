@@ -809,23 +809,56 @@ public class TestIndex extends BaseCQLTest {
     }
   }
 
-  private void assertRoutingVariables(String query,
-                                      List<String> expectedVars,
-                                      Object[] values,
-                                      String expectedRow) {
-    PreparedStatement stmt = session.prepare(query);
+  private boolean expectedRoutingVariables(String query,
+                                           List<String> expectedVars,
+                                           Object[] values,
+                                           String expectedRow,
+                                           Session s) {
+    PreparedStatement stmt = s.prepare(query);
     int hashIndexes[] = stmt.getRoutingKeyIndexes();
+    boolean successfulResult = true;
+
     if (expectedVars == null) {
       assertNull(hashIndexes);
     } else {
       List<String> actualVars = new Vector<String>();
       ColumnDefinitions vars = stmt.getVariables();
-      for (int hashIndex : hashIndexes) {
-        actualVars.add(vars.getTable(hashIndex) + "." + vars.getName(hashIndex));
+      if (hashIndexes != null) {
+        for (int hashIndex : hashIndexes) {
+          actualVars.add(vars.getTable(hashIndex) + "." + vars.getName(hashIndex));
+        }
       }
-      assertEquals(expectedVars, actualVars);
+
+      LOG.info("Expected vars: " + expectedVars + " actual vars: " + actualVars);
+      successfulResult = expectedVars.equals(actualVars);
     }
-    assertEquals(expectedRow, session.execute(stmt.bind(values)).one().toString());
+
+    assertEquals(expectedRow, s.execute(stmt.bind(values)).one().toString());
+    return successfulResult;
+  }
+
+  private void assertRoutingVariables(String query,
+                                      List<String> expectedVars,
+                                      Object[] values,
+                                      String expectedRow) {
+    LOG.info("Test query: " + query);
+    // Try the current session first.
+    if (expectedRoutingVariables(query, expectedVars, values, expectedRow, session)) {
+      return;
+    }
+
+    final int numTServers = miniCluster.getTabletServers().size();
+    for (int i = 0; i < numTServers; ++i) {
+      // Previous TS can use stale schema. Try another TS via a new session.
+      try (Session new_session = connectWithTestDefaults().getSession()) {
+        new_session.execute("USE " + DEFAULT_TEST_KEYSPACE);
+        if (expectedRoutingVariables(query, expectedVars, values, expectedRow, new_session)) {
+          return;
+        }
+      }
+    }
+
+    fail("No one TS returned expected PREPARE RESPONSE: " + expectedVars);
   }
 
   @Test

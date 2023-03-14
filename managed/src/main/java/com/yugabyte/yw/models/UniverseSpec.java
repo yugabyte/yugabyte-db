@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
@@ -82,6 +83,12 @@ public class UniverseSpec {
   public List<KmsConfig> kmsConfigs;
 
   public List<KmsHistory> kmsHistoryList;
+
+  public List<Backup> backups;
+
+  public List<Schedule> schedules;
+
+  public List<CustomerConfig> customerConfigs;
 
   public Map<String, String> universeConfig;
 
@@ -477,6 +484,24 @@ public class UniverseSpec {
     }
   }
 
+  private void updateBackupDetails(Customer customer) {
+    for (Backup backup : this.backups) {
+      backup.setCustomerUUID(customer.uuid);
+    }
+  }
+
+  private void updateScheduleDetails(Customer customer) {
+    for (Schedule schedule : this.schedules) {
+      schedule.setCustomerUUID(customer.uuid);
+    }
+  }
+
+  private void updateCustomerConfigDetails(Customer customer) {
+    for (CustomerConfig customerConfig : this.customerConfigs) {
+      customerConfig.customerUUID = customer.uuid;
+    }
+  }
+
   private void updateUniverseMetadata(String storagePath, Customer customer) {
 
     // Update universe information with new customer information and universe config.
@@ -492,6 +517,12 @@ public class UniverseSpec {
     updateAccessKeyDetails(storagePath);
 
     updateKmsConfigDetails(customer);
+
+    updateBackupDetails(customer);
+
+    updateScheduleDetails(customer);
+
+    updateCustomerConfigDetails(customer);
   }
 
   @Transactional
@@ -576,6 +607,24 @@ public class UniverseSpec {
     for (KmsHistory kmsHistory : kmsHistoryList) {
       if (!EncryptionAtRestUtil.keyRefExists(this.universe.universeUUID, kmsHistory.uuid.keyRef)) {
         kmsHistory.save();
+      }
+    }
+
+    for (CustomerConfig customerConfig : customerConfigs) {
+      if (CustomerConfig.get(customerConfig.configUUID) == null) {
+        customerConfig.save();
+      }
+    }
+
+    for (Schedule schedule : this.schedules) {
+      if (!Schedule.maybeGet(schedule.getScheduleUUID()).isPresent()) {
+        schedule.save();
+      }
+    }
+
+    for (Backup backup : this.backups) {
+      if (!Backup.maybeGet(backup.backupUUID).isPresent()) {
+        backup.save();
       }
     }
 

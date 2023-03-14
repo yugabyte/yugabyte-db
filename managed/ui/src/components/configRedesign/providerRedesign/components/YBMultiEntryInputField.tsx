@@ -4,9 +4,9 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import { FormHelperText, useTheme } from '@material-ui/core';
 import React from 'react';
-import { FieldValues, useController, UseControllerProps } from 'react-hook-form';
+import { FieldError, FieldValues, useController, UseControllerProps } from 'react-hook-form';
+import { FormHelperText, useTheme } from '@material-ui/core';
 import { Styles } from 'react-select';
 
 import {
@@ -35,17 +35,19 @@ export const YBMultiEntryInputField = <T extends FieldValues>({
     })
   };
 
+  // TODO: Need to do a deeper dive to resolve the issue where fieldState.error is not recognized as an array of FieldErrors.
+  const errors = (fieldState.error as unknown) as FieldError[];
   return (
-    <div>
+    <div data-testid="YBMultiEntryInputField-Container">
       <YBMultiEntryInput
         {...ybMultiEntryInputProps}
-        onChange={field.onChange}
-        val={field.value}
+        onChange={(options) => field.onChange(options.map((option) => option.value))}
+        val={field.value.map((option: any) => ({ value: option, label: option }))}
         styles={multiSelectStyles}
       />
-      {fieldState.error?.message && (
-        <FormHelperText error={true}>{fieldState.error?.message}</FormHelperText>
-      )}
+      {errors?.[0]?.message ? (
+        <FormHelperText error={true}>{errors[0].message}</FormHelperText>
+      ) : null}
     </div>
   );
 };

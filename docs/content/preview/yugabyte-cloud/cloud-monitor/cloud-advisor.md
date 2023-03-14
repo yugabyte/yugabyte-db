@@ -19,7 +19,7 @@ For meaningful results, run your workload for at least an hour before running th
 
 To monitor clusters in real time, use the performance metrics on the cluster [Overview and Performance](../overview/) tabs.
 
-![Performance Advisor](/images/yb-cloud/cloud-clusters-advisor.png)
+![Performance Advisor](/images/yb-cloud/managed-monitor-advisor.png)
 
 ## Recommendations
 

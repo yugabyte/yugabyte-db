@@ -3,6 +3,7 @@
 package node
 
 import (
+	"context"
 	"errors"
 	"node-agent/app/server"
 	"node-agent/util"
@@ -44,9 +45,11 @@ func SetupRegisterCommand(parentCmd *cobra.Command) {
 }
 
 func unregisterCmdHandler(cmd *cobra.Command, args []string) error {
+	ctx := server.Context()
 	config := util.CurrentConfig()
 	apiToken, _ := cmd.Flags().GetString("api_token")
 	_, err := config.StoreCommandFlagString(
+		ctx,
 		cmd,
 		"node_id",
 		util.NodeAgentIdKey,
@@ -54,38 +57,39 @@ func unregisterCmdHandler(cmd *cobra.Command, args []string) error {
 		nil,   /* validator */
 	)
 	if err != nil {
-		util.ConsoleLogger().Fatalf("Unable to store node agent ID - %s", err.Error())
+		util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent ID - %s", err.Error())
 	}
 	_, err = config.StoreCommandFlagBool(
+		ctx,
 		cmd,
 		"skip_verify_cert",
 		util.PlatformSkipVerifyCertKey,
 	)
 	if err != nil {
-		util.ConsoleLogger().Fatalf("Error storing skip_verify_cert value - %s", err.Error())
+		util.ConsoleLogger().Fatalf(ctx, "Error storing skip_verify_cert value - %s", err.Error())
 	}
 	// API token is optional.
-	return unregisterHandler(apiToken)
+	return unregisterHandler(ctx, apiToken)
 }
 
-func unregisterHandler(apiToken string) error {
+func unregisterHandler(ctx context.Context, apiToken string) error {
 	nodeAgentId := util.CurrentConfig().String(util.NodeAgentIdKey)
 	// Return error if there is no node agent id present in the config.
 	if nodeAgentId == "" {
 		err := errors.New(
 			"Node Agent Unregistration Failed - Node Agent ID not found in the config",
 		)
-		util.ConsoleLogger().Errorf(err.Error())
+		util.ConsoleLogger().Errorf(ctx, err.Error())
 		return err
 	}
 
-	util.ConsoleLogger().Infof("Unregistering Node Agent - %s", nodeAgentId)
+	util.ConsoleLogger().Infof(ctx, "Unregistering Node Agent - %s", nodeAgentId)
 	err := server.UnregisterNodeAgent(server.Context(), apiToken)
 	if err != nil {
-		util.ConsoleLogger().Errorf("Node Agent Unregistration Failed - %s", err)
+		util.ConsoleLogger().Errorf(ctx, "Node Agent Unregistration Failed - %s", err)
 		return err
 	}
-	util.ConsoleLogger().Infof("Node Agent Unregistration Successful")
+	util.ConsoleLogger().Infof(ctx, "Node Agent Unregistration Successful")
 	return nil
 }
 
@@ -94,9 +98,10 @@ func registerCmdHandler(cmd *cobra.Command, args []string) {
 	config := util.CurrentConfig()
 	apiToken, err := cmd.Flags().GetString("api_token")
 	if err != nil {
-		util.ConsoleLogger().Fatalf("Unable to get API token - %s", err.Error())
+		util.ConsoleLogger().Fatalf(ctx, "Unable to get API token - %s", err.Error())
 	}
 	_, err = config.StoreCommandFlagString(
+		ctx,
 		cmd,
 		"node_ip",
 		util.NodeIpKey,
@@ -104,9 +109,10 @@ func registerCmdHandler(cmd *cobra.Command, args []string) {
 		nil,  /* validator */
 	)
 	if err != nil {
-		util.ConsoleLogger().Fatalf("Unable to store node IP - %s", err.Error())
+		util.ConsoleLogger().Fatalf(ctx, "Unable to store node IP - %s", err.Error())
 	}
 	_, err = config.StoreCommandFlagString(
+		ctx,
 		cmd,
 		"node_port",
 		util.NodePortKey,
@@ -114,9 +120,10 @@ func registerCmdHandler(cmd *cobra.Command, args []string) {
 		nil,   /* validator */
 	)
 	if err != nil {
-		util.ConsoleLogger().Fatalf("Unable to store node port - %s", err.Error())
+		util.ConsoleLogger().Fatalf(ctx, "Unable to store node port - %s", err.Error())
 	}
 	_, err = config.StoreCommandFlagString(
+		ctx,
 		cmd,
 		"url",
 		util.PlatformUrlKey,
@@ -124,23 +131,25 @@ func registerCmdHandler(cmd *cobra.Command, args []string) {
 		util.ExtractBaseURL,
 	)
 	if err != nil {
-		util.ConsoleLogger().Fatalf("Unable to store platform URL - %s", err.Error())
+		util.ConsoleLogger().Fatalf(ctx, "Unable to store platform URL - %s", err.Error())
 	}
 	_, err = config.StoreCommandFlagBool(
+		ctx,
 		cmd,
 		"skip_verify_cert",
 		util.PlatformSkipVerifyCertKey,
 	)
 	if err != nil {
-		util.ConsoleLogger().Fatalf("Unable to store skip_verify_cert value - %s", err.Error())
+		util.ConsoleLogger().Fatalf(ctx, "Unable to store skip_verify_cert value - %s", err.Error())
 	}
 	err = server.RetrieveUser(ctx, apiToken)
 	if err != nil {
-		util.ConsoleLogger().Fatalf("Error fetching the current user with the API key - %s", err)
+		util.ConsoleLogger().
+			Fatalf(ctx, "Error fetching the current user with the API key - %s", err)
 	}
 	err = server.RegisterNodeAgent(server.Context(), apiToken)
 	if err != nil {
-		util.ConsoleLogger().Fatalf("Unable to register node agent - %s", err.Error())
+		util.ConsoleLogger().Fatalf(ctx, "Unable to register node agent - %s", err.Error())
 	}
-	util.ConsoleLogger().Info("Node Agent Registration Successful")
+	util.ConsoleLogger().Info(ctx, "Node Agent Registration Successful")
 }

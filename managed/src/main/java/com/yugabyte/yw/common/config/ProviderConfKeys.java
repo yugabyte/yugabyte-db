@@ -137,12 +137,68 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Default Azure Volume Size",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> defaultKubernetesVolumeCount =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.default_volume_count",
+          ScopeType.PROVIDER,
+          "Default Kubernetes Volume Count",
+          "Default Kubernetes Volume Count",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> defaultKubernetesVolumeSize =
       new ConfKeyInfo<>(
           "yb.kubernetes.default_volume_size_gb",
           ScopeType.PROVIDER,
           "Default Kubernetes Volume Size",
           "Default Kubernetes Volume Size",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> defaultKubernetesCpuCores =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.default_cpu_cores",
+          ScopeType.PROVIDER,
+          "Default Kubernetes CPU cores",
+          "Default Kubernetes CPU cores",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> minKubernetesCpuCores =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.min_cpu_cores",
+          ScopeType.PROVIDER,
+          "Minimum Kubernetes CPU cores",
+          "Minimum Kubernetes CPU cores",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> maxKubernetesCpuCores =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.max_cpu_cores",
+          ScopeType.PROVIDER,
+          "Maximum Kubernetes CPU cores",
+          "Maximum Kubernetes CPU cores",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> defaultKubernetesMemorySize =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.default_memory_size_gb",
+          ScopeType.PROVIDER,
+          "Default Kubernetes Memory Size",
+          "Default Kubernetes Memory Size",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> minKubernetesMemorySize =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.min_memory_size_gb",
+          ScopeType.PROVIDER,
+          "Minimum Kubernetes Memory Size",
+          "Minimum Kubernetes Memory Size",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> maxKubernetesMemorySize =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.max_memory_size_gb",
+          ScopeType.PROVIDER,
+          "Maximum Kubernetes Memory Size",
+          "Maximum Kubernetes Memory Size",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> user =
@@ -260,4 +316,20 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Max count of memory-mapped regions allowed in the system.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Boolean> enableAnsibleOffloading =
+      new ConfKeyInfo<>(
+          "yb.node_agent.ansible_offloading.enabled",
+          ScopeType.PROVIDER,
+          "Enable Ansible Offloading",
+          "Offload ansible tasks to the DB nodes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> useSpotInstances =
+      new ConfKeyInfo<>(
+          "yb.use_spot_instances",
+          ScopeType.PROVIDER,
+          "Use Spot Instances",
+          "Use spot instances instead of On-Demand during universe creation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

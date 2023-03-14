@@ -89,13 +89,14 @@ func (plat Platform) Name() string {
 }
 
 // Install YBA service.
-func (plat Platform) Install() {
+func (plat Platform) Install() error {
 	log.Info("Starting Platform install")
 	config.GenerateTemplate(plat)
 	plat.createNecessaryDirectories()
 	plat.untarDevopsAndYugawarePackages()
 	plat.copyYugabyteReleaseFile()
 	plat.copyYbcPackages()
+	plat.copyNodeAgentPackages()
 	plat.renameAndCreateSymlinks()
 	convertCertsToKeyStoreFormat()
 
@@ -114,6 +115,7 @@ func (plat Platform) Install() {
 
 	plat.Start()
 	log.Info("Finishing Platform install")
+	return nil
 }
 
 func (plat Platform) createNecessaryDirectories() {
@@ -122,6 +124,7 @@ func (plat Platform) createNecessaryDirectories() {
 	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/releases/"+plat.version, os.ModePerm)
 	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/ybc/release", os.ModePerm)
 	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/ybc/releases", os.ModePerm)
+	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/node-agent/releases", os.ModePerm)
 
 	common.MkdirAll(plat.devopsDir(), os.ModePerm)
 	common.MkdirAll(plat.yugawareDir(), os.ModePerm)
@@ -218,6 +221,38 @@ func (plat Platform) copyYbcPackages() {
 
 }
 
+func (plat Platform) deleteNodeAgentPackages() {
+	// It deletes existing node-agent packages on upgrade.
+	// Even if it fails, it is ok.
+	releasesFolderPath := common.GetBaseInstall() + "/data/yb-platform/node-agent/releases"
+	nodeAgentPattern := releasesFolderPath + "/node_agent-*.tar.gz"
+	matches, err := filepath.Glob(nodeAgentPattern)
+	if err == nil {
+		for _, f := range matches {
+			os.Remove(f)
+		}
+	}
+}
+
+func (plat Platform) copyNodeAgentPackages() {
+	// Node-agent package is under yugabundle folder.
+	packageFolderPath := common.GetInstallerSoftwareDir() + "/packages/yugabyte-" + plat.version
+	nodeAgentPattern := packageFolderPath + "/node_agent-*.tar.gz"
+
+	matches, err := filepath.Glob(nodeAgentPattern)
+	if err != nil {
+		log.Fatal(
+			fmt.Sprintf("Could not find node-agent components in %s. Failed with err %s",
+				packageFolderPath, err.Error()))
+	}
+
+	for _, f := range matches {
+		_, fileName := filepath.Split(f)
+		common.CopyFile(f, common.GetBaseInstall()+"/data/yb-platform/node-agent/releases/"+fileName)
+	}
+
+}
+
 func (plat Platform) renameAndCreateSymlinks() {
 
 	common.CreateSymlink(plat.yugabyteDir(), common.GetSoftwareRoot()+"/yb-platform", "yugaware")
@@ -226,10 +261,8 @@ func (plat Platform) renameAndCreateSymlinks() {
 }
 
 // Start the YBA platform service.
-func (plat Platform) Start() {
-
+func (plat Platform) Start() error {
 	if common.HasSudoAccess() {
-
 		common.RunBash(common.Systemctl,
 			[]string{"daemon-reload"})
 		common.RunBash(common.Systemctl,
@@ -238,9 +271,7 @@ func (plat Platform) Start() {
 			[]string{"start", filepath.Base(plat.SystemdFileLocation)})
 		common.RunBash(common.Systemctl,
 			[]string{"status", filepath.Base(plat.SystemdFileLocation)})
-
 	} else {
-
 		containerExposedPort := config.GetYamlPathData("platform.port")
 		restartSeconds := config.GetYamlPathData("platform.restartSeconds")
 
@@ -248,18 +279,20 @@ func (plat Platform) Start() {
 		arg1 := []string{"-c", plat.cronScript + " " + common.GetSoftwareRoot() + " " +
 			common.GetDataRoot() + " " + containerExposedPort + " " + restartSeconds +
 			" > /dev/null 2>&1 &"}
-
 		common.RunBash(command1, arg1)
-
 	}
-
+	return nil
 }
 
 // Stop the YBA platform service.
-func (plat Platform) Stop() {
-	if plat.Status().Status != common.StatusRunning {
+func (plat Platform) Stop() error {
+	status, err := plat.Status()
+	if err != nil {
+		return err
+	}
+	if status.Status != common.StatusRunning {
 		log.Debug(plat.name + " is already stopped")
-		return
+		return nil
 	}
 	if common.HasSudoAccess() {
 		arg1 := []string{"stop", filepath.Base(plat.SystemdFileLocation)}
@@ -289,10 +322,12 @@ func (plat Platform) Stop() {
 			}
 		}
 	}
+	return nil
 }
 
 // Restart the YBA platform service.
-func (plat Platform) Restart() {
+func (plat Platform) Restart() error {
+	log.Info("Restarting YBA..")
 
 	if common.HasSudoAccess() {
 
@@ -301,19 +336,24 @@ func (plat Platform) Restart() {
 
 	} else {
 
-		plat.Stop()
-		plat.Start()
-
+		if err := plat.Stop(); err != nil {
+			return err
+		}
+		if err := plat.Start(); err != nil {
+			return err
+		}
 	}
-
+	return nil
 }
 
 // Uninstall the YBA platform service and optionally clean out data.
-func (plat Platform) Uninstall(removeData bool) {
+func (plat Platform) Uninstall(removeData bool) error {
 	log.Info("Uninstalling yb-platform")
 
 	// Stop running platform service
-	plat.Stop()
+	if err := plat.Stop(); err != nil {
+		return err
+	}
 
 	// Clean up systemd file
 	if common.HasSudoAccess() {
@@ -335,13 +375,12 @@ func (plat Platform) Uninstall(removeData bool) {
 		if err != nil {
 			log.Info(fmt.Sprintf("Error %s removing data dir %s.", err.Error(), plat.DataDir))
 		}
-
 	}
-
+	return nil
 }
 
 // Status prints the status output specific to yb-platform.
-func (plat Platform) Status() common.Status {
+func (plat Platform) Status() (common.Status, error) {
 	status := common.Status{
 		Service:    plat.Name(),
 		Port:       viper.GetInt("platform.port"),
@@ -381,18 +420,20 @@ func (plat Platform) Status() common.Status {
 			status.Status = common.StatusStopped
 		}
 	}
-	return status
+	return status, nil
 }
 
 // Upgrade will upgrade the platform and install it into the alt install directory.
 // Upgrade will NOT restart the service, the old version is expected to still be running
-func (plat Platform) Upgrade() {
+func (plat Platform) Upgrade() error {
 	plat.platformDirectories = newPlatDirectories()
 	config.GenerateTemplate(plat) // systemctl reload is not needed, start handles it for us.
 	plat.createNecessaryDirectories()
 	plat.untarDevopsAndYugawarePackages()
 	plat.copyYugabyteReleaseFile()
 	plat.copyYbcPackages()
+	plat.deleteNodeAgentPackages()
+	plat.copyNodeAgentPackages()
 	plat.renameAndCreateSymlinks()
 
 	//Create the platform.log file so that we can start platform as
@@ -407,7 +448,8 @@ func (plat Platform) Upgrade() {
 		userName := viper.GetString("service_username")
 		common.Chown(common.GetSoftwareRoot(), userName, userName, true)
 	}
-	plat.Start()
+	err := plat.Start()
+	return err
 }
 
 func convertCertsToKeyStoreFormat() {

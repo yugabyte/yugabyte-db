@@ -9,7 +9,7 @@ import (
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "The version of YBA Installer.",
+	Short: "Print the version of YBA Installer.",
 	Args:  cobra.NoArgs,
 	Long: `
     The version will be the same as the version of YugabyteDB Anywhere that you will be

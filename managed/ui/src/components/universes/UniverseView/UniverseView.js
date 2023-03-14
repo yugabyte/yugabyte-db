@@ -15,7 +15,7 @@ import {
   getUniverseStatus,
   getUniverseStatusIcon,
   hasPendingTasksForUniverse,
-  universeState
+  UniverseState
 } from '../helpers/universeHelpers';
 import {
   YBCost,
@@ -117,7 +117,7 @@ const tableDataValueToKey = {
 
 const toggleTooltip = (view) => <Tooltip id="tooltip">Switch to {view} view.</Tooltip>;
 
-const { ...filterStatuses } = universeState;
+const { ...filterStatuses } = UniverseState;
 const filterStatusesArr = Object.values(filterStatuses).map((status) => ({
   value: status.text,
   label: status.text

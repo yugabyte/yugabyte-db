@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/licensing/pubkey"
 )
 
 // ErrorInvalidLicenseFormat for incorrectly formatted license files
@@ -102,4 +103,18 @@ func (l License) WriteToLocation(newLocation string) error {
 func (l License) Sha256Data() []byte {
 	data := sha256.Sum256([]byte(l.EncodedData))
 	return data[:]
+}
+
+// Validate will check if the given license is actually valid.
+func (l License) Validate() bool {
+	sha256Data := l.Sha256Data()
+	sha256String := string(sha256Data)
+	for _, bad := range revokedLicenses() {
+		if bad == sha256String {
+			fmt.Println("license has been blacklisted")
+			return false
+		}
+	}
+
+	return pubkey.Validate(sha256Data, l.Signature)
 }

@@ -11,7 +11,7 @@
 // under the License.
 //
 #include "yb/common/partition.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_wire_protocol.h"
 
 #include "yb/master/catalog_manager_util.h"
 

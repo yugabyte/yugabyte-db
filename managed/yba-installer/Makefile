@@ -7,7 +7,7 @@ VERSION ?= $(shell cat $(CURDIR)/version.txt)
 # go compile options
 GOOS ?= linux
 GOARCH ?= amd64
-BUILD_TYPE := dev
+BUILD_TYPE := preview
 
 
 # build requirements

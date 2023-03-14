@@ -64,13 +64,18 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset);
           createUniverseSetTlsParamsTask();
           // Create kubernetes upgrade task to rotate certs
-          createUpgradeTask(getUniverse(), userIntent.ybSoftwareVersion, true, true);
+          createUpgradeTask(
+              getUniverse(),
+              userIntent.ybSoftwareVersion,
+              true,
+              true,
+              getUniverse().isYbcEnabled(),
+              getUniverse().getUniverseDetails().ybcSoftwareVersion);
         });
   }
 
   private void createUniverseUpdateRootCertTask(UpdateRootCertAction updateAction) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("UniverseUpdateRootCert", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseUpdateRootCert");
     UniverseUpdateRootCert.Params params = new UniverseUpdateRootCert.Params();
     params.universeUUID = taskParams().universeUUID;
     params.rootCA = taskParams().rootCA;
@@ -83,8 +88,7 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   }
 
   private void createUniverseSetTlsParamsTask() {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("UniverseSetTlsParams", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseSetTlsParams");
     UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
     params.universeUUID = taskParams().universeUUID;
     params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;

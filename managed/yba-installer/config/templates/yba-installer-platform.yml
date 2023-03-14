@@ -68,7 +68,6 @@ services:
         swamper.targetPath = "{{ baseInstall }}/data/prometheus/swamper_targets"
         swamper.rulesPath = "{{ baseInstall }}/data/prometheus/swamper_rules"
         metrics.url = "http://127.0.0.1:{{ yamlPath "prometheus.port" }}/api/v1"
-        metrics.management.url = "http://127.0.0.1:{{ yamlPath "prometheus.port" }}/-"
         storage.path = "{{ .DataDir }}"
         seedData = false
         multiTenant = false
@@ -98,6 +97,10 @@ services:
         # The IP of the platform.
         url = ""
         url = "{{ yamlPath "platform.ywUrl" }}"
+
+        node_agent {
+          releases.path = "{{ .DataDir }}/node-agent/releases"
+        }
       }
 
       ybc {

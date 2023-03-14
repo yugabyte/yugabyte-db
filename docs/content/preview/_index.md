@@ -6,12 +6,12 @@ weight: 1
 type: indexpage
 resourcesIntro: Quick Links
 resources:
-  - title: Migrate to YugabyteDB
-    url: /preview/migrate/
+  - title: Download
+    url: https://download.yugabyte.com/#/
   - title: Deploy
     url: /preview/deploy/
-  - title: Manage
-    url: /preview/manage/
+  - title: Migrate to YugabyteDB
+    url: /preview/migrate/
   - title: Troubleshoot
     url: /preview/troubleshoot/
 ---

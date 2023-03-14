@@ -111,13 +111,15 @@ YbgStatusCreate()
  * get access to the ERROR constant.
  */
 YbgStatus
-YbgStatusCreateError(const char *msg)
+YbgStatusCreateError(const char *msg, const char *filename, int line)
 {
 	YbgMemoryContext old_ctx;
 	YbgStatus status = YbgStatusCreate();
 	old_ctx = SetThreadLocalCurrentMemoryContext(status->error_ctx);
 	status->err_level = ERROR;
 	status->err_msg = strdup(msg);
+	status->filename = filename; /* no dup, expect static value */
+	status->lineno = line;
 	SetThreadLocalCurrentMemoryContext(old_ctx);
 	return status;
 }

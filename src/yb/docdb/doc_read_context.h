@@ -14,6 +14,7 @@
 #pragma once
 
 #include "yb/common/schema.h"
+#include "yb/common/ql_wire_protocol.h"
 
 #include "yb/docdb/schema_packing.h"
 

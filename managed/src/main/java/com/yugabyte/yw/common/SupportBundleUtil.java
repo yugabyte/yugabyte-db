@@ -475,17 +475,35 @@ public class SupportBundleUtil {
   }
 
   /**
-   * Gets the kubernetes service account name from the provider config object.
+   * Gets the kubernetes service account name from the provider config object. This is a best effort
+   * to parse the service account from the kubeconfig user.
    *
    * @param provider the provider object for the universe cluster.
+   * @param kubernetesManager the k8s manager object (Shell / Native).
+   * @param config tell the k8s manager where kubeconfig is.
    * @return the service account name.
    */
-  public String getServiceAccountName(Provider provider) {
+  public String getServiceAccountName(
+      Provider provider, KubernetesManager kubernetesManager, Map<String, String> config) {
     String serviceAccountName = "";
-    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
-    if (config.containsKey("KUBECONFIG_SERVICE_ACCOUNT")) {
-      serviceAccountName = config.get("KUBECONFIG_SERVICE_ACCOUNT");
+    Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(provider);
+    // If the provider has the KUBECONFIG_SERVICE_ACCOUNT key, we can use it directly. Otherwise,
+    // we will attempt to parse the service account from the kubeconfig. Kubeconfigs generated using
+    // generate_kubeconfig.py will have a user with the format <service account>-<cluster>.
+    if (providerConfig.containsKey("KUBECONFIG_SERVICE_ACCOUNT")) {
+      serviceAccountName = providerConfig.get("KUBECONFIG_SERVICE_ACCOUNT");
+    } else {
+      String username = kubernetesManager.getKubeconfigUser(config);
+      String clusterName = kubernetesManager.getKubeconfigCluster(config);
+
+      // Use regex to get the service account from the pattern (service account name)-(clusterName)
+      Pattern pattern = Pattern.compile(String.format("^(.*)-%s", clusterName));
+      Matcher matcher = pattern.matcher(username);
+      if (matcher.find()) {
+        serviceAccountName = matcher.group(1);
+      }
     }
+
     return serviceAccountName;
   }
 

@@ -4716,10 +4716,10 @@ create_nestloop_plan(PlannerInfo *root,
 		 */
 		ListCell *l;
 		yb_hashClauseInfos =
-			palloc0(joinclauses->length * sizeof(YbBNLHashClauseInfo));
+			palloc0(joinrestrictclauses->length * sizeof(YbBNLHashClauseInfo));
 		
 		/* YB: This length is later adjusted in setrefs.c. */
-		yb_num_hashClauseInfos = joinclauses->length;
+		yb_num_hashClauseInfos = joinrestrictclauses->length;
 
 		Relids batched_outerrelids =
 			bms_difference(outerrelids,
@@ -4728,10 +4728,16 @@ create_nestloop_plan(PlannerInfo *root,
 		Relids inner_relids = best_path->innerjoinpath->parent->relids;
 
 		YbBNLHashClauseInfo *current_hinfo = yb_hashClauseInfos;
-		foreach(l, joinclauses)
+		foreach(l, joinrestrictclauses)
 		{
 			Oid hashOpno = InvalidOid;
-			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);				
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);	
+			if (!list_member_ptr(joinclauses, rinfo->clause))
+			{
+				yb_num_hashClauseInfos--;
+				continue;
+			}
+
 			if (rinfo->can_join &&
 				OidIsValid(rinfo->hashjoinoperator) &&
 				can_batch_rinfo(rinfo, batched_outerrelids, inner_relids))
@@ -6034,8 +6040,17 @@ is_index_only_refs(List *expr_refs, IndexOptInfo *indexinfo)
 		{
 			if (colref->attno == indexinfo->indexkeys[i])
 			{
-				found = true;
-				break;
+				/*
+				 * If index key can not return, it does not have actual value
+				 * to evaluate the expression.
+				 */
+				if (indexinfo->canreturn[i])
+				{
+					found = true;
+					break;
+				}
+				else
+					return false;
 			}
 		}
 		if (!found)

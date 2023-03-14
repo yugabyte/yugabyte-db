@@ -42,7 +42,7 @@ This deployment provides the following advantages:
 
 ## Create a synchronized multi-region universe
 
-Before you can [create a multi-region universe in YugabyteDB Anywhere](../../../yugabyte-platform/create-deployments/create-universe-multi-region/), you need to [install](../yugabyte-platform/install-yugabyte-platform/) YugabyteDB Anywhere and [configure](../yugabyte-platform/configure-yugabyte-platform/) it to run in AWS.
+Before you can [create a multi-region universe in YugabyteDB Anywhere](../../../yugabyte-platform/create-deployments/create-universe-multi-region/), you need to [install](../../../yugabyte-platform/install-yugabyte-platform/) YugabyteDB Anywhere and [configure](../../../yugabyte-platform/configure-yugabyte-platform/) it to run in AWS.
 
 ## Start a workload
 

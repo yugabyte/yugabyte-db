@@ -79,7 +79,6 @@ namespace yb {
 class FsManager;
 class MemTracker;
 class MetricEntity;
-class RowChangeList;
 
 namespace server {
 class Clock;
@@ -392,14 +391,20 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
-  // The returned iterator is not initialized.
-  Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
+  // The returned iterator is not initialized and should be initialized by the caller before usage.
+  Result<std::unique_ptr<docdb::DocRowwiseIterator>> NewUninitializedDocRowIterator(
       const Schema& projection,
       const ReadHybridTime& read_hybrid_time = {},
       const TableId& table_id = "",
       CoarseTimePoint deadline = CoarseTimePoint::max(),
-      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse,
-      const Slice& sub_doc_key = Slice()) const;
+      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse) const;
+
+  // The following functions create new row iterator that is already initialized.
+  Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
+      const Schema& projection,
+      const ReadHybridTime& read_hybrid_time = {},
+      const TableId& table_id = "",
+      CoarseTimePoint deadline = CoarseTimePoint::max()) const;
 
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
       const TableId& table_id) const;
@@ -407,7 +412,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> CreateCDCSnapshotIterator(
       const Schema& projection,
       const ReadHybridTime& time,
-      const std::string& next_key);
+      const std::string& next_key,
+      const TableId& table_id = "");
   //------------------------------------------------------------------------------------------------
   // Makes RocksDB Flush.
   Status Flush(FlushMode mode,
@@ -429,18 +435,19 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Used to update the tablets on the index table that the index has been backfilled.
   // This means that full compactions can now garbage collect delete markers.
-  Status MarkBackfillDone(const TableId& table_id = "");
+  Status MarkBackfillDone(const OpId& op_id, const TableId& table_id = "");
 
   // Change wal_retention_secs in the metadata.
   Status AlterWalRetentionSecs(ChangeMetadataOperation* operation);
 
   // Apply replicated add table operation.
-  Status AddTable(const TableInfoPB& table_info);
+  Status AddTable(const TableInfoPB& table_info, const OpId& op_id);
 
-  Status AddMultipleTables(const google::protobuf::RepeatedPtrField<TableInfoPB>& table_infos);
+  Status AddMultipleTables(
+      const google::protobuf::RepeatedPtrField<TableInfoPB>& table_infos, const OpId& op_id);
 
   // Apply replicated remove table operation.
-  Status RemoveTable(const std::string& table_id);
+  Status RemoveTable(const std::string& table_id, const OpId& op_id);
 
   // Truncate this tablet by resetting the content of RocksDB.
   Status Truncate(TruncateOperation* operation);
@@ -883,7 +890,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::shared_ptr<docdb::SchemaPackingStorage> PrimarySchemaPackingStorage();
 
-  Status AddTableInMemory(const TableInfoPB& table_info);
+  Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id);
 
   // Returns true if the tablet was created after a split but it has not yet had data from it's
   // parent which are now outside of its key range removed.

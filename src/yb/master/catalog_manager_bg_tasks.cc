@@ -79,7 +79,7 @@ CatalogManagerBgTasks::CatalogManagerBgTasks(CatalogManager *catalog_manager)
       pending_updates_(false),
       cond_(&lock_),
       thread_(nullptr),
-      catalog_manager_(down_cast<enterprise::CatalogManager*>(catalog_manager)) {
+      catalog_manager_(catalog_manager) {
 }
 
 void CatalogManagerBgTasks::Wake() {

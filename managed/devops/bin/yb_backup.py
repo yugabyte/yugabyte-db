@@ -25,9 +25,6 @@ import signal
 import sys
 
 from argparse import RawDescriptionHelpFormatter
-from boto.utils import get_instance_metadata
-from botocore.session import get_session
-from botocore.credentials import get_credentials
 from datetime import timedelta
 from multiprocessing.pool import ThreadPool
 from contextlib import contextmanager
@@ -55,6 +52,8 @@ COLOCATION_NAME_SUFFIX = '.colocation.parent.tablename'
 COLOCATION_UUID_RE_STR = UUID_RE_STR + COLOCATION_UUID_SUFFIX
 COLOCATION_PARENT_TABLE_NEW_OLD_UUID_RE = re.compile(
     COLOCATION_UUID_RE_STR + '[ ]*\t' + COLOCATION_UUID_RE_STR)
+COLOCATION_MIGRATION_PARENT_TABLE_NEW_OLD_UUID_RE = re.compile(
+    COLOCATED_UUID_RE_STR + '[ ]*\t' + COLOCATION_UUID_RE_STR)
 LEADING_UUID_RE = re.compile('^(' + UUID_RE_STR + r')\b')
 
 LIST_TABLET_SERVERS_RE = re.compile('.*list_tablet_servers.*(' + UUID_RE_STR + ').*')
@@ -708,6 +707,12 @@ class KubernetesDetails():
 
 
 def get_instance_profile_credentials():
+    # The version of boto we use conflicts with later versions of python3.  Hide the boto imports
+    # inside the sole function that uses boto so unit tests are not affected.
+    # This function is only used by the s3 code path which unit tests do not use.
+    from boto.utils import get_instance_metadata
+    from botocore.session import get_session
+    from botocore.credentials import get_credentials
     result = ()
     iam_credentials_endpoint = 'meta-data/iam/security-credentials/'
     metadata = get_instance_metadata(timeout=1, num_retries=1, data=iam_credentials_endpoint)
@@ -1050,6 +1055,8 @@ class YBBackup:
         self.ts_cfgs = {}
         self.ip_to_ssh_key_map = {}
         self.secondary_to_primary_ip_map = {}
+        self.broadcast_to_rpc_map = {}
+        self.rpc_to_broadcast_map = {}
         self.region_to_location = {}
         self.xxhash_checksum_path = ''
         self.database_version = YBVersion("unknown")
@@ -1444,9 +1451,13 @@ class YBBackup:
             self.args.remote_ysql_dump_binary, "ysql_dump", "ysql_dumpall")
 
         if self.args.ts_web_hosts_ports:
+            # The TS Web host/port provided in here is used to hit the /varz endpoint
+            # of the tserver. The host can either be RPC IP/Broadcast IP.
             logging.info('TS Web hosts/ports: {}'.format(self.args.ts_web_hosts_ports))
             for host_port in self.args.ts_web_hosts_ports.split(','):
                 (host, port) = host_port.split(':')
+                # Add this host(RPC IP or Broadcast IP) to ts_cfgs dict. Set web port to access
+                # /varz endpoint.
                 self.ts_cfgs.setdefault(host, YBTSConfig(self)).set_web_port(port)
 
         if self.per_region_backup():
@@ -1558,12 +1569,11 @@ class YBBackup:
             for line in output.splitlines():
                 if LEADING_UUID_RE.match(line):
                     fields = split_by_tab(line)
-                    (ip_port, state, role) = (fields[1], fields[2], fields[3])
+                    (rpc_ip_port, state, role) = (fields[1], fields[2], fields[3])
+                    broadcast_ip_port = fields[4] if len(fields) > 4 else 'N/A'
                     if state == 'ALIVE':
-                        (ip, port) = ip_port.split(':')
-                        if self.secondary_to_primary_ip_map:
-                            ip = self.secondary_to_primary_ip_map[ip]
-                        alive_master_ip = ip
+                        broadcast_ip = self.populate_ip_maps(rpc_ip_port, broadcast_ip_port)
+                        alive_master_ip = broadcast_ip
                     if role == 'LEADER':
                         break
             self.leader_master_ip = alive_master_ip
@@ -1571,6 +1581,11 @@ class YBBackup:
         return self.leader_master_ip
 
     def get_live_tservers(self):
+        """
+        Fetches all live tserver-ips, i.e. tservers with state 'ALIVE'.
+        :return: A list of tserver_ips: List of server_broadcast_address for the
+            live tservers or Rpc address if server_broadcast_address is not set.
+        """
         num_loops = 0
         while num_loops < LIVE_TS_SEARCHING_LOOP_MAX_RETRIES:
             logging.info('[app] Start searching for live TServer (try {})'.format(num_loops))
@@ -1580,12 +1595,11 @@ class YBBackup:
             for line in output.splitlines():
                 if LEADING_UUID_RE.match(line):
                     fields = split_by_space(line)
-                    (ip_port, state) = (fields[1], fields[3])
+                    (rpc_ip_port, state) = (fields[1], fields[3])
+                    broadcast_ip_port = fields[14] if len(fields) > 14 else 'N/A'
                     if state == 'ALIVE':
-                        (ip, port) = ip_port.split(':')
-                        if self.secondary_to_primary_ip_map:
-                            ip = self.secondary_to_primary_ip_map[ip]
-                        tserver_ips.append(ip)
+                        broadcast_ip = self.populate_ip_maps(rpc_ip_port, broadcast_ip_port)
+                        tserver_ips.append(broadcast_ip)
 
             if tserver_ips:
                 return tserver_ips
@@ -1970,23 +1984,33 @@ class YBBackup:
                     if LEADING_UUID_RE.match(line):
                         fields = split_by_tab(line)
                         (tablet_id, tablet_leader_host_port) = (fields[0], fields[2])
-                        (ts_host, ts_port) = tablet_leader_host_port.split(":")
-                        if self.secondary_to_primary_ip_map:
-                            ts_host = self.secondary_to_primary_ip_map[ts_host]
-
+                        (rpc_host, rpc_port) = tablet_leader_host_port.split(":")
+                        assert rpc_host in self.rpc_to_broadcast_map
+                        ts_host = self.rpc_to_broadcast_map[rpc_host]
                         need_region = self.per_region_backup()
-                        ts_config = self.ts_cfgs.setdefault(ts_host, YBTSConfig(self))
+                        # Get the (TS Host address, YBTSConfig object) using this ts_host.
+                        (ts_config_ip, ts_config) = self.get_ts_config_detail(ts_host)
+                        if self.secondary_to_primary_ip_map:
+                            ts_config_ip = self.secondary_to_primary_ip_map.get(ts_config_ip,
+                                                                                ts_config_ip)
                         load_cfg = not ts_config.has_data_dirs() or\
                             (need_region and not ts_config.has_region())
                         if load_cfg:
                             try:
-                                ts_config.load(ts_host, need_region)
+                                # Load config using the TS Web host/port provided in the arguments
+                                # to the script.
+                                ts_config.load(ts_config_ip, need_region)
                             except Exception as ex:
                                 found_bad_ts = True
                                 logging.warning("Error in TS {} config loading. Retry tablet "
                                                 "leaders searching. Error: {}".format(
                                                     ts_host, str(ex)))
                                 break
+                            # If ts_config_ip( i.e. the TS Web Host ) is different from ts_host,
+                            # add an entry to self.ts_cfgs for ts_host with the same YBTSConfig
+                            # object.
+                            if ts_host != ts_config_ip:
+                                self.ts_cfgs.setdefault(ts_host, ts_config)
 
                         if need_region:
                             region = ts_config.region()
@@ -2238,6 +2262,52 @@ class YBBackup:
         # Convert to string to handle python2 converting to 'unicode' by default.
         return [(str(joined_cmd), tserver_ip)]
 
+    def populate_ip_maps(self, rpc_ip_port, broadcast_ip_port):
+        """
+        Populate the 'broadcast_to_rpc_map' and the 'rpc_to_broadcast_map' dicts.
+        If broadcast_ip is available use that, otherwise simply use the rpc_ip for
+        the mapping. Additionally, if secondary_to_primary_ip_map is available,
+        fetch the entry for given rpc_ip and use that for broadcast_ip.
+        :param rpc_ip_port: A string of <rpc_ip>:<rpc_port>.
+        :param broadcast_ip_port: A string of <broadcast_ip:port> if available else 'N/A'.
+        :return: The obtained broadcast_ip.
+        """
+        resolved_ip_port = broadcast_ip_port \
+            if broadcast_ip_port != 'N/A' else rpc_ip_port
+        (broadcast_ip, port) = resolved_ip_port.split(':')
+        (rpc_ip, rpc_port) = rpc_ip_port.split(':')
+        if self.secondary_to_primary_ip_map:
+            broadcast_ip = self.secondary_to_primary_ip_map.get(rpc_ip, broadcast_ip)
+
+        self.broadcast_to_rpc_map[broadcast_ip] = rpc_ip
+        self.rpc_to_broadcast_map[rpc_ip] = broadcast_ip
+        return broadcast_ip
+
+    def get_ts_config_detail(self, broadcast_ip):
+        """
+        In the post_process_arguments, we populate the 'ts_cfgs' dict, with the
+        provided TS Web host/port. The TS Web host provided can either be Broadcast IP or the
+        RPC IP of the tserver. This method aism to return that TS Web Host along with
+        the YBTSConfig object.
+        :param broadcast_ip: The broadcast_ip of tablet server.
+        :return: A tuple of (ts_config_ip, ts_config) where ts_config_ip is the Host address
+        for which the 'ts_cfgs' was set during post_process_arguments step. This could either be
+        RPC or Broadcast address, depending on arguments supplied to the script, and is required
+        to make curl call to the TS /varz endpoint. The ts_config is the
+        YBTSConfig object associated with it.
+        """
+        ts_config_ip = broadcast_ip
+        # Ok to be None here.
+        ts_config = self.ts_cfgs.get(broadcast_ip)
+        rpc_ip = self.broadcast_to_rpc_map[broadcast_ip]
+        if rpc_ip != broadcast_ip:
+            if broadcast_ip not in self.ts_cfgs:
+                ts_config_ip = rpc_ip
+                ts_config = self.ts_cfgs.setdefault(rpc_ip, YBTSConfig(self))
+        else:
+            ts_config = self.ts_cfgs.setdefault(broadcast_ip, YBTSConfig(self))
+        return (ts_config_ip, ts_config)
+
     def find_data_dirs(self, tserver_ip):
         """
         Finds the data directories on the given tserver. This queries the /varz?raw=1 endpoint of
@@ -2245,15 +2315,21 @@ class YBBackup:
         :param tserver_ip: tablet server ip
         :return: a list of top-level YB data directories
         """
-        ts_config = self.ts_cfgs.setdefault(tserver_ip, YBTSConfig(self))
+        (ts_config_ip, ts_config) = self.get_ts_config_detail(tserver_ip)
+        if self.secondary_to_primary_ip_map:
+            ts_config_ip = self.secondary_to_primary_ip_map.get(ts_config_ip,
+                                                                ts_config_ip)
         if not ts_config.has_data_dirs():
             try:
-                ts_config.load(tserver_ip)
+                ts_config.load(ts_config_ip)
             except Exception as ex:
                 logging.warning("Error in TS {} config loading. Skip TS in this "
                                 "downloading round. Error: {}".format(tserver_ip, str(ex)))
                 return None
-
+        # If ts_config_ip( i.e. the TS Web Host ) is different from tserver_ip, add an
+        # entry to self.ts_cfgs for tserver_ip with the same YBTSConfig object.
+        if tserver_ip != ts_config_ip:
+            self.ts_cfgs.setdefault(tserver_ip, ts_config)
         return ts_config.data_dirs()
 
     def generate_snapshot_dirs(self, data_dir_by_tserver, snapshot_id,
@@ -3335,7 +3411,8 @@ class YBBackup:
                                  .format(old_id, new_id))
             elif (COLOCATED_DB_PARENT_TABLE_NEW_OLD_UUID_RE.search(line) or
                   TABLEGROUP_PARENT_TABLE_NEW_OLD_UUID_RE.search(line) or
-                  COLOCATION_PARENT_TABLE_NEW_OLD_UUID_RE.search(line)):
+                  COLOCATION_PARENT_TABLE_NEW_OLD_UUID_RE.search(line) or
+                  COLOCATION_MIGRATION_PARENT_TABLE_NEW_OLD_UUID_RE.search(line)):
                 # Parent colocated/tablegroup table
                 (entity, old_id, new_id) = split_by_tab(line)
                 assert entity == 'ParentColocatedTable'
@@ -3401,18 +3478,18 @@ class YBBackup:
                 for line in output[cmd].splitlines():
                     if LEADING_UUID_RE.match(line):
                         fields = split_by_tab(line)
-                        (ts_ip_port, role) = (fields[1], fields[2])
-                        (ts_ip, ts_port) = ts_ip_port.split(':')
+                        (rpc_ip_port, role) = (fields[1], fields[2])
+                        (rpc_ip, rpc_port) = rpc_ip_port.split(':')
                         if role == 'LEADER' or role == 'FOLLOWER' or role == 'READ_REPLICA':
-                            if self.secondary_to_primary_ip_map:
-                                ts_ip = self.secondary_to_primary_ip_map[ts_ip]
-                            tablets_by_tserver_ip.setdefault(ts_ip, set()).add(tablet_id)
+                            broadcast_ip = self.rpc_to_broadcast_map[rpc_ip]
+                            tablets_by_tserver_ip.setdefault(broadcast_ip, set()).add(tablet_id)
                             num_ts += 1
                         else:
                             # Bad/temporary roles: LEARNER, NON_PARTICIPANT, UNKNOWN_ROLE.
                             found_bad_ts = True
                             logging.warning("Found TS {} with bad role: {} for tablet {}. "
-                                            "Retry searching.".format(ts_ip, role, tablet_id))
+                                            "Retry searching.".format(broadcast_ip, role,
+                                                                      tablet_id))
                             break
 
                 if found_bad_ts:

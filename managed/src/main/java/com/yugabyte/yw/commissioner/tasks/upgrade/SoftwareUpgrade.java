@@ -15,6 +15,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.io.File;
@@ -68,7 +69,13 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
           Universe universe = getUniverse();
           // Verify the request params and fail if invalid.
           taskParams().verifyParams(universe);
-          // Precheck for Available Memory on tserver nodes.
+
+          String newVersion = taskParams().ybSoftwareVersion;
+
+          // Preliminary checks for upgrades.
+          createCheckUpgradeTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
+
+          // PreCheck for Available Memory on tserver nodes.
           long memAvailableLimit =
               confGetter.getConfForScope(universe, UniverseConfKeys.dbMemAvailableLimit);
           createAvailabeMemoryCheck(allNodes, Util.AVAILABLE_MEMORY, memAvailableLimit)
@@ -93,7 +100,6 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
             createSetupServerTasks(nodes.getRight(), param -> param.isSystemdUpgrade = true);
           }
 
-          String newVersion = taskParams().ybSoftwareVersion;
           // Download software to all nodes.
           createDownloadTasks(allNodes, newVersion);
           // Install software on nodes.
@@ -120,6 +126,12 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
             createRunYsqlUpgradeTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
           }
 
+          // Promote Auto flags on compatible versions.
+          if (confGetter.getConfForScope(universe, UniverseConfKeys.promoteAutoFlag)
+              && CommonUtils.isAutoFlagSupported(newVersion)) {
+            createPromoteAutoFlagTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
+          }
+
           // Update software version in the universe metadata.
           createUpdateSoftwareVersionTask(newVersion, false /*isSoftwareUpdateViaVm*/)
               .setSubTaskGroupType(getTaskSubGroupType());
@@ -132,8 +144,7 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.DownloadingSoftware, taskParams().nodePrefix);
 
-    SubTaskGroup downloadTaskGroup =
-        getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup downloadTaskGroup = createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
       downloadTaskGroup.addSubTask(
           getAnsibleConfigureServerTask(

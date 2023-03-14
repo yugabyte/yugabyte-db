@@ -87,7 +87,8 @@ set(CLIENT_LIBS
   yb_util
   gutil
   yrpc
-  yb_docdb_encoding)
+  yb_docdb_encoding
+  yb_docdb_encoding_util)
 
 # We customize the output name/directory of the exported library so that we can
 # call it "yb_client" without it colliding with the regular library.
@@ -121,7 +122,8 @@ ADD_YB_LIBRARY(ql-dml-test-base
 
 # Tests
 
-set(YB_TEST_LINK_LIBS integration-tests rpc_test_util ql-dml-test-base ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS
+    yb_docdb_test_common integration-tests rpc_test_util ql-dml-test-base ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(backup-txn-test)
 ADD_YB_TEST(client-test)
 ADD_YB_TEST(client-unittest)

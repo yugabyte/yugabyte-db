@@ -79,7 +79,7 @@ func Init(ctx context.Context) *TaskExecutor {
 // GetInstance returns the singleton executor instance.
 func GetInstance() *TaskExecutor {
 	if instance == nil {
-		util.FileLogger().Fatal("Task executor is not initialized")
+		util.FileLogger().Fatal(nil, "Task executor is not initialized")
 	}
 	return instance
 }
@@ -118,7 +118,7 @@ func (te *TaskExecutor) SubmitTask(
 		defer func() {
 			te.wg.Done()
 			if err := recover(); err != nil {
-				util.FileLogger().Errorf("Panic occurred: %v", string(debug.Stack()))
+				util.FileLogger().Errorf(ctx, "Panic occurred: %v", string(debug.Stack()))
 				future.err = fmt.Errorf("Panic occurred: %v", err)
 				future.state.Store(TaskFailed)
 			}

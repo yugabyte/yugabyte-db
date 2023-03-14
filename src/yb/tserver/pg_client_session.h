@@ -119,7 +119,7 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
       client::YBSession* session, client::YBTransaction* transaction);
 
   Result<std::pair<SessionData, PgClientSession::UsedReadTimePtr>> SetupSession(
-      const PgPerformRequestPB& req, CoarseTimePoint deadline);
+      const PgPerformRequestPB& req, CoarseTimePoint deadline, HybridTime in_txn_limit);
   Status ProcessResponse(
       const PgClientSessionOperations& operations, const PgPerformRequestPB& req,
       PgPerformResponsePB* resp, rpc::RpcContext* context);

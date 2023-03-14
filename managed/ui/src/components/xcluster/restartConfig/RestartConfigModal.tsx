@@ -15,8 +15,9 @@ import {
   fetchTaskUntilItCompletes,
   restartXClusterConfig
 } from '../../../actions/xClusterReplication';
-import { assertUnreachableCase } from '../../../utils/ErrorUtils';
+import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
 import { ConfigTableSelect } from '../common/tableSelect/ConfigTableSelect';
+import { XClusterConfigStatus } from '../constants';
 
 import { XClusterConfig, XClusterTableType } from '../XClusterTypes';
 
@@ -58,7 +59,6 @@ export const FormStep = {
 export type FormStep = typeof FormStep[keyof typeof FormStep];
 
 const MODAL_TITLE = 'Restart Replication';
-const FIRST_FORM_STEP = FormStep.SELECT_TABLES;
 const INITIAL_VALUES: Partial<RestartXClusterConfigFormValues> = {
   tableUUIDs: [],
   // Bootstrap fields
@@ -71,7 +71,13 @@ export const RestartConfigModal = ({
   onHide,
   xClusterConfig
 }: RestartConfigModalProps) => {
-  const [currentStep, setCurrentStep] = useState<FormStep>(FIRST_FORM_STEP);
+  // If xCluster config setup has failed, then we must restart the whole xCluster config.
+  // Thus, we skip table selection for the xCluster config setup failed scenario.
+  const firstFormStep =
+    xClusterConfig.status === XClusterConfigStatus.FAILED
+      ? FormStep.CONFIGURE_BOOTSTRAP
+      : FormStep.SELECT_TABLES;
+  const [currentStep, setCurrentStep] = useState<FormStep>(firstFormStep);
   const [formWarnings, setFormWarnings] = useState<RestartXClusterConfigFormWarnings>();
 
   // Need to store this to support navigating between pages
@@ -87,8 +93,6 @@ export const RestartConfigModal = ({
 
   const restartConfigMutation = useMutation(
     (values: RestartXClusterConfigFormValues) => {
-      // Currently backend only supports restart replication for the
-      // entire config. Table level restart support is coming soon.
       const tables: string[] = values.tableUUIDs;
       return restartXClusterConfig(xClusterConfig.uuid, tables, {
         backupRequestParams: {
@@ -142,7 +146,7 @@ export const RestartConfigModal = ({
   );
 
   const resetModalState = () => {
-    setCurrentStep(FIRST_FORM_STEP);
+    setCurrentStep(firstFormStep);
     setFormWarnings({});
     setSelectedKeyspaces([]);
   };

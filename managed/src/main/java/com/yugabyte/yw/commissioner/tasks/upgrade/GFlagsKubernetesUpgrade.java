@@ -46,7 +46,9 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
               getUniverse(),
               userIntent.ybSoftwareVersion,
               !taskParams().masterGFlags.equals(userIntent.masterGFlags),
-              !taskParams().tserverGFlags.equals(userIntent.tserverGFlags));
+              !taskParams().tserverGFlags.equals(userIntent.tserverGFlags),
+              universe.isYbcEnabled(),
+              universe.getUniverseDetails().ybcSoftwareVersion);
         });
   }
 }

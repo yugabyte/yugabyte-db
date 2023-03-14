@@ -9,13 +9,12 @@ import (
 
 var upgradeCmd = &cobra.Command{
 	Use:   "upgrade",
-	Short: "The upgrade command is used to upgrade an existing YugabyteDB Anywhere installation.",
+	Short: "Upgrade an existing YugabyteDB Anywhere installation.",
 	Long: `
-   The execution of the upgrade command will upgrade an already installed version of Yugabyte
-   Anywhere present on your operating system, to the upgrade version associated with your download
-	 of YBA Installer. Please make sure that you have installed YugabyteDB Anywhere using the install
-	 command prior to executing the upgrade command.
-   `,
+   The upgrade command will upgrade an already installed version of Yugabyte Anywhere to the
+	 upgrade version associated with your new download of YBA Installer. Please make sure that you
+	 have installed YugabyteDB Anywhere using the install command prior to executing the upgrade
+	 command.`,
 	Args: cobra.NoArgs,
 	// We will use prerun to do some basic setup for the upcoming upgrade.
 	// At this point, its making sure Directory Manager is set to do an upgrade.
@@ -57,20 +56,26 @@ var upgradeCmd = &cobra.Command{
 		common.Upgrade(common.GetVersion())
 		for _, name := range serviceOrder {
 			log.Info("About to upgrade component " + name)
-			services[name].Upgrade()
+			if err := services[name].Upgrade(); err != nil {
+				log.Fatal("Upgrade of " + name + " failed: " + err.Error())
+			}
 			log.Info("Completed upgrade of component " + name)
 		}
 
 		for _, name := range serviceOrder {
 			log.Info("About to restart component " + name)
-			services[name].Stop()
-			services[name].Start()
+			if err := services[name].Restart(); err != nil {
+				log.Fatal("Failed restarting " + name + " after upgrade: " + err.Error())
+			}
 			log.Info("Completed restart of component " + name)
 		}
 
 		var statuses []common.Status
 		for _, service := range services {
-			status := service.Status()
+			status, err := service.Status()
+			if err != nil {
+				log.Fatal("Failed to get status: " + err.Error())
+			}
 			statuses = append(statuses, status)
 			if !common.IsHappyStatus(status) {
 				log.Fatal(status.Service + " is not running! upgrade failed")
@@ -79,16 +84,17 @@ var upgradeCmd = &cobra.Command{
 		common.PrintStatus(statuses...)
 		// Here ends the postgres minor version/no upgrade workflow
 
-		ybaCtl.Install()
+		if err := ybaCtl.Install(); err != nil {
+			log.Fatal("failed to install yba-ctl")
+		}
 		common.PostUpgrade()
-
 	},
 }
 
 func init() {
 	// Upgrade can only be run from the new version, not from the installed path
 	upgradeCmd.Flags().StringSliceVarP(&skippedPreflightChecks, "skip_preflight", "s",
-		[]string{}, "Preflight checks to skip")
+		[]string{}, "Preflight checks to skip by name")
 	if !common.RunFromInstalled() {
 		rootCmd.AddCommand(upgradeCmd)
 	}

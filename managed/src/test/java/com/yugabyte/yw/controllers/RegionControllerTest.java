@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
@@ -326,10 +327,7 @@ public class RegionControllerTest extends FakeDBApplication {
     Result result = deleteRegion(provider.uuid, r.uuid);
     assertEquals(OK, result.status());
 
-    JsonNode json = Json.parse(contentAsString(result));
-    assertTrue(json.get("success").asBoolean());
-
-    assertNull(Region.get(r.uuid));
+    assertFalse(Region.get(r.uuid).isActive());
   }
 
   @Test

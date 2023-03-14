@@ -2,9 +2,11 @@
 
 package com.yugabyte.yw.common;
 
+import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.DeletionPropagation;
 import io.fabric8.kubernetes.api.model.NamespaceBuilder;
 import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.NodeSpec;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodStatus;
@@ -17,22 +19,28 @@ import io.fabric8.kubernetes.api.model.events.v1.Event;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.dsl.ExecListener;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.RollableScalableResource;
 import io.fabric8.kubernetes.client.dsl.base.PatchContext;
 import io.fabric8.kubernetes.client.dsl.base.PatchType;
 import lombok.extern.slf4j.Slf4j;
+
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.Arrays;
+import java.util.concurrent.CompletableFuture;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
 import javax.inject.Inject;
+import okhttp3.Response;
 
 import com.google.common.collect.ImmutableMap;
 
@@ -52,6 +60,34 @@ public class NativeKubernetesManager extends KubernetesManager {
       }
     }
     return new DefaultKubernetesClient();
+  }
+
+  static class SimpleListener implements ExecListener {
+
+    private CompletableFuture<String> data;
+    private ByteArrayOutputStream baos;
+
+    public SimpleListener(CompletableFuture<String> data, ByteArrayOutputStream baos) {
+      this.data = data;
+      this.baos = baos;
+    }
+
+    @Override
+    public void onOpen(Response response) {
+      log.info("Reading data... ");
+    }
+
+    @Override
+    public void onFailure(Throwable t, Response failureResponse) {
+      log.error(t.getMessage());
+      data.completeExceptionally(t);
+    }
+
+    @Override
+    public void onClose(int code, String reason) {
+      log.info("Exit with: " + code + " and with reason: " + reason);
+      data.complete(baos.toString());
+    }
   }
 
   @Override
@@ -112,6 +148,16 @@ public class NativeKubernetesManager extends KubernetesManager {
   public Pod getPodObject(Map<String, String> config, String namespace, String podName) {
     try (KubernetesClient client = getClient(config)) {
       return client.pods().inNamespace(namespace).withName(podName).get();
+    }
+  }
+
+  @Override
+  public String getCloudProvider(Map<String, String> config) {
+    try (KubernetesClient client = getClient(config)) {
+      Node node = client.nodes().list().getItems().get(0);
+      NodeSpec spec = node.getSpec();
+      String provider = spec.getProviderID().split(":")[0];
+      return provider;
     }
   }
 
@@ -268,6 +314,47 @@ public class NativeKubernetesManager extends KubernetesManager {
   }
 
   @Override
+  public void copyFileToPod(
+      Map<String, String> config,
+      String namespace,
+      String podName,
+      String containerName,
+      String srcFilePath,
+      String destFilePath) {
+    try (KubernetesClient client = getClient(config)) {
+      client
+          .pods()
+          .inNamespace(namespace)
+          .withName(podName)
+          .inContainer(containerName)
+          .file(destFilePath)
+          .upload(Paths.get(srcFilePath));
+    }
+  }
+
+  @Override
+  public void performYbcAction(
+      Map<String, String> config,
+      String namespace,
+      String podName,
+      String containerName,
+      List<String> commandArgs) {
+    try (KubernetesClient client = getClient(config)) {
+      ByteArrayOutputStream baos = new ByteArrayOutputStream();
+      CompletableFuture<String> data = new CompletableFuture<>();
+      client
+          .pods()
+          .inNamespace(namespace)
+          .withName(podName)
+          .inContainer(containerName)
+          .writingOutput(baos)
+          .writingError(baos)
+          .usingListener(new SimpleListener(data, baos))
+          .exec(commandArgs.stream().toArray(String[]::new));
+    }
+  }
+
+  @Override
   public String getStorageClassName(
       Map<String, String> config,
       String namespace,
@@ -350,6 +437,18 @@ public class NativeKubernetesManager extends KubernetesManager {
   @Override
   public String getStorageClass(
       Map<String, String> config, String storageClassName, String namespace, String outputFormat) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getKubeconfigUser(Map<String, String> config) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getKubeconfigCluster(Map<String, String> config) {
     // TODO Auto-generated method stub
     return null;
   }

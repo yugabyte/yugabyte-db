@@ -38,6 +38,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -178,6 +179,16 @@ public class ShellKubernetesManager extends KubernetesManager {
   @Override
   public PodStatus getPodStatus(Map<String, String> config, String namespace, String podName) {
     return getPodObject(config, namespace, podName).getStatus();
+  }
+
+  @Override
+  public String getCloudProvider(Map<String, String> config) {
+    List<String> commandList =
+        ImmutableList.of("kubectl", "get", "nodes", "-o", "jsonpath={.items[0].spec.providerID}");
+    ShellResponse response =
+        execCommand(config, commandList, false /*logCmdOutput*/).processErrors();
+    String nodeName = response.getMessage();
+    return nodeName.split(":")[0];
   }
 
   @Override
@@ -370,6 +381,50 @@ public class ShellKubernetesManager extends KubernetesManager {
           response.isSuccess() && waitForPVCExpand(universeUUID, config, namespace, pvcName);
     }
     return patchSuccess;
+  }
+
+  @Override
+  public void copyFileToPod(
+      Map<String, String> config,
+      String namespace,
+      String podName,
+      String containerName,
+      String srcFilePath,
+      String destFilePath) {
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl",
+            "cp",
+            srcFilePath,
+            String.format("%s/%s:%s", namespace, podName, destFilePath),
+            String.format("--container=%s", containerName));
+    execCommand(config, commandList, true)
+        .processErrors(
+            String.format("Unable to copy file from: %s to %s", srcFilePath, destFilePath));
+  }
+
+  @Override
+  public void performYbcAction(
+      Map<String, String> config,
+      String namespace,
+      String podName,
+      String containerName,
+      List<String> commandArgs) {
+    List<String> commandList =
+        new LinkedList<String>(
+            Arrays.asList(
+                "kubectl",
+                "exec",
+                podName,
+                "--namespace",
+                namespace,
+                "--container",
+                containerName,
+                "--"));
+    commandList.addAll(commandArgs);
+    execCommand(config, commandList, true)
+        .processErrors(
+            String.format("Unable to run the command: %s", String.join(" ", commandArgs)));
   }
 
   // Ref: https://kubernetes.io/blog/2022/05/05/volume-expansion-ga/
@@ -705,5 +760,58 @@ public class ShellKubernetesManager extends KubernetesManager {
     checkAndAddFlagToCommand(commandList, "-o", outputFormat);
 
     return execCommandProcessErrors(config, commandList);
+  }
+
+  /**
+   * Best effort to get the user associated with the kubeconfig provided by config. We leverage the
+   * command `kubectl config get-users` and assume the first user found is the user we care about.
+   *
+   * @param config the environment variables to set (KUBECONFIG, OVERRIDES, STORAGE_CLASS, etc.).
+   * @return the first user in the kubeconfig.
+   */
+  @Override
+  public String getKubeconfigUser(Map<String, String> config) {
+    List<String> commandList =
+        new ArrayList<String>(Arrays.asList("kubectl", "config", "get-users"));
+    ShellResponse response = execCommand(config, commandList);
+    response.processErrors();
+
+    // Best effort to return the first user we find.
+    for (String rawKubeconfigUser : response.message.split("\n")) {
+      // Skip the header.
+      if (rawKubeconfigUser.equalsIgnoreCase("name")) {
+        continue;
+      }
+      return rawKubeconfigUser;
+    }
+    // No users found
+    return "";
+  }
+
+  /**
+   * Best effort to get the cluster associated with the kubeconfig provided by config. We leverage
+   * the command `kubectl config get-clusters` and assume the first cluster found is the user we
+   * care about.
+   *
+   * @param config the environment variables to set (KUBECONFIG, OVERRIDES, STORAGE_CLASS, etc.).
+   * @return the first cluster in the kubeconfig.
+   */
+  @Override
+  public String getKubeconfigCluster(Map<String, String> config) {
+    List<String> commandList =
+        new ArrayList<String>(Arrays.asList("kubectl", "config", "get-clusters"));
+    ShellResponse response = execCommand(config, commandList);
+    response.processErrors();
+
+    // Best effort to return the first cluster we find.
+    for (String rawKubeconfigCluster : response.message.split("\n")) {
+      // Skip the header.
+      if (rawKubeconfigCluster.equalsIgnoreCase("name")) {
+        continue;
+      }
+      return rawKubeconfigCluster;
+    }
+    // No clusters found
+    return "";
   }
 }

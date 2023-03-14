@@ -77,7 +77,7 @@ func (prom Prometheus) Name() string {
 }
 
 // Install the prometheus service.
-func (prom Prometheus) Install() {
+func (prom Prometheus) Install() error {
 	log.Info("Starting Prometheus install")
 	config.GenerateTemplate(prom)
 	prom.moveAndExtractPrometheusPackage()
@@ -93,12 +93,15 @@ func (prom Prometheus) Install() {
 		prom.CreateCronJob()
 	}
 
-	prom.Start()
+	if err := prom.Start(); err != nil {
+		return err
+	}
 	log.Info("Finishing Prometheus install")
+	return nil
 }
 
 // Start the prometheus service.
-func (prom Prometheus) Start() {
+func (prom Prometheus) Start() error {
 
 	if common.HasSudoAccess() {
 
@@ -124,14 +127,17 @@ func (prom Prometheus) Start() {
 		common.RunBash(command1, arg1)
 
 	}
-
+	return nil
 }
 
-func (prom Prometheus) Stop() {
-
-	if prom.Status().Status != common.StatusRunning {
+func (prom Prometheus) Stop() error {
+	status, err := prom.Status()
+	if err != nil {
+		return err
+	}
+	if status.Status != common.StatusRunning {
 		log.Debug(prom.name + " is already stopped")
-		return
+		return nil
 	}
 
 	if common.HasSudoAccess() {
@@ -161,10 +167,12 @@ func (prom Prometheus) Stop() {
 			}
 		}
 	}
+	return nil
 }
 
 // Restart the prometheus service.
-func (prom Prometheus) Restart() {
+func (prom Prometheus) Restart() error {
+	log.Info("Restarting prometheus..")
 
 	if common.HasSudoAccess() {
 
@@ -173,17 +181,22 @@ func (prom Prometheus) Restart() {
 
 	} else {
 
-		prom.Stop()
-		prom.Start()
-
+		if err := prom.Stop(); err != nil {
+			return err
+		}
+		if err := prom.Start(); err != nil {
+			return err
+		}
 	}
-
+	return nil
 }
 
 // Uninstall stops prometheus and optionally removes all data.
-func (prom Prometheus) Uninstall(removeData bool) {
+func (prom Prometheus) Uninstall(removeData bool) error {
 	log.Info("Uninstalling prometheus")
-	prom.Stop()
+	if err := prom.Stop(); err != nil {
+		return err
+	}
 
 	if common.HasSudoAccess() {
 		err := os.Remove(prom.SystemdFileLocation)
@@ -192,6 +205,7 @@ func (prom Prometheus) Uninstall(removeData bool) {
 			if !errors.Is(pe.Err, fs.ErrNotExist) {
 				log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
 					err.Error(), prom.SystemdFileLocation))
+				return err
 			}
 		}
 		// reload systemd daemon
@@ -203,13 +217,15 @@ func (prom Prometheus) Uninstall(removeData bool) {
 		if err != nil {
 			log.Info(fmt.Sprintf("Error %s removing data dir %s.", err.Error(),
 				prom.prometheusDirectories.DataDir))
+			return err
 		}
 	}
+	return nil
 }
 
 // Upgrade will upgrade prometheus and install it into the alt install directory.
 // Upgrade will NOT restart the service, the old version is expected to still be runnins
-func (prom Prometheus) Upgrade() {
+func (prom Prometheus) Upgrade() error {
 	prom.prometheusDirectories = newPrometheusDirectories()
 	config.GenerateTemplate(prom) // No need to reload systemd, start takes care of that for us.
 	prom.moveAndExtractPrometheusPackage()
@@ -226,7 +242,7 @@ func (prom Prometheus) Upgrade() {
 	if !common.HasSudoAccess() {
 		prom.CreateCronJob()
 	}
-	prom.Start()
+	return prom.Start()
 }
 
 func (prom Prometheus) moveAndExtractPrometheusPackage() {
@@ -302,7 +318,7 @@ func (prom Prometheus) createPrometheusSymlinks() {
 
 // Status prints out the header information for the
 // Prometheus service specifically.
-func (prom Prometheus) Status() common.Status {
+func (prom Prometheus) Status() (common.Status, error) {
 	status := common.Status{
 		Service:    prom.Name(),
 		Port:       viper.GetInt("prometheus.port"),
@@ -342,7 +358,7 @@ func (prom Prometheus) Status() common.Status {
 			status.Status = common.StatusStopped
 		}
 	}
-	return status
+	return status, nil
 }
 
 // CreateCronJob creates the cron job for managing prometheus with cron script in non-root.

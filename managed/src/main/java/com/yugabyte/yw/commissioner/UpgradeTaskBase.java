@@ -542,10 +542,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     }
   }
 
-  protected TaskExecutor.SubTaskGroup createNodeDetailsUpdateTask(
+  protected SubTaskGroup createNodeDetailsUpdateTask(
       NodeDetails node, boolean updateCustomImageUsage) {
-    TaskExecutor.SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("UpdateNodeDetails", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateNodeDetails");
     UpdateNodeDetails.Params updateNodeDetailsParams = new UpdateNodeDetails.Params();
     updateNodeDetailsParams.universeUUID = taskParams().universeUUID;
     updateNodeDetailsParams.azUuid = node.azUuid;
@@ -576,7 +575,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
       ServerType processType = getSingle(processTypes);
       Map<String, String> oldGflags;

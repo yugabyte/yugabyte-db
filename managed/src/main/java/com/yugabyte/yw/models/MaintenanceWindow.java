@@ -51,7 +51,11 @@ public class MaintenanceWindow extends Model {
   public enum SortBy implements SortByIF {
     uuid("uuid"),
     name("name"),
+    @ApiModelProperty(value = "The create time of maintenance.", example = "2022-12-12T13:07:18Z")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
     createTime("createTime"),
+    @ApiModelProperty(value = "The start time of maintenance.", example = "2022-12-12T13:07:18Z")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
     startTime("startTime"),
     endTime("endTime"),
     state("stateIndex");
@@ -102,20 +106,23 @@ public class MaintenanceWindow extends Model {
 
   @NotNull
   @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  @ApiModelProperty(value = "Creation time", accessMode = READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value = "Creation time",
+      accessMode = READ_ONLY,
+      example = "2022-12-12T13:07:18Z")
   private Date createTime;
 
   @NotNull
   @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  @ApiModelProperty(value = "Start time", accessMode = READ_WRITE)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(value = "Start time", accessMode = READ_WRITE, example = "2022-12-12T13:07:18Z")
   private Date startTime;
 
   @NotNull
   @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  @ApiModelProperty(value = "End time", accessMode = READ_WRITE)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(value = "End time", accessMode = READ_WRITE, example = "2022-12-12T13:07:18Z")
   private Date endTime;
 
   @Formula(

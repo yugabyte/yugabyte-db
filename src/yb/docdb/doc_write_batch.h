@@ -297,6 +297,14 @@ class DocWriteBatch {
     return narrow_cast<IntraTxnWriteId>(put_batch_.size()) - 1;
   }
 
+  void RollbackReservedWriteId() {
+    put_batch_.pop_back();
+  }
+
+  void SetDocReadContext(const DocReadContextPtr& doc_read_context) {
+    doc_read_context_ = doc_read_context;
+  }
+
  private:
   struct LazyIterator;
 
@@ -339,15 +347,21 @@ class DocWriteBatch {
   DocWriteBatchCache cache_;
 
   DocDB doc_db_;
-
   InitMarkerBehavior init_marker_behavior_;
+  DocReadContextPtr doc_read_context_;
   std::atomic<int64_t>* monotonic_counter_;
+
   std::vector<DocWriteBatchEntry> put_batch_;
 
   // Taken from internal_doc_iterator
   KeyBytes key_prefix_;
   bool subdoc_exists_ = true;
   DocWriteBatchCache::Entry current_entry_;
+
+  KeyBuffer packed_row_key_;
+  const SchemaPacking* packed_row_packing_;
+  ValueBuffer packed_row_value_;
+  DocHybridTime packed_row_write_time_;
 
   MonoDelta ttl_;
 };

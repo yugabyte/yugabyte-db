@@ -278,6 +278,9 @@ public class CustomerTask extends Model {
     @EnumValue("InstallYbcSoftware")
     InstallYbcSoftware,
 
+    @EnumValue("InstallYbcSoftwareOnK8s")
+    InstallYbcSoftwareOnK8s,
+
     @EnumValue("UpgradeUniverseYbc")
     UpgradeUniverseYbc,
 
@@ -408,6 +411,8 @@ public class CustomerTask extends Model {
           return completed ? "Ran API Triggered Hooks" : "Running API Triggered Hooks";
         case InstallYbcSoftware:
           return completed ? "Installed Ybc" : "Installing Ybc";
+        case InstallYbcSoftwareOnK8s:
+          return completed ? "Installed Ybc on K8S" : "Installing Ybc on K8S";
         case UpgradeUniverseYbc:
           return completed ? "Upgraded Ybc" : "Upgrading Ybc";
         case DisableYbc:
@@ -523,7 +528,7 @@ public class CustomerTask extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
       value = "Creation time",
       accessMode = READ_ONLY,
@@ -536,7 +541,7 @@ public class CustomerTask extends Model {
   }
 
   @Column
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
       value = "Completion time (present only if a task has completed)",
       accessMode = READ_ONLY,

@@ -55,7 +55,9 @@ import org.slf4j.LoggerFactory;
 public class GFlagsUtil {
   private static final Logger LOG = LoggerFactory.getLogger(GFlagsUtil.class);
 
-  public static final String YSQL_CGROUP_PATH = "/sys/fs/cgroup/memory/ysql";
+  // This is not the full path to the cgroup. That is determined by ansible, allowing seamless
+  // handling of both cgroup v1 and v2.
+  public static final String YSQL_CGROUP_PATH = "ysql";
 
   private static final int DEFAULT_MAX_MEMORY_USAGE_PCT_FOR_DEDICATED = 90;
 
@@ -110,6 +112,13 @@ public class GFlagsUtil {
   public static final String WEBSERVER_CA_CERTIFICATE_FILE = "webserver_ca_certificate_file";
 
   public static final String YBC_LOG_SUBDIR = "/controller/logs";
+  public static final String CORES_DIR_PATH = "/cores";
+
+  public static final String K8S_MNT_PATH = "/mnt/disk0";
+  public static final String K8S_YBC_DATA = "/ybc-data";
+  public static final String K8S_YBC_LOG_SUBDIR = K8S_MNT_PATH + K8S_YBC_DATA + YBC_LOG_SUBDIR;
+  public static final String K8S_YBC_CORES_DIR = K8S_MNT_PATH + CORES_DIR_PATH;
+
   public static final String TSERVER_DIR = "/tserver";
   public static final String POSTGRES_BIN_DIR = "/postgres/bin";
   public static final String TSERVER_BIN_DIR = TSERVER_DIR + "/bin";
@@ -121,7 +130,6 @@ public class GFlagsUtil {
   public static final String YSQLSH_PATH = TSERVER_POSTGRES_BIN_DIR + "/ysqlsh";
   public static final String YCQLSH_PATH = TSERVER_BIN_DIR + "/ycqlsh";
   public static final String REDIS_CLI_PATH = TSERVER_BIN_DIR + "/redis-cli";
-  public static final String CORES_DIR_PATH = "/cores";
   public static final String YBC_MAX_CONCURRENT_UPLOADS = "max_concurrent_uploads";
   public static final String YBC_MAX_CONCURRENT_DOWNLOADS = "max_concurrent_downloads";
   public static final String YBC_PER_UPLOAD_OBJECTS = "per_upload_num_objects";
@@ -312,6 +320,40 @@ public class GFlagsUtil {
       String ybHomeDir = getYbHomeDir(providerUUID);
       String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
       ybcFlags.put("certs_dir_name", certsNodeDir);
+    }
+    return ybcFlags;
+  }
+
+  /** Return the map of ybc flags which will be passed to the db nodes. */
+  public static Map<String, String> getYbcFlagsForK8s(UUID universeUUID, String nodeName) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    NodeDetails node = universe.getNode(nodeName);
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
+    String providerUUID = userIntent.provider;
+    Map<String, String> ybcFlags = new TreeMap<>();
+    ybcFlags.put("server_address", node.cloudInfo.private_ip);
+    ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
+    ybcFlags.put("log_dir", K8S_YBC_LOG_SUBDIR);
+    ybcFlags.put("cores_dir", K8S_YBC_CORES_DIR);
+
+    ybcFlags.put("yb_master_address", node.cloudInfo.private_ip);
+    ybcFlags.put("yb_master_webserver_port", Integer.toString(node.masterHttpPort));
+    ybcFlags.put("yb_tserver_webserver_port", Integer.toString(node.tserverHttpPort));
+    ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);
+    ybcFlags.put("redis_cli", getYbHomeDir(providerUUID) + REDIS_CLI_PATH);
+    ybcFlags.put("yb_admin", getYbHomeDir(providerUUID) + YB_ADMIN_PATH);
+    ybcFlags.put("yb_ctl", getYbHomeDir(providerUUID) + YB_CTL_PATH);
+    ybcFlags.put("ysql_dump", getYbHomeDir(providerUUID) + YSQL_DUMP_PATH);
+    ybcFlags.put("ysql_dumpall", getYbHomeDir(providerUUID) + YSQL_DUMPALL_PATH);
+    ybcFlags.put("ysqlsh", getYbHomeDir(providerUUID) + YSQLSH_PATH);
+    ybcFlags.put("ycqlsh", getYbHomeDir(providerUUID) + YCQLSH_PATH);
+
+    if (MapUtils.isNotEmpty(userIntent.ybcFlags)) {
+      ybcFlags.putAll(userIntent.ybcFlags);
+    }
+    if (EncryptionInTransitUtil.isRootCARequired(universeDetails)) {
+      ybcFlags.put("certs_dir_name", "/opt/certs/yugabyte");
     }
     return ybcFlags;
   }

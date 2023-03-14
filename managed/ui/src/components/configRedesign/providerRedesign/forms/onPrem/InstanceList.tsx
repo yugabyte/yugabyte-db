@@ -96,7 +96,6 @@ export const InstanceList = ({ disabled, isError }: InstanceListProps) => {
   };
   return (
     <div className={styles.bootstrapTableContainer}>
-      {/* <BootstrapTable tableContainerClass={styles.bootstrapTable} data={regions}> */}
       <BootstrapTable
         data={nodeListItems}
         search

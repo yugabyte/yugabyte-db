@@ -521,6 +521,29 @@ Status ClusterConfigLoader::Visit(
 }
 
 ////////////////////////////////////////////////////////////
+// XCluster Config Loader
+////////////////////////////////////////////////////////////
+
+Status XClusterConfigLoader::Visit(
+    const std::string& unused_id, const SysXClusterConfigEntryPB& metadata) {
+  // Debug confirm that there is no xcluster_config_ set.
+  DCHECK(!catalog_manager_->xcluster_config_) << "Already have config data!";
+
+  // Prepare the config object.
+  std::shared_ptr<XClusterConfigInfo> config = std::make_shared<XClusterConfigInfo>();
+  {
+    auto l = config->LockForWrite();
+    l.mutable_data()->pb.CopyFrom(metadata);
+
+    // Update in memory state.
+    catalog_manager_->xcluster_config_ = config;
+    l.Commit();
+  }
+
+  return Status::OK();
+}
+
+////////////////////////////////////////////////////////////
 // Redis Config Loader
 ////////////////////////////////////////////////////////////
 

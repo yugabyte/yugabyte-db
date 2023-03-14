@@ -233,6 +233,7 @@ struct RaftGroupMetadataData {
   bool colocated = false;
   std::vector<SnapshotScheduleId> snapshot_schedules;
   std::unordered_set<StatefulServiceKind> hosted_services;
+  OpId last_change_metadata_op_id;
 };
 
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
@@ -358,6 +359,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   HybridTime cdc_sdk_safe_time() const;
 
+  bool is_under_cdc_sdk_replication() const;
+
   Status SetIsUnderXClusterReplicationAndFlush(bool is_under_xcluster_replication);
 
   bool IsUnderXClusterReplication() const;
@@ -412,29 +415,31 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
                  const IndexMap& index_map,
                  const std::vector<DeletedColumn>& deleted_cols,
                  const SchemaVersion version,
+                 const OpId& op_id,
                  const TableId& table_id = "");
 
   void SetSchemaUnlocked(const Schema& schema,
                  const IndexMap& index_map,
                  const std::vector<DeletedColumn>& deleted_cols,
                  const SchemaVersion version,
+                 const OpId& op_id,
                  const TableId& table_id = "") REQUIRES(data_mutex_);
 
   void SetPartitionSchema(const PartitionSchema& partition_schema);
 
   void SetTableName(
       const std::string& namespace_name, const std::string& table_name,
-      const TableId& table_id = "");
+      const OpId& op_id, const TableId& table_id = "");
 
   void SetTableNameUnlocked(
       const std::string& namespace_name, const std::string& table_name,
-      const TableId& table_id = "") REQUIRES(data_mutex_);
+      const OpId& op_id, const TableId& table_id = "") REQUIRES(data_mutex_);
 
   void SetSchemaAndTableName(
       const Schema& schema, const IndexMap& index_map,
       const std::vector<DeletedColumn>& deleted_cols,
       const SchemaVersion version, const std::string& namespace_name,
-      const std::string& table_name, const TableId& table_id = "");
+      const std::string& table_name, const OpId& op_id, const TableId& table_id = "");
 
   void AddTable(const std::string& table_id,
                 const std::string& namespace_name,
@@ -444,9 +449,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
                 const IndexMap& index_map,
                 const PartitionSchema& partition_schema,
                 const boost::optional<IndexInfo>& index_info,
-                const SchemaVersion schema_version);
+                const SchemaVersion schema_version,
+                const OpId& op_id);
 
-  void RemoveTable(const TableId& table_id);
+  void RemoveTable(const TableId& table_id, const OpId& op_id);
 
   // Returns a list of all tables colocated on this tablet.
   std::vector<TableId> GetAllColocatedTables();
@@ -579,6 +585,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
     return kv_store_;
   }
 
+  OpId LastChangeMetadataOperationOpId() const;
+
+  void SetLastChangeMetadataOperationOpIdUnlocked(const OpId& op_id) REQUIRES(data_mutex_);
+
+  void SetLastChangeMetadataOperationOpId(const OpId& op_id);
+
  private:
   typedef simple_spinlock MutexType;
 
@@ -670,6 +682,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   bool is_under_xcluster_replication_ GUARDED_BY(data_mutex_) = false;
 
+  bool is_under_cdc_sdk_replication_ GUARDED_BY(data_mutex_) = false;
+
   bool hidden_ GUARDED_BY(data_mutex_) = false;
 
   HybridTime restoration_hybrid_time_ GUARDED_BY(data_mutex_) = HybridTime::kMin;
@@ -684,6 +698,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   const std::string log_prefix_;
 
   std::unordered_set<StatefulServiceKind> hosted_services_;
+
+  // OpId of the last change metadata operation. Used to determine if at the time
+  // of local tablet bootstrap we should replay a particular change_metadata op.
+  OpId last_change_metadata_op_id_ GUARDED_BY(data_mutex_) = OpId::Invalid();
 
   DISALLOW_COPY_AND_ASSIGN(RaftGroupMetadata);
 };

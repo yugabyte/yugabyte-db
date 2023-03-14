@@ -9,17 +9,22 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.BackupFilter;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import com.yugabyte.yw.models.helpers.TransactionUtil;
 import com.yugabyte.yw.models.paging.BackupPagedApiResponse;
 import com.yugabyte.yw.models.paging.BackupPagedQuery;
 import com.yugabyte.yw.models.paging.BackupPagedResponse;
@@ -35,11 +40,13 @@ import io.ebean.Query;
 import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
+import io.ebean.annotation.Transactional;
 import io.ebean.annotation.UpdatedTimestamp;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -54,8 +61,9 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.IterableUtils;
+import org.apache.commons.collections4.Predicate;
 import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.api.Play;
@@ -67,6 +75,9 @@ import play.api.Play;
 public class Backup extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Backup.class);
   SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+
+  // This is a key lock for Backup by UUID.
+  public static final KeyLock<UUID> BACKUP_KEY_LOCK = new KeyLock<UUID>();
 
   public enum BackupState {
     @EnumValue("In Progress")
@@ -199,6 +210,11 @@ public class Backup extends Model {
   @Column(nullable = false)
   public UUID customerUUID;
 
+  public void setCustomerUUID(UUID customerUUID) {
+    this.customerUUID = customerUUID;
+    this.backupInfo.customerUuid = customerUUID;
+  }
+
   @ApiModelProperty(value = "Universe UUID that created this backup", accessMode = READ_WRITE)
   @Column(nullable = false)
   public UUID universeUUID;
@@ -238,7 +254,21 @@ public class Backup extends Model {
     return scheduleUUID;
   }
 
-  @ApiModelProperty(value = "Expiry time (unix timestamp) of the backup", accessMode = READ_WRITE)
+  @ApiModelProperty(
+      value = "Schedule Policy Name, if this backup is part of a schedule",
+      accessMode = READ_WRITE)
+  @Column
+  private String scheduleName;
+
+  public String getScheduleName() {
+    return scheduleName;
+  }
+
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value = "Expiry time (unix timestamp) of the backup",
+      accessMode = READ_WRITE,
+      example = "2022-12-12T13:07:18Z")
   @Column
   // Unix timestamp at which backup will get deleted.
   private Date expiry;
@@ -287,19 +317,29 @@ public class Backup extends Model {
     return this.backupInfo;
   }
 
-  @CreatedTimestamp private Date createTime;
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(value = "Backup creation time", example = "2022-12-12T13:07:18Z")
+  @CreatedTimestamp
+  private Date createTime;
 
   public Date getCreateTime() {
     return createTime;
   }
 
-  @UpdatedTimestamp private Date updateTime;
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(value = "Backup update time", example = "2022-12-12T13:07:18Z")
+  @UpdatedTimestamp
+  private Date updateTime;
 
   public Date getUpdateTime() {
     return updateTime;
   }
 
-  @ApiModelProperty(value = "Backup completion time", accessMode = READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value = "Backup completion time",
+      accessMode = READ_ONLY,
+      example = "2022-12-12T13:07:18Z")
   @Column
   private Date completionTime;
 
@@ -342,6 +382,7 @@ public class Backup extends Model {
     backup.version = version;
     if (params.scheduleUUID != null) {
       backup.scheduleUUID = params.scheduleUUID;
+      backup.scheduleName = params.scheduleName;
     }
     if (params.timeBeforeDelete != 0L) {
       backup.expiry = new Date(System.currentTimeMillis() + params.timeBeforeDelete);
@@ -385,11 +426,9 @@ public class Backup extends Model {
   public synchronized boolean setTaskUUID(UUID taskUUID) {
     if (this.taskUUID == null) {
       this.taskUUID = taskUUID;
-      save();
       return true;
     }
     this.taskUUID = taskUUID;
-    save();
     return false;
   }
 
@@ -408,10 +447,13 @@ public class Backup extends Model {
     // Full chain size is same as total size for single backup.
     this.backupInfo.fullChainSizeInBytes = this.backupInfo.backupSizeInBytes;
 
-    // Total time is the sum of each keyspace time taken currently.
-    // Will be max when we do parallel backups.
-    long totalTimeTaken =
-        this.backupInfo.backupList.stream().mapToLong(bI -> bI.timeTakenPartial).sum();
+    long totalTimeTaken = 0L;
+    if (this.category.equals(BackupCategory.YB_BACKUP_SCRIPT)) {
+      totalTimeTaken =
+          this.backupInfo.backupList.stream().mapToLong(bI -> bI.timeTakenPartial).sum();
+    } else {
+      totalTimeTaken = BackupUtil.getTimeTakenForParallelBackups(this.backupInfo.backupList);
+    }
     this.completionTime = new Date(totalTimeTaken + this.createTime.getTime());
     this.state = BackupState.Completed;
     this.save();
@@ -421,6 +463,36 @@ public class Backup extends Model {
     this.backupInfo.backupList.get(idx).backupSizeInBytes = totalSizeInBytes;
     this.backupInfo.backupList.get(idx).timeTakenPartial = totalTimeTaken;
     this.save();
+  }
+
+  public static BackupTableParams getBackupTableParamsFromKeyspaceOrNull(
+      Backup backup, String keyspace) {
+    return IterableUtils.find(
+        backup.backupInfo.backupList,
+        new Predicate<BackupTableParams>() {
+          public boolean evaluate(BackupTableParams tableParams) {
+            return tableParams.getKeyspace().equals(keyspace);
+          }
+        });
+  }
+
+  public interface BackupUpdater {
+    void run(Backup backup);
+  }
+
+  public static void saveDetails(UUID customerUUID, UUID backupUUID, BackupUpdater updater) {
+    BACKUP_KEY_LOCK.acquireLock(backupUUID);
+    try {
+      TransactionUtil.doInTxn(
+          () -> {
+            Backup backup = get(customerUUID, backupUUID);
+            updater.run(backup);
+            backup.save();
+          },
+          TransactionUtil.DEFAULT_RETRY_CONFIG);
+    } finally {
+      BACKUP_KEY_LOCK.releaseLock(backupUUID);
+    }
   }
 
   public void unsetExpiry() {
@@ -509,6 +581,15 @@ public class Backup extends Model {
     return Optional.ofNullable(get(customerUUID, backupUUID));
   }
 
+  public static Optional<Backup> maybeGet(UUID backupUUID) {
+    Backup backup = find.byId(backupUUID);
+    if (backup == null) {
+      LOG.trace("Cannot find backup {}", backupUUID);
+      return Optional.empty();
+    }
+    return Optional.of(backup);
+  }
+
   public static List<Backup> fetchAllBackupsByTaskUUID(UUID taskUUID) {
     return Backup.find.query().where().eq("task_uuid", taskUUID).findList();
   }
@@ -575,13 +656,11 @@ public class Backup extends Model {
       return;
     }
     this.backupInfo.backupList.get(idx).backupSizeInBytes = backupSize;
-    this.save();
   }
 
   public void setPerRegionLocations(int idx, List<BackupUtil.RegionLocations> perRegionLocations) {
     if (idx == -1) {
       this.backupInfo.regionLocations = perRegionLocations;
-      this.save();
       return;
     }
     int backupListLen = this.backupInfo.backupList.size();
@@ -590,12 +669,10 @@ public class Backup extends Model {
       return;
     }
     this.backupInfo.backupList.get(idx).regionLocations = perRegionLocations;
-    this.save();
   }
 
   public void setTotalBackupSize(long backupSize) {
     this.backupInfo.backupSizeInBytes = backupSize;
-    this.save();
   }
 
   public static List<Backup> getInProgressAndCompleted(UUID customerUUID) {
@@ -680,11 +757,15 @@ public class Backup extends Model {
     List<Backup> backupList = find.query().findList();
     List<BackupTableParams> backupParams = new ArrayList<>();
 
+    if (storageLocation == null) {
+      return Optional.empty();
+    }
+
     for (Backup b : backupList) {
       BackupTableParams backupInfo = b.getBackupInfo();
       if (CollectionUtils.isEmpty(backupInfo.backupList)) {
         BackupTableParams backupTableParams =
-            b.getBackupInfo().storageLocation.equals(storageLocation) ? b.getBackupInfo() : null;
+            storageLocation.equals(b.getBackupInfo().storageLocation) ? b.getBackupInfo() : null;
         if (backupTableParams != null) {
           backupParams.add(backupTableParams);
         }
@@ -693,7 +774,7 @@ public class Backup extends Model {
             backupInfo
                 .backupList
                 .stream()
-                .filter(bL -> bL.storageLocation.equals(storageLocation))
+                .filter(bL -> storageLocation.equals(bL.storageLocation))
                 .findFirst();
         if (backupTableParams.isPresent()) {
           backupParams.add(backupTableParams.get());

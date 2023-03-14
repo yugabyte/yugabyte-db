@@ -144,7 +144,11 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "yb.dbmem.postgres.rr_max_mem_mb",
           ScopeType.UNIVERSE,
           "DB Postgres Max Mem for read replicas",
-          "Amount of memory to limit the postgres process in read replicas to via the ysql cgroup",
+          "The amount of memory in MB to limit the postgres process in read replicas to via the "
+              + "ysql cgroup. "
+              + "If the value is -1, it will default to the 'yb.dbmem.postgres.max_mem_mb' value. "
+              + "0 will not set any cgroup limits. "
+              + ">0 set max memory of postgres to this value for read replicas",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Long> dbMemAvailableLimit =
@@ -589,5 +593,21 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Helm Timeout in Seconds",
           "Timeout used for internal universe-level helm operations like install/upgrade in secs",
           ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> promoteAutoFlag =
+      new ConfKeyInfo<>(
+          "yb.upgrade.promote_auto_flag",
+          ScopeType.UNIVERSE,
+          "Promote AutoFlags",
+          "Promotes Auto flags while upgrading YB-DB",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowUpgradeOnTransitUniverse =
+      new ConfKeyInfo<>(
+          "yb.upgrade.allow_upgrade_on_transit_universe",
+          ScopeType.UNIVERSE,
+          "Allow upgrade on transit universe",
+          "Allow universe upgrade when nodes are in transit mode",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

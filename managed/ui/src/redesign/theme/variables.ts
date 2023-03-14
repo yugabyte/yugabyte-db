@@ -123,7 +123,8 @@ export const colors = {
   ybacolors: {
     ybOrangeFocus: '#EF582480',
     ybGray: '#DEDEE0',
-    ybGrayHover: '#E5E5E9',
+    ybBackgroundGray: '#FCFCFC',
+    ybBorderGray: '#E5E5E9',
     ybDarkGray: '#232329',
     ybDarkGray1: '#9F9EA7',
     ybDarkGray2: '#D9D9DB',

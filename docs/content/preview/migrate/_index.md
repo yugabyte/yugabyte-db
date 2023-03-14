@@ -1,10 +1,9 @@
 ---
-title: YugabyteDB Voyager
+title: Migrate to YugabyteDB Voyager
 headerTitle: YugabyteDB Voyager
 linkTitle: YugabyteDB Voyager
-description: YugabyteDB Voyager is a powerful open-source data migration engine that helps you migrate your database to YugabyteDB quickly and securely.
-image: /images/section_icons/develop/learn.png
 headcontent: Migrate your database with YugabyteDB Voyager.
+description: YugabyteDB Voyager is a powerful open-source data migration engine that helps you migrate your database to YugabyteDB quickly and securely.
 type: indexpage
 showRightNav: true
 menu:
@@ -121,6 +120,17 @@ A typical migration workflow using yb-voyager consists of the following steps:
       </div>
       <div class="body">
         Learn about the yb-voyager CLI options, data modeling strategies, and data type mapping support.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="release-notes/">
+      <div class="head">
+       <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true">
+        <div class="title">What's new</div>
+      </div>
+      <div class="body">
+        Learn about new features, enhancements, and bugs fixes.
       </div>
     </a>
   </div>

@@ -2862,7 +2862,7 @@ double KeyEntryValue::GetDouble() const {
 }
 
 bool KeyEntryValue::IsColumnId() const {
-  return type_ == KeyEntryType::kColumnId || type_ == KeyEntryType::kSystemColumnId;
+  return docdb::IsColumnId(type_);
 }
 
 ColumnId KeyEntryValue::GetColumnId() const {

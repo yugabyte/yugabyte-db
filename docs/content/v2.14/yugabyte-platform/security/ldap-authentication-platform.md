@@ -13,7 +13,7 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/yugabyte-platform/security/ldap-authentication-platform/" class="nav-link active">
+    <a href="../ldap-authentication-platform/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>

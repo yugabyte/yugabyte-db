@@ -202,6 +202,7 @@ export const AZUProviderEditForm = ({ providerConfig }: AZUProviderEditFormProps
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
+                  inputProps={{ min: 0, max: 65535 }}
                   disabled={isFormDisabled}
                   fullWidth
                 />
@@ -227,7 +228,7 @@ export const AZUProviderEditForm = ({ providerConfig }: AZUProviderEditFormProps
               </FormField>
               <FormField>
                 <FieldLabel>NTP Setup</FieldLabel>
-                <NTPConfigField providerCode={ProviderCode.AZU} />
+                <NTPConfigField isDisabled={true} providerCode={ProviderCode.AZU} />
               </FormField>
             </FieldGroup>
           </Box>

@@ -24,7 +24,7 @@ export const AccountLevelBackup: FC = () => {
           <BackupList />;
         </Tab>
         <Tab eventKey="restoreList" title="Restore History" unmountOnExit>
-          <Restore type="ACCOUNT_LEVEL" />;
+          <Restore type="ACCOUNT_LEVEL" />
         </Tab>
       </YBTabsPanel>
     );
