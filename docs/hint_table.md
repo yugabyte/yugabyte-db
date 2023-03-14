@@ -156,6 +156,7 @@ postgres-# SELECT * FROM table1 t1 WHERE key = 'value';
 ...
 ```
 
+(guc-parameters-for-pg_hint_plan)=
 ## GUC parameters for `pg_hint_plan`
 
 GUC parameters below affect the behavior of `pg_hint_plan`.

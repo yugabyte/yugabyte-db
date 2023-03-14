@@ -1,3 +1,4 @@
+(hints-list)=
 # Hints list
 
 The available hints are listed below.
