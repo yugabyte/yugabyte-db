@@ -315,6 +315,7 @@ class GcpResumeInstancesMethod(AbstractInstancesMethod):
                                  help="The ip of the instance to resume.")
 
     def callback(self, args):
+        self.update_ansible_vars_with_args(args)
         server_ports = self.get_server_ports_to_check(args)
         self.cloud.start_instance(vars(args), server_ports)
 
@@ -354,6 +355,7 @@ class GcpHardRebootInstancesMethod(AbstractInstancesMethod):
             logging.info("Stopping instance {}".format(args.search_pattern))
             self.cloud.stop_instance(host_info)
         logging.info("Starting instance {}".format(args.search_pattern))
+        self.update_ansible_vars_with_args(args)
         server_ports = self.get_server_ports_to_check(args)
         self.cloud.start_instance(host_info, server_ports)
 
