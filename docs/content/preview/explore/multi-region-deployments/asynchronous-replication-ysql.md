@@ -1,5 +1,5 @@
 ---
-title: xCluster replication (2+ regions)
+title: xCluster replication (2+ regions) in YugabyteDB
 headerTitle: xCluster (2+ regions)
 linkTitle: xCluster (2+ regions)
 description: Multi-region deployment using asynchronous replication across two or more data centers.

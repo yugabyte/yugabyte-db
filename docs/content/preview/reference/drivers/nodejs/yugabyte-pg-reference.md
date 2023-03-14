@@ -1,7 +1,8 @@
 ---
-title: Node.js Drivers
+title: YugabyteDB node-postgres Smart Driver
+headerTitle: Node.js Drivers
 linkTitle: Node.js Drivers
-description: Node.js Drivers for YSQL
+description: YugabyteDB node-postgres smart driver for YSQL
 headcontent: Node.js Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:

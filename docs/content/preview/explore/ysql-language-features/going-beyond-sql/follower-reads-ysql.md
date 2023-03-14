@@ -1,10 +1,9 @@
 ---
-title: Explore follower reads in YSQL
+title: Explore follower reads - YSQL
 headerTitle: Follower reads
 linkTitle: Follower reads
-description: Learn how you can use follower reads to lower read latencies in local YugabyteDB clusters.
+description: Learn how to use follower reads to lower read latencies in local YugabyteDB clusters in YSQL.
 aliases:
-  - /preview/explore/multi-region-deployments/read-replicas
   - /preview/explore/multi-region-deployments/follower-reads-ysql/
 menu:
   preview:

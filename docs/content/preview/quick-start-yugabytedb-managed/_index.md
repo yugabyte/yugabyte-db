@@ -1,9 +1,9 @@
 ---
-title: YugabyteDB Managed quick start
+title: Quick start for YugabyteDB Managed
 headerTitle: Quick start
 linkTitle: Quick start
 headcontent: Sign up for YugabyteDB Managed and create a free Sandbox cluster
-description: Get started using YugabyteDB Managed in less than five minutes.
+description: Quick start for YugabyteDB Managed to get started in less than five minutes.
 layout: single
 type: docs
 rightNav:

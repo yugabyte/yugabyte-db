@@ -1,7 +1,7 @@
 ---
 title: View terminated queries with yb_pg_stat_get_queries
 linkTitle: View terminated queries
-description: Track planning and execution statistics for all SQL statements executed by a server.
+description: View terminated queries for all SQL statements executed by a server.
 headerTitle: View terminated queries with yb_pg_stat_get_queries
 headcontent: See why a query failed
 menu:
