@@ -3694,28 +3694,6 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 #endif
 }
 
-static void
-YbPreloadRelCacheHelper()
-{
-	const uint64_t catalog_master_version =
-		YbGetCatalogCacheVersionForTablePrefetching();
-	YBCPgResetCatalogReadTime();
-	YBCStartSysTablePrefetching(
-		catalog_master_version,
-		*YBCGetGFlags()->ysql_enable_read_request_caching);
-	PG_TRY();
-	{
-		YBPreloadRelCache();
-	}
-	PG_CATCH();
-	{
-		YBCStopSysTablePrefetching();
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-	YBCStopSysTablePrefetching();
-}
-
 /*
  * Reload the postgres caches and update the cache version.
  * Note: if catalog changes sneaked in since getting the
@@ -3763,7 +3741,7 @@ static void YBRefreshCache()
 	ResetCatalogCaches();
 	CallSystemCacheCallbacks();
 
-	YbPreloadRelCacheHelper();
+	YBPreloadRelCache();
 
 	/* Also invalidate the pggate cache. */
 	HandleYBStatus(YBCPgInvalidateCache());

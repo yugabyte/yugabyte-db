@@ -136,8 +136,9 @@ const std::shared_ptr<tserver::MiniTabletServer> PgMiniTestBase::PickPgTabletSer
 }
 
 MetricWatcher::MetricWatcher(
-  const server::RpcServerBase& server, const MetricPrototype& metric)
-    : server_(server), metric_(metric) {
+  std::reference_wrapper<const server::RpcServerBase> server,
+  std::reference_wrapper<const MetricPrototype> metric)
+    : server_(server.get()), metric_(metric.get()) {
 }
 
 Result<size_t> MetricWatcher::Delta(const DeltaFunctor& functor) const {
