@@ -247,7 +247,7 @@ public class AccessManagerTest extends FakeDBApplication {
 
   private String getBaseCommand(Region region, String commandType) {
     return "bin/ybcloud.sh "
-        + region.provider.code
+        + region.getProviderCloudCode()
         + " --region "
         + region.code
         + " access "

@@ -8,6 +8,8 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.base.Strings;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import io.ebean.ExpressionList;
@@ -263,6 +265,17 @@ public class AvailabilityZone extends Model {
         .filter(az -> az.getProvider().uuid.equals(provider.uuid))
         .filter(az -> !onlyActive || az.active)
         .findFirst();
+  }
+
+  @JsonIgnore
+  public CloudType getProviderCloudCode() {
+    if (region != null) {
+      return region.getProviderCloudCode();
+    } else if (!Strings.isNullOrEmpty(providerCode)) {
+      return CloudType.valueOf(providerCode);
+    }
+
+    return CloudType.other;
   }
 
   public static AvailabilityZone getOrBadRequest(UUID zoneUuid) {

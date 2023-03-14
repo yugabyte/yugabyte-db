@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.common.base.Strings;
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
@@ -59,7 +60,7 @@ public class AccessKeyHandler {
       Region region = regionList.get(0);
 
       if (formData.setUpChrony
-          && region.provider.code.equals(onprem.name())
+          && region.getProviderCloudCode().equals(CloudType.onprem)
           && (formData.ntpServers == null || formData.ntpServers.isEmpty())) {
         throw new PlatformServiceException(
             BAD_REQUEST,
@@ -67,7 +68,7 @@ public class AccessKeyHandler {
                 + " provider for which chrony setup is desired");
       }
 
-      if (region.provider.code.equals(onprem.name()) && formData.sshUser == null) {
+      if (region.getProviderCloudCode().equals(CloudType.onprem) && formData.sshUser == null) {
         throw new PlatformServiceException(
             BAD_REQUEST, "sshUser cannot be null for onprem providers.");
       }
@@ -134,7 +135,7 @@ public class AccessKeyHandler {
       // In case of onprem provider, we add a couple of additional attributes like
       // passwordlessSudo
       // and create a pre-provision script
-      if (region.provider.code.equals(onprem.name())) {
+      if (region.getProviderCloudCode().equals(CloudType.onprem)) {
         templateManager.createProvisionTemplate(
             accessKey,
             formData.airGapInstall,
