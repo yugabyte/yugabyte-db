@@ -1,5 +1,5 @@
 ---
-title: Read replicas and follower reads in YugabteDB YCQL
+title: Read replicas and follower reads in YugabyteDB YCQL
 headerTitle: Read replicas
 linkTitle: Read replicas
 description: Explore read replicas in YugabyteDB using YCQL
