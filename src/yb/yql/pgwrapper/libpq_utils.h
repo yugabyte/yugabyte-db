@@ -147,6 +147,8 @@ class PGConn {
     return Execute(Format(format, std::forward<Args>(args)...));
   }
 
+  bool IsBusy();
+
   Result<PGResultPtr> Fetch(const std::string& command);
 
   template <class... Args>

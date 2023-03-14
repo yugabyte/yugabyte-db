@@ -65,6 +65,32 @@ DEFINE_UNKNOWN_uint64(force_single_shard_waiter_retry_ms, 30000,
               "a heartbeat, since for these we will eventually discover that the transaction has "
               "been rolled back and remove the waiter. If set to zero, this will default to 30s.");
 
+// Enabling FLAGS_refresh_waiter_timeout_ms is necessary for maintaining up-to-date blocking
+// transaction(s) information at the transaction coordinator/deadlock detector. Else, with the
+// current implementation, it could result in true deadlocks not being detected.
+//
+// For instance, refer issue https://github.com/yugabyte/yugabyte-db/issues/16286
+//
+// Additionally, enabling this flag serves as a fallback mechanism for deadlock detection as it
+// helps maintain updated blocker(s) info at the deadlock detector. Since the feature of supporting
+// transaction promotion for geo-partitioned workloads in use of wait-queues and deadlock detection
+// is relatively new, it is advisable that we have the flag enabled for now. The value can be
+// increased once the feature hardens and the above referred issue is resolved.
+DEFINE_RUNTIME_uint64(refresh_waiter_timeout_ms, 30000,
+                      "The maximum amount of time a waiter transaction waits in the wait-queue "
+                      "before its callback is invoked. On invocation, the waiter transaction "
+                      "re-runs conflicts resolution and might enter the wait-queue again with "
+                      "updated blocker(s) information. Setting the value to 0 disables "
+                      "automatically re-running conflict resolution due to timeout. It follows "
+                      "that the waiter callback would only be invoked when a blocker txn commits/ "
+                      "aborts/gets promoted.");
+TAG_FLAG(refresh_waiter_timeout_ms, advanced);
+TAG_FLAG(refresh_waiter_timeout_ms, hidden);
+
+DEFINE_test_flag(uint64, sleep_before_entering_wait_queue_ms, 0,
+                 "The amount of time for which the thread sleeps before registering a transaction "
+                 "with the wait queue.");
+
 METRIC_DEFINE_coarse_histogram(
     tablet, wait_queue_pending_time_waiting, "Wait Queue - Still Waiting Time",
     yb::MetricUnit::kMicroseconds,
@@ -111,7 +137,7 @@ auto GetMaxSingleShardWaitDuration() {
   return FLAGS_force_single_shard_waiter_retry_ms * 1ms;
 }
 
-YB_DEFINE_ENUM(ResolutionStatus, (kPending)(kCommitted)(kAborted));
+YB_DEFINE_ENUM(ResolutionStatus, (kPending)(kCommitted)(kAborted)(kPromoted));
 
 class BlockerData;
 using BlockerDataAndConflictInfo = std::pair<std::shared_ptr<BlockerData>,
@@ -144,6 +170,8 @@ Result<ResolutionStatus> UnwrapResult(const Result<TransactionStatusResult>& res
       return ResolutionStatus::kAborted;
     case PENDING:
       return ResolutionStatus::kPending;
+    case PROMOTED:
+      return ResolutionStatus::kPromoted;
     default:
       return STATUS_FORMAT(
         IllegalState,
@@ -269,6 +297,14 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
     return id.IsNil();
   }
 
+  bool ShouldReRunConflictResolution() {
+    auto refresh_waiter_timeout_ms = GetAtomicFlag(&FLAGS_refresh_waiter_timeout_ms);
+    if (PREDICT_TRUE(refresh_waiter_timeout_ms > 0)) {
+      return CoarseMonoClock::Now() - created_at > refresh_waiter_timeout_ms * 1ms;
+    }
+    return false;
+  }
+
  private:
   scoped_refptr<Histogram>& finished_waiting_latency_;
   mutable rw_spinlock mutex_;
@@ -290,21 +326,34 @@ class BlockerData {
 
   const TransactionId& id() { return id_; }
 
-  const TabletId& status_tablet() { return status_tablet_; }
+  const TabletId& status_tablet() EXCLUDES(mutex_) {
+    SharedLock r_lock(mutex_);
+    return status_tablet_;
+  }
 
   std::vector<WaiterDataPtr> Signal(Result<TransactionStatusResult>&& txn_status_response) {
     VLOG(4) << "Signaling waiters "
             << (txn_status_response.ok() ?
                 txn_status_response->ToString() :
                 txn_status_response.status().ToString());
-    auto txn_status = UnwrapResult(txn_status_response);
-    bool is_txn_pending = txn_status.ok() && *txn_status == ResolutionStatus::kPending;
-    bool should_signal = !is_txn_pending;
 
     UniqueLock l(mutex_);
     std::vector<WaiterDataPtr> waiters_to_signal;
+    bool was_txn_local = !IsPromotedUnlocked();
 
-    txn_status_ = txn_status;
+    // TODO(wait-queues): Track status hybrid times and ignore old status updates
+    txn_status_ = UnwrapResult(txn_status_response);
+    bool is_txn_pending = IsPendingUnlocked();
+
+    // txn_underwent_promotion is set to true only on the first call to Signal with
+    // TransactionStatusResult as PROMOTED.
+    bool txn_underwent_promotion = was_txn_local && IsPromotedUnlocked();
+    bool should_signal = !is_txn_pending || txn_underwent_promotion;
+
+    if (txn_underwent_promotion) {
+      status_tablet_ = txn_status_response->status_tablet;
+    }
+
     if (txn_status_response.ok()) {
       if (aborted_subtransactions_ != txn_status_response->aborted_subtxn_set) {
         // TODO(wait-queues): Avoid copying the subtransaction set. See:
@@ -346,7 +395,7 @@ class BlockerData {
 
   Result<bool> IsResolved() {
     SharedLock blocker_lock(mutex_);
-    return VERIFY_RESULT(Copy(txn_status_)) != ResolutionStatus::kPending;
+    return !IsPendingUnlocked();
   }
 
   bool IsPending() {
@@ -355,7 +404,12 @@ class BlockerData {
   }
 
   bool IsPendingUnlocked() REQUIRES_SHARED(mutex_) {
-    return txn_status_.ok() && *txn_status_ == ResolutionStatus::kPending;
+    return txn_status_.ok() &&
+        (*txn_status_ == ResolutionStatus::kPending || *txn_status_ == ResolutionStatus::kPromoted);
+  }
+
+  bool IsPromotedUnlocked() REQUIRES_SHARED(mutex_) {
+    return txn_status_.ok() && *txn_status_ == ResolutionStatus::kPromoted;
   }
 
   auto CleanAndGetSize() {
@@ -451,7 +505,7 @@ class BlockerData {
 
  private:
   const TransactionId id_;
-  const TabletId status_tablet_;
+  TabletId status_tablet_ GUARDED_BY(mutex_);;
   mutable rw_spinlock mutex_;
   Result<ResolutionStatus> txn_status_ GUARDED_BY(mutex_) = ResolutionStatus::kPending;
   SubtxnSet aborted_subtransactions_ GUARDED_BY(mutex_);
@@ -476,8 +530,8 @@ struct WaiterSerialComparator {
 // serial number first in a best effort manner.
 class ResumedWaiterRunner {
  public:
-  explicit ResumedWaiterRunner(std::unique_ptr<ThreadPoolToken> thread_pool_token)
-    : thread_pool_token_(std::move(thread_pool_token)) {}
+  explicit ResumedWaiterRunner(ThreadPoolToken* thread_pool_token)
+    : thread_pool_token_(DCHECK_NOTNULL(thread_pool_token)) {}
 
   void Submit(const WaiterDataPtr& waiter, const Status& status) {
     {
@@ -523,7 +577,7 @@ class ResumedWaiterRunner {
   mutable rw_spinlock mutex_;
   std::priority_queue<
       WaiterDataPtr, std::vector<WaiterDataPtr>, WaiterSerialComparator> pq_ GUARDED_BY(mutex_);
-  std::unique_ptr<ThreadPoolToken> thread_pool_token_;
+  ThreadPoolToken* thread_pool_token_;
 };
 
 const Status kShuttingDownError = STATUS(
@@ -533,9 +587,13 @@ const Status kRetrySingleShardOp = STATUS(
     TimedOut,
     "Single shard transaction timed out while waiting. Forcing retry to confirm client liveness.");
 
+const Status kRefreshWaiterTimeout = STATUS(
+    TimedOut,
+    "Waiter transaction timed out waiting in queue, invoking callback.");
+
 } // namespace
 
-class WaitQueue::Impl {
+class WaitQueue::Impl : public TransactionStatusListener {
  public:
   Impl(TransactionStatusManager* txn_status_manager, const std::string& permanent_uuid,
        WaitingTxnRegistry* waiting_txn_registry,
@@ -544,13 +602,16 @@ class WaitQueue::Impl {
        std::unique_ptr<ThreadPoolToken> thread_pool_token)
       : txn_status_manager_(txn_status_manager), permanent_uuid_(permanent_uuid),
         waiting_txn_registry_(waiting_txn_registry), client_future_(client_future), clock_(clock),
-        waiter_runner_(std::move(thread_pool_token)),
+        thread_pool_token_(std::move(thread_pool_token)),
+        waiter_runner_(thread_pool_token_.get()),
         pending_time_waiting_(METRIC_wait_queue_pending_time_waiting.Instantiate(metrics)),
         finished_waiting_latency_(METRIC_wait_queue_finished_waiting_latency.Instantiate(metrics)),
         blockers_per_waiter_(METRIC_wait_queue_blockers_per_waiter.Instantiate(metrics)),
         waiters_per_blocker_(METRIC_wait_queue_waiters_per_blocker.Instantiate(metrics)),
         total_waiters_(METRIC_wait_queue_num_waiters.Instantiate(metrics, 0)),
-        total_blockers_(METRIC_wait_queue_num_blockers.Instantiate(metrics, 0)) {}
+        total_blockers_(METRIC_wait_queue_num_blockers.Instantiate(metrics, 0)) {
+    txn_status_manager->RegisterStatusListener(this);
+  }
 
   ~Impl() {
     if (StartShutdown()) {
@@ -678,6 +739,7 @@ class WaitQueue::Impl {
       const TransactionId& waiter_txn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
       uint64_t serial_no, WaitDoneCallback callback) {
+    AtomicFlagSleepMs(&FLAGS_TEST_sleep_before_entering_wait_queue_ms);
     VLOG_WITH_PREFIX_AND_FUNC(4) << "waiter_txn_id=" << waiter_txn_id
                                  << " blockers=" << *blockers
                                  << " status_tablet_id=" << status_tablet_id;
@@ -699,7 +761,7 @@ class WaitQueue::Impl {
           STATUS(IllegalState, "Unexpected duplicate waiter in wait queue - try again."));
       }
 
-      for (const auto& blocker : blockers->RemainingTransactions()) {
+      for (auto& blocker : blockers->RemainingTransactions()) {
         auto blocker_data = std::make_shared<BlockerData>(blocker.id, blocker.status_tablet);
 
         auto [iter, did_insert] = blocker_status_.emplace(blocker.id, blocker_data);
@@ -718,6 +780,14 @@ class WaitQueue::Impl {
           }
         } else {
           VLOG_WITH_PREFIX_AND_FUNC(4) << "Created blocker " << blocker.id;
+        }
+        // Update the waiter txn record with the latest blocker txn's status tablet. This is
+        // necessary because of the potential race between handling promotion signal of a blocker
+        // txn from the transaction participant and a waiter transaction entering the queue with
+        // the blocker's old status tablet.
+        auto blocker_status_tablet = txn_status_manager_->FindStatusTablet(blocker.id);
+        if (blocker_status_tablet) {
+          blocker.status_tablet = *blocker_status_tablet;
         }
 
         blocker_data->AddIntents(*DCHECK_NOTNULL(blocker.conflict_info));
@@ -751,6 +821,10 @@ class WaitQueue::Impl {
       // single shard transactions, so they only have out edges in the wait-for graph and cannot
       // be a part of a cycle.
       DCHECK(!status_tablet_id.empty());
+      // TODO(wait-queues): Instead of moving blockers to local_waiting_txn_registry, we could store
+      // the blockers in the waiter_data record itself. That way, we could avoid re-running conflict
+      // resolution on blocker promotion and directly update the transaction coordinator with the
+      // latest wait-for probes.
       RETURN_NOT_OK(scoped_reporter->Register(
           waiter_txn_id, std::move(blockers), status_tablet_id));
       DCHECK_GE(scoped_reporter->GetDataUseCount(), 1);
@@ -850,6 +924,10 @@ class WaitQueue::Impl {
       auto seconds = duration / 1s;
       VLOG_WITH_PREFIX_AND_FUNC(4) << waiter->id << " waiting for " << seconds << " seconds";
       pending_time_waiting_->Increment(GetMicros(duration));
+      if (waiter->ShouldReRunConflictResolution()) {
+        InvokeWaiterCallback(kRefreshWaiterTimeout, waiter);
+        continue;
+      }
       auto transaction_id = waiter->id;
       StatusRequest request {
         .id = &transaction_id,
@@ -889,6 +967,55 @@ class WaitQueue::Impl {
     for (const auto& waiter : stale_single_shard_waiters) {
       waiter->InvokeCallback(kRetrySingleShardOp);
     }
+  }
+
+  void UpdateWaitersOnBlockerPromotion(const TransactionId& id,
+                                       TransactionStatusResult res) EXCLUDES(mutex_) {
+    WaiterDataPtr waiter_data = nullptr;
+    std::shared_ptr<BlockerData> promoted_blocker = nullptr;
+    {
+      SharedLock r_lock(mutex_);
+      if (shutting_down_) {
+        return;
+      }
+
+      auto waiter_it = waiter_status_.find(id);
+      if (waiter_it != waiter_status_.end()) {
+        waiter_data = waiter_it->second;
+      }
+
+      auto blocker_it = blocker_status_.find(id);
+      if (blocker_it != blocker_status_.end()) {
+        promoted_blocker = blocker_it->second.lock();
+      }
+    }
+
+    // Check if the promoted transaction is an active waiter, and make it re-enter the wait queue
+    // to ensure its wait-for relationships are re-registered with its new transaction coordinator,
+    // corresponding to its new status tablet.
+    if (waiter_data) {
+      InvokeWaiterCallback(Status::OK(), waiter_data);
+    }
+
+    // Check if the promoted transaction is a blocker, and make all of its waiters re-enter the wait
+    // queue to ensure their wait-for relationships are re-registered with their coordinator
+    // pointing to the correct blocker status tablet.
+    if (promoted_blocker) {
+      for (const auto& waiter : promoted_blocker->Signal(std::move(res))) {
+        InvokeWaiterCallback(Status::OK(), waiter);
+      }
+    }
+  }
+
+  // Update status of waiter/blocker transactions based on the received TransactionStatusResult.
+  void SignalPromoted(const TransactionId& id, TransactionStatusResult&& res) override {
+    // Transaction promotion signal should be handled in an async manner so as to not block the
+    // query layer from further processing the transaction, as processing the singal involves
+    // acquiring a mutex that guards waiter transactions as well as blockers.
+    WARN_NOT_OK(
+      thread_pool_token_->SubmitFunc(
+        std::bind(&WaitQueue::Impl::UpdateWaitersOnBlockerPromotion, this, id, res)),
+      Format("Failed to submit UpdateWaitersOnBlockerPromotion task for txn $0", id));
   }
 
   bool StartShutdown() EXCLUDES(mutex_) {
@@ -1071,10 +1198,17 @@ class WaitQueue::Impl {
     if (!status.ok()) {
       InvokeWaiterCallback(status.status(), waiter);
     } else if (*status == ResolutionStatus::kAborted) {
+      // TODO(wait-queues): We might hit this branch when a waiter transaction undergoes promotion.
+      //
+      // Refer issue: https://github.com/yugabyte/yugabyte-db/issues/16375
       InvokeWaiterCallback(
           STATUS_FORMAT(Aborted, "Transaction was aborted while waiting for locks $0", waiter->id),
           waiter);
     }
+    // Need not handle waiter promotion case here as this code path is executed only as a callback
+    // from WaitQueue::Impl::Poll function, where we periodically request waiter transaction state.
+    // Waiter promotion scenario is handled when transaction participant signals the wait-queue
+    // by calling WaitQueue::SignalPromoted.
   }
 
   void MaybeSignalWaitingTransactions(
@@ -1213,6 +1347,7 @@ class WaitQueue::Impl {
   WaitingTxnRegistry* const waiting_txn_registry_;
   const std::shared_future<client::YBClient*>& client_future_;
   const server::ClockPtr& clock_;
+  std::unique_ptr<ThreadPoolToken> thread_pool_token_;
   ResumedWaiterRunner waiter_runner_;
   scoped_refptr<Histogram> pending_time_waiting_;
   scoped_refptr<Histogram> finished_waiting_latency_;
