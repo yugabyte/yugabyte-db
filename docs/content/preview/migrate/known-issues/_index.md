@@ -1,9 +1,10 @@
 ---
-title: Known issues
+title: Known issues with YugabyteDB Voyager
 headerTitle: Known issues and workarounds
 linkTitle: Known issues
 image: /images/section_icons/develop/learn.png
 headcontent: Unsupported features and known issues with workarounds when migrating data using YugabyteDB Voyager.
+description: Refer to the known issues when migrating data using YugabyteDB Voyager and suggested workarounds.
 type: indexpage
 showRightNav: true
 menu:
