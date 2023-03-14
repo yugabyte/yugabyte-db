@@ -51,9 +51,9 @@ public class QueryHelper {
       "yb.query_stats.slow_queries.order_by";
   public static final String QUERY_STATS_SLOW_QUERIES_LIMIT_KEY =
       "yb.query_stats.slow_queries.limit";
-  public static final String SET_YB_BNL_BATCH_SIZE_STATEMENT = "/*+Set(yb_bnl_batch_size 1024)*/";
-  public static final String SET_BATCH_NESTED_LOOP_KEY =
-      "yb.query_stats.slow_queries.set_batch_nested_loop";
+  public static final String SET_ENABLE_NESTLOOP_OFF_STATEMENT = "/*+Set(enable_nestloop off)*/";
+  public static final String SET_ENABLE_NESTLOOP_OFF_KEY =
+      "yb.query_stats.slow_queries.set_enable_nestloop_off";
 
   public static final String QUERY_STATS_TASK_QUEUE_SIZE_CONF_KEY = "yb.query_stats.queue_capacity";
 
@@ -337,11 +337,13 @@ public class QueryHelper {
   public String slowQuerySqlWithLimit(Config config, Universe universe) {
     String orderBy = config.getString(QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY);
     int limit = config.getInt(QUERY_STATS_SLOW_QUERIES_LIMIT_KEY);
-    String setYbBnlBatchSizeStatementOptional =
-        supportsBatchedNestedLoop(universe) ? SET_YB_BNL_BATCH_SIZE_STATEMENT : "";
+    String setEnableNestloopOffStatementOptional =
+        runtimeConfigFactory.forUniverse(universe).getBoolean(SET_ENABLE_NESTLOOP_OFF_KEY)
+            ? SET_ENABLE_NESTLOOP_OFF_STATEMENT
+            : "";
     return String.format(
         "%s%s ORDER BY t.%s DESC LIMIT %d",
-        setYbBnlBatchSizeStatementOptional, SLOW_QUERY_STATS_UNLIMITED_SQL, orderBy, limit);
+        setEnableNestloopOffStatementOptional, SLOW_QUERY_STATS_UNLIMITED_SQL, orderBy, limit);
   }
 
   public JsonNode listDatabaseNames(Universe universe) {
@@ -365,17 +367,5 @@ public class QueryHelper {
     for (JsonNode node : source) {
       destination.add(node);
     }
-  }
-
-  private boolean supportsBatchedNestedLoop(Universe universe) {
-    if (!runtimeConfigFactory.forUniverse(universe).getBoolean(SET_BATCH_NESTED_LOOP_KEY)) {
-      return false;
-    }
-    // The minimum YBDB version that supports Batched Nested Loop is 2.17.1.0-b12.
-    return Util.compareYbVersions(
-            "2.17.1.0-b12",
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-            true /* suppressFormatError */)
-        < 0;
   }
 }
