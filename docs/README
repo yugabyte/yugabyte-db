@@ -11,7 +11,7 @@ Note that while markdown is more readable as raw text, it's a way simpler
 syntax that lacks a lot of features that reStructuredText offers.  Relying on
 sphinx gives us an opportunity to later write parts of the documentation in
 reStructuredText if needed, but also offers other appealing features like
-multilingual documentation that we may reintroduce in a near future.
+multilingual documentation.
 
 Readthedocs is the expected target, so use its theme and follow its
 recommendation about pinning various requirement versions.
@@ -35,7 +35,34 @@ update the docs/requirements.in and generate the target docs/requirements.txt
 using pip-compile.  See the link about this tool below for more details on how
 to use it.
 
-As a first step, simply duplicate the README.md for the documentation.
+Translation
+-----------
+
+Note that each translator has to follow all those steps whenever the
+translation needs to be updated.  Note also that those commands assume that the
+current working directory is docs/.
+
+- Bootstrapping the translation (the .pot files) is simply done using
+
+make gettext
+
+This will generate the various .pot file in _build/gettext.
+
+- The per-language translation files (the .po files) can then be generated.  We
+  currently only support Japanese, the rest of the commands will assume a
+  single Japanese translation.  Those files can be generated using:
+
+sphinx-intl update -p _build/gettext -l ja
+
+The files are generated (or updated) in the docs/locale/ja/LC_MESSAGES/.
+
+- You can then translate the .po file with any editor (poedit, vim...)
+
+- The translated documentation can be built using:
+
+make -e SPHINXOPTS="-D language='ja'" html
+
+- If everything is ok, you can commit the modifications in the .po files.
 
 References
 ----------
@@ -47,3 +74,6 @@ References if you're interested in the various design choices:
 - myst parser: https://myst-parser.readthedocs.io
 - pip-tools / pip-compile: https://pip-tools.readthedocs.io
 - RTD sphinx theme: https://sphinx-rtd-theme.readthedocs.io
+- Internationalization:
+  https://www.sphinx-doc.org/en/master/usage/advanced/intl.html
+  https://docs.readthedocs.io/en/stable/localization.html#projects-with-multiple-translations-sphinx-only

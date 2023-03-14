@@ -8,3 +8,4 @@ sphinxcontrib-htmlhelp==2.0.0
 
 sphinx_rtd_theme
 myst_parser
+sphinx-intl

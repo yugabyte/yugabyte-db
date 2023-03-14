@@ -25,3 +25,11 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
+
+# Internationalization
+# https://www.sphinx-doc.org/en/master/usage/advanced/intl.html
+# https://docs.readthedocs.io/en/stable/guides/manage-translations-sphinx.html
+
+locale_dirs = ['locale/']   # path is example but recommended.
+gettext_compact = False     # optional.
+gettext_uuid = True         # optional.

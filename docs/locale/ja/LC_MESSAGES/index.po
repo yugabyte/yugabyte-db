@@ -1,0 +1,30 @@
+# LANGUAGE message translation file for pg_hint_plan index.
+# Copyright (C) 2012-2023, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# This file is distributed under the same license as the pg_hint_plan
+# package.
+# Julien Rouhaud <rjuju123@gmail.com>, 2023.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: pg_hint_plan \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2023-03-14 16:08+0800\n"
+"PO-Revision-Date: 2023-03-14 16:08+0800\n"
+"Last-Translator: Julien Rouhaud <rjuju123@gmail.com>\n"
+"Language: ja\n"
+"Language-Team: ja <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.12.1\n"
+
+#: ../../index.md:1 982c72e93ec842d69872f223320e732a
+msgid "pg_hint_plan 1.5"
+msgstr "pg_hint_plan 1.5"
+
+#: ../../index.md:2 e0e164734e0b48bca7c87bd62cbed1c4
+msgid "Table of Contents"
+msgstr "目次"
+
