@@ -8,7 +8,6 @@ import { YBWidget } from '../../panels';
 import { FlexContainer, FlexGrow } from '../../common/flexbox/YBFlexBox';
 import {
   getPrimaryCluster,
-  getReadOnlyCluster,
   isKubernetesUniverse,
   getUniverseNodeCount,
   getUniverseDedicatedNodeCount
@@ -22,7 +21,6 @@ export default class ClusterInfoPanel extends Component {
 
   render() {
     const {
-      type,
       isDedicatedNodes,
       universeInfo,
       insecure,
@@ -31,7 +29,7 @@ export default class ClusterInfoPanel extends Component {
         universeDetails: { clusters }
       }
     } = this.props;
-    let cluster = null;
+    const cluster = getPrimaryCluster(clusters);
     const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
 
     const colocatedNodesCount = getUniverseNodeCount(universeDetails.nodeDetailsSet, cluster);
@@ -42,12 +40,6 @@ export default class ClusterInfoPanel extends Component {
       numTserverNodes: isDedicatedNodes ? dedicatedNodesCount.numTserverNodes : colocatedNodesCount,
       numMasterNodes: isDedicatedNodes ? dedicatedNodesCount.numMasterNodes : 0
     };
-
-    if (type === 'primary') {
-      cluster = getPrimaryCluster(clusters);
-    } else if (type === 'read-replica') {
-      cluster = getReadOnlyCluster(clusters);
-    }
     const userIntent = cluster?.userIntent;
 
     return (
