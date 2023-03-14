@@ -145,18 +145,42 @@ type NodeInstanceValidationResponse struct {
 	Value       string `json:"value"`
 }
 
-func (p Provider) ToString() string {
+// Id implements the method in DisplayInterface.
+func (p Provider) Id() string {
+	return p.Uuid
+}
+
+// String implements the method in DisplayInterface.
+func (p Provider) String() string {
 	return fmt.Sprintf("Provider ID: %s, Provider Name: %s", p.Uuid, p.Name)
 }
 
-func (i NodeInstanceType) ToString() string {
+// Id implements the method in DisplayInterface.
+func (i NodeInstanceType) Id() string {
+	return i.InstanceTypeCode
+}
+
+// String implements the method in DisplayInterface.
+func (i NodeInstanceType) String() string {
 	return fmt.Sprintf("Instance Code: %s", i.InstanceTypeCode)
 }
 
-func (r Region) ToString() string {
+// Id implements the method in DisplayInterface.
+func (r Region) Id() string {
+	return r.Code
+}
+
+// String implements the method in DisplayInterface.
+func (r Region) String() string {
 	return fmt.Sprintf("Region ID: %s, Region Code: %s", r.Uuid, r.Code)
 }
 
-func (z Zone) ToString() string {
-	return fmt.Sprintf("Zone ID: %s, Zone Name: %s", z.Uuid, z.Name)
+// Id implements the method in DisplayInterface.
+func (z Zone) Id() string {
+	return z.Code
+}
+
+// String implements the method in DisplayInterface.
+func (z Zone) String() string {
+	return fmt.Sprintf("Zone ID: %s, Zone Code: %s", z.Uuid, z.Code)
 }

@@ -18,11 +18,14 @@
 #include <unordered_set>
 #include <vector>
 
+#include <boost/none.hpp>
 #include <boost/optional/optional_io.hpp>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/partition.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/row_mark.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_path.h"
@@ -111,49 +114,64 @@ bool ShouldYsqlPackRow(bool is_colocated) {
 namespace {
 
 // Compatibility: accept column references from a legacy nodes as a list of column ids only
-Status CreateProjection(const Schema& schema,
+// Return the next index after last key column referenced.
+Result<size_t> CreateProjection(const Schema& schema,
                         const PgsqlColumnRefsPB& column_refs,
                         Schema* projection) {
   // Create projection of non-primary key columns. Primary key columns are implicitly read by DocDB.
   // It will also sort the columns before scanning.
   vector<ColumnId> column_ids;
   column_ids.reserve(column_refs.ids_size());
+  size_t end_referenced_key_column_index = 0;
   for (int32_t id : column_refs.ids()) {
     const ColumnId column_id(id);
     if (!schema.is_key_column(column_id)) {
       column_ids.emplace_back(column_id);
+    } else {
+      end_referenced_key_column_index = std::max<size_t>(
+          end_referenced_key_column_index, make_unsigned(schema.find_column_by_id(column_id) + 1));
     }
   }
-  return schema.CreateProjectionByIdsIgnoreMissing(column_ids, projection);
+  RETURN_NOT_OK(schema.CreateProjectionByIdsIgnoreMissing(column_ids, projection));
+  return end_referenced_key_column_index;
 }
 
-Status CreateProjection(
+// Return the next index after last key column referenced.
+Result<size_t> CreateProjection(
     const Schema& schema,
     const google::protobuf::RepeatedPtrField<PgsqlColRefPB> &column_refs,
     Schema* projection) {
   vector<ColumnId> column_ids;
   column_ids.reserve(column_refs.size());
+  size_t end_referenced_key_column_index = 0;
   for (const PgsqlColRefPB& column_ref : column_refs) {
     const ColumnId column_id(column_ref.column_id());
     if (!schema.is_key_column(column_id)) {
       column_ids.emplace_back(column_id);
+    } else {
+      end_referenced_key_column_index = std::max<size_t>(
+          end_referenced_key_column_index, make_unsigned(schema.find_column_by_id(column_id) + 1));
     }
   }
-  return schema.CreateProjectionByIdsIgnoreMissing(column_ids, projection);
+  RETURN_NOT_OK(schema.CreateProjectionByIdsIgnoreMissing(column_ids, projection));
+  return end_referenced_key_column_index;
 }
 
 void AddIntent(
-    const std::string& encoded_key, WaitPolicy wait_policy, LWKeyValueWriteBatchPB *out) {
+    const std::string& encoded_key, boost::optional<WaitPolicy> wait_policy,
+    LWKeyValueWriteBatchPB *out) {
   auto* pair = out->add_read_pairs();
   pair->dup_key(encoded_key);
   pair->dup_value(Slice(&ValueEntryTypeAsChar::kNullLow, 1));
-  // Since we don't batch read RPCs that lock rows, we can get away with using a singular
-  // wait_policy field. Once we start batching read requests (issue #2495), we will need a repeated
-  // wait policies field.
-  out->set_wait_policy(wait_policy);
+  if (wait_policy) {
+    // Since we don't batch read RPCs that lock rows, we can get away with using a singular
+    // wait_policy field. Once we start batching read requests (issue #2495), we will need a
+    // repeated wait policies field.
+    out->set_wait_policy(wait_policy.value());
+  }
 }
 
-Status AddIntent(const PgsqlExpressionPB& ybctid, WaitPolicy wait_policy,
+Status AddIntent(const PgsqlExpressionPB& ybctid, boost::optional<WaitPolicy> wait_policy,
                  LWKeyValueWriteBatchPB* out) {
   const auto &val = ybctid.value().binary_value();
   SCHECK(!val.empty(), InternalError, "empty ybctid");
@@ -203,13 +221,13 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
     const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    bool is_explicit_request_read_time) {
+    bool is_explicit_request_read_time,
+    boost::optional<size_t> end_referenced_key_column_index = boost::none) {
   VLOG_IF(2, request.is_for_backfill()) << "Creating iterator for " << yb::ToString(request);
 
   YQLRowwiseIteratorIf::UniPtr result;
   // TODO(neil) Remove the following IF block when it is completely obsolete.
-  // The following IF block has not been used since 2.1 release.
-  // We keep it here only for rolling upgrade purpose.
+  // The following IF block gets used in the CREATE INDEX codepath.
   if (request.has_ybctid_column_value()) {
     SCHECK(!request.has_paging_state(),
            InternalError,
@@ -217,7 +235,8 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
            "is only used for multi-row queries.");
     RETURN_NOT_OK(ql_storage.GetIterator(
         request.stmt_id(), projection, doc_read_context, txn_op_context,
-        deadline, read_time, request.ybctid_column_value().value(), &result));
+        deadline, read_time, request.ybctid_column_value().value(),
+        request.ybctid_column_value().value(), &result));
   } else {
     SubDocKey start_sub_doc_key;
     auto actual_read_time = read_time;
@@ -246,8 +265,8 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
       }
     }
     RETURN_NOT_OK(ql_storage.GetIterator(
-        request, projection, doc_read_context, txn_op_context,
-        deadline, read_time, start_sub_doc_key.doc_key(), &result));
+        request, projection, doc_read_context, txn_op_context, deadline, read_time,
+        start_sub_doc_key.doc_key(), &result, end_referenced_key_column_index));
   }
   return std::move(result);
 }
@@ -385,7 +404,7 @@ Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
 // Check if a duplicate value is inserted into a unique index.
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(const DocOperationApplyData& data) {
   VLOG(3) << "Looking for collisions in\n" << docdb::DocDBDebugDumpToStr(
-      data.doc_write_batch->doc_db(), SchemaPackingStorage());
+      data.doc_write_batch->doc_db(), SchemaPackingStorage(TableType::PGSQL_TABLE_TYPE));
   // We need to check backwards only for backfilled entries.
   bool ret =
       VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kForward)) ||
@@ -474,12 +493,12 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
               << " vs New: " << yb::ToString(new_value)
               << "\nUsed read time as " << yb::ToString(data.read_time);
       DVLOG(3) << "DocDB is now:\n" << docdb::DocDBDebugDumpToStr(
-          data.doc_write_batch->doc_db(), SchemaPackingStorage());
+          data.doc_write_batch->doc_db(), SchemaPackingStorage(TableType::PGSQL_TABLE_TYPE));
       return true;
     }
   }
 
-  VLOG(2) << "No collision while checking at " << yb::ToString(read_time);
+  VLOG(2) << "No collision while checking at " << AsString(read_time);
   return false;
 }
 
@@ -1107,6 +1126,9 @@ Result<size_t> PgsqlReadOperation::Execute(const YQLStorageIf& ql_storage,
   SCHECK(table_iter_ != nullptr, InternalError, "table iterator is invalid");
 
   *restart_read_ht = table_iter_->RestartReadHt();
+  if (index_iter_) {
+    restart_read_ht->MakeAtLeast(index_iter_->RestartReadHt());
+  }
   return fetched_rows;
 }
 
@@ -1291,16 +1313,19 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
   // field can not be used to evaluate expressions due to lack of type information, but can help
   // to build projection. Fortunately, old code does not know about expression pushdown, so the
   // request is expected to be executed correctly.
+  size_t end_referenced_key_column_index = 0;
   if (!request_.col_refs().empty()) {
-    RETURN_NOT_OK(CreateProjection(doc_schema, request_.col_refs(), &doc_projection));
+    end_referenced_key_column_index =
+        VERIFY_RESULT(CreateProjection(doc_schema, request_.col_refs(), &doc_projection));
   } else {
     // Compatibility: Either request indeed has no column refs, or it comes from a legacy node.
-    RETURN_NOT_OK(CreateProjection(doc_schema, request_.column_refs(), &doc_projection));
+    end_referenced_key_column_index =
+        VERIFY_RESULT(CreateProjection(doc_schema, request_.column_refs(), &doc_projection));
   }
   // Create iterator over the target table
   table_iter_ = VERIFY_RESULT(CreateIterator(
       ql_storage, request_, doc_projection, doc_read_context, txn_op_context_, deadline, read_time,
-      is_explicit_request_read_time));
+      is_explicit_request_read_time, end_referenced_key_column_index));
 
   ColumnId ybbasectid_id;
   if (request_.has_index_request()) {
@@ -1316,17 +1341,20 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
       RETURN_NOT_OK(index_expr_exec.AddWhereExpression(expr));
       VLOG(1) << "Added where expression to the index executor";
     }
+    size_t index_iter_end_referenced_key_column_index = 0;
     if (!request_.col_refs().empty()) {
-      RETURN_NOT_OK(CreateProjection(*index_schema, index_request.col_refs(), &index_projection));
+      index_iter_end_referenced_key_column_index = VERIFY_RESULT(
+          CreateProjection(*index_schema, index_request.col_refs(), &index_projection));
     } else {
       // Compatibility: Either request indeed has no column refs, or it comes from a legacy node.
-      RETURN_NOT_OK(CreateProjection(
-          *index_schema, index_request.column_refs(), &index_projection));
+      index_iter_end_referenced_key_column_index = VERIFY_RESULT(
+          CreateProjection(*index_schema, index_request.column_refs(), &index_projection));
     }
     // Create iterator over the index
     index_iter_ = VERIFY_RESULT(CreateIterator(
-        ql_storage, index_request, index_projection, *index_doc_read_context,
-        txn_op_context_, deadline, read_time, is_explicit_request_read_time));
+        ql_storage, index_request, index_projection, *index_doc_read_context, txn_op_context_,
+        deadline, read_time, is_explicit_request_read_time,
+        index_iter_end_referenced_key_column_index));
     // The index iterator is to be looped over, main table rows are to be retrieved by their ybctids
     iter = index_iter_.get();
     const auto idx = index_schema->find_column("ybidxbasectid");
@@ -1337,7 +1365,8 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
     iter = table_iter_.get();
   }
 
-  VLOG(1) << "Started iterator";
+  VLOG(1) << "Started iterator - EndReferenceKeyColumnIndex: "
+          << end_referenced_key_column_index;
 
   // Set scan end time. We want to iterate as long as we can, but stop before client timeout.
   // The more rows we do per request, the less RPCs will be needed, but if client times out,
@@ -1346,20 +1375,24 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
   CoarseTimePoint stop_scan = deadline - FLAGS_ysql_scan_deadline_margin_ms * 1ms;
 
   // Fetching data.
-  int match_count = 0;
-  QLTableRow table_row;
-  YQLScanCallback callback = [&](const QLTableRow& row) -> Result<ContinueScan> {
+  size_t match_count = 0;
+  QLTableRow row;
+  while (fetched_rows < row_count_limit && VERIFY_RESULT(iter->HasNext()) &&
+         !scan_time_exceeded) {
+    row.Clear();
     bool is_match = true;
 
-    const QLTableRow* row_ptr = &row;
     if (request_.has_index_request()) {
+      // Index scan over colocated table case, get next index row
+      RETURN_NOT_OK(iter->NextRow(&row));
+
       // Check index conditions
       RETURN_NOT_OK(index_expr_exec.Exec(row, nullptr, &is_match));
 
       if (!is_match) {
         // If no match continue with next tuple from the iterator.
         VLOG(1) << "Row filtered out by colocated index condition";
-        return ContinueScan::kTrue;
+        continue;
       }
 
       // Index matches the condition, get the ybctid of the target row.
@@ -1381,37 +1414,33 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
         }
       }
       // Remove table row currently held by the variable.
-      table_row.Clear();
+      row.Clear();
       // Fetch main table row
-      RETURN_NOT_OK(table_iter_->NextRow(&table_row));
-
-      row_ptr = &table_row;
+      RETURN_NOT_OK(table_iter_->NextRow(&row));
+    } else {
+      // Fetch main table row
+      RETURN_NOT_OK(iter->NextRow(&row));
     }
 
     // Match the row with the where condition before adding to the row block.
-    RETURN_NOT_OK(doc_expr_exec.Exec(*row_ptr, nullptr, &is_match));
+    RETURN_NOT_OK(doc_expr_exec.Exec(row, nullptr, &is_match));
 
     if (!is_match) {
       VLOG(1) << "Row filtered out by the condition";
-      return ContinueScan::kTrue;
+      continue;
     }
 
-    match_count++;
+    ++match_count;
     if (request_.is_aggregate()) {
-      RETURN_NOT_OK(EvalAggregate(*row_ptr));
+      RETURN_NOT_OK(EvalAggregate(row));
     } else {
-      RETURN_NOT_OK(PopulateResultSet(*row_ptr, result_buffer));
+      RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
       ++fetched_rows;
     }
 
     // Check if we are running out of time
     scan_time_exceeded = CoarseMonoClock::now() >= stop_scan;
-
-    return (fetched_rows < row_count_limit && !scan_time_exceeded) ? ContinueScan::kTrue
-                                                                   : ContinueScan::kFalse;
-  };
-
-  RETURN_NOT_OK(iter->Iterate(std::move(callback)));
+  }
 
   VLOG(1) << "Stopped iterator after " << match_count << " matches, "
           << fetched_rows << " rows fetched";
@@ -1460,18 +1489,38 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const YQLStorageIf& ql_sto
     VLOG(1) << "Added where expression to the executor";
   }
 
-  for (const PgsqlBatchArgumentPB& batch_argument : request_.batch_arguments()) {
-    SCHECK(batch_argument.has_ybctid(),
-           InternalError,
-           "ybctid arguments can be batched only");
-    // Get the row.
-    RETURN_NOT_OK(ql_storage.GetIterator(
-        request_.stmt_id(), projection, doc_read_context, txn_op_context_,
-        deadline, read_time, batch_argument.ybctid().value(), &table_iter_));
 
-    if (VERIFY_RESULT(table_iter_->HasNext())) {
+  const auto &batch_args = request_.batch_arguments();
+  auto min_arg = batch_args.begin();
+  auto max_arg = batch_args.begin();
+  for(auto batch_arg_it = batch_args.begin() + 1;
+      batch_arg_it != batch_args.end(); batch_arg_it++) {
+    SCHECK(batch_arg_it->has_ybctid(), InternalError, "ybctid arguments can be batched only");
+    if (min_arg->ybctid().value() > batch_arg_it->ybctid().value()) {
+      min_arg = batch_arg_it;
+    } else if (max_arg->ybctid().value() < batch_arg_it->ybctid().value()) {
+      max_arg = batch_arg_it;
+    }
+  }
+
+  bool iter_valid = false;
+  for(const PgsqlBatchArgumentPB& batch_argument : batch_args) {
+    if (!iter_valid) {
+      // It can be the case like when there is a tablet split that we still want
+      // to continue seeking through all the given batch arguments even though one
+      // of them wasn't found. If it wasn't found, table_iter_ becomes invalid
+      // and we have to make a new iterator.
+      RETURN_NOT_OK(ql_storage.GetIterator(
+          request_.stmt_id(), projection, doc_read_context, txn_op_context_,
+          deadline, read_time, min_arg->ybctid().value(),
+          max_arg->ybctid().value(), &table_iter_));
+    }
+    // Get the row.
+    auto &tuple_id = batch_argument.ybctid().value();
+    iter_valid = VERIFY_RESULT(table_iter_->SeekTuple(tuple_id.binary_value()));
+    if (iter_valid) {
       row.Clear();
-      RETURN_NOT_OK(table_iter_->NextRow(&row));
+      RETURN_NOT_OK(table_iter_->NextRow(projection, &row));
       bool is_match = true;
       RETURN_NOT_OK(expr_exec.Exec(row, nullptr, &is_match));
       if (is_match) {
@@ -1572,14 +1621,20 @@ Status PgsqlReadOperation::PopulateAggregate(WriteBuffer *result_buffer) {
 }
 
 Status PgsqlReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out) {
+  boost::optional<WaitPolicy> wait_policy = boost::none;
+  if (request_.has_row_mark_type() && IsValidRowMarkType(request_.row_mark_type())) {
+    DCHECK(request_.has_wait_policy());
+    wait_policy = request_.wait_policy();
+  }
+
   if (request_.batch_arguments_size() > 0) {
     for (const auto& batch_argument : request_.batch_arguments()) {
       SCHECK(batch_argument.has_ybctid(), InternalError, "ybctid batch argument is expected");
-      RETURN_NOT_OK(AddIntent(batch_argument.ybctid(), request_.wait_policy(), out));
+      RETURN_NOT_OK(AddIntent(batch_argument.ybctid(), wait_policy, out));
     }
   } else {
     auto doc_key = VERIFY_RESULT(FetchDocKey(schema, request_));
-    AddIntent(doc_key.Encode().ToStringBuffer(), request_.wait_policy(), out);
+    AddIntent(doc_key.Encode().ToStringBuffer(), wait_policy, out);
   }
   return Status::OK();
 }

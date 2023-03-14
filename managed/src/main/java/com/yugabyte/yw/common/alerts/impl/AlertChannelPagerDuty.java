@@ -11,16 +11,19 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.WSClientRefresher;
 import com.yugabyte.yw.common.alerts.AlertChannelPagerDutyParams;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertChannel;
-import com.yugabyte.yw.models.AlertChannelTemplates;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertLabel;
+import com.yugabyte.yw.models.AlertTemplateVariable;
 import com.yugabyte.yw.models.Customer;
 import java.time.ZoneId;
 import java.util.Comparator;
+import java.util.List;
 import javax.inject.Inject;
 import lombok.Builder;
 import lombok.Value;
@@ -39,24 +42,34 @@ public class AlertChannelPagerDuty extends AlertChannelWebBase {
   private final String eventApiUrl;
 
   @Inject
-  public AlertChannelPagerDuty(WSClientRefresher wsClientRefresher) {
-    this(PAGER_DUTY_EVENT_API, wsClientRefresher);
+  public AlertChannelPagerDuty(
+      WSClientRefresher wsClientRefresher,
+      AlertTemplateVariableService alertTemplateVariableService) {
+    this(PAGER_DUTY_EVENT_API, wsClientRefresher, alertTemplateVariableService);
   }
 
   @VisibleForTesting
-  AlertChannelPagerDuty(String eventApiUrl, WSClientRefresher wsClientRefresher) {
-    super(wsClientRefresher);
+  AlertChannelPagerDuty(
+      String eventApiUrl,
+      WSClientRefresher wsClientRefresher,
+      AlertTemplateVariableService alertTemplateVariableService) {
+    super(wsClientRefresher, alertTemplateVariableService);
     this.eventApiUrl = eventApiUrl;
   }
 
   @Override
   public void sendNotification(
-      Customer customer, Alert alert, AlertChannel channel, AlertChannelTemplates channelTemplates)
+      Customer customer,
+      Alert alert,
+      AlertChannel channel,
+      AlertChannelTemplatesExt channelTemplates)
       throws PlatformNotificationException {
     log.trace("sendNotification {}", alert);
     AlertChannelPagerDutyParams params = (AlertChannelPagerDutyParams) channel.getParams();
-    String title = getNotificationTitle(alert, channel, channelTemplates);
-    String text = getNotificationText(alert, channel, channelTemplates);
+    List<AlertTemplateVariable> variables = alertTemplateVariableService.list(customer.getUuid());
+    Context context = new Context(channel, channelTemplates, variables);
+    String title = getNotificationTitle(alert, context);
+    String text = getNotificationText(alert, context);
 
     try {
       EventResult eventResult;

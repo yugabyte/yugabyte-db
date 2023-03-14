@@ -148,7 +148,7 @@ class OverviewMetrics extends Component {
       // Call to query metrics API for tserver nodes
       params.serverType = NodeType.TServer.toUpperCase();
       this.props.queryMetrics(params, type);
-    } else if (!isKubernetesUniverse) {
+    } else {
       this.props.queryMetrics(params, type);
     }
     if (isKubernetesUniverse) {

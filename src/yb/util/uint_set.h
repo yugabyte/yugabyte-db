@@ -112,6 +112,12 @@ class UnsignedIntSet {
     return boost::icl::is_element_equal(interval_set_, other.interval_set_);
   }
 
+  // Returns true if this set is a super set of the other set.
+  bool Contains(const UnsignedIntSet<T>& other) const {
+    ElementRangeSet set_difference = other.interval_set_ - this->interval_set_;
+    return set_difference.empty();
+  }
+
  private:
   using ElementType = uint32_t;
   using ElementRange = boost::icl::discrete_interval<ElementType>;

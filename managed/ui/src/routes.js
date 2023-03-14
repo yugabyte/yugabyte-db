@@ -261,9 +261,9 @@ export default (store) => {
         </Route>
         <Route path="/metrics" component={Metrics} />
         <Route path="/config" component={DataCenterConfiguration}>
-          <Route path=":configTab" component={DataCenterConfiguration} />
-          <Route path=":configTab/:section" component={DataCenterConfiguration} />
-          <Route path=":configTab/:section/:providerUUID" component={DataCenterConfiguration} />
+          <Route path=":tab" component={DataCenterConfiguration} />
+          <Route path=":tab/:section" component={DataCenterConfiguration} />
+          <Route path=":tab/:section/:uuid" component={DataCenterConfiguration} />
         </Route>
         <Route path="/alerts" component={Alerts} />
         <Route path="/backups" component={Backups} />

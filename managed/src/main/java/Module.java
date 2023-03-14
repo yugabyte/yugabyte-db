@@ -61,6 +61,8 @@ import com.yugabyte.yw.commissioner.PerfAdvisorNodeManager;
 import com.yugabyte.yw.controllers.MetricGrafanaController;
 import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.helpers.TaskTypesModule;
 import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
@@ -187,6 +189,8 @@ public class Module extends AbstractModule {
       bind(YbcUpgrade.class).asEagerSingleton();
       bind(NodeManagerInterface.class).to(PerfAdvisorNodeManager.class);
       bind(PerfAdvisorScheduler.class).asEagerSingleton();
+      requestStaticInjection(CertificateInfo.class);
+      requestStaticInjection(HealthCheck.class);
     }
   }
 

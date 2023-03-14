@@ -10,11 +10,11 @@ package common
 type Component interface {
 	TemplateFile() string
 	Name() string
-	Uninstall(cleanData bool)
-	Upgrade()
-	Status() Status
-	Start()
-	Stop()
-	Restart()
-	Install()
+	Uninstall(cleanData bool) error
+	Upgrade() error
+	Status() (Status, error)
+	Start() error
+	Stop() error
+	Restart() error
+	Install() error
 }

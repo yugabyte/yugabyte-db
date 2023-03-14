@@ -32,6 +32,7 @@ import com.yugabyte.yw.models.AlertConfigurationTarget;
 import com.yugabyte.yw.models.AlertConfigurationThreshold;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDestination;
+import com.yugabyte.yw.models.AlertTemplateVariable;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.MaintenanceWindow;
 import com.yugabyte.yw.models.Universe;
@@ -90,7 +91,7 @@ public class AlertConfigurationService {
   }
 
   @Transactional
-  public List<AlertConfiguration> save(List<AlertConfiguration> configurations) {
+  public List<AlertConfiguration> save(UUID customerUuid, List<AlertConfiguration> configurations) {
     if (CollectionUtils.isEmpty(configurations)) {
       return configurations;
     }
@@ -112,6 +113,12 @@ public class AlertConfigurationService {
             .stream()
             .collect(Collectors.toMap(AlertConfiguration::getUuid, Function.identity()));
 
+    Map<String, Set<String>> validLabels =
+        AlertTemplateVariable.list(customerUuid)
+            .stream()
+            .collect(
+                Collectors.toMap(
+                    AlertTemplateVariable::getName, AlertTemplateVariable::getPossibleValues));
     Map<EntityOperation, List<AlertConfiguration>> toCreateAndUpdate =
         configurations
             .stream()
@@ -120,7 +127,8 @@ public class AlertConfigurationService {
                     prepareForSave(configuration, beforeConfigMap.get(configuration.getUuid())))
             .peek(
                 configuration ->
-                    validate(configuration, beforeConfigMap.get(configuration.getUuid())))
+                    validate(
+                        configuration, beforeConfigMap.get(configuration.getUuid()), validLabels))
             .collect(
                 Collectors.groupingBy(configuration -> configuration.isNew() ? CREATE : UPDATE));
 
@@ -153,8 +161,8 @@ public class AlertConfigurationService {
   }
 
   @Transactional
-  public AlertConfiguration save(AlertConfiguration definition) {
-    return save(Collections.singletonList(definition)).get(0);
+  public AlertConfiguration save(AlertConfiguration configuration) {
+    return save(configuration.getCustomerUUID(), Collections.singletonList(configuration)).get(0);
   }
 
   public AlertConfiguration get(UUID uuid) {
@@ -251,7 +259,10 @@ public class AlertConfigurationService {
     }
   }
 
-  private void validate(AlertConfiguration configuration, AlertConfiguration before) {
+  private void validate(
+      AlertConfiguration configuration,
+      AlertConfiguration before,
+      Map<String, Set<String>> validLabels) {
     beanValidator.validate(configuration);
     AlertConfigurationTarget target = configuration.getTarget();
     if (target.isAll() != CollectionUtils.isEmpty(target.getUuids())) {
@@ -374,6 +385,26 @@ public class AlertConfigurationService {
           .forField("", "can't update missing configuration '" + configuration.getName() + "'")
           .throwError();
     }
+    if (configuration.getLabels() != null) {
+      configuration
+          .getLabels()
+          .forEach(
+              (name, value) -> {
+                if (!validLabels.containsKey(name)) {
+                  beanValidator
+                      .error()
+                      .forField("labels", "variable '" + name + "' does not exist")
+                      .throwError();
+                }
+                if (!validLabels.get(name).contains(value)) {
+                  beanValidator
+                      .error()
+                      .forField(
+                          "labels", "variable '" + name + "' does not have value '" + value + "'")
+                      .throwError();
+                }
+              });
+    }
   }
 
   @Transactional
@@ -406,7 +437,7 @@ public class AlertConfigurationService {
                             : DELETE));
 
     // Just need to save - service will delete definition itself.
-    save(toUpdateAndDelete.get(UPDATE));
+    save(customerUuid, toUpdateAndDelete.get(UPDATE));
     delete(toUpdateAndDelete.get(DELETE));
   }
 
@@ -697,7 +728,7 @@ public class AlertConfigurationService {
             .map(template -> createConfigurationTemplate(customer, template))
             .map(AlertConfigurationTemplate::getDefaultConfiguration)
             .collect(Collectors.toList());
-    save(alertConfigurations);
+    save(customer.getUuid(), alertConfigurations);
   }
 
   private AlertDefinition createEmptyDefinition(AlertConfiguration configuration) {

@@ -67,6 +67,7 @@ DEFINE_test_flag(bool, pause_catalog_manager_bg_loop_end, false,
                  "Pause the bg tasks thread at the end of the loop.");
 
 DECLARE_bool(enable_ysql);
+DECLARE_bool(TEST_echo_service_enabled);
 
 namespace yb {
 namespace master {
@@ -78,7 +79,7 @@ CatalogManagerBgTasks::CatalogManagerBgTasks(CatalogManager *catalog_manager)
       pending_updates_(false),
       cond_(&lock_),
       thread_(nullptr),
-      catalog_manager_(down_cast<enterprise::CatalogManager*>(catalog_manager)) {
+      catalog_manager_(catalog_manager) {
 }
 
 void CatalogManagerBgTasks::Wake() {
@@ -165,6 +166,11 @@ void CatalogManagerBgTasks::Run() {
         if (!ts_desc->IsLive()) {
           ts_desc->ClearMetrics();
         }
+      }
+
+      if (FLAGS_TEST_echo_service_enabled) {
+        WARN_NOT_OK(
+            catalog_manager_->CreateTestEchoService(), "Failed to create Test Echo service");
       }
 
       // Report metrics.

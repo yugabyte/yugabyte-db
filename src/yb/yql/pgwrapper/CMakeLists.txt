@@ -38,6 +38,7 @@ add_dependencies(
   gen_src_yb_tserver_tserver_proto
   gen_src_yb_tserver_tserver_types_proto
   gen_src_yb_cdc_cdc_consumer_proto
+  gen_src_yb_cdc_xcluster_producer_proto
   gen_src_yb_encryption_encryption_proto
   gen_src_yb_master_master_heartbeat_proto
   gen_src_yb_master_master_types_proto
@@ -91,6 +92,7 @@ ADD_YB_LIBRARY(ysql_upgrade
 set(YB_TEST_LINK_LIBS yb_pgwrapper ql-dml-test-base pg_wrapper_test_base tools_test_utils
     geo_transactions_test_base ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(pg_catalog_perf-test)
+ADD_YB_TEST(pg_clock_skew-test)
 ADD_YB_TEST(pg_conn-test)
 ADD_YB_TEST(pg_ddl_concurrency-test)
 ADD_YB_TEST(pg_fkey-test)
@@ -115,7 +117,7 @@ ADD_YB_TEST(pg_explicit_lock-test)
 ADD_YB_TEST(alter_schema_abort_txn-test)
 ADD_YB_TEST(pg_cache_refresh-test)
 ADD_YB_TEST(pg_ddl_atomicity-test)
-ADD_YB_TEST(colocation_concurrency-test)
+ADD_YB_TEST(colocation-test)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)

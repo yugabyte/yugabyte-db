@@ -43,7 +43,7 @@ YugabyteDB supports single-row linearizable writes. Linearizability is one of th
 
 YugabyteDB supports multi-row transactions with three isolation levels: Serializable, Snapshot (also known as repeatable read), and Read Committed isolation.
 
-- The [YSQL API](../../api/ysql/) supports Serializable, Snapshot (default), and Read Committed isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. For more details, see [YSQL vs. PostgreSQL isolation levels](#ysql-vs-postgresql-isolation -levels).
+- The [YSQL API](../../api/ysql/) supports Serializable, Snapshot (default), and Read Committed isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. For more details, see [YSQL vs. PostgreSQL isolation levels](#ysql-vs-postgresql-isolation-levels).
 - The [YCQL API](../../api/ycql/dml_transaction/) supports only Snapshot isolation (default) using the `BEGIN TRANSACTION` syntax.
 
 #### YSQL vs. PostgreSQL isolation levels

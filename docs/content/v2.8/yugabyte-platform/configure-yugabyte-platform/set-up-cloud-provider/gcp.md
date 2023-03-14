@@ -89,7 +89,7 @@ Take note of the following for configuring your GCP provider:
 
 - Upload the JSON file that you obtained when you created your service account previously in [Prepare the Google Cloud Platform (GCP) environment](../../../install-yugabyte-platform/prepare-environment/gcp).
 
-- Assuming this is a new deployment, Yugabyte recommends creating a new VPC specifically for YugabyteDB nodes. You have to ensure that the Yugabyte Platform host machine is able to connect to your Google Cloud account where this new VPC will be created. Otherwise, you can choose to specify an existing VPC for YugabyteDB nodes. The third option that is available only when your Yugabyte Platform host machine is also running on Google Cloud is to use the same VPC that the Yugabyte Platform host machine runs on.
+- Assuming this is a new deployment, you should create a new VPC specifically for YugabyteDB nodes. You have to ensure that the Yugabyte Platform host machine is able to connect to your Google Cloud account where this new VPC will be created. Otherwise, you can choose to specify an existing VPC for YugabyteDB nodes. The third option that is available only when your Yugabyte Platform host machine is also running on Google Cloud is to use the same VPC that the Yugabyte Platform host machine runs on.
 
 - Finally, click **Save** and give it a couple of minutes, as it will need to do a bit of work in the background. This includes generating a new VPC, a network, subnetworks in all available regions, as well as a new firewall rule, VPC peering for network connectivity and a custom SSH key pair for Yugabyte Platform-to-YugabyteDB connectivity.
 

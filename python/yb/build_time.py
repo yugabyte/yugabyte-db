@@ -48,8 +48,7 @@ def main() -> None:
             if not fname.endswith(".h"):
                 continue
             for prefix in [os.path.join(root_path, "src/"),
-                           os.path.join(build_path, "src/"),
-                           os.path.join(root_path, "ent/src/")]:
+                           os.path.join(build_path, "src/")]:
                 if fname.startswith(prefix):
                     includes.append((count, fname[len(prefix):]))
                     break

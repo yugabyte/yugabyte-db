@@ -11,6 +11,7 @@
 
 package com.yugabyte.yw.common.kms.util;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import javax.crypto.KeyGenerator;
@@ -49,10 +50,9 @@ public class HashicorpEARServiceUtil {
           returnVault = new VaultTransit(accesor, mountPath, keyType);
           break;
         default:
-          returnVault = null;
           break;
       }
-      LOG.info("Returning Object {}", returnVault.toString());
+      LOG.info("Returning Object {}", returnVault);
       return returnVault;
     }
 
@@ -199,10 +199,9 @@ public class HashicorpEARServiceUtil {
    * @throws Exception
    */
   public static byte[] decryptUniverseKey(
-      UUID universeUUID, UUID configUUID, byte[] encryptedUniverseKey, ObjectNode authConfig)
-      throws Exception {
+      UUID configUUID, byte[] encryptedUniverseKey, ObjectNode authConfig) throws Exception {
 
-    LOG.debug("decryptUniverseKey called  : {} - {}", universeUUID, configUUID);
+    LOG.debug("decryptUniverseKey called on config UUID : '{}'", configUUID);
     if (encryptedUniverseKey == null) return null;
 
     try {
@@ -261,5 +260,13 @@ public class HashicorpEARServiceUtil {
     VaultSecretEngineBase vaultSecretEngine =
         VaultSecretEngineBuilder.getVaultSecretEngine(authConfig);
     updateAuthConfigObj(configUUID, vaultSecretEngine, authConfig);
+  }
+
+  public static List<String> getMetadataFields() {
+    return Arrays.asList(
+        HashicorpVaultConfigParams.HC_VAULT_ADDRESS,
+        HashicorpVaultConfigParams.HC_VAULT_ENGINE,
+        HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH,
+        HashicorpVaultConfigParams.HC_VAULT_KEY_NAME);
   }
 }

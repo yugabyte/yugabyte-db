@@ -72,7 +72,7 @@
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_wire_protocol.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
@@ -1946,6 +1946,13 @@ std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinR
   return std::make_pair(id, *requests.running_requests.begin());
 }
 
+Result<std::shared_ptr<internal::RemoteTabletServer>> YBClient::GetRemoteTabletServer(
+    const std::string& permanent_uuid) {
+  auto tserver = data_->meta_cache_->GetRemoteTabletServer(permanent_uuid);
+  RETURN_NOT_OK(tserver->InitProxy(this));
+  return tserver;
+}
+
 void YBClient::RequestsFinished(const std::set<RetryableRequestId>& request_ids) {
   if (request_ids.empty()) {
     return;
@@ -2358,6 +2365,21 @@ Result<std::optional<AutoFlagsConfigPB>> YBClient::GetAutoFlagConfig() {
   }
 
   return status;
+}
+
+Result<master::StatefulServiceInfoPB> YBClient::GetStatefulServiceLocation(
+    StatefulServiceKind service_kind) {
+  master::GetStatefulServiceLocationRequestPB req;
+  master::GetStatefulServiceLocationResponsePB resp;
+  req.set_service_kind(service_kind);
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetStatefulServiceLocation);
+
+  RSTATUS_DCHECK(resp.has_service_info(), IllegalState, "No service info in response");
+  RSTATUS_DCHECK(
+      resp.service_info().has_permanent_uuid(), IllegalState, "No permanent uuid in response");
+
+  return std::move(resp.service_info());
 }
 
 }  // namespace client

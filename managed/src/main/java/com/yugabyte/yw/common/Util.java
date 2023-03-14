@@ -10,7 +10,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
@@ -21,11 +20,11 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
 import java.io.BufferedInputStream;
 import java.io.File;
@@ -66,7 +65,6 @@ import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 import lombok.Getter;
 import org.apache.commons.codec.binary.Hex;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
@@ -112,6 +110,8 @@ public class Util {
   public static final double EPSILON = 0.000001d;
 
   public static final String YBC_COMPATIBLE_DB_VERSION = "2.15.0.0-b1";
+
+  public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
 
   public static final String LIVE_QUERY_TIMEOUTS = "yb.query_stats.live_queries.ws";
 
@@ -863,15 +863,8 @@ public class Util {
   }
 
   public static String getYbcNodeIp(Universe universe) {
-    HostAndPort hostPort = universe.getMasterLeader();
-    String nodeIp = hostPort.getHost();
-    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes) {
-      List<NodeDetails> nodeList = universe.getLiveTServersInPrimaryCluster();
-      if (CollectionUtils.isNotEmpty(nodeList)) {
-        nodeIp = nodeList.get(0).cloudInfo.private_ip;
-      }
-    }
-    return nodeIp;
+    List<NodeDetails> nodeList = universe.getLiveTServersInPrimaryCluster();
+    return nodeList.get(0).cloudInfo.private_ip;
   }
 
   public static String computeFileChecksum(Path filePath, String checksumAlgorithm)

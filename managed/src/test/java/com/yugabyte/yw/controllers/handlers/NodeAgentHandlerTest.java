@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
@@ -44,6 +45,8 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
   @Mock private PlatformExecutorFactory mockPlatformExecutorFactory;
   @Mock private PlatformScheduler mockPlatformScheduler;
   @Mock private NodeAgentClient mockNodeAgentClient;
+
+  @Mock private RuntimeConfGetter runtimeConfGetter;
   private NodeAgentManager nodeAgentManager;
   private NodeAgentHandler nodeAgentHandler;
   private Customer customer;
@@ -51,7 +54,7 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
   @Before
   public void setup() {
     customer = ModelFactory.testCustomer();
-    nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper);
+    nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper, runtimeConfGetter);
     nodeAgentHandler = new NodeAgentHandler(mockAppConfig, nodeAgentManager, mockNodeAgentClient);
 
     nodeAgentHandler.enableConnectionValidation(false);
@@ -88,6 +91,7 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     payload.ip = "10.20.30.40";
     payload.osType = OSType.LINUX.name();
     payload.archType = ArchType.AMD64.name();
+    payload.home = "/home/yugabyte/node-agent";
     NodeAgent nodeAgent = nodeAgentHandler.register(customer.uuid, payload);
     assertNotNull(nodeAgent.uuid);
     UUID nodeAgentUuid = nodeAgent.uuid;

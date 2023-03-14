@@ -21,14 +21,14 @@ import { ProviderList } from './ProviderList';
 interface ProviderListViewCommonProps {
   setCurrentView: (newView: ProviderDashboardView) => void;
 }
-interface CloudVendorProviderListViewProps extends ProviderListViewCommonProps {
-  providerCode: typeof CloudVendorProviders[number];
+interface GenericProviderListViewProps extends ProviderListViewCommonProps {
+  providerCode: typeof CloudVendorProviders[number] | typeof ProviderCode.ON_PREM;
 }
 interface K8sProviderListViewProps extends ProviderListViewCommonProps {
   providerCode: typeof ProviderCode.KUBERNETES;
   kubernetesProviderType: KubernetesProviderType;
 }
-type ProviderListViewProps = CloudVendorProviderListViewProps | K8sProviderListViewProps;
+type ProviderListViewProps = GenericProviderListViewProps | K8sProviderListViewProps;
 
 export const ProviderListView = (props: ProviderListViewProps) => {
   const { providerCode, setCurrentView } = props;
@@ -44,6 +44,7 @@ export const ProviderListView = (props: ProviderListViewProps) => {
           style={{ marginLeft: 'auto', width: '200px' }}
           variant="primary"
           onClick={() => setCurrentView(ProviderDashboardView.CREATE)}
+          data-testid="ProviderListView-CreateConfigButton"
         >
           <i className="fa fa-plus" />
           Create Config

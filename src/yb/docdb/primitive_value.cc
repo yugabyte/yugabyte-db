@@ -505,6 +505,59 @@ void KeyEntryValue::AppendToKey(KeyBytes* key_bytes) const {
   FATAL_INVALID_ENUM_VALUE(KeyEntryType, type_);
 }
 
+size_t KeyEntryValue::GetEncodedKeyEntryValueSize(const DataType& data_type) {
+  constexpr size_t key_entry_type_size = 1;
+  switch (data_type) {
+    case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
+    case BOOL:
+      return key_entry_type_size;
+    case INT8: FALLTHROUGH_INTENDED;
+    case INT16: FALLTHROUGH_INTENDED;
+    case INT32: FALLTHROUGH_INTENDED;
+    case FLOAT:
+      return key_entry_type_size + sizeof(int32_t);
+
+    case UINT32: FALLTHROUGH_INTENDED;
+    case DATE:
+      return key_entry_type_size + sizeof(uint32_t);
+
+    case INT64: FALLTHROUGH_INTENDED;
+    case DOUBLE: FALLTHROUGH_INTENDED;
+    case TIME:
+      return key_entry_type_size + sizeof(int64_t);
+
+    case UINT64:
+      return key_entry_type_size + sizeof(uint64_t);
+
+    case TIMESTAMP:
+      return key_entry_type_size + sizeof(Timestamp);
+
+    case UUID: FALLTHROUGH_INTENDED;
+    case TIMEUUID: FALLTHROUGH_INTENDED;
+    case STRING: FALLTHROUGH_INTENDED;
+    case BINARY: FALLTHROUGH_INTENDED;
+    case DECIMAL: FALLTHROUGH_INTENDED;
+    case VARINT: FALLTHROUGH_INTENDED;
+    case INET: FALLTHROUGH_INTENDED;
+    case LIST: FALLTHROUGH_INTENDED;
+    case MAP: FALLTHROUGH_INTENDED;
+    case SET: FALLTHROUGH_INTENDED;
+    case TUPLE: FALLTHROUGH_INTENDED;
+    case TYPEARGS: FALLTHROUGH_INTENDED;
+    case USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
+    case FROZEN: FALLTHROUGH_INTENDED;
+    case JSONB: FALLTHROUGH_INTENDED;
+    case UINT8: FALLTHROUGH_INTENDED;
+    case UINT16: FALLTHROUGH_INTENDED;
+    case GIN_NULL: FALLTHROUGH_INTENDED;
+    case UNKNOWN_DATA:
+      return 0;
+  }
+
+  LOG(FATAL) << "GetEncodedKeyEntryValueSize: unsupported ql_type: "
+             << QLType::ToCQLString(data_type);
+}
+
 namespace {
 
 template <class Buffer>
@@ -2809,7 +2862,7 @@ double KeyEntryValue::GetDouble() const {
 }
 
 bool KeyEntryValue::IsColumnId() const {
-  return type_ == KeyEntryType::kColumnId || type_ == KeyEntryType::kSystemColumnId;
+  return docdb::IsColumnId(type_);
 }
 
 ColumnId KeyEntryValue::GetColumnId() const {

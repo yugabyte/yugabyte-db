@@ -17,6 +17,7 @@ import static org.yb.util.BuildTypeUtil.isASAN;
 import static org.yb.util.BuildTypeUtil.isTSAN;
 
 import java.sql.*;
+import java.util.Collections;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -127,5 +128,13 @@ public class TestPgRegressCursor extends BasePgSQLTest {
 
     // Test CURSOR in JDBC.
     runTestCursor();
+  }
+
+  @Test
+  public void testPgRegressCursorLowPrefetching() throws Exception {
+    markClusterNeedsRecreation();
+    restartClusterWithFlags(
+        Collections.emptyMap(), Collections.singletonMap("ysql_prefetch_limit", "1"));
+    runPgRegressTest("yb_cursor_low_prefetching_schedule");
   }
 }

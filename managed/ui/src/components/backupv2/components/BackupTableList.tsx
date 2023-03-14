@@ -21,16 +21,13 @@ import copy from 'copy-to-clipboard';
 import { toast } from 'react-toastify';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { YBLoadingCircleIcon } from '../../common/indicators';
-import {
-  BACKUP_REFETCH_INTERVAL,
-  calculateDuration,
-  FormatUnixTimeStampTimeToTimezone
-} from '../common/BackupUtils';
+import { BACKUP_REFETCH_INTERVAL, calculateDuration } from '../common/BackupUtils';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { TableType } from '../../../redesign/helpers/dtos';
 import Timer from '../../universes/images/timer.svg';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import './BackupTableList.scss';
 
 export enum BackupTypes {
@@ -330,7 +327,7 @@ const IncrementalBackupCard = ({
         }}
       >
         {isExpanded ? EXPANDED_ICON : COLLAPSED_ICON}
-        <FormatUnixTimeStampTimeToTimezone timestamp={incrementalBackup.createTime} />
+        {ybFormatDate(incrementalBackup.createTime)}
         <span className="backup-type">{backup_type}</span>
         <span className="backup-pill">{formatBytes(incrementalBackup.totalBackupSizeInBytes)}</span>
         <span className="backup-pill backup-duration">

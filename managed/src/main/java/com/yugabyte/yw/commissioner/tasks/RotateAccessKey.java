@@ -161,7 +161,7 @@ public class RotateAccessKey extends UniverseTaskBase {
       AccessKey taskAccessKey,
       String command,
       String sshUser) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(command, executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(command);
     for (NodeDetails node : nodes) {
       NodeAccessTaskParams params =
           new NodeAccessTaskParams(
@@ -187,8 +187,7 @@ public class RotateAccessKey extends UniverseTaskBase {
 
   public SubTaskGroup createUpdateUniverseAccessKeyTask(
       UUID universeUUID, UUID clusterUUID, String newAccessKeyCode) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("UpdateUniverseAccessKey", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateUniverseAccessKey");
 
     UpdateUniverseAccessKey.Params params = new UpdateUniverseAccessKey.Params();
     params.newAccessKeyCode = newAccessKeyCode;

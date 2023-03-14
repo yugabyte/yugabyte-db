@@ -37,8 +37,6 @@ class ScanChoices {
   // Returns false if there are still target keys we need to scan, and true if we are done.
   virtual bool FinishedWithScanChoices() const { return finished_; }
 
-  virtual bool IsInitialPositionKnown() const { return false; }
-
   // Go to the next scan target if any.
   virtual Status DoneWithCurrentTarget() = 0;
 
@@ -60,11 +58,11 @@ class ScanChoices {
 
   static ScanChoicesPtr Create(
       const Schema& schema, const DocQLScanSpec& doc_spec, const KeyBytes& lower_doc_key,
-      const KeyBytes& upper_doc_key, const size_t prefix_length);
+      const KeyBytes& upper_doc_key);
 
   static ScanChoicesPtr Create(
       const Schema& schema, const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
-      const KeyBytes& upper_doc_key, const size_t prefix_length);
+      const KeyBytes& upper_doc_key);
 
  protected:
   const bool is_forward_scan_;
@@ -342,6 +340,8 @@ class HybridScanChoices : public ScanChoices {
   ColGroupHolder col_groups_;
 
   size_t prefix_length_ = 0;
+
+  size_t schema_num_keys_;
 };
 
 }  // namespace docdb

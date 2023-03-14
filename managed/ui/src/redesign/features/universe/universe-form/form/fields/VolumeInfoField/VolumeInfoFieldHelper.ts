@@ -1,4 +1,21 @@
-import { CloudType, DeviceInfo, InstanceType, StorageType } from '../../../utils/dto';
+import { useRef, useState } from 'react';
+import _ from 'lodash';
+import { useUpdateEffect } from 'react-use';
+import { useWatch, useFormContext } from 'react-hook-form';
+import {
+  PLACEMENTS_FIELD,
+  TOTAL_NODES_FIELD,
+  INSTANCE_TYPE_FIELD,
+  DEVICE_INFO_FIELD
+} from '../../../utils/constants';
+import {
+  CloudType,
+  DeviceInfo,
+  InstanceType,
+  RunTimeConfigEntry,
+  StorageType,
+  UniverseFormData
+} from '../../../utils/dto';
 import { isEphemeralAwsStorageInstance } from '../InstanceTypeField/InstanceTypeFieldHelper';
 
 export const IO1_DEFAULT_DISK_IOPS = 1000;
@@ -121,22 +138,67 @@ export const getThroughputByIops = (
   return currentThroughput;
 };
 
-const getStorageType = (instance: InstanceType) => {
-  if (isEphemeralAwsStorageInstance(instance))
-    //aws ephemeral storage
-    return null;
-  return DEFAULT_STORAGE_TYPES[instance.providerCode] ?? null;
+const getVolumeSize = (instance: InstanceType, providerRuntimeConfigs: any) => {
+  let volumeSize = null;
+
+  if (instance.providerCode === CloudType.aws) {
+    volumeSize = providerRuntimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === 'yb.aws.default_volume_size_gb'
+    )?.value;
+  } else if (instance.providerCode === CloudType.gcp) {
+    volumeSize = providerRuntimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === 'yb.gcp.default_volume_size_gb'
+    )?.value;
+  } else if (instance.providerCode === CloudType.kubernetes) {
+    volumeSize = providerRuntimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === 'yb.kubernetes.default_volume_size_gb'
+    )?.value;
+  } else if (instance.providerCode === CloudType.azu) {
+    volumeSize = providerRuntimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === 'yb.azure.default_volume_size_gb'
+    )?.value;
+  }
+  return volumeSize;
 };
 
-export const getDeviceInfoFromInstance = (instance: InstanceType): DeviceInfo | null => {
+const getStorageType = (instance: InstanceType, providerRuntimeConfigs: any) => {
+  let storageType = null;
+  if (isEphemeralAwsStorageInstance(instance))
+    //aws ephemeral storage
+    return storageType;
+
+  if (instance.providerCode === CloudType.aws) {
+    storageType = providerRuntimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === 'yb.aws.storage.default_storage_type'
+    )?.value;
+  } else if (instance.providerCode === CloudType.gcp) {
+    storageType = providerRuntimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === 'yb.gcp.storage.default_storage_type'
+    )?.value;
+  } else if (instance.providerCode === CloudType.azu) {
+    storageType = providerRuntimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === 'yb.azure.storage.default_storage_type'
+    )?.value;
+  }
+  return storageType;
+};
+
+export const getDeviceInfoFromInstance = (
+  instance: InstanceType,
+  providerRuntimeConfigs: any
+): DeviceInfo | null => {
   if (!instance.instanceTypeDetails.volumeDetailsList.length) return null;
 
   const { volumeDetailsList } = instance.instanceTypeDetails;
-  const storageType = getStorageType(instance);
+  const volumeSize = volumeDetailsList[0].volumeSizeGB;
+  const defaultInstanceVolumeSize = isEphemeralAwsStorageInstance(instance)
+    ? volumeSize
+    : getVolumeSize(instance, providerRuntimeConfigs);
+  const storageType = getStorageType(instance, providerRuntimeConfigs);
 
   return {
     numVolumes: volumeDetailsList.length,
-    volumeSize: volumeDetailsList[0].volumeSizeGB,
+    volumeSize: defaultInstanceVolumeSize ?? volumeSize,
     storageClass: 'standard',
     storageType,
     mountPoints:
@@ -146,4 +208,55 @@ export const getDeviceInfoFromInstance = (instance: InstanceType): DeviceInfo | 
     diskIops: getIopsByStorageType(storageType),
     throughput: getThroughputByStorageType(storageType)
   };
+};
+
+export const useVolumeControls = (isEditMode: boolean) => {
+  const [numVolumesDisable, setNumVolumesDisable] = useState(false);
+  const [volumeSizeDisable, setVolumeSizeDisable] = useState(false);
+  const [userTagsDisable, setUserTagsDisable] = useState(false);
+  const [minVolumeSize, setMinVolumeSize] = useState(1);
+  const { setValue } = useFormContext<UniverseFormData>();
+
+  //watchers
+  const totalNodes = useWatch({ name: TOTAL_NODES_FIELD });
+  const placements = useWatch({ name: PLACEMENTS_FIELD });
+  const instanceType = useWatch({ name: INSTANCE_TYPE_FIELD });
+  const deviceInfo = useWatch({ name: DEVICE_INFO_FIELD });
+
+  const initialCombination = useRef({
+    totalNodes: Number(totalNodes),
+    placements,
+    instanceType,
+    deviceInfo
+  });
+
+  useUpdateEffect(() => {
+    if (isEditMode) {
+      if (!_.isEqual(initialCombination.current.totalNodes, Number(totalNodes))) {
+        //Disable numVolumes and volumeSize when Total Nodes is updated
+        setValue(DEVICE_INFO_FIELD, initialCombination.current.deviceInfo);
+        setMinVolumeSize(1);
+        setNumVolumesDisable(true);
+        setVolumeSizeDisable(true);
+        setUserTagsDisable(true);
+      } else if (
+        !_.isEqual(initialCombination.current.placements, placements) ||
+        !_.isEqual(initialCombination.current.instanceType, instanceType)
+      ) {
+        //Enable numVolumes and volumeSize when placements or instancetype is updated
+        setMinVolumeSize(1);
+        setNumVolumesDisable(false);
+        setVolumeSizeDisable(false);
+        setUserTagsDisable(true);
+      } else {
+        //Smart Resize/Resize disk
+        setMinVolumeSize(initialCombination.current.deviceInfo.volumeSize);
+        setNumVolumesDisable(true);
+        setVolumeSizeDisable(false);
+        setUserTagsDisable(false);
+      }
+    }
+  }, [totalNodes, placements, instanceType, deviceInfo?.volumeSize]);
+
+  return { numVolumesDisable, volumeSizeDisable, userTagsDisable, minVolumeSize };
 };

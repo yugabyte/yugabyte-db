@@ -783,6 +783,14 @@ alter table parted_uniq_detach_test detach partition parted_uniq_detach_test1;
 alter table parted_uniq_detach_test1 drop constraint parted_uniq_detach_test1_a_key;
 drop table parted_uniq_detach_test, parted_uniq_detach_test1;
 
+-- Test range indexes with both IN queries and range filters
+create table range_in_inequality(r1 int, r2 int, primary key(r1 asc, r2 asc));
+insert into range_in_inequality select i/5, i%5 from generate_series(1,20) i;
+select * from range_in_inequality;
+select * from range_in_inequality where r1 in (1, 3) and r2 > 2;
+select * from range_in_inequality where r1 in (0, 1, 3) and r2 > 2;
+
 -- YB Note: Adding cleanup, just in case.
+drop table range_in_inequality;
 drop table idxpart cascade;
 drop table idxpart_another cascade;

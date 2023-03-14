@@ -317,9 +317,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // to it.
   Result<int64_t> GetEarliestNeededLogIndex(std::string* details = nullptr) const;
 
-  // Returns the latest log index for non transaction tables and the minimum log index for
-  // transaction tables.
-  Result<OpId> GetCdcBootstrapOpIdByTableType() const;
+  // Returns the the minimum log index for transaction tables and latest log index for other tables.
+  // If FLAGS_abort_active_txns_during_cdc_bootstrap is set then all active transactions are
+  // aborted.
+  Result<OpId> GetCdcBootstrapOpIdByTableType();
 
   // Returns the amount of bytes that would be GC'd if RunLogGC() was called.
   //
@@ -414,6 +415,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   OpId cdc_sdk_min_checkpoint_op_id();
 
   CoarseTimePoint cdc_sdk_min_checkpoint_op_id_expiration();
+
+  bool is_under_cdc_sdk_replication();
 
   Status SetCDCSDKRetainOpIdAndTime(
       const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration,

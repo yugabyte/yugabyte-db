@@ -77,7 +77,7 @@ func (prom Prometheus) Name() string {
 }
 
 // Install the prometheus service.
-func (prom Prometheus) Install() {
+func (prom Prometheus) Install() error {
 	log.Info("Starting Prometheus install")
 	config.GenerateTemplate(prom)
 	prom.moveAndExtractPrometheusPackage()
@@ -89,20 +89,19 @@ func (prom Prometheus) Install() {
 	if common.HasSudoAccess() {
 		userName := viper.GetString("service_username")
 		common.Chown(common.GetSoftwareRoot()+"/prometheus", userName, userName, true)
-
-	}
-
-	//Crontab based monitoring for non-root installs.
-	if !common.HasSudoAccess() {
+	} else {
 		prom.CreateCronJob()
 	}
 
-	prom.Start()
+	if err := prom.Start(); err != nil {
+		return err
+	}
 	log.Info("Finishing Prometheus install")
+	return nil
 }
 
 // Start the prometheus service.
-func (prom Prometheus) Start() {
+func (prom Prometheus) Start() error {
 
 	if common.HasSudoAccess() {
 
@@ -111,13 +110,16 @@ func (prom Prometheus) Start() {
 		common.RunBash(common.Systemctl, []string{"status", "prometheus"})
 
 	} else {
-		bashCmd := fmt.Sprintf("%s %d %d %d %d %d > /dev/null 2>&1 &",
+		bashCmd := fmt.Sprintf("%s %s %s %d %d %d %d %d %s > /dev/null 2>&1 &",
 			prom.cronScript,
+			common.GetSoftwareRoot(),
+			common.GetDataRoot(),
 			viper.GetInt("prometheus.port"),
 			viper.GetInt("prometheus.maxConcurrency"),
 			viper.GetInt("prometheus.maxSamples"),
 			viper.GetInt("prometheus.timeout"),
 			viper.GetInt("prometheus.restartSeconds"),
+			prom.version,
 		)
 		command1 := "bash"
 		arg1 := []string{"-c", bashCmd}
@@ -125,14 +127,17 @@ func (prom Prometheus) Start() {
 		common.RunBash(command1, arg1)
 
 	}
-
+	return nil
 }
 
-func (prom Prometheus) Stop() {
-
-	if prom.Status().Status != common.StatusRunning {
+func (prom Prometheus) Stop() error {
+	status, err := prom.Status()
+	if err != nil {
+		return err
+	}
+	if status.Status != common.StatusRunning {
 		log.Debug(prom.name + " is already stopped")
-		return
+		return nil
 	}
 
 	if common.HasSudoAccess() {
@@ -154,15 +159,20 @@ func (prom Prometheus) Stop() {
 		if strings.TrimSuffix(string(out0), "\n") != "" {
 			pids := strings.Split(string(out0), "\n")
 			for _, pid := range pids {
-				argStop := []string{"-c", "kill -9 " + strings.TrimSuffix(pid, "\n")}
-				common.RunBash(commandCheck0, argStop)
+				log.Debug("kill prometheus pid: " + pid)
+				if strings.TrimSuffix(pid, "\n") != "" {
+					argStop := []string{"-c", "kill -9 " + strings.TrimSuffix(pid, "\n")}
+					common.RunBash(commandCheck0, argStop)
+				}
 			}
 		}
 	}
+	return nil
 }
 
 // Restart the prometheus service.
-func (prom Prometheus) Restart() {
+func (prom Prometheus) Restart() error {
+	log.Info("Restarting prometheus..")
 
 	if common.HasSudoAccess() {
 
@@ -171,16 +181,22 @@ func (prom Prometheus) Restart() {
 
 	} else {
 
-		prom.Stop()
-		prom.Start()
-
+		if err := prom.Stop(); err != nil {
+			return err
+		}
+		if err := prom.Start(); err != nil {
+			return err
+		}
 	}
-
+	return nil
 }
 
 // Uninstall stops prometheus and optionally removes all data.
-func (prom Prometheus) Uninstall(removeData bool) {
-	prom.Stop()
+func (prom Prometheus) Uninstall(removeData bool) error {
+	log.Info("Uninstalling prometheus")
+	if err := prom.Stop(); err != nil {
+		return err
+	}
 
 	if common.HasSudoAccess() {
 		err := os.Remove(prom.SystemdFileLocation)
@@ -189,6 +205,7 @@ func (prom Prometheus) Uninstall(removeData bool) {
 			if !errors.Is(pe.Err, fs.ErrNotExist) {
 				log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
 					err.Error(), prom.SystemdFileLocation))
+				return err
 			}
 		}
 		// reload systemd daemon
@@ -198,14 +215,17 @@ func (prom Prometheus) Uninstall(removeData bool) {
 	if removeData {
 		err := common.RemoveAll(prom.prometheusDirectories.DataDir)
 		if err != nil {
-			log.Info(fmt.Sprintf("Error %s removing data dir %s.", err.Error(), prom.prometheusDirectories.DataDir))
+			log.Info(fmt.Sprintf("Error %s removing data dir %s.", err.Error(),
+				prom.prometheusDirectories.DataDir))
+			return err
 		}
 	}
+	return nil
 }
 
 // Upgrade will upgrade prometheus and install it into the alt install directory.
 // Upgrade will NOT restart the service, the old version is expected to still be runnins
-func (prom Prometheus) Upgrade() {
+func (prom Prometheus) Upgrade() error {
 	prom.prometheusDirectories = newPrometheusDirectories()
 	config.GenerateTemplate(prom) // No need to reload systemd, start takes care of that for us.
 	prom.moveAndExtractPrometheusPackage()
@@ -222,13 +242,14 @@ func (prom Prometheus) Upgrade() {
 	if !common.HasSudoAccess() {
 		prom.CreateCronJob()
 	}
-	prom.Start()
+	return prom.Start()
 }
 
 func (prom Prometheus) moveAndExtractPrometheusPackage() {
 
 	srcPath := fmt.Sprintf(
-		"%s/third-party/prometheus-%s.linux-amd64.tar.gz", common.GetInstallerSoftwareDir(), prom.version)
+		"%s/third-party/prometheus-%s.linux-amd64.tar.gz", common.GetInstallerSoftwareDir(),
+		prom.version)
 	dstPath := fmt.Sprintf(
 		"%s/packages/prometheus-%s.linux-amd64.tar.gz", common.GetInstallerSoftwareDir(), prom.version)
 
@@ -297,7 +318,7 @@ func (prom Prometheus) createPrometheusSymlinks() {
 
 // Status prints out the header information for the
 // Prometheus service specifically.
-func (prom Prometheus) Status() common.Status {
+func (prom Prometheus) Status() (common.Status, error) {
 	status := common.Status{
 		Service:    prom.Name(),
 		Port:       viper.GetInt("prometheus.port"),
@@ -337,19 +358,23 @@ func (prom Prometheus) Status() common.Status {
 			status.Status = common.StatusStopped
 		}
 	}
-	return status
+	return status, nil
 }
 
 // CreateCronJob creates the cron job for managing prometheus with cron script in non-root.
 func (prom Prometheus) CreateCronJob() {
 	bashCmd := fmt.Sprintf(
-		"(crontab -l 2>/dev/null; echo \"@reboot %s %s %s %s %s %s \") | sort - | uniq - | crontab - ",
+		"(crontab -l 2>/dev/null; echo \"@reboot %s %s %s %s %s %s %s %s %s \") | sort - | uniq - | "+
+			"crontab - ",
 		prom.cronScript,
+		common.GetSoftwareRoot(),
+		common.GetDataRoot(),
 		config.GetYamlPathData("prometheus.port"),
 		config.GetYamlPathData("prometheus.maxConcurrency"),
 		config.GetYamlPathData("prometheus.maxSamples"),
 		config.GetYamlPathData("prometheus.timeout"),
 		config.GetYamlPathData("prometheus.restartSeconds"),
+		prom.version,
 	)
 	common.RunBash("bash", []string{"-c", bashCmd})
 }

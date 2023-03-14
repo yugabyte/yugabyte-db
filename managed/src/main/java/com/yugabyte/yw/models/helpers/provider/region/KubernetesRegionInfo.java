@@ -4,6 +4,7 @@ import java.util.Map;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 
 import io.swagger.annotations.ApiModelProperty;
@@ -59,5 +60,10 @@ public class KubernetesRegionInfo extends KubernetesInfo {
     }
 
     return envVars;
+  }
+
+  @JsonIgnore
+  public void mergeMaskedFields(CloudInfoInterface providerCloudInfo) {
+    // Pass
   }
 }

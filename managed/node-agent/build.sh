@@ -7,7 +7,7 @@ export GO111MODULE=on
 
 readonly protoc_version=21.5
 readonly package_name='node-agent'
-readonly default_platforms=("darwin/amd64" "linux/amd64" "linux/arm64")
+readonly default_platforms=("linux/amd64" "linux/arm64")
 readonly skip_dirs=("third-party" "proto" "generated" "build" "resources" "ybops" "target")
 
 readonly base_dir=$(dirname "$0")

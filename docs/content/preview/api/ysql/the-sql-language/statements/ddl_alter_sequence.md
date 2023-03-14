@@ -66,7 +66,7 @@ Specify the difference between consecutive values in the sequence. Default is `1
 
 #### MAXVALUE *maxvalue* | NO MAXVALUE
 
-Specify the maximum value allowed in the sequence. If this value is reached, `nextval()` will return an error. If `NO MAXVALUE` is specified, the default will be used. Default is `2<sup>63</sup> - 1`.
+Specify the maximum value allowed in the sequence. If this value is reached, `nextval()` will return an error. If `NO MAXVALUE` is specified, the default will be used. Default is `2⁶³-1`.
 
 #### START WITH *start*
 

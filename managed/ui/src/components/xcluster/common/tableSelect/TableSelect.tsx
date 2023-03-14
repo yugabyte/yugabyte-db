@@ -24,17 +24,13 @@ import {
   getSharedXClusterConfigs,
   tableSort
 } from '../../ReplicationUtils';
-import {
-  SortOrder,
-  XClusterConfigAction,
-  XCLUSTER_TABLE_INELIGIBLE_STATUSES
-} from '../../constants';
+import { XClusterConfigAction, XCLUSTER_TABLE_INELIGIBLE_STATUSES } from '../../constants';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { CollapsibleNote } from '../CollapsibleNote';
 import { ExpandedTableSelect } from './ExpandedTableSelect';
 import { XClusterTableEligibility } from '../../constants';
-import { assertUnreachableCase } from '../../../../utils/ErrorUtils';
-import { YBTableRelationType } from '../../../../redesign/helpers/constants';
+import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
+import { SortOrder, YBTableRelationType } from '../../../../redesign/helpers/constants';
 
 import { TableType, TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 import { XClusterConfig, XClusterTableType } from '../../XClusterTypes';
@@ -356,16 +352,16 @@ export const TableSelect = (props: TableSelectProps) => {
   const replicationItems =
     props.configAction === XClusterConfigAction.ADD_TABLE
       ? getReplicationItemsFromTables(
-        sourceUniverseTablesQuery.data,
-        targetUniverseTablesQuery.data,
-        sharedXClusterConfigs,
-        props.xClusterConfigUUID
-      )
+          sourceUniverseTablesQuery.data,
+          targetUniverseTablesQuery.data,
+          sharedXClusterConfigs,
+          props.xClusterConfigUUID
+        )
       : getReplicationItemsFromTables(
-        sourceUniverseTablesQuery.data,
-        targetUniverseTablesQuery.data,
-        sharedXClusterConfigs
-      );
+          sourceUniverseTablesQuery.data,
+          targetUniverseTablesQuery.data,
+          sharedXClusterConfigs
+        );
 
   const bootstrapTableData = Object.entries(replicationItems[tableType].keyspaces)
     .filter(([keyspace, _]) => hasSubstringMatch(keyspace, keyspaceSearchTerm))

@@ -19,7 +19,6 @@
 #include "yb/common/transaction-test-util.h"
 
 #include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/intent_iterator.h"
 
@@ -37,7 +36,15 @@ class IntentIteratorTest : public DocDBTestBase {
     DocDBTestBase::SetUp();
   }
 
-  static void SetUpTestCase();
+  Schema CreateSchema() override {
+    return Schema(
+      {ColumnSchema("a", DataType::STRING, /* is_nullable = */ false),
+       ColumnSchema("b", DataType::INT64, false),
+       // Non-key columns
+       ColumnSchema("c", DataType::STRING, true), ColumnSchema("d", DataType::INT64, true),
+       ColumnSchema("e", DataType::STRING, true)},
+      {10_ColId, 20_ColId, 30_ColId, 40_ColId, 50_ColId}, 2);
+  }
 };
 
 const std::string kStrKey1 = "row1";
@@ -50,21 +57,6 @@ static const KeyBytes kEncodedDocKey1(
 
 static const KeyBytes kEncodedDocKey2(
     DocKey(KeyEntryValues(kStrKey2, kIntKey2)).Encode());
-
-static const Schema kSchemaForIteratorTests(
-    {ColumnSchema("a", DataType::STRING, /* is_nullable = */ false),
-     ColumnSchema("b", DataType::INT64, false),
-     // Non-key columns
-     ColumnSchema("c", DataType::STRING, true), ColumnSchema("d", DataType::INT64, true),
-     ColumnSchema("e", DataType::STRING, true)},
-    {10_ColId, 20_ColId, 30_ColId, 40_ColId, 50_ColId}, 2);
-
-static Schema kProjectionForIteratorTests;
-
-void IntentIteratorTest::SetUpTestCase() {
-  ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames(
-      {"c", "d", "e"}, &kProjectionForIteratorTests));
-}
 
 void ValidateKeyAndValue(
     const IntentIterator& iter, const KeyBytes& expected_key_bytes,
@@ -147,7 +139,6 @@ SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical:
       )#");
 
   const auto txn_context = TransactionOperationContext(*txn, &txn_status_manager);
-  auto doc_read_context = DocReadContext::TEST_Create(kSchemaForIteratorTests);
 
   {
     IntentIterator iter(
@@ -233,7 +224,6 @@ SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical:
       )#");
 
   const auto txn_context = TransactionOperationContext(*txn, &txn_status_manager);
-  auto doc_read_context = DocReadContext::TEST_Create(kSchemaForIteratorTests);
 
   {
     IntentIterator iter(
@@ -381,10 +371,8 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
     SubDocKey(DocKey([], ["row2", 22222]), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 3 }
       )#");
 
-  const Schema& schema = kSchemaForIteratorTests;
   const auto txn_context =
       TransactionOperationContext(TransactionId::GenerateRandom(), &txn_status_manager);
-  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   // No committed intents as of HT 2000.
   {

@@ -24,11 +24,13 @@ import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.KmsHistory;
 import java.io.File;
 import java.lang.reflect.Constructor;
 import java.nio.file.Files;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -203,13 +205,38 @@ public class EncryptionAtRestManager {
         .collect(Collectors.toList());
   }
 
+  public void addUniverseKeyMasterKeyMetadata(
+      ObjectNode backup,
+      List<ObjectNode> universeKeyRefs,
+      ArrayNode universeKeys,
+      UUID universeUUID) {
+    // Add all the universe key history.
+    universeKeyRefs.forEach(universeKeys::add);
+    // Add the master key metadata.
+    Set<UUID> distinctKmsConfigUUIDs = KmsHistory.getDistinctKmsConfigUUIDs(universeUUID);
+    if (distinctKmsConfigUUIDs.size() == 1) {
+      KmsConfig kmsConfig = KmsConfig.get(distinctKmsConfigUUIDs.iterator().next());
+      backup.set(
+          "master_key_metadata",
+          kmsConfig.keyProvider.getServiceInstance().getKeyMetadata(kmsConfig.configUUID));
+    } else {
+      LOG.debug(
+          "Found {} master keys on universe '{}''. Not adding them to backup metadata: {}.",
+          distinctKmsConfigUUIDs.size(),
+          universeUUID,
+          distinctKmsConfigUUIDs.toString());
+    }
+  }
+
   // Backup universe key metadata to file
   public void backupUniverseKeyHistory(UUID universeUUID, String storageLocation) throws Exception {
     ObjectNode backup = Json.newObject();
     ArrayNode universeKeys = backup.putArray("universe_keys");
     List<ObjectNode> universeKeyRefs = getUniverseKeyRefsForBackup(universeUUID);
     if (universeKeyRefs.size() > 0) {
-      universeKeyRefs.forEach(universeKeys::add);
+      // Add the universe key details and master key details.
+      addUniverseKeyMasterKeyMetadata(backup, universeKeyRefs, universeKeys, universeUUID);
+      // Write the backup metadata object to file.
       ObjectMapper mapper = new ObjectMapper();
       String backupContent = mapper.writeValueAsString(backup);
       File backupKeysFile = EncryptionAtRestUtil.getUniverseBackupKeysFile(storageLocation);
@@ -241,7 +268,8 @@ public class EncryptionAtRestManager {
     ArrayNode universeKeys = backup.putArray("universe_keys");
     List<ObjectNode> universeKeyRefs = getUniverseKeyRefsForBackup(universeUUID);
     if (universeKeyRefs.size() > 0) {
-      universeKeyRefs.forEach(universeKeys::add);
+      // Add the universe key details and master key details.
+      addUniverseKeyMasterKeyMetadata(backup, universeKeyRefs, universeKeys, universeUUID);
       return backup;
     }
     return null;
@@ -290,8 +318,12 @@ public class EncryptionAtRestManager {
     RestoreKeyResult result = RestoreKeyResult.RESTORE_FAILED;
     try {
       if (universeKeys != null && universeKeys.isArray()) {
-        universeKeys.forEach(restorer);
-
+        // Have to traverse arraynode in reverse, i.e. ascending order of keys created.
+        // Reverse because during backup, we save it in desc order (KmsHistory.getAllTargetKeyRefs)
+        // Found no other elegant solution without changing too much code.
+        for (int i = universeKeys.size() - 1; i >= 0; --i) {
+          restorer.accept(universeKeys.get(i));
+        }
         LOG.info("Restore universe keys succeeded!");
         result = RestoreKeyResult.RESTORE_SUCCEEDED;
       }
@@ -299,5 +331,27 @@ public class EncryptionAtRestManager {
       LOG.error("Error occurred restoring universe key history", e);
     }
     return result;
+  }
+
+  /**
+   * Find the KMS config UUID that can decrypt a given key ref (encrypted universe key). Iterates
+   * through all KMS configs on platform to verify.
+   *
+   * @param keyProvider the KMS provider.
+   * @param keyRef the encrypted universe key.
+   * @return the matching KMS config UUID if any, else null.
+   */
+  public UUID findKmsConfigFromKeyRefOrNull(KeyProvider keyProvider, byte[] keyRef) {
+    UUID kmsConfigUUID = null;
+    List<KmsConfig> allKmsConfigs = KmsConfig.listKMSProviderConfigs(keyProvider);
+    EncryptionAtRestService<? extends SupportedAlgorithmInterface> keyService =
+        getServiceInstance(keyProvider.name());
+    for (KmsConfig kmsConfig : allKmsConfigs) {
+      if (keyService.verifyKmsConfigAndKeyRef(kmsConfig.configUUID, keyRef)) {
+        kmsConfigUUID = kmsConfig.configUUID;
+        break;
+      }
+    }
+    return kmsConfigUUID;
   }
 }

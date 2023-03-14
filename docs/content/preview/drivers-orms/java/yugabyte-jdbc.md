@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: JDBC smart driver for YSQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: JDBC driver for YSQL
+description: Connect a Java application using YugabyteDB JDBC Smart Driver
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 aliases:
   - /develop/client-drivers/java/
@@ -53,7 +54,7 @@ type: docs
   </li>
 </ul>
 
-[YugabyteDB JDBC Smart Driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional [connection load balancing](../../smart-drivers/) features.
+[YugabyteDB JDBC Smart Driver](https://github.com/yugabyte/pgjdbc) is a JDBC driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional [connection load balancing](../../smart-drivers/) features.
 
 For Java applications, the JDBC driver provides database connectivity through the standard JDBC application program interface (APIs) available on the Java platform.
 
@@ -119,12 +120,14 @@ The following table describes the connection parameters required to connect, inc
 | user | User connecting to the database | yugabyte
 | password | User password | yugabyte
 | `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
+| `yb-servers-refresh-interval` | If `load_balance` is true, the interval in seconds to refresh the servers list | 300
 | `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
 
 The following is an example JDBC URL for connecting to YugabyteDB:
 
 ```sh
 jdbc:yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
+    yb-servers-refresh-interval=240& \
     topology-keys=cloud.region.zone1,cloud.region.zone2
 ```
 
@@ -132,7 +135,13 @@ After the driver establishes the initial connection, it fetches the list of avai
 
 #### Use multiple addresses
 
-You can specify multiple hosts in the connection string to provide alternative options during the initial connection in case the primary address fails. Delimit the addresses using commas, as follows:
+You can specify multiple hosts in the connection string to provide alternative options during the initial connection in case the primary address fails.
+
+{{< tip title="Tip">}}
+To obtain a list of available hosts, you can connect to any cluster node and use the `yb_servers()` YSQL function.
+{{< /tip >}}
+
+Delimit the addresses using commas, as follows:
 
 ```sh
 jdbc://yugabytedb://hostname1:port,hostname2:port,hostname3:port/database?user=yugabyte&password=yugabyte&load-balance=true& \

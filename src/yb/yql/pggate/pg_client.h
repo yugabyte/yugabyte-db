@@ -61,9 +61,10 @@ struct PerformResult {
   Status status;
   ReadHybridTime catalog_read_time;
   rpc::CallResponsePtr response;
+  HybridTime used_in_txn_limit;
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(status, catalog_read_time);
+    return YB_STRUCT_TO_STRING(status, catalog_read_time, used_in_txn_limit);
   }
 };
 
@@ -161,7 +162,7 @@ class PgClient {
   Result<bool> CheckIfPitrActive();
 
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
-      bool size_only);
+      bool size_only, uint32_t db_oid);
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DECLARE(r, data, method) \
   Status method(                             \

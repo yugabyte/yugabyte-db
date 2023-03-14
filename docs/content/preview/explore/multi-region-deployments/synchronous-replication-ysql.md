@@ -1,9 +1,9 @@
 ---
-title: Synchronous replication (3+ regions)
-headerTitle: Synchronous replication (3+ regions)
+title: Synchronous multi region (3+ regions)
+headerTitle: Synchronous multi region (3+ regions)
 linkTitle: Synchronous (3+ regions)
 description: Global data distributed using synchronous replication across regions.
-headcontent: Distribute data across regions
+headcontent: Distribute data synchronously across regions
 aliases:
   - /preview/explore/global-distribution-linux/
   - /preview/explore/global-distribution/macos
@@ -17,12 +17,12 @@ menu:
 type: docs
 ---
 
-For protection in the event of the failure of an entire cloud region, you can deploy YugabyteDB across multiple regions with a synchronously replicated multi-region cluster. In a synchronized multi-region cluster, a minimum of 3 nodes are [replicated](../../../architecture/docdb-replication/replication/) across 3 regions with a replication factor (RF) of 3. In the event of a region failure, the database cluster continues to serve data requests from the remaining regions. YugabyteDB automatically performs a failover to the nodes in the other two regions, and the tablets being failed over are evenly distributed across the two remaining regions.
+For protection in the event of the failure of an entire cloud region, you can deploy YugabyteDB across multiple regions with a synchronously replicated multi-region universe. In a synchronized multi-region universe, a minimum of three nodes are [replicated](../../../architecture/docdb-replication/replication/) across three regions with a replication factor (RF) of 3. In the event of a region failure, the universe continues to serve data requests from the remaining regions. YugabyteDB automatically performs a failover to the nodes in the other two regions, and the tablets being failed over are evenly distributed across the two remaining regions.
 
 This deployment provides the following advantages:
 
-- Resilience. Putting cluster nodes in different regions provides a higher degree of failure independence.
-- Consistency. All writes are synchronously replicated. Transactions are globally consistent.
+- Resilience - putting the universe nodes in different regions provides a higher degree of failure independence.
+- Consistency - all writes are synchronously replicated. Transactions are globally consistent.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -37,27 +37,28 @@ This deployment provides the following advantages:
       YugabyteDB Managed
     </a>
   </li>
+  <li>
+    <a href="../synchronous-replication-yba/" class="nav-link">
+      <img src="/icons/server.svg" alt="Server Icon">
+      YugabyteDB Anywhere
+    </a>
+  </li>
 </ul>
 
-This example simulates AWS regions on a local machine.
 
-If you have a previously running local cluster, [destroy it](#clean-up).
+The example included in this document simulates AWS regions on a local machine. In order to use this example, you need to [destroy](#clean-up) any running local universes.
 
-{{< note title="Setup for POCs" >}}
+You can also use the described steps for deploying universes in any public cloud, private data center, or in separate virtual machines. The following are the only differences:
 
-The steps can also be used for deploying clusters in any public cloud, private data center, or in separate virtual machines. The only differences are as follows:
+- You do not need to specify the `--advertise_address` or `--base_dir` flags.
+- You do not need to configure loopback addresses.
+- You have to replace the IP addresses in the commands with the corresponding IP addresses of your nodes.
 
-- You don't need to specify the `--advertise_address` or `--base_dir` flags.
-- You don't need to configure loopback addresses.
-- Replace the IP addresses in the commands with the corresponding IP addresses of your nodes.
+## Create a synchronized multi-region universe
 
-{{< /note >}}
+Start a three-node universe with an RF of `3` and with each replica placed in different AWS regions (`us-west-2`, `us-east-1`, `ap-northeast-1`), as follows:
 
-## Create a synchronized multi-region cluster
-
-Start a 3-node cluster with a replication factor (RF) of `3`, and each replica placed in different AWS regions (`us-west-2`, `us-east-1`, `ap-northeast-1`) as follows:
-
-1. Create a single node cluster as follows:
+1. Create a single-node universe by executing the following command:
 
     ```sh
     ./bin/yugabyted start \
@@ -67,14 +68,14 @@ Start a 3-node cluster with a replication factor (RF) of `3`, and each replica p
                     --fault_tolerance region
     ```
 
-1. When creating a local cluster on MacOS, the additional nodes need loopback addresses configured:
+1. If you are creating a local universe on MacOS, the additional nodes need loopback addresses configured, as follows:
 
     ```sh
     sudo ifconfig lo0 alias 127.0.0.2
     sudo ifconfig lo0 alias 127.0.0.3
     ```
 
-1. Join two more nodes with the previous node. By default, [yugabyted](../../../reference/configuration/yugabyted/) creates a cluster with a replication factor of `3` when the third node is added.
+1. Join two more nodes with the previous node, as follows:
 
     ```sh
     ./bin/yugabyted start \
@@ -94,19 +95,21 @@ Start a 3-node cluster with a replication factor (RF) of `3`, and each replica p
                     --join 127.0.0.1
     ```
 
-1. After starting the yugabyted processes on all the nodes, configure the data placement constraint of the cluster as follows:
+    By default, [yugabyted](../../../reference/configuration/yugabyted/) creates a universe with an RF of `3` when the third node is added.
+
+1. After starting the yugabyted processes on all the nodes, configure the data placement constraint of the universe, as follows:
 
     ```sh
     ./bin/yugabyted configure data_placement --base_dir=/tmp/ybd1 --fault_tolerance=region
     ```
 
-    **If you are running a version prior to 2.17.1.0**, run the following command instead:
+    If you are running a YugabyteDB version earlier than 2.17.1.0, execute the following command instead:
 
     ```sh
     ./bin/yugabyted configure --base_dir=/tmp/ybd1 --fault_tolerance=region
     ```
 
-The [configure](../../../reference/configuration/yugabyted/#configure) command determines the data placement constraint based on the `--cloud_location` of each node in the cluster. If three or more regions are available in the cluster, `configure` configures the cluster to survive at least one region failure. Otherwise, it outputs a warning message. The command can be executed on any node where you already started YugabyteDB.
+The [configure](../../../reference/configuration/yugabyted/#configure) command determines the data placement constraint based on the `--cloud_location` of each node in the universe. If three or more regions are available in the universe, `configure` configures the universe to survive at least one region failure. Otherwise, it outputs a warning message. The command can be executed on any node where you already started YugabyteDB.
 
 ## Review the deployment
 
@@ -120,7 +123,7 @@ Follow the [setup instructions](../../#set-up-yb-workload-simulator) to install 
 
 ### Configure the smart driver
 
-The YugabyteDB JDBC Smart Driver performs uniform load balancing by default, meaning it uniformly distributes application connections across all the nodes in the cluster. However, in a multi-region cluster, it's more efficient to target regions closest to your application.
+The YugabyteDB JDBC Smart Driver performs uniform load balancing by default, meaning it uniformly distributes application connections across all the nodes in the universe. However, in a multi-region universe, it is more efficient to target regions closest to your application.
 
 You can configure the smart driver with [topology load balancing](../../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) to limit connections to the closest region.
 
@@ -130,9 +133,9 @@ To turn on topology load balancing, start the application as usual, adding the f
 -Dspring.datasource.hikari.data-source-properties.topologyKeys=<cloud.region.zone>
 ```
 
-Where `cloud.region.zone` is the location of the zone where your application is hosted.
+*cloud.region.zone* represents the location of the zone where your application is hosted.
 
-If you are running the application locally, set the value to the cloud location of the node you are connecting to. For example, if you are connecting to 127.0.0.1, set the value to `aws.us-west-2.us-west-2a` as follows:
+If you are running the application locally, set the value to the cloud location of the node to which you are connecting. For example, if you are connecting to 127.0.0.1, set the value to `aws.us-west-2.us-west-2a`, as follows:
 
 ```sh
 java -jar \
@@ -141,31 +144,31 @@ java -jar \
     ./yb-workload-sim-0.0.3.jar
 ```
 
-After you are connected, [start a workload](../../#start-a-read-and-write-workload).
+After the connection has been established, [start a workload](../../#start-a-read-and-write-workload).
 
-## View cluster activity
+## View the universe activity
 
-To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
+To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as latency and throughput charts for the running workload.
 
-You should now see some read and write load on the [tablet servers page](http://localhost:7000/tablet-servers), as per the following illustration:
+Expect to see some read and write load on the [tablet servers page](http://localhost:7000/tablet-servers), as per the following illustration:
 
 ![Multi-region cluster load](/images/ce/online-reconfig-multi-zone-load.png)
 
-## Tuning latencies
+## Tune latencies
 
-Latency in a multi-region cluster depends on the distance/network packet transfer times between the nodes of the cluster and between the cluster and the client. Because the [tablet leader](../../../architecture/core-functions/write-path/#preparation-of-the-operation-for-replication-by-tablet-leader) replicates write operations across a majority of tablet peers before sending a response to the client, all writes involve cross-region communication between tablet peers.
+Latency in a multi-region universe depends on the distance and network packet transfer times between the nodes of the universe as well as between the universe and the client. Because the [tablet leader](../../../architecture/core-functions/write-path/#preparation-of-the-operation-for-replication-by-tablet-leader) replicates write operations across a majority of tablet peers before sending a response to the client, all writes involve cross-region communication between tablet peers.
 
-For best performance as well as lower data transfer costs, you want to minimize transfers between providers, and between provider regions. You do this by locating your cluster as close to your applications as possible:
+For best performance and lower data transfer costs, you want to minimize transfers between providers and between provider regions. You do this by placing your universe as close to your applications as possible, as follows:
 
 - Use the same cloud provider as your application.
-- Locate your cluster in the same region as your application.
-- Peer your cluster with the VPC hosting your application.
+- Place your universe in the same region as your application.
+- Peer your universe with the Virtual Private Cloud (VPC) hosting your application.
 
 ### Follower reads
 
-YugabyteDB offers tunable global reads that allow read requests to trade off some consistency for lower read latency. By default, read requests in a YugabyteDB cluster are handled by the leader of the Raft group associated with the target tablet to ensure strong consistency. In situations where you are willing to sacrifice some consistency in favor of lower latency, you can choose to read from a tablet follower that is closer to the client rather than from the leader. YugabyteDB also allows you to specify the maximum staleness of data when reading from tablet followers.
+YugabyteDB offers tunable global reads that allow read requests to trade off some consistency for lower read latency. By default, read requests in a YugabyteDB universe are handled by the leader of the Raft group associated with the target tablet to ensure strong consistency. If you are willing to sacrifice some consistency in favor of lower latency, you can choose to read from a tablet follower that is closer to the client rather than from the leader. YugabyteDB also allows you to specify the maximum staleness of data when reading from tablet followers.
 
-For more information on follower reads, refer to the [Follower reads](../../ysql-language-features/going-beyond-sql/follower-reads-ysql/) example.
+For more information, see [Follower reads examples](../../ysql-language-features/going-beyond-sql/follower-reads-ysql/).
 
 ### Preferred region
 
@@ -176,24 +179,16 @@ For multi-row or multi-table transactional operations, colocating the leaders in
 The following command sets the preferred zone to `aws.us-west-2.us-west-2a`:
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
     set_preferred_zones  \
     aws.us-west-2.us-west-2a
 ```
 
-You should see the read and write load on the [tablet servers page](http://localhost:7000/tablet-servers) move to the preferred region, as per the following illustration:
+Expect to see the read and write load on the [tablet servers page](http://localhost:7000/tablet-servers) move to the preferred region, as per the following illustration:
 
 ![Multi-region cluster preferred load](/images/ce/online-reconfig-multi-zone-pref-load.png)
 
 When complete, the load is handled exclusively by the preferred region.
 
-## Clean up
-
-To destroy the local cluster, do the following:
-
-```sh
-./bin/yugabyted destroy --base_dir=/tmp/ybd1
-./bin/yugabyted destroy --base_dir=/tmp/ybd2
-./bin/yugabyted destroy --base_dir=/tmp/ybd3
-```
+{{% explore-cleanup-local %}}

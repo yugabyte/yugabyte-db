@@ -2,57 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.TaskExecutor;
-import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
-import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.TaskType;
-import junitparams.JUnitParamsRunner;
-import junitparams.Parameters;
-import junitparams.converters.Nullable;
-import lombok.extern.slf4j.Slf4j;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.Mock;
-import org.mockito.Mockito;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
-import play.api.Play;
-
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.aMapWithSize;
 import static org.hamcrest.Matchers.anEmptyMap;
@@ -72,13 +21,67 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 
-@Slf4j
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.TaskExecutor;
+import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
+import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import junitparams.converters.Nullable;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import play.api.Play;
+
 @RunWith(JUnitParamsRunner.class)
 public class UniverseTaskBaseTest extends FakeDBApplication {
 
   @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
 
   @Mock private BaseTaskDependencies baseTaskDependencies;
+
+  @Mock private PlatformExecutorFactory platformExecutorFactory;
+
+  @Mock private ExecutorService executorService;
 
   private static final int NUM_NODES = 3;
   private TestUniverseTaskBase universeTaskBase;
@@ -87,6 +90,8 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
   public void setup() {
     when(baseTaskDependencies.getTaskExecutor())
         .thenReturn(Play.current().injector().instanceOf(TaskExecutor.class));
+    when(baseTaskDependencies.getExecutorFactory()).thenReturn(platformExecutorFactory);
+    when(platformExecutorFactory.createExecutor(any(), any())).thenReturn(executorService);
     universeTaskBase = new TestUniverseTaskBase();
   }
 

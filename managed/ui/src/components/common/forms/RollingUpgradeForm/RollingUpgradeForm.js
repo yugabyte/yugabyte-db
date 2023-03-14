@@ -77,6 +77,8 @@ export default class RollingUpgradeForm extends Component {
     let systemdBoolean = false;
 
     const payload = {};
+    payload.clusters = [];
+    const asyncCluster = _.cloneDeep(getReadOnlyCluster(clusters));
     switch (visibleModal) {
       case 'softwareUpgradesModal': {
         payload.taskType = 'Software';
@@ -126,6 +128,12 @@ export default class RollingUpgradeForm extends Component {
       case 'rollingRestart': {
         payload.taskType = 'Restart';
         payload.upgradeOption = 'Rolling';
+        //send read replica clsuter details in payload only for k8s universe
+        if (
+          isKubernetesUniverse(this.props.universe.currentUniverse.data) &&
+          isNonEmptyObject(asyncCluster)
+        )
+          payload.clusters.push(asyncCluster);
         break;
       }
       case 'resizeNodesModal': {
@@ -178,7 +186,7 @@ export default class RollingUpgradeForm extends Component {
       primaryCluster.userIntent.azOverrides = values.azOverrides;
     }
 
-    payload.clusters = [primaryCluster];
+    payload.clusters = [primaryCluster, ...payload.clusters];
     payload.sleepAfterMasterRestartMillis = values.timeDelay * 1000;
     payload.sleepAfterTServerRestartMillis = values.timeDelay * 1000;
     if (overrideIntentParams) {

@@ -121,6 +121,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Backup UUID")
   public UUID backupUuid = null;
 
+  @ApiModelProperty(value = "Schedule Name")
+  public String scheduleName = null;
+
   @ApiModelProperty(value = "Should table backup errors be ignored")
   public Boolean ignoreErrors = false;
 
@@ -151,6 +154,9 @@ public class BackupTableParams extends TableManagerParams {
   // For each list item
   public long timeTakenPartial = 0L;
 
+  @ApiModelProperty(hidden = true)
+  public long thisBackupSubTaskStartTime = 0L;
+
   @JsonIgnore
   public BackupTableParams(BackupRequestParams backupRequestParams) {
     this.customerUuid = backupRequestParams.customerUUID;
@@ -166,6 +172,7 @@ public class BackupTableParams extends TableManagerParams {
     this.backupType = backupRequestParams.backupType;
     this.isFullBackup = CollectionUtils.isEmpty(backupRequestParams.keyspaceTableList);
     this.scheduleUUID = backupRequestParams.scheduleUUID;
+    this.scheduleName = backupRequestParams.scheduleName;
     this.disableChecksum = backupRequestParams.disableChecksum;
     this.disableMultipart = backupRequestParams.disableMultipart;
     this.useTablespaces = backupRequestParams.useTablespaces;
@@ -200,6 +207,7 @@ public class BackupTableParams extends TableManagerParams {
     this.backupType = tableParams.backupType;
     this.isFullBackup = tableParams.isFullBackup;
     this.scheduleUUID = tableParams.scheduleUUID;
+    this.scheduleName = tableParams.scheduleName;
     this.disableChecksum = tableParams.disableChecksum;
     this.useTablespaces = tableParams.useTablespaces;
     this.disableParallelism = tableParams.disableParallelism;

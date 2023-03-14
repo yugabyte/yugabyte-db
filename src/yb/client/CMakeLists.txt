@@ -54,6 +54,8 @@ set(CLIENT_SRCS
   permissions.cc
   session.cc
   schema.cc
+  stateful_services/stateful_service_client_base.cc
+  stateful_services/test_echo_service_client.cc
   table.cc
   table_alterer.cc
   table_creator.cc
@@ -80,11 +82,13 @@ set(CLIENT_LIBS
   server_process
   tserver_proto
   tserver_service_proto
+  test_echo_service_proto
   tserver_util
   yb_util
   gutil
   yrpc
-  yb_docdb_encoding)
+  yb_docdb_encoding
+  yb_docdb_encoding_util)
 
 # We customize the output name/directory of the exported library so that we can
 # call it "yb_client" without it colliding with the regular library.
@@ -118,7 +122,8 @@ ADD_YB_LIBRARY(ql-dml-test-base
 
 # Tests
 
-set(YB_TEST_LINK_LIBS integration-tests rpc_test_util ql-dml-test-base ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS
+    yb_docdb_test_common integration-tests rpc_test_util ql-dml-test-base ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(backup-txn-test)
 ADD_YB_TEST(client-test)
 ADD_YB_TEST(client-unittest)

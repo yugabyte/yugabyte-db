@@ -3,6 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
@@ -47,6 +48,7 @@ import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -195,6 +197,25 @@ public class PitrControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreatePitrConfigWithUniverseUpdateInProgress() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
+    details.updateInProgress = true;
+    defaultUniverse.setUniverseDetails(details);
+    defaultUniverse.save();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("retentionPeriodInSeconds", 7 * 86400L);
+    bodyJson.put("intervalInSeconds", 86400L);
+    Result r =
+        assertPlatformException(
+            () -> createPitrConfig(defaultUniverse.universeUUID, "YSQL", "yugabyte", bodyJson));
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertBadRequest(r, "Cannot enable PITR when the universe is in locked state");
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
   public void testCreatePitrConfigWithNegativeRetentionPeriod() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
@@ -291,16 +312,18 @@ public class PitrControllerTest extends FakeDBApplication {
     PitrConfig pitr1 = PitrConfig.create(scheduleUUID1, params1);
     List<SnapshotInfo> snapshotList1 = new ArrayList<>();
     UUID snapshotUUID11 = UUID.randomUUID();
-    long snapshotTime11 = System.currentTimeMillis() + 2 * 1000 * 86400L;
+    long currentTime11 = System.currentTimeMillis();
     SnapshotInfo snapshot11 =
         new SnapshotInfo(
-            snapshotUUID11, snapshotTime11, snapshotTime11 - 1000 * 86400L, State.COMPLETE);
+            snapshotUUID11,
+            currentTime11 + 1000 * 86500L,
+            currentTime11 + 1000 * 100L,
+            State.COMPLETE);
     snapshotList1.add(snapshot11);
     UUID snapshotUUID12 = UUID.randomUUID();
-    long snapshotTime12 = System.currentTimeMillis() + 1000 * 86400L;
     SnapshotInfo snapshot12 =
         new SnapshotInfo(
-            snapshotUUID12, snapshotTime12, snapshotTime12 - 1000 * 86400L, State.COMPLETE);
+            snapshotUUID12, currentTime11 + 1000 * 100L, currentTime11, State.COMPLETE);
     snapshotList1.add(snapshot12);
     SnapshotScheduleInfo schedule1 =
         new SnapshotScheduleInfo(scheduleUUID1, 86400L, 7L * 86400L, snapshotList1);
@@ -318,16 +341,18 @@ public class PitrControllerTest extends FakeDBApplication {
     PitrConfig pitr2 = PitrConfig.create(scheduleUUID2, params2);
     List<SnapshotInfo> snapshotList2 = new ArrayList<>();
     UUID snapshotUUID21 = UUID.randomUUID();
-    long snapshotTime21 = System.currentTimeMillis() + 2 * 1000 * 86400L;
+    long currentTime21 = System.currentTimeMillis();
     SnapshotInfo snapshot21 =
         new SnapshotInfo(
-            snapshotUUID21, snapshotTime21, snapshotTime21 - 1000 * 86400L, State.FAILED);
+            snapshotUUID21,
+            currentTime21 + 1000 * 86500L,
+            currentTime21 + 1000 * 100L,
+            State.FAILED);
     snapshotList2.add(snapshot21);
     UUID snapshotUUID22 = UUID.randomUUID();
-    long snapshotTime22 = System.currentTimeMillis() + 1000 * 86400L;
     SnapshotInfo snapshot22 =
         new SnapshotInfo(
-            snapshotUUID22, snapshotTime22, snapshotTime22 - 1000 * 86400L, State.COMPLETE);
+            snapshotUUID22, currentTime21 + 1000 * 100L, currentTime21, State.COMPLETE);
     snapshotList2.add(snapshot22);
     SnapshotScheduleInfo schedule2 =
         new SnapshotScheduleInfo(scheduleUUID2, 86400L, 7L * 86400L, snapshotList2);
@@ -342,19 +367,13 @@ public class PitrControllerTest extends FakeDBApplication {
     params3.customerUUID = defaultCustomer.uuid;
     params3.keyspaceName = "cassandra";
     params3.tableType = TableType.YQL_TABLE_TYPE;
-    long currentTime3 = System.currentTimeMillis();
     PitrConfig pitr3 = PitrConfig.create(scheduleUUID3, params3);
+    long currentTime3 = System.currentTimeMillis();
     List<SnapshotInfo> snapshotList3 = new ArrayList<>();
     UUID snapshotUUID31 = UUID.randomUUID();
-    long snapshotTime31 = System.currentTimeMillis() + 1000 * 86400L;
     SnapshotInfo snapshot31 =
-        new SnapshotInfo(
-            snapshotUUID31, snapshotTime31, snapshotTime31 - 1000 * 86400L, State.COMPLETE);
+        new SnapshotInfo(snapshotUUID31, currentTime3 + 1000 * 100L, currentTime3, State.COMPLETE);
     snapshotList3.add(snapshot31);
-    UUID snapshotUUID32 = UUID.randomUUID();
-    long snapshotTime32 = System.currentTimeMillis();
-    SnapshotInfo snapshot32 = new SnapshotInfo(snapshotUUID32, snapshotTime32, 0L, State.FAILED);
-    snapshotList3.add(snapshot32);
     SnapshotScheduleInfo schedule3 =
         new SnapshotScheduleInfo(scheduleUUID3, 86400L, 7L * 86400L, snapshotList3);
     scheduleInfoList.add(schedule3);
@@ -391,8 +410,8 @@ public class PitrControllerTest extends FakeDBApplication {
         assertTrue(currentTime3 < maxTime);
         assertEquals("FAILED", state);
       } else if (scheduleUUID.equals(scheduleUUID3)) {
-        assertTrue(currentTime3 < minTime && minTime > snapshotTime32 - 1000 * 86400L);
-        assertEquals("FAILED", state);
+        assertTrue(currentTime3 <= minTime);
+        assertEquals("COMPLETE", state);
       } else {
         Assert.fail();
       }
@@ -621,6 +640,35 @@ public class PitrControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testDeletePitrConfigWithUniverseUpdateInProgress() {
+    UUID scheduleUUID3 = UUID.randomUUID();
+    CreatePitrConfigParams params3 = new CreatePitrConfigParams();
+    params3.retentionPeriodInSeconds = 7 * 86400L;
+    params3.intervalInSeconds = 86400L;
+    params3.universeUUID = defaultUniverse.universeUUID;
+    params3.customerUUID = defaultCustomer.uuid;
+    params3.keyspaceName = "cassandra";
+    params3.tableType = TableType.YQL_TABLE_TYPE;
+    PitrConfig pitr3 = PitrConfig.create(scheduleUUID3, params3);
+
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
+    details.updateInProgress = true;
+    defaultUniverse.setUniverseDetails(details);
+    defaultUniverse.save();
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("retentionPeriodInSeconds", 7 * 86400L);
+    bodyJson.put("intervalInSeconds", 86400L);
+    Result r =
+        assertPlatformException(
+            () ->
+                pitrController.deletePitrConfig(
+                    defaultCustomer.uuid, defaultUniverse.universeUUID, scheduleUUID3));
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertBadRequest(r, "Cannot delete PITR config when the universe is in locked state");
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
   public void testDeletePitrConfigWithIncompatibleUniverse() {
     UUID scheduleUUID3 = UUID.randomUUID();
     UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
@@ -712,6 +760,27 @@ public class PitrControllerTest extends FakeDBApplication {
             () -> performPitr(defaultUniverse.universeUUID, Json.toJson(params)));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertEquals(BAD_REQUEST, r.status());
+    verify(mockCommissioner, times(0)).submit(any(), any());
+    assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testPerformPitrWithUniverseUpdateInProgress() throws Exception {
+    RestoreSnapshotScheduleParams params = new RestoreSnapshotScheduleParams();
+    params.universeUUID = defaultUniverse.universeUUID;
+    params.pitrConfigUUID = UUID.randomUUID();
+    params.restoreTimeInMillis = System.currentTimeMillis();
+
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
+    details.updateInProgress = true;
+    defaultUniverse.setUniverseDetails(details);
+    defaultUniverse.save();
+
+    Result r =
+        assertPlatformException(
+            () -> performPitr(defaultUniverse.universeUUID, Json.toJson(params)));
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertBadRequest(r, "Cannot perform PITR when the universe is in locked state");
     verify(mockCommissioner, times(0)).submit(any(), any());
     assertAuditEntry(0, defaultCustomer.uuid);
   }

@@ -499,6 +499,7 @@ bool		row_security;
 bool		check_function_bodies = true;
 bool		default_with_oids = false;
 bool		session_auth_is_superuser;
+bool		yb_enable_memory_tracking = true;
 
 int			log_min_error_statement = ERROR;
 int			log_min_messages = WARNING;
@@ -507,6 +508,7 @@ int         log_min_duration_sample = -1;
 int			log_min_duration_statement = -1;
 int			log_temp_files = -1;
 double      log_statement_sample_rate = 1.0;
+double      log_xact_sample_rate = 0;
 int			trace_recovery_messages = LOG;
 
 int			temp_file_limit = -1;
@@ -2167,6 +2169,18 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_enable_memory_tracking", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enables tracking of memory consumption of the PostgreSQL "
+						  "process. This enhances garbage collection behaviour and memory usage "
+						  "observability."),
+			NULL
+		},
+		&yb_enable_memory_tracking,
+		true,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -3774,6 +3788,18 @@ static struct config_real ConfigureNamesReal[] =
 		&RetryBackoffMultiplier,
 		2.0, 1.0, 1e10,
 		check_backoff_multiplier, NULL, NULL
+	},
+
+	{
+		{"log_transaction_sample_rate", PGC_SUSET, LOGGING_WHEN,
+			gettext_noop("Set the fraction of transactions to log for new transactions."),
+			gettext_noop("Logs all statements from a fraction of transactions. "
+						 "Use a value between 0.0 (never log) and 1.0 (log all "
+						 "statements for all transactions).")
+		},
+		&log_xact_sample_rate,
+		0.0, 0.0, 1.0,
+		NULL, NULL, NULL
 	},
 
 	{

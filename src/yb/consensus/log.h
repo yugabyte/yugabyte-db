@@ -247,9 +247,19 @@ class Log : public RefCountedThreadSafe<Log> {
   // readable segments. Note that this assumes there is already a valid active_segment_.
   Status AllocateSegmentAndRollOver();
 
+  // When WAL restarts from a crash, instead of allocating a new segment, we try to reuse the
+  // left in-progress segment as writable active_segment_. If return value is false, it means
+  // we fail to reuse the segment because the size of the segment is too large.
+  // If true, this function restored footer_builder_, log_index_, and other attributes of WAl,
+  // then reopen the file as writable active_segment_.
+  Result<bool>  ReuseAsActiveSegment(
+      const scoped_refptr<ReadableLogSegment>& recover_segment) EXCLUDES(active_segment_mutex_);
+
   // For a log created with CreateNewSegment::kFalse, this is used to finish log initialization by
-  // allocating a new segment.
-  Status EnsureInitialNewSegmentAllocated();
+  // either allocating a new segment or reused left in-progress segment that doesn't have footer.
+  Status EnsureSegmentInitialized();
+
+  Status EnsureSegmentInitializedUnlocked() REQUIRES(state_lock_);
 
   // Returns the total size of the current segments, in bytes.
   // Returns 0 if the log is shut down.
@@ -314,6 +324,8 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Waits until all entries flushed, then reset last received op id to specified one.
   Status ResetLastSyncedEntryOpId(const OpId& op_id);
+
+  Status TEST_WriteCorruptedEntryBatchAndSync();
 
  private:
   friend class LogTest;

@@ -37,6 +37,8 @@ const (
 	GetVersionEndpoint      = "/api/app_version"
 	UpgradeScript           = "node-agent-installer.sh"
 	InstallScript           = "node-agent-installer.sh"
+	RequestIdHeader         = "X-REQUEST-ID"
+
 	// Cert names.
 	NodeAgentCertFile = "node_agent.crt"
 	NodeAgentKeyFile  = "node_agent.key"
@@ -56,24 +58,35 @@ const (
 	PlatformCaCertPathKey     = "platform.ca_cert_path"
 
 	// Node config keys.
-	NodeIpKey           = "node.ip"
-	NodePortKey         = "node.port"
-	RequestTimeoutKey   = "node.request_timeout_sec"
-	NodeNameKey         = "node.name"
-	NodeAgentIdKey      = "node.agent.uuid"
-	NodeIdKey           = "node.uuid"
-	NodeInstanceTypeKey = "node.instance_type"
-	NodeAzIdKey         = "node.azid"
-	NodeRegionKey       = "node.region"
-	NodeZoneKey         = "node.zone"
-	NodeLoggerKey       = "node.log"
-	NodeAgentRestartKey = "node.restart"
+	NodeIpKey                 = "node.ip"
+	NodePortKey               = "node.port"
+	RequestTimeoutKey         = "node.request_timeout_sec"
+	NodeNameKey               = "node.name"
+	NodeAgentIdKey            = "node.agent.uuid"
+	NodeIdKey                 = "node.uuid"
+	NodeInstanceTypeKey       = "node.instance_type"
+	NodeAzIdKey               = "node.azid"
+	NodeRegionKey             = "node.region"
+	NodeZoneKey               = "node.zone"
+	NodeLoggerKey             = "node.log"
+	NodeAgentRestartKey       = "node.restart"
+	NodeAgentLogLevelKey      = "node.log_level"
+	NodeAgentLogMaxMbKey      = "node.log_max_mb"
+	NodeAgentLogMaxBackupsKey = "node.log_max_backups"
+	NodeAgentLogMaxDaysKey    = "node.log_max_days"
+)
+
+const (
+	CorrelationId ContextKey = "correlation-id"
 )
 
 var (
-	homeDirectory   *string
-	onceLoadHomeDir = &sync.Once{}
+	nodeAgentHome         string
+	onceLoadNodeAgentHome = &sync.Once{}
 )
+
+// ContextKey is the key type go context values.
+type ContextKey string
 
 type Handler func(context.Context) (any, error)
 
@@ -182,17 +195,14 @@ func PlatformValidateNodeInstanceEndpoint(cuuid string, azid string) string {
 
 // Returns the home directory.
 func MustGetHomeDirectory() string {
-	if homeDirectory == nil {
-		onceLoadHomeDir.Do(func() {
-			homeDirName, err := os.UserHomeDir()
-			if err != nil {
-				panic("Unable to fetch the Home Directory")
-			} else {
-				homeDirectory = &homeDirName
-			}
-		})
-	}
-	return *homeDirectory + nodeAgentDir
+	onceLoadNodeAgentHome.Do(func() {
+		userHome, err := os.UserHomeDir()
+		if err != nil {
+			panic(fmt.Sprintf("Unable to fetch the Home Directory - %s", err.Error()))
+		}
+		nodeAgentHome = userHome + nodeAgentDir
+	})
+	return nodeAgentHome
 }
 
 // Returns the Path to Preflight Checks script
@@ -266,4 +276,17 @@ func UserInfo(username string) (*user.User, uint32, uint32, error) {
 		return nil, 0, 0, err
 	}
 	return userAcc, uint32(uid), uint32(gid), nil
+}
+
+// CorrelationID returns the correlation ID from the context.
+func CorrelationID(ctx context.Context) string {
+	if v := ctx.Value(CorrelationId); v != nil {
+		return v.(string)
+	}
+	return ""
+}
+
+// WithCorrelationID creates a child context with correlation ID.
+func WithCorrelationID(ctx context.Context, corrId string) context.Context {
+	return context.WithValue(ctx, CorrelationId, corrId)
 }

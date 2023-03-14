@@ -37,6 +37,7 @@ class ExternalTxnIntentsState;
 class HistoryRetentionPolicy;
 class IntentAwareIterator;
 class IntentAwareIteratorIf;
+class IntentIterator;
 class KeyBytes;
 class KeyEntryValue;
 class ManualHistoryRetentionPolicy;

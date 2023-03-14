@@ -10,8 +10,12 @@ import com.google.inject.Inject;
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentBlockingStub;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentStub;
@@ -23,6 +27,7 @@ import com.yugabyte.yw.nodeagent.Server.FileInfo;
 import com.yugabyte.yw.nodeagent.Server.PingRequest;
 import com.yugabyte.yw.nodeagent.Server.PingResponse;
 import com.yugabyte.yw.nodeagent.Server.UpdateRequest;
+import com.yugabyte.yw.nodeagent.Server.UpdateResponse;
 import com.yugabyte.yw.nodeagent.Server.UpgradeInfo;
 import com.yugabyte.yw.nodeagent.Server.UploadFileRequest;
 import com.yugabyte.yw.nodeagent.Server.UploadFileResponse;
@@ -85,13 +90,17 @@ public class NodeAgentClient {
   private final Config appConfig;
   private final ChannelFactory channelFactory;
 
+  private final RuntimeConfGetter confGetter;
+
   @Inject
-  public NodeAgentClient(Config appConfig) {
-    this(appConfig, null);
+  public NodeAgentClient(Config appConfig, RuntimeConfGetter confGetter) {
+    this(appConfig, confGetter, null);
   }
 
-  public NodeAgentClient(Config appConfig, ChannelFactory channelFactory) {
+  public NodeAgentClient(
+      Config appConfig, RuntimeConfGetter confGetter, ChannelFactory channelFactory) {
     this.appConfig = appConfig;
+    this.confGetter = confGetter;
     this.channelFactory =
         channelFactory == null
             ? config -> ChannelFactory.getDefaultChannel(config)
@@ -263,11 +272,14 @@ public class NodeAgentClient {
       return throwable;
     }
 
-    public void waitFor() {
+    public void waitFor() throws Throwable {
       try {
         latch.await();
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
+      }
+      if (throwable != null) {
+        throw throwable;
       }
     }
   }
@@ -354,6 +366,8 @@ public class NodeAgentClient {
     cmdParams.add(String.valueOf(nodeAgent.port));
     cmdParams.add("--node_agent_cert_path");
     cmdParams.add(nodeAgent.getCaCertFilePath().toString());
+    cmdParams.add("--node_agent_home");
+    cmdParams.add(nodeAgent.home);
     if (sensitiveCmdParams == null) {
       cmdParams.add("--node_agent_auth_token");
       cmdParams.add(getNodeAgentJWT(nodeAgent));
@@ -362,8 +376,8 @@ public class NodeAgentClient {
     }
   }
 
-  public Optional<NodeAgent> maybeGetNodeAgentClient(String ip) {
-    if (isClientEnabled()) {
+  public Optional<NodeAgent> maybeGetNodeAgent(String ip, Provider provider) {
+    if (isClientEnabled(provider)) {
       Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(ip);
       if (optional.isPresent() && optional.get().state != State.REGISTERING) {
         return optional;
@@ -372,8 +386,16 @@ public class NodeAgentClient {
     return Optional.empty();
   }
 
-  public boolean isClientEnabled() {
-    return appConfig.getBoolean(NODE_AGENT_CLIENT_ENABLED_PROPERTY);
+  public boolean isClientEnabled(Provider provider) {
+    return confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient);
+  }
+
+  public boolean isAnsibleOffloadingEnabled(Provider provider, String nodeAgentVersion) {
+    String supportedVersion =
+        confGetter.getGlobalConf(GlobalConfKeys.ansibleOffloadSupportedVersion);
+    return isClientEnabled(provider)
+        && confGetter.getConfForScope(provider, ProviderConfKeys.enableAnsibleOffloading)
+        && Util.compareYbVersions(nodeAgentVersion, supportedVersion) >= 0;
   }
 
   private ManagedChannel getManagedChannel(NodeAgent nodeAgent, boolean enableTls) {
@@ -448,15 +470,14 @@ public class NodeAgentClient {
     if (StringUtils.isNotBlank(user)) {
       builder.setUser(user);
     }
-    stub.executeCommand(builder.build(), responseObserver);
-    responseObserver.waitFor();
-    Throwable throwable = responseObserver.getThrowable();
-    if (throwable != null) {
+    try {
+      stub.executeCommand(builder.build(), responseObserver);
+      responseObserver.waitFor();
+      return responseObserver.getStdOut();
+    } catch (Throwable e) {
       log.error("Error in running command. Error: {}", responseObserver.stdErr);
-      throw new RuntimeException(
-          "Command execution failed. Error: " + throwable.getMessage(), throwable);
+      throw new RuntimeException("Command execution failed. Error: " + e.getMessage(), e);
     }
-    return responseObserver.getStdOut();
   }
 
   public void uploadFile(NodeAgent nodeAgent, String inputFile, String outputFile) {
@@ -493,7 +514,7 @@ public class NodeAgentClient {
       }
       requestObserver.onCompleted();
       responseObserver.waitFor();
-    } catch (Exception e) {
+    } catch (Throwable e) {
       throw new RuntimeException(
           String.format(
               "Error in uploading file %s to %s. Error: %s", inputFile, outputFile, e.getMessage()),
@@ -518,7 +539,7 @@ public class NodeAgentClient {
       }
       stub.downloadFile(builder.build(), responseObserver);
       responseObserver.waitFor();
-    } catch (IOException e) {
+    } catch (Throwable e) {
       throw new RuntimeException(
           String.format(
               "Error in downloading file %s to %s. Error: %s",
@@ -541,9 +562,11 @@ public class NodeAgentClient {
             .build());
   }
 
-  public void finalizeUpgrade(NodeAgent nodeAgent) {
+  public String finalizeUpgrade(NodeAgent nodeAgent) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     NodeAgentBlockingStub stub = NodeAgentGrpc.newBlockingStub(channel);
-    stub.update(UpdateRequest.newBuilder().setState(State.UPGRADED.name()).build());
+    UpdateResponse response =
+        stub.update(UpdateRequest.newBuilder().setState(State.UPGRADED.name()).build());
+    return response.getHome();
   }
 }

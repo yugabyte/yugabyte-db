@@ -10,7 +10,7 @@ import (
 
 func TestScheduler(t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
-	instance := GetInstance(ctx)
+	instance := GetInstance()
 	ch := make(chan int, 1)
 	start := time.Now()
 	instance.Schedule(ctx, time.Second*2, func(ctx context.Context) (any, error) {

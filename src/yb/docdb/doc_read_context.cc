@@ -17,13 +17,14 @@
 
 namespace yb::docdb {
 
-DocReadContext::DocReadContext(const std::string& log_prefix)
-    : log_prefix_(log_prefix) {
+DocReadContext::DocReadContext(const std::string& log_prefix, TableType table_type)
+    : schema_packing_storage(table_type), log_prefix_(log_prefix) {
 }
 
-DocReadContext::DocReadContext(const std::string& log_prefix, const Schema& schema_,
-                               SchemaVersion schema_version)
-    : schema(schema_), log_prefix_(log_prefix) {
+DocReadContext::DocReadContext(
+    const std::string& log_prefix, TableType table_type, const Schema& schema_,
+    SchemaVersion schema_version)
+    : schema(schema_), schema_packing_storage(table_type), log_prefix_(log_prefix) {
   schema_packing_storage.AddSchema(schema_version, schema_);
   LOG_IF_WITH_PREFIX(INFO, schema_version != 0)
       << "DocReadContext, from schema, version: " << schema_version;

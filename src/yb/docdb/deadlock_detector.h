@@ -24,10 +24,17 @@
 namespace yb {
 namespace tablet {
 
-using BlockerData = std::vector<BlockingTransactionData>;
+// Structure holding the required data of each blocker transaction.
+struct BlockerTransactionInfo {
+    TransactionId id;
+    TabletId status_tablet;
+    std::shared_ptr<const SubtxnSetAndPB> blocking_subtxn_info = nullptr;
+};
+
+using BlockerData = std::vector<BlockerTransactionInfo>;
 struct WaiterData {
     HybridTime wait_start_time;
-    BlockerData blockers;
+    std::shared_ptr<BlockerData> blockers;
 };
 using Waiters = std::unordered_map<TransactionId,
                                    std::shared_ptr<WaiterData>,
@@ -39,6 +46,8 @@ class TransactionAbortController {
  public:
   virtual void Abort(const TransactionId& transaction_id, TransactionStatusCallback callback) = 0;
   virtual void RemoveInactiveTransactions(Waiters* waiters) = 0;
+  virtual bool IsAnySubtxnActive(const TransactionId& transaction_id,
+                                 const SubtxnSet& subtxn_set) = 0;
   virtual ~TransactionAbortController() = default;
 };
 

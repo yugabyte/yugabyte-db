@@ -241,6 +241,9 @@ components:
         ports:
           - private_port: "9090"
             public_port: '{{repl ConfigOption "prometheus_external_port"}}'
+          - private_port: "9090"
+            public_port: "9190"
+            interface: docker0
         entrypoint: [ "/bin/sh", "-c", "rm -rf /prometheus/lock && \
           cp /prometheus_configs/default_prometheus.yml /prometheus_configs/prometheus.yml && \
           exec /bin/prometheus \
@@ -275,7 +278,7 @@ components:
                   scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}
                   static_configs:
                       - targets: [
-                        '{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:{{repl ConfigOption "prometheus_external_port"}}'
+                        '{{repl ConfigOption "docker_gateway" }}:9190'
                       ]
 
                 - job_name: 'platform'
@@ -288,7 +291,7 @@ components:
                   {{repl end}}
                   static_configs:
                     - targets: [
-                      '{{repl ConfigOption "docker_gateway" }}:{{repl if ConfigOptionEquals "https_enabled" "1"}}9443{{repl else}}9000{{repl end}}}'
+                      '{{repl ConfigOption "docker_gateway" }}:{{repl if ConfigOptionEquals "https_enabled" "1"}}9543{{repl else}}9100{{repl end}}'
                     ]
 
                 - job_name: "node"
@@ -370,6 +373,10 @@ components:
                       regex: "node_disk_bytes_written"
                       target_label: "__name__"
                       replacement: "node_disk_written_bytes_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_boot_time"
+                      target_label: "__name__"
+                      replacement: "node_boot_time_seconds"
                     # Save the name of the metric so we can group_by since we cannot by __name__ directly...
                     - source_labels: ["__name__"]
                       regex: "(.*)"
@@ -430,7 +437,7 @@ components:
             container_path: /prometheus_configs
         env_vars:
           - name: JAVA_OPTS
-            static_val: '-XX:PermSize=1024m -XX:MaxPermSize=1024m'
+            static_val: '-XX:PermSize=1024m -XX:MaxPermSize=1024m {{repl if ConfigOptionEquals "enable_proxy" "1"}} -Dhttp.nonProxyHost={{repl ConfigOption "java_non_proxy"}} -Dhttp.proxyHost={{repl ConfigOption "java_http_proxy_host"}} -Dhttp.proxyPort={{repl ConfigOption "java_http_proxy_port"}} -Dhttps.proxyHost={{repl ConfigOption "java_https_proxy_host"}} -Dhttps.proxyPort={{repl ConfigOption "java_https_proxy_port"}}{{repl end}}'
           - name: HTTP_PROXY
             value: '{{repl ConfigOption "http_proxy"}}'
             when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
@@ -440,15 +447,34 @@ components:
           - name: NO_PROXY
             value: '{{repl ConfigOption "no_proxy"}}'
             when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
+          - name: http_proxy
+            value: '{{repl ConfigOption "http_proxy"}}'
+            when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
+          - name: https_proxy
+            value: '{{repl ConfigOption "https_proxy"}}'
+            when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
+          - name: no_proxy
+            value: '{{repl ConfigOption "no_proxy"}}'
+            when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
         ports:
           - private_port: "9443"
             public_port: '{{repl ConfigOption "ui_https_port"}}'
             port_type: tcp
             when: '{{repl ConfigOptionEquals "https_enabled" "1"}}'
+          - private_port: "9443"
+            public_port: "9543"
+            port_type: tcp
+            when: '{{repl ConfigOptionEquals "https_enabled" "1"}}'
+            interface: docker0
           - private_port: "9000"
             public_port: '{{repl ConfigOption "ui_http_port"}}'
             port_type: tcp
             when: '{{repl ConfigOptionEquals "http_enabled" "1"}}'
+          - private_port: "9000"
+            public_port: "9100"
+            port_type: tcp
+            when: '{{repl ConfigOptionEquals "http_enabled" "1"}}'
+            interface: docker0
         config_files:
           - filename: /opt/yugabyte/yugaware/conf/server.pem
             contents: |
@@ -516,24 +542,22 @@ components:
 
               yb {
                 devops.home = /opt/yugabyte/devops
-                metrics.host="{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}"
-                metrics.port="{{repl ConfigOption "prometheus_external_port"}}"
+                metrics.host = "{{repl ConfigOption "docker_gateway" }}"
+                metrics.port = 9190
                 metrics.scrape_interval = "{{repl ConfigOption "prometheus_scrape_interval" }}"
+                metrics.external.url = "http://{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:{{repl ConfigOption "prometheus_external_port"}}"
                 storage.path = /opt/yugabyte/yugaware/data
                 docker.network = bridge
                 seedData = false
                 swamper.targetPath = /opt/yugabyte/prometheus/targets
                 swamper.rulesPath = /opt/yugabyte/prometheus/rules
                 multiTenant = false
-                releases.path = "/opt/yugabyte/releases"
                 docker.release = "/opt/yugabyte/release"
                 thirdparty.packagePath = /opt/third-party
                 helm.packagePath = "/opt/yugabyte/helm"
                 health.check_interval_ms = 300000
                 health.status_interval_ms = 43200000
                 health.default_email = "YB_ALERTS_EMAIL_REPLACE"
-                health.ses_email_username = "YB_ALERTS_USERNAME_REPLACE"
-                health.ses_email_password = "YB_ALERTS_PASSWORD_REPLACE"
                 url = "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl ConfigOption "hostname"}}:{{repl ConfigOption "ui_https_port"}}{{repl else}}http://{{repl ConfigOption "hostname"}}:{{repl ConfigOption "ui_http_port"}}{{repl end}}"
                 security.ssh2_enabled = false
                 node_agent {
@@ -689,17 +713,47 @@ config:
         type: text
         default: '{{repl ConsoleSetting "http.proxy"}}'
         when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
+      - name: java_http_proxy_host
+        title: HTTP Proxy host setting for Java
+        help_text: Specify -Dhttp.proxyHost
+        type: text
+        # default: TODO extract host out of http.proxy
+        when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
+      - name: java_http_proxy_port
+        title: HTTP Proxy Port setting for Java
+        help_text: Specify -Dhttp.proxyPort
+        type: text
+        # default: TODO extract host out of http.proxy
+        when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
       - name: https_proxy
         title: HTTPS Proxy setting
         help_text: Specify the setting for HTTPS_PROXY
         type: text
         default: '{{repl ConsoleSetting "http.proxy"}}'
         when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
+      - name: java_https_proxy_host
+        title: HTTPS Proxy host setting for Java
+        help_text: Specify -Dhttps.proxyHost
+        type: text
+        # default: TODO extract host out of http.proxy
+        when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
+      - name: java_https_proxy_port
+        title: HTTPS Proxy Port setting for Java
+        help_text: Specify -Dhttps.proxyPort
+        type: text
+        # default: TODO extract host out of http.proxy
+        when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
       - name: no_proxy
         title: HTTP no proxy setting
         help_text: Specify the setting for NO_PROXY
         type: text
         default: ""
+        when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
+      - name: java_non_proxy
+        title: HTTP Proxy Port setting for Java
+        help_text: Specify  -Dhttps.nonProxyHosts.
+        type: text
+        # default: TODO extract host out of http.proxy
         when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
       - name: tls_version
         title: TLS Versions

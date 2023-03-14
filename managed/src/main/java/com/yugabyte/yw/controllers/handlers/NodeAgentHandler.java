@@ -84,7 +84,7 @@ public class NodeAgentHandler {
     if (validateConnection) {
       nodeAgentClient.ping(nodeAgent, false);
     }
-    return nodeAgentManager.create(nodeAgent);
+    return nodeAgentManager.create(nodeAgent, true);
   }
 
   /**

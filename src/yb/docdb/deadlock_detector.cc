@@ -30,6 +30,7 @@
 
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
@@ -38,6 +39,7 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
 
 using namespace std::placeholders;
@@ -60,6 +62,10 @@ METRIC_DEFINE_coarse_histogram(
 METRIC_DEFINE_gauge_uint64(
     tablet, deadlock_detector_waiters, "Num Waiting Txns", yb::MetricUnit::kTransactions,
     "The total number of waiting transactions tracked by one deadlock detector.");
+
+DEFINE_test_flag(int32, sleep_amidst_iterating_blockers_ms, 0,
+    "Time for which the thread sleeps in each iteration while looping over the computed wait-for "
+    "probes and sending information to the waiters.");
 
 namespace yb {
 namespace tablet {
@@ -202,7 +208,10 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
     return Format("$0- probe($1, $2) ", detector_log_prefix_, origin_detector_id_, probe_num_);
   }
 
-  void AddBlocker(const TransactionId& remote_blocker, const TabletId& remote_status_tablet) {
+  void AddBlocker(const BlockerTransactionInfo& blocker_info) {
+    auto& blocker_id = blocker_info.id;
+    auto& blocker_status_tablet = blocker_info.status_tablet;
+    auto& blocking_subtxn_info = blocker_info.blocking_subtxn_info;
     handles_.push_back(rpcs_->Prepare());
     auto handle = handles_.back();
     if (handle == rpcs_->InvalidHandle()) {
@@ -215,13 +224,15 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
     req.set_probe_num(probe_num_);
     req.set_min_probe_num(min_probe_num_);
     req.set_waiting_txn_id(waiter_.data(), waiter_.size());
-    req.set_blocking_txn_id(remote_blocker.data(), remote_blocker.size());
-    req.set_tablet_id(remote_status_tablet);
+    req.set_blocking_txn_id(blocker_id.data(), blocker_id.size());
+    req.set_tablet_id(blocker_status_tablet);
+    *req.mutable_blocking_subtxn_set() = blocking_subtxn_info->pb();
 
     VLOG_WITH_PREFIX_AND_FUNC(4)
         << "waiting_txn_id: " << waiter_ << ", "
-        << "blocking_txn_id: " << remote_blocker << ", "
-        << "remote_status_tablet: " << remote_status_tablet << ", "
+        << "blocking_txn_id: " << blocker_id << ", "
+        << "blocking_subtxn(s): " << blocking_subtxn_info->ToString() << ", "
+        << "blocker_status_tablet: " << blocker_status_tablet << ", "
         << "probe_num: " << probe_num_ << ", "
         << "min_probe_num: " << min_probe_num_;
 
@@ -450,15 +461,20 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
           VLOG_WITH_PREFIX(1) << "Overwriting stored waiter " << waiter_txn_id
                               << " from " << existing_waiter_start_time
                               << " with newer request at " << wait_start_time;
+          // waiters_ map is guarded by mutex_, hence resetting the value field (shared_ptr)
+          // is thread safe. Copies of the shared_ptr that might operate outside the scope of
+          // mutex_ continue to work on older objects.
+          waiter_it->second.reset(new WaiterData {
+            .wait_start_time = std::move(wait_start_time),
+            .blockers = std::make_shared<BlockerData>(BlockerData()),
+          });
           waiter_data = waiter_it->second;
-          waiter_data->wait_start_time = wait_start_time;
-          waiter_data->blockers = BlockerData();
         } else {
           VLOG_WITH_PREFIX(1) << "Creating new stored waiter " << waiter_txn_id
                               << " with start time " << wait_start_time;
           waiter_data = std::make_shared<WaiterData>(WaiterData {
             .wait_start_time = std::move(wait_start_time),
-            .blockers = BlockerData(),
+            .blockers = std::make_shared<BlockerData>(BlockerData()),
           });
           auto it = waiters_.emplace(waiter_txn_id, waiter_data);
           DCHECK(it.second);
@@ -466,23 +482,27 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
         }
 
         auto& blockers = DCHECK_NOTNULL(waiter_data)->blockers;
-        blockers.reserve(waiter.blocking_transaction_size());
+        blockers->reserve(waiter.blocking_transaction_size());
         for (const auto& blocker : waiter.blocking_transaction()) {
           if (blocker.status_tablet_id().empty()) {
             LOG_WITH_PREFIX_AND_FUNC(DFATAL)
                 << "Got empty status tablet in request " << waiter.ShortDebugString();
             continue;
           }
-          auto blocker_txn_id = VERIFY_RESULT(FullyDecodeTransactionId(blocker.transaction_id()));
-          blockers.push_back(BlockingTransactionData {
-            .id = blocker_txn_id,
+
+          // TODO(wait-queues): SubtxnSetAndPB::Create internally copies the passed in SubtxnSetPB
+          // object. Check if we can avoid the copy and use std::move on the proto subfield instead.
+          blockers->push_back(BlockerTransactionInfo {
+            .id = VERIFY_RESULT(FullyDecodeTransactionId(blocker.transaction_id())),
             .status_tablet = blocker.status_tablet_id(),
-            .subtransactions = nullptr,
+            .blocking_subtxn_info = VERIFY_RESULT(SubtxnSetAndPB::Create(blocker.subtxn_set())),
           });
+          const BlockerTransactionInfo& blocker_txn = blockers->back();
           VLOG_WITH_PREFIX(4)
               << "Adding new wait-for relationship --"
-              << "blocker txn id: " << blocker_txn_id << " "
-              << "blocker status tablet: " << blocker.status_tablet_id() << " "
+              << "blocker txn id: " << blocker_txn.id << " "
+              << "blocker status tablet: " << blocker_txn.status_tablet << " "
+              << "blocking subtxn(s): " << blocker_txn.blocking_subtxn_info->ToString() << " "
               << "waiter txn id: " << waiter_txn_id << " "
               << "start time: " << wait_start_time;
         }
@@ -543,7 +563,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
     std::shared_ptr<std::atomic<uint64>> outstanding_probes =
         std::make_shared<std::atomic<uint64>>(waiters.size());
     for (const auto& [waiter_txn_id, waiter_data] : waiters) {
-      if (waiter_data->blockers.empty()) {
+      if (waiter_data->blockers->empty()) {
         LOG_WITH_PREFIX(WARNING) << "Tried getting probes for waiter with no blockers "
                                  << waiter_txn_id;
         continue;
@@ -552,9 +572,10 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
       auto processor = std::make_shared<LocalProbeProcessor>(
           log_prefix_, detector_id_, probe_num, created_probes_.GetSmallestProbeNo(),
           waiter_txn_id, &rpcs_, &client(), probe_latency_);
-      for (const auto& blocker : waiter_data->blockers) {
+      for (const auto& blocker : *waiter_data->blockers) {
+        AtomicFlagSleepMs(&FLAGS_TEST_sleep_amidst_iterating_blockers_ms);
         DCHECK(!blocker.status_tablet.empty());
-        processor->AddBlocker(blocker.id, blocker.status_tablet);
+        processor->AddBlocker(blocker);
       }
       processor->SetCallback([detector = shared_from_this(), outstanding_probes, probe_num]
           (const auto& status, const auto& resp) {
@@ -584,25 +605,24 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
     return probes_to_send;
   }
 
-  const BlockerData* GetBlockers(
-      const DetectorId& detector_id, uint32_t probe_num, const TransactionId& waiting_txn_id,
-      const TransactionId& blocking_txn_id) REQUIRES_SHARED(mutex_) {
+  std::shared_ptr<const BlockerData> GetBlockers(
+      const DetectorId& detector_id, uint32_t probe_num, const TransactionId& blocking_txn_id)
+      REQUIRES_SHARED(mutex_) {
     auto waiter_it = waiters_.find(blocking_txn_id);
     if (waiter_it == waiters_.end()) {
       VLOG_WITH_PREFIX(4) << "Did not find blocker " << blocking_txn_id << " in waiters.";
       return nullptr;
     }
 
-    if (waiter_it->second->blockers.empty()) {
+    if (waiter_it->second->blockers->empty()) {
       LOG_WITH_PREFIX(DFATAL)
           << "Found empty blockers list while processing probe from "
           << "detector  " << detector_id.ToString()
           << " with probe_num " << probe_num
           << " and blocking_txn " << blocking_txn_id;
-      return nullptr;
     }
 
-    return &waiter_it->second->blockers;
+    return waiter_it->second->blockers;
   }
 
   Result<LocalProbeProcessorPtr> GetProbesToForward(
@@ -613,25 +633,48 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
     auto waiting_txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.waiting_txn_id()));
     auto blocking_txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.blocking_txn_id()));
 
-    const BlockerData* blockers = nullptr;
+    auto blocking_subtxn_set = VERIFY_RESULT(SubtxnSet::FromPB(req.blocking_subtxn_set().set()));
+    auto blocking_subtxn_active =
+        controller_->IsAnySubtxnActive(blocking_txn_id, blocking_subtxn_set);
+    // If no subtxn of the blocker txn's blocking_subtxn_set is active, drop the probe.
+    if (!blocking_subtxn_active) {
+      LOG_WITH_PREFIX_AND_FUNC(INFO)
+              << "Dropping probe_num: " << probe_num << ", waiter: " << waiting_txn_id
+              << ", blocked on: " << blocking_txn_id << " with inactive/aborted"
+              << " subtxns:" << yb::ToString(blocking_subtxn_set) << ".";
+      return nullptr;
+    }
+
+    std::shared_ptr<const BlockerData> blockers = nullptr;
     {
       UniqueLock<decltype(mutex_)> l(mutex_);
       if (detector_id == detector_id_) {
+        // Detector has received back the probe that originated from it, could lead to one of
+        // the following -
+        // 1. can't find the probe entry that was created, hence no point in forwarding the probe.
+        // 2. received blocker_txn == waiter_txn that initiated the probe, implies a deadlock.
+        // 3. recevied blocker_txn != waiter_txn that initiated the probe, the probes needs to be
+        //    forwarded so as to detect local deadlocks (deadlock due to txns maintained by this
+        //    coordinator itself).
+        // Note: The above scenarios only hold true when the received blocker_txn has at least one
+        //       active subtxn in its blocking_subtxn_set.
         auto* probe_originating_txn = created_probes_.Get(probe_num);
         if (!probe_originating_txn) {
           LOG_WITH_PREFIX_AND_FUNC(INFO) << "Did not find probe_num: " << probe_num;
-        } else if (*probe_originating_txn == blocking_txn_id) {
+          return nullptr;
+        }
+        if (*probe_originating_txn == blocking_txn_id) {
           LOG_WITH_PREFIX_AND_FUNC(INFO)
               << "Found deadlock: probe_num: " << probe_num << ", waiter: " << waiting_txn_id
-              << ", blocked on: " << blocking_txn_id;
+              << ", blocked on: " << blocking_txn_id
+              << " with subtxn(s): " << yb::ToString(blocking_subtxn_set);
           resp->add_deadlocked_txn_ids(req.blocking_txn_id());
           return nullptr;
-        } else {
-          LOG_WITH_PREFIX_AND_FUNC(INFO)
-              << "Found probe_num " << probe_num
-              << " with different transaction_id "<< *probe_originating_txn << " "
-              << "than blocker " << blocking_txn_id << ". Not marking as deadlock.";
         }
+        LOG_WITH_PREFIX_AND_FUNC(INFO)
+            << "Found probe_num " << probe_num
+            << " with different transaction_id "<< *probe_originating_txn << " "
+            << "than blocker " << blocking_txn_id << ". Not marking as deadlock.";
       }
 
       auto processing_it = forwarded_probes_.emplace(
@@ -669,7 +712,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
                 << " at detector " << detector_id_;
       }
 
-      blockers = GetBlockers(detector_id, probe_num, waiting_txn_id, blocking_txn_id);
+      blockers = GetBlockers(detector_id, probe_num, blocking_txn_id);
     }
     if (!blockers || blockers->empty()) {
       return nullptr;
@@ -680,7 +723,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
         &client(), nullptr /* probe_latency */);
 
     for (const auto& blocker : *blockers) {
-      local_processor->AddBlocker(blocker.id, blocker.status_tablet);
+      local_processor->AddBlocker(blocker);
     }
 
     return local_processor;

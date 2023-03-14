@@ -11,7 +11,7 @@ import {
   getUniversePendingTask,
   getUniverseStatus,
   hasPendingTasksForUniverse,
-  universeState
+  UniverseState
 } from '../helpers/universeHelpers';
 import { UniverseAlertBadge } from '../YBUniverseItem/UniverseAlertBadge';
 
@@ -26,7 +26,7 @@ export default class UniverseStatus extends Component {
     } = this.props;
 
     if (
-      (universeDetails.updateInProgress) &&
+      universeDetails.updateInProgress &&
       !hasPendingTasksForUniverse(universeUUID, customerTaskList) &&
       hasPendingTasksForUniverse(universeUUID, prevProps.tasks.customerTaskList)
     ) {
@@ -35,9 +35,10 @@ export default class UniverseStatus extends Component {
   }
 
   redirectToTaskLogs = (taskUUID, universeUUID) => {
-    taskUUID ? browserHistory.push(`/tasks/${taskUUID}`)
+    taskUUID
+      ? browserHistory.push(`/tasks/${taskUUID}`)
       : browserHistory.push(`/universes/${universeUUID}/tasks`);
-  }
+  };
 
   render() {
     const {
@@ -60,14 +61,14 @@ export default class UniverseStatus extends Component {
         <span className="status-pending-name">{showLabelText && universeStatus.state.text}</span>
       </div>
     );
-    if (universeStatus.state === universeState.GOOD) {
+    if (universeStatus.state === UniverseState.GOOD) {
       statusDisplay = (
         <div>
           <i className="fa fa-check-circle" />
           {showLabelText && universeStatus.state.text && <span>{universeStatus.state.text}</span>}
         </div>
       );
-    } else if (universeStatus.state === universeState.PAUSED) {
+    } else if (universeStatus.state === UniverseState.PAUSED) {
       statusDisplay = (
         <div>
           <i className="fa fa-pause-circle-o" />
@@ -75,7 +76,7 @@ export default class UniverseStatus extends Component {
         </div>
       );
     } else if (
-      universeStatus.state === universeState.PENDING &&
+      universeStatus.state === UniverseState.PENDING &&
       isNonEmptyObject(universePendingTask)
     ) {
       if (showLabelText) {
@@ -104,27 +105,32 @@ export default class UniverseStatus extends Component {
         );
       }
     } else if (
-      universeStatus.state === universeState.BAD ||
-      universeStatus.state === universeState.WARNING
+      universeStatus.state === UniverseState.BAD ||
+      universeStatus.state === UniverseState.WARNING
     ) {
       const currentUniverseFailedTask = customerTaskList?.filter((task) => {
-        return ((task.targetUUID === currentUniverse.universeUUID) && (
-          task.status === "Failure" || task.status === "Aborted"
-        ));
+        return (
+          task.targetUUID === currentUniverse.universeUUID &&
+          (task.status === 'Failure' || task.status === 'Aborted')
+        );
       });
       const failedTask = currentUniverseFailedTask?.[0];
       statusDisplay = (
-        <div className={showLabelText ? "status-error" : ""}>
+        <div className={showLabelText ? 'status-error' : ''}>
           <i className="fa fa-warning" />
-          {showLabelText && (failedTask ?
-            <span className="status-error__reason">{`${failedTask.type} ${failedTask.target} failed`}</span>
-            : <span>{universeStatus.state.text}</span>)
-          }
-          {shouldDisplayTaskButton
-            && !universePendingTask
-            && <YBButton btnText={'View Details'} btnClass="btn btn-default view-task-details-btn" onClick={() =>
-                this.redirectToTaskLogs(failedTask?.id, currentUniverse.universeUUID)} />
-          }
+          {showLabelText &&
+            (failedTask ? (
+              <span className="status-error__reason">{`${failedTask.type} ${failedTask.target} failed`}</span>
+            ) : (
+              <span>{universeStatus.state.text}</span>
+            ))}
+          {shouldDisplayTaskButton && !universePendingTask && (
+            <YBButton
+              btnText={'View Details'}
+              btnClass="btn btn-default view-task-details-btn"
+              onClick={() => this.redirectToTaskLogs(failedTask?.id, currentUniverse.universeUUID)}
+            />
+          )}
         </div>
       );
     }

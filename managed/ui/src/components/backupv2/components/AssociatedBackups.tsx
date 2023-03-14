@@ -16,11 +16,12 @@ import { YBModal } from '../../common/forms/fields';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { YBLoading } from '../../common/indicators';
 import { getBackupsList } from '../common/BackupAPI';
-import { ENTITY_NOT_AVAILABLE, FormatUnixTimeStampTimeToTimezone } from '../common/BackupUtils';
+import { ENTITY_NOT_AVAILABLE } from '../common/BackupUtils';
 import { IBackup } from '../common/IBackup';
 import { BackupDeleteModal } from './BackupDeleteModal';
 import { BackupDetails } from './BackupDetails';
 import './AssociatedBackups.scss';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 
 interface AssociatedBackupsProps {
   visible: boolean;
@@ -139,11 +140,7 @@ export const AssociatedBackups: FC<AssociatedBackupsProps> = ({
                 </TableHeaderColumn>
                 <TableHeaderColumn
                   dataField="createTime"
-                  dataFormat={(_, row: IBackup) => (
-                    <FormatUnixTimeStampTimeToTimezone
-                      timestamp={row.commonBackupInfo.createTime}
-                    />
-                  )}
+                  dataFormat={(_, row: IBackup) => ybFormatDate(row.commonBackupInfo.createTime)}
                 >
                   Created At
                 </TableHeaderColumn>

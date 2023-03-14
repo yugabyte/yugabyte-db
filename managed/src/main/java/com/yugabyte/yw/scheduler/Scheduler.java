@@ -92,6 +92,7 @@ public class Scheduler {
             (schedule) -> {
               if (schedule.getRunningState()) {
                 schedule.setRunningState(false);
+                schedule.save();
                 log.debug("Updated scheduler {} running state to false", schedule.scheduleUUID);
               }
             });
@@ -132,6 +133,7 @@ public class Scheduler {
         }
         try {
           schedule.setRunningState(true);
+          schedule.save();
           TaskType taskType = schedule.getTaskType();
           ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
           Date lastScheduledTime = null;
@@ -205,6 +207,7 @@ public class Scheduler {
           log.error("Error running schedule {} ", schedule.scheduleUUID, e);
         } finally {
           schedule.setRunningState(false);
+          schedule.save();
         }
       }
     } catch (Exception e) {

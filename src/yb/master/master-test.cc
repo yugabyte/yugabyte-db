@@ -457,6 +457,13 @@ TEST_F(MasterTest, TestCatalog) {
 
   {
     ListTablesRequestPB req;
+    req.add_relation_type_filter(COLOCATED_PARENT_TABLE_RELATION);
+    DoListTables(req, &tables);
+    ASSERT_EQ(0, tables.tables_size());
+  }
+
+  {
+    ListTablesRequestPB req;
     req.add_relation_type_filter(SYSTEM_TABLE_RELATION);
     DoListTables(req, &tables);
     ASSERT_EQ(kNumSystemTables, tables.tables_size());
@@ -469,6 +476,60 @@ TEST_F(MasterTest, TestCatalog) {
     DoListTables(req, &tables);
     ASSERT_EQ(kNumSystemTables + 2, tables.tables_size());
   }
+}
+
+TEST_F(MasterTest, TestParentBasedTableToTabletMappingFlag) {
+  // This test is for the new parent table based mapping from tables to tablets. It verifies we only
+  // use the new schema for user tables when the flag is set. In particular this test verifies:
+  //   1. We never use the new parent table based schema for system tables.
+  //   2. When the flag is set, we use the new parent table based schema for user tables.
+  //   3. When the flag is not set we use the old mapping schema for user tables.
+  const std::string kNewSchemaTableName = "newschema";
+  const std::string kOldSchemaTableName = "oldschema";
+  const Schema kTableSchema(
+      {ColumnSchema("key", INT32), ColumnSchema("v1", UINT64), ColumnSchema("v2", STRING)}, 1);
+  FLAGS_use_parent_table_id_field = true;
+  ASSERT_OK(CreateTable(kNewSchemaTableName, kTableSchema));
+  FLAGS_use_parent_table_id_field = false;
+  ASSERT_OK(CreateTable(kOldSchemaTableName, kTableSchema));
+
+  auto tables = mini_master_->catalog_manager_impl().GetTables(GetTablesMode::kAll);
+  for (const auto& table : tables) {
+    for (const auto& tablet : table->GetTablets(IncludeInactive::kTrue)) {
+      if (table->is_system() &&
+          tablet->LockForRead().data().pb.hosted_tables_mapped_by_parent_id()) {
+        FAIL() << Format(
+            "System table $0 has tablet $1 using the new schema", table->name(), tablet->id());
+      }
+    }
+  }
+
+  auto find_table = [&tables](const std::string& name) -> Result<TableInfoPtr> {
+    auto table_it = std::find_if(
+        tables.begin(), tables.end(),
+        [&name](const TableInfoPtr& table_info) { return table_info->name() == name; });
+    if (table_it != tables.end()) {
+      return *table_it;
+    } else {
+      return STATUS_FORMAT(NotFound, "Couldn't find table $0", name);
+    }
+  };
+
+  auto tablet_uses_new_schema = [](const TabletInfoPtr& tablet_info) {
+    return tablet_info->LockForRead().data().pb.hosted_tables_mapped_by_parent_id();
+  };
+
+  const auto new_schema_tablets =
+      ASSERT_RESULT(find_table(kNewSchemaTableName))->GetTablets(IncludeInactive::kTrue);
+  EXPECT_TRUE(
+      std::all_of(new_schema_tablets.begin(), new_schema_tablets.end(), tablet_uses_new_schema));
+  EXPECT_GT(new_schema_tablets.size(), 0);
+
+  auto old_schema_tablets =
+      ASSERT_RESULT(find_table(kOldSchemaTableName))->GetTablets(IncludeInactive::kTrue);
+  EXPECT_TRUE(
+      std::none_of(old_schema_tablets.begin(), old_schema_tablets.end(), tablet_uses_new_schema));
+  EXPECT_GT(old_schema_tablets.size(), 0);
 }
 
 TEST_F(MasterTest, TestCatalogHasBlockCache) {

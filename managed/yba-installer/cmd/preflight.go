@@ -15,12 +15,11 @@ var (
 
 var preflightCmd = &cobra.Command{
 	Use: "preflight",
-	Short: "The preflight command checks makes sure that your system is ready to " +
+	Short: "Run preflight checks to make sure that your system is ready to " +
 		"install YugabyteDB Anywhere.",
 	Long: `
-        The preflight command goes through a series of Preflight checks that each have a
-        critcal and warning level, and alerts you if these requirements are not met on your
-        Operating System.`,
+        The preflight command goes through a series of Preflight checks and alerts you if these
+				requirements are not met. Preflight checks are also run during install and upgrade.`,
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		// Print all known checks
@@ -50,7 +49,7 @@ var preflightCmd = &cobra.Command{
 func init() {
 	// skippedPreflightChecks is defined in install, but is useful here too
 	preflightCmd.Flags().StringSliceVarP(&skippedPreflightChecks, "skip_preflight", "s",
-		[]string{}, "Preflight checks to skip")
+		[]string{}, "Preflight checks to skip by name")
 	preflightCmd.Flags().BoolVar(&upgradePreflightChecks, "upgrade", false,
 		"run preflight checks for upgrade")
 

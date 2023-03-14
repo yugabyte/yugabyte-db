@@ -10,10 +10,10 @@ import {
 } from '../../../../../../components';
 import { UniverseFormData, MasterPlacementMode, CloudType } from '../../../utils/dto';
 import { MASTER_PLACEMENT_FIELD, PROVIDER_FIELD } from '../../../utils/constants';
-import InfoMessageIcon from '../../../../../../assets/info-message.svg';
 
 interface MasterPlacementFieldProps {
   isPrimary: boolean;
+  useK8CustomResources: boolean;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -29,7 +29,10 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const MasterPlacementField = ({ isPrimary }: MasterPlacementFieldProps): ReactElement => {
+export const MasterPlacementField = ({
+  isPrimary,
+  useK8CustomResources
+}: MasterPlacementFieldProps): ReactElement => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const classes = useStyles();
   const { t } = useTranslation();
@@ -37,7 +40,7 @@ export const MasterPlacementField = ({ isPrimary }: MasterPlacementFieldProps): 
   // Tooltip message
   const masterPlacementTooltipText = t('universeForm.cloudConfig.masterPlacementHelper');
 
-  // watcher
+  // watchers
   const masterPlacement = useWatch({ name: MASTER_PLACEMENT_FIELD });
   const provider = useWatch({ name: PROVIDER_FIELD });
 
@@ -45,50 +48,62 @@ export const MasterPlacementField = ({ isPrimary }: MasterPlacementFieldProps): 
     if (!isPrimary) {
       setValue(MASTER_PLACEMENT_FIELD, MasterPlacementMode.COLOCATED);
     }
-  }, [isPrimary]);
+    if (isPrimary && provider?.code === CloudType.kubernetes) {
+      setValue(
+        MASTER_PLACEMENT_FIELD,
+        useK8CustomResources ? MasterPlacementMode.DEDICATED : MasterPlacementMode.COLOCATED
+      );
+    }
+  }, [isPrimary, provider]);
 
-  if (isPrimary && provider?.code !== CloudType.kubernetes) {
-    return (
-      <Box display="flex" width="100%" data-testid="MasterPlacement-Container">
-        <Box>
-          <YBLabel dataTestId="MasterPlacement-Label">
-            {t('universeForm.cloudConfig.masterPlacement')}
-            &nbsp;
-            <img alt="More" src={InfoMessageIcon} />
-          </YBLabel>
+  return (
+    <>
+      {isPrimary && provider?.code !== CloudType.kubernetes ? (
+        <Box display="flex" width="100%" data-testid="MasterPlacement-Container">
+          <Box>
+            <YBLabel dataTestId="MasterPlacement-Label">
+              {t('universeForm.cloudConfig.masterPlacement')}
+            </YBLabel>
+          </Box>
+          <Box flex={1}>
+            <YBRadioGroupField
+              name={MASTER_PLACEMENT_FIELD}
+              control={control}
+              value={masterPlacement}
+              orientation={RadioGroupOrientation.VERTICAL}
+              onChange={(e) => {
+                setValue(MASTER_PLACEMENT_FIELD, e.target.value as MasterPlacementMode);
+              }}
+              options={[
+                {
+                  value: MasterPlacementMode.COLOCATED,
+                  label: (
+                    <Box display="flex">{t('universeForm.cloudConfig.colocatedModeHelper')}</Box>
+                  )
+                },
+                {
+                  value: MasterPlacementMode.DEDICATED,
+                  label: (
+                    <Box display="flex">
+                      {t('universeForm.cloudConfig.dedicatedModeHelper')}
+                      <YBTooltip
+                        title={masterPlacementTooltipText}
+                        className={classes.tooltipLabel}
+                      >
+                        <Typography display="inline">
+                          {t('universeForm.cloudConfig.whenToUseDedicatedHelper')}
+                        </Typography>
+                      </YBTooltip>
+                    </Box>
+                  )
+                }
+              ]}
+            />
+          </Box>
         </Box>
-        <Box flex={1}>
-          <YBRadioGroupField
-            name={MASTER_PLACEMENT_FIELD}
-            control={control}
-            value={masterPlacement}
-            orientation={RadioGroupOrientation.VERTICAL}
-            onChange={(e) => {
-              setValue(MASTER_PLACEMENT_FIELD, e.target.value as MasterPlacementMode);
-            }}
-            options={[
-              {
-                value: MasterPlacementMode.COLOCATED,
-                label: <Box display="flex">{t('universeForm.cloudConfig.colocatedModeHelper')}</Box>
-              },
-              {
-                value: MasterPlacementMode.DEDICATED,
-                label: (
-                  <Box display="flex">
-                    {t('universeForm.cloudConfig.dedicatedModeHelper')}
-                    <YBTooltip title={masterPlacementTooltipText} className={classes.tooltipLabel}>
-                      <Typography display="inline">
-                        {t('universeForm.cloudConfig.whenToUseDedicatedHelper')}
-                      </Typography>
-                    </YBTooltip>
-                  </Box>
-                )
-              }
-            ]}
-          />
-        </Box>
-      </Box>
-    );
-  }
-  return <Box mb={2}></Box>;
+      ) : (
+        <></>
+      )}
+    </>
+  );
 };

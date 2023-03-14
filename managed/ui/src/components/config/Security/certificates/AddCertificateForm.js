@@ -492,25 +492,23 @@ export default class AddCertificateForm extends Component {
                     <Field
                       name="certContent"
                       component={YBFormDropZone}
-                      className="upload-file-button"
                       title="Upload Root Certificate"
                       required
                     />
                     <Field
                       name="keyContent"
                       component={YBFormDropZone}
-                      className="upload-file-button"
                       title="Upload Key"
                       required
                     />
                     {getPromiseState(addCertificate).isError() &&
                       isNonEmptyObject(addCertificate.error) && (
-                      <Alert bsStyle="danger" variant="danger">
+                        <Alert bsStyle="danger" variant="danger">
                           Certificate adding has been failed:
-                        <br />
-                        {JSON.stringify(addCertificate.error)}
-                      </Alert>
-                    )}
+                          <br />
+                          {JSON.stringify(addCertificate.error)}
+                        </Alert>
+                      )}
                   </Tab>
                 )}
                 {!isEditMode && (
@@ -525,7 +523,6 @@ export default class AddCertificateForm extends Component {
                     <Field
                       name="certContent"
                       component={YBFormDropZone}
-                      className="upload-file-button"
                       title="Upload Root Certificate"
                       required
                     />
@@ -598,12 +595,12 @@ export default class AddCertificateForm extends Component {
                     </div>
                     {getPromiseState(addCertificate).isError() &&
                       isNonEmptyObject(addCertificate.error) && (
-                      <Alert bsStyle="danger" variant="danger">
+                        <Alert bsStyle="danger" variant="danger">
                           Certificate adding has been failed:
-                        <br />
-                        {JSON.stringify(addCertificate.error)}
-                      </Alert>
-                    )}
+                          <br />
+                          {JSON.stringify(addCertificate.error)}
+                        </Alert>
+                      )}
                   </Tab>
                 )}
 
@@ -626,19 +623,18 @@ export default class AddCertificateForm extends Component {
                     <Field
                       name="certContent"
                       component={YBFormDropZone}
-                      className="upload-file-button"
                       title="Upload Root Certificate"
                       required
                     />
 
                     {getPromiseState(addCertificate).isError() &&
                       isNonEmptyObject(addCertificate.error) && (
-                      <Alert bsStyle="danger" variant="danger">
+                        <Alert bsStyle="danger" variant="danger">
                           Certificate adding has been failed:
-                        <br />
-                        {JSON.stringify(addCertificate.error)}
-                      </Alert>
-                    )}
+                          <br />
+                          {JSON.stringify(addCertificate.error)}
+                        </Alert>
+                      )}
                   </Tab>
                 )}
               </Tabs>

@@ -12,6 +12,7 @@ import {
   CUSTOMIZE_PORT_FIELD,
   PROVIDER_FIELD
 } from '../../../utils/constants';
+import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface DeploymentPortsFieldids {
   disabled: boolean;
@@ -22,6 +23,7 @@ const MAX_PORT = 65535;
 export const DeploymentPortsField: FC<DeploymentPortsFieldids> = ({ disabled }) => {
   const { control } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
+  const classes = useFormFieldStyles();
 
   //watchers
   const ysqlEnabled = useWatch({ name: YSQL_FIELD });
@@ -51,7 +53,10 @@ export const DeploymentPortsField: FC<DeploymentPortsFieldids> = ({ disabled }) 
       render={({ field: { value, onChange } }) => {
         return (
           <Box display="flex" alignItems="flex-start" data-testid="DeploymentPortsField-Container">
-            <YBLabel dataTestId="DeploymentPortsField-Label" width="224px">
+            <YBLabel
+              dataTestId="DeploymentPortsField-Label"
+              className={classes.advancedConfigLabel}
+            >
               {t('universeForm.advancedConfig.overridePorts')}
             </YBLabel>
             <Box flex={1} display="flex" flexDirection="column">
@@ -67,7 +72,7 @@ export const DeploymentPortsField: FC<DeploymentPortsFieldids> = ({ disabled }) 
                 <Grid container>
                   {portsConfig.map((item) => (
                     <Grid lg={6} key={item.id}>
-                      <Box display="flex" mr={4}>
+                      <Box display="flex" mr={4} mt={1}>
                         <YBLabel dataTestId={`DeploymentPortsField-${item.id}`}>
                           {t(`universeForm.advancedConfig.${item.id}`)}
                         </YBLabel>

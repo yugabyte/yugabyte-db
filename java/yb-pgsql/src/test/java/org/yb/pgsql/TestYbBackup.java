@@ -45,6 +45,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.commons.io.FileUtils;
+import org.yb.client.LocatedTablet;
+import org.yb.client.YBTable;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.SystemUtil;
@@ -165,8 +167,7 @@ public class TestYbBackup extends BasePgSQLTest {
         TableProperties.TP_YSQL | TableProperties.TP_NON_COLOCATED));
   }
 
-  // TODO: Enable this test once issue #14873 is fixed.
-  @Ignore
+  @Test
   public void testAlteredTableInColocatedDB() throws Exception {
     doAlteredTableBackup("altered_colocated_db", new TableProperties(
         TableProperties.TP_YSQL | TableProperties.TP_COLOCATED));
@@ -334,8 +335,7 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
-  // TODO: Enable this test once issue #14873 is fixed.
-  @Ignore
+  @Test
   public void testColocatedDBWithColocationIdAlreadySet() throws Exception {
     String ybTablePropsSql = "SELECT c.relname, tg.grpname, props.colocation_id"
         + " FROM pg_class c, yb_table_properties(c.oid) props"
@@ -521,8 +521,7 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
-  // TODO: Enable this test once issue #14873 is fixed.
-  @Ignore
+  @Test
   public void testTablegroup() throws Exception {
     String ybTablePropsSql = "SELECT c.relname, tg.grpname, props.colocation_id"
         + " FROM pg_class c, yb_table_properties(c.oid) props"
@@ -2104,6 +2103,205 @@ public class TestYbBackup extends BasePgSQLTest {
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
+  private byte[] getColocatedTableTabletId(String exactTableName) throws Exception {
+    List<YBTable> colocatedTableList = getTablesFromName(exactTableName);
+    YBTable colocatedTable = colocatedTableList.get(0);
+    for (YBTable table : colocatedTableList) {
+      if (exactTableName.equals(table.getName())) {
+        colocatedTable = table;
+      }
+    }
+    List<LocatedTablet> colocatedTabletList = colocatedTable.getTabletsLocations(30_000);
+    assertEquals(1, colocatedTabletList.size());
+    return colocatedTabletList.get(0).getTabletId();
+  }
+
+  @Test
+  public void testLegacyColocatedDBMigration() throws Exception {
+    markClusterNeedsRecreation();
+    // Create a backup of a legacy colocated database.
+    restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
+                                                     "true"),
+                            Collections.emptyMap());
+    initYBBackupUtil();
+    String dbname = "colocated_db";
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format("CREATE DATABASE %s COLOCATION=true", dbname));
+    }
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase(dbname).connect();
+         Statement stmt = connection2.createStatement()) {
+      stmt.execute("CREATE TABLE tbl_col1 (k INT, v TEXT, PRIMARY KEY(k ASC))");
+      stmt.execute("CREATE TABLE tbl_col2 (k INT, v INT, PRIMARY KEY(k DESC))");
+      stmt.execute("CREATE INDEX tbl_col1_idx on tbl_col1(v ASC)");
+      stmt.execute("CREATE UNIQUE INDEX tbl_col2_uniq_idx ON tbl_col2(v DESC)");
+      stmt.execute("CREATE TABLE tbl_non_col (k INT PRIMARY KEY, v INT) WITH (COLOCATION = false) "
+                   + "SPLIT INTO 5 TABLETS");
+
+      for (int i = 0; i < 1000; ++i) {
+        stmt.execute(String.format("INSERT INTO tbl_col1 VALUES (%d,'%s')", i, "text" + i));
+        stmt.execute(String.format("INSERT INTO tbl_col2 VALUES (%d,%d)", i, i + 123));
+        stmt.execute(String.format("INSERT INTO tbl_non_col VALUES (%d,%d)", i, i + 456));
+      }
+
+      // Verify the existence of legacy colocated database parent table.
+      List<YBTable> legacyDBParentTablesList = getTablesFromName(".colocated.parent.tablename");
+      assertEquals(1, legacyDBParentTablesList.size());
+      List<YBTable> ColocationParentTablesList = getTablesFromName(".colocation.parent.tablename");
+      assertEquals(0, ColocationParentTablesList.size());
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", String.format("ysql.%s", dbname));
+      backupDir = new JSONObject(output).getString("snapshot_url");
+    }
+
+    // Restore/Migrate to a colocation database.
+    restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
+                                                     "false"),
+                            Collections.emptyMap());
+    initYBBackupUtil();
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", String.format("ysql.%s", dbname));
+
+    // Verify the correctness of migration.
+    try (Connection connection2 = getConnectionBuilder().withDatabase(dbname).connect();
+         Statement stmt = connection2.createStatement()) {
+      // Verify the existence of colocation parent table.
+      List<YBTable> legacyDBParentTablesList = getTablesFromName(".colocated.parent.tablename");
+      assertEquals(0, legacyDBParentTablesList.size());
+      List<YBTable> colocationParentTablesList = getTablesFromName(".colocation.parent.tablename");
+      assertEquals(1, colocationParentTablesList.size());
+
+      // Verify colocated tables share the same tablet with the parent table.
+      YBTable colocationParentTable = colocationParentTablesList.get(0);
+      List<LocatedTablet> colocationParentTableTablets =
+          colocationParentTable.getTabletsLocations(30_000);
+      assertEquals(1, colocationParentTableTablets.size());
+      byte[] parentTableTabletId = colocationParentTableTablets.get(0).getTabletId();
+      byte[] tblCol1TabletId = getColocatedTableTabletId("tbl_col1");
+      byte[] tblCol2TabletId = getColocatedTableTabletId("tbl_col2");
+      assertArrayEquals(parentTableTabletId, tblCol1TabletId);
+      assertArrayEquals(tblCol1TabletId, tblCol2TabletId);
+
+      // Verify data.
+      assertQuery(stmt, "SELECT grpname FROM pg_yb_tablegroup", new Row("default"));
+      for (int i : new int[] {9, 99, 999}) {
+        assertQuery(stmt, String.format("SELECT * FROM tbl_col1 WHERE k=%d", i),
+                    new Row(i, "text" + i));
+        assertQuery(stmt, String.format("SELECT * FROM tbl_col2 WHERE k=%d", i),
+                    new Row(i, i + 123));
+        assertQuery(stmt, String.format("SELECT * FROM tbl_non_col WHERE k=%d", i),
+                    new Row(i, i + 456));
+      }
+    }
+  }
+
+  @Test
+  public void testLegacyColocatedDBWithNoColocatedTablesMigration() throws Exception {
+    // This unit test tests for an edge case where a legacy colocated database doesn't contain any
+    // colocated table.
+    markClusterNeedsRecreation();
+    // Create a backup of a legacy colocated database.
+    restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
+                                                     "true"),
+                            Collections.emptyMap());
+    initYBBackupUtil();
+    String dbname = "colocated_db";
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format("CREATE DATABASE %s COLOCATION=true", dbname));
+    }
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase(dbname).connect();
+         Statement stmt = connection2.createStatement()) {
+      stmt.execute("CREATE TABLE tbl_non_col1 (k INT, v TEXT, PRIMARY KEY(k ASC))"
+                   + " WITH (COLOCATION = false)");
+      stmt.execute("CREATE TABLE tbl_non_col2 (k INT PRIMARY KEY, v INT)"
+                   + " WITH (COLOCATION = false)");
+      stmt.execute("CREATE INDEX tbl_non_col1_idx on tbl_non_col1(v ASC)");
+      stmt.execute("CREATE UNIQUE INDEX tbl_non_col2_uniq_idx ON tbl_non_col2(v DESC)");
+
+      for (int i = 0; i < 1000; ++i) {
+        stmt.execute(String.format("INSERT INTO tbl_non_col1 VALUES (%d,'%s')", i, "text" + i));
+        stmt.execute(String.format("INSERT INTO tbl_non_col2 VALUES (%d,%d)", i, i + 123));
+      }
+
+      // Verify the existence of legacy colocated database parent table.
+      List<YBTable> legacyDBParentTablesList = getTablesFromName(".colocated.parent.tablename");
+      assertEquals(1, legacyDBParentTablesList.size());
+      List<YBTable> colocationParentTablesList = getTablesFromName(".colocation.parent.tablename");
+      assertEquals(0, colocationParentTablesList.size());
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", String.format("ysql.%s", dbname));
+      backupDir = new JSONObject(output).getString("snapshot_url");
+    }
+
+    // Restore/Migrate to a colocation database.
+    restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
+                                                     "false"),
+                            Collections.emptyMap());
+    initYBBackupUtil();
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", String.format("ysql.%s", dbname));
+
+    // Verify the correctness of migration.
+    try (Connection connection2 = getConnectionBuilder().withDatabase(dbname).connect();
+         Statement stmt = connection2.createStatement()) {
+      // Verify both legacy colocated database parent table and colocation database parent table
+      // don't exist.
+      List<YBTable> legacyDBParentTablesList = getTablesFromName(".colocated.parent.tablename");
+      assertEquals(0, legacyDBParentTablesList.size());
+      List<YBTable> colocationParentTablesList = getTablesFromName(".colocation.parent.tablename");
+      assertEquals(0, colocationParentTablesList.size());
+
+      // Verify data.
+      assertQuery(stmt, "SELECT grpname FROM pg_yb_tablegroup");
+      for (int i : new int[] {9, 99, 999}) {
+        assertQuery(stmt, String.format("SELECT * FROM tbl_non_col1 WHERE k=%d", i),
+                    new Row(i, "text" + i));
+        assertQuery(stmt, String.format("SELECT * FROM tbl_non_col2 WHERE k=%d", i),
+                    new Row(i, i + 123));
+      }
+    }
+  }
+
+  @Test
+  public void testColocatedPartialIndex() throws Exception {
+    String dbname = "colocated_db";
+    String restore_dbname = "colocated_db2";
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format("CREATE DATABASE %s COLOCATION=true", dbname));
+    }
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase(dbname).connect();
+         Statement stmt = connection2.createStatement()) {
+      stmt.execute("CREATE TABLE tbl (k INT PRIMARY KEY, v INT, v2 TEXT)");
+      stmt.execute("CREATE INDEX tbl_partial_idx on tbl(v ASC) WHERE v < 300 AND v >= 100");
+      stmt.execute("INSERT INTO tbl VALUES (1, 100, '100'), (2, 200, '200'), (3, 300, '300')");
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", String.format("ysql.%s", dbname));
+      backupDir = new JSONObject(output).getString("snapshot_url");
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", String.format("ysql.%s",
+                                                                           restore_dbname));
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase(restore_dbname).connect();
+         Statement stmt = connection2.createStatement()) {
+      // Index Only Scan
+      String query = "SELECT v FROM tbl WHERE v < 300 AND v > 100";
+      assertTrue(isIndexOnlyScan(stmt, query, "tbl_partial_idx"));
+
+      // Verify data.
+      assertQuery(stmt, query, new Row(200));
     }
   }
 }

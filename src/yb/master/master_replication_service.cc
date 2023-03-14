@@ -29,10 +29,6 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
     CatalogManager,
     (ValidateReplicationInfo)
-  )
-
-  MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
-    enterprise::CatalogManager,
     (AlterUniverseReplication)
     (CreateCDCStream)
     (DeleteCDCStream)
@@ -45,6 +41,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (UpdateConsumerOnProducerMetadata)
     (ListCDCStreams)
     (SetUniverseReplicationEnabled)
+    (PauseResumeXClusterProducerStreams)
     (SetupUniverseReplication)
     (UpdateCDCStream)
     (GetCDCDBStreamInfo)

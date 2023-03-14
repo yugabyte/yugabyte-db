@@ -1,4 +1,4 @@
-@import '../../../../_style/colors.scss';
+@use '../../../../_style/colors.scss';
 
 .ntp-row.show-margin {
   .form-group {
@@ -57,13 +57,13 @@
     display: flex;
     gap: 10px;
     font-size: 13px;
-    color: $YB_TEXT_COLOR;
-    background: $YB_BANNER_WARNING_BACKGROUND;
+    color: colors.$YB_TEXT_COLOR;
+    background: colors.$YB_BANNER_WARNING_BACKGROUND;
     padding: 12px 10px;
     border-radius: 8px;
 
     i {
-      color: $YB_WARNING_COLOR;
+      color: colors.$YB_WARNING_COLOR;
       font-size: 20px;
     }
   }
@@ -84,7 +84,7 @@
     .standard-error {
       margin-top: 5px;
       display: inline-block;
-      color: $YB_ERROR_TEXT_COLOR;
+      color: colors.$YB_ERROR_TEXT_COLOR;
     }
   }
 }

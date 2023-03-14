@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { array, mixed, object, string } from 'yup';
-import axios, { AxiosError } from 'axios';
 import { Box, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -23,13 +22,14 @@ import { RegionList } from '../../components/RegionList';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import {
   ASYNC_ERROR,
+  DEFAULT_SSH_PORT,
   NTPSetupType,
   ProviderCode,
   VPCSetupType,
   VPCSetupTypeLabel
 } from '../../constants';
 import { FieldGroup } from '../components/FieldGroup';
-import { addItem, deleteItem, editItem, readFileAsText } from '../utils';
+import { addItem, deleteItem, editItem, handleFormServerError, readFileAsText } from '../utils';
 import { FormContainer } from '../components/FormContainer';
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
 import { FormField } from '../components/FormField';
@@ -102,7 +102,7 @@ export const DEFAULT_FORM_VALUES: Partial<AZUProviderCreateFormFieldValues> = {
   providerName: '',
   regions: [] as CloudVendorRegionField[],
   sshKeypairManagement: KeyPairManagement.YBA_MANAGED,
-  sshPort: 22,
+  sshPort: DEFAULT_SSH_PORT,
   vpcSetupType: VPCSetupType.EXISTING
 } as const;
 
@@ -170,13 +170,6 @@ export const AZUProviderCreateForm = ({
     setIsRegionFormModalOpen(false);
   };
 
-  const handleAsyncError = (error: Error | AxiosError) => {
-    const errorMessage = axios.isAxiosError(error)
-      ? error.response?.data?.error?.message ?? error.message
-      : error.message;
-    formMethods.setError(ASYNC_ERROR, errorMessage);
-  };
-
   const onFormSubmit: SubmitHandler<AZUProviderCreateFormFieldValues> = async (formValues) => {
     formMethods.clearErrors(ASYNC_ERROR);
 
@@ -223,7 +216,11 @@ export const AZUProviderCreateForm = ({
         }))
       }))
     };
-    await createInfraProvider(providerPayload, { onError: handleAsyncError });
+    await createInfraProvider(providerPayload, {
+      mutateOptions: {
+        onError: (error) => handleFormServerError(error, ASYNC_ERROR, formMethods.setError)
+      }
+    });
   };
 
   const regions = formMethods.watch('regions', DEFAULT_FORM_VALUES.regions);
@@ -328,6 +325,7 @@ export const AZUProviderCreateForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
+                  inputProps={{ min: 0, max: 65535 }}
                   fullWidth
                 />
               </FormField>
@@ -366,7 +364,10 @@ export const AZUProviderCreateForm = ({
               </FormField>
               <FormField>
                 <FieldLabel>NTP Setup</FieldLabel>
-                <NTPConfigField providerCode={ProviderCode.AZU} />
+                <NTPConfigField
+                  isDisabled={formMethods.formState.isSubmitting}
+                  providerCode={ProviderCode.AZU}
+                />
               </FormField>
             </FieldGroup>
           </Box>
@@ -377,14 +378,14 @@ export const AZUProviderCreateForm = ({
               btnType="submit"
               loading={formMethods.formState.isSubmitting}
               disabled={formMethods.formState.isSubmitting}
-              data-testId="AZUProviderCreateForm-SubmitButton"
+              data-testid="AZUProviderCreateForm-SubmitButton"
             />
             <YBButton
               btnText="Back"
               btnClass="btn btn-default"
               onClick={onBack}
               disabled={formMethods.formState.isSubmitting}
-              data-testId="AZUProviderCreateForm-BackButton"
+              data-testid="AZUProviderCreateForm-BackButton"
             />
           </Box>
         </FormContainer>

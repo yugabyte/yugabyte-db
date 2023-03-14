@@ -9,16 +9,23 @@ menu:
     name: C# Drivers
     identifier: ref-postgres-npgsql-driver
     parent: drivers
-    weight: 600
+    weight: 620
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
+    <a href="../yb-npgsql-reference/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YugabyteDB Npgsql Smart Driver
+    </a>
+  </li>
+
+  <li >
     <a href="../postgres-npgsql-reference/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PostgreSQL Npgsql
+      PostgreSQL Npgsql Driver
     </a>
   </li>
 
@@ -26,11 +33,7 @@ type: docs
 
 Npgsql is an open source ADO.NET Data Provider for PostgreSQL; it allows programs written in C#, Visual Basic, and F# to access the YugabyteDB server.
 
-## Fundamentals
-
-Learn how to perform common tasks required for C# application development using the Npgsql driver.
-
-### Download the driver dependency
+## Download the driver dependency
 
 If you are using Visual Studio IDE, add the Npgsql package to your project as follows:
 
@@ -44,6 +47,10 @@ dotnet add package Npgsql
 ```
 
 or any of the other methods mentioned on the [nuget page](https://www.nuget.org/packages/Npgsql/) for Npgsql.
+
+## Fundamentals
+
+Learn how to perform common tasks required for C# application development using the Npgsql driver.
 
 ### Connect to YugabyteDB database
 

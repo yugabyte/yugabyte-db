@@ -786,6 +786,9 @@ class YBClient {
   // version that does not support AutoFlags.
   Result<std::optional<AutoFlagsConfigPB>> GetAutoFlagConfig();
 
+  Result<master::StatefulServiceInfoPB> GetStatefulServiceLocation(
+      StatefulServiceKind service_kind);
+
   std::future<Result<internal::RemoteTabletPtr>> LookupTabletByKeyFuture(
       const std::shared_ptr<YBTable>& table,
       const std::string& partition_key,
@@ -809,6 +812,11 @@ class YBClient {
   const CloudInfoPB& cloud_info() const;
 
   std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
+
+  // Get a RemoteTabletServer pointer from this client's meta_cache, if there is one present. Return
+  // null if none is found.
+  Result<std::shared_ptr<internal::RemoteTabletServer>> GetRemoteTabletServer(
+      const std::string& permanent_uuid);
 
   void RequestsFinished(const std::set<RetryableRequestId>& request_ids);
 

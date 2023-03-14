@@ -38,6 +38,7 @@ export default class YBFormDropZone extends Component {
           name={name}
           onChange={this.onDrop}
           showHelpText={false}
+          disabled={!!this.props.disabled}
         />
         {hasError && <span className="help-block standard-error">{error}</span>}
       </>

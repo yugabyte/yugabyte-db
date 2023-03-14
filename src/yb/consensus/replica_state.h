@@ -552,7 +552,7 @@ class ReplicaState {
     // Extra value meaning depends on actual status:
     // LEADER_AND_READY: leader term.
     // LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE: number of microseconds in remaining_old_leader_lease.
-    uint64_t packed_status;
+    uint64_t packed_status = 0;
     CoarseTimePoint expire_at;
 
     LeaderStateCache() noexcept {}

@@ -19,7 +19,11 @@ func TestShellTaskProcess(t *testing.T) {
 		t.Fatalf("Error while running shell task - %s", err.Error())
 	}
 
-	if result != "test\n" {
+	if result.ExitStatus.Code != 0 {
+		t.Fatalf("Error while running shell task - %d", result.ExitStatus.Code)
+	}
+
+	if result.Info.String() != "test\n" {
 		t.Fatalf("Unexpected result")
 	}
 }

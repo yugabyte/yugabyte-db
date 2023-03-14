@@ -44,7 +44,7 @@ using namespace std::literals;
 DECLARE_bool(enable_deadlock_detection);
 
 namespace yb {
-namespace tablet {
+namespace docdb {
 
 class StatusTabletData;
 using StatusTabletDataPtr = std::shared_ptr<StatusTabletData>;
@@ -54,7 +54,7 @@ using StatusTabletDataPtr = std::shared_ptr<StatusTabletData>;
 // StatusTabletData instance being tracked by the LocalWaitingTxnRegistry.
 struct WaitingTransactionData {
   TransactionId id;
-  std::vector<BlockingTransactionData> blockers;
+  std::shared_ptr<ConflictDataManager> blockers;
   StatusTabletDataPtr status_tablet_data;
   HybridTime wait_start_time;
   rpc::Rpcs::Handle rpc_handle;
@@ -65,10 +65,17 @@ void AttachWaitingTransaction(
   auto* txn = req->add_waiting_transactions();
   txn->set_transaction_id(data.id.data(), data.id.size());
   txn->set_wait_start_time(data.wait_start_time.ToUint64());
-  for (const auto& blocker : data.blockers) {
+  for (const auto& blocker : data.blockers->RemainingTransactions()) {
     auto* blocking_txn = txn->add_blocking_transaction();
     blocking_txn->set_transaction_id(blocker.id.data(), blocker.id.size());
     blocking_txn->set_status_tablet_id(blocker.status_tablet);
+    SubtxnSet subtxn_set;
+    for (const auto& [subtxn_id, _] : blocker.conflict_info->subtransactions) {
+      WARN_NOT_OK(
+          subtxn_set.SetRange(subtxn_id, subtxn_id),
+          Format("Failed to set index $0 of SubtxnSet", subtxn_id));
+    }
+    subtxn_set.ToPB(blocking_txn->mutable_subtxn_set()->mutable_set());
   }
 }
 
@@ -151,16 +158,16 @@ class LocalWaitingTxnRegistry::Impl {
   // A wrapper for WaitingTransactionData which determines the lifetime of the
   // LocalWaitingTxnRegistry's metadata associated with this waiter. When this wrapper is
   // destructed, the LocalWaitingTxnRegistry will cease reporting on this waiter.
-  class WaitingTransactionDataWrapper : public docdb::ScopedWaitingTxnRegistration {
+  class WaitingTransactionDataWrapper : public ScopedWaitingTxnRegistration {
    public:
     explicit WaitingTransactionDataWrapper(LocalWaitingTxnRegistry::Impl* registry)
         : registry_(registry) {}
 
     Status Register(
         const TransactionId& waiting,
-        std::vector<BlockingTransactionData>&& blocking,
+        std::shared_ptr<ConflictDataManager> blockers,
         const TabletId& status_tablet) override {
-      return registry_->RegisterWaitingFor(waiting, std::move(blocking), status_tablet, this);
+      return registry_->RegisterWaitingFor(waiting, std::move(blockers), status_tablet, this);
     }
 
     void SetData(std::shared_ptr<WaitingTransactionData>&& blocked_data) {
@@ -258,14 +265,14 @@ class LocalWaitingTxnRegistry::Impl {
   }
 
   Status RegisterWaitingFor(
-      const TransactionId& waiting, std::vector<BlockingTransactionData>&& blocking,
+      const TransactionId& waiting, std::shared_ptr<ConflictDataManager> blockers,
       const TabletId& status_tablet_id, WaitingTransactionDataWrapper* wrapper) {
     DCHECK(!status_tablet_id.empty());
     auto shared_tablet_data = VERIFY_RESULT(GetOrAdd(status_tablet_id));
 
     auto blocked_data = std::make_shared<WaitingTransactionData>(WaitingTransactionData {
       .id = waiting,
-      .blockers = std::move(blocking),
+      .blockers = std::move(blockers),
       .status_tablet_data = shared_tablet_data,
       .wait_start_time = clock_->Now(),
       .rpc_handle = rpcs_.InvalidHandle(),
@@ -331,7 +338,7 @@ LocalWaitingTxnRegistry::LocalWaitingTxnRegistry(
 
 LocalWaitingTxnRegistry::~LocalWaitingTxnRegistry() {}
 
-std::unique_ptr<docdb::ScopedWaitingTxnRegistration> LocalWaitingTxnRegistry::Create() {
+std::unique_ptr<ScopedWaitingTxnRegistration> LocalWaitingTxnRegistry::Create() {
   return impl_->Create();
 }
 
@@ -347,5 +354,5 @@ void LocalWaitingTxnRegistry::CompleteShutdown() {
   return impl_->CompleteShutdown();
 }
 
-} // namespace tablet
+} // namespace docdb
 } // namespace yb

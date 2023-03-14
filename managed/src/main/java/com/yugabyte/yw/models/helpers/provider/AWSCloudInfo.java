@@ -13,6 +13,7 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiParam;
+import io.swagger.annotations.ApiModelProperty.AccessMode;
 import lombok.Data;
 
 @Data
@@ -48,6 +49,12 @@ public class AWSCloudInfo implements CloudInfoInterface {
   @ApiModelProperty
   public String awsHostedZoneName;
 
+  @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
+  public String hostVpcRegion;
+
+  @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
+  public String hostVpcId;
+
   @JsonIgnore
   public Map<String, String> getEnvVars() {
     Map<String, String> envVars = new HashMap<>();
@@ -81,5 +88,18 @@ public class AWSCloudInfo implements CloudInfoInterface {
   public void withSensitiveDataMasked() {
     this.awsAccessKeyID = CommonUtils.getMaskedValue(awsAccessKeyID);
     this.awsAccessKeySecret = CommonUtils.getMaskedValue(awsAccessKeySecret);
+  }
+
+  @JsonIgnore
+  public void mergeMaskedFields(CloudInfoInterface providerCloudInfo) {
+    AWSCloudInfo awsCloudInfo = (AWSCloudInfo) providerCloudInfo;
+    // If the modify request contains masked value, overwrite those using
+    // the existing ebean entity.
+    if (this.awsAccessKeyID != null && this.awsAccessKeyID.contains("*")) {
+      this.awsAccessKeyID = awsCloudInfo.awsAccessKeyID;
+    }
+    if (this.awsAccessKeySecret != null && this.awsAccessKeySecret.contains("*")) {
+      this.awsAccessKeySecret = awsCloudInfo.awsAccessKeySecret;
+    }
   }
 }

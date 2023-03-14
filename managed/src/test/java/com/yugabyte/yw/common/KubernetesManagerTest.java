@@ -62,7 +62,6 @@ public class KubernetesManagerTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.kubernetes);
     universe = ModelFactory.createUniverse("testUniverse", defaultCustomer.getCustomerId());
-    configProvider.put("KUBECONFIG_SERVICE_ACCOUNT", "demo-account");
     configProvider.put("KUBECONFIG", "test");
     defaultProvider.setConfig(configProvider);
     defaultProvider.save();

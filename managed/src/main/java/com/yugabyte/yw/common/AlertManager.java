@@ -27,17 +27,17 @@ import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
-import com.yugabyte.yw.models.AlertChannel.ChannelType;
-import com.yugabyte.yw.models.AlertChannelTemplates;
-import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
@@ -343,8 +343,8 @@ public class AlertManager {
       try {
         ChannelType channelType =
             ChannelType.valueOf(AlertUtils.getJsonTypeName(channel.getParams()));
-        AlertChannelTemplates channelTemplates =
-            alertChannelTemplateService.get(channel.getCustomerUUID(), channelType);
+        AlertChannelTemplatesExt channelTemplates =
+            alertChannelTemplateService.getWithDefaults(channel.getCustomerUUID(), channelType);
 
         AlertChannelInterface handler = channelsManager.get(channelType.name());
         handler.sendNotification(customer, tempAlert, channel, channelTemplates);

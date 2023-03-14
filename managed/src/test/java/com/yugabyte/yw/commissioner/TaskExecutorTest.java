@@ -342,6 +342,10 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     verify(subTask1, times(1)).run();
     verify(subTask2, times(0)).run();
 
+    verify(task, times(1)).onCancelled(any());
+    verify(subTask1, times(0)).onCancelled(any());
+    verify(subTask2, times(1)).onCancelled(any());
+
     List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTaskInfos.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -397,6 +401,10 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
     verify(subTask1, times(1)).run();
     verify(subTask2, times(0)).run();
+
+    verify(task, times(1)).onCancelled(any());
+    verify(subTask1, times(0)).onCancelled(any());
+    verify(subTask2, times(1)).onCancelled(any());
 
     List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =

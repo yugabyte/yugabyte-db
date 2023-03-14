@@ -23,7 +23,7 @@ NODE_IP=""
 NODE_PORT="9070"
 API_TOKEN=""
 PLATFORM_URL=""
-TYPE=""
+COMMAND=""
 VERSION=""
 JWT=""
 NODE_AGENT_BASE_URL=""
@@ -231,7 +231,7 @@ EOF
   sudo systemctl daemon-reload
   #To enable the node-agent service on reboot.
   sudo systemctl enable yb-node-agent
-  sudo systemctl start yb-node-agent
+  sudo systemctl restart yb-node-agent
   echo "* Started the systemd service"
   echo "* Run 'systemctl status yb-node-agent' to check\
  the status of the yb-node-agent"
@@ -245,13 +245,13 @@ show_usage() {
 Usage: ${0##*/} [<options>]
 
 Options:
-  -t, --type (REQUIRED)
-    Type of install to perform. Must be in ['install', 'install_service' (Requires sudo access)].
+  -c, --command (REQUIRED)
+    Command to run. Must be in ['install', 'install_service' (Requires sudo access)].
   -u, --url (REQUIRED)
     Yugabyte Anywhere URL.
-  -at, --api_token (REQUIRED with install type)
+  -t, --api_token (REQUIRED with install command)
     Api token to download the build files.
-  --user (REQUIRED only for install_service type)
+  --user (REQUIRED only for install_service command)
     Username of the installation. A sudo user can install service for a non-sudo user.
   --skip_verify_cert (OPTIONAL)
     Specify to skip Yugabyte Anywhere server cert verification during install.
@@ -266,24 +266,24 @@ err_msg() {
 
 #Main entry function.
 main() {
-  echo "* Starting YB Node Agent $TYPE."
-  if [ "$TYPE" = "install_service" ]; then
+  echo "* Starting YB Node Agent $COMMAND."
+  if [ "$COMMAND" = "install_service" ]; then
     if [ "$SUDO_ACCESS" = "false" ]; then
       echo "SUDO access is required."
       exit 1
     fi
     install_systemd_service
-  elif [ "$TYPE" = "download_package" ]; then
+  elif [ "$COMMAND" = "download_package" ]; then
     if [ -z "$JWT" ]; then
       echo "JWT is required."
       show_usage >&2
       exit 1
     fi
     download_package >/dev/null
-  elif [ "$TYPE" = "upgrade" ]; then
+  elif [ "$COMMAND" = "upgrade" ]; then
     extract_package > /dev/null
     setup_symlink > /dev/null
-  elif [ "$TYPE" = "install" ]; then
+  elif [ "$COMMAND" = "install" ]; then
     local NODE_AGENT_CONFIG_ARGS=()
     if [ "$DISABLE_EGRESS" = "false" ]; then
       #Node agent can initiate connection to Yugabyte Anywhere.
@@ -345,7 +345,7 @@ main() {
     fi
     echo "Source ~/.bashrc to make node-agent available in the PATH."
   else
-    err_msg "Invalid option: $TYPE. Must be one of ['install [--force] [--skip_verify_cert]', \
+    err_msg "Invalid option: $COMMAND. Must be one of ['install [--force] [--skip_verify_cert]', \
 'install_service'].\n"
     show_usage >&2
     exit 1
@@ -359,8 +359,8 @@ fi
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    -t|--type)
-      TYPE="$2"
+    -c|--command)
+      COMMAND="$2"
       shift
     ;;
     --user)
@@ -400,7 +400,7 @@ while [[ $# -gt 0 ]]; do
       NODE_PORT=$2
       shift
       ;;
-    -at|--api_token)
+    -t|--api_token)
       API_TOKEN="$2"
       shift
     ;;
@@ -423,7 +423,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-if [ -z "$TYPE" ]; then
+if [ -z "$COMMAND" ]; then
   show_usage >&2
   exit 1
 fi
@@ -431,13 +431,13 @@ fi
 CURRENT_USER=$(id -u -n)
 
 if [ -z "$INSTALL_USER" ]; then
-  if [ "$TYPE" = "install_service" ]; then
+  if [ "$COMMAND" = "install_service" ]; then
     echo "Install user is required."
     show_usage >&2
     exit 1
   fi
   INSTALL_USER="$CURRENT_USER"
-elif [ "$INSTALL_USER" != "$CURRENT_USER" ] && [ "$TYPE" != "install_service" ]; then
+elif [ "$INSTALL_USER" != "$CURRENT_USER" ] && [ "$COMMAND" != "install_service" ]; then
   echo "Different user can be passed only for installing service."
   exit 1
 fi
@@ -449,7 +449,7 @@ NODE_AGENT_RELEASE_DIR="$NODE_AGENT_HOME/release"
 NODE_AGENT_PKG_TGZ_PATH="$NODE_AGENT_RELEASE_DIR/$NODE_AGENT_PKG_TGZ"
 NODE_AGRNT_CERT_PATH="$NODE_AGENT_HOME/cert/$CERT_DIR"
 
-if [ "$TYPE" = "install" ]; then
+if [ "$COMMAND" = "install" ]; then
   HEADER="$API_TOKEN_HEADER"
   HEADER_VAL="$API_TOKEN"
 else
@@ -468,10 +468,10 @@ NODE_AGENT_DOWNLOAD_URL="$PLATFORM_URL/api/node_agents/download"
 check_sudo_access
 main
 
-if [ "$?" -eq 0 ] && [ "$TYPE" = "install" ]; then
+if [ "$?" -eq 0 ] && [ "$COMMAND" = "install" ]; then
   if [ "$SUDO_ACCESS" = "false" ]; then
     echo "You can install a systemd service on linux machines\
- by running $INSTALLER_NAME -t install_service (Requires sudo access)."
+ by running $INSTALLER_NAME -c install_service (Requires sudo access)."
   else
      install_systemd_service
   fi

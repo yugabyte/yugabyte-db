@@ -1,6 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../../_style/colors.scss';
+@use '../../../../_style/colors.scss';
 
 .on-prem-provider-form-container {
   margin-top: 30px;
@@ -25,11 +25,11 @@ label textarea {
 
 .ssh-key-container {
   height: 200px;
-  border: 1px solid $YB_DARK_GRAY;
+  border: 1px solid colors.$YB_DARK_GRAY;
 }
 
 .add-host-options-container {
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
   margin-top: 8px;
   padding: 6px;
   cursor: pointer;
@@ -43,21 +43,21 @@ label textarea {
 .on-prem-row-delete-btn {
   cursor: pointer;
   background-color: transparent;
-  color: $YB_DARK_GRAY;
+  color: colors.$YB_DARK_GRAY;
   font-size: 26px;
   float: right;
   padding-top: 4px;
   margin-right: 10px;
 
   &:hover {
-    color: $YB_FAIL_COLOR;
+    color: colors.$YB_FAIL_COLOR;
   }
 }
 
 .on-prem-row-add-btn {
   float: right;
   margin: 4px 10px 0 0;
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
   cursor: pointer;
 }
 
@@ -77,12 +77,12 @@ label textarea {
   padding-left: 5px;
   font-size: 12px;
   font-style: italic;
-  color: $YB_DARK_GRAY;
+  color: colors.$YB_DARK_GRAY;
 }
 
 .add-instance-btn {
   font-size: 18px;
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
   margin-right: 4px;
 }
 
@@ -94,7 +94,7 @@ label textarea {
 
 .stepper-container {
   padding: 0 20px;
-  color: $YB_DARK_GRAY;
+  color: colors.$YB_DARK_GRAY;
   font-size: 16px;
   text-align: center;
   font-weight: 500;
@@ -105,13 +105,13 @@ label textarea {
   font-size: 16px;
   line-height: 46px;
   padding-bottom: 3px;
-  border-bottom: 1px solid $YB_GRAY;
+  border-bottom: 1px solid colors.$YB_GRAY;
   color: rgba(black, 0.35);
   white-space: nowrap;
 }
 .active-stepper-cell {
   color: black;
-  border-bottom: 3px solid $YB_ORANGE;
+  border-bottom: 3px solid colors.$YB_ORANGE;
 }
 
 .node-list-heading {
@@ -121,7 +121,7 @@ label textarea {
 }
 
 .horizontal-border {
-  border: 1px solid $YB_GRAY;
+  border: 1px solid colors.$YB_GRAY;
   margin-bottom: 10px;
 }
 .add-node-save-btn {

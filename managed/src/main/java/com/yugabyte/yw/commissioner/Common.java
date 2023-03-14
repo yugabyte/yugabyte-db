@@ -99,5 +99,9 @@ public class Common {
     public String getSshUser() {
       return defaultSshUser;
     }
+
+    public boolean enforceInstanceTags() {
+      return this == aws || this == azu || this == gcp;
+    }
   }
 }

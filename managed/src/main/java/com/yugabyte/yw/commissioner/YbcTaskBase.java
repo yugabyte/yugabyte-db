@@ -22,7 +22,7 @@ public abstract class YbcTaskBase extends AbstractTaskBase {
   public final YbcBackupUtil ybcBackupUtil;
 
   // Time to wait (in millisec) between each poll to ybc.
-  private static final int WAIT_EACH_ATTEMPT_MS = 15000;
+  private final int WAIT_EACH_ATTEMPT_MS = 15000;
 
   @Inject
   public YbcTaskBase(
@@ -85,7 +85,7 @@ public abstract class YbcTaskBase extends AbstractTaskBase {
         return;
       case ABORT:
         log.info(String.format("%s Task aborted on YB-Controller.", baseLogMessage));
-        throw new CancellationException("Yb-Controller task aborted.");
+        throw new CancellationException("Task aborted on YB-Controller.");
       case NOT_FOUND:
         throw new RuntimeException(
             String.format("%s %s", baseLogMessage, "Task not found on YB-Controller"));

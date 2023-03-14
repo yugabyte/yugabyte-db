@@ -41,6 +41,8 @@
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
 
+#include "yb/server/skewed_clock.h"
+
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_memctx.h"
@@ -154,6 +156,11 @@ inline std::optional<Bound> MakeBound(YBCPgBoundType type, uint64_t value) {
 
 void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks,
                      PgApiContext* context) {
+  // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
+  // However, this is added to allow simulating and testing of some known bugs until we remove
+  // HybridClock usage.
+  server::SkewedClock::Register();
+
   InitThreading();
 
   CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
@@ -257,7 +264,7 @@ YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
 
 YBCStatus YbGetActualHeapSizeBytes(int64_t *consumption) {
 #ifdef YB_TCMALLOC_ENABLED
-    *consumption = yb::MemTracker::GetTCMallocActualHeapSizeBytes();
+    *consumption = pgapi ? pgapi->GetRootMemTracker().consumption() : 0;
 #else
     *consumption = 0;
 #endif
@@ -744,6 +751,7 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               bool is_unique_index,
                               const bool skip_index_backfill,
                               bool if_not_exist,
+                              bool is_colocated_via_database,
                               const YBCPgOid tablegroup_oid,
                               const YBCPgOid colocation_id,
                               const YBCPgOid tablespace_oid,
@@ -754,7 +762,8 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
   const PgObjectId tablespace_id(database_oid, tablespace_oid);
   return ToYBCStatus(pgapi->NewCreateIndex(database_name, schema_name, index_name, index_id,
                                            table_id, is_shared_index, is_unique_index,
-                                           skip_index_backfill, if_not_exist, tablegroup_id,
+                                           skip_index_backfill, if_not_exist,
+                                           is_colocated_via_database, tablegroup_id,
                                            colocation_id, tablespace_id, handle));
 }
 

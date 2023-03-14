@@ -13,8 +13,9 @@
 
 #include "yb/docdb/schema_packing.h"
 
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/primitive_value.h"
@@ -31,8 +32,10 @@ namespace {
 // Used to mark column as skipped by packer. For instance in case of collection column.
 constexpr int64_t kSkippedColumnIdx = -1;
 
-bool IsVarlenColumn(const ColumnSchema& column_schema) {
-  return column_schema.is_nullable() || column_schema.type_info()->var_length();
+bool IsVarlenColumn(TableType table_type, const ColumnSchema& column_schema) {
+  // CQL columns could have individual TTL.
+  return table_type == TableType::YQL_TABLE_TYPE ||
+         column_schema.is_nullable() || column_schema.type_info()->var_length();
 }
 
 size_t EncodedColumnSize(const ColumnSchema& column_schema) {
@@ -68,19 +71,19 @@ std::string ColumnPackingData::ToString() const {
       id, num_varlen_columns_before, offset_after_prev_varlen_column, size, nullable);
 }
 
-SchemaPacking::SchemaPacking(const Schema& schema) {
+SchemaPacking::SchemaPacking(TableType table_type, const Schema& schema) {
   varlen_columns_count_ = 0;
   size_t offset_after_prev_varlen_column = 0;
   columns_.reserve(schema.num_columns() - schema.num_key_columns());
   for (auto i = schema.num_key_columns(); i != schema.num_columns(); ++i) {
     const auto& column_schema = schema.column(i);
     auto column_id = schema.column_id(i);
-    if (column_schema.is_collection()) {
+    if (column_schema.is_collection() || column_schema.is_static()) {
       column_to_idx_.emplace(column_id, kSkippedColumnIdx);
       continue;
     }
     column_to_idx_.emplace(column_id, columns_.size());
-    bool varlen = IsVarlenColumn(column_schema);
+    bool varlen = IsVarlenColumn(table_type, column_schema);
     columns_.emplace_back(ColumnPackingData {
       .id = schema.column_id(i),
       .num_varlen_columns_before = varlen_columns_count_,
@@ -155,10 +158,24 @@ void SchemaPacking::ToPB(SchemaPackingPB* out) const {
   }
 }
 
-SchemaPackingStorage::SchemaPackingStorage() = default;
+bool SchemaPacking::CouldPack(
+    const google::protobuf::RepeatedPtrField<QLColumnValuePB>& values) const {
+  if (make_unsigned(values.size()) != column_to_idx_.size()) {
+    return false;
+  }
+  for (const auto& value : values) {
+    if (!column_to_idx_.contains(ColumnId(value.column_id()))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+SchemaPackingStorage::SchemaPackingStorage(TableType table_type) : table_type_(table_type) {}
 
 SchemaPackingStorage::SchemaPackingStorage(
-    const SchemaPackingStorage& rhs, SchemaVersion min_schema_version) {
+    const SchemaPackingStorage& rhs, SchemaVersion min_schema_version)
+    : table_type_(rhs.table_type_) {
   for (const auto& [version, packing] : rhs.version_to_schema_packing_) {
     if (version < min_schema_version) {
       continue;
@@ -169,9 +186,11 @@ SchemaPackingStorage::SchemaPackingStorage(
 
 Result<const SchemaPacking&> SchemaPackingStorage::GetPacking(SchemaVersion schema_version) const {
   auto it = version_to_schema_packing_.find(schema_version);
-  if (it == version_to_schema_packing_.end()) {
-    return STATUS_FORMAT(NotFound, "Schema packing not found: $0", schema_version);
-  }
+  auto get_first = [](const auto& pair) { return pair.first; };
+  RSTATUS_DCHECK(
+      it != version_to_schema_packing_.end(), NotFound,
+      "Schema packing not found: $0, available_versions: $1",
+      schema_version, CollectionToString(version_to_schema_packing_, get_first));
   return it->second;
 }
 
@@ -184,7 +203,7 @@ void SchemaPackingStorage::AddSchema(SchemaVersion version, const Schema& schema
   auto inserted = version_to_schema_packing_.emplace(
       std::piecewise_construct,
       std::forward_as_tuple(version),
-      std::forward_as_tuple(schema)).second;
+      std::forward_as_tuple(table_type_, schema)).second;
   LOG_IF(DFATAL, !inserted)
       << "Duplicate schema version: " << version << ", " << AsString(version_to_schema_packing_);
 }
@@ -210,8 +229,8 @@ Status SchemaPackingStorage::MergeWithRestored(
   }
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "Schema Packing History after merging with snapshot";
-    for (const auto& schema : version_to_schema_packing_) {
-      VLOG(2) << schema.first << " : " << schema.second.ToString();
+    for (const auto& [version, packing] : version_to_schema_packing_) {
+      VLOG(2) << version << " : " << packing.ToString();
     }
   }
   return Status::OK();

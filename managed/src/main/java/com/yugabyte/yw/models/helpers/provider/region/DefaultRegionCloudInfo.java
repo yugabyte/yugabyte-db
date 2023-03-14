@@ -23,4 +23,9 @@ public class DefaultRegionCloudInfo implements CloudInfoInterface {
   public void withSensitiveDataMasked() {
     // Pass
   }
+
+  @JsonIgnore
+  public void mergeMaskedFields(CloudInfoInterface providerCloudInfo) {
+    // Pass
+  }
 }

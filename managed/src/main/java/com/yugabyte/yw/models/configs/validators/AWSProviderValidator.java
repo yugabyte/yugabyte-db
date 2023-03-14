@@ -8,12 +8,14 @@ import com.amazonaws.services.ec2.model.Image;
 import com.amazonaws.services.ec2.model.IpPermission;
 import com.amazonaws.services.ec2.model.SecurityGroup;
 import com.amazonaws.services.ec2.model.Subnet;
+import com.amazonaws.util.CollectionUtils;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
@@ -46,17 +48,21 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     checkMissingKeys(provider);
 
     // validate access
-    try {
-      awsCloudImpl.getStsClientOrBadRequest(provider);
-    } catch (PlatformServiceException e) {
-      if (e.getHttpStatus() == BAD_REQUEST) {
-        if (awsCloudImpl.checkKeysExists(provider)) {
-          throwBeanValidatorError("KEYS", e.getMessage());
-        } else {
-          throwBeanValidatorError("IAM", e.getMessage());
+    if (provider.regions != null && !provider.regions.isEmpty()) {
+      for (Region region : provider.regions) {
+        try {
+          awsCloudImpl.getStsClientOrBadRequest(provider, region);
+        } catch (PlatformServiceException e) {
+          if (e.getHttpStatus() == BAD_REQUEST) {
+            if (awsCloudImpl.checkKeysExists(provider)) {
+              throwBeanValidatorError("KEYS", e.getMessage());
+            } else {
+              throwBeanValidatorError("IAM", e.getMessage());
+            }
+          }
+          throw e;
         }
       }
-      throw e;
     }
 
     // validate SSH private key content
@@ -64,8 +70,8 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
       if (provider.allAccessKeys != null && provider.allAccessKeys.size() > 0) {
         for (AccessKey accessKey : provider.allAccessKeys) {
           String privateKeyContent = accessKey.getKeyInfo().sshPrivateKeyContent;
-          if (!awsCloudImpl.getPrivateKeyOrBadRequest(privateKeyContent).equals("RSA")) {
-            throwBeanValidatorError("SSH_PRIVATE_KEY_CONTENT", "Please provide a valid RSA key");
+          if (!awsCloudImpl.getPrivateKeyAlgoOrBadRequest(privateKeyContent).equals("RSA")) {
+            throw new PlatformServiceException(BAD_REQUEST, "Please provide a valid RSA key");
           }
         }
       }
@@ -82,20 +88,24 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     }
 
     // validate hosted zone id
-    try {
-      String hostedZoneId = provider.details.cloudInfo.aws.awsHostedZoneId;
-      if (!StringUtils.isEmpty(hostedZoneId)) {
-        awsCloudImpl.getHostedZoneOrBadRequest(provider, hostedZoneId);
+    if (provider.regions != null && !provider.regions.isEmpty()) {
+      for (Region region : provider.regions) {
+        try {
+          String hostedZoneId = provider.details.cloudInfo.aws.awsHostedZoneId;
+          if (!StringUtils.isEmpty(hostedZoneId)) {
+            awsCloudImpl.getHostedZoneOrBadRequest(provider, region, hostedZoneId);
+          }
+        } catch (PlatformServiceException e) {
+          if (e.getHttpStatus() == BAD_REQUEST) {
+            throwBeanValidatorError("HOSTED_ZONE", e.getMessage());
+          }
+          throw e;
+        }
       }
-    } catch (PlatformServiceException e) {
-      if (e.getHttpStatus() == BAD_REQUEST) {
-        throwBeanValidatorError("HOSTED_ZONE", e.getMessage());
-      }
-      throw e;
     }
 
     // validate Region and its details
-    if (provider.regions != null) {
+    if (provider.regions != null && !provider.regions.isEmpty()) {
       for (Region region : provider.regions) {
         validateAMI(provider, region);
         validateVpc(provider, region);
@@ -103,13 +113,11 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
         validateSubnets(provider, region);
         dryRun(provider, region);
       }
-    } else {
-      throwBeanValidatorError("REGION", "Provider must have at least one region");
     }
   }
 
   private void dryRun(Provider provider, Region region) {
-    String fieldDetails = "DRY_RUN." + region.code;
+    String fieldDetails = "REGION." + region.code + ".DRY_RUN";
     try {
       awsCloudImpl.dryRunDescribeInstanceOrBadRequest(provider, region.code);
     } catch (PlatformServiceException e) {
@@ -130,24 +138,23 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
         List<String> supportedArch =
             runtimeConfigGetter.getStaticConf().getStringList("yb.aws.supported_arch_types");
         if (!supportedArch.contains(arch)) {
-          throwBeanValidatorError(
-              fieldDetails, arch + " arch on image " + imageId + " is not supported");
+          throw new PlatformServiceException(
+              BAD_REQUEST, arch + " arch on image " + imageId + " is not supported");
         }
         List<String> supportedRootDeviceType =
             runtimeConfigGetter.getStaticConf().getStringList("yb.aws.supported_root_device_type");
         String rootDeviceType = image.getRootDeviceType().toLowerCase();
         if (!supportedRootDeviceType.contains(rootDeviceType)) {
-          throwBeanValidatorError(
-              fieldDetails,
+          throw new PlatformServiceException(
+              BAD_REQUEST,
               rootDeviceType + " root device type on image " + imageId + " is not supported");
         }
         List<String> supportedPlatform =
             runtimeConfigGetter.getStaticConf().getStringList("yb.aws.supported_platform");
         String platformDetails = image.getPlatformDetails().toLowerCase();
         if (!supportedPlatform.stream().anyMatch(platform -> platformDetails.contains(platform))) {
-          throwBeanValidatorError(
-              fieldDetails,
-              platformDetails + " platform on image " + imageId + " is not supported");
+          throw new PlatformServiceException(
+              BAD_REQUEST, platformDetails + " platform on image " + imageId + " is not supported");
         }
       }
     } catch (PlatformServiceException e) {
@@ -181,20 +188,22 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
             awsCloudImpl.describeSecurityGroupsOrBadRequest(provider, region);
         Integer sshPort = provider.getProviderDetails().sshPort;
         boolean portOpen = false;
-        for (IpPermission ipPermission : securityGroup.getIpPermissions()) {
-          Integer fromPort = ipPermission.getFromPort();
-          Integer toPort = ipPermission.getToPort();
-          if (fromPort == null || toPort == null) {
-            continue;
-          }
-          if (fromPort <= sshPort && toPort >= sshPort) {
-            portOpen = true;
-            break;
+        if (!CollectionUtils.isNullOrEmpty(securityGroup.getIpPermissions())) {
+          for (IpPermission ipPermission : securityGroup.getIpPermissions()) {
+            Integer fromPort = ipPermission.getFromPort();
+            Integer toPort = ipPermission.getToPort();
+            if (fromPort == null || toPort == null) {
+              continue;
+            }
+            if (fromPort <= sshPort && toPort >= sshPort) {
+              portOpen = true;
+              break;
+            }
           }
         }
         if (!portOpen) {
-          throwBeanValidatorError(
-              fieldDetails,
+          throw new PlatformServiceException(
+              BAD_REQUEST,
               sshPort + " is not open on security group " + region.getSecurityGroupId());
         }
       }
@@ -214,13 +223,18 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
         List<Subnet> subnets = awsCloudImpl.describeSubnetsOrBadRequest(provider, region);
         Set<String> cidrBlocks = new HashSet<>();
         for (Subnet subnet : subnets) {
-          if (cidrBlocks.contains(subnet.getCidrBlock())) {
-            throwBeanValidatorError(
-                fieldDetails, "Please provide non-overlapping CIDR blocks subnets");
+          AvailabilityZone az = getAzBySubnetFromRegion(region, subnet.getSubnetId());
+          if (!az.code.equals(subnet.getAvailabilityZone())) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Invalid AZ code for subnet: " + subnet.getSubnetId());
           }
           if (!subnet.getVpcId().equals(regionVnetName)) {
-            throwBeanValidatorError(
-                fieldDetails, subnet.getSubnetId() + "is not associated with " + regionVnetName);
+            throw new PlatformServiceException(
+                BAD_REQUEST, subnet.getSubnetId() + " is not associated with " + regionVnetName);
+          }
+          if (cidrBlocks.contains(subnet.getCidrBlock())) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Please provide non-overlapping CIDR blocks subnets");
           }
           cidrBlocks.add(subnet.getCidrBlock());
         }
@@ -241,5 +255,17 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
         || (!StringUtils.isEmpty(accessKey) && StringUtils.isEmpty(accessKeySecret))) {
       throwBeanValidatorError("KEYS", "Please provide both access key and its secret");
     }
+  }
+
+  private AvailabilityZone getAzBySubnetFromRegion(Region region, String subnet) {
+    return region
+        .zones
+        .stream()
+        .filter(zone -> zone.subnet.equals(subnet))
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new PlatformServiceException(
+                    BAD_REQUEST, "Could not find AZ for subnet: " + subnet));
   }
 }

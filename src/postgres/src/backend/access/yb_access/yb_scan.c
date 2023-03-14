@@ -1807,32 +1807,24 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 		ybcAddTargetColumn(ybScan, ObjectIdAttributeNumber);
 
 	if (is_index_only_scan)
+		return;
+
+	/* Two cases:
+	 * - Primary Scan (Key or sequential)
+	 *     SELECT data, ybctid FROM table [ WHERE primary-key-condition ]
+	 * - Secondary IndexScan
+	 *     SELECT data, ybctid FROM table WHERE ybctid IN
+	 *		( SELECT base_ybctid FROM IndexTable )
+	 */
+	ybcAddTargetColumn(ybScan, YBTupleIdAttributeNumber);
+	if (index && !index->rd_index->indisprimary)
 	{
 		/*
-		 * IndexOnlyScan:
-		 *   SELECT [ data, ] ybbasectid (ROWID of UserTable, relation) FROM secondary-index-table
-		 * In this case, Postgres requests base_ctid and maybe also data from IndexTable and then uses
-		 * them for further processing.
+		 * IndexScan: Postgres layer sends both actual-query and
+		 * index-scan to PgGate, who will select and immediately use
+		 * base_ctid to query data before responding.
 		 */
 		ybcAddTargetColumn(ybScan, YBIdxBaseTupleIdAttributeNumber);
-	}
-	else
-	{
-		/* Two cases:
-		 * - Primary Scan (Key or sequential)
-		 *     SELECT data, ybctid FROM table [ WHERE primary-key-condition ]
-		 * - Secondary IndexScan
-		 *     SELECT data, ybctid FROM table WHERE ybctid IN ( SELECT base_ybctid FROM IndexTable )
-		 */
-		ybcAddTargetColumn(ybScan, YBTupleIdAttributeNumber);
-		if (index && !index->rd_index->indisprimary)
-		{
-			/*
-			 * IndexScan: Postgres layer sends both actual-query and index-scan to PgGate, who will
-			 * select and immediately use base_ctid to query data before responding.
-			 */
-			ybcAddTargetColumn(ybScan, YBIdxBaseTupleIdAttributeNumber);
-		}
 	}
 }
 
@@ -2744,7 +2736,8 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy w
 	exec_params.limit_count = 1;
 	exec_params.rowmark = mode;
 	exec_params.wait_policy = wait_policy;
-  exec_params.statement_in_txn_limit = estate->yb_exec_params.statement_in_txn_limit;
+  exec_params.stmt_in_txn_limit_ht_for_reads =
+		estate->yb_exec_params.stmt_in_txn_limit_ht_for_reads;
 
 	HTSU_Result res = HeapTupleMayBeUpdated;
 	MemoryContext exec_context = GetCurrentMemoryContext();

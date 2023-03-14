@@ -2,18 +2,20 @@
 
 package com.yugabyte.yw.common.alerts.impl;
 
-import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.common.alerts.SmtpData;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
-import com.yugabyte.yw.models.AlertChannelTemplates;
+import com.yugabyte.yw.models.AlertTemplateVariable;
 import com.yugabyte.yw.models.Customer;
 import java.util.Collections;
 import java.util.List;
+import javax.inject.Inject;
 import javax.mail.MessagingException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -22,16 +24,28 @@ import org.apache.commons.collections.CollectionUtils;
 @Singleton
 public class AlertChannelEmail extends AlertChannelBase {
 
-  @Inject private EmailHelper emailHelper;
+  private final EmailHelper emailHelper;
+
+  @Inject
+  public AlertChannelEmail(
+      EmailHelper emailHelper, AlertTemplateVariableService alertTemplateVariableService) {
+    super(alertTemplateVariableService);
+    this.emailHelper = emailHelper;
+  }
 
   @Override
   public void sendNotification(
-      Customer customer, Alert alert, AlertChannel channel, AlertChannelTemplates channelTemplates)
+      Customer customer,
+      Alert alert,
+      AlertChannel channel,
+      AlertChannelTemplatesExt channelTemplates)
       throws PlatformNotificationException {
     log.debug("sendNotification {}", alert);
     AlertChannelEmailParams params = (AlertChannelEmailParams) channel.getParams();
-    String title = getNotificationTitle(alert, channel, channelTemplates);
-    String text = getNotificationText(alert, channel, channelTemplates);
+    List<AlertTemplateVariable> variables = alertTemplateVariableService.list(customer.getUuid());
+    Context context = new Context(channel, channelTemplates, variables);
+    String title = getNotificationTitle(alert, context);
+    String text = getNotificationText(alert, context);
 
     SmtpData smtpData =
         params.isDefaultSmtpSettings()

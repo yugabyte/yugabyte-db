@@ -49,7 +49,11 @@ export const YSQLField = ({ disabled, enforceAuth }: YSQLFieldProps): ReactEleme
     <Box display="flex" width="100%" flexDirection="column" data-testid="YSQLField-Container">
       <Box display="flex">
         <YBTooltip
-          title={!ycqlEnabled ? (t('universeForm.instanceConfig.enableYsqlOrYcql') as string) : ''}
+          title={
+            !ycqlEnabled
+              ? (t('universeForm.securityConfig.authSettings.enableYsqlOrYcql') as string)
+              : ''
+          }
           placement="top-start"
         >
           <div>
@@ -133,6 +137,7 @@ export const YSQLField = ({ disabled, enforceAuth }: YSQLFieldProps): ReactEleme
                         }}
                         error={!!errors?.instanceConfig?.ysqlPassword}
                         helperText={errors?.instanceConfig?.ysqlPassword?.message}
+                        placeholder={t('universeForm.securityConfig.placeholder.enterYSQLPassword')}
                       />
                     </Box>
                   </Box>
@@ -163,6 +168,9 @@ export const YSQLField = ({ disabled, enforceAuth }: YSQLFieldProps): ReactEleme
                         }}
                         error={!!errors?.instanceConfig?.ysqlConfirmPassword}
                         helperText={errors?.instanceConfig?.ysqlConfirmPassword?.message}
+                        placeholder={t(
+                          'universeForm.securityConfig.placeholder.confirmYSQLPassword'
+                        )}
                       />
                     </Box>
                   </Box>

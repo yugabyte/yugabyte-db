@@ -78,7 +78,7 @@ public class ConfKeysTest extends FakeDBApplication {
   }
 
   @Test
-  public void RuntimeConfKeysAutoTest() {
+  public void testRuntimeConfKeysAuto() {
 
     Result result = doRequestWithAuthToken("GET", LIST_KEYS, authToken);
     assertEquals(OK, result.status());
@@ -114,11 +114,17 @@ public class ConfKeysTest extends FakeDBApplication {
     validVals.put(ConfDataType.BytesType, "10 TB");
     validVals.put(ConfDataType.VersionCheckModeEnum, "NEVER");
     validVals.put(ConfDataType.SkipCertValdationEnum, "ALL");
+    validVals.put(
+        ConfDataType.KeyValuesSetMultimapType,
+        "[\"yb_task:task1\",\"yb_task:task2\",\"yb_dev:*\"]");
 
     // No data validation for these types yet
     Set<ConfDataType<?>> exceptions =
         ImmutableSet.of(
             ConfDataType.StringListType, ConfDataType.StringType, ConfDataType.TagListType);
+
+    Set<ConfDataType<?>> includedObjectsType =
+        ImmutableSet.of(ConfDataType.KeyValuesSetMultimapType);
 
     for (Class<?> c : scopes.keySet()) {
       for (Field field : c.getDeclaredFields()) {
@@ -148,8 +154,10 @@ public class ConfKeysTest extends FakeDBApplication {
 
             r = setKey(keyInfo.getKey(), validVals.get(keyInfo.getDataType()), scopes.get(c));
             assertEquals(OK, r.status());
-            assertEquals(validVals.get(keyInfo.getDataType()), getConfVal(keyInfo));
-
+            // Skip this validation for objects until we start validating objects.
+            if (!includedObjectsType.contains(keyInfo.getDataType())) {
+              assertEquals(validVals.get(keyInfo.getDataType()), getConfVal(keyInfo));
+            }
           } catch (IllegalAccessException e) {
             fail(e.getMessage());
           }

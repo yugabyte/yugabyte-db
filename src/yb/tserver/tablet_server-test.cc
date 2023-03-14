@@ -33,7 +33,7 @@
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_wire_protocol.h"
 
 #include "yb/consensus/log-test-base.h"
 
@@ -691,6 +691,9 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
   ASSERT_TRUE(s.IsNotFound()) << s.ToString();
   ASSERT_TRUE(ResultToStatus(
       mini_server_->server()->tablet_manager()->GetTablet(kTabletId)).IsNotFound());
+
+  // Verify that the BlockBasedTable mem tracker is still attached to the server mem tracker.
+  ASSERT_TRUE(mini_server_->server()->mem_tracker()->FindChild("BlockBasedTable") != nullptr);
 }
 
 TEST_F(TabletServerTest, TestDeleteTablet_TabletNotCreated) {

@@ -1,13 +1,22 @@
+// Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.when;
 
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import java.nio.file.Path;
@@ -271,5 +280,29 @@ public class SupportBundleUtilTest extends FakeDBApplication {
     assertTrue(
         expectedLogFilePathList.containsAll(filteredLogFilePaths)
             && filteredLogFilePaths.containsAll(expectedLogFilePathList));
+  }
+
+  @Test
+  public void testGetServiceAccountName() throws ParseException {
+    Provider testProvider =
+        Provider.create(UUID.randomUUID(), Common.CloudType.kubernetes, "testProvider");
+
+    Map<String, String> provConfig1 = new HashMap<String, String>();
+    provConfig1.put("KUBECONFIG_SERVICE_ACCOUNT", "old service account");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(testProvider, provConfig1);
+    assertEquals(
+        "old service account",
+        supportBundleUtil.getServiceAccountName(testProvider, mockKubernetesManager, null));
+
+    Map<String, String> provConfig2 = new HashMap<String, String>();
+    Map<String, String> envConfig = new HashMap<String, String>();
+
+    CloudInfoInterface.setCloudProviderInfoFromConfig(testProvider, provConfig2);
+    when(mockKubernetesManager.getKubeconfigUser(envConfig))
+        .thenReturn("service-account-cluster-name");
+    when(mockKubernetesManager.getKubeconfigCluster(envConfig)).thenReturn("cluster-name");
+    assertEquals(
+        "service-account",
+        supportBundleUtil.getServiceAccountName(testProvider, mockKubernetesManager, envConfig));
   }
 }

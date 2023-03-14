@@ -17,6 +17,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
@@ -24,12 +26,14 @@ import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -49,6 +53,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
@@ -70,6 +75,9 @@ import play.libs.Json;
 @Slf4j
 public class KubernetesCommandExecutor extends UniverseTaskBase {
 
+  private static final List<CommandType> skipNamespaceCommands =
+      Arrays.asList(CommandType.POD_INFO, CommandType.COPY_PACKAGE, CommandType.YBC_ACTION);
+
   public enum CommandType {
     CREATE_NAMESPACE,
     APPLY_SECRET,
@@ -89,6 +97,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     POD_INFO,
     STS_DELETE,
     PVC_EXPAND_SIZE,
+    COPY_PACKAGE,
+    YBC_ACTION,
     // The following flag is deprecated.
     INIT_YSQL;
 
@@ -114,6 +124,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           return UserTaskDetails.SubTaskGroupType.RebootingNode.name();
         case POD_INFO:
           return UserTaskDetails.SubTaskGroupType.KubernetesPodInfo.name();
+        case COPY_PACKAGE:
+          return UserTaskDetails.SubTaskGroupType.KubernetesCopyPackage.name();
+        case YBC_ACTION:
+          return UserTaskDetails.SubTaskGroupType.KubernetesYbcAction.name();
         case INIT_YSQL:
           return UserTaskDetails.SubTaskGroupType.KubernetesInitYSQL.name();
         case STS_DELETE:
@@ -126,12 +140,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
   private final KubernetesManagerFactory kubernetesManagerFactory;
 
+  private final ReleaseManager releaseManager;
+
   @Inject
   protected KubernetesCommandExecutor(
       BaseTaskDependencies baseTaskDependencies,
-      KubernetesManagerFactory kubernetesManagerFactory) {
+      KubernetesManagerFactory kubernetesManagerFactory,
+      ReleaseManager releaseManager) {
     super(baseTaskDependencies);
     this.kubernetesManagerFactory = kubernetesManagerFactory;
+    this.releaseManager = releaseManager;
   }
 
   static final Pattern nodeNamePattern = Pattern.compile(".*-n(\\d+)+");
@@ -167,6 +185,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     // The target cluster's config.
     public Map<String, String> config = null;
+
+    // YBC server name
+    public String ybcServerName = null;
+    public String command = null;
   }
 
   protected KubernetesCommandExecutor.Params taskParams() {
@@ -190,7 +212,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     Map<String, String> config = getConfig();
 
-    if (taskParams().commandType != CommandType.POD_INFO && taskParams().namespace == null) {
+    if (!skipNamespaceCommands.contains(taskParams().commandType)
+        && taskParams().namespace == null) {
       throw new IllegalArgumentException("namespace can be null only in case of POD_INFO");
     }
 
@@ -293,6 +316,69 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 "yb-tserver",
                 taskParams().newDiskSize,
                 u.getUniverseDetails().useNewHelmNamingStyle);
+        break;
+      case COPY_PACKAGE:
+        u = Universe.getOrBadRequest(taskParams().universeUUID);
+        NodeDetails nodeDetails = u.getNode(taskParams().ybcServerName);
+        ReleaseManager.ReleaseMetadata releaseMetadata =
+            releaseManager.getYbcReleaseByVersion(
+                taskParams().ybcSoftwareVersion,
+                OsType.LINUX.toString().toLowerCase(),
+                Architecture.x86_64.name().toLowerCase());
+        String ybcPackage = releaseMetadata.filePath;
+        Map<String, String> ybcGflags =
+            GFlagsUtil.getYbcFlagsForK8s(taskParams().universeUUID, taskParams().ybcServerName);
+        try {
+          Path confFilePath =
+              Files.createTempFile(
+                  taskParams().universeUUID.toString() + "_" + taskParams().ybcServerName, ".conf");
+          Files.write(
+              confFilePath,
+              () ->
+                  ybcGflags
+                      .entrySet()
+                      .stream()
+                      .<CharSequence>map(e -> "--" + e.getKey() + "=" + e.getValue())
+                      .iterator());
+          kubernetesManagerFactory
+              .getManager()
+              .copyFileToPod(
+                  config,
+                  nodeDetails.cloudInfo.kubernetesNamespace,
+                  nodeDetails.cloudInfo.kubernetesPodName,
+                  "yb-controller",
+                  confFilePath.toAbsolutePath().toString(),
+                  "/mnt/disk0/yw-data/controller/conf/server.conf");
+          kubernetesManagerFactory
+              .getManager()
+              .copyFileToPod(
+                  config,
+                  nodeDetails.cloudInfo.kubernetesNamespace,
+                  nodeDetails.cloudInfo.kubernetesPodName,
+                  "yb-controller",
+                  ybcPackage,
+                  "/mnt/disk0/yw-data/controller/tmp/");
+        } catch (Exception ex) {
+          log.error(ex.getMessage(), ex);
+          throw new RuntimeException("Could not upload the ybc contents", ex);
+        }
+        break;
+      case YBC_ACTION:
+        u = Universe.getOrBadRequest(taskParams().universeUUID);
+        nodeDetails = u.getNode(taskParams().ybcServerName);
+        List<String> commandArgs =
+            Arrays.asList(
+                "/bin/bash",
+                "-c",
+                String.format("/home/yugabyte/tools/k8s_ybc_parent.py %s", taskParams().command));
+        kubernetesManagerFactory
+            .getManager()
+            .performYbcAction(
+                config,
+                nodeDetails.cloudInfo.kubernetesNamespace,
+                nodeDetails.cloudInfo.kubernetesPodName,
+                "yb-controller",
+                commandArgs);
         break;
     }
   }
@@ -531,10 +617,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Map<String, String> regionConfig = new HashMap<String, String>();
 
     Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
-    UniverseDefinitionTaskParams.UserIntent userIntent =
+
+    UniverseDefinitionTaskParams.Cluster cluster =
         taskParams().isReadOnlyCluster
-            ? u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent
-            : u.getUniverseDetails().getPrimaryCluster().userIntent;
+            ? u.getUniverseDetails().getReadOnlyClusters().get(0)
+            : u.getUniverseDetails().getPrimaryCluster();
+    UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
     InstanceType instanceType =
         InstanceType.get(UUID.fromString(userIntent.provider), userIntent.instanceType);
     if (instanceType == null) {
@@ -832,13 +920,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     partition.put("master", taskParams().masterPartition);
     overrides.put("partition", partition);
 
-    UUID placementUuid =
-        taskParams().isReadOnlyCluster
-            ? u.getUniverseDetails().getReadOnlyClusters().get(0).uuid
-            : u.getUniverseDetails().getPrimaryCluster().uuid;
+    UUID placementUuid = cluster.uuid;
     Map<String, Object> gflagOverrides = new HashMap<>();
     // Go over master flags.
-    Map<String, Object> masterOverrides = new HashMap<String, Object>(userIntent.masterGFlags);
+    Map<String, Object> masterOverrides =
+        new HashMap<>(
+            GFlagsUtil.getBaseGFlags(ServerType.MASTER, cluster, u.getUniverseDetails().clusters));
     if (placementCloud != null && masterOverrides.get("placement_cloud") == null) {
       masterOverrides.put("placement_cloud", placementCloud);
     }
@@ -862,7 +949,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     // Go over tserver flags.
     Map<String, Object> tserverOverrides =
-        new HashMap<String, Object>(primaryClusterIntent.tserverGFlags);
+        new HashMap<String, Object>(
+            GFlagsUtil.getBaseGFlags(ServerType.TSERVER, cluster, u.getUniverseDetails().clusters));
     if (!primaryClusterIntent
         .enableYSQL) { // In the UI, we can choose not to show these entries for read replica.
       tserverOverrides.put("enable_ysql", "false");
@@ -924,7 +1012,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // loadbalancers, so the annotations will be at the provider level.
     // TODO (Arnav): Update this to use overrides created at the provider, region or
     // zone level.
-    Map<String, Object> annotations = new HashMap<String, Object>();
+    Map<String, Object> annotations;
     String overridesYAML = null;
     if (!azConfig.containsKey("OVERRIDES")) {
       if (!regionConfig.containsKey("OVERRIDES")) {
@@ -938,8 +1026,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       overridesYAML = azConfig.get("OVERRIDES");
     }
 
+    Map<String, Object> ybcInfo = new HashMap<>();
+    ybcInfo.put("enabled", taskParams().enableYbc);
+    overrides.put("ybc", ybcInfo);
+
     if (overridesYAML != null) {
-      annotations = (HashMap<String, Object>) yaml.load(overridesYAML);
+      annotations = yaml.load(overridesYAML);
       if (annotations != null) {
         HelmUtils.mergeYaml(overrides, annotations);
       }

@@ -31,7 +31,7 @@ import { YBButton } from '../../../../common/forms/fields';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { YBInputField } from '../../../../../redesign/components';
 import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
-import { addItem, deleteItem, editItem, handleAsyncError, readFileAsText } from '../utils';
+import { addItem, deleteItem, editItem, handleFormServerError, readFileAsText } from '../utils';
 
 import {
   K8sAvailabilityZoneMutation,
@@ -198,7 +198,9 @@ export const K8sProviderCreateForm = ({
     }
     if (providerPayload) {
       await createInfraProvider(providerPayload, {
-        onError: (error) => handleAsyncError(error, ASYNC_ERROR, formMethods.setError)
+        mutateOptions: {
+          onError: (error) => handleFormServerError(error, ASYNC_ERROR, formMethods.setError)
+        }
       });
     }
   };
@@ -306,14 +308,14 @@ export const K8sProviderCreateForm = ({
               btnType="submit"
               loading={formMethods.formState.isSubmitting}
               disabled={formMethods.formState.isSubmitting}
-              data-testId="K8sProviderCreateForm-SubmitButton"
+              data-testid="K8sProviderCreateForm-SubmitButton"
             />
             <YBButton
               btnText="Back"
               btnClass="btn btn-default"
               onClick={onBack}
               disabled={formMethods.formState.isSubmitting}
-              data-testId="K8sProviderCreateForm-BackButton"
+              data-testid="K8sProviderCreateForm-BackButton"
             />
           </Box>
         </FormContainer>

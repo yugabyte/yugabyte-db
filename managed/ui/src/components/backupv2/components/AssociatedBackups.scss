@@ -1,7 +1,7 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 .associated-backups-modal {
   .associated-backup-list-table {
-    background: $YB_BG_WHITE_3;
+    background: colors.$YB_BG_WHITE_3;
     padding: 10px 22px;
     margin-top: 16px;
     border: 1px solid #dcdcde;

@@ -11,6 +11,7 @@ menu:
 aliases:
   - /preview/explore/ysql-language-features/indexes-1/
   - /preview/explore/indexes-constraints/indexes-1/
+  - /preview/explore/secondary-indexes/
 type: docs
 ---
 

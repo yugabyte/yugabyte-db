@@ -85,7 +85,8 @@ set_python_executable() {
 # -------------------------------------------------------------------------------------------------
 readonly PYTHON2_EXECUTABLES=('python2' 'python2.7')
 readonly PYTHON3_EXECUTABLES=('python3.6' 'python3' 'python3.7' 'python3.8')
-readonly PYTHON3_VERSIONS=('python3.6' 'python3.7' 'python3.8' 'python3.9')
+readonly PYTHON3_VERSIONS=('python3.6' 'python3.7' 'python3.8' 'python3.9' 'python3.10' \
+                           'python3.11')
 readonly LINUX_PLATFORMS=('manylinux2014_x86_64-cp-36-cp36m' 'manylinux2014_x86_64-cp-37-cp37m' \
                          'manylinux2014_x86_64-cp-38-cp38' 'manylinux2014_x86_64-cp-39-cp39')
 readonly MACOS_PLATFORMS=('macosx-10.10-x86_64-cp-36-cp36m' 'macosx-10.10-x86_64-cp-37-cp37m', \
@@ -337,6 +338,7 @@ activate_virtualenv() {
   export SITE_PACKAGES=$(python -c "import sysconfig; print(sysconfig.get_path('purelib'))")
   PYTHON_EXECUTABLE="python"
   log "Using virtualenv python executable now."
+  run_pip install --upgrade pip > /dev/null
 
   # We unset the pythonpath to make sure we aren't looking at the global pythonpath.
   unset PYTHONPATH
@@ -609,6 +611,9 @@ activate_pex() {
   export SCRIPT_PATH
   mitogen_path=$($PYTHON_EXECUTABLE $PEX_PATH -c \
                 "import sys; print([x for x in sys.path if x.find('mitogen-') >= 0][0])")
+  ansible_module_path=$($PYTHON_EXECUTABLE $PEX_PATH -c \
+                "import sys; print([x for x in sys.path if x.find('ansible-') >= 0][0])")
+  PEX_ANSIBLE_PLAYBOOK_PATH="$ansible_module_path"/.prefix/bin
   SITE_PACKAGES="$yb_devops_home/pex/$mitogen_path"
   export SITE_PACKAGES
   export ANSIBLE_CONFIG="$yb_devops_home/ansible.cfg"

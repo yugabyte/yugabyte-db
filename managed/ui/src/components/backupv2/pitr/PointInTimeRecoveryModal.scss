@@ -1,4 +1,4 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .pitr-recovery-modal {
   width: 1100px;
@@ -18,7 +18,7 @@
   .notice {
     font-size: 13px;
     line-height: 32px;
-    color: $YB_DARKER_GRAY;
+    color: colors.$YB_DARKER_GRAY;
     margin-bottom: 24px;
 
     b {
@@ -27,7 +27,7 @@
   }
 
   .pitr-custom-radio {
-    border: 1px solid $YB_GRAY_HOVER;
+    border: 1px solid colors.$YB_GRAY_HOVER;
     border-radius: 7px;
     padding: 24px 24px 15px 24px;
     display: flex;
@@ -37,7 +37,7 @@
       align-items: center;
     }
     &.active {
-      background: $YB_BACKGROUND;
+      background: colors.$YB_BACKGROUND;
     }
 
     input[type='radio'] {
@@ -52,13 +52,13 @@
     .pitr-info-text {
       font-size: 12px;
       line-height: 32px;
-      color: $YB_DARKER_GRAY;
+      color: colors.$YB_DARKER_GRAY;
     }
 
     .pitr-error-text {
       font-size: 12px;
       line-height: 32px;
-      color: $YB_ORANGE;
+      color: colors.$YB_ORANGE;
       display: flex;
       align-items: center;
     }

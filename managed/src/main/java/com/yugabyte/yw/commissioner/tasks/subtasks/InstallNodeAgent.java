@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -48,6 +49,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
 
   public static class Params extends NodeTaskParams {
     public int nodeAgentPort = DEFAULT_NODE_AGENT_PORT;
+    public String nodeAgentHome;
     public UUID customerUuid;
   }
 
@@ -57,7 +59,6 @@ public class InstallNodeAgent extends AbstractTaskBase {
   }
 
   private NodeAgent createNodeAgent(Universe universe, NodeDetails node) {
-    NodeAgent.maybeGetByIp(node.cloudInfo.private_ip).ifPresent(n -> nodeAgentManager.purge(n));
     String output =
         nodeUniverseManager
             .runCommand(node, universe, Arrays.asList("uname", "-sm"), shellContext)
@@ -79,13 +80,22 @@ public class InstallNodeAgent extends AbstractTaskBase {
     nodeAgent.osType = OSType.parse(parts[0].trim());
     nodeAgent.archType = ArchType.parse(parts[1].trim());
     nodeAgent.version = nodeAgentManager.getSoftwareVersion();
-    return nodeAgentManager.create(nodeAgent);
+    nodeAgent.home = taskParams().nodeAgentHome;
+    return nodeAgentManager.create(nodeAgent, false);
   }
 
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
+    Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);
+    if (optional.isPresent()) {
+      NodeAgent nodeAgent = optional.get();
+      if (nodeAgent.state == State.READY) {
+        return;
+      }
+      nodeAgentManager.purge(nodeAgent);
+    }
     NodeAgent nodeAgent = createNodeAgent(universe, node);
     Path baseTargetDir = Paths.get("/tmp", "node-agent-" + System.currentTimeMillis());
     InstallerFiles installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, baseTargetDir);
@@ -134,18 +144,19 @@ public class InstallNodeAgent extends AbstractTaskBase {
     sb.append(" && tar -zxf ").append(installerFiles.getPackagePath());
     sb.append(" --strip-components=3 -C /tmp */node-agent-installer.sh");
     sb.append(" && chmod +x /tmp/node-agent-installer.sh");
-    sb.append(" && mv -f ").append(baseTargetDir).append("/node-agent").append(" /root/");
+    sb.append(" && mv -f ").append(baseTargetDir).append("/node-agent");
+    sb.append(" ").append(taskParams().nodeAgentHome);
     sb.append(" && rm -rf ").append(baseTargetDir);
-    sb.append(" && /tmp/node-agent-installer.sh -t install");
+    sb.append(" && /tmp/node-agent-installer.sh -c install");
     sb.append(" --skip_verify_cert --disable_egress");
     sb.append(" --id ").append(nodeAgent.uuid);
     sb.append(" --cert_dir ").append(installerFiles.getCertDir());
     sb.append(" --node_ip ").append(node.cloudInfo.private_ip);
     sb.append(" --node_port ").append(String.valueOf(taskParams().nodeAgentPort));
+    sb.append(" && chmod 755 /root ").append(taskParams().nodeAgentHome);
     String installCommand = sb.toString();
     log.debug("Running node agent installation command: {}", installCommand);
     command = ImmutableList.of("sudo", "/bin/bash", "-c", installCommand);
     nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
-    nodeAgent.saveState(State.READY);
   }
 }

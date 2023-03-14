@@ -1,8 +1,10 @@
 ---
-title: Bulk export
+title: Bulk export YSQL
 headerTitle: Bulk export for YSQL
 linkTitle: Bulk export
 description: Bulk export for YSQL using ysql_dump.
+aliases:
+  - /preview/manage/data-migration/bulk-export/
 menu:
   preview:
     identifier: manage-bulk-export-ysql
@@ -44,7 +46,7 @@ The `ysql_dump` tool can simplify some steps of your schema migration, refer to 
 
 ### Specify `PRIMARY KEY` inline
 
-YugabyteDB (as of v2.2) does not support the PostgreSQL syntax of first declaring a table, and subsequently running an ALTER TABLE command to add the primary key. This is because the data in YugabyteDB tables are index-organized according to the primary key specification. There is a significant performance difference in a distributed SQL database between a table that is organized by row ID with an added primary key constraint, versus a table whose data layout is index-organized from the get go.
+YugabyteDB supports the PostgreSQL syntax of first declaring a table, and subsequently running an ALTER TABLE command to add the primary key. Note that the ALTER TABLE operation requires a disk re-write and may be resource intensive, so it is recommended to set the primary key inline as part of the CREATE TABLE operation.
 
 ### Use `HASH` sort order
 

@@ -11,12 +11,17 @@
 
 package com.yugabyte.yw.common.kms.services;
 
+import java.util.List;
 import java.util.UUID;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.algorithms.AzuAlgorithm;
 import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 
 /**
@@ -37,7 +42,7 @@ public class AzuEARService extends EncryptionAtRestService<AzuAlgorithm> {
     // Checks if authConfig has valid key algorithm and key size as specified in AzuAlgorithm.java
     String keyAlgorithm =
         azuEARServiceUtil.getConfigFieldValue(
-            authConfig, AzuEARServiceUtil.AZU_KEY_ALGORITHM_FIELDNAME);
+            authConfig, AzuKmsAuthConfigField.AZU_KEY_ALGORITHM.fieldName);
     int keySize = azuEARServiceUtil.getConfigKeySize(authConfig);
     AzuAlgorithm azuAlgorithm = validateEncryptionAlgorithm(keyAlgorithm);
     if (azuAlgorithm == null) {
@@ -72,7 +77,7 @@ public class AzuEARService extends EncryptionAtRestService<AzuAlgorithm> {
             String.format(
                 "Key vault or the credentials are invalid. key vault url = '%s'",
                 azuEARServiceUtil.getConfigFieldValue(
-                    config, AzuEARServiceUtil.AZU_VAULT_URL_FIELDNAME));
+                    config, AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName));
         LOG.error(errMsg);
         throw new RuntimeException(errMsg);
       }
@@ -81,7 +86,8 @@ public class AzuEARService extends EncryptionAtRestService<AzuAlgorithm> {
       // If key exists, it is validated before usage
       // Else, a new master key is created
       String keyName =
-          azuEARServiceUtil.getConfigFieldValue(config, AzuEARServiceUtil.AZU_KEY_NAME_FIELDNAME);
+          azuEARServiceUtil.getConfigFieldValue(
+              config, AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName);
       boolean checkKeyExists = azuEARServiceUtil.checkKeyExists(config, keyName);
       if (checkKeyExists) {
         if (azuEARServiceUtil.validateKeySettings(config, keyName)) {
@@ -149,26 +155,17 @@ public class AzuEARService extends EncryptionAtRestService<AzuAlgorithm> {
   }
 
   @Override
-  public byte[] retrieveKeyWithService(
-      UUID universeUUID, UUID configUUID, byte[] keyRef, EncryptionAtRestConfig config) {
+  public byte[] retrieveKeyWithService(UUID configUUID, byte[] keyRef) {
     this.azuEARServiceUtil = getAzuEarServiceUtil();
     byte[] keyVal = null;
     try {
-      switch (config.type) {
-        case CMK:
-          keyVal = keyRef;
-          break;
-        default:
-        case DATA_KEY:
-          // Check if the key vault exists and key with given name exists in the key vault
-          ObjectNode authConfig = azuEARServiceUtil.getAuthConfig(configUUID);
-          azuEARServiceUtil.checkKeyVaultAndKeyExists(authConfig);
-          // Decrypt the locally stored encrypted byte array to give the universe key.
-          keyVal = azuEARServiceUtil.unwrapKey(authConfig, keyRef);
-          if (keyVal == null) {
-            LOG.warn("Could not retrieve key from key ref through AZU KMS");
-          }
-          break;
+      // Check if the key vault exists and key with given name exists in the key vault
+      ObjectNode authConfig = azuEARServiceUtil.getAuthConfig(configUUID);
+      azuEARServiceUtil.checkKeyVaultAndKeyExists(authConfig);
+      // Decrypt the locally stored encrypted byte array to give the universe key.
+      keyVal = azuEARServiceUtil.unwrapKey(authConfig, keyRef);
+      if (keyVal == null) {
+        LOG.warn("Could not retrieve key from key ref through AZU KMS");
       }
     } catch (Exception e) {
       final String errMsg = "Error occurred retrieving encryption key";
@@ -180,28 +177,16 @@ public class AzuEARService extends EncryptionAtRestService<AzuAlgorithm> {
 
   @Override
   protected byte[] validateRetrieveKeyWithService(
-      UUID universeUUID,
-      UUID configUUID,
-      byte[] keyRef,
-      EncryptionAtRestConfig config,
-      ObjectNode authConfig) {
+      UUID configUUID, byte[] keyRef, ObjectNode authConfig) {
     this.azuEARServiceUtil = getAzuEarServiceUtil();
     byte[] keyVal = null;
     try {
-      switch (config.type) {
-        case CMK:
-          keyVal = keyRef;
-          break;
-        default:
-        case DATA_KEY:
-          // Check if the key vault exists and key with given name exists in the key vault
-          azuEARServiceUtil.checkKeyVaultAndKeyExists(authConfig);
-          // Decrypt the locally stored encrypted byte array to give the universe key.
-          keyVal = azuEARServiceUtil.unwrapKey(authConfig, keyRef);
-          if (keyVal == null) {
-            LOG.warn("Could not retrieve key from key ref through AZU KMS");
-          }
-          break;
+      // Check if the key vault exists and key with given name exists in the key vault
+      azuEARServiceUtil.checkKeyVaultAndKeyExists(authConfig);
+      // Decrypt the locally stored encrypted byte array to give the universe key.
+      keyVal = azuEARServiceUtil.unwrapKey(authConfig, keyRef);
+      if (keyVal == null) {
+        LOG.warn("Could not retrieve key from key ref through AZU KMS");
       }
     } catch (Exception e) {
       final String errMsg = "Error occurred retrieving encryption key";
@@ -214,5 +199,22 @@ public class AzuEARService extends EncryptionAtRestService<AzuAlgorithm> {
   @Override
   protected void cleanupWithService(UUID universeUUID, UUID configUUID) {
     // Do nothing to KMS when deleting universe with EAR enabled
+  }
+
+  @Override
+  public ObjectNode getKeyMetadata(UUID configUUID) {
+    // Get all the auth config fields marked as metadata.
+    List<String> azuKmsMetadataFields = AzuKmsAuthConfigField.getMetadataFields();
+    ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
+    ObjectNode keyMetadata = new ObjectMapper().createObjectNode();
+
+    for (String fieldName : azuKmsMetadataFields) {
+      if (authConfig.has(fieldName)) {
+        keyMetadata.set(fieldName, authConfig.get(fieldName));
+      }
+    }
+    // Add key_provider field.
+    keyMetadata.put("key_provider", KeyProvider.AZU.name());
+    return keyMetadata;
   }
 }

@@ -231,7 +231,7 @@ class AwsBootstrapClient():
             region, client.vpc.id, client.sg_yugabyte.id, client.route_table.id,
             {az: s.id for az, s in client.subnets.items()})
 
-    def cross_link_regions(self, components):
+    def cross_link_regions(self, components, added_region_codes):
         # Do the cross linking, adding CIDR entries to RTs and SGs, as well as doing vpc peerings.
         region_and_vpc_tuples = [(r, c.vpc) for r, c in components.items()]
         host_vpc = None
@@ -243,6 +243,9 @@ class AwsBootstrapClient():
         for i in range(len(region_and_vpc_tuples) - 1):
             i_region, i_vpc = region_and_vpc_tuples[i]
             for j in range(i + 1, len(region_and_vpc_tuples)):
+                # skip linking existing regions
+                if i_region not in added_region_codes and j_region not in added_region_codes:
+                    continue
                 j_region, j_vpc = region_and_vpc_tuples[j]
                 peerings = create_vpc_peering(
                     # i is the host, j is the target.
@@ -1070,6 +1073,13 @@ def create_instance(args):
             }
             tag_dicts.append(resources_tag_dict)
     vars["TagSpecifications"] = tag_dicts
+
+    if args.use_spot_instance:
+        options = {"MarketType": "spot"}
+        if args.spot_price is not None:
+            options["SpotOptions"] = {"MaxPrice": args.spot_price}
+        vars["InstanceMarketOptions"] = options
+        logging.info(f"[app] Using AWS spot instances with {options} options")
 
     # Newer instance types have Credit Specification set to unlimited by default
     if is_burstable(instance):

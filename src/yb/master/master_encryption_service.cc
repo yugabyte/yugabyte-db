@@ -28,7 +28,7 @@ class MasterEncryptionServiceImpl : public MasterServiceBase, public MasterEncry
       : MasterServiceBase(master), MasterEncryptionIf(master->metric_entity()) {}
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
-    enterprise::CatalogManager,
+    CatalogManager,
     (ChangeEncryptionInfo)
     (IsEncryptionEnabled)
   )

@@ -49,8 +49,9 @@
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
+#include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_wire_protocol.h"
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/log_anchor_registry.h"
@@ -71,6 +72,7 @@
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/gutil/casts.h"
 
@@ -267,6 +269,8 @@ DECLARE_int64(cdc_intent_retention_ms);
 
 DEFINE_test_flag(uint64, inject_sleep_before_applying_intents_ms, 0,
                  "Sleep before applying intents to docdb after transaction commit");
+
+DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 
 using namespace std::placeholders;
 
@@ -489,7 +493,8 @@ Tablet::Tablet(const TabletInitData& data)
       data.transaction_participant_context &&
       (is_sys_catalog_ || transactional)) {
     transaction_participant_ = std::make_unique<TransactionParticipant>(
-        data.transaction_participant_context, this, DCHECK_NOTNULL(tablet_metrics_entity_));
+        data.transaction_participant_context, this, DCHECK_NOTNULL(tablet_metrics_entity_),
+        data.parent_mem_tracker);
     if (data.waiting_txn_registry) {
       wait_queue_ = std::make_unique<docdb::WaitQueue>(
         transaction_participant_.get(), metadata_->fs_manager()->uuid(), data.waiting_txn_registry,
@@ -547,8 +552,11 @@ Tablet::~Tablet() {
     LOG_IF_WITH_PREFIX(DFATAL, state != kShutdown)
         << "Destroying Tablet that did not complete shutdown: " << state;
   }
-  if (block_based_table_mem_tracker_) {
-    block_based_table_mem_tracker_->UnregisterFromParent();
+  if (regulardb_mem_tracker_) {
+    regulardb_mem_tracker_->UnregisterFromParent();
+  }
+  if (intentdb_mem_tracker_) {
+    intentdb_mem_tracker_->UnregisterFromParent();
   }
   mem_tracker_->UnregisterFromParent();
 }
@@ -718,10 +726,12 @@ Status Tablet::OpenKeyValueTablet() {
   InitRocksDBOptions(
       &rocksdb_options, LogPrefix(docdb::StorageDbType::kRegular), std::move(table_options));
   rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker(kRegularDB, mem_tracker_);
-  rocksdb_options.block_based_table_mem_tracker =
+  regulardb_mem_tracker_ =
       MemTracker::FindOrCreateTracker(
           Format("$0-$1", kRegularDB, tablet_id()), block_based_table_mem_tracker_,
           AddToParent::kTrue, CreateMetrics::kFalse);
+  rocksdb_options.block_based_table_mem_tracker = regulardb_mem_tracker_;
+
   // We may not have a metrics_entity_ instantiated in tests.
   if (tablet_metrics_entity_) {
     rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(
@@ -800,10 +810,11 @@ Status Tablet::OpenKeyValueTablet() {
         std::make_shared<docdb::DocDBIntentsCompactionFilterFactory>(this, &key_bounds_) : nullptr;
 
     intents_rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker(kIntentsDB, mem_tracker_);
-    intents_rocksdb_options.block_based_table_mem_tracker =
+    intentdb_mem_tracker_ =
         MemTracker::FindOrCreateTracker(
             Format("$0-$1", kIntentsDB, tablet_id()), block_based_table_mem_tracker_,
             AddToParent::kTrue, CreateMetrics::kFalse);
+    intents_rocksdb_options.block_based_table_mem_tracker = intentdb_mem_tracker_;
     // We may not have a metrics_entity_ instantiated in tests.
     if (tablet_metrics_entity_) {
       intents_rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(
@@ -872,8 +883,8 @@ void Tablet::CleanupIntentFiles() {
 }
 
 void Tablet::DoCleanupIntentFiles() {
-  if (metadata_->is_under_twodc_replication()) {
-    VLOG_WITH_PREFIX_AND_FUNC(4) << "Exit because of TwoDC replication";
+  if (metadata_->IsUnderXClusterReplication()) {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Exit because of xCluster replication";
     return;
   }
   HybridTime best_file_max_ht = HybridTime::kMax;
@@ -1170,13 +1181,12 @@ Status Tablet::CompleteShutdownRocksDBs(
   return regular_status.ok() ? intents_status : regular_status;
 }
 
-Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
+Result<std::unique_ptr<docdb::DocRowwiseIterator>> Tablet::NewUninitializedDocRowIterator(
     const Schema &projection,
     const ReadHybridTime& read_hybrid_time,
     const TableId& table_id,
     CoarseTimePoint deadline,
-    AllowBootstrappingState allow_bootstrapping_state,
-    const Slice& sub_doc_key) const {
+    AllowBootstrappingState allow_bootstrapping_state) const {
   if (state_ != kOpen && (!allow_bootstrapping_state || state_ != kBootstrapping)) {
     return STATUS_FORMAT(IllegalState, "Tablet in wrong state: $0", state_);
   }
@@ -1202,11 +1212,20 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   const auto read_time = read_hybrid_time
       ? read_hybrid_time
       : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse)));
-  auto result = std::make_unique<DocRowwiseIterator>(std::move(mapped_projection),
-                  table_info->doc_read_context, txn_op_ctx, doc_db(), deadline, read_time,
-                  &pending_non_abortable_op_counter_);
-  RETURN_NOT_OK(result->Init(table_type_, sub_doc_key));
-  return std::move(result);
+  return std::make_unique<DocRowwiseIterator>(
+      std::move(mapped_projection), table_info->doc_read_context, txn_op_ctx,
+      doc_db(), deadline, read_time, &pending_non_abortable_op_counter_);
+}
+
+Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
+    const Schema &projection,
+    const ReadHybridTime& read_hybrid_time,
+    const TableId& table_id,
+    CoarseTimePoint deadline) const {
+  auto iter = VERIFY_RESULT(NewUninitializedDocRowIterator(
+      projection, read_hybrid_time, table_id, deadline, AllowBootstrappingState::kFalse));
+  iter->Init(table_type_);
+  return std::move(iter);
 }
 
 Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
@@ -1379,10 +1398,10 @@ Status Tablet::ApplyKeyValueRowOperations(
 
     // See comments for PrepareExternalWriteBatch.
     if (put_batch.enable_replicate_transaction_status_table()) {
-      if (!metadata_->is_under_twodc_replication()) {
+      if (!metadata_->IsUnderXClusterReplication()) {
         // The first time the consumer tablet sees an external write batch, set
-        // is_under_twodc_replication to true.
-        RETURN_NOT_OK(metadata_->SetIsUnderTwodcReplicationAndFlush(true));
+        // is_under_xcluster_replication to true.
+        RETURN_NOT_OK(metadata_->SetIsUnderXClusterReplicationAndFlush(true));
       }
       ThreadSafeArena arena;
       auto batches_by_transaction = SplitExternalBatchIntoTransactionBatches(put_batch, &arena);
@@ -1404,8 +1423,8 @@ Status Tablet::ApplyKeyValueRowOperations(
         external_txn_intents_state_.get());
 
     if (intents_write_batch.Count() != 0) {
-      if (!metadata_->is_under_twodc_replication()) {
-        RETURN_NOT_OK(metadata_->SetIsUnderTwodcReplicationAndFlush(true));
+      if (!metadata_->IsUnderXClusterReplication()) {
+        RETURN_NOT_OK(metadata_->SetIsUnderXClusterReplicationAndFlush(true));
       }
       WriteToRocksDB(frontiers, &intents_write_batch, StorageDbType::kIntents);
     }
@@ -1963,7 +1982,8 @@ HybridTime Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadl
 }
 
 Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIterator(
-    const Schema& projection, const ReadHybridTime& time, const string& next_key) {
+    const Schema& projection, const ReadHybridTime& time, const string& next_key,
+    const TableId& table_id) {
   VLOG_WITH_PREFIX(2) << "The nextKey is " << next_key;
 
   docdb::KeyBytes encoded_next_key;
@@ -1974,9 +1994,10 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
     encoded_next_key = start_sub_doc_key.doc_key().Encode();
     VLOG_WITH_PREFIX(2) << "The nextKey doc is " << encoded_next_key;
   }
-  return NewRowIterator(
-      projection, time, "", CoarseTimePoint::max(), AllowBootstrappingState::kFalse,
-      encoded_next_key);
+  auto iter = VERIFY_RESULT(NewUninitializedDocRowIterator(
+      projection, time, table_id, CoarseTimePoint::max(), AllowBootstrappingState::kFalse));
+  iter->Init(table_type_, encoded_next_key);
+  return std::move(iter);
 }
 
 Status Tablet::CreatePreparedChangeMetadata(
@@ -2006,7 +2027,7 @@ Status Tablet::CreatePreparedChangeMetadata(
   return Status::OK();
 }
 
-Status Tablet::AddTableInMemory(const TableInfoPB& table_info) {
+Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id) {
   Schema schema;
   RETURN_NOT_OK(SchemaFromPB(table_info.schema(), &schema));
 
@@ -2016,33 +2037,33 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info) {
   metadata_->AddTable(
       table_info.table_id(), table_info.namespace_name(), table_info.table_name(),
       table_info.table_type(), schema, IndexMap(), partition_schema, boost::none,
-      table_info.schema_version());
+      table_info.schema_version(), op_id);
 
   return Status::OK();
 }
 
-Status Tablet::AddTable(const TableInfoPB& table_info) {
-  RETURN_NOT_OK(AddTableInMemory(table_info));
+Status Tablet::AddTable(const TableInfoPB& table_info, const OpId& op_id) {
+  RETURN_NOT_OK(AddTableInMemory(table_info, op_id));
   return metadata_->Flush();
 }
 
 Status Tablet::AddMultipleTables(
-    const google::protobuf::RepeatedPtrField<TableInfoPB>& table_infos) {
+    const google::protobuf::RepeatedPtrField<TableInfoPB>& table_infos, const OpId& op_id) {
   // If nothing has changed then return.
   RSTATUS_DCHECK_GT(table_infos.size(), 0, Ok, "No table to add to metadata");
   for (const auto& table_info : table_infos) {
-    RETURN_NOT_OK(AddTableInMemory(table_info));
+    RETURN_NOT_OK(AddTableInMemory(table_info, op_id));
   }
   return metadata_->Flush();
 }
 
-Status Tablet::RemoveTable(const std::string& table_id) {
-  metadata_->RemoveTable(table_id);
+Status Tablet::RemoveTable(const std::string& table_id, const OpId& op_id) {
+  metadata_->RemoveTable(table_id, op_id);
   RETURN_NOT_OK(metadata_->Flush());
   return Status::OK();
 }
 
-Status Tablet::MarkBackfillDone(const TableId& table_id) {
+Status Tablet::MarkBackfillDone(const OpId& op_id, const TableId& table_id) {
   auto table_info = table_id.empty() ?
     metadata_->primary_table_info() : VERIFY_RESULT(metadata_->GetTableInfo(table_id));
   LOG_WITH_PREFIX(INFO) << "Setting backfill as done. Current schema  "
@@ -2051,7 +2072,8 @@ Status Tablet::MarkBackfillDone(const TableId& table_id) {
   Schema new_schema = table_info->schema();
   new_schema.SetRetainDeleteMarkers(false);
   metadata_->SetSchema(
-      new_schema, *table_info->index_map, empty_deleted_cols, table_info->schema_version, table_id);
+      new_schema, *table_info->index_map, empty_deleted_cols, table_info->schema_version,
+      op_id, table_id);
   return metadata_->Flush();
 }
 
@@ -2092,7 +2114,9 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
     metadata_->SetSchemaAndTableName(
         *operation->schema(), operation->index_map(), deleted_cols,
         operation->schema_version(), current_table_info->namespace_name,
-        operation->new_table_name().ToBuffer(), current_table_info->table_id);
+        operation->new_table_name().ToBuffer(),
+        operation->op_id(),
+        current_table_info->table_id);
     if (table_metrics_entity_) {
       table_metrics_entity_->SetAttribute("table_name", operation->new_table_name().ToBuffer());
       table_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
@@ -2102,8 +2126,11 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
       tablet_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
     }
   } else {
-    metadata_->SetSchema(*operation->schema(), operation->index_map(), deleted_cols,
-                         operation->schema_version(), current_table_info->table_id);
+    metadata_->SetSchema(
+        *operation->schema(), operation->index_map(), deleted_cols,
+        operation->schema_version(),
+        operation->op_id(),
+        current_table_info->table_id);
   }
 
   // Clear old index table metadata cache.
@@ -2124,6 +2151,20 @@ Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperation* operation) {
                           << metadata_->wal_retention_secs()
                           << " to " << operation->wal_retention_secs();
     metadata_->set_wal_retention_secs(operation->wal_retention_secs());
+    // Update OpId of the last change metadata operation.
+    // It can happen that we change the wal_retention without modifying
+    // the schema in which case the alter table will return early
+    // without modifying the RaftGroupMetadata but we
+    // still need to persist the op id corresponding to this operation
+    // so as to avoid replaying during tablet bootstrap.
+    // We don't update if the passed op id is invalid. One case when this will happen:
+    // If we are replaying during tablet bootstrap and last_change_metadata_op_id
+    // was invalid - For e.g. after upgrade when new code reads old data.
+    // In such a case, we ensure that we are no worse than old code's behavior
+    // which essentially implies that we mute this new logic for the entire
+    // duration of the bootstrap. However, once bootstrap finishes we set this
+    // field so that subsequent restarts can start leveraging this feature.
+    metadata_->SetLastChangeMetadataOperationOpId(operation->op_id());
     // Flush the updated schema metadata to disk.
     return metadata_->Flush();
   }
@@ -3306,7 +3347,7 @@ ScopedRWOperationPause Tablet::PauseWritePermits(CoarseTimePoint deadline) {
 ScopedRWOperation Tablet::GetPermitToWrite(CoarseTimePoint deadline) {
   TRACE("Acquiring write permit");
   auto se = ScopeExit([] { TRACE("Acquiring write permit done"); });
-  return ScopedRWOperation(&write_ops_being_submitted_counter_);
+  return ScopedRWOperation(&write_ops_being_submitted_counter_, deadline);
 }
 
 Result<bool> Tablet::StillHasOrphanedPostSplitData() {
@@ -3679,7 +3720,7 @@ Status Tablet::ReadIntents(std::vector<std::string>* intents) {
   auto intent_iter = std::unique_ptr<rocksdb::Iterator>(
       intents_db_->NewIterator(read_options));
   intent_iter->SeekToFirst();
-  docdb::SchemaPackingStorage schema_packing_storage;
+  docdb::SchemaPackingStorage schema_packing_storage(table_type());
 
   for (; intent_iter->Valid(); intent_iter->Next()) {
     auto item = EntryToString(intent_iter->key(), intent_iter->value(),
@@ -4114,6 +4155,143 @@ Status Tablet::ApplyAutoFlagsConfig(const AutoFlagsConfigPB& config) {
   }
 
   return auto_flags_manager_->LoadFromConfig(config, ApplyNonRuntimeAutoFlags::kFalse);
+}
+
+Status AddLockInfo(Slice key, Slice val, const SchemaPtr& schema, LockInfoPB* lock_info) {
+  auto parsed_intent = VERIFY_RESULT(docdb::ParseIntentKey(key, val));
+  auto decoded_value = VERIFY_RESULT(docdb::DecodeIntentValue(
+      val, nullptr /* verify_transaction_id_slice */,
+      HasStrong(parsed_intent.types)));
+
+  SubDocKey subdoc_key;
+  RETURN_NOT_OK(subdoc_key.FullyDecodeFrom(
+      parsed_intent.doc_path, docdb::HybridTimeRequired::kFalse));
+  DCHECK(!subdoc_key.has_hybrid_time());
+
+  auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(parsed_intent.doc_ht));
+  lock_info->set_wait_end_ht(doc_ht.hybrid_time().ToUint64());
+  for (const auto& hash_key : subdoc_key.doc_key().hashed_group()) {
+    lock_info->add_hash_cols(hash_key.ToString());
+  }
+  for (const auto& range_key : subdoc_key.doc_key().range_group()) {
+    lock_info->add_range_cols(range_key.ToString());
+  }
+  if (subdoc_key.num_subkeys() > 0 && subdoc_key.last_subkey().IsColumnId()) {
+    lock_info->set_column_id(subdoc_key.last_subkey().GetColumnId());
+  }
+
+  lock_info->set_transaction_id(decoded_value.transaction_id.ToString());
+  lock_info->set_subtransaction_id(decoded_value.subtransaction_id);
+  lock_info->set_is_explicit(
+      decoded_value.body.starts_with(docdb::ValueEntryTypeAsChar::kRowLock));
+  lock_info->set_is_full_pk(
+      schema->num_hash_key_columns() == subdoc_key.doc_key().hashed_group().size() &&
+      schema->num_range_key_columns() == subdoc_key.doc_key().range_group().size());
+
+  for (const auto& intent_type : parsed_intent.types) {
+    switch (intent_type) {
+      case docdb::IntentType::kWeakRead:
+        lock_info->add_modes(LockMode::WEAK_READ);
+        break;
+      case docdb::IntentType::kWeakWrite:
+        lock_info->add_modes(LockMode::WEAK_WRITE);
+        break;
+      case docdb::IntentType::kStrongRead:
+        lock_info->add_modes(LockMode::STRONG_READ);
+        break;
+      case docdb::IntentType::kStrongWrite:
+        lock_info->add_modes(LockMode::STRONG_WRITE);
+        break;
+    }
+  }
+  return Status::OK();
+}
+
+Status Tablet::GetLockStatus(const TransactionId& txn_id,
+                             SubTransactionId subtxn_id,
+                             TabletLockInfoPB* tablet_lock_info) const {
+  // TODO(pglocks): Support colocated tables
+  if (metadata_->table_type() != PGSQL_TABLE_TYPE) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Cannot get lock status for non YSQL table $0", metadata_->table_id());
+  }
+  tablet_lock_info->set_table_id(metadata_->table_id());
+  tablet_lock_info->set_tablet_id(tablet_id());
+
+  auto pending_op = CreateNonAbortableScopedRWOperation();
+  RETURN_NOT_OK(pending_op);
+
+  if (!intents_db_) {
+    return Status::OK();
+  }
+
+  rocksdb::ReadOptions read_options;
+  auto intent_iter = std::unique_ptr<rocksdb::Iterator>(intents_db_->NewIterator(read_options));
+  intent_iter->SeekToFirst();
+
+  if (txn_id.IsNil()) {
+    // If txn_id is not set, iterate over all records in intents_db. In this case, we expect
+    // subtransaction_id is also not set.
+    RSTATUS_DCHECK(
+        subtxn_id == 0, InvalidArgument,
+        "Cannot restrict lock info to specific subtransaction_id unless transaction_id is set.");
+    while (intent_iter->Valid()) {
+      auto key = intent_iter->key();
+
+      if (key[0] == docdb::KeyEntryTypeAsChar::kTransactionId) {
+        static const std::array<char, 1> kAfterTransactionId{
+            docdb::KeyEntryTypeAsChar::kTransactionId + 1};
+        static const Slice kAfterTxnRegion(kAfterTransactionId);
+        intent_iter->Seek(kAfterTxnRegion);
+        continue;
+      }
+
+      RETURN_NOT_OK(
+          AddLockInfo(key, intent_iter->value(), schema(), tablet_lock_info->add_locks()));
+
+      intent_iter->Next();
+    }
+
+    return Status::OK();
+  }
+
+  DCHECK(!txn_id.IsNil());
+  // If transaction_id is set, use txn reverse mapping of intents_db to find all intent keys
+  // efficiently.
+  // TODO(dtxn): Filter records by subtxn_id if set as well.
+  static constexpr size_t kReverseKeySize = 1 + sizeof(TransactionId);
+  char reverse_key_data[kReverseKeySize];
+  reverse_key_data[0] = docdb::KeyEntryTypeAsChar::kTransactionId;
+  memcpy(&reverse_key_data[1], txn_id.data(), sizeof(TransactionId));
+  auto reverse_key = Slice(reverse_key_data, kReverseKeySize);
+  intent_iter->Seek(Slice(reverse_key));
+
+  std::vector<docdb::KeyBytes> txn_intent_keys;
+  while (intent_iter->Valid() && intent_iter->key().compare_prefix(Slice(reverse_key)) == 0) {
+    DCHECK_EQ(intent_iter->key()[0], docdb::KeyEntryTypeAsChar::kTransactionId);
+    txn_intent_keys.emplace_back(intent_iter->value());
+    intent_iter->Next();
+  }
+
+  if (txn_intent_keys.empty()) {
+    return Status::OK();
+  }
+
+  std::sort(txn_intent_keys.begin(), txn_intent_keys.end());
+
+  intent_iter->SeekToFirst();
+
+  for (const auto& intent_key : txn_intent_keys) {
+    intent_iter->Seek(intent_key);
+
+    auto key = intent_iter->key();
+    DCHECK_EQ(intent_iter->key(), key);
+
+    auto val = intent_iter->value();
+    RETURN_NOT_OK(AddLockInfo(key, val, schema(), tablet_lock_info->add_locks()));
+  }
+
+  return Status::OK();
 }
 // ------------------------------------------------------------------------------------------------
 

@@ -1,6 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../../../_style/colors.scss';
+@use '../../../../../_style/colors.scss';
 
 .drop-zone-file {
   position: absolute;
@@ -21,8 +21,8 @@
 
     &.has-error {
       .upload-file-button {
-        border: 1px solid $YB_ERROR_TEXT_COLOR;
-        color: $YB_ERROR_TEXT_COLOR;
+        border: 1px solid colors.$YB_ERROR_TEXT_COLOR;
+        color: colors.$YB_ERROR_TEXT_COLOR;
       }
     }
     &.has-value {

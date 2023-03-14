@@ -30,7 +30,6 @@ import com.yugabyte.yw.models.helpers.provider.region.DefaultRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.azs.DefaultAZCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
-
 import play.libs.Json;
 
 public interface CloudInfoInterface {
@@ -40,6 +39,8 @@ public interface CloudInfoInterface {
   public Map<String, String> getEnvVars();
 
   public Map<String, String> getConfigMapForUIOnlyAPIs(Map<String, String> config);
+
+  public void mergeMaskedFields(CloudInfoInterface providerCloudInfo);
 
   public void withSensitiveDataMasked();
 
@@ -266,6 +267,9 @@ public interface CloudInfoInterface {
       return null;
     }
     JsonNode detailsJson = Json.toJson(region.details);
+    if (detailsJson.size() == 0) {
+      return null;
+    }
     RegionDetails details = Json.fromJson(detailsJson, RegionDetails.class);
     get(details, true, region.provider.getCloudCode());
     return details;
@@ -276,6 +280,9 @@ public interface CloudInfoInterface {
       return null;
     }
     JsonNode detailsJson = Json.toJson(zone.details);
+    if (detailsJson.size() == 0) {
+      return null;
+    }
     AvailabilityZoneDetails details = Json.fromJson(detailsJson, AvailabilityZoneDetails.class);
     get(details, true, zone.region.provider.getCloudCode());
     return details;
@@ -431,21 +438,51 @@ public interface CloudInfoInterface {
     return cloudInfo.getEnvVars();
   }
 
+  public static void mergeSensitiveFields(Provider provider, Provider editProviderReq) {
+    // This helper function helps in merging the masked config values using
+    // the entity that is saved in the ebean so as to avoid saving the masked values.
+    CloudInfoInterface providerCloudInfo = CloudInfoInterface.get(provider);
+    CloudInfoInterface editProviderCloudInfo = CloudInfoInterface.get(editProviderReq);
+    editProviderCloudInfo.mergeMaskedFields(providerCloudInfo);
+    // ToDo: Add the same for regions/zones. Should we assume the indexing of region/zone
+    // won't change? Will revisit once edit region/zone are checked in.
+  }
+
   public static JsonNode mayBeMassageRequest(JsonNode requestBody, Boolean isV2API) {
     // For Backward Compatiblity support.
     JsonNode config = requestBody.get("config");
     ObjectNode reqBody = (ObjectNode) requestBody;
     // Confirm we had a "config" key and it was not null.
     if (config != null && !config.isNull()) {
+      ObjectNode details = mapper.createObjectNode();
+      if (requestBody.has("details")) {
+        details = (ObjectNode) requestBody.get("details");
+      }
+      ObjectNode cloudInfo = mapper.createObjectNode();
+      if (details.has("cloudInfo")) {
+        cloudInfo = (ObjectNode) details.get("cloudInfo");
+      }
       if (requestBody.get("code").asText().equals(CloudType.gcp.name())) {
-        ObjectNode details = mapper.createObjectNode();
-        ObjectNode cloudInfo = mapper.createObjectNode();
         ObjectNode gcpCloudInfo = mapper.createObjectNode();
+        if (cloudInfo.has("gcpCloudInfo")) {
+          gcpCloudInfo = (ObjectNode) cloudInfo.get("gcpCloudInfo");
+        }
         JsonNode configFileContent = config;
         if (!isV2API) {
           // UI_ONLY api passes the gcp creds config on `config_file_contents`.
           // where v2 API version 1 passes on `config` only
           configFileContent = config.get("config_file_contents");
+        }
+
+        if (isV2API) {
+          if (requestBody.has("destVpcId")) {
+            gcpCloudInfo.set("destVpcId", requestBody.get("destVpcId"));
+            reqBody.remove("destVpcId");
+          }
+          if (requestBody.has("hostVpcId")) {
+            gcpCloudInfo.set("hostVpcId", requestBody.get("hostVpcId"));
+            reqBody.remove("hostVpcId");
+          }
         }
 
         Boolean shouldUseHostCredentials =
@@ -463,13 +500,24 @@ public interface CloudInfoInterface {
           gcpCloudInfo.set("use_host_vpc", config.get("use_host_vpc"));
         }
         gcpCloudInfo.set("YB_FIREWALL_TAGS", config.get("YB_FIREWALL_TAGS"));
-
         cloudInfo.set("gcp", gcpCloudInfo);
         details.set("cloudInfo", cloudInfo);
         details.set("airGapInstall", config.get("airGapInstall"));
 
         reqBody.set("details", details);
         reqBody.remove("config");
+      } else if (requestBody.get("code").asText().equals(CloudType.aws.name())) {
+        if (isV2API) {
+          // Moving the top level hostVpcId/hostVpcRegion if passed to config
+          // so that it can be populated to awsCloudInfo(for v2 APIs version 1).
+          if (requestBody.has("hostVpcRegion")) {
+            ((ObjectNode) config).set("hostVpcRegion", requestBody.get("hostVpcRegion"));
+          }
+          if (requestBody.has("hostVpcId")) {
+            ((ObjectNode) config).set("hostVpcId", requestBody.get("hostVpcId"));
+          }
+          reqBody.set("config", config);
+        }
       }
     }
     return reqBody;

@@ -52,7 +52,7 @@ Complete the rest of the **Cloud Configuration** section as follows:
 
 - Use the **Regions** field to select the region. This enables the **Availability Zones** option that allows you to see zones belonging to that region.
 
-- Provide the value in the **Pods** field. This value should be equal to or greater than the replication factor. The default value is 3. When this value is supplied, the pods (aslo known as nodes) are automatically placed across all the availability zones to guarantee the maximum availability.
+- Provide the value in the **Pods** field. This value should be equal to or greater than the replication factor. The default value is 3. When this value is supplied, the pods (also known as nodes) are automatically placed across all the availability zones to guarantee the maximum availability.
 
 - In the **Replication Factor** field, define the replication factor, as per the following illustration:<br>
 

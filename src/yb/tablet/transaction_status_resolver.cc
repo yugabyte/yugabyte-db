@@ -256,11 +256,11 @@ class TransactionStatusResolver::Impl {
             << "This should only happen when nodes are on different versions, e.g. during "
             << "upgrade.";
       } else {
-        auto aborted_subtxn_set_or_status = AbortedSubTransactionSet::FromPB(
+        auto aborted_subtxn_set_or_status = SubtxnSet::FromPB(
           response.aborted_subtxn_set(i).set());
         if (!aborted_subtxn_set_or_status.ok()) {
           Complete(STATUS_FORMAT(
-              IllegalState, "Cannot deserialize AbortedSubTransactionSet: $0",
+              IllegalState, "Cannot deserialize SubtxnSet: $0",
               response.aborted_subtxn_set(i).DebugString()));
           return;
         }

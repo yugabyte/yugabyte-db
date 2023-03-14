@@ -11,6 +11,7 @@
 package com.yugabyte.yw.common.config;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.SetMultimap;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import java.time.Duration;
@@ -72,6 +73,16 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 
+  public static final ConfKeyInfo<Duration> perfAdvisorRunRetentionDuration =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.cleanup.pa_run_retention_duration",
+          ScopeType.CUSTOMER,
+          "Perf Advisor Run Retention Duration",
+          "Conf key that represents the duration of time the perf-advisor run is valid. "
+              + "Once this duration is exceeded, PA run entry is deleted.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
   public static final ConfKeyInfo<Boolean> showUICost =
       new ConfKeyInfo<>(
           "yb.ui.show_cost",
@@ -98,5 +109,33 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "The redesigned provider UI adds a provider list view, a provider details "
               + "view and improves the provider creation form for AWS, AZU, GCP, and K8s",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> useK8CustomResources =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.k8s_custom_resources",
+          ScopeType.CUSTOMER,
+          "Use K8 custom resources",
+          "Allows user to select custom K8 memory(GB) and cpu cores",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enforceUserTags =
+      new ConfKeyInfo<>(
+          "yb.universe.user_tags.is_enforced",
+          ScopeType.CUSTOMER,
+          "Enforce User Tags",
+          "Prevents universe creation when the enforced tags are not provided.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<SetMultimap> enforcedUserTagsMap =
+      new ConfKeyInfo<>(
+          "yb.universe.user_tags.enforced_tags",
+          ScopeType.CUSTOMER,
+          "Enforced User Tags List",
+          "A list of enforced user tag and accepted value pairs during universe creation. "
+              + "Pass '*' to accept all values for a tag."
+              + " Ex: [\"yb_task:dev\",\"yb_task:test\",\"yb_owner:*\",\"yb_dept:eng\","
+              + "\"yb_dept:qa\", \"yb_dept:product\", \"yb_dept:sales\"]",
+          ConfDataType.KeyValuesSetMultimapType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

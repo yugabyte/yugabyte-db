@@ -185,9 +185,9 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     LOG(INFO) << "Finish calculating sys catalog rows inserted (2)";
     after_create_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
     // For a normal table, we expect 3 writes per tablet.
-    // For a copartitioned table, we expect just 1 write per tablet.
+    // For a copartitioned table, we expect no writes per tablet.
     // For both, we expect 1 write for the table.
-    expected_rows = 1 + FLAGS_yb_num_shards_per_tserver * (co_partition ? 1 : 3);
+    expected_rows = 1 + FLAGS_yb_num_shards_per_tserver * (co_partition ? 0 : 3);
     EXPECT_EQ(expected_rows, after_create_rows_inserted - before_rows_inserted);
     ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_2, 1, &locs));
 
@@ -199,7 +199,7 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     // are reported.
     ts->Shutdown();
     ASSERT_OK(cluster_->mini_master()->Restart());
-    ASSERT_OK(ts->Start());
+    ASSERT_OK(ts->Start(tserver::WaitTabletsBootstrapped::kFalse));
     ASSERT_OK(cluster_->WaitForTabletServerCount(1));
 
     ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_1, 1, &locs));

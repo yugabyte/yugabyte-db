@@ -73,7 +73,8 @@ export const ProvidersField = ({
                   ybInputProps={{
                     error: !!fieldState.error,
                     helperText: fieldState.error?.message,
-                    'data-testid': 'ProvidersField-AutoComplete'
+                    'data-testid': 'ProvidersField-AutoComplete',
+                    placeholder: t('universeForm.cloudConfig.placeholder.selectProvider')
                   }}
                 />
               </Box>

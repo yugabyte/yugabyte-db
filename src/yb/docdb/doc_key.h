@@ -21,6 +21,7 @@
 
 #include "yb/common/constants.h"
 
+#include "yb/docdb/docdb_encoding_fwd.h"
 #include "yb/docdb/key_bytes.h"
 #include "yb/docdb/primitive_value.h"
 
@@ -212,6 +213,8 @@ class DocKey {
   // Returns size of encoded hash part and whole part of DocKey.
   static Result<DocKeySizes> EncodedHashPartAndDocKeySizes(
       Slice slice, AllowSpecial allow_special = AllowSpecial::kFalse);
+
+  static yb::DocKeyOffsets ComputeKeyColumnOffsets(const Schema& schema);
 
   // Decode the current document key from the given slice, but expect all bytes to be consumed, and
   // return an error status if that is not the case.
@@ -435,6 +438,8 @@ Result<bool> ClearRangeComponents(KeyBytes* out, AllowSpecial allow_special = Al
 Result<bool> HashedOrFirstRangeComponentsEqual(const Slice& lhs, const Slice& rhs);
 
 bool DocKeyBelongsTo(Slice doc_key, const Schema& schema);
+
+Result<bool> IsColocatedTableTombstoneKey(Slice doc_key);
 
 // Consumes single primitive value from start of slice.
 // Returns true when value was consumed, false when group end is found. The group end byte is

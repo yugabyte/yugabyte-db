@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.yugabyte.yw.models.common.YBADeprecated;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 
@@ -23,8 +24,9 @@ public class KubernetesInfo implements CloudInfoInterface {
   @ApiModelProperty
   public String kubernetesProvider;
 
+  @YBADeprecated(sinceDate = "2023-03-8", sinceYBAVersion = "2.17.3.0")
   @JsonAlias("KUBECONFIG_SERVICE_ACCOUNT")
-  @ApiModelProperty
+  @ApiModelProperty(value = "DEPRECATED: kubernetes service account is not needed.")
   public String kubernetesServiceAccount;
 
   @JsonAlias("KUBECONFIG_IMAGE_REGISTRY")
@@ -110,5 +112,22 @@ public class KubernetesInfo implements CloudInfoInterface {
     this.kubernetesImagePullSecretName = CommonUtils.getMaskedValue(kubernetesImagePullSecretName);
     this.kubernetesPullSecret = CommonUtils.getMaskedValue(kubernetesPullSecret);
     this.kubernetesPullSecretName = CommonUtils.getMaskedValue(kubernetesPullSecretName);
+  }
+
+  @JsonIgnore
+  public void mergeMaskedFields(CloudInfoInterface providerCloudInfo) {
+    KubernetesInfo kubernetesInfo = (KubernetesInfo) providerCloudInfo;
+    // If the modify request contains masked value, overwrite those using
+    // the existing ebean entity.
+    if (this.kubernetesImagePullSecretName != null
+        && this.kubernetesImagePullSecretName.contains("*")) {
+      this.kubernetesImagePullSecretName = kubernetesInfo.kubernetesImagePullSecretName;
+    }
+    if (this.kubernetesPullSecret != null && this.kubernetesPullSecret.contains("*")) {
+      this.kubernetesPullSecret = kubernetesInfo.kubernetesPullSecret;
+    }
+    if (this.kubernetesPullSecretName != null && this.kubernetesPullSecretName.contains("*")) {
+      this.kubernetesPullSecretName = kubernetesInfo.kubernetesPullSecretName;
+    }
   }
 }

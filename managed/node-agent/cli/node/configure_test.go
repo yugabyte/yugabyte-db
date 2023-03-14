@@ -2,7 +2,10 @@
 
 package node
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 type testDisplayInterface struct {
 	name string
@@ -21,10 +24,10 @@ func TestDisplaceInterfaces(t *testing.T) {
 			name: "display2",
 		},
 	}
-	iFaces := displayInterfaces(testData)
+	iFaces := displayInterfaces(context.TODO(), testData)
 	for i, iFace := range iFaces {
-		if iFace.ToString() != testData[i].name {
-			t.Fatalf("Expected %s, found %s", testData[i].name, iFace.ToString())
+		if iFace.String() != testData[i].name {
+			t.Fatalf("Expected %s, found %s", testData[i].name, iFace)
 		}
 	}
 }

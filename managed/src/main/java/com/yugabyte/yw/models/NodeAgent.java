@@ -153,6 +153,7 @@ public class NodeAgent extends Model {
   public static final String SERVER_CERT_NAME = "server.crt";
   public static final String SERVER_KEY_NAME = "server.key";
   public static final String MERGED_ROOT_CA_CERT_NAME = "merged.ca.key.crt";
+  public static final String ROOT_NODE_AGENT_HOME = "/root/node-agent";
 
   @Id
   @ApiModelProperty(accessMode = READ_ONLY)
@@ -194,6 +195,10 @@ public class NodeAgent extends Model {
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(accessMode = READ_ONLY)
   public ArchType archType;
+
+  @ApiModelProperty(accessMode = READ_ONLY)
+  @Column(nullable = false)
+  public String home;
 
   public static Optional<NodeAgent> maybeGet(UUID uuid) {
     NodeAgent nodeAgent = finder.byId(uuid);

@@ -180,21 +180,22 @@ class PrecastRequestSender {
  public:
   Result<PgDocResponse> Send(
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t in_txn_limit, ForceNonBufferable force_non_bufferable) {
+      HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable) {
     if (!collecting_mode_) {
       auto future = VERIFY_RESULT(session->RunAsync(
-          ops, ops_count, table, &in_txn_limit, force_non_bufferable));
-      return PgDocResponse(std::move(future), in_txn_limit);
+          ops, ops_count, table, in_txn_limit, force_non_bufferable));
+      return PgDocResponse(std::move(future));
     }
-    // For now PrecastRequestSender can work with zero in txn limit only.
-    // Zero read time means that current time should be used as in txn limit.
-    RSTATUS_DCHECK(!in_txn_limit, IllegalState, "Only zero read time is expected");
+    // For now PrecastRequestSender can work only with a new in txn limit set to the current time
+    // for each batch of ops. It doesn't use a single in txn limit for all read ops in a statement.
+    // TODO: Expalin why is this the case because it differs from requirement 1 in
+    // src/yb/yql/pggate/README
+    RSTATUS_DCHECK(!in_txn_limit, IllegalState, "Only zero is expected");
     for (auto end = ops + ops_count; ops != end; ++ops) {
       ops_.emplace_back(*ops, table);
     }
     if (!provider_state_) {
-      provider_state_ = std::make_shared<ResponseProvider::State>(
-          rpc::CallResponsePtr(), 0 /* in_txn_limit */);
+      provider_state_ = std::make_shared<ResponseProvider::State>();
     }
     return PgDocResponse(std::make_unique<ResponseProvider>(provider_state_));
   }
@@ -222,8 +223,8 @@ class PrecastRequestSender {
           }
           auto& info = *i++;
           return TO{.operation = &info.operation, .table = info.table};
-        }), &provider_state_->in_txn_limit));
-    provider_state_->response = VERIFY_RESULT(perform_future.Get());
+        }), HybridTime()));
+    *provider_state_ = VERIFY_RESULT(perform_future.Get());
     return Status::OK();
   }
 
@@ -247,8 +248,9 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
   boost::container::small_vector<std::unique_ptr<PgDocReadOp>, 16> doc_ops;
   auto request_sender = [&precast_sender](
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t in_txn_limit, ForceNonBufferable force_non_bufferable) {
-    return precast_sender.Send(session, ops, ops_count, table, in_txn_limit, force_non_bufferable);
+      HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable) {
+    return precast_sender.Send(
+        session, ops, ops_count, table, in_txn_limit, force_non_bufferable);
   };
   // Start all the doc_ops to read from docdb in parallel, one doc_op per table ID.
   // Each doc_op will use request_sender to send all the requests with single perform RPC.
@@ -1100,6 +1102,7 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
                                  bool is_unique_index,
                                  const bool skip_index_backfill,
                                  bool if_not_exist,
+                                 bool is_colocated_via_database,
                                  const PgObjectId& tablegroup_oid,
                                  const YBCPgOid& colocation_id,
                                  const PgObjectId& tablespace_oid,
@@ -1107,7 +1110,7 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, index_name, index_id, is_shared_index,
       if_not_exist, false /* add_primary_key */,
-      tablegroup_oid.IsValid() ? false : true /* colocated */, tablegroup_oid, colocation_id,
+      is_colocated_via_database, tablegroup_oid, colocation_id,
       tablespace_oid, false /* is_matview */, PgObjectId() /* matview_pg_table_id */);
   stmt->SetupIndex(base_table_id, is_unique_index, skip_index_backfill);
   if (pg_txn_manager_->IsDdlMode()) {
@@ -1653,18 +1656,23 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
     return tserver_shared_object_->ysql_catalog_version();
   }
   if (!catalog_version_db_index_) {
-    // If db_oid is for a newly created database, it may not yet have an entry allocated in
-    // shared memory yet. Let's wait with 500ms interval until the entry shows up or until
-    // a 10-second timeout.
+    // If db_oid is for a newly created database, it may not have an entry allocated in shared
+    // memory. It can also be a race condition case where the database db_oid we are trying to
+    // connect to is recently dropped from another node. Let's wait with 500ms interval until the
+    // entry shows up or until a 10-second timeout.
     auto status = LoggedWaitFor(
-        [this, db_oid]() -> Result<bool> {
+        [this, &db_oid]() -> Result<bool> {
           auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo(
-              false /* size_only */));
-          for (const auto& entry : info.entries()) {
-            if (entry.db_oid() == *db_oid) {
-              catalog_version_db_index_.emplace(*db_oid, entry.shm_index());
-              break;
-            }
+              false /* size_only */, *db_oid));
+          // If db_oid does not have an entry allocated in shared memory,
+          // info.entries_size() will be 0.
+          DCHECK_LE(info.entries_size(), 1) << info.ShortDebugString();
+          if (info.entries_size() == 1) {
+            RSTATUS_DCHECK_EQ(
+                info.entries(0).db_oid(), *db_oid, InternalError,
+                Format("Expected database $0, got: $1",
+                       *db_oid, info.entries(0).db_oid()));
+            catalog_version_db_index_.emplace(*db_oid, info.entries(0).shm_index());
           }
           return catalog_version_db_index_ ? true : false;
         },
@@ -1677,12 +1685,10 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
         status,
         Format("Failed to find suitable shared memory index for db $0: $1$2",
                *db_oid, status.ToString(),
-               status.IsTimedOut() ? ", there may be too many databases" : ""));
+               status.IsTimedOut() ? ", there may be too many databases or "
+               "the database might have been dropped" : ""));
 
-    // For correctness return 0 because any loaded catalog cache prior to this call may
-    // be older than the current catalog version and needs to be refreshed.
     CHECK(catalog_version_db_index_);
-    return 0;
   }
   if (catalog_version_db_index_->first != *db_oid) {
     return STATUS_FORMAT(
@@ -1694,7 +1700,8 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
 }
 
 Result<uint32_t> PgApiImpl::GetNumberOfDatabases() {
-  const auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo(true /* size_only */));
+  const auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo(
+      true /* size_only */, kPgInvalidOid /* db_oid */));
   return info.num_entries();
 }
 

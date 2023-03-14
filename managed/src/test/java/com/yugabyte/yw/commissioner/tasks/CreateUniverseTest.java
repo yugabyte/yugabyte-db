@@ -182,7 +182,6 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     UniverseDefinitionTaskParams universeDetails = result.getUniverseDetails();
     universeDetails.creatingUser = defaultUser;
     universeDetails.universeUUID = defaultUniverse.universeUUID;
-    universeDetails.firstTry = true;
     universeDetails.setPreviousTaskUUID(null);
     return universeDetails;
   }
@@ -214,7 +213,6 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     taskInfo = TaskInfo.getOrBadRequest(taskInfo.getTaskUUID());
     taskParams = Json.fromJson(taskInfo.getTaskDetails(), UniverseDefinitionTaskParams.class);
     taskParams.setPreviousTaskUUID(taskInfo.getTaskUUID());
-    taskParams.firstTry = false;
     // Retry the task.
     taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
@@ -236,7 +234,6 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     taskInfo = TaskInfo.getOrBadRequest(taskInfo.getTaskUUID());
     taskParams = Json.fromJson(taskInfo.getTaskDetails(), UniverseDefinitionTaskParams.class);
     taskParams.setPreviousTaskUUID(taskInfo.getTaskUUID());
-    taskParams.firstTry = false;
     primaryCluster.userIntent.enableYCQL = true;
     primaryCluster.userIntent.enableYCQLAuth = true;
     primaryCluster.userIntent.ycqlPassword = "Admin@123";

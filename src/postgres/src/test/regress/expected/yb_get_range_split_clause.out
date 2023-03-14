@@ -619,7 +619,7 @@ CREATE TABLE tbl_group_split_at (
   a INT,
   PRIMARY KEY(a ASC)
 ) SPLIT AT VALUES((-100), (250)) TABLEGROUP tbl_group;
-ERROR:  Cannot use TABLEGROUP with SPLIT.
+ERROR:  cannot use TABLEGROUP with SPLIT
 CREATE TABLE tbl_group_table (
   a INT,
   PRIMARY KEY(a ASC)

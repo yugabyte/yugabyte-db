@@ -60,10 +60,49 @@ Result<TransactionId> FullyDecodeTransactionId(const Slice& slice);
 // from slice.
 Result<TransactionId> DecodeTransactionId(Slice* slice);
 
-using AbortedSubTransactionSet = UnsignedIntSet<SubTransactionId>;
+using SubtxnSet = UnsignedIntSet<SubTransactionId>;
 
 // True for transactions present on the consumer's participant that originated on the producer.
 YB_STRONGLY_TYPED_BOOL(IsExternalTransaction);
+
+// SubtxnSetAndPB avoids repeated serialization of SubtxnSet, required for rpc calls, by storing
+// the serialized proto form (SubtxnSetPB). A shared_ptr to a SubtxnSetAndPB object can be obtained
+// by calling SubtxnSetAndPB::Create(const T& set_pb), where T should be some type where
+// SubtxnSet::FromPB(set_pb.set()) is well defined. for instance, SubtxnSetPB/ ::yb::LWSubtxnSetPB.
+class SubtxnSetAndPB {
+ public:
+  SubtxnSetAndPB() {}
+
+  SubtxnSetAndPB(SubtxnSet&& set, SubtxnSetPB&& pb) : set_(std::move(set)), pb_(std::move(pb)) {}
+
+  template <class T>
+  static Result<std::shared_ptr<SubtxnSetAndPB>> Create(const T& set_pb) {
+    auto res = SubtxnSet::FromPB(set_pb.set());
+    RETURN_NOT_OK(res);
+    SubtxnSetPB pb;
+    res->ToPB(pb.mutable_set());
+    std::shared_ptr<SubtxnSetAndPB>
+        subtxn_info = std::make_shared<SubtxnSetAndPB>(std::move(*res), std::move(pb));
+    return subtxn_info;
+  }
+
+  const SubtxnSet& set() const {
+    return set_;
+  }
+
+  const SubtxnSetPB& pb() const {
+    return pb_;
+  }
+
+  std::string ToString() const {
+    // Skip including the redundant string representation of the proto form.
+    return set_.ToString();
+  }
+
+ private:
+  const SubtxnSet set_;
+  const SubtxnSetPB pb_;
+};
 
 struct TransactionStatusResult {
   TransactionStatus status;
@@ -76,20 +115,29 @@ struct TransactionStatusResult {
   HybridTime status_time;
 
   // Set of thus-far aborted subtransactions in this transaction.
-  AbortedSubTransactionSet aborted_subtxn_set;
+  SubtxnSet aborted_subtxn_set;
+
+  // Populating status_tablet field is optional, except when we report transaction promotion.
+  TabletId status_tablet;
+
+  TransactionStatusResult() {}
 
   TransactionStatusResult(TransactionStatus status_, HybridTime status_time_);
 
   TransactionStatusResult(
       TransactionStatus status_, HybridTime status_time_,
-      AbortedSubTransactionSet aborted_subtxn_set_);
+      SubtxnSet aborted_subtxn_set_);
+
+  TransactionStatusResult(
+      TransactionStatus status_, HybridTime status_time_, SubtxnSet aborted_subtxn_set_,
+      TabletId status_tablet);
 
   static TransactionStatusResult Aborted() {
     return TransactionStatusResult(TransactionStatus::ABORTED, HybridTime());
   }
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(status, status_time, aborted_subtxn_set);
+    return YB_STRUCT_TO_STRING(status, status_time, aborted_subtxn_set, status_tablet);
   }
 };
 
@@ -127,6 +175,9 @@ struct StatusRequest {
   const std::string* reason;
   TransactionLoadFlags flags;
   TransactionStatusCallback callback;
+  // If non-null, populate status_tablet_id for known transactions in the same thread the request is
+  // initiated.
+  std::string* status_tablet_id = nullptr;
 
   std::string ToString() const {
     return Format("{ id: $0 read_ht: $1 global_limit_ht: $2 serial_no: $3 reason: $4 flags: $5}",
@@ -138,7 +189,18 @@ class RequestScope;
 
 struct TransactionLocalState {
   HybridTime commit_ht;
-  AbortedSubTransactionSet aborted_subtxn_set;
+  SubtxnSet aborted_subtxn_set;
+};
+
+// TransactionStatusListener acts as a notification mechanism from TransactionParticipant to
+// Wait-Queue. Wait-Queue::Impl receives notifications on transaction promotion by implementing
+// TransactionStatusListener. TransactionParticipant registers a TransactionStatusListener
+// and uses it for signaling transaction promotion.
+class TransactionStatusListener {
+ public:
+  virtual ~TransactionStatusListener() {}
+
+  virtual void SignalPromoted(const TransactionId& txn, TransactionStatusResult&& res) = 0;
 };
 
 class TransactionStatusManager {
@@ -177,8 +239,6 @@ class TransactionStatusManager {
   virtual void FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) = 0;
 
-  virtual void FillStatusTablets(std::vector<BlockingTransactionData>* inout) = 0;
-
   virtual boost::optional<TabletId> FindStatusTablet(const TransactionId& id) = 0;
 
   // Returns minimal running hybrid time of all running transactions.
@@ -190,6 +250,8 @@ class TransactionStatusManager {
 
   virtual Result<IsExternalTransaction> IsExternalTransactionResult(
       const TransactionId& transaction_id) = 0;
+
+  virtual void RegisterStatusListener(TransactionStatusListener* txn_status_listener) = 0;
 
  private:
   friend class RequestScope;
@@ -254,7 +316,7 @@ class NODISCARD_CLASS RequestScope {
 // and finally on transaction commit.
 struct SubTransactionMetadata {
   SubTransactionId subtransaction_id = kMinSubTransactionId;
-  AbortedSubTransactionSet aborted;
+  SubtxnSet aborted;
 
   void ToPB(SubTransactionMetadataPB* dest) const;
 

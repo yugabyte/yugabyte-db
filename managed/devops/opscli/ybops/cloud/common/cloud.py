@@ -667,8 +667,6 @@ class AbstractCloud(AbstractCommandParser):
                         sock.close()
             # Increment retry only after attempts on all ports fail.
             retry_count += 1
-            if retry_count < self.SERVER_RETRY_COUNT:
-                time.sleep(self.SERVER_WAIT_SECONDS)
 
         logging.error("[app] Start instance {} exceeded maxRetries!".format(instance_name))
         raise YBOpsRecoverableError(
@@ -679,8 +677,7 @@ class AbstractCloud(AbstractCommandParser):
     def wait_for_startup_script(self, args, connect_options):
         if self._wait_for_startup_script_command:
             rc, stdout, stderr = remote_exec_command(
-                connect_options, args.private_key_file,
-                self._wait_for_startup_script_command, ssh2_enabled=args.ssh2_enabled)
+                connect_options, self._wait_for_startup_script_command)
             if rc != 0:
                 logging.error(
                     'Failed to wait for startup script completion on {}:'.format(
@@ -695,10 +692,7 @@ class AbstractCloud(AbstractCommandParser):
 
     def verify_startup_script(self, args, connect_options):
         cmd = "cat /etc/yb-boot-script-complete"
-        rc, stdout, stderr = remote_exec_command(
-            connect_options, args.private_key_file, cmd,
-            ssh2_enabled=args.ssh2_enabled
-        )
+        rc, stdout, stderr = remote_exec_command(connect_options, cmd)
         if rc != 0:
             raise YBOpsRecoverableError(
                 'Failed to read /etc/yb-boot-script-complete {}\nSTDOUT: {}\nSTDERR: {}\n'.format(

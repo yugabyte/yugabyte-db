@@ -5,7 +5,6 @@ package com.yugabyte.yw.common.certmgmt;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.google.inject.Inject;
 import com.google.common.base.Strings;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -14,7 +13,6 @@ import com.yugabyte.yw.common.certmgmt.providers.CertificateSelfSigned;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.FileData;
-
 import io.ebean.annotation.EnumValue;
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -79,7 +77,6 @@ import org.bouncycastle.util.io.pem.PemReader;
 import org.flywaydb.play.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.api.Play;
 import play.libs.Json;
 
 /** Helper class for Certificates */
@@ -140,6 +137,10 @@ public class CertificateHelper {
   public static String getCAKeyPath(String storagePath, UUID customerUUID, UUID caCertUUID) {
     return String.format(
         CERT_PATH + "/ca.key.pem", storagePath, customerUUID.toString(), caCertUUID.toString());
+  }
+
+  public static String getCADirPath(String storagePath, UUID customerUUID, UUID caCertUUID) {
+    return String.format(CERT_PATH, storagePath, customerUUID.toString(), caCertUUID.toString());
   }
 
   private static String generateUniqueRootCALabel(String nodePrefix, CertConfigType certType) {
@@ -219,7 +220,7 @@ public class CertificateHelper {
       String certKeyName,
       X509Certificate clientCert,
       PrivateKey pKey,
-      Boolean syncCertsToDB)
+      boolean syncCertsToDB)
       throws IOException {
     CertificateDetails certificateDetails = new CertificateDetails();
 

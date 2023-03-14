@@ -2059,14 +2059,11 @@ run_cmake_unit_tests() {
 
   local cmake_files=( CMakeLists.txt )
   local IFS=$'\n'
-  local src_subdir
   local line
-  for src_subdir in src ent/src; do
-    ensure_directory_exists "$YB_SRC_ROOT/$src_subdir"
-    while IFS='' read -r line; do
-      cmake_files+=( "$line" )
-    done < <( find "$YB_SRC_ROOT/$src_subdir" -name "CMakeLists*.txt" )
-  done
+  ensure_directory_exists "$YB_SRC_ROOT/src"
+  while IFS='' read -r line; do
+    cmake_files+=( "$line" )
+  done < <( find "$YB_SRC_ROOT/src" -name "CMakeLists*.txt" )
   while IFS='' read -r line; do
     cmake_files+=( "$line" )
   done < <( find "$YB_SRC_ROOT/cmake_modules" -name "*.cmake" )

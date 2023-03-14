@@ -1,11 +1,18 @@
 package com.yugabyte.yw.commissioner;
 
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
+import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.Universe;
 import java.util.Arrays;
@@ -60,12 +67,46 @@ public abstract class RestoreUniverseKeysTaskBase extends AbstractTaskBase {
       final byte[] universeKeyRef = Base64.getDecoder().decode(backupEntry.get("key_ref").asText());
 
       if (universeKeyRef != null) {
-        // Restore keys to database
-        keyManager
-            .getServiceInstance(backupEntry.get("key_provider").asText())
-            .restoreBackupEntry(
-                taskParams().universeUUID, taskParams().kmsConfigUUID, universeKeyRef);
-        sendKeyToMasters(universeKeyRef, taskParams().kmsConfigUUID);
+        // Get the service account object to verify. 2 cases ahead.
+        String keyProviderString =
+            KmsConfig.getOrBadRequest(taskParams().kmsConfigUUID).keyProvider.name();
+        EncryptionAtRestService<? extends SupportedAlgorithmInterface> keyService =
+            keyManager.getServiceInstance(keyProviderString);
+        if (keyService.verifyKmsConfigAndKeyRef(taskParams().kmsConfigUUID, universeKeyRef)) {
+          // Case 1: When the given KMS config UUID matches the key ref.
+          keyService.restoreBackupEntry(
+              taskParams().universeUUID, taskParams().kmsConfigUUID, universeKeyRef);
+          log.info(
+              "Verified that the given KMS config '{}' is correct, "
+                  + "which works to restore to universe '{}'.",
+              taskParams().kmsConfigUUID,
+              taskParams().universeUUID);
+          sendKeyToMasters(universeKeyRef, taskParams().kmsConfigUUID);
+        } else {
+          // Case 2: When the given KMS config UUID does not match the key ref.
+          // Iterate through all KMS configs and see which can decrypt the key ref.
+          UUID validKmsConfigUUID =
+              keyManager.findKmsConfigFromKeyRefOrNull(
+                  KeyProvider.valueOf(backupEntry.get("key_provider").asText()), universeKeyRef);
+          if (validKmsConfigUUID != null) {
+            keyService.restoreBackupEntry(
+                taskParams().universeUUID, validKmsConfigUUID, universeKeyRef);
+            log.info(
+                "Given KMS config '{}' is not correct. "
+                    + "Found another KMS config '{}' which works to restore to universe '{}'.",
+                taskParams().kmsConfigUUID,
+                validKmsConfigUUID,
+                taskParams().universeUUID);
+          } else {
+            throw new PlatformServiceException(
+                INTERNAL_SERVER_ERROR,
+                String.format(
+                    "Failed to restore backup to universe UUID '%s'. "
+                        + "Tried all KMS configs on platform.",
+                    taskParams().universeUUID));
+          }
+          sendKeyToMasters(universeKeyRef, validKmsConfigUUID);
+        }
       }
     };
   }

@@ -1,8 +1,8 @@
-@import '../common';
+@use '../common';
 
 .yb-uikit-field-validation-error {
   position: absolute;
-  color: $YB_ERROR;
+  color: common.$YB_ERROR;
   font-size: 14px;
   left: 0;
   white-space: nowrap;

@@ -178,6 +178,7 @@ public class ScheduleScriptController extends AuthenticatedController {
 
     // updating existing schedule task params and cronExpression.
     schedule.setCronExpressionAndTaskParams(cronExpression, taskParams);
+    schedule.save();
 
     final ObjectMapper mapper = new ObjectMapper();
     try {

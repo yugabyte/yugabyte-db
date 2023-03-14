@@ -1,10 +1,11 @@
 import React, { FC, useContext } from 'react';
+import _ from 'lodash';
 import { useTranslation } from 'react-i18next';
-import { useWatch } from 'react-hook-form';
-import { Box, Grid, Typography } from '@material-ui/core';
+import { useWatch, useFormContext } from 'react-hook-form';
+import { Box, Typography } from '@material-ui/core';
 import { UserTagsField } from '../../fields';
-import { CloudType, ClusterType } from '../../../utils/dto';
-import { PROVIDER_FIELD } from '../../../utils/constants';
+import { CloudType, ClusterType, UniverseFormData } from '../../../utils/dto';
+import { PROVIDER_FIELD, USER_TAGS_FIELD } from '../../../utils/constants';
 import { useSectionStyles } from '../../../universeMainStyle';
 import { UniverseFormContext } from '../../../UniverseFormContainer';
 
@@ -14,23 +15,28 @@ export const UserTags: FC = () => {
 
   //form context
   const { clusterType } = useContext(UniverseFormContext)[0];
+  const isAsyncCluster = clusterType === ClusterType.ASYNC;
+
+  //form Data
+  const { getValues } = useFormContext<Partial<UniverseFormData>>();
+  const userTagsValue = getValues(USER_TAGS_FIELD);
+  const isUserTagExist = userTagsValue?.some((ut) => !_.isEmpty(ut.name) && !_.isEmpty(ut.value));
 
   //field data
   const provider = useWatch({ name: PROVIDER_FIELD });
 
-  if (
-    clusterType === ClusterType.PRIMARY &&
-    [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code)
-  )
+  if (!isUserTagExist && isAsyncCluster) return null;
+
+  if ([CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code))
     return (
-      <Box className={classes.sectionContainer} data-testid="user-tags-section">
-        <Typography className={classes.sectionHeaderFont}>
-          {t('universeForm.userTags.title')}
-        </Typography>
-        <Box display="flex" width="100%" mt={2}>
-          <Grid container item lg={6}>
-            <UserTagsField />
-          </Grid>
+      <Box
+        className={classes.sectionContainer}
+        flexDirection="column"
+        data-testid="UserTags-Section"
+      >
+        <Typography variant="h4">{t('universeForm.userTags.title')}</Typography>
+        <Box display="flex" width="100%" mt={4}>
+          <UserTagsField disabled={isAsyncCluster} isAsyncCluster={isAsyncCluster} />
         </Box>
       </Box>
     );

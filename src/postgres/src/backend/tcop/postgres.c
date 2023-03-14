@@ -2169,6 +2169,8 @@ check_log_statement(List *stmt_list)
 /*
  * check_log_duration
  *		Determine whether current command's duration should be logged
+ *		We also check if this statement in this transaction must be logged
+ *		(regardless of its duration).
  *
  * Returns:
  *		0 if no logging is needed
@@ -2185,7 +2187,7 @@ int
 check_log_duration(char *msec_str, bool was_logged)
 {
 	if (log_duration || log_min_duration_sample >= 0 ||
-		log_min_duration_statement >= 0)
+		log_min_duration_statement >= 0 || xact_is_sampled)
 	{
 		long		secs;
 		int			usecs;
@@ -2225,11 +2227,11 @@ check_log_duration(char *msec_str, bool was_logged)
 				(log_statement_sample_rate == 1 ||
 				 random() <= log_statement_sample_rate * MAX_RANDOM_VALUE);
 
-		if (exceeded_duration || in_sample || log_duration)
+		if (exceeded_duration || in_sample || log_duration || xact_is_sampled)
 		{
 			snprintf(msec_str, 32, "%ld.%03d",
 					 secs * 1000 + msecs, usecs % 1000);
-			if ((exceeded_duration || in_sample) && !was_logged)
+			if ((exceeded_duration || in_sample || xact_is_sampled) && !was_logged)
 				return 2;
 			else
 				return 1;
@@ -2701,6 +2703,8 @@ quickdie(SIGNAL_ARGS)
 	 * Ideally this should be ereport(FATAL), but then we'd not get control
 	 * back...
 	 */
+
+#ifndef THREAD_SANITIZER
 	ereport(WARNING,
 			(errcode(ERRCODE_CRASH_SHUTDOWN),
 			 errmsg("terminating connection because of crash of another server process"),
@@ -2710,10 +2714,7 @@ quickdie(SIGNAL_ARGS)
 					   " shared memory."),
 			 errhint("In a moment you should be able to reconnect to the"
 					 " database and repeat your command.")));
-
-	if (IsYugaByteEnabled()) {
-		YBOnPostgresBackendShutdown();
-	}
+#endif
 
 	/*
 	 * We DO NOT want to run proc_exit() or atexit() callbacks -- we're here
@@ -2748,9 +2749,8 @@ die(SIGNAL_ARGS)
 		ProcDiePending = true;
 	}
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
 		YBCInterruptPgGate();
-	}
 
 	/* If we're still here, waken anything waiting on the process latch */
 	SetLatch(MyLatch);
@@ -5246,6 +5246,7 @@ PostgresMain(int argc, char *argv[],
 			yb_pgstat_set_has_catalog_version(true);
 			YBCPgResetCatalogReadTime();
 			YBCheckSharedCatalogCacheVersion();
+			yb_run_with_explain_analyze = false;
 		}
 
 		switch (firstchar)

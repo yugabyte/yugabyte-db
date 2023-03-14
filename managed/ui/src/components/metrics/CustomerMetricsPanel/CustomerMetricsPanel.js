@@ -14,7 +14,8 @@ import {
   MetricTypesByOrigin,
   MetricMeasure,
   APIMetricToNodeFlag,
-  MetricConsts
+  MetricConsts,
+  NodeType
 } from '../../metrics/constants';
 import { graphPanelTypes } from '../GraphPanel/GraphPanel';
 import { YBTabsPanel } from '../../panels';
@@ -61,6 +62,7 @@ const PanelBody = ({
     }
 
     const metricMeasure = graph?.graphFilter?.metricMeasure;
+    const currentSelectedNodeType = graph?.graphFilter?.currentSelectedNodeType;
     if (
       metricMeasure === MetricMeasure.OUTLIER ||
       selectedUniverse === MetricConsts.ALL ||
@@ -73,6 +75,15 @@ const PanelBody = ({
       selectedUniverse && isKubernetesUniverse(selectedUniverse)
         ? invalidTabType.push(MetricTypes.SERVER)
         : invalidTabType.push(MetricTypes.CONTAINER);
+    }
+
+    if (currentSelectedNodeType !== NodeType.ALL) {
+      currentSelectedNodeType === NodeType.MASTER
+        ? invalidTabType.push(MetricTypes.TSERVER, MetricTypes.YSQL_OPS, MetricTypes.YCQL_OPS)
+        : invalidTabType.push(MetricTypes.MASTER, MetricTypes.MASTER_ADVANCED);
+      defaultTabToDisplay =
+        currentSelectedNodeType === NodeType.MASTER ? MetricTypes.MASTER : MetricTypes.TSERVER;
+      console.warn('defaultTabToDisplay', defaultTabToDisplay);
     }
 
     if (

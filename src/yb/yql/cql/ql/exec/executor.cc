@@ -31,8 +31,8 @@
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
 
@@ -2493,7 +2493,8 @@ Status Executor::ProcessStatementStatus(const ParseTree& parse_tree, const Statu
         errcode == ErrorCode::TYPE_NOT_FOUND) {
       if (errcode == ErrorCode::INVALID_ARGUMENTS) {
         // Check the table schema is up-to-date.
-        const Result<bool> is_altered_res = parse_tree.IsYBTableAltered(ql_env_);
+        const Result<bool> is_altered_res =
+            parse_tree.IsYBTableAltered(ql_env_, false /* use_cache */);
         // The table is not available if (!is_altered_res.ok()).
         // Usually it happens if the table was deleted.
         if (is_altered_res.ok() && !(*is_altered_res)) {

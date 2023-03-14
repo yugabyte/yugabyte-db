@@ -667,6 +667,32 @@ The following are combinations of environment variables and their uses:
 
 To deploy any type of secure cluster (that is, using the `--secure` flag) or use encryption at rest, OpenSSL must be installed on your machine.
 
+### Destroy a local cluster
+
+If you are running YugabyteDB on your local computer, you can't run more than one cluster at a time. To set up a new local YugabyteDB cluster using yugabyted, first destroy the currently running cluster.
+
+To destroy a local single-node cluster, use the [destroy](#destroy) command as follows:
+
+```sh
+./bin/yugabyted destroy
+```
+
+To destroy a local multi-node cluster, use the `destroy` command with the `--base_dir` flag set to the base directory path of each of the nodes. For example, for a three node cluster, you would execute commands similar to the following:
+
+```sh
+./bin/yugabyted destroy --base_dir=/tmp/ybd1
+./bin/yugabyted destroy --base_dir=/tmp/ybd2
+./bin/yugabyted destroy --base_dir=/tmp/ybd3
+```
+
+```sh
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3
+```
+
+If the cluster has more than three nodes, execute a `destroy --base_dir=<path to directory>` command for each additional node until all nodes are destroyed.
+
 ### Create a single-node cluster
 
 Create a single-node cluster with a given base directory. Note the need to provide a fully-qualified directory path for the `base_dir` parameter.
@@ -737,16 +763,6 @@ Add two more nodes to the cluster using the `join` option, as follows:
     --join=127.0.0.1 \
     --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 \
     --cloud_location=aws.us-east-1.us-east-1c
-```
-
-### Destroy a local multi-node cluster
-
-To destroy the multi-node cluster, execute the following:
-
-```sh
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3
 ```
 
 ### Create a multi-zone cluster

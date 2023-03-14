@@ -52,18 +52,30 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.AvailabilityZoneDetails;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodList;
+import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.Secret;
+import io.fabric8.kubernetes.client.utils.Serialization;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import org.yaml.snakeyaml.Yaml;
+
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.file.Files;
@@ -486,6 +498,15 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   private void testGetK8sSuggestedConfigBase(boolean noPullSecret) {
+    Pod testPod = null;
+    try {
+      File jsonFile = new File("src/test/resources/testYugaware.json");
+      InputStream jsonStream = new FileInputStream(jsonFile);
+
+      testPod = Serialization.unmarshal(jsonStream, Pod.class);
+      when(mockKubernetesManager.getPodObject(any(), any(), any())).thenReturn(testPod);
+    } catch (Exception e) {
+    }
     String pullSecretName = "pull-sec";
     String storageClassName = "ssd-class";
     // Was not able to get this working after trying various
@@ -538,18 +559,13 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     if (noPullSecret) {
       assertTrue(Json.fromJson(json.path("config"), Map.class).isEmpty());
     } else {
-      String parsedSecretString =
-          "{\"metadata\":{"
-              + "\"annotations\":{},"
-              + "\"name\":\""
-              + pullSecretName
-              + "\"},"
-              + "\"data\":{\".dockerconfigjson\":\"sec-key\"}}";
-      Secret parsedSecret = TestUtils.deserialize(parsedSecretString, Secret.class);
-
       assertValueAtPath(json, "/config/KUBECONFIG_IMAGE_PULL_SECRET_NAME", pullSecretName);
       assertValueAtPath(json, "/config/KUBECONFIG_PULL_SECRET_NAME", pullSecretName);
-      assertValueAtPath(json, "/config/KUBECONFIG_PULL_SECRET_CONTENT", parsedSecret.toString());
+      Yaml ya = new Yaml();
+      String one = ya.dump(ya.load(json.at("/config/KUBECONFIG_PULL_SECRET_CONTENT").toString()));
+      assertTrue(one.trim().endsWith("\".dockerconfigjson\": \"sec-key\""));
+      String registryPath = "quay.io/yugabyte/yugabyte-itest";
+      assertValueAtPath(json, "/config/KUBECONFIG_IMAGE_REGISTRY", registryPath);
     }
 
     assertValues(
@@ -747,13 +763,11 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.kubernetes, config);
 
     Result providerRes = getProvider(p.uuid);
-    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
-    config.put("STORAGE_CLASS", "slow");
-    bodyJson.set("config", Json.toJson(config));
-    bodyJson.put("name", "kubernetes");
-    bodyJson.put("code", "kubernetes");
+    JsonNode bodyJson = Json.parse(contentAsString(providerRes));
+    Provider provider = Json.fromJson(bodyJson, Provider.class);
+    provider.details.cloudInfo.kubernetes.kubernetesStorageClass = "slow";
 
-    Result result = editProvider(bodyJson, p.uuid);
+    Result result = editProvider(Json.toJson(provider), p.uuid);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(p.uuid, UUID.fromString(json.get("resourceUUID").asText()));
@@ -773,14 +787,12 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.kubernetes, config);
 
     Result providerRes = getProvider(p.uuid);
-    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
-    config.put("KUBECONFIG_NAME", "test2.conf");
-    config.put("KUBECONFIG_CONTENT", "test5678");
-    bodyJson.set("config", Json.toJson(config));
-    bodyJson.put("name", "kubernetes");
-    bodyJson.put("code", "kubernetes");
+    JsonNode bodyJson = Json.parse(contentAsString(providerRes));
+    Provider provider = Json.fromJson(bodyJson, Provider.class);
+    provider.details.cloudInfo.kubernetes.kubeConfigName = "test2.conf";
+    provider.details.cloudInfo.kubernetes.kubeConfigContent = "test5678";
 
-    Result result = editProvider(bodyJson, p.uuid);
+    Result result = editProvider(Json.toJson(provider), p.uuid);
     assertOk(result);
     assertAuditEntry(1, customer.uuid);
     JsonNode json = Json.parse(contentAsString(result));
@@ -801,14 +813,11 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   public void testEditProviderWithAWSProviderType() {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
     Result providerRes = getProvider(p.uuid);
-    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
-    bodyJson.put("name", "aws");
-    bodyJson.put("code", "aws");
-    ObjectNode configJson = Json.newObject();
-    configJson.put("HOSTED_ZONE_ID", "1234");
-    bodyJson.set("config", configJson);
+    JsonNode bodyJson = Json.parse(contentAsString(providerRes));
+    Provider provider = Json.fromJson(bodyJson, Provider.class);
+    provider.details.cloudInfo.aws.awsHostedZoneId = "1234";
     mockDnsManagerListSuccess();
-    Result result = editProvider(bodyJson, p.uuid);
+    Result result = editProvider(Json.toJson(provider), p.uuid);
     verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
@@ -816,6 +825,71 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     p.refresh();
     assertEquals("1234", p.details.cloudInfo.aws.getAwsHostedZoneId());
     assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testEditProviderModifyAZs() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
+    Result providerRes = getProvider(p.uuid);
+    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    ArrayNode regions = (ArrayNode) bodyJson.get("regions");
+    ObjectNode regionNode = (ObjectNode) regions.get(0);
+    ArrayNode zones = (ArrayNode) regionNode.get("zones");
+    ((ObjectNode) zones.get(0)).put("active", false);
+    ((ObjectNode) zones.get(1)).put("subnet", "subnet-changed");
+    AvailabilityZone newZone = new AvailabilityZone();
+    newZone.name = "New zone";
+    newZone.code = "az-new";
+    newZone.subnet = "subnet-311";
+    newZone.secondarySubnet = "sec-sub111";
+    newZone.setAvailabilityZoneDetails(new AvailabilityZoneDetails());
+    newZone.region = r;
+    ObjectNode newZoneJson = (ObjectNode) Json.toJson(newZone);
+    zones.add(newZoneJson);
+    Result result = editProvider(bodyJson, p.uuid);
+    assertOk(result);
+    assertFalse(
+        "Zone is deleted", AvailabilityZone.maybeGetByCode(p, az1.code).isPresent()); // Deleted
+    AvailabilityZone az2changed = AvailabilityZone.getByCode(p, az2.code);
+    assertEquals("subnet-changed", az2changed.subnet);
+    AvailabilityZone azNew = AvailabilityZone.getByCode(p, newZone.code);
+    assertNotNull(azNew);
+    assertEquals(newZone.name, azNew.name);
+    assertEquals(newZone.subnet, azNew.subnet);
+    assertEquals(newZone.secondarySubnet, azNew.secondarySubnet);
+  }
+
+  @Test
+  public void testEditProviderDeleteRegion() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    Result providerRes = getProvider(p.uuid);
+    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    ArrayNode regions = (ArrayNode) bodyJson.get("regions");
+    ObjectNode regionNode = (ObjectNode) regions.get(0);
+    regionNode.put("active", false);
+    Result result = editProvider(bodyJson, p.uuid);
+    assertOk(result);
+    assertFalse("Region is deleted", Region.get(r.uuid).isActive());
+  }
+
+  @Test
+  public void testEditProviderTryUnDeleteRegion() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    r.setActiveFlag(false);
+    r.update();
+    Result providerRes = getProvider(p.uuid);
+    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    ArrayNode regions = (ArrayNode) bodyJson.get("regions");
+    ObjectNode regionNode = (ObjectNode) regions.get(0);
+    regionNode.put("active", true);
+    Result result = assertPlatformException(() -> editProvider(bodyJson, p.uuid));
+    assertBadRequest(result, "No changes to be made for provider type: aws");
   }
 
   @Test
@@ -828,7 +902,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     bodyJson.put("code", "aws");
     Result result = assertPlatformException(() -> editProvider(bodyJson, p.uuid));
     verify(mockDnsManager, times(0)).listDnsRecord(any(), any());
-    assertBadRequest(result, "No changes to be made for provider type: onprem");
+    assertBadRequest(result, "Changing provider type is not supported!");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -870,9 +944,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  @Ignore
-  // TODO(vipulbansal)(PLAT-7130): Ignoring this test for now, will update
-  // and come up with new test case in the subsequent diffs.
   public void testCreateAwsProviderWithInValidAWSCredentials() {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
@@ -955,6 +1026,61 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertNotNull(json);
     assertNotNull(json.get("taskUUID"));
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testAwsProviderDetailsEdit() {
+    ProviderDetails details = new ProviderDetails();
+    details.sshUser = "test-user";
+    details.cloudInfo = new ProviderDetails.CloudInfo();
+    details.cloudInfo.aws = new AWSCloudInfo();
+    details.cloudInfo.aws.awsAccessKeyID = "Test AWS Access Key ID";
+    details.cloudInfo.aws.awsAccessKeySecret = "Test AWS Access Key Secret";
+    Provider provider = ModelFactory.newProvider(customer, Common.CloudType.aws, details);
+    JsonNode providerJson = Json.toJson(provider);
+    Result result = assertPlatformException(() -> editProvider(providerJson, provider.uuid));
+    assertBadRequest(result, "No changes to be made for provider type: aws");
+    assertAuditEntry(0, customer.uuid);
+    ObjectNode detailsJson = (ObjectNode) providerJson.get("details");
+    detailsJson.put("sshUser", "modified-ssh-user");
+    ((ObjectNode) providerJson).set("details", detailsJson);
+    result = editProvider(providerJson, provider.uuid);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(provider.uuid, UUID.fromString(json.get("resourceUUID").asText()));
+    provider.refresh();
+    assertEquals("modified-ssh-user", provider.details.sshUser);
+    assertEquals("Test AWS Access Key ID", provider.details.cloudInfo.aws.awsAccessKeyID);
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testAwsProviderDetailsEditMaskedKeys() {
+    ProviderDetails details = new ProviderDetails();
+    details.sshUser = "test-user";
+    details.cloudInfo = new ProviderDetails.CloudInfo();
+    details.cloudInfo.aws = new AWSCloudInfo();
+    details.cloudInfo.aws.awsAccessKeyID = "Test AWS Access Key ID";
+    details.cloudInfo.aws.awsAccessKeySecret = "Test AWS Access Key Secret";
+    Provider provider = ModelFactory.newProvider(customer, Common.CloudType.aws, details);
+    JsonNode providerJson = Json.toJson(provider);
+    Result result = assertPlatformException(() -> editProvider(providerJson, provider.uuid));
+    assertBadRequest(result, "No changes to be made for provider type: aws");
+    assertAuditEntry(0, customer.uuid);
+    ObjectNode detailsJson = (ObjectNode) providerJson.get("details");
+    ObjectNode cloudInfo = (ObjectNode) detailsJson.get("cloudInfo");
+    ObjectNode aws = (ObjectNode) cloudInfo.get("aws");
+    cloudInfo.set("aws", aws);
+    detailsJson.set("cloudInfo", cloudInfo);
+    aws.put("awsAccessKeyID", "Updated AWS Access Key ID");
+    ((ObjectNode) providerJson).set("details", detailsJson);
+    result = editProvider(providerJson, provider.uuid);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(provider.uuid, UUID.fromString(json.get("resourceUUID").asText()));
+    provider.refresh();
+    assertEquals("Updated AWS Access Key ID", provider.details.cloudInfo.aws.awsAccessKeyID);
     assertAuditEntry(1, customer.uuid);
   }
 

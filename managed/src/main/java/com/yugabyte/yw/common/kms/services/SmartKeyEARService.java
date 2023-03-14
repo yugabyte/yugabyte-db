@@ -11,6 +11,7 @@
 package com.yugabyte.yw.common.kms.services;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
@@ -137,8 +138,7 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
   }
 
   @Override
-  public byte[] retrieveKeyWithService(
-      UUID universeUUID, UUID configUUID, byte[] keyRef, EncryptionAtRestConfig config) {
+  public byte[] retrieveKeyWithService(UUID configUUID, byte[] keyRef) {
     byte[] keyVal = null;
     final ObjectNode authConfig = getAuthConfig(configUUID);
     final String endpoint = String.format("/crypto/v1/keys/%s/export", new String(keyRef));
@@ -155,11 +155,7 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
 
   @Override
   public byte[] validateRetrieveKeyWithService(
-      UUID universeUUID,
-      UUID configUUID,
-      byte[] keyRef,
-      EncryptionAtRestConfig config,
-      ObjectNode authConfig) {
+      UUID configUUID, byte[] keyRef, ObjectNode authConfig) {
     byte[] keyVal = null;
     final String endpoint = String.format("/crypto/v1/keys/%s/export", new String(keyRef));
     final String sessionToken = retrieveSessionAuthorization(authConfig);
@@ -171,5 +167,14 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
     if (errors != null) throw new RuntimeException(errors.toString());
     keyVal = Base64.getDecoder().decode(response.get("value").asText());
     return keyVal;
+  }
+
+  @Override
+  public ObjectNode getKeyMetadata(UUID configUUID) {
+    ObjectNode keyMetadata = new ObjectMapper().createObjectNode();
+
+    // Add key_provider field.
+    keyMetadata.put("key_provider", KeyProvider.SMARTKEY.name());
+    return keyMetadata;
   }
 }

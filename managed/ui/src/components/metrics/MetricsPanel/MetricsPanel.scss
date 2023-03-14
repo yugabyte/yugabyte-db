@@ -98,6 +98,16 @@
       }
   }
 
+  .colocated-mode-panel {
+    .yb-resource-count-size {
+      float: inherit;
+      font-size: 32px;
+    }
+    .yb-resource-count-kind {
+      font-size: 18px;
+    }
+  }
+
   .dedicated-mode-panel {
     margin-top: -15px !important;
     .dedicated-mode-space {
@@ -106,6 +116,13 @@
     }
     .dedicated-mode-empty {
       float: left;
+    }
+    .yb-resource-count-size {
+      float: right;
+      font-size: 28px;
+    }
+    .yb-resource-count-kind {
+      font-size: 12px;
     }
   }
 

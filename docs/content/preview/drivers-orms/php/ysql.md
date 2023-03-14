@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: php-pgsql Driver for YSQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: PHP drivers for YSQL
+description: Connect a PHP application using php-pgsql driver for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 aliases:
   - /develop/client-drivers/php/

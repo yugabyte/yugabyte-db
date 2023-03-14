@@ -1,0 +1,21 @@
+@use '../../../../../_style/colors.scss';
+
+.expandComponent {
+  margin-left: 65px;
+  // Override react-bootstrap-table styles.
+  .bootstrapTable {
+    table > thead > tr > th {
+      padding: 4px 8px 4px 0 !important;
+      vertical-align: middle;
+
+      border-bottom: 1px solid colors.$YB_GRAY_HOVER !important;
+    }
+    table > tbody > tr > td {
+      padding: 4px 8px 4px 0 !important;
+      vertical-align: middle;
+    }
+    table > tbody > tr:not(:last-child) td {
+      border-bottom: 1px solid colors.$YB_GRAY_HOVER !important;
+    }
+  }
+}

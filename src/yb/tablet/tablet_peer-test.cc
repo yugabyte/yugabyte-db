@@ -34,8 +34,8 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/hybrid_time.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_fwd.h"
@@ -463,6 +463,21 @@ TEST_F(TabletPeerTest, TestGCEmptyLog) {
   ASSERT_OK(tablet_peer_->Start(info));
   // We don't wait on consensus on purpose.
   ASSERT_OK(tablet_peer_->RunLogGC());
+}
+
+TEST_F(TabletPeerTest, TestAddTableUpdatesLastChangeMetadataOpId) {
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet_safe());
+  TableInfoPB table_info;
+  table_info.set_table_id("00004000000030008000000000004020");
+  table_info.set_table_name("test");
+  table_info.set_table_type(PGSQL_TABLE_TYPE);
+  ColumnSchema col("a", UINT32);
+  ColumnId col_id(1);
+  Schema schema({col}, {col_id}, 1);
+  SchemaToPB(schema, table_info.mutable_schema());
+  OpId op_id(100, 5);
+  ASSERT_OK(tablet->AddTable(table_info, op_id));
+  ASSERT_EQ(tablet->metadata()->LastChangeMetadataOperationOpId(), op_id);
 }
 
 class TabletPeerProtofBufSizeLimitTest : public TabletPeerTest {

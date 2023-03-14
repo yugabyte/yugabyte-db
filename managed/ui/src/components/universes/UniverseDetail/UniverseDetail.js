@@ -45,11 +45,11 @@ import {
   getFeatureState
 } from '../../../utils/LayoutUtils';
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
-import Replication from '../../xcluster/Replication';
 import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
 import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
 import { PerfAdvisor } from '../../queries/PerfAdvisor.tsx';
-
+import { XClusterReplication } from '../../xcluster/XClusterReplication';
+import { EncryptionAtRest } from '../../../redesign/features/universe/universe-actions/encryption-at-rest/EncryptionAtRest';
 import './UniverseDetail.scss';
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
@@ -356,6 +356,7 @@ class UniverseDetail extends Component {
               updateAvailable={updateAvailable}
               showSoftwareUpgradesModal={showSoftwareUpgradesModal}
               tabRef={this.ybTabPanel}
+              isTopKMetricsEnabled={isTopKMetricsEnabled}
             />
           </Tab.Pane>
         ),
@@ -363,6 +364,7 @@ class UniverseDetail extends Component {
         isNotHidden(currentCustomer.data.features, 'universes.details.tables') && (
           <Tab.Pane
             eventKey={'tables'}
+            className={'universe-tables-list'}
             tabtitle="Tables"
             key="tables-tab"
             mountOnEnter={true}
@@ -448,7 +450,7 @@ class UniverseDetail extends Component {
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.replication')}
           >
             {featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
-              <Replication currentUniverseUUID={currentUniverse.data.universeUUID} />
+              <XClusterReplication currentUniverseUUID={currentUniverse.data.universeUUID} />
             ) : (
               <ReplicationContainer />
             )}
@@ -559,6 +561,8 @@ class UniverseDetail extends Component {
     const enableThirdpartyUpgrade =
       featureFlags.test['enableThirdpartyUpgrade'] ||
       featureFlags.released['enableThirdpartyUpgrade'];
+
+    const isMKREnabled = featureFlags.test['enableMKR'] || featureFlags.released['enableMKR'];
 
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
@@ -907,21 +911,33 @@ class UniverseDetail extends Component {
           universe={currentUniverse.data}
           type="primary"
         />
-        <EncryptionKeyModalContainer
-          modalVisible={showModal && visibleModal === 'manageKeyModal'}
-          onHide={closeModal}
-          handleSubmitKey={this.handleSubmitManageKey}
-          currentUniverse={currentUniverse}
-          name={currentUniverse.data.name}
-          uuid={currentUniverse.data.universeUUID}
-        />
+        {isMKREnabled ? (
+          <EncryptionAtRest
+            open={showModal && visibleModal === 'manageKeyModal'}
+            onClose={() => {
+              closeModal();
+              this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+            }}
+            universeDetails={currentUniverse.data}
+          />
+        ) : (
+          <EncryptionKeyModalContainer
+            modalVisible={showModal && visibleModal === 'manageKeyModal'}
+            onHide={closeModal}
+            handleSubmitKey={this.handleSubmitManageKey}
+            currentUniverse={currentUniverse}
+            name={currentUniverse.data.name}
+            uuid={currentUniverse.data.universeUUID}
+          />
+        )}
+
         <Measure onMeasure={this.onResize.bind(this)}>
           <YBTabsWithLinksPanel
             defaultTab={defaultTab}
             activeTab={activeTab}
             routePrefix={`/universes/${currentUniverse.data.universeUUID}/`}
             id={'universe-tab-panel'}
-            className="universe-detail"
+            className={'universe-detail'}
           >
             {tabElements}
           </YBTabsWithLinksPanel>

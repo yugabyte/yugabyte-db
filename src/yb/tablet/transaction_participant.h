@@ -41,6 +41,7 @@
 #include "yb/util/math_util.h"
 #include "yb/util/opid.h"
 #include "yb/util/opid.pb.h"
+#include "yb/util/mem_tracker.h"
 
 namespace rocksdb {
 
@@ -69,7 +70,7 @@ namespace tablet {
 struct TransactionApplyData {
   int64_t leader_term = -1;
   TransactionId transaction_id = TransactionId::Nil();
-  AbortedSubTransactionSet aborted;
+  SubtxnSet aborted;
   OpId op_id;
   HybridTime commit_ht;
   HybridTime log_ht;
@@ -111,7 +112,7 @@ class TransactionParticipant : public TransactionStatusManager {
  public:
   TransactionParticipant(
       TransactionParticipantContext* context, TransactionIntentApplier* applier,
-      const scoped_refptr<MetricEntity>& entity);
+      const scoped_refptr<MetricEntity>& entity, const std::shared_ptr<MemTracker>& parent);
   virtual ~TransactionParticipant();
 
   // Notify participant that this context is ready and it could start performing its requests.
@@ -178,8 +179,6 @@ class TransactionParticipant : public TransactionStatusManager {
   void FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override;
 
-  void FillStatusTablets(std::vector<BlockingTransactionData>* inout) override;
-
   boost::optional<TabletId> FindStatusTablet(const TransactionId& id) override;
 
   void GetStatus(const TransactionId& transaction_id,
@@ -232,6 +231,8 @@ class TransactionParticipant : public TransactionStatusManager {
   OpId GetLatestCheckPoint() const;
 
   const TabletId& tablet_id() const override;
+
+  void RegisterStatusListener(TransactionStatusListener* txn_status_listener) override;
 
   size_t TEST_GetNumRunningTransactions() const;
 

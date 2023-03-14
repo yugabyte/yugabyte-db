@@ -5,6 +5,7 @@
 package util
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -55,7 +56,13 @@ func setUp() {
 	config.Update(NodeLoggerKey, "node_agent_test.log")
 	config.Update(PlatformCertsKey, "test")
 	private, public := GetPublicAndPrivateKey()
-	SaveCerts(config, string(public), string(private), config.String(PlatformCertsKey))
+	SaveCerts(
+		context.TODO(),
+		config,
+		string(public),
+		string(private),
+		config.String(PlatformCertsKey),
+	)
 }
 
 // Sets up a mock server to test http client calls.

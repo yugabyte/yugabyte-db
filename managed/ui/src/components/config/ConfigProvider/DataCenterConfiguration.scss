@@ -1,5 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 
+@use "sass:color";
 @use '../../../_style/colors.scss';
 @use '../../../_style/mixins.scss';
 
@@ -8,15 +9,19 @@
   padding-top: 20px;
 
   .tab-pane {
-    padding-bottom: 60px;
+    padding-bottom: 80px;
   }
 }
 
-#config-tab-panel-redesign .config-tabs .tab-content {
+#cloud-config-tab-panel.config-tabs.redesign .tab-content {
   min-height: 400px;
   padding: 0;
 
   background-color: colors.$YB_BACKGROUND;
+
+  .tab-pane {
+    padding-bottom: 0px;
+  }
 }
 
 .provider-config-container {
@@ -126,7 +131,7 @@
     width: 100%;
     margin: 0 auto;
     height: 60px;
-    border: 1px dotted desaturate(rgba(colors.$YB_VIOLET, 0.35), 20%);
+    border: 1px dotted color.adjust(rgba(colors.$YB_VIOLET, 0.35), $saturation: -20%);
     color: colors.$YB_ORANGE;
     font-weight: 400;
 
@@ -168,7 +173,7 @@
     }
 
     &.has-error {
-      border: 1px solid desaturate(colors.$YB_ERROR_TEXT_COLOR, 20%);
+      border: 1px solid color.adjust(colors.$YB_ERROR_TEXT_COLOR, $saturation: -20%);
     }
 
     & + .standart-error {
@@ -329,7 +334,7 @@
 
   &:hover {
     color: white;
-    background-color: darken(colors.$YB_FAIL_COLOR, 5%) !important;
+    background-color: color.adjust(colors.$YB_FAIL_COLOR, $lightness: -5%) !important;
     border-color: transparent;
 
     i {

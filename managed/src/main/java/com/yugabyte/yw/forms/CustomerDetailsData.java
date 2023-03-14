@@ -4,6 +4,7 @@ package com.yugabyte.yw.forms;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import io.swagger.annotations.ApiModel;
@@ -27,9 +28,10 @@ public class CustomerDetailsData {
   @ApiModelProperty(value = "Customer name", example = "Sridhar", required = true)
   public String name;
 
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
       value = "Creation timestamp",
-      example = "2021-06-17 15:00:05",
+      example = "2022-12-12T13:07:18Z",
       accessMode = READ_ONLY)
   public Date creationDate;
 

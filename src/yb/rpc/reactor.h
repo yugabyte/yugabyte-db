@@ -287,7 +287,7 @@ class DelayedTask : public ReactorTask {
 
 typedef std::vector<ReactorTaskPtr> ReactorTasks;
 
-YB_DEFINE_ENUM(ReactorState, (kRunning)(kClosing)(kClosed));
+YB_DEFINE_ENUM(ReactorState, (kIdle)(kRunning)(kClosing)(kClosed));
 
 class Reactor {
  public:
@@ -389,14 +389,14 @@ class Reactor {
     return ScheduleReactorTask(MakeFunctorReactorTask(f, source_location));
   }
 
-  ReactorState state() {
-    return state_.load(std::memory_order_acquire);
-  }
-
  private:
   friend class Connection;
   friend class AssignOutboundCallTask;
   friend class DelayedTask;
+
+  ReactorState state() const {
+    return state_.load(std::memory_order_acquire);
+  }
 
   // Run the main event loop of the reactor.
   void RunThread();
@@ -452,7 +452,7 @@ class Reactor {
 
   // Reactor status, mostly used when shutting down. Guarded by pending_tasks_mtx_, but also read
   // without a lock for sanity checking.
-  std::atomic<ReactorState> state_{ReactorState::kRunning};
+  std::atomic<ReactorState> state_{ReactorState::kIdle};
 
   // This mutex is used to make sure that multiple threads that end up running Abort() in case the
   // reactor has already shut down will not have data races accessing data that is normally only

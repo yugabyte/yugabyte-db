@@ -46,7 +46,7 @@ func (s validateConfigCheck) Execute() Result {
 // JSON schema.
 func validateJSONSchema() error {
 
-	createdBytes, err := os.ReadFile(common.InputFile)
+	createdBytes, err := os.ReadFile(common.InputFile())
 	if err != nil {
 		log.Fatal(fmt.Sprintf("Error: %v.", err))
 	}
@@ -81,7 +81,7 @@ func validateJSONSchema() error {
 	}
 
 	if !result.Valid() {
-		errMsg := "The config at " + common.InputFile + " is not valid. Errors: \n"
+		errMsg := "The config at " + common.InputFile() + " is not valid. Errors: \n"
 		for _, desc := range result.Errors() {
 			errMsg += fmt.Sprintf("- %s\n", desc)
 		}
@@ -89,6 +89,6 @@ func validateJSONSchema() error {
 		return fmt.Errorf(errMsg)
 	}
 
-	log.Info("Config at " + common.InputFile + " was found to be valid.")
+	log.Info("Config at " + common.InputFile() + " was found to be valid.")
 	return nil
 }

@@ -3,7 +3,6 @@ package logging
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"runtime"
 
 	log "github.com/sirupsen/logrus"
@@ -47,11 +46,6 @@ func Trace(msg string) {
 
 // AddOutputFile adds a logging file
 func AddOutputFile(logfile string) {
-	err := os.MkdirAll(filepath.Dir(logfile), 0755)
-	if err != nil && !os.IsExist(err) {
-		log.Fatal(fmt.Sprintf("Error creating %s. Failed with %s", logfile, err.Error()))
-	}
-
 	logFile, err := os.OpenFile(logfile, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
 	if err != nil {
 		log.Fatalln("Unable to create log file " + logfile)

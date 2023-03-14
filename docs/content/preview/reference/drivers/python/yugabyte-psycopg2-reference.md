@@ -1,7 +1,8 @@
 ---
-title: Python Drivers
+title: YugabyteDB Psycopg2 Smart Driver
+headerTitle: Python Drivers
 linkTitle: Python Drivers
-description: Python Drivers for YSQL
+description: YugabyteDB Psycopg2 Smart Driver for YSQL
 headcontent: Python Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
@@ -28,31 +29,20 @@ type: docs
   </li>
 </ul>
 
-[Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) is a distributed python driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional [connection load balancing](../../../../drivers-orms/smart-drivers/) features.
+Yugabyte Psycopg2 smart driver is a Python driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional connection load balancing features.
 
-## Connection load balancing
+For more information on the YugabyteDB node-postgres smart driver, see the following:
 
-The Yugabyte Psycopg2 smart driver has the following connection load balancing features:
-
-- Cluster-aware (uniform)
-
-    In this mode, the driver makes the best effort to uniformly distribute the connections to each YugabyteDB server.
-
-- Topology-aware load balancing
-
-    Because YugabyteDB clusters can have servers in different regions and availability zones, the driver can be configured to create connections only on servers that are in specific regions and zones. This is beneficial for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
-
-The driver can be configured with pooling as well.
-
-## Fundamentals
-
-Learn how to perform common tasks required for Python application development using the YugabyteDB Psycopg2 smart driver.
+- [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
+- [CRUD operations](../../../../drivers-orms/python/yugabyte-psycopg2/)
+- [GitHub repository](https://github.com/yugabyte/psycopg2)
+- [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 
 ## Download the driver dependency
 
 Building Psycopg2 requires a few prerequisites (a C compiler and some development packages). Check the [installation instructions](https://www.psycopg.org/docs/install.html#build-prerequisites) and [the FAQ](https://www.psycopg.org/docs/faq.html#faq-compile) for details.
 
-The YugabyteDB Psycopg2 requires PostgreSQL version 12 or later (preferably 14).
+The YugabyteDB Psycopg2 driver requires PostgreSQL version 12 or later (preferably 14).
 
 If prerequisites are met, you can install psycopg2-yugabytedb like any other Python package, using pip to download it from [PyPI](https://pypi.org/project/psycopg2-yugabytedb/):
 
@@ -67,12 +57,16 @@ $ python setup.py build
 $ sudo python setup.py install
 ```
 
+## Fundamentals
+
+Learn how to perform common tasks required for Python application development using the YugabyteDB Psycopg2 smart driver.
+
 ### Load balancing connection properties
 
 The following connection properties need to be added to enable load balancing:
 
-- load_balance - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
-- topology_keys - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`.
+- `load_balance` - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
+- `topology_keys` - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`.
 
 ### Use the driver
 
@@ -91,6 +85,8 @@ To enable uniform load balancing across all servers, you set the `load-balance` 
     ```python
     conn = psycopg2.connect(user = 'username', password='password', host = 'hostname', port = '5433', dbname = 'database_name', load_balance='True')
     ```
+
+You can specify [multiple hosts](../../../../drivers-orms/go/yb-pgx/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
 
 To specify topology keys, you set the `topology_keys` property to comma-separated values in the Connection string or dictionary, as per the following examples:
 
@@ -122,7 +118,7 @@ conn = yb_pool.getconn()
 
 This tutorial shows how to use the Yugabyte Psycopg2 driver with YugabyteDB. It starts by creating a 3 node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](../../../../admin/yb-ctl/) utility.
 
-Next, you use Python shell terminal to demonstrate the driver's load balancing features by running a few python scripts.
+Next, you use a Python shell terminal to demonstrate the driver's load balancing features by running a few python scripts.
 
 {{< note title="Note">}}
 The driver requires YugabyteDB version 2.7.2.0 or later.
@@ -191,8 +187,3 @@ When you're done experimenting, run the following command to destroy the local c
 ## Limitations
 
 Currently, [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2) and [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) _cannot_ be used in the same environment.
-
-## Further reading
-
-- [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
-- [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)

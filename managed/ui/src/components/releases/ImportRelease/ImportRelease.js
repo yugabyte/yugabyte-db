@@ -34,7 +34,7 @@ const getValidationSchema = (type) => {
       shape['credentialsJson'] = Yup.string().required('Credentials Json is required');
       break;
     case 'http':
-      shape['x86_64Checksum'] = Yup.string()
+      shape['x86_64_checksum'] = Yup.string()
       .required('Checksum is required')
       .matches(/(MD5|SHA1|SHA256):\w+/, {
         message: 'Checksum must have a pattern of [MD5|SHA1|SHA256]:[checksum_value];'
@@ -79,7 +79,7 @@ const GcsFields = () => (
 const HttpFields = () => (
   <>
     <PathField />
-    <Field name="x86_64Checksum" component={YBFormInput} label="Checksum" />
+    <Field name="x86_64_checksum" component={YBFormInput} label="Checksum" />
     <Field name="helmChart" label="Helm chart" component={YBFormInput} />
     <Field name="helmChartChecksum" label="Helm chart checksum" component={YBFormInput} />
   </>
@@ -140,7 +140,7 @@ const preparePayload = (values) => {
   if (importType === 'http') {
     payload[version][importType]['paths'] = {
       ...payload[version][importType]['paths'],
-      x86_64Checksum: values['x86_64Checksum']
+      x86_64_checksum: values['x86_64_checksum']
     };
   }
 

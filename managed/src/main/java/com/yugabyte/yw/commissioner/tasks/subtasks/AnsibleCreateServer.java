@@ -48,6 +48,9 @@ public class AnsibleCreateServer extends NodeTaskBase {
     public boolean assignPublicIP = true;
     public boolean assignStaticPublicIP = false;
 
+    public boolean useSpotInstance = false;
+    public Double spotPrice = 0.0;
+
     // If this is set to the universe's AWS KMS CMK arn, AWS EBS volume
     // encryption will be enabled
     public String cmkArn;

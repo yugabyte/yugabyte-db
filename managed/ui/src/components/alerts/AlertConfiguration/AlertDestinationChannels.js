@@ -42,7 +42,7 @@ const prepareInitialValues = (values) => {
         initialValues['emailIds'] = values.params.recipients.join(',');
       }
 
-      initialValues['customSmtp'] = !values.params.defaultSmtpSettings;
+      initialValues['defaultSmtp'] = values.params.defaultSmtpSettings;
 
       if (!values.params.defaultSmtpSettings) {
         initialValues['smtpData'] = values.params.smtpData;
@@ -249,7 +249,7 @@ export const AlertDestinationChannels = (props) => {
           }}
           defaultChannel={initialValues.CHANNEL_TYPE ?? 'email'}
           defaultRecipients={initialValues.defaultRecipients}
-          customSmtp={initialValues.customSmtp}
+          defaultSmtp={initialValues.defaultSmtp}
           type={type}
           editAlertChannel={editAlertChannel}
           editValues={type === 'edit' ? initialValues : {}}

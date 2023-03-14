@@ -24,15 +24,24 @@ import static junit.framework.TestCase.assertNull;
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
 
+import com.amazonaws.services.ec2.model.Image;
+import com.amazonaws.services.ec2.model.IpPermission;
+import com.amazonaws.services.ec2.model.SecurityGroup;
+import com.amazonaws.services.ec2.model.Subnet;
+import com.amazonaws.services.ec2.model.Vpc;
+import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -47,6 +56,7 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -62,12 +72,16 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -118,7 +132,10 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
   private Result createProvider(JsonNode bodyJson) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody(
-        "POST", "/api/customers/" + customer.uuid + "/providers", user.createAuthToken(), bodyJson);
+        "POST",
+        "/api/customers/" + customer.uuid + "/providers?validate=true",
+        user.createAuthToken(),
+        bodyJson);
   }
 
   private Result createKubernetesProvider(JsonNode bodyJson) {
@@ -153,7 +170,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   private Result editProvider(JsonNode bodyJson, UUID providerUUID) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody(
         "PUT",
-        "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/edit",
+        "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/edit?validate=true",
         user.createAuthToken(),
         bodyJson);
   }
@@ -254,10 +271,10 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     CloudInfoInterface.setCloudProviderInfoFromConfig(provider, reqConfig);
     provider = createProviderTest(provider, ImmutableList.of("region1"), UUID.randomUUID());
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
-    assertEquals("234234", provider.hostVpcId);
-    assertEquals("234234", provider.destVpcId);
+    GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
+    assertEquals("234234", gcpCloudInfo.getHostVpcId());
+    assertEquals("234234", gcpCloudInfo.getDestVpcId());
     assertEquals("PROJ", config.get(GCPCloudImpl.GCE_PROJECT_PROPERTY));
-    assertEquals("234234", config.get(GCPCloudImpl.CUSTOM_GCE_NETWORK_PROPERTY));
   }
 
   @Test
@@ -266,9 +283,9 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
         .thenReturn(Json.newObject().put("vpc-id", "234234").put("region", "VPCreg"));
     Provider provider = buildProviderReq("aws", "AWS");
     provider = createProviderTest(provider, ImmutableList.of("region1"), UUID.randomUUID());
-    assertEquals("234234", provider.hostVpcId);
-    assertNull(provider.destVpcId);
-    assertEquals("VPCreg", provider.hostVpcRegion);
+    AWSCloudInfo awsCloudInfo = CloudInfoInterface.get(provider);
+    assertEquals("234234", awsCloudInfo.getHostVpcId());
+    assertEquals("VPCreg", awsCloudInfo.getHostVpcRegion());
   }
 
   @Test
@@ -678,6 +695,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
                 + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}],"
                 + "\"version\": %d}",
             provider.getVersion());
+    when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
+        .thenReturn(getTestSecurityGroup(21, 24));
     Result result = editProvider(Json.parse(jsonString), provider.uuid);
     assertOk(result);
   }
@@ -689,17 +708,28 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     ProviderDetails providerDetails = new ProviderDetails();
     Provider provider =
         Provider.create(customer.uuid, Common.CloudType.aws, "test", providerDetails);
-    Region.create(provider, "us-west-1", "us-west-1", "foo");
+    Region region = Region.create(provider, "us-west-1", "us-west-1", "foo");
+    region.setVnetName("vpc-foo");
+    region.setSecurityGroupId("sg-foo");
+    region.save();
+    AvailabilityZone.createOrThrow(region, "us-west-1a", "us-west-1a", "subnet-foo", "subnet-foo");
     String jsonString =
         String.format(
             "{\"code\":\"aws\",\"name\":\"test\",\"regions\":[{\"name\":\"us-west-1\""
                 + ",\"code\":\"us-west-1\", \"details\": {\"cloudInfo\": { \"aws\": {"
-                + "\"vnetName\":\"vpc-foo\","
+                + "\"vnetName\":\"vpc-foo\", \"ybImage\":\"foo\", "
                 + "\"securityGroupId\":\"sg-foo\" }}}, "
                 + "\"zones\":[{\"code\":\"us-west-1a\",\"name\":\"us-west-1a\","
                 + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}],"
                 + "\"version\": %d}",
             provider.getVersion());
+    Image image = new Image();
+    image.setArchitecture("x86_64");
+    image.setRootDeviceType("ebs");
+    image.setPlatformDetails("linux/UNIX");
+    when(mockAWSCloudImpl.describeImageOrBadRequest(any(), any(), any())).thenReturn(image);
+    when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
+        .thenReturn(getTestSecurityGroup(21, 24));
     Result result =
         assertPlatformException(() -> editProvider(Json.parse(jsonString), provider.uuid));
     assertBadRequest(result, "No changes to be made for provider type: aws");
@@ -724,19 +754,280 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testAddRegionNoAccessKeyFail() {
+  public void testCreateAWSProviderWithInvalidAccessParams() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "aws");
+    bodyJson.put("name", "aws-Provider");
+    ObjectNode detailsJson = Json.newObject();
+    ObjectNode cloudInfoJson = Json.newObject();
+    ObjectNode awsCloudInfoJson = Json.newObject();
+    cloudInfoJson.set("aws", awsCloudInfoJson);
+    detailsJson.set("cloudInfo", cloudInfoJson);
+    bodyJson.set("details", detailsJson);
+    ArrayNode regionsList = Json.newArray();
+    ObjectNode region = Json.newObject();
+    region.put("code", "us-west-2");
+    regionsList.add(region);
+    bodyJson.set("regions", regionsList);
+    when(mockAWSCloudImpl.checkKeysExists(any())).thenReturn(false, true);
+    when(mockAWSCloudImpl.getStsClientOrBadRequest(any(), any()))
+        .thenThrow(
+            new PlatformServiceException(
+                BAD_REQUEST, "AWS access and secret keys validation failed: Invalid role"),
+            new PlatformServiceException(
+                BAD_REQUEST, "AWS access and secret keys validation failed: Not found"));
+    Result result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(
+        result, "{\"data.IAM\":[\"AWS access and secret keys validation failed: Invalid role\"]}");
+    assertAuditEntry(0, customer.uuid);
+    awsCloudInfoJson.put("AWS_SECRET_ACCESS_KEY", "secret_value");
+    cloudInfoJson.set("aws", awsCloudInfoJson);
+    detailsJson.set("cloudInfo", cloudInfoJson);
+    bodyJson.set("details", detailsJson);
+    result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(result, "{\"data.KEYS\":[\"Please provide both access key and its secret\"]}");
+    assertAuditEntry(0, customer.uuid);
+    awsCloudInfoJson.put("AWS_ACCESS_KEY_ID", "key_value");
+    cloudInfoJson.set("aws", awsCloudInfoJson);
+    detailsJson.set("cloudInfo", cloudInfoJson);
+    bodyJson.set("details", detailsJson);
+    result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(
+        result, "{\"data.KEYS\":[\"AWS access and secret keys validation failed: Not found\"]}");
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testCreateAWSProviderWithInvalidHostedZone() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "aws");
+    bodyJson.put("name", "aws-Provider");
+    ObjectNode detailsJson = Json.newObject();
+    ObjectNode cloudInfoJson = Json.newObject();
+    ObjectNode awsCloudInfoJson = Json.newObject();
+    awsCloudInfoJson.put("HOSTED_ZONE_ID", "hosted_zone_id");
+    cloudInfoJson.set("aws", awsCloudInfoJson);
+    detailsJson.set("cloudInfo", cloudInfoJson);
+    bodyJson.set("details", detailsJson);
+    ArrayNode regionsList = Json.newArray();
+    ObjectNode region = Json.newObject();
+    region.put("code", "us-west-2");
+    regionsList.add(region);
+    bodyJson.set("regions", regionsList);
+    when(mockAWSCloudImpl.getStsClientOrBadRequest(any(), any()))
+        .thenReturn(new GetCallerIdentityResult());
+    when(mockAWSCloudImpl.getHostedZoneOrBadRequest(any(), any(), anyString()))
+        .thenThrow(
+            new PlatformServiceException(BAD_REQUEST, "Hosted Zone validation failed: Invalid ID"));
+    Result result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(
+        result, "{\"data.HOSTED_ZONE\":[\"Hosted Zone validation failed: Invalid ID\"]}");
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testCreateAWSProviderWithInvalidSSHKey() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "aws");
+    bodyJson.put("name", "aws-Provider");
+    ObjectNode detailsJson = Json.newObject();
+    ObjectNode cloudInfoJson = Json.newObject();
+    ObjectNode awsCloudInfoJson = Json.newObject();
+    cloudInfoJson.set("aws", awsCloudInfoJson);
+    detailsJson.set("cloudInfo", cloudInfoJson);
+    bodyJson.set("details", detailsJson);
+    bodyJson.put("sshPrivateKeyContent", "key_content");
+    bodyJson.put("keyPairName", "test1");
+    when(mockAWSCloudImpl.getStsClientOrBadRequest(any(), any()))
+        .thenReturn(new GetCallerIdentityResult());
+    when(mockAWSCloudImpl.getPrivateKeyAlgoOrBadRequest(anyString())).thenReturn("DSA");
+    Result result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(
+        result, "{\"data.SSH_PRIVATE_KEY_CONTENT\":[\"Please provide a valid RSA key\"]}");
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testCreateAWSProviderWithRegionDetails() {
+    // create provider body
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "aws");
+    bodyJson.put("name", "aws-Provider");
+    ObjectNode detailsJson = Json.newObject();
+    ObjectNode cloudInfoJson = Json.newObject();
+    ObjectNode awsCloudInfoJson = Json.newObject();
+    cloudInfoJson.set("aws", awsCloudInfoJson);
+    detailsJson.set("cloudInfo", cloudInfoJson);
+    bodyJson.set("details", detailsJson);
+    when(mockAWSCloudImpl.getStsClientOrBadRequest(any(), any()))
+        .thenReturn(new GetCallerIdentityResult());
+    ObjectNode regionAWSCloudInfo = Json.newObject();
+    regionAWSCloudInfo.put("ybImage", "image_id");
+    regionAWSCloudInfo.put("vnetName", "vpc_id");
+    regionAWSCloudInfo.put("securityGroupId", "sg_id");
+    ObjectNode regionCloudInfo = Json.newObject();
+    regionCloudInfo.set("aws", regionAWSCloudInfo);
+    ObjectNode regionDetails = Json.newObject();
+    regionDetails.set("cloudInfo", regionCloudInfo);
+    ObjectNode region = Json.newObject();
+    region.set("details", regionDetails);
+    ObjectNode az1 =
+        Json.newObject()
+            .put("name", "us-west-2a")
+            .put("code", "us-west-2a")
+            .put("subnet", "subnet-a");
+    ObjectNode az2 =
+        Json.newObject()
+            .put("name", "us-west-2b")
+            .put("code", "us-west-2b")
+            .put("subnet", "subnet-b");
+    ArrayNode zonesList = Json.newArray();
+    zonesList.add(az1).add(az2);
+    region.put("zones", zonesList);
+    region.put("code", "us-west-2");
+    ArrayNode regionsList = Json.newArray();
+    regionsList.add(region);
+    bodyJson.set("regions", regionsList);
+    Image image = new Image();
+    image.setArchitecture("random_arch");
+    image.setRootDeviceType("random_device_type");
+    image.setPlatformDetails("windows");
+    when(mockAWSCloudImpl.describeImageOrBadRequest(any(), any(), anyString()))
+        .thenThrow(
+            new PlatformServiceException(BAD_REQUEST, "AMI details extraction failed: Not found"))
+        .thenReturn(image);
+    // Test image exists or not
+    Result result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(
+        result, "{\"data.REGION.us-west-2.IMAGE\":[\"AMI details extraction failed: Not found\"]}");
+    // Test image arch
+    result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(
+        result,
+        "{\"data.REGION.us-west-2.IMAGE\":"
+            + "[\"random_arch arch on image image_id is not supported\"]}");
+    assertAuditEntry(0, customer.uuid);
+    image.setArchitecture("x86_64");
+    when(mockAWSCloudImpl.describeImageOrBadRequest(any(), any(), anyString())).thenReturn(image);
+    // Test image arch type
+    result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(
+        result,
+        "{\"data.REGION.us-west-2.IMAGE\":"
+            + "[\"random_device_type root device type on image image_id is not supported\"]}");
+    image.setRootDeviceType("ebs");
+    when(mockAWSCloudImpl.describeImageOrBadRequest(any(), any(), anyString())).thenReturn(image);
+    // Test image platform details
+    result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(
+        result,
+        "{\"data.REGION.us-west-2.IMAGE\":"
+            + "[\"windows platform on image image_id is not supported\"]}");
+    image.setPlatformDetails("linux/UNIX");
+    when(mockAWSCloudImpl.describeImageOrBadRequest(any(), any(), anyString())).thenReturn(image);
+    // Test VPC exists or not
+    when(mockAWSCloudImpl.describeVpcOrBadRequest(any(), any()))
+        .thenThrow(
+            new PlatformServiceException(
+                BAD_REQUEST, "Vpc details extraction failed: Invalid VPC ID"))
+        .thenReturn(new Vpc());
+    result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(
+        result,
+        "{\"data.REGION.us-west-2.VPC\":[\"Vpc details extraction failed: Invalid VPC ID\"]}");
+    when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
+        .thenThrow(
+            new PlatformServiceException(
+                BAD_REQUEST, "Security group extraction failed: Invalid SG ID"))
+        .thenReturn(getTestSecurityGroup(24, 24));
+    // Test SG exists or not
+    result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(
+        result,
+        "{\"data.REGION.us-west-2.SECURITY_GROUP\":"
+            + "[\"Security group extraction failed: Invalid SG ID\"]}");
+    // Test SG ports
+    result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(
+        result,
+        "{\"data.REGION.us-west-2.SECURITY_GROUP\":[\"22 is not open on security group sg_id\"]}");
+    when(mockAWSCloudImpl.describeSubnetsOrBadRequest(any(), any()))
+        .thenThrow(
+            new PlatformServiceException(
+                BAD_REQUEST, "Subnet details extraction failed: Invalid Id"))
+        .thenReturn(
+            Arrays.asList(
+                getTestSubnet("0.0.0.0/24", "subnet-a", "vpc_id", "us-west-2b"),
+                getTestSubnet("0.0.0.0/24", "subnet-a", "vpc_id", "us-west-2c")))
+        .thenReturn(
+            Collections.singletonList(
+                getTestSubnet("0.0.0.0/24", "subnet-a", "vpc_id_incorrect", "us-west-2a")));
+    when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
+        .thenReturn(getTestSecurityGroup(21, 24));
+    // Test subnet exists or not
+    result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(
+        result,
+        "{\"data.REGION.us-west-2.SUBNETS\":[\"Subnet details extraction failed: Invalid Id\"]}");
+    // Test Subnet code
+    result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(
+        result, "{\"data.REGION.us-west-2.SUBNETS\":[\"Invalid AZ code for subnet: subnet-a\"]}");
+    // Test subnet vpc
+    result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(
+        result, "{\"data.REGION.us-west-2.SUBNETS\":[\"subnet-a is not associated with vpc_id\"]}");
+    when(mockAWSCloudImpl.describeSubnetsOrBadRequest(any(), any()))
+        .thenReturn(
+            Arrays.asList(
+                getTestSubnet("0.0.0.0/24", "subnet-a", "vpc_id", "us-west-2a"),
+                getTestSubnet("0.0.0.0/24", "subnet-a", "vpc_id", "us-west-2a")));
+    // Test subnet cidr blocks
+    result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(
+        result,
+        "{\"data.REGION.us-west-2.SUBNETS\":"
+            + "[\"Please provide non-overlapping CIDR blocks subnets\"]}");
+    when(mockAWSCloudImpl.describeSubnetsOrBadRequest(any(), any()))
+        .thenReturn(
+            Arrays.asList(
+                getTestSubnet("0.0.0.0/24", "subnet-a", "vpc_id", "us-west-2a"),
+                getTestSubnet("0.0.0.0/25", "subnet-a", "vpc_id", "us-west-2a")));
+    when(mockAWSCloudImpl.dryRunDescribeInstanceOrBadRequest(any(), anyString()))
+        .thenThrow(
+            new PlatformServiceException(
+                BAD_REQUEST, "Dry run of AWS DescribeInstances failed: Invalid region"))
+        .thenReturn(false, true);
+    // Test failed dry run
+    result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(
+        result,
+        "{\"data.REGION.us-west-2.DRY_RUN\":"
+            + "[\"Dry run of AWS DescribeInstances failed: Invalid region\"]}");
     when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
         .thenReturn(UUID.randomUUID());
-    Provider provider = Provider.create(customer.uuid, Common.CloudType.aws, "test");
-    String jsonString =
-        "{\"code\":\"aws\",\"name\":\"test\",\"regions\":[{\"name\":\"us-west-1\""
-            + ",\"code\":\"us-west-1\", \"details\": {\"cloudInfo\": { \"aws\": {"
-            + "\"securityGroupId\":\"sg-foo\" }}}, "
-            + "\"zones\":[{\"code\":\"us-west-1a\",\"name\":\"us-west-1a\","
-            + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}]}";
+    // Test validation pass
+    result = createProvider(bodyJson);
+    assertOk(result);
+    assertAuditEntry(1, customer.uuid);
+  }
 
-    Result result =
-        assertPlatformException(() -> editProvider(Json.parse(jsonString), provider.uuid));
-    assertBadRequest(result, "KeyCode not found: " + AccessKey.getDefaultKeyCode(provider));
+  private SecurityGroup getTestSecurityGroup(int fromPort, int toPort) {
+    SecurityGroup sg = new SecurityGroup();
+    IpPermission ipPermission = new IpPermission();
+    ipPermission.setFromPort(fromPort);
+    ipPermission.setToPort(toPort);
+    sg.setIpPermissions(Collections.singletonList(ipPermission));
+    return sg;
+  }
+
+  private Subnet getTestSubnet(
+      String cidrBlock, String subnetId, String vpcId, String availabilityZone) {
+    Subnet subnet = new Subnet();
+    subnet.setVpcId(vpcId);
+    subnet.setSubnetId(subnetId);
+    subnet.setCidrBlock(cidrBlock);
+    subnet.setAvailabilityZone(availabilityZone);
+    return subnet;
   }
 }

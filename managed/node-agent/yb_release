@@ -14,6 +14,8 @@ Options:
     Directory into which the binary should be copied.
   -l, --local
     Generate pre-release packages in /opt/yugabyte/node-agent/releases.
+  -p, --rebuild_pex
+    Build ansible only pex for node agent.
 EOT
 }
 
@@ -27,6 +29,7 @@ readonly node_agent_home=$( cd "${BASH_SOURCE%/*}" && pwd )
 destination=""
 local=""
 pre_release=""
+rebuild_pex=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)
@@ -39,6 +42,9 @@ while [ $# -gt 0 ]; do
     ;;
     -l|--local)
       local="true"
+    ;;
+    -p|--rebuild_pex)
+      rebuild_pex="--rebuild_pex"
     ;;
   esac
   shift
@@ -54,4 +60,5 @@ elif [[ ! -d $destination ]]; then
 fi
 
 activate_virtualenv
-$node_agent_home/yb_release.py --source_dir $node_agent_home --destination $destination $pre_release
+$node_agent_home/yb_release.py --source_dir $node_agent_home --destination $destination \
+                                                            $pre_release $rebuild_pex

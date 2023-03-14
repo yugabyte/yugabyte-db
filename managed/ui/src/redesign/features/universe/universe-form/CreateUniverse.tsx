@@ -10,7 +10,7 @@ import { getPlacements } from './form/fields/PlacementsField/PlacementsFieldHelp
 import {
   createUniverse,
   filterFormDataByClusterType,
-  getAsyncCopyFields,
+  getPrimaryInheritedValues,
   getUserIntent
 } from './utils/helpers';
 import {
@@ -123,7 +123,9 @@ export const CreateUniverse: FC = () => {
     if (asyncData) {
       configurePayload.clusters?.push({
         clusterType: ClusterType.ASYNC,
-        userIntent: getUserIntent({ formData: asyncData }),
+        userIntent: getUserIntent({
+          formData: { ...asyncData, ...getPrimaryInheritedValues(primaryData) } //copy primary field values (inherited fields) to RR during fresh Universe+RR creation
+        }),
         placementInfo: {
           cloudList: [
             {
@@ -155,7 +157,9 @@ export const CreateUniverse: FC = () => {
         onFormSubmit={(data: UniverseFormData) =>
           onSubmit(
             data,
-            asyncFormData ? { ...asyncFormData, ...getAsyncCopyFields(primaryFormData) } : null
+            asyncFormData
+              ? { ...asyncFormData, ...getPrimaryInheritedValues(primaryFormData) }
+              : null
           )
         }
         submitLabel={t('common.create')}
@@ -174,7 +178,7 @@ export const CreateUniverse: FC = () => {
       <UniverseForm
         defaultFormData={
           asyncFormData
-            ? { ...asyncFormData, ...getAsyncCopyFields(primaryFormData) } //Not all the fields needs to be copied from primary -> async
+            ? { ...asyncFormData, ...getPrimaryInheritedValues(primaryFormData) } //Not all the fields needs to be copied from primary -> async
             : filterFormDataByClusterType(primaryFormData, ClusterType.ASYNC)
         }
         onFormSubmit={(data: UniverseFormData) => onSubmit(primaryFormData, data)}

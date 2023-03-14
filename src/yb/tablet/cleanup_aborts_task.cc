@@ -70,13 +70,15 @@ void CleanupAbortsTask::Run() {
   VLOG_WITH_PREFIX(1) << "CleanupAbortsTask: applier safe time reached " << safetime
                       << " (was waiting for " << now << ")";
 
-  for (const TransactionId& transaction_id : transactions_to_cleanup_) {
+  for (auto it = transactions_to_cleanup_.begin(); it != transactions_to_cleanup_.end();) {
     // If transaction is committed, no action required
     // TODO(dtxn) : Do batch processing of transactions,
     // because LocalCommitData will acquire lock per each call.
-    auto commit_time = status_manager_.LocalCommitTime(transaction_id);
+    auto commit_time = status_manager_.LocalCommitTime(*it);
     if (commit_time.is_valid()) {
-      transactions_to_cleanup_.erase(transaction_id);
+      it = transactions_to_cleanup_.erase(it);
+    } else {
+      ++it;
     }
   }
 
