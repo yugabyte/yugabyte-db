@@ -1054,7 +1054,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createInstallNodeAgentTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup(InstallNodeAgent.class.getSimpleName());
     NodeAgentManager nodeAgentManager = application.injector().instanceOf(NodeAgentManager.class);
-    boolean createSubTaskGroup = false;
     Universe universe = getUniverse();
     for (NodeDetails node : nodes) {
       if (node.cloudInfo == null) {
@@ -1063,7 +1062,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Cluster cluster = getUniverse().getCluster(node.placementUuid);
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
       if (nodeAgentManager.isServerToBeInstalled(provider)) {
-        createSubTaskGroup = true;
         if (provider.getCloudCode() == CloudType.onprem) {
           AccessKey accessKey =
               AccessKey.getOrBadRequest(provider.uuid, cluster.userIntent.accessKeyCode);
@@ -1086,10 +1084,27 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         subTaskGroup.addSubTask(task);
       }
     }
-    if (createSubTaskGroup) {
+    if (subTaskGroup.getSubTaskCount() > 0) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
     return subTaskGroup;
+  }
+
+  protected void deleteNodeAgent(NodeDetails nodeDetails) {
+    if (nodeDetails.cloudInfo != null && nodeDetails.cloudInfo.private_ip != null) {
+      NodeAgentManager nodeAgentManager = application.injector().instanceOf(NodeAgentManager.class);
+      Cluster cluster = getUniverse().getCluster(nodeDetails.placementUuid);
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      if (provider.getCloudCode() == CloudType.onprem) {
+        AccessKey accessKey =
+            AccessKey.getOrBadRequest(provider.uuid, cluster.userIntent.accessKeyCode);
+        if (accessKey.getKeyInfo().skipProvisioning) {
+          return;
+        }
+      }
+      NodeAgent.maybeGetByIp(nodeDetails.cloudInfo.private_ip)
+          .ifPresent(n -> nodeAgentManager.purge(n));
+    }
   }
 
   public SubTaskGroup createWaitForNodeAgentTasks(Collection<NodeDetails> nodes) {
