@@ -609,6 +609,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
                   return Json.newObject()
                       .put("reference", history.uuid.keyRef)
                       .put("configUUID", history.configUuid.toString())
+                      .put("re_encryption_count", history.uuid.reEncryptionCount)
+                      .put("db_key_id", history.dbKeyId)
                       .put("timestamp", history.timestamp.toString());
                 })
             .collect(Collectors.toList()));

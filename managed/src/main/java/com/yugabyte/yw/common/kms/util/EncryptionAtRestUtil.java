@@ -69,7 +69,7 @@ public class EncryptionAtRestUtil {
   }
 
   public static ObjectNode getAuthConfig(UUID configUUID) {
-    KmsConfig config = KmsConfig.get(configUUID);
+    KmsConfig config = KmsConfig.getOrBadRequest(configUUID);
     return config.authConfig;
   }
 
@@ -159,7 +159,29 @@ public class EncryptionAtRestUtil {
         configUUID,
         universeUUID,
         KmsHistoryId.TargetType.UNIVERSE_KEY,
+        Base64.getEncoder().encodeToString(keyRef),
         Base64.getEncoder().encodeToString(keyRef));
+  }
+
+  public static void addKeyRefAndKeyId(
+      UUID universeUUID, UUID configUUID, byte[] keyRef, String dbKeyId) {
+    KmsHistory.createKmsHistory(
+        configUUID,
+        universeUUID,
+        KmsHistoryId.TargetType.UNIVERSE_KEY,
+        Base64.getEncoder().encodeToString(keyRef),
+        dbKeyId);
+  }
+
+  public static KmsHistory createKmsHistory(
+      UUID universeUUID, UUID configUUID, byte[] keyRef, int reEncryptionCount, String dbKeyId) {
+    return KmsHistory.createKmsHistory(
+        configUUID,
+        universeUUID,
+        KmsHistoryId.TargetType.UNIVERSE_KEY,
+        Base64.getEncoder().encodeToString(keyRef),
+        reEncryptionCount,
+        dbKeyId);
   }
 
   public static boolean keyRefExists(UUID universeUUID, byte[] keyRef) {
@@ -173,7 +195,15 @@ public class EncryptionAtRestUtil {
     return KmsHistory.entryExists(universeUUID, keyRef, KmsHistoryId.TargetType.UNIVERSE_KEY);
   }
 
-  @Deprecated
+  public static boolean dbKeyIdExists(UUID universeUUID, String dbKeyId) {
+    return KmsHistory.dbKeyIdExists(universeUUID, dbKeyId, KmsHistoryId.TargetType.UNIVERSE_KEY);
+  }
+
+  public static KmsHistory getLatestKmsHistoryWithDbKeyId(UUID universeUUID, String dbKeyId) {
+    return KmsHistory.getLatestKmsHistoryWithDbKeyId(
+        universeUUID, dbKeyId, KmsHistoryId.TargetType.UNIVERSE_KEY);
+  }
+
   public static KmsHistory getActiveKey(UUID universeUUID) {
     KmsHistory activeHistory = null;
     try {
@@ -219,19 +249,11 @@ public class EncryptionAtRestUtil {
     return Util.getUniverseDetails(universes);
   }
 
-  public static int getNumKeyRotations(UUID universeUUID) {
-    return getNumKeyRotations(universeUUID, null);
-  }
-
-  public static int getNumKeyRotations(UUID universeUUID, UUID configUUID) {
+  public static int getNumUniverseKeys(UUID universeUUID) {
     int numRotations = 0;
-
     try {
       List<KmsHistory> keyRotations =
-          configUUID == null
-              ? KmsHistory.getAllTargetKeyRefs(universeUUID, KmsHistoryId.TargetType.UNIVERSE_KEY)
-              : KmsHistory.getAllConfigTargetKeyRefs(
-                  configUUID, universeUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
+          KmsHistory.getAllUniverseKeysWithActiveMasterKey(universeUUID);
       numRotations = keyRotations.size();
     } catch (Exception e) {
       String errMsg =
@@ -241,6 +263,22 @@ public class EncryptionAtRestUtil {
       LOG.error(errMsg, e);
     }
     return numRotations;
+  }
+
+  public static String getPlainTextUniverseKey(KmsHistory kmsHistory) {
+    return getPlainTextUniverseKey(
+        kmsHistory.uuid.targetUuid, kmsHistory.configUuid, kmsHistory.uuid.keyRef);
+  }
+
+  public static String getPlainTextUniverseKey(UUID universeUUID, UUID configUUID, String keyRef) {
+    KmsConfig kmsConfig = KmsConfig.getOrBadRequest(configUUID);
+    byte[] encryptedUniverseKey = Base64.getDecoder().decode(keyRef);
+    byte[] plainTextUniverseKey =
+        kmsConfig
+            .keyProvider
+            .getServiceInstance()
+            .retrieveKey(universeUUID, configUUID, encryptedUniverseKey);
+    return Base64.getEncoder().encodeToString(plainTextUniverseKey);
   }
 
   public static void activateKeyRef(UUID universeUUID, UUID configUUID, byte[] keyRef) {
@@ -259,8 +297,16 @@ public class EncryptionAtRestUtil {
     return activeKey;
   }
 
+  public static KmsHistory getKeyRefConfig(UUID targetUUID, UUID configUUID, byte[] keyRef) {
+    return KmsHistory.getKeyRefConfig(
+        targetUUID,
+        configUUID,
+        Base64.getEncoder().encodeToString(keyRef),
+        KmsHistoryId.TargetType.UNIVERSE_KEY);
+  }
+
   public static List<KmsHistory> getAllUniverseKeys(UUID universeUUID) {
-    return KmsHistory.getAllTargetKeyRefs(universeUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
+    return KmsHistory.getAllUniverseKeysWithActiveMasterKey(universeUUID);
   }
 
   public static File getUniverseBackupKeysFile(String storageLocation) {
@@ -282,18 +328,20 @@ public class EncryptionAtRestUtil {
 
   public static class BackupEntry {
     public byte[] keyRef;
-
     public KeyProvider keyProvider;
+    public String dbKeyId;
 
-    public BackupEntry(byte[] keyRef, KeyProvider keyProvider) {
+    public BackupEntry(byte[] keyRef, KeyProvider keyProvider, String dbKeyId) {
       this.keyRef = keyRef;
       this.keyProvider = keyProvider;
+      this.dbKeyId = dbKeyId;
     }
 
     public ObjectNode toJson() {
       return Json.newObject()
           .put("key_ref", Base64.getEncoder().encodeToString(keyRef))
-          .put("key_provider", keyProvider.name());
+          .put("key_provider", keyProvider.name())
+          .put("db_key_id", dbKeyId);
     }
 
     @Override

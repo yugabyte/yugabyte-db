@@ -177,4 +177,9 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
     keyMetadata.put("key_provider", KeyProvider.SMARTKEY.name());
     return keyMetadata;
   }
+
+  public byte[] encryptKeyWithService(UUID configUUID, byte[] universeKey) {
+    // KMS is deprecated. No more new functionality.
+    return null;
+  }
 }
