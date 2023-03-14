@@ -172,6 +172,12 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
       ...transformGFlagToFlagsArray(userIntent.tserverGFlags, 'TSERVER')
     ]
   };
+
+  if (data.cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
+    data.instanceConfig.masterInstanceType = userIntent.masterInstanceType;
+    data.instanceConfig.masterDeviceInfo = userIntent.masterDeviceInfo;
+  }
+
   return data;
 };
 
