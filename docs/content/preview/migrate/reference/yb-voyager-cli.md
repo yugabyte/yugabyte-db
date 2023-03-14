@@ -215,7 +215,7 @@ During migration, run the import schema command twice, first without the [--post
 
 {{< note title="For Oracle migrations" >}}
 
-For Oracle migrations to YugabyteDB Voyager v1.1, Orafce extension gets installed on the target database by default. This enables you to use a subset of predefined functions, operators, and packages from Oracle. As the behaviour is to install the extension in the public schema, when listing functions or views, extra objects will be visible on the target database which may confuse you. So,you may choose to remove the extension using the [`DROP EXTENSION`](../../../api/ysql/the-sql-language/statements/ddl_drop_extension) command.
+For Oracle migrations using YugabyteDB Voyager v1.1, the Orafce extension is installed on the target database by default. This enables you to use a subset of predefined functions, operators, and packages from Oracle. The extension is installed in the public schema, and when listing functions or views, extra objects will be visible on the target database which may confuse you. You can remove the extension using the [DROP EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_drop_extension) command.
 
 {{< /note >}}
 
