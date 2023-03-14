@@ -274,19 +274,30 @@ void XClusterConsumer::UpdateInMemoryState(
   }
 
   if (consumer_registry->enable_replicate_transaction_status_table() &&
-      !global_transaction_status_table_) {
+      global_transaction_status_tablets_.empty()) {
     auto global_transaction_status_table_name = client::YBTableName(
         YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
-    auto global_transaction_status_table_res =
-        local_client_->client->OpenTable(global_transaction_status_table_name);
-    if (!global_transaction_status_table_res.ok()) {
+
+    std::vector<TabletId> tablets;
+    const auto get_tablets_status = local_client_->client->GetTablets(
+        global_transaction_status_table_name, 0 /* max_tablets */, &tablets, nullptr /* ranges */);
+
+    if (!get_tablets_status.ok() || tablets.empty()) {
       // We could not open the transaction status table, so return without setting any in-memory
       // state.
-      LOG(WARNING) << global_transaction_status_table_res.status();
+      LOG(WARNING) << "Error getting global transaction status tablets: " << get_tablets_status;
       cond_.notify_all();
       return;
     }
-    global_transaction_status_table_ = std::move(*global_transaction_status_table_res);
+
+    // Sort tablets to ensure we have the same order across all XClusterConsumers.
+    sort(tablets.begin(), tablets.end());
+
+    // TODO handle adding of new txn status tablets (GH #16307).
+    // Currently we block add_transaction_tablet for xCluster enabled clusters, since adding in a
+    // new txn status tablet would disrupt the deterministic mapping we have for txn id -> status
+    // tablet (since we would need to support existing txns and new ones).
+    global_transaction_status_tablets_ = std::move(tablets);
   }
 
   cluster_config_version_.store(cluster_config_version, std::memory_order_release);
@@ -297,6 +308,9 @@ void XClusterConsumer::UpdateInMemoryState(
   if (!consumer_registry) {
     LOG_WITH_PREFIX(INFO) << "Given empty CDC consumer registry: removing Pollers";
     consumer_role_ = cdc::XClusterRole::ACTIVE;
+    // Clear the tablets list in case users want to increase number of txn status tablets in between
+    // having active replication setups.
+    global_transaction_status_tablets_.clear();
     cond_.notify_all();
     return;
   }
@@ -475,7 +489,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
         auto xcluster_poller = std::make_shared<XClusterPoller>(
             producer_tablet_info, consumer_tablet_info, thread_pool_.get(), rpcs_.get(),
             local_client_, remote_clients_[uuid], this, use_local_tserver,
-            global_transaction_status_table_, enable_replicate_transaction_status_table_,
+            global_transaction_status_tablets_, enable_replicate_transaction_status_table_,
             last_compatible_consumer_schema_version);
         LOG_WITH_PREFIX(INFO) << Format(
             "Start polling for producer tablet $0, consumer tablet $1", producer_tablet_info,

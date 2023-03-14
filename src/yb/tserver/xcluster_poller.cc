@@ -75,7 +75,7 @@ XClusterPoller::XClusterPoller(
     const std::shared_ptr<XClusterClient>& producer_client,
     XClusterConsumer* xcluster_consumer,
     bool use_local_tserver,
-    client::YBTablePtr global_transaction_status_table,
+    const std::vector<TabletId>& global_transaction_status_tablets,
     bool enable_replicate_transaction_status_table,
     SchemaVersion last_compatible_consumer_schema_version)
     : producer_tablet_info_(producer_tablet_info),
@@ -93,7 +93,7 @@ XClusterPoller::XClusterPoller(
           rpcs,
           std::bind(&XClusterPoller::HandleApplyChanges, this, _1),
           use_local_tserver,
-          global_transaction_status_table,
+          global_transaction_status_tablets,
           enable_replicate_transaction_status_table)),
       producer_client_(producer_client),
       thread_pool_(thread_pool),

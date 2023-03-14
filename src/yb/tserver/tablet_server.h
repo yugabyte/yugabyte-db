@@ -267,6 +267,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Result<bool> XClusterSafeTimeCaughtUpToCommitHt(
       const NamespaceId& namespace_id, HybridTime commit_ht) const;
 
+  Result<cdc::XClusterRole> TEST_GetXClusterRole() const;
+
   Status ListMasterServers(const ListMasterServersRequestPB* req,
                            ListMasterServersResponsePB* resp) const;
 
@@ -275,7 +277,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status SetConfigVersionAndConsumerRegistry(
       int32_t cluster_config_version, const cdc::ConsumerRegistryPB* consumer_registry);
 
-  XClusterConsumer* GetXClusterConsumer();
+  XClusterConsumer* GetXClusterConsumer() const;
 
   // Mark the CDC service as enabled via heartbeat.
   Status SetCDCServiceEnabled();
