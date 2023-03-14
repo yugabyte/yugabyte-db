@@ -526,9 +526,14 @@ class TransactionParticipant::Impl
     }
   }
 
-  void NotifyAborted (const TransactionId& id) override {
-    VLOG_WITH_PREFIX(4) << "Transaction: " << id << " is aborted" << GetStackTrace();
+  void NotifyAbortedTransactionIncrement (const TransactionId& id) override {
+    VLOG_WITH_PREFIX(4) << "Transaction: " << id << " is aborted";
     metric_aborted_transactions_pending_cleanup_->Increment();
+  }
+
+  void NotifyAbortedTransactionDecrement (const TransactionId& id) override {
+    VLOG_WITH_PREFIX(4) << "Aborted Transaction: " << id << " is removed";
+    metric_aborted_transactions_pending_cleanup_->Decrement();
   }
 
   void Abort(const TransactionId& id, TransactionStatusCallback callback) {
@@ -1552,9 +1557,6 @@ class TransactionParticipant::Impl
     recently_removed_transactions_cleanup_queue_.push_back({transaction.id(), now + 15s});
     LOG_IF_WITH_PREFIX(DFATAL, !recently_removed_transactions_.insert(transaction.id()).second)
         << "Transaction removed twice: " << transaction.id();
-    if (transaction.WasAborted()) {
-      metric_aborted_transactions_pending_cleanup_->Decrement();
-    }
     transactions_.erase(it);
     mem_tracker_->Release(kRunningTransactionSize);
     TransactionsModifiedUnlocked(min_running_notifier);
@@ -1594,7 +1596,7 @@ class TransactionParticipant::Impl
       }
       if ((**it).UpdateStatus(
           info.status, info.status_ht, info.coordinator_safe_time, info.aborted_subtxn_set)) {
-        NotifyAborted(info.transaction_id);
+        NotifyAbortedTransactionIncrement(info.transaction_id);
         EnqueueRemoveUnlocked(
             info.transaction_id, RemoveReason::kStatusReceived, &min_running_notifier);
       } else {
