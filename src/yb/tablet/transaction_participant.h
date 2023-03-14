@@ -232,6 +232,8 @@ class TransactionParticipant : public TransactionStatusManager {
 
   const TabletId& tablet_id() const override;
 
+  void RegisterStatusListener(TransactionStatusListener* txn_status_listener) override;
+
   size_t TEST_GetNumRunningTransactions() const;
 
   // Returns pair of number of intents and number of transactions.

@@ -131,6 +131,10 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     return IsExternalTransaction::kFalse;
   }
 
+  void RegisterStatusListener(TransactionStatusListener* txn_status_listener) override {
+    Fail();
+  }
+
  private:
   static void Fail() {
     LOG(FATAL) << "Internal error: trying to get transaction status for non transactional table";

@@ -117,18 +117,27 @@ struct TransactionStatusResult {
   // Set of thus-far aborted subtransactions in this transaction.
   SubtxnSet aborted_subtxn_set;
 
+  // Populating status_tablet field is optional, except when we report transaction promotion.
+  TabletId status_tablet;
+
+  TransactionStatusResult() {}
+
   TransactionStatusResult(TransactionStatus status_, HybridTime status_time_);
 
   TransactionStatusResult(
       TransactionStatus status_, HybridTime status_time_,
       SubtxnSet aborted_subtxn_set_);
 
+  TransactionStatusResult(
+      TransactionStatus status_, HybridTime status_time_, SubtxnSet aborted_subtxn_set_,
+      TabletId status_tablet);
+
   static TransactionStatusResult Aborted() {
     return TransactionStatusResult(TransactionStatus::ABORTED, HybridTime());
   }
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(status, status_time, aborted_subtxn_set);
+    return YB_STRUCT_TO_STRING(status, status_time, aborted_subtxn_set, status_tablet);
   }
 };
 
@@ -183,6 +192,17 @@ struct TransactionLocalState {
   SubtxnSet aborted_subtxn_set;
 };
 
+// TransactionStatusListener acts as a notification mechanism from TransactionParticipant to
+// Wait-Queue. Wait-Queue::Impl receives notifications on transaction promotion by implementing
+// TransactionStatusListener. TransactionParticipant registers a TransactionStatusListener
+// and uses it for signaling transaction promotion.
+class TransactionStatusListener {
+ public:
+  virtual ~TransactionStatusListener() {}
+
+  virtual void SignalPromoted(const TransactionId& txn, TransactionStatusResult&& res) = 0;
+};
+
 class TransactionStatusManager {
  public:
   virtual ~TransactionStatusManager() {}
@@ -230,6 +250,8 @@ class TransactionStatusManager {
 
   virtual Result<IsExternalTransaction> IsExternalTransactionResult(
       const TransactionId& transaction_id) = 0;
+
+  virtual void RegisterStatusListener(TransactionStatusListener* txn_status_listener) = 0;
 
  private:
   friend class RequestScope;

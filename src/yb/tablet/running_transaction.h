@@ -85,6 +85,10 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
     return last_known_aborted_subtxn_set_;
   }
 
+  const HybridTime last_known_status_hybrid_time() const {
+    return last_known_status_hybrid_time_;
+  }
+
   const IsExternalTransaction external_transaction() const {
     return metadata_.external_transaction;
   }
