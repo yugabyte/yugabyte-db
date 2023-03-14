@@ -41,6 +41,7 @@
 #include "yb/util/math_util.h"
 #include "yb/util/opid.h"
 #include "yb/util/opid.pb.h"
+#include "yb/util/mem_tracker.h"
 
 namespace rocksdb {
 
@@ -111,7 +112,7 @@ class TransactionParticipant : public TransactionStatusManager {
  public:
   TransactionParticipant(
       TransactionParticipantContext* context, TransactionIntentApplier* applier,
-      const scoped_refptr<MetricEntity>& entity);
+      const scoped_refptr<MetricEntity>& entity, const std::shared_ptr<MemTracker>& parent);
   virtual ~TransactionParticipant();
 
   // Notify participant that this context is ready and it could start performing its requests.
@@ -230,6 +231,8 @@ class TransactionParticipant : public TransactionStatusManager {
   OpId GetLatestCheckPoint() const;
 
   const TabletId& tablet_id() const override;
+
+  void RegisterStatusListener(TransactionStatusListener* txn_status_listener) override;
 
   size_t TEST_GetNumRunningTransactions() const;
 

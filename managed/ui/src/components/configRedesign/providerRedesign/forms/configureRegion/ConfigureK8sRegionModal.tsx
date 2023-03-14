@@ -16,7 +16,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
 import { ProviderCode, VPCSetupType } from '../../constants';
 import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
-// import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
+import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { ConfigureK8sAvailabilityZoneField } from './ConfigureK8sAvailabilityZoneField';
 import { K8sCertIssuerType, K8sRegionFieldLabel, RegionOperation } from './constants';
 import { getRegionOptions } from './utils';
@@ -62,13 +62,13 @@ const useStyles = makeStyles((theme) => ({
     color: theme.palette.orange[500]
   },
   formField: {
-    marginTop: '10px',
+    marginTop: theme.spacing(1),
     '&:first-child': {
       marginTop: 0
     }
   },
   manageAvailabilityZoneField: {
-    marginTop: '10px'
+    marginTop: theme.spacing(1)
   }
 }));
 
@@ -124,7 +124,7 @@ export const ConfigureK8sRegionModal = ({
             options={regionOptions}
           />
         </div>
-        {/* <div className={classes.formField}>
+        <div className={classes.formField}>
           <div>{K8sRegionFieldLabel.KUBE_CONFIG_CONTENT}</div>
           <YBDropZoneField
             name="kubeConfigContent"
@@ -133,7 +133,7 @@ export const ConfigureK8sRegionModal = ({
             multipleFiles={false}
             showHelpText={false}
           />
-        </div> */}
+        </div>
         <div className={classes.formField}>
           <div>{K8sRegionFieldLabel.KUBE_DOMAIN}</div>
           <YBInputField

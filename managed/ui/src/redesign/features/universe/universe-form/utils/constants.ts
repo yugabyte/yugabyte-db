@@ -13,12 +13,15 @@ export const DEFAULT_REGION_FIELD = 'cloudConfig.defaultRegion';
 export const MASTERS_IN_DEFAULT_REGION_FIELD = 'cloudConfig.mastersInDefaultRegion';
 export const MASTER_PLACEMENT_FIELD = 'cloudConfig.masterPlacement';
 export const RESET_AZ_FIELD = 'cloudConfig.resetAZConfig';
+export const USER_AZSELECTED_FIELD = 'cloudConfig.userAZSelected';
 
 //Instance config
 export const INSTANCE_TYPE_FIELD = 'instanceConfig.instanceType';
 export const MASTER_INSTANCE_TYPE_FIELD = 'instanceConfig.masterInstanceType';
 export const DEVICE_INFO_FIELD = 'instanceConfig.deviceInfo';
 export const MASTER_DEVICE_INFO_FIELD = 'instanceConfig.masterDeviceInfo';
+export const TSERVER_K8_NODE_SPEC_FIELD = 'instanceConfig.tserverK8SNodeResourceSpec';
+export const MASTER_K8_NODE_SPEC_FIELD = 'instanceConfig.masterK8SNodeResourceSpec';
 export const ASSIGN_PUBLIC_IP_FIELD = 'instanceConfig.assignPublicIP';
 export const YSQL_FIELD = 'instanceConfig.enableYSQL';
 export const YSQL_AUTH_FIELD = 'instanceConfig.enableYSQLAuth';

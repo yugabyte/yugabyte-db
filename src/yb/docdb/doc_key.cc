@@ -441,7 +441,7 @@ yb::DocKeyOffsets DocKey::ComputeKeyColumnOffsets(const Schema& schema) {
           KeyEntryValue::GetEncodedKeyEntryValueSize(schema.column(i).type()->main());
       LOG_IF(DFATAL, encoded_size == 0)
           << "Encountered a varlength column when computing Key offsets. Column "
-          << schema.column(i).ToString();
+          << schema.column(i).name();
       offset += encoded_size;
     }
 
@@ -1388,6 +1388,19 @@ bool DocKeyBelongsTo(Slice doc_key, const Schema& schema) {
     BigEndian::Store32(buf, schema.colocation_id());
     return doc_key.starts_with(Slice(buf, sizeof(ColocationId)));
   }
+}
+
+Result<bool> IsColocatedTableTombstoneKey(Slice doc_key) {
+  DocKeyDecoder decoder(doc_key);
+  if (VERIFY_RESULT(decoder.DecodeColocationId())) {
+    RETURN_NOT_OK(decoder.ConsumeGroupEnd());
+
+    if (decoder.left_input().size() == 0) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 Result<boost::optional<DocKeyHash>> DecodeDocKeyHash(const Slice& encoded_key) {

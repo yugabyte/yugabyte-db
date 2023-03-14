@@ -89,7 +89,8 @@ class LogicalRocksDBDebugSnapshot {
 
 class DocDBRocksDBFixture : public DocDBRocksDBUtil {
  public:
-  void AssertDocDbDebugDumpStrEq(const std::string &expected);
+  void AssertDocDbDebugDumpStrEq(
+      const std::string &expected, const std::string& packed_row_expected = "");
   void FullyCompactHistoryBefore(HybridTime history_cutoff);
 
   // num_files_to_compact - number of files that should participate in the minor compaction
@@ -241,6 +242,9 @@ std::string TrimDocDbDebugDumpStr(const std::string& debug_dump);
     ASSERT_STR_EQ_VERBOSE_TRIMMED( \
         ::yb::util::ApplyEagerLineContinuation(expected), DocDBDebugDumpToStr()); \
   } while(false)
+
+void DisableYcqlPackedRow();
+bool YcqlPackedRowEnabled();
 
 }  // namespace docdb
 }  // namespace yb

@@ -25,7 +25,7 @@ SERVER_READY_RETRY_LIMIT = 60
 PING_TIMEOUT_SEC = 10
 COMMAND_EXECUTION_TIMEOUT_SEC = 300
 FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC = 1800
-FILE_UPLOAD_CHUNK_BYTES = 8192
+FILE_UPLOAD_CHUNK_BYTES = 524288
 
 
 class RpcShellOutput(object):
@@ -77,6 +77,7 @@ class RpcShellClient(object):
                 AuthTokenCallback(self.auth_token), name='auth_creds')
         credentials = composite_channel_credentials(cert_creds, auth_creds)
         self.channel = secure_channel(self.ip + ':' + str(self.port), credentials)
+        self.stub = NodeAgentStub(self.channel)
         self.connected = True
 
     def close(self):
@@ -122,8 +123,7 @@ class RpcShellClient(object):
                     cmd_args_list = ["/bin/bash", "-c", cmd_str]
                 else:
                     cmd_args_list = cmd
-            stub = NodeAgentStub(self.channel)
-            for response in stub.ExecuteCommand(
+            for response in self.stub.ExecuteCommand(
                     ExecuteCommandRequest(user=self.user, command=cmd_args_list),
                     timeout=timeout_sec):
                 if response.HasField('error'):
@@ -163,13 +163,12 @@ class RpcShellClient(object):
                     cmd_args_list = ["/bin/bash", "-c", cmd_str]
                 else:
                     cmd_args_list = cmd
-            stub = NodeAgentStub(self.channel)
-            stub.SubmitTask(SubmitTaskRequest(user=self.user, taskId=task_id,
-                                              command=cmd_args_list),
-                            timeout=timeout_sec)
+            self.stub.SubmitTask(SubmitTaskRequest(user=self.user, taskId=task_id,
+                                                   command=cmd_args_list),
+                                 timeout=timeout_sec)
             while True:
                 try:
-                    for response in stub.DescribeTask(
+                    for response in self.stub.DescribeTask(
                             DescribeTaskRequest(taskId=task_id),
                             timeout=timeout_sec):
                         if response.HasField('error'):
@@ -195,8 +194,7 @@ class RpcShellClient(object):
     def abort_task(self, task_id, **kwargs):
         try:
             timeout_sec = kwargs.get('timeout', COMMAND_EXECUTION_TIMEOUT_SEC)
-            stub = NodeAgentStub(self.channel)
-            stub.AbortTask(AbortTaskRequest(taskId=task_id), timeout=timeout_sec)
+            self.stub.AbortTask(AbortTaskRequest(taskId=task_id), timeout=timeout_sec)
         except Exception:
             # Ignore error.
             logging.error("Failed to abort remote task {}".format(task_id))
@@ -219,9 +217,8 @@ class RpcShellClient(object):
         """
         chmod = kwargs.get('chmod', 0)
         timeout_sec = kwargs.get('timeout', FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC)
-        stub = NodeAgentStub(self.channel)
-        stub.UploadFile(self.read_iterfile(self.user, local_path, remote_path, chmod),
-                        timeout=timeout_sec)
+        self.stub.UploadFile(self.read_iterfile(self.user, local_path, remote_path, chmod),
+                             timeout=timeout_sec)
 
     def fetch_file(self, in_path, out_path, **kwargs):
         """
@@ -229,8 +226,7 @@ class RpcShellClient(object):
         """
 
         timeout_sec = kwargs.get('timeout', FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC)
-        stub = NodeAgentStub(self.channel)
-        for response in stub.DownloadFile(
+        for response in self.stub.DownloadFile(
                 DownloadFileRequest(filename=in_path, user=self.user), timeout=timeout_sec):
             with open(out_path, mode="ab") as f:
                 f.write(response.chunkData)
@@ -258,10 +254,9 @@ class RpcShellClient(object):
             (boolean): Returns true if the server is ready.
         """
 
-        stub = NodeAgentStub(self.channel)
         try:
             timeout_sec = kwargs.get('timeout', PING_TIMEOUT_SEC)
-            stub.Ping(PingRequest(), timeout=timeout_sec)
+            self.stub.Ping(PingRequest(), timeout=timeout_sec)
             return True
         except Exception as e:
             return False

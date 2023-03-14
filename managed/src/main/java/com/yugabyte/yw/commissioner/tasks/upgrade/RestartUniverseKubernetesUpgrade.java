@@ -41,7 +41,13 @@ public class RestartUniverseKubernetesUpgrade extends KubernetesUpgradeTaskBase 
           // Restart Universe tasks
           UserIntent userIntent = getUniverse().getUniverseDetails().getPrimaryCluster().userIntent;
           createUpgradeTask(
-              getUniverse(), userIntent.ybSoftwareVersion, true, true, CommandType.POD_DELETE);
+              getUniverse(),
+              userIntent.ybSoftwareVersion,
+              true,
+              true,
+              CommandType.POD_DELETE,
+              false,
+              null);
         });
   }
 }

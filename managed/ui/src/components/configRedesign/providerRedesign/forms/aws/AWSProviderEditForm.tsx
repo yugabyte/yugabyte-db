@@ -83,7 +83,6 @@ export const AWSProviderEditForm = ({ providerConfig }: AWSProviderEditFormProps
 
   const defaultValues = {
     providerName: providerConfig.name,
-
     sshKeypairName: providerConfig.allAccessKeys?.[0]?.keyInfo.keyPairName,
     dbNodePublicInternetAccess: !providerConfig.details.airGapInstall,
     ntpSetupType: getNtpSetupType(providerConfig),
@@ -230,6 +229,7 @@ export const AWSProviderEditForm = ({ providerConfig }: AWSProviderEditFormProps
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
+                  inputProps={{ min: 0, max: 65535 }}
                   disabled={true}
                   fullWidth
                 />
@@ -255,7 +255,7 @@ export const AWSProviderEditForm = ({ providerConfig }: AWSProviderEditFormProps
               </FormField>
               <FormField>
                 <FieldLabel>NTP Setup</FieldLabel>
-                <NTPConfigField providerCode={ProviderCode.AWS} />
+                <NTPConfigField isDisabled={true} providerCode={ProviderCode.AWS} />
               </FormField>
             </FieldGroup>
           </Box>

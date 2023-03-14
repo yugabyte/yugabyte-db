@@ -1,5 +1,5 @@
 ---
-title: YugabyteDB Quick start
+title: YugabyteDB Quick start for Docker
 headerTitle: Quick start
 linkTitle: Docker
 headcontent: Create a local cluster on a single host

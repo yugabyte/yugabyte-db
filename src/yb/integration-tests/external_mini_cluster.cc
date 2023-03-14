@@ -71,9 +71,11 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/secure_stream.h"
 
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base.proxy.h"
+#include "yb/server/secure.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -98,6 +100,10 @@
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/flags.h"
+
+#define YB_FORWARD_FLAG(flag_name) \
+  "--" BOOST_PP_STRINGIZE(flag_name) "="s + FlagToString(BOOST_PP_CAT(FLAGS_, flag_name))
+
 
 using namespace std::literals;  // NOLINT
 using namespace yb::size_literals;  // NOLINT
@@ -156,6 +162,11 @@ DECLARE_bool(mem_tracker_log_stack_trace);
 DECLARE_string(minicluster_daemon_id);
 DECLARE_bool(use_libbacktrace);
 DECLARE_bool(never_fsync);
+DECLARE_bool(allow_insecure_connections);
+DECLARE_bool(node_to_node_encryption_use_client_certificates);
+DECLARE_bool(use_client_to_server_encryption);
+DECLARE_bool(use_node_to_node_encryption);
+DECLARE_string(certs_dir);
 
 DEFINE_UNKNOWN_string(external_daemon_heap_profile_prefix, "",
               "If this is not empty, tcmalloc's HEAPPROFILE is set this, followed by a unique "
@@ -596,31 +607,38 @@ ConsensusServiceProxy ExternalMiniCluster::GetConsensusProxy(ExternalDaemon* ext
   return GetProxy<ConsensusServiceProxy>(external_deamon);
 }
 
-Status ExternalMiniCluster::StepDownMasterLeader(TabletServerErrorPB::Code* error_code) {
+Status ExternalMiniCluster::StepDownMasterLeader(
+    TabletServerErrorPB::Code* error_code, const std::string& new_leader_uuid) {
   ExternalMaster* leader = GetLeaderMaster();
   string leader_uuid = leader->uuid();
   auto host_port = leader->bound_rpc_addr();
   LeaderStepDownRequestPB lsd_req;
   lsd_req.set_tablet_id(yb::master::kSysCatalogTabletId);
   lsd_req.set_dest_uuid(leader_uuid);
+  if (!new_leader_uuid.empty()) {
+    lsd_req.set_new_leader_uuid(new_leader_uuid);
+  }
   LeaderStepDownResponsePB lsd_resp;
   RpcController lsd_rpc;
   lsd_rpc.set_timeout(opts_.timeout);
   ConsensusServiceProxy proxy(proxy_cache_.get(), host_port);
   RETURN_NOT_OK(proxy.LeaderStepDown(lsd_req, &lsd_resp, &lsd_rpc));
   if (lsd_resp.has_error()) {
-    LOG(ERROR) << "LeaderStepDown for " << leader_uuid << " received error "
-               << lsd_resp.error().ShortDebugString();
+    LOG(ERROR) << "LeaderStepDown for " << leader_uuid << " for destination " << new_leader_uuid
+               << " received error " << lsd_resp.error().ShortDebugString();
     *error_code = lsd_resp.error().code();
     return StatusFromPB(lsd_resp.error().status());
   }
 
-  LOG(INFO) << "Leader at host/port '" << host_port << "' step down complete.";
+  LOG(INFO) << "Leader at host/port '" << host_port
+            << " stepped down in favor of node with uuid "
+            << new_leader_uuid;
 
   return Status::OK();
 }
 
-Status ExternalMiniCluster::StepDownMasterLeaderAndWaitForNewLeader() {
+Status ExternalMiniCluster::StepDownMasterLeaderAndWaitForNewLeader(
+    const std::string& new_leader_uuid) {
   ExternalMaster* leader = GetLeaderMaster();
   string old_leader_uuid = leader->uuid();
   string leader_uuid = old_leader_uuid;
@@ -630,7 +648,7 @@ Status ExternalMiniCluster::StepDownMasterLeaderAndWaitForNewLeader() {
   // while loop will not be needed once JIRA ENG-49 is fixed.
   int iter = 1;
   while (leader_uuid == old_leader_uuid) {
-    Status s = StepDownMasterLeader(&error_code);
+    Status s = StepDownMasterLeader(&error_code, new_leader_uuid);
     // If step down hits any error except not-ready, exit.
     if (!s.ok() && error_code != TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN) {
       return s;
@@ -2781,4 +2799,39 @@ Status CompactTablets(ExternalMiniCluster* cluster) {
   return Status::OK();
 }
 
+std::string FlagToString(bool flag) {
+  return flag ? "true" : "false";
+}
+
+const std::string& FlagToString(const std::string& flag) {
+  return flag;
+}
+
+void StartSecure(
+    std::unique_ptr<ExternalMiniCluster>* cluster,
+    std::unique_ptr<rpc::SecureContext>* secure_context,
+    std::unique_ptr<rpc::Messenger>* messenger,
+    const std::vector<std::string>& master_flags) {
+  rpc::MessengerBuilder messenger_builder("test_client");
+  *secure_context = ASSERT_RESULT(server::SetupSecureContext(
+      "", "127.0.0.100", server::SecureContextType::kInternal, &messenger_builder));
+  *messenger = ASSERT_RESULT(messenger_builder.Build());
+  (**messenger).TEST_SetOutboundIpBase(ASSERT_RESULT(HostToAddress("127.0.0.1")));
+
+  ExternalMiniClusterOptions opts;
+  opts.extra_tserver_flags = {
+      YB_FORWARD_FLAG(allow_insecure_connections),
+      YB_FORWARD_FLAG(certs_dir),
+      YB_FORWARD_FLAG(node_to_node_encryption_use_client_certificates),
+      YB_FORWARD_FLAG(use_client_to_server_encryption),
+      YB_FORWARD_FLAG(use_node_to_node_encryption),
+  };
+  opts.extra_master_flags = opts.extra_tserver_flags;
+  opts.extra_master_flags.insert(
+      opts.extra_master_flags.end(), master_flags.begin(), master_flags.end());
+  opts.num_tablet_servers = 3;
+  opts.use_even_ips = true;
+  *cluster = std::make_unique<ExternalMiniCluster>(opts);
+  ASSERT_OK((**cluster).Start(messenger->get()));
+}
 }  // namespace yb

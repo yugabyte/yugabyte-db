@@ -16,7 +16,6 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/integration-tests/cql_test_util.h"
-#include "yb/integration-tests/external_mini_cluster_ent.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"

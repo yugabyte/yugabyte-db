@@ -17,6 +17,7 @@ interface EmptyListPlaceholderProps {
   onActionButtonClick: () => void;
 
   className?: string;
+  dataTestIdPrefix?: string;
 }
 
 const PLUS_ICON = <i className={`fa fa-plus ${styles.emptyIcon}`} />;
@@ -25,11 +26,17 @@ export const EmptyListPlaceholder = ({
   actionButtonText,
   className,
   descriptionText,
+  dataTestIdPrefix,
   onActionButtonClick
 }: EmptyListPlaceholderProps) => (
   <div className={clsx(styles.emptyListContainer, className)}>
     {PLUS_ICON}
-    <YBButton style={{ minWidth: '200px' }} variant="primary" onClick={onActionButtonClick}>
+    <YBButton
+      style={{ minWidth: '200px' }}
+      variant="primary"
+      onClick={onActionButtonClick}
+      data-testid={`${dataTestIdPrefix ?? 'EmptyListPlaceholder'}-PrimaryAction`}
+    >
       <i className="fa fa-plus" />
       {actionButtonText}
     </YBButton>

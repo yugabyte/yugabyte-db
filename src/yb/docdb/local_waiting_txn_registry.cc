@@ -69,6 +69,13 @@ void AttachWaitingTransaction(
     auto* blocking_txn = txn->add_blocking_transaction();
     blocking_txn->set_transaction_id(blocker.id.data(), blocker.id.size());
     blocking_txn->set_status_tablet_id(blocker.status_tablet);
+    SubtxnSet subtxn_set;
+    for (const auto& [subtxn_id, _] : blocker.conflict_info->subtransactions) {
+      WARN_NOT_OK(
+          subtxn_set.SetRange(subtxn_id, subtxn_id),
+          Format("Failed to set index $0 of SubtxnSet", subtxn_id));
+    }
+    subtxn_set.ToPB(blocking_txn->mutable_subtxn_set()->mutable_set());
   }
 }
 

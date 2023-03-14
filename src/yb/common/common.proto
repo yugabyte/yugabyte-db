@@ -394,6 +394,16 @@ message ReadHybridTimePB {
 
   optional fixed64 global_limit_ht = 3;
 
+  // When a transaction reads data, all committed writes of other transactions with a timestamp
+  // <= read_ht are visible.
+  //
+  // However, a transaction's reads should be able to see all provisional writes from the same
+  // transaction irrespective of read_ht, except some based on additional constraints for YSQL (as
+  // described in src/yb/yql/pggate/README). The query layer uses in_txn_limit_ht to meet these
+  // constraints. If in_txn_limit_ht is set, any operation will not be able to read provisional
+  // writes from the same transaction which have a write timestamp higher than the in_txn_limit_ht.
+  //
+  // src/yb/yql/pggate/README also explains how this works along with YSQL's buffering logic.
   optional fixed64 in_txn_limit_ht = 4;
 
   optional fixed64 local_limit_ht = 5;

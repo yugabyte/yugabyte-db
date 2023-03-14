@@ -13,6 +13,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.METHOD_NOT_ALLOWED;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -20,6 +21,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -161,6 +163,21 @@ public class AttachDetachControllerTest extends FakeDBApplication {
 
     result = assertPlatformException(() -> detachUniverse(bodyJson));
     assertEquals(METHOD_NOT_ALLOWED, result.status());
+  }
+
+  @Test
+  public void testInvalidUpdateInProgressDetach() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("skipReleases", true);
+    Universe.saveDetails(
+        mainUniverseUUID,
+        (universe) -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          universeDetails.updateInProgress = true;
+          universe.setUniverseDetails(universeDetails);
+        });
+    Result result = assertPlatformException(() -> detachUniverse(bodyJson));
+    assertEquals(BAD_REQUEST, result.status());
   }
 
   private Result detachUniverse(JsonNode bodyJson) {

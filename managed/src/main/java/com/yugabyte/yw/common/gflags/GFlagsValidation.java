@@ -4,6 +4,7 @@ package com.yugabyte.yw.common.gflags;
 
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.xml.JacksonXmlModule;
@@ -16,6 +17,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -49,7 +51,7 @@ public class GFlagsValidation {
   public static final Logger LOG = LoggerFactory.getLogger(GFlagsValidation.class);
 
   public static final List<String> GFLAG_FILENAME_LIST =
-      ImmutableList.of("master_flags.xml", "tserver_flags.xml");
+      ImmutableList.of("master_flags.xml", "tserver_flags.xml", "auto_flags.json");
 
   @Inject
   public GFlagsValidation(Environment environment, RuntimeConfigFactory runtimeConfigFactory) {
@@ -121,8 +123,8 @@ public class GFlagsValidation {
         new TarArchiveInputStream(new GzipCompressorInputStream(inputStream))) {
       TarArchiveEntry currentEntry;
       while ((currentEntry = tarInput.getNextTarEntry()) != null) {
-        // Ignore all non-flag xml files.
-        if (!currentEntry.isFile() || !currentEntry.getName().endsWith("flags.xml")) {
+        // Ignore all non-flag xml and auto flags files.
+        if (!currentEntry.isFile() || !isFlagFile(currentEntry.getName())) {
           continue;
         }
         // Generally, we get the currentEntry variable value for the
@@ -163,8 +165,7 @@ public class GFlagsValidation {
     }
   }
 
-  private boolean checkGFlagFileExists(
-      String releasesPath, String dbVersion, String gFlagFileName) {
+  public boolean checkGFlagFileExists(String releasesPath, String dbVersion, String gFlagFileName) {
     String filePath = String.format("%s/%s/%s", releasesPath, dbVersion, gFlagFileName);
     return Files.exists(Paths.get(filePath));
   }
@@ -172,10 +173,35 @@ public class GFlagsValidation {
   public List<String> getMissingGFlagFileList(String dbVersion) {
     String releasesPath =
         runtimeConfigFactory.staticApplicationConf().getString(Util.YB_RELEASES_PATH);
-    return GFLAG_FILENAME_LIST
-        .stream()
-        .filter((gFlagFileName) -> !checkGFlagFileExists(releasesPath, dbVersion, gFlagFileName))
-        .collect(Collectors.toList());
+    List<String> fileNameList =
+        GFLAG_FILENAME_LIST
+            .stream()
+            .filter(
+                (gFlagFileName) -> !checkGFlagFileExists(releasesPath, dbVersion, gFlagFileName))
+            .collect(Collectors.toList());
+    if (fileNameList.contains(Util.AUTO_FLAG_FILENAME)
+        && !CommonUtils.isAutoFlagSupported(dbVersion)) {
+      fileNameList.remove(Util.AUTO_FLAG_FILENAME);
+    }
+    return fileNameList;
+  }
+
+  public AutoFlagsPerServer extractAutoFlags(String releasePath, String version, String serverType)
+      throws Exception {
+    File autoFlagFile = new File(releasePath + "/" + version + "/" + Util.AUTO_FLAG_FILENAME);
+    ObjectMapper objectMapper = new ObjectMapper();
+    try (InputStream inputStream = FileUtils.getInputStreamOrFail(autoFlagFile)) {
+      AutoFlags data = objectMapper.readValue(inputStream, AutoFlags.class);
+      return data.autoFlagsPerServers
+          .stream()
+          .filter(flags -> flags.serverType.equals(serverType))
+          .findFirst()
+          .get();
+    }
+  }
+
+  private boolean isFlagFile(String fileName) {
+    return fileName.endsWith("flags.xml") || fileName.endsWith(Util.AUTO_FLAG_FILENAME);
   }
 
   /** Structure to capture GFlags metadata from xml file. */
@@ -198,5 +224,30 @@ public class GFlagsValidation {
 
     @JsonProperty(value = "TSERVER")
     List<String> tserverGFlags;
+  }
+
+  /** Structure to capture Auto Flags details from json file */
+  public static class AutoFlags {
+    @JsonProperty(value = "auto_flags")
+    public List<AutoFlagsPerServer> autoFlagsPerServers;
+  }
+
+  public static class AutoFlagsPerServer {
+    @JsonAlias(value = "program")
+    public String serverType;
+
+    @JsonAlias(value = "flags")
+    public List<AutoFlagDetails> autoFlagDetails;
+  }
+
+  public static class AutoFlagDetails {
+    @JsonAlias(value = "name")
+    public String name;
+
+    @JsonAlias(value = "class")
+    public int flagClass;
+
+    @JsonAlias(value = "is_runtime")
+    public boolean runtime;
   }
 }

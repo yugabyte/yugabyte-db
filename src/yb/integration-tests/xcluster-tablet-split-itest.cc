@@ -22,6 +22,7 @@
 #include "yb/common/partition.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/docdb/docdb_test_util.h"
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -258,6 +259,7 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
 };
 
 TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
+  docdb::DisableYcqlPackedRow();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   constexpr auto kNumRows = kDefaultNumRows;
   // Create a cdc stream for this tablet.

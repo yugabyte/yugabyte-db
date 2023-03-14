@@ -14,8 +14,8 @@
 #include "yb/docdb/schema_packing.h"
 
 #include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/primitive_value.h"

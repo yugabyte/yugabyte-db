@@ -106,7 +106,6 @@ set(LOG_SRCS
   log_index.cc
   log_reader.cc
   log_metrics.cc
-  ${LOG_SRCS_EXTENSIONS}
 )
 
 add_library(log ${LOG_SRCS})
@@ -116,6 +115,7 @@ target_link_libraries(log
   server_common
   gutil
   yb_common
+  yb_ql_common
   yb_fs
   consensus_proto
   log_proto

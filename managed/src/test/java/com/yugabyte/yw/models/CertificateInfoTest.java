@@ -7,15 +7,20 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 
 import java.io.File;
 import java.io.IOException;
@@ -28,6 +33,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -39,12 +45,16 @@ public class CertificateInfoTest extends FakeDBApplication {
   private final List<UUID> certIdList = new ArrayList<>();
 
   private final String TMP_CERTS_PATH = "/tmp/" + getClass().getSimpleName() + "/certs";
+  @Mock RuntimeConfGetter mockConfGetter;
+  @Mock RuntimeConfGetter tempMockConfGetter;
 
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
     Config spyConf = spy(app.config());
     doReturn(TMP_CERTS_PATH).when(spyConf).getString("yb.storage.path");
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.backwardCompatibleDate))).thenReturn(false);
+    CertificateInfo.confGetter = mockConfGetter;
     for (String cert : certList) {
       certIdList.add(CertificateHelper.createRootCA(spyConf, cert, customer.uuid));
     }
@@ -56,12 +66,33 @@ public class CertificateInfoTest extends FakeDBApplication {
   }
 
   @Test
+  public void testDateFormats() {
+    try {
+      when(tempMockConfGetter.getGlobalConf(eq(GlobalConfKeys.backwardCompatibleDate)))
+          .thenReturn(true);
+      CertificateInfo.confGetter = tempMockConfGetter;
+      List<CertificateInfo> certificateInfoList = CertificateInfo.getAll(customer.uuid);
+      assertEquals(3, certificateInfoList.size());
+      for (CertificateInfo cert : certificateInfoList) {
+        assertFalse(cert.getInUse());
+        assertEquals(0, cert.getUniverseDetails().size());
+        assertNotNull(cert.getStartDate());
+        assertNotNull(cert.getStartDateIso());
+      }
+    } finally {
+      CertificateInfo.confGetter = mockConfGetter;
+    }
+  }
+
+  @Test
   public void testGetAllWithNoUniverses() {
     List<CertificateInfo> certificateInfoList = CertificateInfo.getAll(customer.uuid);
     assertEquals(3, certificateInfoList.size());
     for (CertificateInfo cert : certificateInfoList) {
       assertFalse(cert.getInUse());
       assertEquals(0, cert.getUniverseDetails().size());
+      assertNull(cert.getStartDate());
+      assertNotNull(cert.getStartDateIso());
     }
   }
 

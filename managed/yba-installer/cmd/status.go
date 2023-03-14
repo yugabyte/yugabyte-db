@@ -7,6 +7,7 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
@@ -14,7 +15,7 @@ import (
 
 var statusCmd = &cobra.Command{
 	Use: "status",
-	Short: "The status command prints out the status of service(s) running as " +
+	Short: "Print the status of service(s) running as " +
 		"part of your YugabyteDB Anywhere installation.",
 	Long: `
     The status command is used to print out the information corresponding to the
@@ -33,13 +34,22 @@ var statusCmd = &cobra.Command{
 				fmt.Printf("Service %s was not installed\n", args[0])
 				return
 			}
-			common.PrintStatus(service.Status())
+			status, err := service.Status()
+			if err != nil {
+				log.Fatal("Failed to get status: " + err.Error())
+			}
+			common.PrintStatus(status)
 		} else {
 			// Print status for all services.
 			var statuses []common.Status
 			for _, service := range services {
-				statuses = append(statuses, service.Status())
+				status, err := service.Status()
+				if err != nil {
+					log.Fatal("Failed to get status: " + err.Error())
+				}
+				statuses = append(statuses, status)
 			}
+
 			common.PrintStatus(statuses...)
 		}
 	},

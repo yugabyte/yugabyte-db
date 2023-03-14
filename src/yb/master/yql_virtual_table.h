@@ -82,7 +82,7 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
     return Status::OK();
   }
 
-  Status InitIterator(docdb::YQLRowwiseIteratorIf* iter,
+  Status InitIterator(docdb::DocRowwiseIterator* iter,
                       const PgsqlReadRequestPB& request,
                       const Schema& schema,
                       const QLValuePB& ybctid) const override {
@@ -98,7 +98,8 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const docdb::DocKey& start_doc_key,
-      docdb::YQLRowwiseIteratorIf::UniPtr* iter) const override {
+      docdb::YQLRowwiseIteratorIf::UniPtr* iter,
+      boost::optional<size_t> end_referenced_key_column_index = boost::none) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }

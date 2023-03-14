@@ -17,8 +17,8 @@
 
 #include "yb/common/partition.h"
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/doc_key.h"
 

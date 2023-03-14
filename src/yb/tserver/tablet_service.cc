@@ -45,9 +45,9 @@
 
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
 #include "yb/consensus/leader_lease.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_util.h"

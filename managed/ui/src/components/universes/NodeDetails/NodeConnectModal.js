@@ -64,7 +64,7 @@ class NodeConnectModal extends Component {
       return <span />;
     }
 
-    const tectiaSSH = runtimeConfigs.data.configEntries.find(
+    const tectiaSSH = runtimeConfigs?.data?.configEntries?.find(
       (c) => c.key === 'yb.security.ssh2_enabled'
     );
     let isTectiaSSHEnabled = false;

@@ -188,7 +188,7 @@ public class VaultPKI extends CertificateProviderBase {
     try {
       String path = params.mountPath + VaultOperationsForCert.ISSUE + "/" + params.role;
       Map<String, String> result = vAccessor.writeAt(path, input);
-      Boolean syncCertsToDB = username == CertificateHelper.DEFAULT_CLIENT;
+      boolean syncCertsToDB = CertificateHelper.DEFAULT_CLIENT.equals(username);
 
       // fetch certificate
       String newCertPemStr = result.get(ISSUE_FIELD_CERT);

@@ -22,8 +22,10 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
@@ -49,12 +51,14 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.Stack;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -267,6 +271,7 @@ public class BackupUtil {
     BackupRespBuilder builder =
         BackupResp.builder()
             .expiryTime(backup.getExpiry())
+            .expiryTimeUnit(backup.getExpiryTimeUnit())
             .onDemand(onDemand)
             .isFullBackup(backup.getBackupInfo().isFullBackup)
             .universeName(backup.universeName)
@@ -282,7 +287,8 @@ public class BackupUtil {
             .commonBackupInfo(getCommonBackupInfo(backup))
             .hasIncrementalBackups(hasIncrements)
             .lastIncrementalBackupTime(lastIncrementDate)
-            .lastBackupState(lastBackupState);
+            .lastBackupState(lastBackupState)
+            .scheduleName(backup.getScheduleName());
     return builder.build();
   }
 
@@ -566,6 +572,15 @@ public class BackupUtil {
     }
   }
 
+  // Throws BAD_REQUEST for cases where same keyspace present twice in backup request.
+  // If needed to support this, we'll make a fix and remove this check.
+  public void validateKeyspaces(List<KeyspaceTable> keyspaceTableList) {
+    if (keyspaceTableList.stream().map(kT -> kT.keyspace).collect(Collectors.toSet()).size()
+        < keyspaceTableList.size()) {
+      throw new PlatformServiceException(BAD_REQUEST, "Repeated keyspace backup requested");
+    }
+  }
+
   public void validateTables(
       List<UUID> tableUuids, Universe universe, String keyspace, TableType tableType)
       throws PlatformServiceException {
@@ -723,5 +738,45 @@ public class BackupUtil {
 
   public static boolean checkIfUniverseExists(UUID universeUUID) {
     return Universe.maybeGet(universeUUID).isPresent();
+  }
+
+  /**
+   * Function to get total time taken for backups taken in parallel. Does a union of time intervals
+   * based upon task-start time time taken, taking into considerations overlapping intervals.
+   */
+  public static long getTimeTakenForParallelBackups(List<BackupTableParams> backupList) {
+    List<Pair<Long, Long>> sortedList =
+        backupList
+            .stream()
+            .sorted(
+                (tP1, tP2) -> {
+                  long delta = tP1.thisBackupSubTaskStartTime - tP2.thisBackupSubTaskStartTime;
+                  return delta >= 0 ? 1 : -1;
+                })
+            .map(
+                bTP ->
+                    new Pair<Long, Long>(
+                        bTP.thisBackupSubTaskStartTime,
+                        bTP.thisBackupSubTaskStartTime + bTP.timeTakenPartial))
+            .collect(Collectors.toList());
+
+    Stack<Pair<Long, Long>> mergeParallelTimes = new Stack<>();
+    for (Pair<Long, Long> subTaskTime : sortedList) {
+      if (mergeParallelTimes.empty()) {
+        mergeParallelTimes.add(subTaskTime);
+      } else {
+        Pair<Long, Long> peek = mergeParallelTimes.peek();
+        if (peek.getSecond() >= subTaskTime.getFirst()) {
+          mergeParallelTimes.pop();
+
+          mergeParallelTimes.add(
+              new Pair<Long, Long>(
+                  peek.getFirst(), Math.max(peek.getSecond(), subTaskTime.getSecond())));
+        } else {
+          mergeParallelTimes.add(subTaskTime);
+        }
+      }
+    }
+    return mergeParallelTimes.stream().mapToLong(p -> p.getSecond() - p.getFirst()).sum();
   }
 }

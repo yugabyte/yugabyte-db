@@ -209,6 +209,7 @@ export const GCPProviderEditForm = ({ providerConfig }: GCPProviderEditFormProps
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
+                  inputProps={{ min: 0, max: 65535 }}
                   disabled={true}
                   fullWidth
                 />
@@ -243,7 +244,7 @@ export const GCPProviderEditForm = ({ providerConfig }: GCPProviderEditFormProps
               </FormField>
               <FormField>
                 <FieldLabel>NTP Setup</FieldLabel>
-                <NTPConfigField providerCode={ProviderCode.GCP} />
+                <NTPConfigField isDisabled={true} providerCode={ProviderCode.GCP} />
               </FormField>
             </FieldGroup>
           </Box>

@@ -432,6 +432,10 @@ public enum TaskType {
 
   RunYsqlUpgrade(com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlUpgrade.class),
 
+  PromoteAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags.class),
+
+  CheckUpgrade(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade.class),
+
   ResizeNode(com.yugabyte.yw.commissioner.tasks.upgrade.ResizeNode.class),
 
   CheckMemory(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory.class),
@@ -461,6 +465,8 @@ public enum TaskType {
   UpgradeYbc(com.yugabyte.yw.commissioner.tasks.subtasks.UpgradeYbc.class),
 
   InstallYbcSoftware(com.yugabyte.yw.commissioner.tasks.InstallYbcSoftware.class),
+
+  InstallYbcSoftwareOnK8s(com.yugabyte.yw.commissioner.tasks.InstallYbcSoftwareOnK8s.class),
 
   UpgradeUniverseYbc(com.yugabyte.yw.commissioner.tasks.UpgradeUniverseYbc.class),
 

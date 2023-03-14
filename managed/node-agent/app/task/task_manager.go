@@ -88,7 +88,7 @@ func InitTaskManager(ctx context.Context) *TaskManager {
 						tInfo.cancel()
 					case <-tInfo.ctx.Done():
 						taskManager.taskInfos.Delete(taskID)
-						util.FileLogger().Infof("Task %s is garbage collected.",
+						util.FileLogger().Infof(ctx, "Task %s is garbage collected.",
 							taskID)
 					default:
 						tInfo.mutex.Lock()
@@ -97,7 +97,7 @@ func InitTaskManager(ctx context.Context) *TaskManager {
 						if elapsed > TaskExpiry {
 							// Task has expired. Client has not asked for progress on this.
 							tInfo.cancel()
-							util.FileLogger().Infof("Task %s is cancelled.",
+							util.FileLogger().Infof(ctx, "Task %s is cancelled.",
 								taskID)
 						}
 					}
@@ -112,7 +112,7 @@ func InitTaskManager(ctx context.Context) *TaskManager {
 // GetTaskManager returns the task manager instance.
 func GetTaskManager() *TaskManager {
 	if taskManager == nil {
-		util.FileLogger().Fatal("Task manager is not initialized")
+		util.FileLogger().Fatal(nil, "Task manager is not initialized")
 	}
 	return taskManager
 }
@@ -130,15 +130,19 @@ func (m *TaskManager) updateTime(taskID string) {
 }
 
 // SubmitTask submits a task for asynchronous execution.
-func (m *TaskManager) Submit(taskID string, asyncTask AsyncTask) error {
+func (m *TaskManager) Submit(ctx context.Context, taskID string, asyncTask AsyncTask) error {
 	if taskID == "" {
 		return errors.New("Task ID is not valid")
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	bgCtx, cancel := context.WithCancel(context.Background())
+	correlationID := util.CorrelationID(ctx)
+	if correlationID != "" {
+		bgCtx = util.WithCorrelationID(bgCtx, correlationID)
+	}
 	i, ok := m.taskInfos.LoadOrStore(
 		taskID,
 		&taskInfo{
-			ctx:       ctx,
+			ctx:       bgCtx,
 			cancel:    cancel,
 			mutex:     &sync.Mutex{},
 			updatedAt: time.Now(),
@@ -149,10 +153,11 @@ func (m *TaskManager) Submit(taskID string, asyncTask AsyncTask) error {
 		return fmt.Errorf("Task %s already exists", taskID)
 	}
 	tInfo := i.(*taskInfo)
-	future, err := executor.GetInstance().SubmitTask(ctx, asyncTask.Handler())
+	future, err := executor.GetInstance().SubmitTask(bgCtx, asyncTask.Handler())
 	if err != nil {
 		m.taskInfos.Delete(taskID)
-		util.FileLogger().Errorf("Error in submitting command: %v - %s", asyncTask, err.Error())
+		util.FileLogger().
+			Errorf(bgCtx, "Error in submitting command: %v - %s", asyncTask, err.Error())
 		return err
 	}
 	tInfo.mutex.Lock()
@@ -221,7 +226,7 @@ func (m *TaskManager) Subscribe(
 					break
 				}
 			}
-			util.FileLogger().Infof("Task %s is completed.", taskID)
+			util.FileLogger().Infof(ctx, "Task %s is completed.", taskID)
 			return io.EOF
 		default:
 			// Task is still running.
@@ -242,10 +247,10 @@ func (m *TaskManager) Subscribe(
 }
 
 // AbortTask aborts a running task.
-func (m *TaskManager) AbortTask(taskID string) (string, error) {
+func (m *TaskManager) AbortTask(ctx context.Context, taskID string) (string, error) {
 	i, ok := m.taskInfos.Load(taskID)
 	if !ok {
-		util.FileLogger().Infof("Task %s is not found.", taskID)
+		util.FileLogger().Infof(ctx, "Task %s is not found.", taskID)
 		return "", nil
 	}
 	tInfo := i.(*taskInfo)

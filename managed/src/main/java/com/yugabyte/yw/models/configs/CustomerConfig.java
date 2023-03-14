@@ -381,7 +381,6 @@ public class CustomerConfig extends Model {
     }
     LOG.info("Customer config: transitioned from {} to {}", this.state, newState);
     this.state = newState;
-    save();
   }
 
   @JsonIgnore

@@ -21,7 +21,7 @@ export const ARNField = ({ disabled }: ARNFieldProps): ReactElement => {
       <YBLabel dataTestId="ARNField-Label" className={classes.advancedConfigLabel}>
         {t('universeForm.advancedConfig.instanceProfileARN')}
       </YBLabel>
-      <Box flex={1} className={classes.advancedConfigTextBox}>
+      <Box flex={1} className={classes.defaultTextBox}>
         <YBInputField
           control={control}
           name={AWS_ARN_STRING_FIELD}

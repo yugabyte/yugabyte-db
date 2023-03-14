@@ -206,13 +206,13 @@ Status ProcessUsedReadTime(uint64_t session_id,
     // has been chosen by master. All further reads from catalog must use same read point.
     auto catalog_read_time = op_used_read_time;
 
-    // We set global limit to local limit to avoid read restart errors because they are
+    // We set global limit to read time to avoid read restart errors because they are
     // disruptive to system catalog reads and it is not always possible to handle them there.
     // This might lead to reading slightly outdated state of the system catalog if a recently
     // committed DDL transaction used a transaction status tablet whose leader's clock is skewed
     // and is in the future compared to the master leader's clock.
     // TODO(dmitry) This situation will be handled in context of #7964.
-    catalog_read_time.global_limit = catalog_read_time.local_limit;
+    catalog_read_time.global_limit = catalog_read_time.read;
     catalog_read_time.ToPB(resp->mutable_catalog_read_time());
   }
 
@@ -325,6 +325,7 @@ struct PerformData {
   PgTableCache* table_cache;
   PgClientSession::UsedReadTimePtr used_read_time;
   PgResponseCache::Setter cache_setter;
+  HybridTime used_in_txn_limit;
 
   void FlushDone(client::FlushStatus* flush_status) {
     auto status = CombineErrorsToStatus(flush_status->errors, flush_status->status);
@@ -338,7 +339,8 @@ struct PerformData {
       std::vector<RefCntSlice> rows_data;
       rows_data.reserve(ops.size());
       for (const auto& op : ops) {
-        rows_data.emplace_back(context.sidecars().Extract(op->sidecar_index()));
+        rows_data.push_back(
+            op->has_sidecar() ? context.sidecars().Extract(op->sidecar_index()) : RefCntSlice());
       }
       cache_setter(PgResponseCache::Response{PgPerformResponsePB(*resp), std::move(rows_data)},
                    IsFailure(!status.ok()));
@@ -374,7 +376,15 @@ struct PerformData {
       if (op->has_sidecar()) {
         op_resp.set_rows_data_sidecar(narrow_cast<int>(op->sidecar_index()));
       }
+      if (resp->has_catalog_read_time() && op_resp.has_paging_state()) {
+        // Prevent further paging reads from read restart errors.
+        // See the ProcessUsedReadTime(...) function for details.
+        *op_resp.mutable_paging_state()->mutable_read_time() = resp->catalog_read_time();
+      }
       op_resp.set_partition_list_version(op->table()->GetPartitionListVersion());
+    }
+    if (used_in_txn_limit) {
+      resp->set_used_in_txn_limit_ht(used_in_txn_limit.ToUint64());
     }
 
     return Status::OK();
@@ -387,6 +397,14 @@ client::YBSessionPtr CreateSession(
   result->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
   result->set_allow_local_calls_in_curr_thread(false);
   return result;
+}
+
+HybridTime GetInTxnLimit(const PgPerformOptionsPB& options, ClockBase* clock) {
+  if (!options.has_in_txn_limit_ht()) {
+    return HybridTime();
+  }
+  auto in_txn_limit = HybridTime::FromPB(options.in_txn_limit_ht().value());
+  return in_txn_limit ? in_txn_limit : clock->Now();
 }
 
 } // namespace
@@ -731,6 +749,7 @@ Status PgClientSession::FinishTransaction(
 
 Status PgClientSession::Perform(
     PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
+  VLOG_WITH_PREFIX(5) << "Perform req=" << req->ShortDebugString();
   PgResponseCache::Setter setter;
   auto& options = *req->mutable_options();
   if (options.has_caching_info()) {
@@ -741,7 +760,9 @@ Status PgClientSession::Perform(
     }
   }
 
-  auto session_info = VERIFY_RESULT(SetupSession(*req, context->GetClientDeadline()));
+  const auto in_txn_limit = GetInTxnLimit(options, clock_.get());
+  VLOG_WITH_PREFIX(5) << "using in_txn_limit_ht: " << in_txn_limit;
+  auto session_info = VERIFY_RESULT(SetupSession(*req, context->GetClientDeadline(), in_txn_limit));
   auto* session = session_info.first.session.get();
   auto ops = VERIFY_RESULT(PrepareOperations(req, session, &context->sidecars(), &table_cache_));
   auto ops_count = ops.size();
@@ -752,7 +773,8 @@ Status PgClientSession::Perform(
     .ops = std::move(ops),
     .table_cache = &table_cache_,
     .used_read_time = session_info.second,
-    .cache_setter = std::move(setter)
+    .cache_setter = std::move(setter),
+    .used_in_txn_limit = in_txn_limit
   });
 
   auto transaction = session_info.first.transaction;
@@ -830,7 +852,8 @@ Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
 }
 
 Result<std::pair<PgClientSession::SessionData, PgClientSession::UsedReadTimePtr>>
-PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint deadline) {
+PgClientSession::SetupSession(
+    const PgPerformRequestPB& req, CoarseTimePoint deadline, HybridTime in_txn_limit) {
   const auto& options = req.options();
   PgClientSessionKind kind;
   if (options.use_catalog_session()) {
@@ -901,12 +924,12 @@ PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint dea
     session->DeferReadPoint();
   }
 
+  // TODO: Reset in_txn_limit which might be on session from past Perform? Not resetting will not
+  // cause any issue, but should we reset for safety?
   if (!options.ddl_mode() && !options.use_catalog_session()) {
     txn_serial_no_ = options.txn_serial_no();
-
-    const auto in_txn_limit = HybridTime::FromPB(options.in_txn_limit_ht());
     if (in_txn_limit) {
-      VLOG_WITH_PREFIX(3) << "In txn limit: " << in_txn_limit;
+      // TODO: Shouldn't the below logic for DDL transactions as well?
       session->SetInTxnLimit(in_txn_limit);
     }
   }

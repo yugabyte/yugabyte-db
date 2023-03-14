@@ -292,7 +292,7 @@ string GetToolPath(const string& rel_path, const string& tool_name) {
 }
 
 string GetCertsDir() {
-  const auto sub_dir = JoinPathSegments("ent", "test_certs");
+  const auto sub_dir = "test_certs";
   return JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
 }
 

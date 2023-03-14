@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.swagger.PlatformModelConverter;
@@ -39,12 +40,24 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Stream;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.stream.Collectors;
+
 import org.apache.commons.io.IOUtils;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import play.api.routing.Router;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -59,6 +72,7 @@ import play.test.Helpers;
  * <p>Run following command to update the spec so that the test passes: [yugaware] swaggerGen
  */
 public class SwaggerGenTest extends FakeDBApplication {
+  private static final Logger LOG = LoggerFactory.getLogger(SwaggerGenTest.class);
 
   @Override
   protected boolean isSwaggerEnabled() {
@@ -108,7 +122,125 @@ public class SwaggerGenTest extends FakeDBApplication {
     }
   }
 
-  private String getSwaggerSpec() throws JsonProcessingException {
+  // Any newly introduced date type of field in the YBA API should be in the RFC3339 format.
+  // This unit test fails if there this is not conformed to.
+  @Test
+  public void checkDateFormats() throws JsonProcessingException {
+    String actualSwaggerSpec = getSwaggerSpec();
+    JsonNode root = Json.parse(actualSwaggerSpec);
+    JsonNode defs = root.get("definitions");
+    Map<String, String> result = checkDate("", defs);
+    if (!result.isEmpty()) {
+      String resultFormatted = dumpFields(result) +
+          "\n\n=========================================================\n" +
+          "Any date-time type of field in the API should be set in RFC3339 format for the\n" +
+          "go-client to be able to deserialize it. So the annotations for such a type should\n" +
+          "look like this.\n" +
+          "\n" +
+          "@Column(nullable = false)\n" +
+          "@ApiModelProperty(\n" +
+          "    value = \"Creation date of key\",\n" +
+          "    required = false,\n" +
+          "    example = \"2022-12-12T13:07:18Z\",\n" +
+          "    accessMode = AccessMode.READ_ONLY)\n" +
+          "@JsonFormat(shape = JsonFormat.Shape.STRING, pattern = \"yyyy-MM-dd'T'HH:mm:ss'Z'\")\n" +
+          "@Getter\n" +
+          "public Date creationDate;\n" +
+          "=========================================================\n\n";
+      fail("Error in date-time formats for the fields\n" + resultFormatted);
+    }
+  }
+
+  private String dumpFields(Map<String, String> fields) {
+    String result = fields.size() + " errors\n";
+    for (Entry<String, String> entry : fields.entrySet()) {
+      result = result.concat(entry.getKey() + ":\t");
+      result = result.concat(entry.getValue() + "\n");
+    }
+    return result;
+  }
+
+  // returns a map of swagger entry keys that have an issue with it date-time
+  // formatting along with corresponding error message.
+  private Map<String, String> checkDate(String name, JsonNode node) {
+    // Handle 3 types of JsonNode:
+    // Object node: check if object has a "format: date-time" field.
+    // If so, it should also have "example: 2022-12-12T13:07:18Z".
+    // if no errors, continue processing nested objects.
+    // Value node: nothing to process, skip
+    // Array node: process each node in turn
+    if (node.isArray()) {
+      for (JsonNode item : node) {
+        Map<String, String> result = checkDate(name, item);
+        if (!result.isEmpty()) {
+          Map<String, String> prependedKeys = Maps.newHashMap();
+          result.forEach((k, v) -> prependedKeys.put(name + "." + k, v));
+          return prependedKeys;
+        }
+      }
+    } else if (node.isObject()) {
+      LOG.trace("checking date format in " + name);
+      String err = checkDateInNode(name, node);
+      if (!err.isEmpty()) {
+        // if this JsonNode object has errors, don't look inside nested structures
+        return Collections.singletonMap(name, err);
+      }
+      // Since this JsonNode object has no errors, look into nested objects
+      // and collect all errors into allResults.
+      Map<String, String> allResults = Maps.newHashMap();
+      Iterator<Entry<String, JsonNode>> fields = node.fields();
+      while (fields.hasNext()) {
+        Entry<String, JsonNode> entry = fields.next();
+        if (entry.getValue().isValueNode()) {
+          continue;
+        }
+        Map<String, String> result = checkDate(entry.getKey(), entry.getValue());
+        if (result != null) {
+          // prepend current node name in returned key name
+          Map<String, String> prependedKeys = Maps.newHashMap();
+          result.forEach((k, v) -> prependedKeys.put(name + "." + k, v));
+          allResults.putAll(prependedKeys);
+        }
+      }
+      return allResults;
+    }
+
+    return Maps.newHashMap();
+  }
+
+  // checks for date format in the given JsonNode that is a Json Object,
+  // and returns the error message.
+  private String checkDateInNode(String name, JsonNode node) {
+    if (node.has("description")
+        && node.get("description").textValue() != null
+        && node.get("description").textValue().contains("Deprecated")) {
+      // skip check if the field is deprecated
+      return "";
+    }
+    if (node.has("format") && node.get("format").isTextual() &&
+        node.get("format").textValue().equals("date-time")) {
+      // if node has "format: date-time", then it should also have "example"
+      if (!node.has("example")) {
+        String err = name + " is a date-time field but does not have example";
+        return err;
+        // fail("Found node " + name + " with contents " + node.toString() + " with
+        // date-time but without example");
+      } else {
+        String valueInAPIExample = node.get("example").textValue();
+        try {
+          new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).parse(valueInAPIExample);
+        } catch (ParseException e) {
+          LOG.warn(e.getMessage());
+          String err = name + " has an example " + valueInAPIExample +
+              ". It has be to RFC3339 parsable in the form 2022-12-12T13:07:18Z";
+          return err;
+        }
+      }
+    }
+    return "";
+  }
+
+private String getSwaggerSpec() throws JsonProcessingException {
     Result result = route(Helpers.fakeRequest("GET", "/docs/dynamic_swagger.json"));
     return sort(contentAsString(result, mat));
   }

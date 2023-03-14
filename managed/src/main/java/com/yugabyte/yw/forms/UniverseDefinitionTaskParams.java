@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.forms;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -30,12 +32,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.ApiModelProperty;
-import lombok.ToString;
-import org.apache.commons.lang3.StringUtils;
-import play.data.validation.Constraints;
-
-import javax.annotation.Nullable;
-import javax.validation.constraints.Size;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -48,8 +44,11 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
+import javax.annotation.Nullable;
+import javax.validation.constraints.Size;
+import lombok.ToString;
+import org.apache.commons.lang3.StringUtils;
+import play.data.validation.Constraints;
 
 /**
  * This class captures the user intent for creation of the universe. Note some nuances in the way
@@ -301,6 +300,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     public void validate(boolean validateGFlagsConsistency, boolean isAuthEnforced) {
+      if (uuid == null) {
+        throw new IllegalStateException("Cluster uuid should not be null");
+      }
+      if (placementInfo == null) {
+        throw new IllegalStateException("Placement should be provided");
+      }
       checkDeviceInfo();
       checkStorageType();
       validateAuth(isAuthEnforced);
@@ -470,6 +475,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty(value = "Whether to assign static public IP")
     public boolean assignStaticPublicIP = false;
 
+    @ApiModelProperty(notes = "default: false")
+    public boolean useSpotInstance = false;
+
+    @ApiModelProperty(notes = "Max price we are willing to pay for spot instance")
+    public Double spotPrice = 0.0;
+
     @ApiModelProperty() public boolean useTimeSync = false;
 
     @ApiModelProperty() public boolean enableYCQL = true;
@@ -547,6 +558,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           + universeName
           + " type="
           + instanceType
+          + ", spotInstance="
+          + useSpotInstance
+          + ", spotPrice="
+          + spotPrice
           + ", numNodes="
           + numNodes
           + ", prov="
@@ -592,6 +607,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.useSystemd = useSystemd;
       newUserIntent.accessKeyCode = accessKeyCode;
       newUserIntent.assignPublicIP = assignPublicIP;
+      newUserIntent.useSpotInstance = useSpotInstance;
+      newUserIntent.spotPrice = spotPrice;
       newUserIntent.assignStaticPublicIP = assignStaticPublicIP;
       newUserIntent.specificGFlags = specificGFlags == null ? null : specificGFlags.clone();
       newUserIntent.masterGFlags = new HashMap<>(masterGFlags);
@@ -654,6 +671,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && ybSoftwareVersion.equals(other.ybSoftwareVersion)
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
+          && useSpotInstance == other.useSpotInstance
+          && spotPrice == other.spotPrice
           && assignStaticPublicIP == other.assignStaticPublicIP
           && useTimeSync == other.useTimeSync
           && useSystemd == other.useSystemd
@@ -676,6 +695,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && ybSoftwareVersion.equals(other.ybSoftwareVersion)
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
+          && useSpotInstance == other.useSpotInstance
+          && spotPrice == other.spotPrice
           && assignStaticPublicIP == other.assignStaticPublicIP
           && useTimeSync == other.useTimeSync
           && dedicatedNodes == other.dedicatedNodes

@@ -690,21 +690,19 @@ public class NodeManager extends DevopsBase {
       ReleaseManager.ReleaseMetadata releaseMetadata =
           releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
       if (releaseMetadata != null) {
-        if (releaseMetadata.s3 != null) {
+        ybServerPackage = releaseMetadata.getFilePath(taskParam.getRegion());
+        if (releaseMetadata.s3 != null && releaseMetadata.s3.paths.x86_64.equals(ybServerPackage)) {
           subcommand.add("--s3_remote_download");
-          ybServerPackage = releaseMetadata.s3.paths.x86_64;
-        } else if (releaseMetadata.gcs != null) {
+        } else if (releaseMetadata.gcs != null
+            && releaseMetadata.gcs.paths.x86_64.equals(ybServerPackage)) {
           subcommand.add("--gcs_remote_download");
-          ybServerPackage = releaseMetadata.gcs.paths.x86_64;
-        } else if (releaseMetadata.http != null) {
+        } else if (releaseMetadata.http != null
+            && releaseMetadata.http.paths.x86_64.equals(ybServerPackage)) {
           subcommand.add("--http_remote_download");
-          ybServerPackage = releaseMetadata.http.paths.x86_64;
           if (StringUtils.isNotBlank(releaseMetadata.http.paths.x86_64_checksum)) {
             subcommand.add("--http_package_checksum");
             subcommand.add(releaseMetadata.http.paths.x86_64_checksum.toLowerCase());
           }
-        } else {
-          ybServerPackage = releaseMetadata.getFilePath(taskParam.getRegion());
         }
       }
     }
@@ -1395,6 +1393,9 @@ public class NodeManager extends DevopsBase {
               nodeAgent -> {
                 commandArgs.add("--connection_type");
                 commandArgs.add("node_agent_rpc");
+                if (getNodeAgentClient().isAnsibleOffloadingEnabled(provider, nodeAgent.version)) {
+                  commandArgs.add("--offload_ansible");
+                }
                 NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, sensitiveArgs);
               });
     }
@@ -1494,6 +1495,13 @@ public class NodeManager extends DevopsBase {
             */
             if (taskParam.assignPublicIP) {
               commandArgs.add("--assign_public_ip");
+            }
+            if (cloudType.equals(Common.CloudType.aws) && taskParam.useSpotInstance) {
+              commandArgs.add("--use_spot_instance");
+              if (taskParam.spotPrice > 0.0) {
+                commandArgs.add("--spot_price");
+                commandArgs.add(Double.toString(taskParam.spotPrice));
+              }
             }
             if (config.getBoolean("yb.cloud.enabled")
                 && taskParam.assignPublicIP
@@ -1860,6 +1868,9 @@ public class NodeManager extends DevopsBase {
 
           if (taskParam.force) {
             commandArgs.add("--force");
+          }
+          if (taskParam.useSystemd) {
+            commandArgs.add("--systemd_services");
           }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;

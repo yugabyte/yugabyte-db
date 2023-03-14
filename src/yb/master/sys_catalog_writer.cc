@@ -170,12 +170,11 @@ Status FillSysCatalogWriteRequest(
 Status EnumerateSysCatalog(
     tablet::Tablet* tablet, const Schema& schema, int8_t entry_type,
     const EnumerationCallback& callback) {
-  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
+  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
       schema.CopyWithoutColumnIds(), ReadHybridTime::Max(), /* table_id= */ "",
       CoarseTimePoint::max(), tablet::AllowBootstrappingState::kTrue));
 
-  return EnumerateSysCatalog(
-      down_cast<docdb::DocRowwiseIterator*>(iter.get()), schema, entry_type, callback);
+  return EnumerateSysCatalog(iter.get(), schema, entry_type, callback);
 }
 
 Status EnumerateSysCatalog(

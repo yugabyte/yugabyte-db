@@ -41,6 +41,14 @@ using EnumLabelCache = std::unordered_map<NamespaceName, EnumOidLabelMap>;
 using CompositeAttsMap = std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>;
 using CompositeTypeCache = std::unordered_map<NamespaceName, CompositeAttsMap>;
 
+struct SchemaDetails {
+  SchemaVersion schema_version;
+  std::shared_ptr<Schema> schema;
+};
+// We will maintain a map for each stream, tablet pait. The schema details will correspond to the
+// the current 'running' schema.
+using SchemaDetailsMap = std::map<TableId, SchemaDetails>;
+
 struct StreamMetadata {
   NamespaceId ns_id;
   std::vector<TableId> table_ids;
@@ -79,10 +87,10 @@ Status GetChangesForCDCSDK(
     consensus::ReplicateMsgsHolder* msgs_holder,
     GetChangesResponsePB* resp,
     uint64_t* commit_timestamp,
-    std::shared_ptr<Schema>* cached_schema,
-    uint32_t* cached_schema_version,
+    SchemaDetailsMap* cached_schema_details,
     OpId* last_streamed_op_id,
     int64_t* last_readable_opid_index = nullptr,
+    const TableId& colocated_table_id = "",
     const CoarseTimePoint deadline = CoarseTimePoint::max());
 
 using UpdateOnSplitOpFunc = std::function<Status(const consensus::ReplicateMsg&)>;

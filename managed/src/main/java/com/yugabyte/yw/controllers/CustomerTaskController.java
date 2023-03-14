@@ -399,7 +399,6 @@ public class CustomerTaskController extends AuthenticatedController {
       String errMsg = String.format("Invalid task state: Task %s cannot be retried", taskUUID);
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
-    taskParams.firstTry = false;
     taskParams.setPreviousTaskUUID(taskUUID);
     UUID newTaskUUID = commissioner.submit(taskType, taskParams);
     LOG.info(

@@ -16,7 +16,7 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/reference/drivers/csharp/postgres-npgsql-reference/" class="nav-link active">
+    <a href="../postgres-npgsql-reference/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL Npgsql
     </a>

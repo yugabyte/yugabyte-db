@@ -101,6 +101,8 @@ export interface UserIntent {
   regionList: string[];
   instanceType: string | null;
   masterInstanceType?: string | null;
+  tserverK8SNodeResourceSpec?: K8NodeSpec | null;
+  masterK8SNodeResourceSpec?: K8NodeSpec | null;
   numNodes: number;
   masterNumNodes?: number;
   ybSoftwareVersion: string | null;
@@ -275,6 +277,10 @@ export interface DeviceInfo {
   storageType: StorageType | null;
 }
 
+export interface K8NodeSpec {
+  memory: number;
+  cpu: number;
+}
 //-------------------------------------------------------- Most Used OR Common Types - Ends --------------------------------------------------------
 
 //-------------------------------------------------------- Payload related Types - Starts ----------------------------------------------------------
@@ -442,6 +448,7 @@ export interface CloudConfigFormValue {
   placements: Placement[];
   defaultRegion?: string | null;
   resetAZConfig?: boolean;
+  userAZSelected?: boolean;
   mastersInDefaultRegion?: boolean;
   masterPlacement?: MasterPlacementMode;
 }
@@ -451,6 +458,8 @@ export interface InstanceConfigFormValue {
   masterInstanceType?: string | null;
   deviceInfo: DeviceInfo | null;
   masterDeviceInfo?: DeviceInfo | null;
+  tserverK8SNodeResourceSpec?: K8NodeSpec | null;
+  masterK8SNodeResourceSpec?: K8NodeSpec | null;
   assignPublicIP: boolean;
   useTimeSync: boolean;
   enableClientToNodeEncrypt: boolean;
@@ -531,7 +540,8 @@ export const DEFAULT_CLOUD_CONFIG: CloudConfigFormValue = {
   defaultRegion: null,
   mastersInDefaultRegion: false,
   masterPlacement: MasterPlacementMode.COLOCATED,
-  resetAZConfig: false
+  resetAZConfig: false,
+  userAZSelected: false
 };
 
 export const DEFAULT_INSTANCE_CONFIG: InstanceConfigFormValue = {
@@ -539,6 +549,8 @@ export const DEFAULT_INSTANCE_CONFIG: InstanceConfigFormValue = {
   masterInstanceType: null,
   deviceInfo: null,
   masterDeviceInfo: null,
+  tserverK8SNodeResourceSpec: null,
+  masterK8SNodeResourceSpec: null,
   assignPublicIP: true,
   useTimeSync: true,
   enableClientToNodeEncrypt: true,
@@ -554,7 +566,7 @@ export const DEFAULT_INSTANCE_CONFIG: InstanceConfigFormValue = {
   ycqlPassword: '',
   ycqlConfirmPassword: '',
   enableYEDIS: false,
-  kmsConfig: null,
+  kmsConfig: null
 };
 
 export const DEFAULT_ADVANCED_CONFIG: AdvancedConfigFormValue = {
@@ -751,6 +763,10 @@ export interface UniverseResource {
   pricingKnown: boolean;
   volumeCount: number;
   volumeSizeGB: number;
+}
+
+export interface UniverseFormConfigurationProps {
+  runtimeConfigs: any;
 }
 
 //-------------------------------------------------------- Remaining types - Field/API Ends -------------------------------------------------------------------

@@ -77,11 +77,7 @@ public class CloudProviderApiController extends AuthenticatedController {
     return PlatformResults.withData(provider);
   }
 
-  @ApiOperation(
-      value = "Delete a cloud provider",
-      notes = "This endpoint is used only for integration tests.",
-      hidden = true,
-      response = YBPSuccess.class)
+  @ApiOperation(value = "Delete a cloud provider", response = YBPSuccess.class)
   public Result delete(UUID customerUUID, UUID providerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 

@@ -21,8 +21,6 @@ import (
 func cmdsRequireConfigInit() []string {
 	return []string{
 		"yba-ctl install",
-		"yba-ctl license",
-		"yba-ctl license update",
 		"yba-ctl upgrade",
 		"yba-ctl preflight",
 	}
@@ -69,9 +67,8 @@ func ensureInstallerConfFile() {
 	if os.IsNotExist(err) {
 		userChoice := common.UserConfirm(
 			fmt.Sprintf(
-				("Using default settings in config file %s. "+
-					"Note that some settings cannot be changed later. \n\n"+
-					"Proceed with default config? "),
+				("No config file found at '%s', creating it with default values now.\n"+
+					"Do you want to proceed with the default config?"),
 				common.InputFile()),
 			common.DefaultNo)
 
@@ -84,7 +81,6 @@ func ensureInstallerConfFile() {
 				"Aborting current command. Please edit the config at %s and retry.", common.InputFile()))
 			os.Exit(1)
 		}
-
 	}
 }
 

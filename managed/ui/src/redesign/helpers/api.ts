@@ -1,9 +1,10 @@
 import axios, { Canceler } from 'axios';
 import {
   YBProviderMutation,
-  YBProvider
+  YBProvider,
+  InstanceTypeMutation
 } from '../../components/configRedesign/providerRedesign/types';
-import { HostInfo, Provider as Provider_Deprecated } from './dtos';
+import { HostInfo, Provider as Provider_Deprecated, YBPSuccess } from './dtos';
 import { ROOT_URL } from '../../config';
 import {
   AvailabilityZone,
@@ -18,7 +19,7 @@ import {
   HAConfig,
   HAReplicationSchedule,
   HAPlatformInstance,
-  ResourceCreationResponse
+  YBPTask
 } from './dtos';
 import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../actions/customers';
 
@@ -65,9 +66,15 @@ export const hostInfoQueryKey = {
 export const universeQueryKey = {
   ALL: ['universe']
 };
+
 export const runtimeConfigQueryKey = {
   ALL: ['runtimeConfig'],
   customerScope: (customerUUID: string) => [...runtimeConfigQueryKey.ALL, 'customer', customerUUID]
+};
+
+export const instanceTypeQueryKey = {
+  ALL: ['instanceType'],
+  provider: (providerUUID: string) => [...instanceTypeQueryKey.ALL, 'provider', providerUUID]
 };
 
 class ApiService {
@@ -79,14 +86,14 @@ class ApiService {
   }
 
   fetchHostInfo = () => {
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/host_info`;
-    return axios.get<HostInfo>(requestURL).then((response) => response.data);
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/host_info`;
+    return axios.get<HostInfo>(requestUrl).then((response) => response.data);
   };
 
   fetchRuntimeConfigs = (scope?: string, includeInherited = false) => {
     const configScope = scope || DEFAULT_RUNTIME_GLOBAL_SCOPE;
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/runtime_config/${configScope}?includeInherited=${includeInherited}`;
-    return axios.get(requestURL).then((response) => response.data);
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/runtime_config/${configScope}?includeInherited=${includeInherited}`;
+    return axios.get(requestUrl).then((response) => response.data);
   };
 
   findUniverseByName = (universeName: string): Promise<string[]> => {
@@ -116,10 +123,14 @@ class ApiService {
     return Promise.reject('Failed to fetch universe: No universe UUID provided.');
   };
 
-  createProvider = (providerConfigMutation: YBProviderMutation) => {
+  createProvider = (providerConfigMutation: YBProviderMutation, shouldValidate = false) => {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers`;
     return axios
-      .post<ResourceCreationResponse>(requestURL, providerConfigMutation)
+      .post<YBPTask>(requestURL, providerConfigMutation, {
+        params: {
+          validate: shouldValidate
+        }
+      })
       .then((resp) => resp.data);
   };
 
@@ -128,10 +139,10 @@ class ApiService {
     return axios.get<YBProvider[]>(requestUrl).then((resp) => resp.data);
   };
 
-  deleteProvider = (providerUUID: string | undefined) => {
+  deleteProvider = (providerUUID: string) => {
     if (providerUUID) {
       const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}`;
-      return axios.delete(requestURL);
+      return axios.delete<YBPTask>(requestURL).then((response) => response.data);
     }
     return Promise.reject('Failed to delete provider: No provider UUID provided.');
   };
@@ -157,7 +168,33 @@ class ApiService {
       const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerId}/regions`;
       return axios.get<Region[]>(requestUrl).then((resp) => resp.data);
     } else {
+      return Promise.reject('Failed to fetch provider regions: No provider UUID provided.');
+    }
+  };
+
+  createInstanceType = (providerUUID: string, instanceType: InstanceTypeMutation) => {
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}/instance_types`;
+    return axios.post<InstanceType>(requestURL, instanceType).then((response) => response.data);
+  };
+
+  fetchInstanceTypes = (providerUUID?: string): Promise<InstanceType[]> => {
+    if (providerUUID) {
+      const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}/instance_types`;
+      return axios.get<InstanceType[]>(requestURL).then((response) => response.data);
+    } else {
       return Promise.reject('Failed to fetch provider regions: No provider UUID provided');
+    }
+  };
+
+  deleteInstanceType = (providerUUID: string, instanceTypeCode: string) => {
+    if (providerUUID && instanceTypeCode) {
+      const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}/instance_types/${instanceTypeCode}`;
+      return axios.delete<YBPSuccess>(requestURL).then((response) => response.data);
+    } else {
+      const errorMessage = providerUUID
+        ? 'No instance type code provided'
+        : 'No provider UUID provided';
+      return Promise.reject(`Failed to fetch provider regions: ${errorMessage}`);
     }
   };
 
@@ -179,15 +216,6 @@ class ApiService {
   universeEdit = (data: UniverseConfigure, universeId: string): Promise<Universe> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}`;
     return axios.put<Universe>(requestUrl, data).then((resp) => resp.data);
-  };
-
-  getInstanceTypes = (providerId?: string): Promise<InstanceType[]> => {
-    if (providerId) {
-      const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerId}/instance_types`;
-      return axios.get<InstanceType[]>(requestUrl).then((resp) => resp.data);
-    } else {
-      return Promise.reject('Querying instance types failed: no provider ID provided');
-    }
   };
 
   getDBVersions = (): Promise<string[]> => {

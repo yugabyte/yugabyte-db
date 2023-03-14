@@ -667,8 +667,6 @@ class AbstractCloud(AbstractCommandParser):
                         sock.close()
             # Increment retry only after attempts on all ports fail.
             retry_count += 1
-            if retry_count < self.SERVER_RETRY_COUNT:
-                time.sleep(self.SERVER_WAIT_SECONDS)
 
         logging.error("[app] Start instance {} exceeded maxRetries!".format(instance_name))
         raise YBOpsRecoverableError(

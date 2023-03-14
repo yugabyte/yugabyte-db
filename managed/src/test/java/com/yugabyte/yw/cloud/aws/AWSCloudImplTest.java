@@ -188,16 +188,20 @@ public class AWSCloudImplTest extends FakeDBApplication {
     when(mockRoute53Client.getHostedZone(any()))
         .thenThrow(new AmazonServiceException("Not found"))
         .thenReturn(result);
-    Mockito.doReturn(mockRoute53Client).when(awsCloudImpl).getRoute53Client(any());
+    Mockito.doReturn(mockRoute53Client).when(awsCloudImpl).getRoute53Client(any(), anyString());
     PlatformServiceException exception =
         assertThrows(
             PlatformServiceException.class,
-            () -> awsCloudImpl.getHostedZoneOrBadRequest(defaultProvider, hostedZoneId));
+            () ->
+                awsCloudImpl.getHostedZoneOrBadRequest(
+                    defaultProvider, defaultRegion, hostedZoneId));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
     assertEquals(
         "Hosted Zone validation failed: Not found " + AMAZON_COMMON_ERROR_MSG,
         exception.getMessage());
-    assertEquals(result, awsCloudImpl.getHostedZoneOrBadRequest(defaultProvider, hostedZoneId));
+    assertEquals(
+        result,
+        awsCloudImpl.getHostedZoneOrBadRequest(defaultProvider, defaultRegion, hostedZoneId));
   }
 
   @Test
@@ -241,14 +245,14 @@ public class AWSCloudImplTest extends FakeDBApplication {
     when(mockSTSService.getCallerIdentity(any()))
         .thenThrow(new SdkClientException("Not found"))
         .thenReturn(result);
-    Mockito.doReturn(mockSTSService).when(awsCloudImpl).getStsClient(any());
+    Mockito.doReturn(mockSTSService).when(awsCloudImpl).getStsClient(any(), anyString());
     PlatformServiceException exception =
         assertThrows(
             PlatformServiceException.class,
-            () -> awsCloudImpl.getStsClientOrBadRequest(defaultProvider));
+            () -> awsCloudImpl.getStsClientOrBadRequest(defaultProvider, defaultRegion));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
     assertEquals("AWS access and secret keys validation failed: Not found", exception.getMessage());
-    assertEquals(result, awsCloudImpl.getStsClientOrBadRequest(defaultProvider));
+    assertEquals(result, awsCloudImpl.getStsClientOrBadRequest(defaultProvider, defaultRegion));
   }
 
   @Test

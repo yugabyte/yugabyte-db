@@ -48,10 +48,6 @@ namespace master {
 
 class CatalogManager;
 
-namespace enterprise {
-class CatalogManager;
-}
-
 class CatalogManagerBgTasks final {
  public:
   explicit CatalogManagerBgTasks(CatalogManager *catalog_manager);
@@ -75,7 +71,7 @@ class CatalogManagerBgTasks final {
   mutable Mutex lock_;
   ConditionVariable cond_;
   scoped_refptr<yb::Thread> thread_;
-  enterprise::CatalogManager *catalog_manager_;
+  CatalogManager *catalog_manager_;
   bool was_leader_ = false;
 };
 

@@ -26,7 +26,7 @@
 #include "yb/master/master_replication.proxy.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
-#include "yb/integration-tests/twodc_test_base.h"
+#include "yb/integration-tests/xcluster_test_base.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/backoff_waiter.h"
@@ -49,8 +49,8 @@ constexpr auto kNumRecordsPerBatch = 10;
 
 YB_DEFINE_ENUM(ReplicationDirection, (ProducerToConsumer)(ConsumerToProducer))
 
-class XClusterDRTest : public XClusterYsqlTest {
-  typedef XClusterYsqlTest super;
+class XClusterDRTest : public XClusterYsqlTestBase {
+  typedef XClusterYsqlTestBase super;
 
  public:
   void SetUp() override {

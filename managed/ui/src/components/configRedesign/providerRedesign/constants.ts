@@ -45,6 +45,12 @@ export type KubernetesProviderTab = Exclude<
   typeof KubernetesProviderType.DEPRECATED
 >;
 
+export const ArchitectureType = {
+  X86_64: 'x86_64',
+  ARM64: 'aarch64'
+} as const;
+export type ArchitectureType = typeof ArchitectureType[keyof typeof ArchitectureType];
+
 // --------------------------------------------------------------------------------------
 // Route Constants
 // --------------------------------------------------------------------------------------
@@ -53,11 +59,13 @@ export const PROVIDER_ROUTE_PREFIX = `${CONFIG_ROUTE_PREFIX}/${ConfigTabKey.INFR
 // --------------------------------------------------------------------------------------
 // Provider Field & Form Constants
 // --------------------------------------------------------------------------------------
-export const ArchitectureType = {
-  X86_64: 'x86_64',
-  ARM64: 'aarch64'
+
+export const YBImageType = {
+  X86_64: ArchitectureType.X86_64,
+  ARM64: ArchitectureType.ARM64,
+  CUSTOM_AMI: 'customAMI'
 } as const;
-export type ArchitectureType = typeof ArchitectureType[keyof typeof ArchitectureType];
+export type YBImageType = typeof YBImageType[keyof typeof YBImageType];
 
 export const NTPSetupType = {
   CLOUD_VENDOR: 'cloudVendor',
@@ -96,10 +104,28 @@ export const KUBERNETES_PROVIDERS_MAP = {
   [KubernetesProviderType.TANZU]: [KubernetesProvider.TANZU]
 } as const;
 
+export const InstanceTypeOperation = {
+  ADD: 'add',
+  EDIT: 'edit'
+} as const;
+export type InstanceTypeOperation = typeof InstanceTypeOperation[keyof typeof InstanceTypeOperation];
+
 /**
  * A field name for storing server errors from form submission.
  */
 export const ASYNC_ERROR = 'asyncError';
+
+export const DEFAULT_SSH_PORT = 22;
+
+export const AWSValidationKey = {
+  ACCESS_KEY_CREDENTIALS: 'KEYS',
+  IAM_CREDENTIALS: 'IAM',
+  SSH_PRIVATE_KEY_CONTENT: 'SSH_PRIVATE_KEY_CONTENT',
+  NTP_SERVERS: 'NTP_SERVERS',
+  HOSTED_ZONE_ID: 'HOSTED_ZONE',
+  REGION: 'REGION'
+} as const;
+export type AWSValidationKey = typeof AWSValidationKey[keyof typeof AWSValidationKey];
 
 // --------------------------------------------------------------------------------------
 // User Facing Labels
@@ -139,4 +165,9 @@ export const KubernetesProviderTypeLabel = {
   [KubernetesProviderType.MANAGED_SERVICE]: 'Managed Kubernetes Service',
   [KubernetesProviderType.OPEN_SHIFT]: 'Red Hat OpenShift',
   [KubernetesProviderType.TANZU]: 'VMWare Tanzu'
+} as const;
+
+export const InstanceTypeOperationLabel = {
+  [InstanceTypeOperation.ADD]: 'Add',
+  [InstanceTypeOperation.EDIT]: 'Edit'
 } as const;

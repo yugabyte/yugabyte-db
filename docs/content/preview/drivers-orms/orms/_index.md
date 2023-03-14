@@ -53,7 +53,7 @@ The source for the REST API-based applications is in the [Using ORMs with Yugaby
   <li>
     <a href="nodejs/ysql-sequelize/" class="orange">
       <i class="fa-brands fa-node-js"></i>
-      NodeJS
+      Node.js
     </a>
   </li>
 

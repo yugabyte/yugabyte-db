@@ -16,9 +16,9 @@
 #include <boost/algorithm/string/predicate.hpp>
 
 #include "yb/common/index.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
 #include "yb/common/snapshot.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -268,7 +268,8 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
     table_metadata->table_id = entry.table_id().ToBuffer();
   }
   Status s = RestoreCheckpoint(
-      snapshot_dir, restore_at, restore_metadata, frontier, !request.schedule_id().empty());
+      snapshot_dir, restore_at, restore_metadata, frontier,
+      !request.schedule_id().empty(), operation->op_id());
   VLOG_WITH_PREFIX(1) << "Complete checkpoint restoring with result " << s << " in folder: "
                       << metadata().rocksdb_dir();
   int32 delay_time_secs = GetAtomicFlag(&FLAGS_TEST_delay_tablet_split_metadata_restore_secs);
@@ -336,7 +337,7 @@ Result<TabletRestorePatch> TabletSnapshots::GenerateRestoreWriteBatch(
 
 Status TabletSnapshots::RestoreCheckpoint(
     const std::string& dir, HybridTime restore_at, const RestoreMetadata& restore_metadata,
-    const docdb::ConsensusFrontier& frontier, bool is_pitr_restore) {
+    const docdb::ConsensusFrontier& frontier, bool is_pitr_restore, const OpId& op_id) {
   LongOperationTracker long_operation_tracker("Restore checkpoint", 5s);
 
   const auto destroy = !dir.empty();
@@ -387,9 +388,11 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   if (restore_metadata.schema) {
     // TODO(pitr) check deleted columns
+    // OpId::Invalid() is used to indicate the callee to not
+    // set last_change_metadata_op_id field of tablet metadata.
     tablet().metadata()->SetSchema(
         *restore_metadata.schema, *restore_metadata.index_map, {} /* deleted_columns */,
-        restore_metadata.schema_version);
+        restore_metadata.schema_version, op_id);
     tablet().metadata()->SetHidden(restore_metadata.hide);
     need_flush = true;
   }
@@ -397,10 +400,13 @@ Status TabletSnapshots::RestoreCheckpoint(
   for (const auto& colocated_table_metadata : restore_metadata.colocated_tables_metadata) {
     LOG(INFO) << "Setting schema, index information and schema version for table "
               << colocated_table_metadata.table_id;
+    // OpId::Invalid() is used to indicate the callee to not
+    // set last_change_metadata_op_id field of tablet metadata.
     tablet().metadata()->SetSchema(
         *colocated_table_metadata.schema, *colocated_table_metadata.index_map,
         {} /* deleted_columns */,
-        colocated_table_metadata.schema_version, colocated_table_metadata.table_id);
+        colocated_table_metadata.schema_version, op_id,
+        colocated_table_metadata.table_id);
     need_flush = true;
   }
 

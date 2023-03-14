@@ -117,6 +117,7 @@ namespace {
 YB_STRONGLY_TYPED_BOOL(Child);
 YB_STRONGLY_TYPED_BOOL(SendHeartbeatToNewTablet);
 YB_STRONGLY_TYPED_BOOL(SetReady);
+YB_STRONGLY_TYPED_BOOL(TransactionPromoting);
 YB_DEFINE_ENUM(TransactionState, (kRunning)(kAborted)(kCommitted)(kReleased)(kSealed)(kPromoting));
 YB_DEFINE_ENUM(OldTransactionState, (kRunning)(kAborting)(kAborted)(kNone));
 
@@ -637,22 +638,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   Result<bool> StartPromotionToGlobalIfNecessary(
       internal::InFlightOpsGroupsWithMetadata* ops_info) REQUIRES(mutex_) {
-    if (!ready_) {
-      return false;
-    }
-
     auto op = FindOpWithLocalityViolation(ops_info);
     if (!op) {
       return false;
     }
 
-    if (!FLAGS_auto_promote_nonlocal_transactions_to_global || FLAGS_enable_wait_queues) {
-      if (FLAGS_auto_promote_nonlocal_transactions_to_global) {
-        YB_LOG_EVERY_N_SECS(WARNING, 100)
-            << "Cross-region transactions are disabled in clusters with wait queues "
-            << "enabled. This will be supported in a future release. "
-            << "See: https://github.com/yugabyte/yugabyte-db/issues/13585";
-      }
+    if (!FLAGS_auto_promote_nonlocal_transactions_to_global) {
       auto tablet_id = op->tablet->tablet_id();
       auto status = STATUS_FORMAT(
             IllegalState, "Nonlocal tablet accessed in local transaction: tablet $0", tablet_id);
@@ -1385,7 +1376,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     auto transaction = transaction_->shared_from_this();
 
     manager_->PickStatusTablet(
-        std::bind(&Impl::StatusTabletPicked, this, _1, deadline, transaction),
+        std::bind(&Impl::StatusTabletPicked, this, _1, deadline, transaction,
+                  TransactionPromoting::kTrue),
         metadata_.locality);
   }
 
@@ -1400,16 +1392,19 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     auto transaction = transaction_->shared_from_this();
     if (metadata_.status_tablet.empty()) {
       manager_->PickStatusTablet(
-          std::bind(&Impl::StatusTabletPicked, this, _1, deadline, transaction),
+          std::bind(&Impl::StatusTabletPicked, this, _1, deadline, transaction,
+                    TransactionPromoting::kFalse),
           metadata_.locality);
     } else {
-      LookupStatusTablet(metadata_.status_tablet, deadline, transaction);
+      LookupStatusTablet(metadata_.status_tablet, deadline, transaction,
+                         TransactionPromoting::kFalse);
     }
   }
 
   void StatusTabletPicked(const Result<std::string>& tablet,
                           const CoarseTimePoint& deadline,
-                          const YBTransactionPtr& transaction) {
+                          const YBTransactionPtr& transaction,
+                          TransactionPromoting promoting) {
     TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(2) << "Picked status tablet: " << tablet;
 
@@ -1418,12 +1413,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       return;
     }
 
-    LookupStatusTablet(*tablet, deadline, transaction);
+    LookupStatusTablet(*tablet, deadline, transaction, promoting);
   }
 
   void LookupStatusTablet(const std::string& tablet_id,
                           const CoarseTimePoint& deadline,
-                          const YBTransactionPtr& transaction) {
+                          const YBTransactionPtr& transaction,
+                          TransactionPromoting promoting) {
     TRACE_TO(trace_, __func__);
     manager_->client()->LookupTabletById(
         tablet_id,
@@ -1431,12 +1427,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         master::IncludeInactive::kFalse,
         master::IncludeDeleted::kFalse,
         deadline,
-        std::bind(&Impl::LookupTabletDone, this, _1, transaction),
+        std::bind(&Impl::LookupTabletDone, this, _1, transaction, promoting),
         client::UseCache::kTrue);
   }
 
   void LookupTabletDone(const Result<client::internal::RemoteTabletPtr>& result,
-                        const YBTransactionPtr& transaction) {
+                        const YBTransactionPtr& transaction,
+                        TransactionPromoting promoting) {
     TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(1) << "Lookup tablet done: " << yb::ToString(result);
 
@@ -1446,13 +1443,17 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
 
     std::vector<Waiter> waiters;
-    auto status = HandleLookupTabletCases(result, &waiters);
-    auto promoted = status == TransactionStatus::PROMOTED;
+    auto status = HandleLookupTabletCases(result, &waiters, promoting);
 
-    SendHeartbeat(status, metadata_.transaction_id, transaction_->shared_from_this(),
-                  SendHeartbeatToNewTablet(promoted));
+    if (status == TransactionStatus::ABORTED) {
+      DCHECK(promoting);
+      SendAbortToOldStatusTabletIfNeeded(TransactionRpcDeadline(), transaction, old_status_tablet_);
+    } else {
+      SendHeartbeat(status, metadata_.transaction_id, transaction_->shared_from_this(),
+                    SendHeartbeatToNewTablet(promoting));
+    }
 
-    if (promoted) {
+    if (promoting) {
       SendUpdateTransactionStatusLocationRpcs();
     }
 
@@ -1462,38 +1463,78 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   TransactionStatus HandleLookupTabletCases(const Result<client::internal::RemoteTabletPtr>& result,
-                                            std::vector<Waiter>* waiters) EXCLUDES(mutex_) {
+                                            std::vector<Waiter>* waiters,
+                                            TransactionPromoting promoting) EXCLUDES(mutex_) {
     std::lock_guard<std::shared_mutex> lock(mutex_);
     TransactionStatus status;
     bool notify_waiters;
-    if (state_.load(std::memory_order_acquire) == TransactionState::kPromoting) {
+    if (promoting) {
       // From transaction promotion.
-      notify_waiters = false;
-      status = TransactionStatus::PROMOTED;
-      old_status_tablet_state_.store(OldTransactionState::kRunning, std::memory_order_release);
+      DCHECK(state_.load(std::memory_order_acquire) == TransactionState::kPromoting);
 
-      old_status_tablet_ = std::move(status_tablet_);
-      metadata_.old_status_tablet = metadata_.status_tablet;
+      notify_waiters = false;
+
+      if (!metadata_.status_tablet.empty()) {
+        old_status_tablet_state_.store(OldTransactionState::kRunning, std::memory_order_release);
+        old_status_tablet_ = std::move(status_tablet_);
+        metadata_.old_status_tablet = metadata_.status_tablet;
+        status = TransactionStatus::PROMOTED;
+      } else {
+        // We don't have a status tablet or transaction id yet, so we use CREATED here.
+        status = TransactionStatus::CREATED;
+        auto state = TransactionState::kPromoting;
+        if (!state_.compare_exchange_strong(
+            state, TransactionState::kRunning, std::memory_order_acq_rel)) {
+          LOG_WITH_PREFIX(DFATAL) << "Transaction was not in promoting state: " << AsString(state);
+        }
+      }
 
       status_tablet_ = std::move(*result);
       metadata_.status_tablet = status_tablet_->tablet_id();
 
       VLOG_WITH_PREFIX(1) << "Transaction status moving from tablet "
-                          << metadata_.old_status_tablet << " to tablet "
-                          << metadata_.status_tablet;
+                          << (!metadata_.old_status_tablet.empty()
+                              ? metadata_.old_status_tablet
+                              : "n/a")
+                          << " to tablet " << metadata_.status_tablet;
 
       IncrementCounter(transaction_promotions_);
-    } else if (metadata_.status_tablet.empty()) {
-      // Initial status lookup, not pre-created.
-      status_tablet_ = std::move(*result);
-      metadata_.status_tablet = status_tablet_->tablet_id();
-      notify_waiters = false;
-      status = TransactionStatus::CREATED;
     } else {
-      // Pre-created transaction.
-      status_tablet_ = std::move(*result);
-      notify_waiters = true;
-      status = TransactionStatus::PENDING;
+      // If status_tablet_ is set already, then this is the case where first-op promotion
+      // finished before lookup of old status tablet.
+      bool promotion_lookup_finished{ status_tablet_ };
+      auto& status_tablet = promotion_lookup_finished ? old_status_tablet_ : status_tablet_;
+      auto& status_tablet_id =
+          promotion_lookup_finished ? metadata_.old_status_tablet : metadata_.status_tablet;
+
+      status_tablet = std::move(*result);
+
+      if (status_tablet_id.empty()) {
+        // Initial status lookup, not pre-created.
+        status_tablet_id = status_tablet_->tablet_id();
+        notify_waiters = false;
+        status = TransactionStatus::CREATED;
+      } else {
+        // Pre-created transaction.
+        notify_waiters = true;
+        status = TransactionStatus::PENDING;
+      }
+
+      if (promotion_lookup_finished) {
+        // If this was not a pre-created transaction, then we haven't actually sent CREATED
+        // to the old status tablet, so we can continue with old_status_tablet_state_ = kNone,
+        // and act as if we just simply picked the correct status tablet to begin with.
+        // If this was a pre-created transaction, then we have to go through the normal promotion
+        // code path and abort the old transaction.
+        if (status == TransactionStatus::PENDING) {
+          old_status_tablet_state_.store(OldTransactionState::kRunning, std::memory_order_release);
+        }
+
+        notify_waiters = false;
+
+        // Return status ABORTED here to trigger abort to old status tablet if needed.
+        status = TransactionStatus::ABORTED;
+      }
     }
 
     if (notify_waiters) {
@@ -1681,7 +1722,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           }
           FALLTHROUGH_INTENDED;
         case TransactionStatus::CREATED:
-          NotifyWaiters(Status::OK(), "Heartbeat", SetReady::kTrue);
+          {
+            // If we are in the kPromoted state, this may be a CREATED to the old
+            // status tablet finishing after promotion has started, so we don't set ready_ = true.
+            auto state = state_.load(std::memory_order_acquire);
+            NotifyWaiters(Status::OK(), "Heartbeat",
+                          SetReady(state != TransactionState::kPromoting));
+          }
           FALLTHROUGH_INTENDED;
         case TransactionStatus::PENDING:
           manager_->client()->messenger()->scheduler().Schedule(
@@ -1889,10 +1936,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         // Already started commit, so let that handle the old txn abort instead.
         waiter(status);
       } else {
-        // Only abort early if last heartbeat to old status tablet was successful - otherwise,
-        // we might be in the case where the old status tablet expired the transaction prematurely,
-        // and we defer to the logic at commit time instead.
-        if (last_old_heartbeat_failed_.load(std::memory_order_acquire)) {
+        // Only abort early if status tablet lookup to the old status tablet has finished, and
+        // if last heartbeat to old status tablet was successful - otherwise,
+        // we might be in the case where first-op promotion has finished before initial status
+        // tablet lookup - and we defer to when that has finished, or the old status tablet expired
+        // the transaction prematurely, and we defer to the logic at commit time instead.
+        if (!old_status_tablet) {
+          VLOG_WITH_PREFIX(1) << "Initial status tablet lookup hasn't finished, not aborting yet";
+        } else if (last_old_heartbeat_failed_.load(std::memory_order_acquire)) {
           VLOG_WITH_PREFIX(1) << "Heartbeats to old status tablet are failing, not aborting early";
         } else {
           auto transaction = transaction_->shared_from_this();

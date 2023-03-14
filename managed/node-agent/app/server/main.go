@@ -21,7 +21,8 @@ var (
 )
 
 func init() {
-	ctx, cancelFunc = context.WithCancel(context.Background())
+	ctx = util.WithCorrelationID(context.Background(), util.NewUUID().String())
+	ctx, cancelFunc = context.WithCancel(ctx)
 }
 
 func Context() context.Context {
@@ -39,7 +40,7 @@ func Start() {
 	config := util.CurrentConfig()
 	nodeAgentId := config.String(util.NodeAgentIdKey)
 	if nodeAgentId == "" {
-		util.FileLogger().Fatalf("Node Agent ID must be set")
+		util.FileLogger().Fatalf(Context(), "Node Agent ID must be set")
 	}
 	executor.Init(Context())
 	host := config.String(util.NodeIpKey)
@@ -56,7 +57,7 @@ loop:
 				ticker.Stop()
 				break loop
 			}
-			util.FileLogger().Errorf("Error handling restart - %s", err.Error())
+			util.FileLogger().Errorf(Context(), "Error handling restart - %s", err.Error())
 		case <-sigs:
 			cancelFunc()
 			return
@@ -65,9 +66,9 @@ loop:
 	addr := fmt.Sprintf("%s:%s", host, port)
 	server, err := NewRPCServer(Context(), addr, true)
 	if err != nil {
-		util.FileLogger().Fatalf("Error in starting RPC server - %s", err.Error())
+		util.FileLogger().Fatalf(Context(), "Error in starting RPC server - %s", err.Error())
 	}
-	util.FileLogger().Infof("Started Service on %s", addr)
+	util.FileLogger().Infof(Context(), "Started Service on %s", addr)
 	<-sigs
 	server.Stop()
 }

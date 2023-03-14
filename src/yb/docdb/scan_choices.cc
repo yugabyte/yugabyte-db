@@ -166,19 +166,14 @@ HybridScanChoices::HybridScanChoices(
   range_cols_scan_options_.resize(filter_length);
 
   current_scan_target_ranges_.resize(range_cols_scan_options_.size());
+
   current_scan_target_.Clear();
+
+  // Initialize current_scan_target_ranges_
   for (size_t i = 0; i < range_cols_scan_options_.size(); i++) {
     current_scan_target_ranges_[i] = range_cols_scan_options_.at(i).begin();
-    if (is_forward_scan_) {
-      current_scan_target_ranges_[i]->lower().AppendToKey(&current_scan_target_);
-    } else {
-      current_scan_target_ranges_[i]->upper().AppendToKey(&current_scan_target_);
-    }
   }
 
-  if (!is_forward_scan_) {
-    KeyEntryValue(KeyEntryType::kHighest).AppendToKey(&current_scan_target_);
-  }
   schema_num_keys_ = schema.num_range_key_columns();
 }
 
@@ -360,6 +355,9 @@ Result<bool> HybridScanChoices::SkipTargetsUpTo(const Slice& new_target) {
       VLOG(1) << "Failed to decode the key: " << decode_status;
       // We return false to give the caller a chance to validate and skip past any keys that scan
       // choices should not be aware of before calling this again.
+
+      // current_scan_target_ is left in a corrupted state so we must clear it.
+      current_scan_target_.Clear();
       return false;
     }
 
@@ -771,11 +769,10 @@ Status HybridScanChoices::SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) {
 
 ScanChoicesPtr ScanChoices::Create(
     const Schema& schema, const DocQLScanSpec& doc_spec,
-    const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key,
-    const size_t prefix_length) {
+    const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key) {
   if (doc_spec.range_options() || doc_spec.range_bounds()) {
     return std::make_unique<HybridScanChoices>(
-        schema, doc_spec, lower_doc_key, upper_doc_key, prefix_length);
+        schema, doc_spec, lower_doc_key, upper_doc_key, doc_spec.prefix_length());
   }
 
   return nullptr;
@@ -783,11 +780,10 @@ ScanChoicesPtr ScanChoices::Create(
 
 ScanChoicesPtr ScanChoices::Create(
     const Schema& schema, const DocPgsqlScanSpec& doc_spec,
-    const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key,
-    const size_t prefix_length) {
+    const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key) {
   if (doc_spec.range_options() || doc_spec.range_bounds()) {
     return std::make_unique<HybridScanChoices>(
-        schema, doc_spec, lower_doc_key, upper_doc_key, prefix_length);
+        schema, doc_spec, lower_doc_key, upper_doc_key, doc_spec.prefix_length());
   }
 
   return nullptr;

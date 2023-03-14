@@ -36,7 +36,6 @@ set(DOCDB_ENCODING_SRCS
     intent.cc
     key_bytes.cc
     primitive_value.cc
-    primitive_value_util.cc
     value.cc
     )
 
@@ -51,6 +50,24 @@ ADD_YB_LIBRARY(yb_docdb_encoding
         SRCS ${DOCDB_ENCODING_SRCS}
         DEPS ${DOCDB_ENCODING_DEPS}
         )
+
+set(DOCDB_ENCODING_UTIL_SRCS
+        primitive_value_util.cc
+        )
+    
+# DocDB Encoding util lib is shared with PG process as well. Avoid
+# including tserver specific dependencies for it.
+set(DOCDB_ENCODING_UTIL_DEPS
+        yb_common
+        yb_ql_common
+        yb_util
+        )
+    
+ADD_YB_LIBRARY(yb_docdb_encoding_util
+        SRCS ${DOCDB_ENCODING_UTIL_SRCS}
+        DEPS ${DOCDB_ENCODING_UTIL_DEPS}
+        )
+    
 
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 include_directories("${YB_BUILD_ROOT}/postgres_build/src/include/catalog")
@@ -110,6 +127,7 @@ set(DOCDB_SRCS
 
 set(DOCDB_DEPS
         yb_docdb_encoding
+        yb_docdb_encoding_util
         rocksdb
         yb_util
         yb_rocksutil

@@ -18,6 +18,7 @@
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_path.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb-internal.h"
@@ -36,6 +37,7 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/checked_narrow_cast.h"
 #include "yb/util/enums.h"
+#include "yb/util/fast_varint.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -102,38 +104,99 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
 
   // Seek the value.
   doc_iter->Seek(key_prefix_.AsSlice());
-  if (!doc_iter->valid()) {
-    return Status::OK();
+  VLOG_WITH_FUNC(4)
+      << SubDocKey::DebugSliceToString(key_prefix_.AsSlice()) << ", valid: " << doc_iter->valid()
+      << ", prev_subdoc_ht: " << prev_subdoc_ht << ", prev_key_prefix_exact: "
+      << prev_key_prefix_exact << ", has_ancestor: " << has_ancestor;
+
+  FetchKeyResult key_data;
+  if (doc_iter->valid()) {
+    key_data = VERIFY_RESULT(doc_iter->FetchKey());
+    VLOG_WITH_FUNC(4)
+            << "Found: " << SubDocKey::DebugSliceToString(key_data.key) << ", good: "
+            << key_prefix_.IsPrefixOf(key_data.key);
   }
 
-  auto key_data = VERIFY_RESULT(doc_iter->FetchKey());
-  if (!key_prefix_.IsPrefixOf(key_data.key)) {
+  bool use_packed_row = false;
+  Slice recent_value;
+  if (!packed_row_key_.empty() && key_prefix_.AsSlice().starts_with(packed_row_key_.AsSlice())) {
+    auto subkeys = key_prefix_.AsSlice().WithoutPrefix(packed_row_key_.size());
+    if (!subkeys.empty() && IsColumnId(static_cast<KeyEntryType>(subkeys[0]))) {
+      if (key_data.key.empty() || key_data.write_time < packed_row_write_time_) {
+        KeyEntryType entry_type = static_cast<KeyEntryType>(subkeys.consume_byte());
+        int64_t column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(&subkeys));
+        ColumnId column_id_ref;
+        RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id_ref));
+        if (subkeys.empty()) {
+          key_data.write_time = packed_row_write_time_;
+          key_data.key = key_prefix_.AsSlice();
+          auto value_opt = packed_row_packing_->GetValue(
+              column_id_ref, packed_row_value_.AsSlice());
+          if (value_opt) {
+            recent_value = *value_opt;
+            use_packed_row = true;
+          }
+          VLOG_WITH_FUNC(4)
+              << "Has packed row for: " << AsString(entry_type) << ", " << column_id_ref << ": "
+              << recent_value.ToDebugHexString();
+        }
+      }
+    }
+  }
+
+  if (key_data.key.empty() || !key_prefix_.IsPrefixOf(key_data.key)) {
     return Status::OK();
   }
 
   // Checking for expiration.
-  Slice recent_value = doc_iter->value();
+  if (!use_packed_row) {
+    recent_value = doc_iter->value();
+  }
   ValueControlFields control_fields;
   {
     auto value_copy = recent_value;
     control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_copy));
     current_entry_.user_timestamp = control_fields.timestamp;
     current_entry_.value_type = DecodeValueEntryType(value_copy);
+    if (doc_read_context_ && value_copy.TryConsumeByte(ValueEntryTypeAsChar::kPackedRow)) {
+      packed_row_key_.Assign(key_data.key);
+      packed_row_packing_ = &VERIFY_RESULT_REF(
+          doc_read_context_->schema_packing_storage.GetPacking(&value_copy));
+      packed_row_value_.Assign(value_copy);
+      packed_row_write_time_ = key_data.write_time;
+
+      VLOG_WITH_FUNC(4)
+          << "Init packed row: " << SubDocKey::DebugSliceToString(packed_row_key_.AsSlice())
+          << ", value: " << packed_row_key_.AsSlice().ToDebugHexString() << ", write time: "
+          << packed_row_write_time_.ToString();
+    }
   }
 
-  if (HasExpiredTTL(
-          key_data.write_time.hybrid_time(), control_fields.ttl, doc_iter->read_time().read)) {
+  bool expired = HasExpiredTTL(
+          key_data.write_time.hybrid_time(), control_fields.ttl, doc_iter->read_time().read);
+
+  VLOG_WITH_FUNC(4)
+      << "Value: " << recent_value.ToDebugHexString() << ", control_fields: "
+      << control_fields.ToString() << ", expired: " << expired << ", use_packed_row: "
+      << use_packed_row << ", write time: " << key_data.write_time.ToString();
+
+  if (expired) {
     current_entry_.value_type = ValueEntryType::kTombstone;
     current_entry_.doc_hybrid_time = key_data.write_time;
+    current_entry_.found_exact_key_prefix = key_prefix_ == key_data.key;
     cache_.Put(key_prefix_, current_entry_);
     return Status::OK();
   }
 
   Slice value;
-  RETURN_NOT_OK(doc_iter->NextFullValue(&key_data.write_time, &value, &key_data.key));
+  if (use_packed_row) {
+    RETURN_NOT_OK(doc_iter->NextFullValue(&key_data.write_time, &value, &key_data.key));
 
-  if (!doc_iter->valid()) {
-    return Status::OK();
+    if (!doc_iter->valid()) {
+      return Status::OK();
+    }
+  } else {
+    value = recent_value;
   }
 
   // If the first key >= key_prefix_ in RocksDB starts with key_prefix_, then a
@@ -148,6 +211,10 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
     }
     current_entry_.found_exact_key_prefix = key_prefix_ == key_data.key;
     current_entry_.doc_hybrid_time = key_data.write_time;
+    VLOG_WITH_FUNC(4)
+        << "Current found_exact_key_prefix: " << current_entry_.found_exact_key_prefix
+        << ", doc_hybrid_time: " << current_entry_.doc_hybrid_time << ", value_type: "
+        << AsString(current_entry_.value_type);
 
     // TODO: with optional init markers we can find something that is more than one level
     //       deep relative to the current prefix.
@@ -198,6 +265,15 @@ Result<bool> DocWriteBatch::SetPrimitiveInternalHandleUserTimestamp(
   // NOOP if we've already performed the seek due to the cache.
   RETURN_NOT_OK(SeekToKeyPrefix(iter, HasAncestor::kFalse));
   // We'd like to include tombstones in our timestamp comparisons as well.
+
+  VLOG_WITH_FUNC(4)
+      << "found_exact_key_prefix: " << current_entry_.found_exact_key_prefix
+      << ", subdoc_exists: " << subdoc_exists_ << ", value_type: "
+      << AsString(current_entry_.value_type) << ", user_timestamp: "
+      << current_entry_.user_timestamp << ", control fields: " << control_fields.ToString()
+      << ", doc_hybrid_time: "
+      << current_entry_.doc_hybrid_time.hybrid_time().GetPhysicalValueMicros();
+
   if (!current_entry_.found_exact_key_prefix) {
     return true;
   }

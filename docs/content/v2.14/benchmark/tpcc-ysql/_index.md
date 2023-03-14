@@ -75,7 +75,7 @@ Other options like username, password, port, etc. can be changed using the confi
 
 **Latest TPCC code:** Use the latest enhancements to the Yugabyte TPCC application. You can either download the latest released version, or you can clone the repository and build from source to get the very latest changes.
 
-**Pre-compacting tables:** Pre-compact tables with the [yb-admin]({{< relref "/preview/admin/yb-admin.md" >}}) utility's `compact_table` command.
+**Pre-compacting tables:** Pre-compact tables with the [yb-admin](../../admin/yb-admin/) utility's `compact_table` command.
 
 **Warming the database:** Use the `--warmup-time-secs` flag when you call the execute phase of the TPCC benchmark.
 

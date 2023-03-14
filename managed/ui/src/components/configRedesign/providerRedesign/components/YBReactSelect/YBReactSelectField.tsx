@@ -10,7 +10,7 @@ import { Box, FormHelperText, useTheme } from '@material-ui/core';
 import Select, { Styles } from 'react-select';
 
 type YBReactSelectFieldProps<T extends FieldValues> = {
-  options: { value: any; label: string }[];
+  options: readonly { value: any; label: string }[];
   isDisabled?: boolean;
 } & UseControllerProps<T>;
 
@@ -35,7 +35,7 @@ export const YBReactSelectField = <T extends FieldValues>({
   };
   return (
     <Box width="100%">
-      <div data-testId={`YBReactSelectField-${field.name}`}>
+      <div data-testid={`YBReactSelectField-${field.name}`}>
         <Select
           styles={reactSelectStyles}
           name={field.name}

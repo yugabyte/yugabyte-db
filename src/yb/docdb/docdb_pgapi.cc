@@ -225,7 +225,7 @@ YbgStatus YbgValueFromPB(const YBCPgTypeEntity *type_entity,
   PG_SETUP_ERROR_REPORTING();
   Status s = PgValueFromPB(type_entity, type_attrs, ql_value, datum, is_null);
   if (!s.ok()) {
-    return YbgStatusCreateError(s.message().cdata());
+    return YbgStatusCreateError(s.message().cdata(), __FILE__, __LINE__);
   }
   PG_STATUS_OK();
 }

@@ -21,6 +21,7 @@ import static play.mvc.Http.Status.CONFLICT;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multimap;
@@ -49,6 +50,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.EditAccessKeyRotationScheduleParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
+import com.yugabyte.yw.forms.RegionEditFormData;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -82,6 +84,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.Random;
+
 import javax.persistence.PersistenceException;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -134,6 +138,8 @@ public class CloudProviderHandler {
   @Inject private AccessKeyRotationUtil accessKeyRotationUtil;
   @Inject private ProviderEditRestrictionManager providerEditRestrictionManager;
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private AvailabilityZoneHandler availabilityZoneHandler;
+  @Inject private RegionHandler regionHandler;
 
   @Inject private AWSInitializer awsInitializer;
   @Inject private GCPInitializer gcpInitializer;
@@ -388,6 +394,19 @@ public class CloudProviderHandler {
         provider.uuid, () -> doUpdateKubeConfigForZone(provider, region, zone, config, edit));
   }
 
+  public static String generateRandomString(int length, String prefix, String suffix) {
+    String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    StringBuilder sb = new StringBuilder(length);
+    sb.append(prefix);
+    Random random = new Random();
+    for (int i = 0; i < length; i++) {
+      int index = random.nextInt(chars.length());
+      sb.append(chars.charAt(index));
+    }
+    sb.append(suffix);
+    return sb.toString();
+  }
+
   private boolean doUpdateKubeConfigForZone(
       Provider provider,
       Region region,
@@ -521,11 +540,15 @@ public class CloudProviderHandler {
 
       KubernetesProviderFormData formData = new KubernetesProviderFormData();
       formData.code = kubernetes;
+      formData.name = generateRandomString(5, "k8s", "provider");
+
       if (pullSecret != null) {
         formData.config =
             ImmutableMap.of(
                 "KUBECONFIG_IMAGE_PULL_SECRET_NAME",
                 pullSecretName,
+                "KUBECONFIG_PROVIDER",
+                getCloudProvider(),
                 "KUBECONFIG_PULL_SECRET_NAME",
                 pullSecretName, // filename
                 "KUBECONFIG_PULL_SECRET_CONTENT",
@@ -631,6 +654,29 @@ public class CloudProviderHandler {
       metadata.getAnnotations().remove("kubectl.kubernetes.io/last-applied-configuration");
     }
     return pullSecret;
+  }
+
+  public String getCloudProvider() {
+    String cloudProvider = kubernetesManagerFactory.getManager().getCloudProvider(null);
+    if (StringUtils.isEmpty(cloudProvider)) {
+      return "CUSTOM";
+    }
+    String retVal;
+    switch (cloudProvider) {
+      case "gce":
+        retVal = "GKE";
+        break;
+      case "aws":
+        retVal = "EKS";
+        break;
+      case "azure":
+        retVal = "AKS";
+        break;
+      default:
+        retVal = "CUSTOM";
+        break;
+    }
+    return retVal;
   }
 
   public String getKubernetesImageRepository() {
@@ -753,6 +799,29 @@ public class CloudProviderHandler {
     return regionsToAdd;
   }
 
+  private boolean removeAndUpdateRegions(Provider editProviderReq, Provider provider) {
+    Map<String, Region> existingRegions =
+        provider.regions.stream().collect(Collectors.toMap(r -> r.code, r -> r));
+    boolean result = false;
+    for (Region region : editProviderReq.regions) {
+      Region oldRegion = existingRegions.get(region.code);
+      if (oldRegion != null && oldRegion.isUpdateNeeded(region)) {
+        LOG.debug("Editing region {}", region.code);
+        regionHandler.editRegion(
+            provider.customerUUID,
+            provider.uuid,
+            oldRegion.uuid,
+            RegionEditFormData.fromRegion(region));
+        result = true;
+      } else if (oldRegion != null && !region.isActive() && oldRegion.isActive()) {
+        LOG.debug("Deleting region {}", region.code);
+        regionHandler.deleteRegion(provider.customerUUID, provider.uuid, region.uuid);
+        result = true;
+      }
+    }
+    return result;
+  }
+
   public UUID editProvider(
       Customer customer, Provider provider, Provider editProviderReq, boolean validate) {
     return providerEditRestrictionManager.tryEditProvider(
@@ -774,8 +843,12 @@ public class CloudProviderHandler {
       // TODO: PLAT-7258 allow adding region for auto-creating VPC case
       taskUUID = addRegions(customer, provider, regionsToAdd, true);
     }
-    boolean providerDataUpdated = updateProviderData(customer, provider, editProviderReq, validate);
-    if (!providerDataUpdated && taskUUID == null) {
+    boolean providerModified =
+        addOrRemoveAZs(editProviderReq, provider)
+            | removeAndUpdateRegions(editProviderReq, provider)
+            | updateProviderData(customer, provider, editProviderReq, validate);
+
+    if (!providerModified && taskUUID == null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "No changes to be made for provider type: " + provider.code);
     }
@@ -879,6 +952,49 @@ public class CloudProviderHandler {
     return taskUUID;
   }
 
+  private boolean addOrRemoveAZs(Provider editProviderReq, Provider provider) {
+    boolean result = false;
+    Map<String, Region> currentRegionMap =
+        provider.regions.stream().collect(Collectors.toMap(r -> r.code, r -> r));
+
+    for (Region region : editProviderReq.regions) {
+      Region currentState = currentRegionMap.get(region.code);
+      if (currentState != null) {
+        Map<String, AvailabilityZone> currentAZs =
+            currentState.zones.stream().collect(Collectors.toMap(az -> az.code, az -> az));
+        for (AvailabilityZone zone : region.zones) {
+          AvailabilityZone currentAZ = currentAZs.get(zone.code);
+          if (currentAZ == null) {
+            if (!zone.isActive()) {
+              LOG.warn("Zone {} is added but not active - ignoring", zone.code);
+              continue;
+            }
+            result = true;
+            LOG.debug("Creating zone {} in region {}", zone.code, region.code);
+            AvailabilityZone.createOrThrow(
+                region, zone.code, zone.name, zone.subnet, zone.secondarySubnet);
+          } else if (!zone.isActive() && currentAZ.isActive()) {
+            LOG.debug("Deleting zone {} from region {}", zone.code, region.code);
+            availabilityZoneHandler.deleteZone(zone.uuid, region.uuid);
+            result = true;
+          } else if (currentAZ.shouldBeUpdated(zone)) {
+            LOG.debug("updating zone {}", zone.code);
+            availabilityZoneHandler.editZone(
+                zone.uuid,
+                region.uuid,
+                az -> {
+                  az.setAvailabilityZoneDetails(zone.getAvailabilityZoneDetails());
+                  az.secondarySubnet = zone.secondarySubnet;
+                  az.subnet = zone.subnet;
+                });
+            result = true;
+          }
+        }
+      }
+    }
+    return result;
+  }
+
   private boolean maybeUpdateKubeConfig(Provider provider, Map<String, String> providerConfig) {
     if (provider.getCloudCode() == CloudType.kubernetes) {
       if (MapUtils.isEmpty(providerConfig)) {
@@ -897,6 +1013,17 @@ public class CloudProviderHandler {
         GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
         if (gcpCloudInfo == null) {
           return;
+        }
+
+        if (StringUtils.isBlank(gcpCloudInfo.getGceProject())) {
+          /**
+           * Preferences for GCP Project. 1. User provided project name. 2. `project_id` present in
+           * gcp credentials user provided. 3. Metadata query to fetch the same.
+           */
+          ObjectNode credentialJSON = (ObjectNode) gcpCloudInfo.gceApplicationCredentials;
+          if (credentialJSON != null && credentialJSON.has("project_id")) {
+            gcpCloudInfo.setGceProject(credentialJSON.get("project_id").asText());
+          }
         }
 
         if (gcpCloudInfo.getUseHostCredentials() != null

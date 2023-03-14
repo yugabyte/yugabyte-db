@@ -708,17 +708,26 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     ProviderDetails providerDetails = new ProviderDetails();
     Provider provider =
         Provider.create(customer.uuid, Common.CloudType.aws, "test", providerDetails);
-    Region.create(provider, "us-west-1", "us-west-1", "foo");
+    Region region = Region.create(provider, "us-west-1", "us-west-1", "foo");
+    region.setVnetName("vpc-foo");
+    region.setSecurityGroupId("sg-foo");
+    region.save();
+    AvailabilityZone.createOrThrow(region, "us-west-1a", "us-west-1a", "subnet-foo", "subnet-foo");
     String jsonString =
         String.format(
             "{\"code\":\"aws\",\"name\":\"test\",\"regions\":[{\"name\":\"us-west-1\""
                 + ",\"code\":\"us-west-1\", \"details\": {\"cloudInfo\": { \"aws\": {"
-                + "\"vnetName\":\"vpc-foo\","
+                + "\"vnetName\":\"vpc-foo\", \"ybImage\":\"foo\", "
                 + "\"securityGroupId\":\"sg-foo\" }}}, "
                 + "\"zones\":[{\"code\":\"us-west-1a\",\"name\":\"us-west-1a\","
                 + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}],"
                 + "\"version\": %d}",
             provider.getVersion());
+    Image image = new Image();
+    image.setArchitecture("x86_64");
+    image.setRootDeviceType("ebs");
+    image.setPlatformDetails("linux/UNIX");
+    when(mockAWSCloudImpl.describeImageOrBadRequest(any(), any(), any())).thenReturn(image);
     when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
         .thenReturn(getTestSecurityGroup(21, 24));
     Result result =
@@ -755,8 +764,13 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     cloudInfoJson.set("aws", awsCloudInfoJson);
     detailsJson.set("cloudInfo", cloudInfoJson);
     bodyJson.set("details", detailsJson);
+    ArrayNode regionsList = Json.newArray();
+    ObjectNode region = Json.newObject();
+    region.put("code", "us-west-2");
+    regionsList.add(region);
+    bodyJson.set("regions", regionsList);
     when(mockAWSCloudImpl.checkKeysExists(any())).thenReturn(false, true);
-    when(mockAWSCloudImpl.getStsClientOrBadRequest(any()))
+    when(mockAWSCloudImpl.getStsClientOrBadRequest(any(), any()))
         .thenThrow(
             new PlatformServiceException(
                 BAD_REQUEST, "AWS access and secret keys validation failed: Invalid role"),
@@ -795,9 +809,14 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     cloudInfoJson.set("aws", awsCloudInfoJson);
     detailsJson.set("cloudInfo", cloudInfoJson);
     bodyJson.set("details", detailsJson);
-    when(mockAWSCloudImpl.getStsClientOrBadRequest(any()))
+    ArrayNode regionsList = Json.newArray();
+    ObjectNode region = Json.newObject();
+    region.put("code", "us-west-2");
+    regionsList.add(region);
+    bodyJson.set("regions", regionsList);
+    when(mockAWSCloudImpl.getStsClientOrBadRequest(any(), any()))
         .thenReturn(new GetCallerIdentityResult());
-    when(mockAWSCloudImpl.getHostedZoneOrBadRequest(any(), anyString()))
+    when(mockAWSCloudImpl.getHostedZoneOrBadRequest(any(), any(), anyString()))
         .thenThrow(
             new PlatformServiceException(BAD_REQUEST, "Hosted Zone validation failed: Invalid ID"));
     Result result = assertPlatformException(() -> createProvider(bodyJson));
@@ -819,7 +838,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     bodyJson.set("details", detailsJson);
     bodyJson.put("sshPrivateKeyContent", "key_content");
     bodyJson.put("keyPairName", "test1");
-    when(mockAWSCloudImpl.getStsClientOrBadRequest(any()))
+    when(mockAWSCloudImpl.getStsClientOrBadRequest(any(), any()))
         .thenReturn(new GetCallerIdentityResult());
     when(mockAWSCloudImpl.getPrivateKeyAlgoOrBadRequest(anyString())).thenReturn("DSA");
     Result result = assertPlatformException(() -> createProvider(bodyJson));
@@ -840,7 +859,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     cloudInfoJson.set("aws", awsCloudInfoJson);
     detailsJson.set("cloudInfo", cloudInfoJson);
     bodyJson.set("details", detailsJson);
-    when(mockAWSCloudImpl.getStsClientOrBadRequest(any()))
+    when(mockAWSCloudImpl.getStsClientOrBadRequest(any(), any()))
         .thenReturn(new GetCallerIdentityResult());
     ObjectNode regionAWSCloudInfo = Json.newObject();
     regionAWSCloudInfo.put("ybImage", "image_id");

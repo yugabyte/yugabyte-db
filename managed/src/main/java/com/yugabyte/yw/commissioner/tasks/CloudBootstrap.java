@@ -296,8 +296,7 @@ public class CloudBootstrap extends CloudTaskBase {
   }
 
   public SubTaskGroup createCloudSetupTask() {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("Create Cloud setup task", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("Create Cloud setup task");
     CloudSetup.Params params = new CloudSetup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.customPayload = Json.stringify(Json.toJson(taskParams()));
@@ -309,8 +308,7 @@ public class CloudBootstrap extends CloudTaskBase {
   }
 
   public SubTaskGroup createRegionSetupTask(String regionCode, Params.PerRegionMetadata metadata) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("Create Region task", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("Create Region task");
     CloudRegionSetup.Params params = new CloudRegionSetup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.regionCode = regionCode;
@@ -325,7 +323,7 @@ public class CloudBootstrap extends CloudTaskBase {
   }
 
   public SubTaskGroup createAccessKeySetupTask(String regionCode) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("Create Access Key", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("Create Access Key");
     CloudAccessKeySetup.Params params = new CloudAccessKeySetup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.regionCode = regionCode;
@@ -346,8 +344,7 @@ public class CloudBootstrap extends CloudTaskBase {
   }
 
   public SubTaskGroup createInitializerTask() {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("Create Cloud initializer task", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("Create Cloud initializer task");
     CloudInitializer.Params params = new CloudInitializer.Params();
     params.providerUUID = taskParams().providerUUID;
     CloudInitializer task = createTask(CloudInitializer.class);

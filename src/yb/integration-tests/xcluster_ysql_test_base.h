@@ -13,13 +13,13 @@
 
 #pragma once
 
-#include "yb/integration-tests/twodc_test_base.h"
+#include "yb/integration-tests/xcluster_test_base.h"
 
 namespace yb {
 constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
 const std::string kDatabaseName = "yugabyte";
 
-class XClusterYsqlTest : public TwoDCTestBase {
+class XClusterYsqlTestBase : public XClusterTestBase {
  public:
   void SetUp() override;
   Status InitClusters(const MiniClusterOptions& opts) override;
@@ -77,7 +77,8 @@ class XClusterYsqlTest : public TwoDCTestBase {
       const client::YBTableName& table_name, int row_count, Cluster* cluster);
 
   static Result<std::vector<std::string>> BootstrapCluster(
-      const std::vector<std::shared_ptr<client::YBTable>>& tables, TwoDCTestBase::Cluster* cluster);
+      const std::vector<std::shared_ptr<client::YBTable>>& tables,
+      XClusterTestBase::Cluster* cluster);
 
  private:
   // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this

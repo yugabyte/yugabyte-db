@@ -47,22 +47,24 @@ export interface Keyspace_Table {
 export interface ICommonBackupInfo {
   backupUUID: string;
   baseBackupUUID: string;
-  completionTime: number;
-  createTime: number;
+  completionTime: string;
+  createTime: string;
   responseList: Keyspace_Table[];
   sse: boolean;
   state: Backup_States;
   storageConfigUUID: string;
   taskUUID: string;
   totalBackupSizeInBytes?: number;
-  updateTime: number;
+  updateTime: string;
   parallelism: number;
+  kmsConfigUUID?: string;
 }
 
 export interface IBackup {
   commonBackupInfo: ICommonBackupInfo;
   isFullBackup: boolean;
   hasIncrementalBackups: boolean;
+  lastIncrementalBackupTime: number;
   lastBackupState: Backup_States;
   backupType: TableType;
   category: 'YB_BACKUP_SCRIPT' | 'YB_CONTROLLER';
@@ -73,10 +75,19 @@ export interface IBackup {
   isStorageConfigPresent: boolean;
   isUniversePresent: boolean;
   onDemand: boolean;
-  updateTime: number;
-  expiryTime: number;
+  updateTime: string;
+  expiryTime: string;
+  expiryTimeUnit: string;
   fullChainSizeInBytes: number;
   kmsConfigUUID?: null | string;
+  scheduleName: string;
+}
+
+export interface IBackupEditParams {
+  backupUUID: string,
+  timeBeforeDeleteFromPresentInMillis: number;
+  storageConfigUUID: string;
+  expiryTimeUnit: string;
 }
 
 export interface IUniverse {

@@ -84,7 +84,8 @@ DocRowwiseIterator::DocRowwiseIterator(
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    RWOperationCounter* pending_op_counter)
+    RWOperationCounter* pending_op_counter,
+    boost::optional<size_t> end_referenced_key_column_index)
     : projection_(projection),
       doc_read_context_(doc_read_context),
       txn_op_context_(txn_op_context),
@@ -94,7 +95,9 @@ DocRowwiseIterator::DocRowwiseIterator(
       has_bound_key_(false),
       pending_op_(pending_op_counter),
       done_(false),
-      doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()) {
+      doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()),
+      end_referenced_key_column_index_(end_referenced_key_column_index.get_value_or(
+          doc_read_context_.schema.num_key_columns())) {
   SetupProjectionSubkeys();
 }
 
@@ -105,7 +108,8 @@ DocRowwiseIterator::DocRowwiseIterator(
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    RWOperationCounter* pending_op_counter)
+    RWOperationCounter* pending_op_counter,
+    boost::optional<size_t> end_referenced_key_column_index)
     : projection_owner_(std::move(projection)),
       projection_(*projection_owner_),
       doc_read_context_(doc_read_context),
@@ -116,7 +120,9 @@ DocRowwiseIterator::DocRowwiseIterator(
       has_bound_key_(false),
       pending_op_(pending_op_counter),
       done_(false),
-      doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()) {
+      doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()),
+      end_referenced_key_column_index_(end_referenced_key_column_index.get_value_or(
+          doc_read_context_.schema.num_key_columns())) {
   SetupProjectionSubkeys();
 }
 
@@ -127,7 +133,8 @@ DocRowwiseIterator::DocRowwiseIterator(
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    RWOperationCounter* pending_op_counter)
+    RWOperationCounter* pending_op_counter,
+    boost::optional<size_t> end_referenced_key_column_index)
     : projection_owner_(std::move(projection)),
       projection_(*projection_owner_),
       doc_read_context_holder_(std::move(doc_read_context)),
@@ -139,7 +146,9 @@ DocRowwiseIterator::DocRowwiseIterator(
       has_bound_key_(false),
       pending_op_(pending_op_counter),
       done_(false),
-      doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()) {
+      doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()),
+      end_referenced_key_column_index_(end_referenced_key_column_index.get_value_or(
+          doc_read_context_.schema.num_key_columns())) {
   SetupProjectionSubkeys();
 }
 
@@ -152,10 +161,19 @@ void DocRowwiseIterator::SetupProjectionSubkeys() {
   std::sort(projection_subkeys_.begin(), projection_subkeys_.end());
 }
 
-DocRowwiseIterator::~DocRowwiseIterator() {
+DocRowwiseIterator::~DocRowwiseIterator() = default;
+
+void DocRowwiseIterator::CheckInitOnce() {
+  if (is_initialized_) {
+    YB_LOG_EVERY_N_SECS(DFATAL, 3600)
+        << "DocRowwiseIterator(" << this << ") has been already initialized\n"
+        << GetStackTrace();
+  }
+  is_initialized_ = true;
 }
 
-Status DocRowwiseIterator::Init(TableType table_type, const Slice& sub_doc_key) {
+void DocRowwiseIterator::Init(TableType table_type, const Slice& sub_doc_key) {
+  CheckInitOnce();
   db_iter_ = CreateIntentAwareIterator(
       doc_db_,
       BloomFilterMode::DONT_USE_BLOOM_FILTER,
@@ -180,41 +198,24 @@ Status DocRowwiseIterator::Init(TableType table_type, const Slice& sub_doc_key) 
     ConfigureForYsql();
   }
   InitResult();
-
-  return Status::OK();
 }
 
-Result<bool> DocRowwiseIterator::InitScanChoices(
+void DocRowwiseIterator::InitScanChoices(
     const DocQLScanSpec& doc_spec, const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key) {
-  scan_choices_ = ScanChoices::Create(doc_read_context_.schema, doc_spec, lower_doc_key,
-    upper_doc_key, doc_spec.prefix_length());
-
-  if (scan_choices_ && scan_choices_->IsInitialPositionKnown()) {
-    // Let's not seek to the lower doc key or upper doc key. We know exactly what we want.
-    RETURN_NOT_OK(AdvanceIteratorToNextDesiredRow());
-    return true;
-  }
-
-  return false;
+  scan_choices_ =
+      ScanChoices::Create(doc_read_context_.schema, doc_spec, lower_doc_key, upper_doc_key);
 }
 
-Result<bool> DocRowwiseIterator::InitScanChoices(
+void DocRowwiseIterator::InitScanChoices(
     const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
     const KeyBytes& upper_doc_key) {
-  scan_choices_ = ScanChoices::Create(doc_read_context_.schema, doc_spec, lower_doc_key,
-    upper_doc_key, doc_spec.prefix_length());
-
-  if (scan_choices_ && scan_choices_->IsInitialPositionKnown()) {
-    // Let's not seek to the lower doc key or upper doc key. We know exactly what we want.
-    RETURN_NOT_OK(AdvanceIteratorToNextDesiredRow());
-    return true;
-  }
-
-  return false;
+  scan_choices_ =
+      ScanChoices::Create(doc_read_context_.schema, doc_spec, lower_doc_key, upper_doc_key);
 }
 
 template <class T>
 Status DocRowwiseIterator::DoInit(const T& doc_spec) {
+  CheckInitOnce();
   InitResult();
   is_forward_scan_ = doc_spec.is_forward_scan();
 
@@ -251,19 +252,19 @@ Status DocRowwiseIterator::DoInit(const T& doc_spec) {
     }
   }
 
-  if (!VERIFY_RESULT(InitScanChoices(doc_spec,
-        !is_forward_scan_ && has_bound_key_ ? bound_key_ : lower_doc_key,
-        is_forward_scan_ && has_bound_key_ ? bound_key_ : upper_doc_key))) {
-    if (is_forward_scan_) {
-      VLOG(3) << __PRETTY_FUNCTION__ << " Seeking to " << DocKey::DebugSliceToString(lower_doc_key);
-      db_iter_->Seek(lower_doc_key);
+  InitScanChoices(
+      doc_spec,
+      !is_forward_scan_ && has_bound_key_ ? bound_key_ : lower_doc_key,
+      is_forward_scan_ && has_bound_key_ ? bound_key_ : upper_doc_key);
+  if (is_forward_scan_) {
+    VLOG(3) << __PRETTY_FUNCTION__ << " Seeking to " << DocKey::DebugSliceToString(lower_doc_key);
+    db_iter_->Seek(lower_doc_key);
+  } else {
+    // TODO consider adding an operator bool to DocKey to use instead of empty() here.
+    if (!upper_doc_key.empty()) {
+      db_iter_->PrevDocKey(upper_doc_key);
     } else {
-      // TODO consider adding an operator bool to DocKey to use instead of empty() here.
-      if (!upper_doc_key.empty()) {
-        db_iter_->PrevDocKey(upper_doc_key);
-      } else {
-        db_iter_->SeekToLastDocKey();
-      }
+      db_iter_->SeekToLastDocKey();
     }
   }
 
@@ -318,7 +319,8 @@ Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow() const {
 }
 
 Result<bool> DocRowwiseIterator::HasNext() {
-  VLOG(4) << __PRETTY_FUNCTION__;
+  VLOG(4) << __PRETTY_FUNCTION__ << ", has_next_status_: " << has_next_status_ << ", row_ready_: "
+          << row_ready_ << ", done_: " << done_;
 
   // Repeated HasNext calls (without Skip/NextRow in between) should be idempotent:
   // 1. If a previous call failed we returned the same status.
@@ -406,11 +408,11 @@ Result<bool> DocRowwiseIterator::HasNext() {
         // skip all scan targets between the current target and row key (excluding row_key_ itself).
         // Update the target key and iterator and call HasNext again to try the next target.
         if (!VERIFY_RESULT(scan_choices_->SkipTargetsUpTo(row_key_))) {
-          // SkipTargetsUpTo returns false when it fails to decode the key. ValidateSystemKey()
-          // checks if current key is a known system key. This is a temporary fix until we address
-          // GH15304 (https://github.com/yugabyte/yugabyte-db/issues/15304) which will remove key
-          // decoding from ScanChoices completely.
-          RETURN_NOT_OK(ValidateSystemKey());
+          // SkipTargetsUpTo returns false when it fails to decode the key.
+          if (!VERIFY_RESULT(IsColocatedTableTombstoneKey(row_key_))) {
+            return STATUS_FORMAT(
+                Corruption, "Key $0 is not table tombstone key.", row_key_.ToDebugHexString());
+          }
           if (is_forward_scan_) {
             db_iter_->SeekOutOfSubDoc(&iter_key_);
           } else {
@@ -476,22 +478,31 @@ Status SetQLPrimaryKeyColumnValues(const Schema& schema,
                                    const size_t begin_index,
                                    const size_t column_count,
                                    const char* column_type,
+                                   const size_t end_referenced_key_column_index,
                                    DocKeyDecoder* decoder,
                                    QLTableRow* table_row) {
-  if (begin_index + column_count > schema.num_columns()) {
-    return STATUS_SUBSTITUTE(
-        Corruption,
-        "$0 primary key columns between positions $1 and $2 go beyond table columns $3",
-        column_type, begin_index, begin_index + column_count - 1, schema.num_columns());
-  }
+  const auto end_group_index = begin_index + column_count;
+  SCHECK_LE(
+      end_group_index, schema.num_columns(), InvalidArgument,
+      Format(
+          "$0 primary key columns between positions $1 and $2 go beyond table columns $3",
+          column_type, begin_index, begin_index + column_count - 1, schema.num_columns()));
+  SCHECK_LE(
+      end_referenced_key_column_index, schema.num_key_columns(), InvalidArgument,
+      Format(
+          "End reference key column index $0 is higher than num of key columns in schema $1",
+          end_referenced_key_column_index, schema.num_key_columns()));
+
   KeyEntryValue key_entry_value;
-  for (size_t i = 0, j = begin_index; i < column_count; i++, j++) {
-    const auto ql_type = schema.column(j).type();
-    QLTableColumn& column = table_row->AllocColumn(schema.column_id(j));
+  size_t col_idx = begin_index;
+  for (; col_idx < std::min(end_group_index, end_referenced_key_column_index); ++col_idx) {
+    const auto ql_type = schema.column(col_idx).type();
+    QLTableColumn& column = table_row->AllocColumn(schema.column_id(col_idx));
     RETURN_NOT_OK(decoder->DecodeKeyEntryValue(&key_entry_value));
     key_entry_value.ToQLValuePB(ql_type, &column.value);
   }
-  return decoder->ConsumeGroupEnd();
+
+  return col_idx == end_group_index ? decoder->ConsumeGroupEnd() : Status::OK();
 }
 
 } // namespace
@@ -507,6 +518,10 @@ HybridTime DocRowwiseIterator::RestartReadHt() {
     return max_seen_ht;
   }
   return HybridTime::kInvalid;
+}
+
+HybridTime DocRowwiseIterator::TEST_MaxSeenHt() {
+  return db_iter_->max_seen_ht();
 }
 
 bool DocRowwiseIterator::IsNextStaticColumn() const {
@@ -527,23 +542,26 @@ Status DocRowwiseIterator::DoNextRow(
     return STATUS(InternalError, "next row has not be prepared for reading");
   }
 
-  DocKeyDecoder decoder(row_key_);
-  RETURN_NOT_OK(decoder.DecodeCotableId());
-  RETURN_NOT_OK(decoder.DecodeColocationId());
-  bool has_hash_components = VERIFY_RESULT(decoder.DecodeHashCode());
+  if (end_referenced_key_column_index_ > 0) {
+    DocKeyDecoder decoder(row_key_);
+    RETURN_NOT_OK(decoder.DecodeCotableId());
+    RETURN_NOT_OK(decoder.DecodeColocationId());
+    bool has_hash_components = VERIFY_RESULT(decoder.DecodeHashCode());
 
-  // Populate the key column values from the doc key. The key column values in doc key were
-  // written in the same order as in the table schema (see DocKeyFromQLKey). If the range columns
-  // are present, read them also.
-  if (has_hash_components) {
-    RETURN_NOT_OK(SetQLPrimaryKeyColumnValues(
-        doc_read_context_.schema, 0, doc_read_context_.schema.num_hash_key_columns(),
-        "hash", &decoder, table_row));
-  }
-  if (!decoder.GroupEnded()) {
-    RETURN_NOT_OK(SetQLPrimaryKeyColumnValues(
-        doc_read_context_.schema, doc_read_context_.schema.num_hash_key_columns(),
-        doc_read_context_.schema.num_range_key_columns(), "range", &decoder, table_row));
+    // Populate the key column values from the doc key. The key column values in doc key were
+    // written in the same order as in the table schema (see DocKeyFromQLKey). If the range columns
+    // are present, read them also.
+    if (has_hash_components) {
+      RETURN_NOT_OK(SetQLPrimaryKeyColumnValues(
+          doc_read_context_.schema, 0, doc_read_context_.schema.num_hash_key_columns(), "hash",
+          end_referenced_key_column_index_, &decoder, table_row));
+    }
+    if (!decoder.GroupEnded()) {
+      RETURN_NOT_OK(SetQLPrimaryKeyColumnValues(
+          doc_read_context_.schema, doc_read_context_.schema.num_hash_key_columns(),
+          doc_read_context_.schema.num_range_key_columns(), "range",
+          end_referenced_key_column_index_, &decoder, table_row));
+    }
   }
 
   const auto& projection = projection_opt.get_value_or(schema());
@@ -604,21 +622,6 @@ Status DocRowwiseIterator::DoNextRow(
   return Status::OK();
 }
 
-Status DocRowwiseIterator::ValidateSystemKey() {
-  // Currently we only have Table tombstone key as system key.
-  DocKeyDecoder decoder(row_key_);
-  if (VERIFY_RESULT(decoder.DecodeColocationId())) {
-    RETURN_NOT_OK(decoder.ConsumeGroupEnd());
-
-    if (decoder.left_input().size() == 0) {
-      return Status::OK();
-    }
-  }
-
-  return STATUS_FORMAT(
-      Corruption, "Key parsing failed for non-system key $0", row_key_.ToDebugHexString());
-}
-
 bool DocRowwiseIterator::LivenessColumnExists() const {
   if (is_flat_doc_) {
     const auto& type = (*values_)[0].type();
@@ -643,20 +646,6 @@ Status DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) {
   RETURN_NOT_OK(doc_key.FullyDecodeFrom(row_key_));
   *sub_doc_key = SubDocKey(doc_key, read_time_.read);
   DVLOG(3) << "Next SubDocKey: " << sub_doc_key->ToString();
-  return Status::OK();
-}
-
-Status DocRowwiseIterator::Iterate(const YQLScanCallback& callback) {
-  QLTableRow row;
-  while (VERIFY_RESULT(HasNext())) {
-    row.Clear();
-
-    RETURN_NOT_OK(DoNextRow(boost::none, &row));
-    if (!VERIFY_RESULT(callback(row))) {
-      break;
-    }
-  }
-
   return Status::OK();
 }
 

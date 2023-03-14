@@ -89,6 +89,7 @@ set(SERVER_PROCESS_SRCS
   glog_metrics.cc
   monitored_task.cc
   pgsql_webserver_wrapper.cc
+  pprof-path-handlers_util.cc
   pprof-path-handlers.cc
   rpc_server.cc
   rpcz-path-handler.cc
@@ -110,6 +111,7 @@ target_link_libraries(server_process
   server_base_proto
   server_common
   yb_common
+  yb_ql_common
   yb_fs
   gutil
   yrpc

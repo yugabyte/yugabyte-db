@@ -366,7 +366,9 @@ class K8sInfoComponent implements SupportBundleComponent {
 
           // Get the service account permissions on the cluster (with the service account name from
           // the provider config) to a file.
-          String serviceAccountName = supportBundleUtil.getServiceAccountName(provider);
+          String serviceAccountName =
+              supportBundleUtil.getServiceAccountName(
+                  provider, kubernetesManager, kubernetesCluster.config);
           String serviceAccountDir = kubernetesClusterDir + "/service_account_info";
           supportBundleUtil.createDirectories(serviceAccountDir);
 

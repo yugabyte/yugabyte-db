@@ -71,7 +71,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     metricConfig.save();
     validMetric = metricConfig.getConfig();
     ExecutorService executor = Executors.newFixedThreadPool(1);
-    when(mockAppConfig.getString("yb.metrics.url")).thenReturn("foo://bar");
+    when(mockAppConfig.getString("yb.metrics.url")).thenReturn("foo://bar/api/v1");
     when(mockAppConfig.getString("yb.metrics.scrape_interval")).thenReturn("1s");
     when(mockPlatformExecutorFactory.createFixedExecutor(any(), anyInt(), any()))
         .thenReturn(executor);
@@ -173,7 +173,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     verify(mockApiHelper)
         .getRequest(queryUrl.capture(), anyMap(), (Map<String, String>) queryParam.capture());
 
-    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/query")));
+    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/api/v1/query")));
     assertThat(
         queryParam.getValue(), allOf(notNullValue(), IsInstanceOf.instanceOf(HashMap.class)));
 
@@ -212,7 +212,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     verify(mockApiHelper)
         .getRequest(queryUrl.capture(), anyMap(), (Map<String, String>) queryParam.capture());
 
-    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/query_range")));
+    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/api/v1/query_range")));
     assertThat(
         queryParam.getValue(), allOf(notNullValue(), IsInstanceOf.instanceOf(HashMap.class)));
 
@@ -254,7 +254,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     verify(mockApiHelper)
         .getRequest(queryUrl.capture(), anyMap(), (Map<String, String>) queryParam.capture());
 
-    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/query_range")));
+    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/api/v1/query_range")));
     assertThat(
         queryParam.getValue(), allOf(notNullValue(), IsInstanceOf.instanceOf(HashMap.class)));
 
@@ -337,7 +337,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     JsonNode result = metricQueryHelper.query(metricKeys, params);
     verify(mockApiHelper, times(2))
         .getRequest(queryUrl.capture(), anyMap(), (Map<String, String>) queryParam.capture());
-    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/query_range")));
+    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/api/v1/query_range")));
     assertThat(
         queryParam.getValue(), allOf(notNullValue(), IsInstanceOf.instanceOf(HashMap.class)));
 
@@ -370,7 +370,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     List<AlertData> alerts = metricQueryHelper.queryAlerts();
     verify(mockApiHelper).getRequest(queryUrl.capture());
 
-    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/alerts")));
+    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/api/v1/alerts")));
 
     AlertData alertData =
         AlertData.builder()
@@ -403,6 +403,6 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     }
     verify(mockApiHelper).getRequest(queryUrl.capture());
 
-    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/alerts")));
+    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/api/v1/alerts")));
   }
 }

@@ -7,6 +7,8 @@
 import React from 'react';
 import { Box } from '@material-ui/core';
 
+import { usePillStyles } from './utils';
+
 import { YBRegion } from './types';
 
 // Region cell for providers
@@ -15,18 +17,18 @@ interface RegionsCellProps {
 }
 
 export const RegionsCell = ({ regions }: RegionsCellProps) => {
+  const classes = usePillStyles();
   if (regions.length === 0) {
     return null;
   }
 
-  // TODO: Sort the region list first.
   const sortedRegions = regions.sort((a, b) => (a.code > b.code ? 1 : -1));
   const firstRegion = sortedRegions[0];
 
   return (
-    <Box display="flex">
-      {firstRegion.name}
-      {sortedRegions.length > 1 && <div>{`+ ${sortedRegions.length - 1}`}</div>}
+    <Box display="flex" gridGap="5px">
+      <span>{firstRegion.name}</span>
+      {sortedRegions.length > 1 && <div className={classes.pill}>+{sortedRegions.length - 1}</div>}
     </Box>
   );
 };

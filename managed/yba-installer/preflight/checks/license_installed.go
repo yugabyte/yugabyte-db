@@ -45,7 +45,7 @@ func (l licenseCheck) Execute() Result {
 		return res
 	}
 
-	if !pubkey.Validate(lic.Sha256Data(), lic.Signature) {
+	if !lic.Validate() {
 		res.Error = fmt.Errorf("invalid license given")
 		res.Status = StatusCritical
 		return res

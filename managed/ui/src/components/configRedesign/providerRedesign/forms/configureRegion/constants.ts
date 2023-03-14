@@ -9,6 +9,7 @@ export const K8sRegionFieldLabel = {
   CERT_ISSUER_NAME: 'Cert-Manager Issuer Name',
   KUBE_CONFIG_CONTENT: 'Kube Config',
   KUBE_DOMAIN: 'Kube Domain',
+  STORAGE_CLASSES: 'Storage Classes',
   KUBE_NAMESPACE: 'Kube Namespace',
   KUBE_POD_ADDRESS_TEMPLATE: 'Kube Pod Address Template',
   OVERRIDES: 'Overrides',
@@ -29,3 +30,8 @@ export const K8sCertIssuerTypeLabel = {
   [K8sCertIssuerType.ISSUER]: 'Issuer',
   [K8sCertIssuerType.NONE]: 'None'
 };
+
+export const OnPremRegionFieldLabel = {
+  CODE: 'Region Name',
+  ZONE_NAME: 'Zone Name'
+} as const;

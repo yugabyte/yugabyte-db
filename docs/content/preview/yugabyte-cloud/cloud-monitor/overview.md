@@ -22,7 +22,7 @@ Use these metrics to monitor the performance of your cluster and to determine wh
 
 You can enable alerts for some performance metrics. Refer to [Alerts](../cloud-alerts/).
 
-![Cluster Performance Metrics](/images/yb-cloud/cloud-clusters-metrics.png)
+![Cluster Performance Metrics](/images/yb-cloud/managed-monitor-performance.png)
 
 You can show metrics by region and by node, for the past hour, 6 hours, 12 hours, 24 hours, or 7 days.
 
@@ -43,11 +43,11 @@ The following table describes the metrics available on the **Overview**.
 
 ## Performance metrics
 
-To choose the metrics to display on the **Performance** tab, click **Metrics** and then click **Options**. You can display up to four metrics at a time. You can additionally view the metrics for specific nodes.
+To choose the metrics to display on the **Performance** tab, click **Metrics** and then click **Add Charts**. To rearrange the metrics, click **Add Charts** and **Reorder Charts**, then drag the chart to a new position. You can additionally view the metrics for specific nodes.
 
-The **Performance** tab provides the following metrics.
+The **Performance** tab provides the following metrics in addition to the Overview metrics.
 
-### YSQL
+### YSQL Ops
 
 | Graph | Description | Use |
 | :---| :--- | :--- |
@@ -55,7 +55,7 @@ The **Performance** tab provides the following metrics.
 | YSQL Average Latency (ms) | Average time (in milliseconds) of DELETE, INSERT, SELECT, and UPDATE statements through the YSQL API. | When latency is close to or higher than your application SLA, it may be a cause for concern. The overall latency metric is less helpful for troubleshooting specific queries. It is recommended that the application track query latency. There could be reasons your traffic experiences spikes in latency, such as when ad-hoc queries such as count(*) are executed. |
 | YSQL Connections | Cumulative number of connections to YSQL backend for all nodes. This includes various background connections, such as checkpointer, as opposed to an active connections count that only includes the client backend connections. | By default, you can have up to 10 simultaneous connections per vCPU. An [alert](../cloud-alerts/) is issued when the number of connections exceeds 60% (Warning) and 95% (Severe) of the limit. |
 
-### YCQL
+### YCQL Ops
 
 | Graph | Description | Use |
 | :---| :--- | :--- |
@@ -64,7 +64,7 @@ The **Performance** tab provides the following metrics.
 | YCQL Remote Operations/Sec | The number of remote read and write requests. Remote requests are rerouted internally to a different node for executing the operation. | If an application is using a driver that supports local query routing optimization and prepared statements, the expected value for this is close to zero. If using a YCQL driver or not using prepared statements, expect to see a relatively even split between local and remote operations (for example, ~66% of requests to be remote for a 3-node cluster). |
 <!--| YCQL Average Latency (P99) | The average time (in milliseconds) of the top 99% of DELETE, INSERT, SELECT, and UPDATE transactions, as well as other statements through the YCQL API. | If this value is significantly higher than expected, then it might be a cause for concern. You should check whether or not there are consistent spikes in latency. |-->
 
-### Node / Resources
+### Infrastructure
 
 | Graph | Description | Use |
 | :---| :--- | :--- |
@@ -93,7 +93,7 @@ The **Performance** tab provides the following metrics.
 | Transaction | The number of transactions. | This value depends on the application or activity. Because transactions can have batched statements, no specific guidance is possible for this metric. |
 | Inbound RPC Connections Alive | The count of current connections at the CQL API level. | If this spikes to a number much higher than average, you should consider that there may be an active DDoS or a security incident. |-->
 
-### YB-Tablet Server
+### Tablet Server
 
 The [YugabyteDB Tablet Server](../../../architecture/concepts/yb-tserver/) (YB-TServer) is responsible for the actual I/O of client requests in a YugabyteDB cluster. Each node in the cluster has a YB-TServer, and each one hosts one or more tablet peers.
 
@@ -121,7 +121,8 @@ The [YugabyteDB Tablet Server](../../../architecture/concepts/yb-tserver/) (YB-T
 | YB-TServer Spinlock Contention Time (s) | Spinlock is a measurement of processes waiting for a server resource and using a CPU to check and wait repeatedly until the resource is available. | This value can become very high on large computers with many cores.<br>The flag `tserver_tcmalloc_max_total_thread_cache_bytes` is by default 256 MB, and this is typically sufficient for 16-core computers with less than 32 GB of memory. For larger computers, it is recommended to increase this to 1 GB or 2 GB.<br>You should monitor memory usage, as this requires more memory. |
 | YB-TServer CPU Usage (%) | The percentage of CPU use being consumed by the tablet server Yugabyte processes, as well as other processes, if any. In general, CPU usage is a measure of all processes running on the server. | High CPU use could indicate a problem and may require debugging by Yugabyte Support. |
 | YB-TServer WAL Bytes (MB/Sec) | The number of bytes read from and written to the WAL after the tablet start. | A low-level metric related to the storage layer. This can help debug certain latency or throughput issues by isolating where the bottleneck happens. An increase in reads indicates that followers are falling behind and are constantly trying to catch up.<br>In an xCluster replication topology, this can indicate replication latency. |
-<!--| WAL Bytes Written/Sec/Node | The number of bytes written to the write-ahead logging (WAL) after the tablet start. | A low-level metric related to the storage layer. This can help debug certain latency or throughput issues by isolating where the bottleneck happens. |-->
+<!--| YB-TServer Replication Lag (ms) | The replication latency. | |
+| WAL Bytes Written/Sec/Node | The number of bytes written to the write-ahead logging (WAL) after the tablet start. | A low-level metric related to the storage layer. This can help debug certain latency or throughput issues by isolating where the bottleneck happens. |-->
 <!--| Reactor Delays (ms) | The number of microseconds the incoming RPC requests spend in the worker queue before the beginning of processing.<br>Note that Reactor is a software implementation of a ring queue. | If this metric spikes or remains at a high level, it indicates a network issue or that the queues are full. |-->
 <!--| WAL Stats / Node | WAL bytes read: the size (in bytes) of reads from the WAL after the tablet start.<br>WAL cache size: the total per-tablet size of consensus entries kept in memory. The log cache attempts to keep all entries which have not yet been replicated to all followers in memory, but if the total size of those entries exceeds the configured limit in an individual tablet, the oldest is evicted. | If the log cache size is greater than zero, the followers are behind. You should issue an alert if the value spikes or remains above zero for an extended period of time. |
 | WAL Cache Num Ops / Node | The number of times the log cache is accessed. | Outside of an xCluster replication deployment, a number greater than zero means some of the followers are behind. |-->
@@ -129,7 +130,7 @@ The [YugabyteDB Tablet Server](../../../architecture/concepts/yb-tserver/) (YB-T
 | CPU Util Secs / Sec  | The tablet server CPU use. | The tablet server should not use the full allocation of CPUs. For example, on a 4-core computer, three cores are used by the tablet server, but if the usage is usually close to three, you should increase the number of available CPUs. |
 | Inbound RPC Connections Alive | The count of active connections to YB-TServers. | |-->
 
-### YB-Master server
+### Master Server
 
 The [YugabyteDB Master Server](../../../architecture/concepts/yb-master/) (YB-Master) hosts system metadata, records about tables in the system and locations of their tablets, users, roles, permissions, and so on. YB-Masters are also responsible for coordinating background operations.
 

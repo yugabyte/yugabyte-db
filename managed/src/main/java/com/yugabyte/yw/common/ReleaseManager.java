@@ -809,7 +809,7 @@ public class ReleaseManager {
               .sorted(releaseNameComparator)
               .findFirst()
               .get();
-      if (latestRelease.isNull() || latestRelease == null) {
+      if (latestRelease == null || latestRelease.isNull()) {
         throw new PlatformServiceException(
             Status.BAD_REQUEST, "Could not find latest release in response JSON.");
       }

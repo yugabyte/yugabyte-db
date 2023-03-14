@@ -6,7 +6,6 @@ import clsx from 'clsx';
 
 import { fetchUniversesList } from '../../actions/xClusterReplication';
 import {
-  convertToLocalTime,
   findUniverseName,
   MaxAcceptableLag,
   CurrentReplicationLag
@@ -16,6 +15,7 @@ import { XClusterConfig } from './XClusterTypes';
 import RightArrow from './ArrowIcon';
 import { ReplicationParticipantCard } from './ReplicationParticipantCard';
 import { XClusterConfigStatus } from './constants';
+import { ybFormatDate } from '../../redesign/helpers/DateUtils';
 
 import styles from './XClusterConfigCard.module.scss';
 
@@ -51,11 +51,11 @@ export const XClusterConfigCard = ({
           <div className={styles.metaInfoContainer}>
             <div className={styles.metaInfo}>
               <div className={styles.label}>Started</div>
-              <div>{convertToLocalTime(xClusterConfig.createTime, currentUserTimezone)}</div>
+              <div>{ybFormatDate(xClusterConfig.createTime)}</div>
             </div>
             <div className={styles.metaInfo}>
               <div className={styles.label}>Last modified</div>
-              <div>{convertToLocalTime(xClusterConfig.modifyTime, currentUserTimezone)}</div>
+              <div>{ybFormatDate(xClusterConfig.modifyTime)}</div>
             </div>
           </div>
           <div className={styles.status}>

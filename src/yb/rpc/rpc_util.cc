@@ -13,10 +13,17 @@
 
 #include "yb/rpc/rpc_util.h"
 
+#include "yb/rpc/messenger.h"
+
 #include "yb/util/size_literals.h"
 
 namespace yb {
 namespace rpc {
+
+void MessengerShutdownDeleter::operator()(Messenger* messenger) const {
+  messenger->Shutdown();
+  delete messenger;
+}
 
 Slice GetGlobalSkipBuffer() {
 #if (!defined(THREAD_SANITIZER))

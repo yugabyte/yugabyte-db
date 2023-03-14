@@ -50,8 +50,9 @@ public class CustomerLicense extends Model {
   @ApiModelProperty(
       value = "Creation date of license",
       required = false,
-      accessMode = AccessMode.READ_ONLY)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+      accessMode = AccessMode.READ_ONLY,
+      example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @Getter
   public Date creationDate;
 

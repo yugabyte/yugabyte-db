@@ -458,9 +458,33 @@ public class AsyncYBClient implements AutoCloseable {
                                                        long index, byte[] key,
                                                        int write_id, long time,
                                                        boolean needSchemaInfo) {
+    return getChangesCDCSDK(table, streamId, tabletId, term, index, key, write_id, time,
+                            needSchemaInfo, null, new String(""));
+  }
+
+  /**
+   * Get changes for a given tablet and stream.
+   * @param table the table to get changes for.
+   * @param streamId the stream to get changes for.
+   * @param tabletId the tablet to get changes for.
+   * @param term the leader term to start getting changes for.
+   * @param index the log index to start get changes for.
+   * @param key the key to start get changes for.
+   * @param time the time to start get changes for.
+   * @param needSchemaInfo request schema from the response.
+   * @param explicitCheckpoint checkpoint works in explicit mode.
+   * @return a deferred object for the response from server.
+   */
+  public Deferred<GetChangesResponse> getChangesCDCSDK(YBTable table, String streamId,
+                                                       String tabletId, long term,
+                                                       long index, byte[] key,
+                                                       int write_id, long time,
+                                                       boolean needSchemaInfo,
+                                                       CdcSdkCheckpoint explicitCheckpoint,
+                                                       String tableId) {
     checkIsClosed();
     GetChangesRequest rpc = new GetChangesRequest(table, streamId, tabletId, term,
-      index, key, write_id, time, needSchemaInfo);
+      index, key, write_id, time, needSchemaInfo, explicitCheckpoint, tableId);
     Deferred<GetChangesResponse> d = rpc.getDeferred();
     d.addErrback(new Callback<Exception, Exception>() {
       @Override
@@ -541,6 +565,17 @@ public class AsyncYBClient implements AutoCloseable {
     return d;
   }
 
+  public Deferred<GetCheckpointForColocatedTableResponse>
+    getCheckpointForColocatedTableResponse(YBTable table, String streamId, String tabletId) {
+    checkIsClosed();
+    GetCheckpointForColocatedTableRequest rpc =
+      new GetCheckpointForColocatedTableRequest(table, streamId, tabletId);
+    Deferred<GetCheckpointForColocatedTableResponse> d = rpc.getDeferred();
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    sendRpcToTablet(rpc);
+    return d;
+  }
+
   public Deferred<SetCheckpointResponse> setCheckpointWithBootstrap(YBTable table,
                                                                     String streamId,
                                                                     String tabletId,
@@ -552,6 +587,39 @@ public class AsyncYBClient implements AutoCloseable {
     SetCheckpointRequest rpc = new SetCheckpointRequest(table, streamId,
         tabletId, term, index, initialCheckpoint, bootstrap);
     Deferred<SetCheckpointResponse> d = rpc.getDeferred();
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    sendRpcToTablet(rpc);
+    return d;
+  }
+
+  /**
+   * Get the auto flag config for servers.
+   * @return a deferred object that yields auto flag config for each server.
+   */
+  public Deferred<GetAutoFlagsConfigResponse> autoFlagsConfig() {
+    checkIsClosed();
+    GetAutoFlagsConfigRequest rpc = new GetAutoFlagsConfigRequest(this.masterTable);
+    Deferred<GetAutoFlagsConfigResponse> d = rpc.getDeferred();
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    sendRpcToTablet(rpc);
+    return d;
+  }
+
+  /**
+   * Promotes the auto flag config for each servers.
+   * @param maxFlagClass class category up to which auto flag should be promoted.
+   * @param promoteNonRuntimeFlags promotes auto flag non-runtime flags if true.
+   * @param force promotes auto flag forcefully if true.
+   * @return a deferred object that yields the response to the promote autoFlag config from server.
+   */
+  public Deferred<PromoteAutoFlagsResponse> getPromoteAutoFlagsResponse(
+      String maxFlagClass,
+      boolean promoteNonRuntimeFlags,
+      boolean force) {
+    checkIsClosed();
+    PromoteAutoFlagsRequest rpc = new PromoteAutoFlagsRequest(this.masterTable, maxFlagClass,
+        promoteNonRuntimeFlags, force);
+    Deferred<PromoteAutoFlagsResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
     return d;
@@ -1704,6 +1772,10 @@ public class AsyncYBClient implements AutoCloseable {
         request instanceof SplitTabletRequest ||
         request instanceof FlushTableRequest) {
       tablet = getFirstTablet(tableId);
+    }
+    if (request instanceof GetCheckpointForColocatedTableRequest) {
+      String tabletId = ((GetCheckpointForColocatedTableRequest)request).getTabletId();
+      tablet = getTablet(tableId, tabletId);
     }
     // Set the propagated timestamp so that the next time we send a message to
     // the server the message includes the last propagated timestamp.

@@ -10,7 +10,9 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
@@ -53,10 +55,14 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.Before;
 import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetAutoFlagsConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
+import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
 import org.yb.client.IsServerReadyResponse;
+import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.YBClient;
 
 public abstract class UpgradeTaskTest extends CommissionerBaseTest {
@@ -200,6 +206,16 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           .thenReturn(HostAndPort.fromString("10.0.0.2").withDefaultPort(11));
       IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
       when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);
+      GetAutoFlagsConfigResponse resp =
+          new GetAutoFlagsConfigResponse(
+              0, null, GetAutoFlagsConfigResponsePB.getDefaultInstance());
+      lenient().when(mockClient.autoFlagsConfig()).thenReturn(resp);
+      lenient().when(mockClient.ping(anyString(), anyInt())).thenReturn(true);
+      lenient()
+          .when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
+          .thenReturn(
+              new PromoteAutoFlagsResponse(
+                  0, "uuid", PromoteAutoFlagsResponsePB.getDefaultInstance()));
       lenient().when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       lenient()
           .when(mockClient.changeMasterClusterConfig(any()))

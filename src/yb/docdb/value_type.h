@@ -305,5 +305,9 @@ inline bool IsMergeRecord(const Slice& value) {
   return DecodeKeyEntryType(value) == KeyEntryType::kMergeFlags;
 }
 
+inline bool IsColumnId(KeyEntryType type) {
+  return type == KeyEntryType::kColumnId || type == KeyEntryType::kSystemColumnId;
+}
+
 }  // namespace docdb
 }  // namespace yb

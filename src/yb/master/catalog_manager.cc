@@ -82,6 +82,7 @@
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
 #include "yb/common/ql_type.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
@@ -864,6 +865,47 @@ void InitializeTabletLocationsPB(
 }  // anonymous namespace
 
 ////////////////////////////////////////////////////////////
+// Snapshot Loader
+////////////////////////////////////////////////////////////
+
+class SnapshotLoader : public Visitor<PersistentSnapshotInfo> {
+ public:
+  explicit SnapshotLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
+
+  Status Visit(const SnapshotId& snapshot_id, const SysSnapshotEntryPB& metadata) override {
+    if (TryFullyDecodeTxnSnapshotId(snapshot_id)) {
+      // Transaction aware snapshots should be already loaded.
+      return Status::OK();
+    }
+    return VisitNonTransactionAwareSnapshot(snapshot_id, metadata);
+  }
+
+  Status VisitNonTransactionAwareSnapshot(
+      const SnapshotId& snapshot_id, const SysSnapshotEntryPB& metadata) {
+    // Setup the snapshot info.
+    auto snapshot_info = make_scoped_refptr<SnapshotInfo>(snapshot_id);
+    auto l = snapshot_info->LockForWrite();
+    l.mutable_data()->pb.CopyFrom(metadata);
+
+    // Add the snapshot to the IDs map (if the snapshot is not deleted).
+    auto emplace_result =
+        catalog_manager_->non_txn_snapshot_ids_map_.emplace(snapshot_id, std::move(snapshot_info));
+    CHECK(emplace_result.second) << "Snapshot already exists: " << snapshot_id;
+
+    LOG(INFO) << "Loaded metadata for snapshot (id=" << snapshot_id
+              << "): " << emplace_result.first->second->ToString() << ": "
+              << metadata.ShortDebugString();
+    l.Commit();
+    return Status::OK();
+  }
+
+ private:
+  CatalogManager* catalog_manager_;
+
+  DISALLOW_COPY_AND_ASSIGN(SnapshotLoader);
+};
+
+////////////////////////////////////////////////////////////
 // CatalogManager
 ////////////////////////////////////////////////////////////
 
@@ -899,7 +941,8 @@ CatalogManager::CatalogManager(Master* master)
           std::make_unique<XClusterSafeTimeService>(master, this, master_->metric_registry())),
       tablespace_manager_(std::make_shared<YsqlTablespaceManager>(nullptr, nullptr)),
       tablespace_bg_task_running_(false),
-      tablet_split_manager_(this, this, this, master_->metric_entity()) {
+      tablet_split_manager_(this, this, this, master_->metric_entity()),
+      snapshot_coordinator_(this, this) {
   InitMasterFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
                .set_max_threads(1)
@@ -987,11 +1030,6 @@ Status CatalogManager::Init() {
   Started();
 
   return Status::OK();
-}
-
-Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
-                                            ChangeEncryptionInfoResponsePB* resp) {
-  return STATUS(InvalidCommand, "Command only supported in enterprise build.");
 }
 
 Status CatalogManager::ElectedAsLeaderCb() {
@@ -1213,6 +1251,10 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
           cluster_config_.reset();
           RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
 
+          LOG_WITH_PREFIX(INFO) << "Re-initializing xcluster config";
+          xcluster_config_.reset();
+          RETURN_NOT_OK(PrepareDefaultXClusterConfig(term));
+
           LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
           RETURN_NOT_OK(InitDbFinished(Status::OK(), term));
           RETURN_NOT_OK(RunLoaders(term));
@@ -1238,6 +1280,8 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
   // If this is the first time we start up, we have no config information as default. We write an
   // empty version 0.
   RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
+
+  RETURN_NOT_OK(PrepareDefaultXClusterConfig(term));
 
   permissions_manager_->BuildRecursiveRoles();
 
@@ -1319,6 +1363,9 @@ Status CatalogManager::RunLoaders(int64_t term) {
   // Clear the current cluster config.
   cluster_config_.reset();
 
+  // Clear the current xcluster config.
+  xcluster_config_.reset();
+
   // Clear redis config mapping.
   redis_config_map_.clear();
 
@@ -1363,10 +1410,24 @@ Status CatalogManager::RunLoaders(int64_t term) {
   RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration", &state, term));
   RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config", &state, term));
   RETURN_NOT_OK(Load<XClusterSafeTimeLoader>("XCluster safe time", &state, term));
+  RETURN_NOT_OK(Load<XClusterConfigLoader>("xcluster configuration", &state, term));
 
   if (!transaction_tables_config_) {
     RETURN_NOT_OK(InitializeTransactionTablesConfig(term));
   }
+
+  // Clear the snapshots.
+  non_txn_snapshot_ids_map_.clear();
+
+  ClearXReplState();
+
+  LOG_WITH_FUNC(INFO) << "Loading snapshots into memory.";
+  unique_ptr<SnapshotLoader> snapshot_loader(new SnapshotLoader(this));
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Visit(snapshot_loader.get()), "Failed while visiting snapshots in sys catalog");
+
+  RETURN_NOT_OK(LoadXReplStream());
+  RETURN_NOT_OK(LoadUniverseReplication());
 
   return Status::OK();
 }
@@ -1442,6 +1503,31 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
 
   // Write to sys_catalog and in memory.
   RETURN_NOT_OK(sys_catalog_->Upsert(term, cluster_config_.get()));
+  l.Commit();
+
+  return Status::OK();
+}
+
+Status CatalogManager::PrepareDefaultXClusterConfig(int64_t term) {
+  if (xcluster_config_) {
+    LOG_WITH_PREFIX(INFO)
+        << "Cluster configuration has already been set up, skipping re-initialization.";
+    return Status::OK();
+  }
+
+  // Create default.
+  SysXClusterConfigEntryPB config;
+  config.set_version(0);
+
+  // Create in memory object.
+  xcluster_config_ = std::make_shared<XClusterConfigInfo>();
+
+  // Prepare write.
+  auto l = xcluster_config_->LockForWrite();
+  l.mutable_data()->pb = std::move(config);
+
+  // Write to sys_catalog and in memory.
+  RETURN_NOT_OK(sys_catalog_->Upsert(term, xcluster_config_.get()));
   l.Commit();
 
   return Status::OK();
@@ -1998,7 +2084,7 @@ bool CatalogManager::StartShutdown() {
 }
 
 void CatalogManager::CompleteShutdown() {
-  // Shutdown the Catalog Manager background thread (load balancing).
+  snapshot_coordinator_.Shutdown();
   refresh_yql_partitions_task_.CompleteShutdown();
   refresh_ysql_tablespace_info_task_.CompleteShutdown();
   cdc_parent_tablet_deletion_task_.CompleteShutdown();
@@ -3071,7 +3157,7 @@ Status CatalogManager::ValidateSplitCandidateTableCdc(const TableInfo& table) co
 Status CatalogManager::ValidateSplitCandidateTableCdcUnlocked(const TableInfo& table) const {
   // Check if this table is part of a cdc stream.
   if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_replicated_tables) &&
-      IsCdcEnabledUnlocked(table)) {
+      IsXClusterEnabledUnlocked(table)) {
     return STATUS_FORMAT(
         NotSupported,
         "Tablet splitting is not supported for tables that are a part of"
@@ -4526,6 +4612,10 @@ Status CatalogManager::AddTransactionStatusTablet(
     table = VERIFY_RESULT(FindTableByIdUnlocked(req->table_id()));
     write_lock = table->LockForWrite();
 
+    SCHECK(
+        !IsXClusterEnabledUnlocked(*table), NotSupported,
+        "Cannot add transaction status tablet to transaction table under xCluster replication");
+
     Schema schema;
     RETURN_NOT_OK(table->GetSchema(&schema));
 
@@ -5031,6 +5121,7 @@ std::string CatalogManager::GenerateIdUnlocked(
       case SysRowEntryType::DDL_LOG_ENTRY: FALLTHROUGH_INTENDED;
       case SysRowEntryType::SNAPSHOT_RESTORATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::XCLUSTER_SAFE_TIME: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::XCLUSTER_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         LOG(DFATAL) << "Invalid id type: " << *entity_type;
         return id;
@@ -5429,11 +5520,12 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
       }
   }
 
-  if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && IsCdcEnabled(*table)) {
-    return STATUS(NotSupported,
-                  "Cannot truncate a table in replication.",
-                  table_id,
-                  MasterError(MasterErrorPB::INVALID_REQUEST));
+  if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && IsXClusterEnabled(*table)) {
+      return STATUS(
+          NotSupported,
+          "Cannot truncate a table in replication.",
+          table_id,
+          MasterError(MasterErrorPB::INVALID_REQUEST));
   }
   {
     SharedLock lock(mutex_);
@@ -5792,7 +5884,7 @@ Status CatalogManager::DeleteTable(
   }
 
   // For now, only disable dropping YCQL tables under xCluster replication.
-  bool result = table->GetTableType() == YQL_TABLE_TYPE && IsCdcEnabled(*table);
+  bool result = table->GetTableType() == YQL_TABLE_TYPE && IsXClusterEnabled(*table);
   if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && result) {
     return STATUS(NotSupported,
                   "Cannot delete a table in replication.",
@@ -6318,7 +6410,9 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
       auto indexed_table = GetTableInfo(GetIndexedTableId(l->pb));
       if (indexed_table != nullptr &&
           indexed_table->AttachedYCQLIndexDeletionInProgress(req->table_id())) {
-        resp->set_done(true);
+        LOG(INFO) << "Servicing IsDeleteTableDone request for index id " << req->table_id()
+                  << " with backfill: deleting in state " << l->state_name();
+        resp->set_done(l->is_deleted() || l->is_hidden());
         return Status::OK();
       }
     }
@@ -6649,9 +6743,10 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     SchemaToPB(new_schema, table_pb.mutable_schema());
   }
 
-
-  if (GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter) &&
-      [&]() {SharedLock lock(mutex_); return IsTableCdcConsumer(*table);}()) {
+  if (GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter) && [&]() {
+        SharedLock lock(mutex_);
+        return IsTableXClusterConsumer(*table);
+      }()) {
     // If we're waiting for a Schema because we saw the a replication source with a change,
     // ensure this alter is compatible with what we're expecting.
     RETURN_NOT_OK(ValidateNewSchemaWithCdc(*table, new_schema));
@@ -8792,7 +8887,7 @@ Status CatalogManager::CheckIfDatabaseHasReplication(const scoped_refptr<Namespa
     if (table->namespace_id() != database->id()) {
       continue;
     }
-    if (IsCdcEnabledUnlocked(*table)) {
+    if (IsXClusterEnabledUnlocked(*table)) {
       LOG(ERROR) << "Error deleting database: " << database->id() << ", table: " << table->id()
                  << " is under replication"
                  << ". Cannot delete a database that contains tables under replication.";
@@ -9714,7 +9809,7 @@ void CatalogManager::DisableTabletSplittingInternal(
   tablet_split_manager_.DisableSplittingFor(duration, feature);
 }
 
-void CatalogManager::ReenableTabletSplittingInternal(const std::string& feature) {
+void CatalogManager::ReenableTabletSplitting(const std::string& feature) {
   tablet_split_manager_.ReenableSplittingFor(feature);
 }
 
@@ -9743,32 +9838,6 @@ Status CatalogManager::IsTabletSplittingComplete(
   resp->set_is_tablet_splitting_complete(
       IsTabletSplittingCompleteInternal(req->wait_for_parent_deletion(), rpc->GetClientDeadline()));
   return Status::OK();
-}
-
-// For non-enterprise builds, this is a no-op.
-Status CatalogManager::DeleteCDCStreamsForTable(const TableId& table) {
-  return Status::OK();
-}
-
-Status CatalogManager::DeleteCDCStreamsForTables(const vector<TableId>& table_ids) {
-  return Status::OK();
-}
-
-Status CatalogManager::DeleteCDCStreamsMetadataForTable(const TableId& table) {
-  return Status::OK();
-}
-
-Status CatalogManager::DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids) {
-  return Status::OK();
-}
-
-Status CatalogManager::AddNewTableToCDCDKStreamsMetadata(
-    const TableId& table_id, const NamespaceId& ns_id) {
-  return Status::OK();
-}
-
-bool CatalogManager::CDCStreamExistsUnlocked(const CDCStreamId& stream_id) {
-  return false;
 }
 
 Result<uint64_t> CatalogManager::IncrementYsqlCatalogVersion() {
@@ -10454,7 +10523,7 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
         });
 
         if (!tablets_data.back().hide_only &&
-            (IsTableCdcProducer(*tablet->table()) || IsTablePartOfCDCSDK(*tablet->table()))) {
+            (IsTableXClusterProducer(*tablet->table()) || IsTablePartOfCDCSDK(*tablet->table()))) {
           // For xCluster and CDCSDK , the only time we try to delete a tablet that is part of an
           // active stream is during tablet splitting, where we need to keep the parent tablet
           // around until we have replicated its SPLIT_OP record.
@@ -10535,7 +10604,7 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
     hidden_tablets_.insert(hidden_tablets_.end(), marked_as_hidden.begin(), marked_as_hidden.end());
     // Also keep track of all tablets that were hid due to xCluster.
     for (const auto& tablet : marked_as_hidden) {
-      bool is_table_cdc_producer = IsTableCdcProducer(*tablet->table());
+      bool is_table_cdc_producer = IsTableXClusterProducer(*tablet->table());
       bool is_table_part_of_cdcsdk = IsTablePartOfCDCSDK(*tablet->table());
       if (is_table_cdc_producer || is_table_part_of_cdcsdk) {
         auto tablet_lock = tablet->LockForRead();
@@ -10856,7 +10925,10 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
 
   // With Replication Enabled, verify that we've finished applying the New Schema.
   // This may need to be refactored when we support Replication + Active Index Backfill in #7613.
-  if ([&]() {SharedLock lock(mutex_); return IsTableCdcConsumer(*table);}()) {
+  if ([&]() {
+        SharedLock lock(mutex_);
+        return IsTableXClusterConsumer(*table);
+      }()) {
     // If we're waiting for a Schema because we saw the a replication source with a change,
     // resume replication now that the alter is complete.
     RETURN_NOT_OK(ResumeCdcAfterNewSchema(*table, version));
@@ -12041,6 +12113,13 @@ Status CatalogManager::SetClusterConfig(
   return Status::OK();
 }
 
+Result<uint32_t> CatalogManager::GetXClusterConfigVersion() const {
+  auto xcluster_config = XClusterConfig();
+  SCHECK(xcluster_config, IllegalState, "XCluster config is not initialized");
+  auto l = xcluster_config->LockForRead();
+  return l->pb.version();
+}
+
 Status CatalogManager::ValidateReplicationInfo(
     const ValidateReplicationInfoRequestPB* req, ValidateReplicationInfoResponsePB* resp) {
   TSDescriptorVector all_ts_descs;
@@ -12244,11 +12323,6 @@ int64_t CatalogManager::GetNumRelevantReplicas(const BlacklistPB& blacklist, boo
   }
 
   return res;
-}
-
-Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
-                                             TSHeartbeatResponsePB* resp) {
-  return Status::OK();
 }
 
 Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp) {
@@ -12737,6 +12811,10 @@ std::shared_ptr<ClusterConfigInfo> CatalogManager::ClusterConfig() const {
   return cluster_config_;
 }
 
+std::shared_ptr<XClusterConfigInfo> CatalogManager::XClusterConfig() const {
+  return xcluster_config_;
+}
+
 Status CatalogManager::TryRemoveFromTablegroup(const TableId& table_id) {
   LockGuard lock(mutex_);
   auto tablegroup = tablegroup_manager_->FindByTable(table_id);
@@ -12902,12 +12980,6 @@ AsyncTaskThrottlerBase* CatalogManager::GetDeleteReplicaTaskThrottler(
   return delete_replica_task_throttler_per_ts_.at(ts_uuid).get();
 }
 
-Status CatalogManager::ProcessTabletReplicationStatus(
-    const TabletReplicationStatusPB& replication_state) {
-  // Only implemented on the enterprise catalog manager.
-  return Status::OK();
-}
-
 Status CatalogManager::SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation) {
   auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
   operation->SetTablet(tablet);
@@ -13025,6 +13097,16 @@ Status CatalogManager::GetStatefulServiceLocation(
   service_info->mutable_cloud_info()->CopyFrom(registration.cloud_info());
 
   return Status::OK();
+}
+
+void CatalogManager::Started() {
+  snapshot_coordinator_.Start();
+}
+
+void CatalogManager::SysCatalogLoaded(int64_t term) {
+  StartXClusterSafeTimeServiceIfStopped();
+
+  snapshot_coordinator_.SysCatalogLoaded(term);
 }
 
 }  // namespace master

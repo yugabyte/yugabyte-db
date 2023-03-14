@@ -240,6 +240,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.QueuedForDeletion);
     customerConfig.setState(ConfigState.QueuedForDeletion);
+    customerConfig.save();
     List<String> backupLocations = new ArrayList<>();
     backupLocations.add(backup.getBackupInfo().storageLocation);
     when(mockBackupUtil.getBackupLocations(backup)).thenReturn(backupLocations);
@@ -262,6 +263,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.Completed);
     customerConfig.setState(ConfigState.QueuedForDeletion);
+    customerConfig.save();
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
@@ -281,6 +283,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
         .when(mockBackupUtil)
         .validateStorageConfig(any());
     customerConfig.setState(ConfigState.QueuedForDeletion);
+    customerConfig.save();
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,

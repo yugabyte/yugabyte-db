@@ -191,12 +191,4 @@ Expect to see the read and write load on the [tablet servers page](http://localh
 
 When complete, the load is handled exclusively by the preferred region.
 
-## Clean up
-
-You can destroy the local universe by executing the following commands:
-
-```sh
-./bin/yugabyted destroy --base_dir=/tmp/ybd1
-./bin/yugabyted destroy --base_dir=/tmp/ybd2
-./bin/yugabyted destroy --base_dir=/tmp/ybd3
-```
+{{% explore-cleanup-local %}}

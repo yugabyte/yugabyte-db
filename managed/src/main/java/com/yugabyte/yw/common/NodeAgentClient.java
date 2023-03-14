@@ -10,6 +10,7 @@ import com.google.inject.Inject;
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.NodeAgent;
@@ -387,6 +388,14 @@ public class NodeAgentClient {
 
   public boolean isClientEnabled(Provider provider) {
     return confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient);
+  }
+
+  public boolean isAnsibleOffloadingEnabled(Provider provider, String nodeAgentVersion) {
+    String supportedVersion =
+        confGetter.getGlobalConf(GlobalConfKeys.ansibleOffloadSupportedVersion);
+    return isClientEnabled(provider)
+        && confGetter.getConfForScope(provider, ProviderConfKeys.enableAnsibleOffloading)
+        && Util.compareYbVersions(nodeAgentVersion, supportedVersion) >= 0;
   }
 
   private ManagedChannel getManagedChannel(NodeAgent nodeAgent, boolean enableTls) {
