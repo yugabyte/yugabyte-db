@@ -50,7 +50,7 @@ To view a table of per-node statistics for the universe, navigate to the [tablet
 
 Notice that both reads and writes are approximately the same across all nodes, indicating uniform load across the nodes.
 
-To view the latency and throughput on the universe while the workload is running, navigate to the [simulation application UI](http://127.0.0.1:8000/).
+To view the latency and throughput on the universe while the workload is running, navigate to the [simulation application UI](http://127.0.0.1:8080/).
 
 ![Latency and throughput with 3 nodes](/images/ce/simulation-graph.png)
 
@@ -76,7 +76,7 @@ The universe automatically lets the client know to use the newly-added node for 
 
 ![Read and write IOPS with 4 nodes](/images/ce/add-node-ybtserver.png)
 
-Navigate to the [simulation application UI](http://127.0.0.1:8000/) to see the new node being added to the network diagram. You can also notice a slight spike and drop in the latency and throughput when the node is added, and then both return to normal, as shown in the following illustration:
+Navigate to the [simulation application UI](http://127.0.0.1:8080/) to see the new node being added to the network diagram. You can also notice a slight spike and drop in the latency and throughput when the node is added, and then both return to normal, as shown in the following illustration:
 
 ![Latency and throughput graph with 4 nodes](/images/ce/add-node-graph.png)
 
@@ -95,7 +95,7 @@ Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see t
 
 ![Read and write IOPS with 4th node dead](/images/ce/stop-node-ybtserver.png)
 
-Navigate to the [simulation application UI](http://127.0.0.1:8000/) to see the node being removed from the network diagram when it is stopped. Note that it may take approximately 60s (1 minute) to display the updated network diagram. You can also notice a slight spike and drop in the latency and throughput, both of which resume immediately:
+Navigate to the [simulation application UI](http://127.0.0.1:8080/) to see the node being removed from the network diagram when it is stopped. Note that it may take approximately 60s (1 minute) to display the updated network diagram. You can also notice a slight spike and drop in the latency and throughput, both of which resume immediately:
 
 ![Latency and throughput graph after stopping node 4](/images/ce/stop-node-graph.png)
 
