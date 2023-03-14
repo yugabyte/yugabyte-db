@@ -146,7 +146,7 @@ regions:
     zones: []
   westus3:
     cidr_prefix: "10.46"
-    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
+    image: "almalinux:almalinux:8_5:8.5.20220311"
     zones: ['1','2','3']
 
 
