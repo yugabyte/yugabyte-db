@@ -1,8 +1,8 @@
 ---
-title: Distributed transactions
+title: Distributed transactions in YCQL
 headerTitle: Distributed transactions
 linkTitle: Distributed transactions
-description: Distributed transactions in YugabyteDB.
+description: Understand distributed transactions in YugabyteDB using YCQL.
 headcontent:
 menu:
   preview:

@@ -1,7 +1,8 @@
 ---
-title: Build a Java application using Apache Spark and YugabyteDB
+title: Build Java applications using Apache Spark and YugabyteDB YCQL
+headerTitle: Build a Java application using Apache Spark and YugabyteDB
 linkTitle: YCQL
-description: Build a Java-based application using Apache Spark and YugabyteDB.
+description: Learn how to build a Java-based application using Apache Spark and YugabyteDB YCQL.
 aliases:
   - /preview/integrations/apache-spark/java/
 menu:
