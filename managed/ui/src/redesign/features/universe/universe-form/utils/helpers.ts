@@ -177,6 +177,12 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
     azOverrides: userIntent.azOverrides,
     universeOverrides: userIntent.universeOverrides
   };
+
+  if (data.cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
+    data.instanceConfig.masterInstanceType = userIntent.masterInstanceType;
+    data.instanceConfig.masterDeviceInfo = userIntent.masterDeviceInfo;
+  }
+
   return data;
 };
 
