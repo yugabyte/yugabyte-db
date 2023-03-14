@@ -1,5 +1,5 @@
 ---
-title: yb-voyager CLI
+title: CLI reference for yb-voyager
 linkTitle: yb-voyager CLI
 description: YugabyteDB Voyager CLI and SSL connectivity.
 menu:

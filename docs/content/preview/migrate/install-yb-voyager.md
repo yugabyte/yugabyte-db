@@ -1,5 +1,5 @@
 ---
-title: Install
+title: Install yb-voyager
 headerTitle: Install
 linkTitle: Install
 description: Explore the prerequisites, YugabyteDB Voyager installation, and so on.

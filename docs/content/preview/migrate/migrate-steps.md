@@ -1,5 +1,6 @@
 ---
-title: Migration steps
+title: Steps to migrate your database
+headerTitle: Migration steps
 linkTitle: Migration steps
 description: Run the steps to ensure a successful migration.
 menu:

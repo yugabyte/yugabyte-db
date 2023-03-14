@@ -1,5 +1,5 @@
 ---
-title: Data modeling
+title: Data modeling strategies
 linkTitle: Data modeling
 description: Refer to Data modeling when migrating data using YugabyteDB Voyager and suggested workarounds.
 menu:

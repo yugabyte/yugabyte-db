@@ -1,5 +1,5 @@
 ---
-title: Known issues
+title: Known issues with YugabyteDB Voyager
 headerTitle: Known issues and workarounds
 linkTitle: Known issues
 image: /images/section_icons/develop/learn.png
