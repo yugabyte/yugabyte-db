@@ -1,8 +1,8 @@
 ---
-title: Install
+title: Install yb-voyager
 headerTitle: Install
 linkTitle: Install
-description: Explore the prerequisites, YugabyteDB Voyager installation, and so on.
+description: Prerequisites and installation instructions for YugabyteDB Voyager.
 image: /images/section_icons/develop/learn.png
 menu:
   preview:
