@@ -1099,26 +1099,40 @@ class TransactionParticipant::Impl
     loader_.WaitLoaded(transaction_id);
     MinRunningNotifier min_running_notifier(&applier_);
 
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto it = transactions_.find(transaction_id);
-    if (it == transactions_.end()) {
-      // This case may happen if the transaction gets aborted due to conflict or expired
-      // before the update RPC is received.
-      YB_LOG_WITH_PREFIX_HIGHER_SEVERITY_WHEN_TOO_MANY(INFO, WARNING, 1s, 50)
-          << "Request to unknown transaction " << transaction_id;
-      return STATUS_EC_FORMAT(
-          Expired, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
-          "Transaction $0 expired or aborted by a conflict", transaction_id);
+    TransactionMetadata metadata;
+    TransactionStatusResult txn_status_res;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto it = transactions_.find(transaction_id);
+      if (it == transactions_.end()) {
+        // This case may happen if the transaction gets aborted due to conflict or expired
+        // before the update RPC is received.
+        YB_LOG_WITH_PREFIX_HIGHER_SEVERITY_WHEN_TOO_MANY(INFO, WARNING, 1s, 50)
+            << "Request to unknown transaction " << transaction_id;
+        return STATUS_EC_FORMAT(
+            Expired, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
+            "Transaction $0 expired or aborted by a conflict", transaction_id);
+      }
+
+      auto& transaction = *it;
+      metadata = transaction->metadata();
+      VLOG_WITH_PREFIX(2) << "Update transaction status location for transaction: "
+                          << metadata.transaction_id << " from tablet " << metadata.status_tablet
+                          << " to " << new_status_tablet;
+      transaction->UpdateTransactionStatusLocation(new_status_tablet);
+      TransactionsModifiedUnlocked(&min_running_notifier);
+      txn_status_res = TransactionStatusResult{
+          TransactionStatus::PROMOTED, transaction->last_known_status_hybrid_time(),
+          transaction->last_known_aborted_subtxn_set(), new_status_tablet};
     }
 
-    auto& transaction = *it;
-    const auto& metadata = transaction->metadata();
-    VLOG_WITH_PREFIX(2) << "Update transaction status location for transaction: "
-                        << metadata.transaction_id << " from tablet " << metadata.status_tablet
-                        << " to " << new_status_tablet;
-    transaction->UpdateTransactionStatusLocation(new_status_tablet);
-    TransactionsModifiedUnlocked(&min_running_notifier);
-    return metadata;
+    // Closing() check is necessary to prevent accessing a bad pointer as the wait-queue is
+    // destroyed before the transaction participant. Since tablet shutdown happens in two phases,
+    // the wait-queue would only be destroyed after setting closing_ in the txn participant.
+    if (txn_status_listener_ && !Closing()) {
+      txn_status_listener_->SignalPromoted(transaction_id, std::move(txn_status_res));
+    }
+    return std::move(metadata);
   }
 
   Result<IsExternalTransaction> IsExternalTransactionResult(
@@ -1130,6 +1144,10 @@ class TransactionParticipant::Impl
       return STATUS(NotFound, Format("Unknown transaction $0", transaction_id));
     }
     return lock_and_iterator.transaction().external_transaction();
+  }
+
+  void RegisterStatusListener(TransactionStatusListener* txn_status_listener) {
+    txn_status_listener_ = txn_status_listener;
   }
 
  private:
@@ -1805,6 +1823,10 @@ class TransactionParticipant::Impl
 
   std::condition_variable requests_completed_cond_;
 
+  // Pointer to the corresponding wait-queue instance. Used for signaling
+  // transaction commits/aborts/promotions.
+  TransactionStatusListener* txn_status_listener_ = nullptr;
+
   std::shared_ptr<MemTracker> mem_tracker_ GUARDED_BY(mutex_);
 };
 
@@ -2011,6 +2033,11 @@ CoarseTimePoint TransactionParticipant::GetCheckpointExpirationTime() const {
 
 OpId TransactionParticipant::GetLatestCheckPoint() const {
   return impl_->GetLatestCheckPointUnlocked();
+}
+
+void TransactionParticipant::RegisterStatusListener(
+    TransactionStatusListener* txn_status_listener) {
+  return impl_->RegisterStatusListener(txn_status_listener);
 }
 
 }  // namespace tablet
