@@ -314,12 +314,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.BETA));
   // TODO(Shashank): Add correct metadata
-  public static final ConfKeyInfo<Boolean> setBatchNestedLoop =
+  public static final ConfKeyInfo<Boolean> setEnableNestloopOff =
       new ConfKeyInfo<>(
-          "yb.query_stats.slow_queries.set_batch_nested_loop",
+          "yb.query_stats.slow_queries.set_enable_nestloop_off",
           ScopeType.UNIVERSE,
-          "Set Batch Nested Loop",
-          "TODO - Leave this for feature owners to fill in",
+          "Turn off batch nest loop for running slow sql queries",
+          "This config turns off and on batch nestloop during running the join statement "
+              + "for slow queries. If true, it will be turned off and we expect better "
+              + "performance.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
   // TODO(Shashank)
