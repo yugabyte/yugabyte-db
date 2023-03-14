@@ -198,7 +198,25 @@ class YBAttachDetach:
         req = urllib_request.Request(
             url=url, method="POST", headers=headers, data=data)
         req.add_header('Content-type', form.get_content_type())
-        open_url(req)
+
+        try:
+            open_url(req)
+        except (urllib.error.HTTPError, urllib.error.URLError) as err:
+            logging.info("Failed attaching universe.")
+            if self.name == RUN_ACTION:
+                logging.info("Unlocking universe from source platform.")
+                unlock_url = self._get_unlock_universe_url()
+                unlock_headers = {
+                    "X-AUTH-YW-API-TOKEN": self.api_token_src,
+                    "Content-Type": "application/json"
+                }
+                unlock_req = urllib_request.Request(
+                    url=unlock_url, method="POST", headers=unlock_headers)
+                logging.debug("Url: %s", unlock_url)
+                open_url(unlock_req)
+                logging.info("Finished unlocking universe from source platform.")
+            raise err
+
         logging.info("Completed attaching universe.")
 
     def run_delete_metadata(self):
@@ -245,6 +263,14 @@ class YBAttachDetach:
             f"{customer_uuid}/universes/{self.universe_uuid}/delete_metadata")
         return delete_url
 
+    def _get_unlock_universe_url(self):
+        customer_uuid = self._get_customer_uuid(self.api_token_src, self.platform_host_src)
+        base_url = f"{self.platform_host_src}/api/v1"
+        unlock_universe_url = (
+            f"{base_url}/customers/"
+            f"{customer_uuid}/universes/{self.universe_uuid}/unlock")
+        return unlock_universe_url
+
     def validate_arguments(self):
         """Simple validation of the arguments passed in."""
         if not is_valid_uuid(self.universe_uuid):
@@ -254,9 +280,15 @@ class YBAttachDetach:
             if not is_valid_uuid(self.api_token_src):
                 raise ValueError("Invalid api_token_src passed in.")
 
+            # Ping source platform to make sure we are able to connect before running commands
+            self._get_customer_uuid(self.api_token_src, self.platform_host_src)
+
         if self.name == ATTACH_ACTION or self.name == RUN_ACTION:
             if not is_valid_uuid(self.api_token_dest):
                 raise ValueError("Invalid api_token_dest passed in.")
+
+            # Ping dest platform to make sure we are able to connect before running commands
+            self._get_customer_uuid(self.api_token_dest, self.platform_host_dest)
 
         if (self.name == DETACH_ACTION or self.name == RUN_ACTION) and os.path.isfile(self.file):
             raise ValueError(f"File {self.file} already exists")
