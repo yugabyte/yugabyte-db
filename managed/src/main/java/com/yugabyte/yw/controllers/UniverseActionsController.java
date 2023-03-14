@@ -15,6 +15,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UpdateLoadBalancerConfig;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.forms.AlertConfigFormData;
@@ -273,6 +274,21 @@ public class UniverseActionsController extends AuthenticatedController {
             universeUUID.toString(),
             Audit.ActionType.ResetUniverseVersion);
     universe.resetVersion();
+    return empty();
+  }
+
+  @ApiOperation(
+      hidden = true,
+      value = "Unlock a universe",
+      notes = "Unlock a universe",
+      response = YBPSuccess.class)
+  public Result unlockUniverse(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Util.unlockUniverse(universe);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Universe, universeUUID.toString(), Audit.ActionType.Unlock);
     return empty();
   }
 }

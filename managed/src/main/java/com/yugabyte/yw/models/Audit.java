@@ -509,7 +509,10 @@ public class Audit extends Model {
     Export,
 
     @EnumValue("Delete Universe Metadata")
-    DeleteMetadata
+    DeleteMetadata,
+
+    @EnumValue("Unlock Universe")
+    Unlock
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.
