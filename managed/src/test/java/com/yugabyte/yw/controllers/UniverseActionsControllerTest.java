@@ -415,4 +415,34 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
         .put("enableClientToNodeEncrypt", enableClientToNodeEncrypt)
         .put("rootCA", rootCA != null ? rootCA.toString() : "");
   }
+
+  @Test
+  public void testUnlockUniverseSuccess() {
+    Universe u = createUniverse(customer.getCustomerId());
+
+    // Set universe to be in updating state.
+    Universe.UniverseUpdater updater =
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          universeDetails.updateInProgress = true;
+          universeDetails.updateSucceeded = false;
+          universe.setUniverseDetails(universeDetails);
+        };
+
+    // Save the updates to the universe.
+    u = Universe.saveDetails(u.universeUUID, updater);
+
+    // Validate that universe in update state.
+    assertEquals(true, u.getUniverseDetails().updateInProgress);
+    assertEquals(false, u.getUniverseDetails().updateSucceeded);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/unlock";
+    Result result = doRequestWithAuthToken("POST", url, authToken);
+    assertOk(result);
+
+    // Validate universe is unlocked.
+    u = Universe.getOrBadRequest(u.universeUUID);
+    assertEquals(false, u.getUniverseDetails().updateInProgress);
+    assertEquals(true, u.getUniverseDetails().updateSucceeded);
+  }
 }

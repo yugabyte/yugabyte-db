@@ -27,6 +27,8 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
@@ -707,6 +709,11 @@ public class UniverseSpec {
       releaseManager.updateCurrentReleases();
     }
 
+    // Unlock universe and save.
+    UniverseDefinitionTaskParams universeDetails = this.universe.getUniverseDetails();
+    universeDetails.updateInProgress = false;
+    universeDetails.updateSucceeded = true;
+    this.universe.setUniverseDetails(universeDetails);
     this.universe.save();
 
     // Update prometheus files.
