@@ -883,6 +883,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
             .put("subnet", "subnet-b");
     ArrayNode zonesList = Json.newArray();
     zonesList.add(az1).add(az2);
+    region.put("zones", zonesList);
     region.put("code", "us-west-2");
     ArrayNode regionsList = Json.newArray();
     regionsList.add(region);
@@ -955,7 +956,12 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
             new PlatformServiceException(
                 BAD_REQUEST, "Subnet details extraction failed: Invalid Id"))
         .thenReturn(
-            Collections.singletonList(getTestSubnet("0.0.0.0/24", "subnet-a", "vpc_id_incorrect")));
+            Arrays.asList(
+                getTestSubnet("0.0.0.0/24", "subnet-a", "vpc_id", "us-west-2b"),
+                getTestSubnet("0.0.0.0/24", "subnet-a", "vpc_id", "us-west-2c")))
+        .thenReturn(
+            Collections.singletonList(
+                getTestSubnet("0.0.0.0/24", "subnet-a", "vpc_id_incorrect", "us-west-2a")));
     when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
         .thenReturn(getTestSecurityGroup(21, 24));
     // Test subnet exists or not
@@ -963,6 +969,10 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     assertBadRequest(
         result,
         "{\"data.REGION.us-west-2.SUBNETS\":[\"Subnet details extraction failed: Invalid Id\"]}");
+    // Test Subnet code
+    result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(
+        result, "{\"data.REGION.us-west-2.SUBNETS\":[\"Invalid AZ code for subnet: subnet-a\"]}");
     // Test subnet vpc
     result = assertPlatformException(() -> createProvider(bodyJson));
     assertBadRequest(
@@ -970,8 +980,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     when(mockAWSCloudImpl.describeSubnetsOrBadRequest(any(), any()))
         .thenReturn(
             Arrays.asList(
-                getTestSubnet("0.0.0.0/24", "subnet-a", "vpc_id"),
-                getTestSubnet("0.0.0.0/24", "subnet-a", "vpc_id")));
+                getTestSubnet("0.0.0.0/24", "subnet-a", "vpc_id", "us-west-2a"),
+                getTestSubnet("0.0.0.0/24", "subnet-a", "vpc_id", "us-west-2a")));
     // Test subnet cidr blocks
     result = assertPlatformException(() -> createProvider(bodyJson));
     assertBadRequest(
@@ -981,8 +991,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     when(mockAWSCloudImpl.describeSubnetsOrBadRequest(any(), any()))
         .thenReturn(
             Arrays.asList(
-                getTestSubnet("0.0.0.0/24", "subnet-a", "vpc_id"),
-                getTestSubnet("0.0.0.0/25", "subnet-a", "vpc_id")));
+                getTestSubnet("0.0.0.0/24", "subnet-a", "vpc_id", "us-west-2a"),
+                getTestSubnet("0.0.0.0/25", "subnet-a", "vpc_id", "us-west-2a")));
     when(mockAWSCloudImpl.dryRunDescribeInstanceOrBadRequest(any(), anyString()))
         .thenThrow(
             new PlatformServiceException(
@@ -1011,11 +1021,13 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     return sg;
   }
 
-  private Subnet getTestSubnet(String cidrBlock, String subnetId, String vpcId) {
+  private Subnet getTestSubnet(
+      String cidrBlock, String subnetId, String vpcId, String availabilityZone) {
     Subnet subnet = new Subnet();
     subnet.setVpcId(vpcId);
     subnet.setSubnetId(subnetId);
     subnet.setCidrBlock(cidrBlock);
+    subnet.setAvailabilityZone(availabilityZone);
     return subnet;
   }
 }
