@@ -133,7 +133,7 @@ public abstract class DevopsBase {
 
     Provider provider = null;
     if (region != null) {
-      commandList.add(region.provider.code);
+      commandList.add(region.getProviderCloudCode().toString());
       commandList.add("--region");
       commandList.add(region.code);
       try {

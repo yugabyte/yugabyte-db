@@ -425,11 +425,11 @@ public class AccessManager extends DevopsBase {
       if (sshUser != null) {
         region.provider.details.sshUser = sshUser;
       } else {
-        switch (Common.CloudType.valueOf(region.provider.code)) {
+        switch (region.getProviderCloudCode()) {
           case aws:
           case azu:
           case gcp:
-            String defaultSshUser = Common.CloudType.valueOf(region.provider.code).getSshUser();
+            String defaultSshUser = region.getProviderCloudCode().getSshUser();
             if (defaultSshUser != null && !defaultSshUser.isEmpty()) {
               region.provider.details.sshUser = defaultSshUser;
             }

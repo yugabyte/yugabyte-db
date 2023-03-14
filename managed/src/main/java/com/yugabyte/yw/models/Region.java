@@ -149,14 +149,7 @@ public class Region extends Model {
 
   @JsonProperty("securityGroupId")
   public void setSecurityGroupId(String securityGroupId) {
-    Provider p = this.provider;
-    CloudType cloudType = CloudType.other;
-    // v2 API version 1 backward compatiblity support.
-    if (p != null) {
-      cloudType = p.getCloudCode();
-    } else if (!Strings.isNullOrEmpty(this.providerCode)) {
-      cloudType = CloudType.valueOf(this.providerCode);
-    }
+    CloudType cloudType = this.getProviderCloudCode();
     if (cloudType == CloudType.aws) {
       AWSRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setSecurityGroupId(securityGroupId);
@@ -183,14 +176,7 @@ public class Region extends Model {
 
   @JsonProperty("vnetName")
   public void setVnetName(String vnetName) {
-    Provider p = this.provider;
-    CloudType cloudType = CloudType.other;
-    // v2 API version 1 backward compatiblity support.
-    if (p != null) {
-      cloudType = p.getCloudCode();
-    } else if (!Strings.isNullOrEmpty(this.providerCode)) {
-      cloudType = CloudType.valueOf(this.providerCode);
-    }
+    CloudType cloudType = this.getProviderCloudCode();
     if (cloudType.equals(CloudType.aws)) {
       AWSRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setVnet(vnetName);
@@ -216,15 +202,8 @@ public class Region extends Model {
   }
 
   public void setArchitecture(Architecture arch) {
-    Provider p = this.provider;
-    CloudType cloudType = CloudType.other;
-    // v2 API version 1 backward compatiblity support.
-    if (p != null) {
-      cloudType = p.getCloudCode();
-    } else if (!Strings.isNullOrEmpty(this.providerCode)) {
-      cloudType = CloudType.valueOf(this.providerCode);
-    }
-    if (cloudType == CloudType.aws) {
+    CloudType cloudType = this.getProviderCloudCode();
+    if (cloudType.equals(CloudType.aws)) {
       AWSRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setArch(arch);
     }
@@ -232,8 +211,8 @@ public class Region extends Model {
 
   @JsonIgnore
   public Architecture getArchitecture() {
-    Provider p = this.provider;
-    if (p.getCloudCode() == CloudType.aws) {
+    CloudType cloudType = this.getProviderCloudCode();
+    if (cloudType.equals(CloudType.aws)) {
       AWSRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       return regionCloudInfo.getArch();
     }
@@ -249,14 +228,7 @@ public class Region extends Model {
   }
 
   public void setYbImage(String ybImage) {
-    Provider p = this.provider;
-    CloudType cloudType = CloudType.other;
-    // v2 API version 1 backward compatiblity support.
-    if (p != null) {
-      cloudType = p.getCloudCode();
-    } else if (!Strings.isNullOrEmpty(this.providerCode)) {
-      cloudType = CloudType.valueOf(this.providerCode);
-    }
+    CloudType cloudType = this.getProviderCloudCode();
     if (cloudType.equals(CloudType.aws)) {
       AWSRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setYbImage(ybImage);
@@ -472,6 +444,17 @@ public class Region extends Model {
     query.setParameter("p_UUID", providerUUID);
     query.setParameter("c_UUID", customerUUID);
     return query.findList();
+  }
+
+  @JsonIgnore
+  public CloudType getProviderCloudCode() {
+    if (provider != null) {
+      return provider.getCloudCode();
+    } else if (!Strings.isNullOrEmpty(providerCode)) {
+      return CloudType.valueOf(providerCode);
+    }
+
+    return CloudType.other;
   }
 
   public void disableRegionAndZones() {
