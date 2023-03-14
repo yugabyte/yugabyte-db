@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
@@ -222,6 +223,11 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
         List<Subnet> subnets = awsCloudImpl.describeSubnetsOrBadRequest(provider, region);
         Set<String> cidrBlocks = new HashSet<>();
         for (Subnet subnet : subnets) {
+          AvailabilityZone az = getAzBySubnetFromRegion(region, subnet.getSubnetId());
+          if (!az.code.equals(subnet.getAvailabilityZone())) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Invalid AZ code for subnet: " + subnet.getSubnetId());
+          }
           if (!subnet.getVpcId().equals(regionVnetName)) {
             throw new PlatformServiceException(
                 BAD_REQUEST, subnet.getSubnetId() + " is not associated with " + regionVnetName);
@@ -249,5 +255,17 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
         || (!StringUtils.isEmpty(accessKey) && StringUtils.isEmpty(accessKeySecret))) {
       throwBeanValidatorError("KEYS", "Please provide both access key and its secret");
     }
+  }
+
+  private AvailabilityZone getAzBySubnetFromRegion(Region region, String subnet) {
+    return region
+        .zones
+        .stream()
+        .filter(zone -> zone.subnet.equals(subnet))
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new PlatformServiceException(
+                    BAD_REQUEST, "Could not find AZ for subnet: " + subnet));
   }
 }
