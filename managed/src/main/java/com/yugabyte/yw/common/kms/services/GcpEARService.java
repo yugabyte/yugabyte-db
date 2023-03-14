@@ -73,7 +73,7 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
       gcpEARServiceUtil.checkOrCreateCryptoKey(config);
 
       // Sets the correct protection level for key that already exists in GCP KMS.
-      UUID customerUUID = KmsConfig.get(configUUID).customerUUID;
+      UUID customerUUID = KmsConfig.getOrBadRequest(configUUID).customerUUID;
       UpdateAuthConfigProperties(customerUUID, configUUID, config);
     } catch (Exception e) {
       final String errMsg =
@@ -187,6 +187,27 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
       throw new RuntimeException(errMsg, e);
     }
     return keyVal;
+  }
+
+  @Override
+  public byte[] encryptKeyWithService(UUID configUUID, byte[] universeKey) {
+    this.gcpEARServiceUtil = getGcpEarServiceUtil();
+    byte[] encryptedUniverseKey = null;
+    try {
+      ObjectNode authConfig = getAuthConfig(configUUID);
+      encryptedUniverseKey = gcpEARServiceUtil.encryptBytes(authConfig, universeKey);
+      if (encryptedUniverseKey == null) {
+        throw new RuntimeException("Encrypted universe key is null.");
+      }
+    } catch (Exception e) {
+      final String errMsg =
+          String.format(
+              "Error occurred encrypting universe key in GCP KMS with config UUID '%s'.",
+              configUUID);
+      LOG.error(errMsg, e);
+      throw new RuntimeException(errMsg, e);
+    }
+    return encryptedUniverseKey;
   }
 
   @Override

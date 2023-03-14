@@ -96,6 +96,11 @@ class TestEncryptionAtRestService extends EncryptionAtRestService<TestAlgorithm>
     // Does nothing here because we test for individual KMS providers.
     return null;
   }
+
+  @Override
+  public byte[] encryptKeyWithService(UUID configUUID, byte[] universeKey) {
+    return null;
+  }
 }
 
 @RunWith(MockitoJUnitRunner.class)
