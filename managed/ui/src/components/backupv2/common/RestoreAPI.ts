@@ -20,8 +20,8 @@ export function getRestoreList(
   sortBy: string,
   direction: string,
   moreFilters: any[] | undefined,
-  universeUUID?: string,
-  storageConfigUUID?: string | null
+  isAccountLevelView: boolean,
+  universeUUID?: string
 ) {
   const payload = {
     sortBy,
@@ -33,15 +33,11 @@ export function getRestoreList(
   };
   if (searchText) {
     payload['filter'] = {
-      universeNameList: [searchText]
+      [isAccountLevelView ? 'universeNameList' : 'sourceUniverseNameList']: [searchText]
     };
   }
   if (universeUUID) {
     payload['filter']['universeUUIDList'] = [universeUUID];
-  }
-
-  if (storageConfigUUID) {
-    payload['filter']['storageConfigUUIDList'] = [storageConfigUUID];
   }
 
   if (states.length !== 0 && states[0].label !== 'All') {
