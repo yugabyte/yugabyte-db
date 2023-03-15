@@ -116,7 +116,8 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             percentComplete,
             responseJson);
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(task.getTaskUUID());
-    when(mockCommissioner.buildTaskStatus(task, taskInfo)).thenReturn(Optional.of(responseJson));
+    when(mockCommissioner.buildTaskStatus(eq(task), eq(taskInfo), any()))
+        .thenReturn(Optional.of(responseJson));
     return task.getTaskUUID();
   }
 
@@ -667,7 +668,8 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
         99.0,
         "TLS Toggle ON",
         responseJson);
-    when(mockCommissioner.buildTaskStatus(any(), any())).thenReturn(Optional.of(responseJson));
+    when(mockCommissioner.buildTaskStatus(any(), any(), any()))
+        .thenReturn(Optional.of(responseJson));
     Result result =
         doRequestWithAuthToken("GET", "/api/customers/" + customer.uuid + "/tasks", authToken);
     assertThat(result.status(), is(OK));
