@@ -17,7 +17,7 @@ To start the upgrade, log in to the Replicated Admin Console via <https://:8800>
 
 - Navigate to **Dashboard** and click **View release history** to open **Release History**, as shown in the following illustration:
 
-  ![image](/images/yb-platform/upgrade-replicated1.png)
+  ![Release history](/images/yb-platform/upgrade-replicated1.png)
 
 - Find the required release version and click the corresponding **Install**.
 
@@ -43,4 +43,4 @@ If you are performing an upgrade to YugabyteDB Anywhere version 2.14 or later, t
 
 If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster replication](../../../explore/multi-region-deployments/asynchronous-replication-ysql/) for your universe was set up via `yb-admin` instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](../upgrade-yp-xcluster-ybadmin/).
 
-If you are upgrading a YugabyteDB Anywhere installation with high availability enabled, follow the instructions provided in [Upgrade instances](../../manage-deployments/high-availability/#upgrade-instances).
+If you are upgrading a YugabyteDB Anywhere installation with high availability enabled, follow the instructions provided in [Upgrade instances](../../administer-yugabyte-platform/high-availability/#upgrade-instances).

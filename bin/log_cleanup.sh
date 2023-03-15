@@ -75,12 +75,6 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-# TODO(bhavin192): this will just fail here in OpenShift kind of
-# environment.
-if [[ "$(id -u)" != "0" && "$USER" != "yugabyte" ]]; then
-  echo "This script must be run as root or yugabyte" >&2
-  exit 1
-fi
 
 if [[ "${logs_disk_percent_max}" -lt 1 || "${logs_disk_percent_max}" -gt 100 ]]; then
   echo "--logs_disk_percent_max needs to be [1, 100]" >&2

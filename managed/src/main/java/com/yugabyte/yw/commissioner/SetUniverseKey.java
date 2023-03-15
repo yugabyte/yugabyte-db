@@ -97,7 +97,7 @@ public class SetUniverseKey {
   public void setUniverseKey(Universe u, boolean force) {
     try {
       if ((!u.universeIsLocked() || force)
-          && EncryptionAtRestUtil.getNumKeyRotations(u.universeUUID) > 0) {
+          && EncryptionAtRestUtil.getNumUniverseKeys(u.universeUUID) > 0) {
         log.debug(
             String.format(
                 "Setting universe encryption key for universe %s", u.universeUUID.toString()));

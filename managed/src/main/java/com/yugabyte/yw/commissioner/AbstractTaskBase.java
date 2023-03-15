@@ -122,7 +122,7 @@ public abstract class AbstractTaskBase implements ITask {
 
   @Override
   public synchronized void terminate() {
-    if (executor != null && executor.isShutdown()) {
+    if (executor != null && !executor.isShutdown()) {
       MoreExecutors.shutdownAndAwaitTermination(
           executor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
       executor = null;

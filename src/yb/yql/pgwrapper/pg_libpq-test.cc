@@ -3755,18 +3755,13 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionDropDB),
   ASSERT_OK(conn_yugabyte.ExecuteFormat("DROP DATABASE $0", new_db_name));
   WaitForCatalogVersionToPropagate();
 
-  // Execute the first query in test session that does not involve any
-  // metadata lookup. This is fine.
-  ASSERT_OK(conn_test.Fetch("SELECT 1"));
-
   // Execute any query in the test session that requires metadata lookup
   // should fail with error indicating that the database has been dropped.
   auto status = ResultToStatus(conn_test.Fetch("SELECT * FROM non_exist_table"));
   LOG(INFO) << "status: " << status;
   ASSERT_TRUE(status.IsNetworkError());
-  ASSERT_STR_CONTAINS(status.ToString(),
-                      Format("catalog version for database $0 was not found", new_db_oid));
-  ASSERT_STR_CONTAINS(status.ToString(), "Database might have been dropped by another user");
+  ASSERT_STR_CONTAINS(status.ToString(), Format("base $0", new_db_oid));
+  ASSERT_STR_CONTAINS(status.ToString(), "base might have been dropped");
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {

@@ -1,110 +1,43 @@
 import React, { useState, FC, ReactNode, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import { FormControl, Button } from 'react-bootstrap';
-
+import { intlFormat } from 'date-fns';
+import { RecommendationBox } from './RecommendationBox';
+import { YBPanelItem } from '../panels';
+import { YBLoading } from '../../components/common/indicators';
+import { YBButton } from '../common/forms/fields';
+import { performanceRecommendationApi, QUERY_KEY } from './helpers/api';
+import { formatPerfRecommendationsData } from './helpers/utils';
+import { EXTERNAL_LINKS } from './helpers/const';
+import { isNonEmptyString } from '../../utils/ObjectUtils';
+import {
+  IndexAndShardingRecommendationData,
+  PerfRecommendationData,
+  RecommendationType,
+  SortDirection
+} from '../../redesign/utils/dtos';
 import dbSettingsIcon from './images/db-settings.svg';
 import documentationIcon from './images/documentation.svg';
 import EmptyTrayIcon from './images/empty-tray.svg';
-import { RecommendationBox } from './RecommendationBox';
-import { YBPanelItem } from '../panels';
-import { EXTERNAL_LINKS } from './helpers/const';
-import { QueryData, handleIndexSuggestionRequest } from './helpers/perfQueryUtils';
-import { YBButton } from '../common/forms/fields';
-import { intlFormat } from 'date-fns';
-import { YBLoading } from '../../components/common/indicators';
-import { RecommendationTypeEnum } from '../../redesign/utils/dtos';
 import './PerfAdvisor.scss';
 
 interface RecommendationDetailProps {
-  data: QueryData;
+  data: PerfRecommendationData | IndexAndShardingRecommendationData;
   key: string;
   resolved?: boolean;
 }
 
-const mockResponseQueryDistribution: QueryData = {
-  type: RecommendationTypeEnum.SchemaSuggestion,
-  target: 'yugabyte',
-  indicator: 2,
-  table: {
-    data: [
-      {
-        current_database: 'yugabyte',
-        index_command: 'CREATE UNIQUE INDEX table1_pkey ON public.table1 USING lsm (column1 HASH)',
-        index_name: 'table1_pkey',
-        table_name: 'table1'
-      },
-      {
-        current_database: 'yugabyte',
-        index_command: 'CREATE INDEX table1_column2_idx ON public.table1 USING lsm (column2 HASH)',
-        index_name: 'table1_column2_idx',
-        table_name: 'table1'
-      }
-    ]
-  }
-};
-const maxNodeDetasils = {
-  num_select: 100,
-  num_insert: 800,
-  num_update: 300,
-  num_delete: 400
-};
-const otherNodesDetails = {
-  num_select: 100,
-  num_insert: 200,
-  num_update: 300,
-  num_delete: 200
-};
-const mockResponseQuerySkew: QueryData = {
-  type: RecommendationTypeEnum.QueryLoadSkew,
-  target: 'cluster-n1',
-  setSize: 2,
-  indicator: 80,
-  graph: {
-    max: {
-      ...maxNodeDetasils
-    },
-    other: {
-      ...otherNodesDetails
-    }
-  }
-};
-
-const mockConnectionSkewRecommendation: QueryData = {
-  type: RecommendationTypeEnum.ConnectionSkew,
-  target: 'cluster-n1',
-  setSize: 2,
-  indicator: 60,
-  graph: {
-    max: {
-      value: 4
-    },
-    other: {
-      value: 1.75
-    }
-  }
-};
-
-const mockCPUSkewRecommendation: QueryData = {
-  type: RecommendationTypeEnum.CpuSkew,
-  target: 'puppy-food-n1',
-  setSize: 2,
-  indicator: 65,
-  graph: {
-    max: {
-      value: 65.432
-    },
-    other: {
-      value: 20.789
-    }
-  }
-};
-
-const mockCPUUsageRecommendation: QueryData = {
-  type: RecommendationTypeEnum.CpuUsage,
-  target: 'cluster-n1',
-  indicator: 80.0,
-  timeDurationSec: 600
+const translationTypeMap = {
+  ALL: 'All',
+  RANGE_SHARDING: 'SchemaSuggestion',
+  QUERY_LOAD_SKEW: 'QueryLoadSkew',
+  CONNECTION_SKEW: 'ConnectionSkew',
+  CPU_SKEW: 'CpuSkew',
+  CPU_USAGE: 'CpuUsage',
+  UNUSED_INDEX: 'IndexSuggestion',
+  HOT_SHARD: 'HotShard'
 };
 
 /** Generates unique string based on recommendation type for the purpose of setting unique key on React component */
@@ -116,38 +49,54 @@ const generateUniqueId = (type: string, ...identifiers: string[]) => {
 
 // These are the only two recommendation types related to DB
 const DATABASE_TYPE_SUGGESTIONS = [
-  RecommendationTypeEnum.IndexSuggestion,
-  RecommendationTypeEnum.SchemaSuggestion
+  RecommendationType.UNUSED_INDEX,
+  RecommendationType.RANGE_SHARDING
 ];
 
 export const PerfAdvisor: FC = () => {
   const { t } = useTranslation();
-  const [isScanningLoading, setIsScanningLoading] = useState(false);
+  const [isScanningLoading, setIsScanningLoading] = useState<Boolean>(false);
   const [lastScanTime, setLastScanTime] = useState('');
   const [recommendations, setRecommendations] = useState<RecommendationDetailProps[]>([]);
   const [databaseSelection, setDatabaseSelection] = useState('');
   const [databaseOptionList, setDatabaseOptionList] = useState<ReactNode[]>([]);
-  const [suggestionType, setSuggestionType] = useState(RecommendationTypeEnum.All);
+  const [suggestionType, setSuggestionType] = useState(RecommendationType.ALL);
+  const [isPerfCallFail, setIsPerfCallFail] = useState<Boolean>(false);
   const currentUniverse = useSelector((state: any) => state.universe.currentUniverse);
   const universeUUID = currentUniverse?.data?.universeUUID;
   const isUniversePaused: boolean = currentUniverse?.data?.universeDetails?.universePaused;
 
+  const queryParams = {
+    filter: {
+      universeId: universeUUID,
+      isStale: false
+    },
+    sortBy: 'recommendationTimestamp',
+    direction: SortDirection.ASC,
+    offset: 0,
+    limit: 50
+  };
+  //fetch run time configs
+  const { refetch: perfRecommendationsRefetch } = useQuery(QUERY_KEY.fetchPerfRecommendations, () =>
+    performanceRecommendationApi.fetchPerfRecommendationsList(queryParams)
+  );
+
   const handleDbSelection = (event: any) => {
-    setSuggestionType(RecommendationTypeEnum.All);
+    setSuggestionType(RecommendationType.ALL);
     setDatabaseSelection(event.target.value);
   };
 
   const handleSuggestionTypeSelection = (e: any) => {
-    const nextSuggestionType: RecommendationTypeEnum =
-      RecommendationTypeEnum[(e.target.value as unknown) as RecommendationTypeEnum];
+    const nextSuggestionType: RecommendationType =
+      RecommendationType[(e.target.value as unknown) as RecommendationType];
     setSuggestionType(nextSuggestionType);
   };
 
   const processRecommendationData = useCallback(
-    (data: QueryData[]) => {
+    (data: PerfRecommendationData[] | IndexAndShardingRecommendationData[]) => {
       const recommendationArr: RecommendationDetailProps[] = [];
       const databasesInRecommendations: string[] = [];
-      data.forEach((recommendation) => {
+      data?.forEach((recommendation) => {
         if (DATABASE_TYPE_SUGGESTIONS.includes(recommendation.type)) {
           const { target: databaseName } = recommendation;
           if (!databasesInRecommendations.includes(databaseName)) {
@@ -211,27 +160,10 @@ export const PerfAdvisor: FC = () => {
     setLastScanTime(currentScanTime);
     setIsScanningLoading(true);
 
-    // TODO: Once API is ready, need to group all promise call here
-    const promiseArr = [handleIndexSuggestionRequest(universeUUID)];
-    const results = await Promise.allSettled<
-      Promise<QueryData | null> | Promise<QueryData[] | null>
-    >(promiseArr);
-    const recommendationDataArray: QueryData[] = results
-      .flatMap((promiseRes) => {
-        if (promiseRes.status === 'fulfilled' && promiseRes.value) {
-          return promiseRes.value;
-        }
-        return null;
-      })
-      .filter(Boolean) as QueryData[];
-    // Mocking API response as it is not ready
-    // TODO: Need to remove this once APIs are available
-    recommendationDataArray.push(mockResponseQueryDistribution);
-    recommendationDataArray.push(mockResponseQuerySkew);
-    recommendationDataArray.push(mockConnectionSkewRecommendation);
-    recommendationDataArray.push(mockCPUSkewRecommendation);
-    recommendationDataArray.push(mockCPUUsageRecommendation);
-    const newRecommendations = processRecommendationData(recommendationDataArray);
+    const { data, isError } = await perfRecommendationsRefetch();
+    setIsPerfCallFail(isError);
+    const perfRecommendations = formatPerfRecommendationsData(data);
+    const newRecommendations = processRecommendationData(perfRecommendations);
     setRecommendations(newRecommendations);
     localStorage.setItem(
       universeUUID,
@@ -267,6 +199,12 @@ export const PerfAdvisor: FC = () => {
     void checkForPreviousScanData();
   }, [universeUUID]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    return () => {
+      localStorage.setItem(universeUUID, '');
+    };
+  }, [universeUUID]);
+
   const filteredByDatabaseRecommendations = recommendations.filter((rec) => {
     if (databaseSelection) {
       const isMatchingDb =
@@ -276,14 +214,14 @@ export const PerfAdvisor: FC = () => {
     return true;
   });
   const displayedRecomendations = filteredByDatabaseRecommendations.filter((rec) => {
-    if (suggestionType !== RecommendationTypeEnum.All) {
+    if (suggestionType !== RecommendationType.ALL) {
       return rec.data.type === suggestionType;
     }
     return true;
   });
 
   const recommendationTypeList: Record<string, boolean> = {
-    [RecommendationTypeEnum.All.toString()]: true
+    [RecommendationType.ALL.toString()]: true
   };
   filteredByDatabaseRecommendations.forEach((curr: RecommendationDetailProps) => {
     recommendationTypeList[curr.data.type] = true;
@@ -308,7 +246,7 @@ export const PerfAdvisor: FC = () => {
     // This dialog is shown when the user visits performance advisor for first time
     // (or) when a user visits performance advisor in a new session
     <div className="parentPerfAdvisor">
-      {!lastScanTime && (
+      {!isNonEmptyString(lastScanTime) && (
         <YBPanelItem
           header={
             <div className="perfAdvisor">
@@ -319,7 +257,6 @@ export const PerfAdvisor: FC = () => {
                     {t('clusterDetail.performance.advisor.ScanCluster')}
                   </h4>
                   <p className="secondaryDescription">
-                    {' '}
                     <b> Note: </b>
                     {t('clusterDetail.performance.advisor.RunWorkload')}
                   </p>
@@ -356,12 +293,12 @@ export const PerfAdvisor: FC = () => {
                 <div className="contentContainer">
                   <img src={EmptyTrayIcon} alt="more" />
                   <h4 className="primaryDescription">
-                    {' '}
                     {t('clusterDetail.performance.advisor.Hurray')}
                   </h4>
                   <p className="secondaryDescription">
-                    {' '}
-                    {t('clusterDetail.performance.advisor.NoPerformanceIssues')}
+                    {isPerfCallFail
+                      ? t('clusterDetail.performance.advisor.FailedToLoad')
+                      : t('clusterDetail.performance.advisor.NoPerformanceIssues')}
                   </p>
                   <Button
                     bsClass="btn btn-orange rescanBtn"
@@ -389,7 +326,7 @@ export const PerfAdvisor: FC = () => {
       )}
 
       {/* // This dialog is shown when there are multiple recommendation options */}
-      {displayedRecomendations.length && (
+      {isNonEmptyString(lastScanTime) && displayedRecomendations.length > 0 && (
         <div>
           <div className="perfAdvisor__containerTitleFlex">
             <h5 className="numRecommendations">
@@ -424,7 +361,7 @@ export const PerfAdvisor: FC = () => {
             >
               {recommendationTypes.map((type) => (
                 <option key={`suggestion-${type}`} value={type}>
-                  {t(`clusterDetail.performance.suggestionTypes.${type}`)}
+                  {t(`clusterDetail.performance.suggestionTypes.${translationTypeMap[type]}`)}
                 </option>
               ))}
             </FormControl>

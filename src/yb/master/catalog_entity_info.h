@@ -1307,5 +1307,7 @@ class SnapshotInfo : public RefCountedThreadSafe<SnapshotInfo>,
   DISALLOW_COPY_AND_ASSIGN(SnapshotInfo);
 };
 
+bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
+
 }  // namespace master
 }  // namespace yb

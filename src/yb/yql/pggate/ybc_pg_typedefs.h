@@ -417,6 +417,13 @@ typedef struct YbTcmallocStats {
 // number of databases that can exist in a cluster.
 static const int32_t kYBCMaxNumDbCatalogVersions = 10000;
 
+typedef enum PgSysTablePrefetcherCacheMode {
+  YB_YQL_PREFETCHER_TRUST_CACHE,
+  YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
+  YB_YQL_PREFETCHER_RENEW_CACHE_HARD,
+  YB_YQL_PREFETCHER_NO_CACHE
+} YBCPgSysTablePrefetcherCacheMode;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

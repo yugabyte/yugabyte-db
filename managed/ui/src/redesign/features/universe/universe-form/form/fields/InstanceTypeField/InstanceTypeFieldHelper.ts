@@ -39,6 +39,12 @@ export const getDefaultInstanceType = (providerCode: string, runtimeConfigs: any
   return instanceType;
 }
 
+export const canUseSpotInstance = (runtimeConfigs: any) => {
+  return runtimeConfigs?.configEntries?.find(
+    (c: RunTimeConfigEntry) => c.key === 'yb.use_spot_instances'
+  )?.value === 'true';
+}
+
 export const isEphemeralAwsStorageInstance = (instance: InstanceType) => {
   return (
     instance.providerCode === CloudType.aws &&

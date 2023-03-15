@@ -503,7 +503,13 @@ public class Audit extends Model {
     InstallYbc,
 
     @EnumValue("Set YB-Controller throttle params")
-    SetThrottleParams
+    SetThrottleParams,
+
+    @EnumValue("Export")
+    Export,
+
+    @EnumValue("Delete Universe Metadata")
+    DeleteMetadata
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

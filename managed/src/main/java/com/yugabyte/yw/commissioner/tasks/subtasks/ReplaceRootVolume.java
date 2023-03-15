@@ -40,7 +40,8 @@ public class ReplaceRootVolume extends NodeTaskBase {
     if (bootDisks == null || bootDisks.isEmpty()) {
       throw new IllegalStateException("No available boot disks in AZ " + azUuid.toString());
     }
-
+    // Delete node agent record as the image is going to be replaced.
+    deleteNodeAgent(getUniverse().getNode(taskParams().nodeName));
     // this won't be saved in taskDetails!
     taskParams().replacementDisk = bootDisks.remove(0);
     getNodeManager()

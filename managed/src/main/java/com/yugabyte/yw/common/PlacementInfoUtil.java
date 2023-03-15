@@ -1443,7 +1443,9 @@ public class PlacementInfoUtil {
     for (NodeDetails node : nodes) {
       String nodeType = node.cloudInfo.instance_type;
       String instanceType = cluster.userIntent.getInstanceTypeForNode(node);
-      if (node.state != NodeDetails.NodeState.ToBeRemoved && !instanceType.equals(nodeType)) {
+      if (instanceType != null
+          && node.state != NodeDetails.NodeState.ToBeRemoved
+          && !instanceType.equals(nodeType)) {
         String msg =
             "Instance type "
                 + instanceType

@@ -8,23 +8,20 @@ import React, { useState } from 'react';
 import clsx from 'clsx';
 import { Box, Tab, Tabs } from '@material-ui/core';
 import { TabContext, TabPanel } from '@material-ui/lab';
-import { useQuery } from 'react-query';
 
 import { ManageInstances } from '../instanceTypes/ManageInstances';
 import { ProviderCode } from '../../constants';
 import { ProviderEditView } from '../../forms/ProviderEditView';
 import { ProviderOverview } from './ProviderOverview';
 import { UniverseItem, UniverseTable } from './UniverseTable';
-import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
-import { api, universeQueryKey } from '../../../../../redesign/helpers/api';
 import { usePillStyles } from '../../utils';
 
-import { Universe } from '../../../../../redesign/helpers/dtos';
 import { YBProvider } from '../../types';
 
 import styles from './ProviderDetails.module.scss';
 
 interface ProviderDetailsProps {
+  linkedUniverses: UniverseItem[];
   providerConfig: YBProvider;
 }
 
@@ -37,25 +34,13 @@ const ProviderDetailsTab = {
 type ProviderDetailsTab = typeof ProviderDetailsTab[keyof typeof ProviderDetailsTab];
 
 const DEFAULT_TAB = ProviderDetailsTab.OVERVIEW;
-export const ProviderDetails = ({ providerConfig }: ProviderDetailsProps) => {
+export const ProviderDetails = ({ linkedUniverses, providerConfig }: ProviderDetailsProps) => {
   const [currentTab, setCurrentTab] = useState<ProviderDetailsTab>(DEFAULT_TAB);
   const classes = usePillStyles();
-
-  const universeListQuery = useQuery(universeQueryKey.ALL, () => api.fetchUniverseList());
-
-  if (universeListQuery.isLoading || universeListQuery.isIdle) {
-    return <YBLoading />;
-  }
-
-  if (universeListQuery.isError) {
-    return <YBErrorIndicator customErrorMessage="Error fetching universe list." />;
-  }
 
   const handleTabChange = (_event: React.ChangeEvent<{}>, newTab: ProviderDetailsTab) => {
     setCurrentTab(newTab);
   };
-  const universeList = universeListQuery.data;
-  const linkedUniverses = getLinkedUniverses(providerConfig.uuid, universeList);
   return (
     <TabContext value={currentTab}>
       <Box display="flex">
@@ -146,17 +131,3 @@ export const ProviderDetails = ({ providerConfig }: ProviderDetailsProps) => {
     </TabContext>
   );
 };
-
-const getLinkedUniverses = (providerUUID: string, universes: Universe[]) =>
-  universes.reduce((linkedUniverses: UniverseItem[], universe) => {
-    const linkedClusters = universe.universeDetails.clusters.filter(
-      (cluster) => cluster.userIntent.provider === providerUUID
-    );
-    if (linkedClusters.length) {
-      linkedUniverses.push({
-        ...universe,
-        linkedClusters: linkedClusters
-      });
-    }
-    return linkedUniverses;
-  }, []);

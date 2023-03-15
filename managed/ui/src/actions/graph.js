@@ -10,6 +10,7 @@ export const QUERY_METRICS = 'QUERY_METRICS';
 export const QUERY_METRICS_SUCCESS = 'QUERY_METRICS_SUCCESS';
 export const QUERY_METRICS_FAILURE = 'QUERY_METRICS_FAILURE';
 export const RESET_METRICS = 'RESET_METRICS';
+export const RESET_GRAPH_FILTER = 'RESET_GRAPH_FILTER';
 export const SELECTED_METRIC_TYPE_TAB = 'SELECTED_METRIC_TYPE_TAB';
 
 export const TOGGLE_PROMETHEUS_QUERY = 'TOGGLE_PROMETHEUS_QUERY';
@@ -70,6 +71,12 @@ export function currentTabSelected(tabName) {
 export function resetMetrics() {
   return {
     type: RESET_METRICS
+  };
+}
+
+export function resetGraphFilter() {
+  return {
+    type: RESET_GRAPH_FILTER
   };
 }
 

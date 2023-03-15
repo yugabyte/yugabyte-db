@@ -178,17 +178,16 @@ public class EncryptionAtRestUtilTest extends FakeDBApplication {
   }
 
   @Test
-  public void testGetNumKeyRotationsNoHistory() {
-    int numRotations = encryptionUtil.getNumKeyRotations(testUniverse.universeUUID);
+  public void testGetNumUniverseKeysNoHistory() {
+    int numRotations = encryptionUtil.getNumUniverseKeys(testUniverse.universeUUID);
     assertEquals(numRotations, 0);
   }
 
   @Test
-  public void testGetNumKeyRotations() {
+  public void testGetNumUniverseKeys() {
     encryptionUtil.addKeyRef(
         testUniverse.universeUUID, testKMSConfig.configUUID, "some_key_ref".getBytes());
-    int numRotations =
-        encryptionUtil.getNumKeyRotations(testUniverse.universeUUID, testKMSConfig.configUUID);
+    int numRotations = encryptionUtil.getNumUniverseKeys(testUniverse.universeUUID);
     assertEquals(1, numRotations);
   }
 
@@ -196,11 +195,10 @@ public class EncryptionAtRestUtilTest extends FakeDBApplication {
   public void testClearUniverseKeyHistory() {
     encryptionUtil.addKeyRef(
         testUniverse.universeUUID, testKMSConfig.configUUID, "some_key_ref".getBytes());
-    int numRotations =
-        encryptionUtil.getNumKeyRotations(testUniverse.universeUUID, testKMSConfig.configUUID);
+    int numRotations = encryptionUtil.getNumUniverseKeys(testUniverse.universeUUID);
     assertEquals(numRotations, 1);
     encryptionUtil.removeKeyRotationHistory(testUniverse.universeUUID, testKMSConfig.configUUID);
-    numRotations = encryptionUtil.getNumKeyRotations(testUniverse.universeUUID);
+    numRotations = encryptionUtil.getNumUniverseKeys(testUniverse.universeUUID);
     assertEquals(0, numRotations);
   }
 }

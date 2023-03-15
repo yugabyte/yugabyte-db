@@ -669,28 +669,28 @@ config:
             - '^http[s]?:\/\/\w+([\.\-\_]\w+)*(:[0-9]+)?(\/.*)?$'
             - "Enter a valid URL of the form http://localhost:3000"
         help_text: Specify protocol-host to be whitelisted in the CORS filter.
-      - name: ui_https_port
-        title: Yugaware UI HTTPS Port
-        help_text: Yugaware UI HTTPS Port
-        type: text
-        default: "443"
-        when: '{{repl ConfigOptionEquals "https_enabled" "1"}}'
-      - name: https_enabled
-        title: Enable HTTPS
-        help_text: When enabled we will listen to https (At least one of https or http should be enabled)
+      - name: http_enabled
+        title: Enable HTTP
+        help_text: When enabled we will listen to http (At least one of http or https should be enabled)
         type: bool
-        default: "1"
+        default: '{{repl if ConfigOptionEquals "https_enabled" "1"}}0{{repl else}}1{{repl end}}'
       - name: ui_http_port
         title: Yugaware UI HTTP Port
         help_text: Yugaware UI HTTP Port
         type: text
         default: "80"
         when: '{{repl ConfigOptionEquals "http_enabled" "1"}}'
-      - name: http_enabled
-        title: Enable HTTP
-        help_text: When enabled we will listen to http (At least one of http or https should be enabled)
+      - name: https_enabled
+        title: Enable HTTPS
+        help_text: When enabled we will listen to https (At least one of https or http should be enabled)
         type: bool
-        default: "0"
+        default: "1"
+      - name: ui_https_port
+        title: Yugaware UI HTTPS Port
+        help_text: Yugaware UI HTTPS Port
+        type: text
+        default: "443"
+        when: '{{repl ConfigOptionEquals "https_enabled" "1"}}'
       - name: hsts_enabled
         title: Enable HSTS
         help_text: Enable HTTP Strict Transport Security. (Requires setup of DNS and SSL certificate issued by a trusted Certificate Authority)

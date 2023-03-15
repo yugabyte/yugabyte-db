@@ -180,6 +180,25 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
   }
 
   @Override
+  public byte[] encryptKeyWithService(UUID configUUID, byte[] universeKey) {
+    byte[] encryptedUniverseKey = null;
+    try {
+      encryptedUniverseKey = AwsEARServiceUtil.encryptUniverseKey(configUUID, universeKey);
+      if (encryptedUniverseKey == null) {
+        throw new RuntimeException("Encrypted universe key is null.");
+      }
+    } catch (Exception e) {
+      final String errMsg =
+          String.format(
+              "Error occurred encrypting universe key in AWS KMS with config UUID '%s'.",
+              configUUID);
+      LOG.error(errMsg, e);
+      throw new RuntimeException(errMsg, e);
+    }
+    return encryptedUniverseKey;
+  }
+
+  @Override
   protected void cleanupWithService(UUID universeUUID, UUID configUUID) {
     // Skip and do nothing for YBM use case
     boolean cloudEnabled =

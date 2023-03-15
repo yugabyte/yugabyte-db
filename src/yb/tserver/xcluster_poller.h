@@ -56,7 +56,7 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
       const std::shared_ptr<XClusterClient>& producer_client,
       XClusterConsumer* xcluster_consumer,
       bool use_local_tserver,
-      client::YBTablePtr global_transaction_status_table,
+      const std::vector<TabletId>& global_transaction_status_tablets,
       bool enable_replicate_transaction_status_table,
       SchemaVersion last_compatible_consumer_schema_version);
   ~XClusterPoller();

@@ -43,7 +43,7 @@ public class WaitForEncryptionKeyInMemory extends NodeTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-    if (universe != null && EncryptionAtRestUtil.getNumKeyRotations(universe.universeUUID) > 0) {
+    if (universe != null && EncryptionAtRestUtil.getNumUniverseKeys(universe.universeUUID) > 0) {
       YBClient client = null;
       String hostPorts = universe.getMasterAddresses();
       String certificate = universe.getCertificateNodetoNode();

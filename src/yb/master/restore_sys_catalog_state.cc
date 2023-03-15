@@ -191,14 +191,22 @@ class PgCatalogRestorePatch : public RestorePatch {
         table_(table), pg_yb_catalog_meta_(pg_yb_catalog_meta) {}
 
   Status Finish() {
-    if (!catalog_version_doc_path_) {
+    if (doc_key_catalog_version_map_.empty()) {
       return Status::OK();
     }
-    QLValuePB value_pb;
-    value_pb.set_int64_value(catalog_version_);
-    LOG(INFO) << "PITR: Incrementing pg_yb_catalog version to " << catalog_version_;
-    return DocBatch()->SetPrimitive(
-        *catalog_version_doc_path_, docdb::ValueRef(value_pb, SortingType::kNotSpecified));
+    auto column_id = VERIFY_RESULT(
+        pg_yb_catalog_meta_->schema().ColumnIdByName(kCurrentVersionColumnName));
+    for (const auto& it : doc_key_catalog_version_map_) {
+      QLValuePB value_pb;
+      value_pb.set_int64_value(it.second);
+      auto doc_path = docdb::DocPath(
+          it.first.Encode(), docdb::KeyEntryValue::MakeColumnId(column_id));
+      LOG(INFO) << "PITR: Incrementing pg_yb_catalog version of "
+                << doc_path.ToString() << " to " << it.second;
+      RETURN_NOT_OK(DocBatch()->SetPrimitive(
+        doc_path, docdb::ValueRef(value_pb, SortingType::kNotSpecified)));
+    }
+    return Status::OK();
   }
 
  private:
@@ -222,15 +230,13 @@ class PgCatalogRestorePatch : public RestorePatch {
     return false;
   }
 
-  Status HandleSchemaVersionValue(
-      const docdb::DocKey& doc_key, ColumnId column_id, const Slice& existing_value) {
+  Status HandleSchemaVersionValue(const docdb::DocKey& doc_key, const Slice& existing_value) {
     docdb::Value value;
     RETURN_NOT_OK(value.Decode(existing_value));
     auto new_version = value.primitive_value().GetInt64() + 1;
-    if (!catalog_version_doc_path_ || catalog_version_ < new_version) {
-      catalog_version_doc_path_.emplace(
-          doc_key.Encode(), docdb::KeyEntryValue::MakeColumnId(column_id));
-      catalog_version_ = new_version;
+    auto emplace_result = doc_key_catalog_version_map_.emplace(doc_key, new_version);
+    if (!emplace_result.second && emplace_result.first->second < new_version) {
+      emplace_result.first->second = new_version;
     }
     return Status::OK();
   }
@@ -253,7 +259,7 @@ class PgCatalogRestorePatch : public RestorePatch {
             Corruption, "$0 missing in $1", kCurrentVersionColumnName,
             full_value.ToDebugHexString());
       }
-      return HandleSchemaVersionValue(sub_doc_key.doc_key(), column_id, *value);
+      return HandleSchemaVersionValue(sub_doc_key.doc_key(), *value);
     }
     SCHECK_EQ(sub_doc_key.subkeys().size(), 1U, Corruption, "Wrong number of subdoc keys");
     const auto& first_subkey = sub_doc_key.subkeys()[0];
@@ -262,7 +268,7 @@ class PgCatalogRestorePatch : public RestorePatch {
       const ColumnSchema& column = VERIFY_RESULT(pg_yb_catalog_meta_->schema().column_by_id(
           column_id));
       if (column.name() == kCurrentVersionColumnName) {
-        return HandleSchemaVersionValue(sub_doc_key.doc_key(), column_id, full_value);
+        return HandleSchemaVersionValue(sub_doc_key.doc_key(), full_value);
       }
     }
     return Status::OK();
@@ -272,8 +278,7 @@ class PgCatalogRestorePatch : public RestorePatch {
   const PgCatalogTableData& table_;
   // Should be alive while this object is alive.
   tablet::TableInfo* pg_yb_catalog_meta_;
-  std::optional<docdb::DocPath> catalog_version_doc_path_;
-  int64_t catalog_version_;
+  std::map<docdb::DocKey, int64_t> doc_key_catalog_version_map_;
 };
 
 } // namespace

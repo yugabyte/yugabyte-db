@@ -167,7 +167,7 @@ public class CloudBootstrap extends CloudTaskBase {
         perRegionMetadata.architecture =
             region.getArchitecture() != null ? region.getArchitecture() : Architecture.x86_64;
         // Instance templates are currently only implemented for GCP.
-        if (Common.CloudType.valueOf(region.provider.code).equals(Common.CloudType.gcp)) {
+        if (region.getProviderCloudCode().equals(Common.CloudType.gcp)) {
           GCPRegionCloudInfo g = CloudInfoInterface.get(region);
           perRegionMetadata.instanceTemplate = g.instanceTemplate;
         }

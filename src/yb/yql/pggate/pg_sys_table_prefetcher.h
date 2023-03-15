@@ -30,22 +30,34 @@ struct PgObjectId;
 namespace pggate {
 class PgSession;
 
+YB_DEFINE_ENUM(PrefetchingCacheMode, (NO_CACHE)(TRUST_CACHE)(RENEW_CACHE_SOFT)(RENEW_CACHE_HARD));
+
 using PrefetchedDataHolder =
     std::shared_ptr<const boost::container::small_vector<rpc::SidecarHolder, 8>>;
+
+struct PrefetcherOptions {
+  uint64_t latest_known_ysql_catalog_version;
+  PrefetchingCacheMode cache_mode;
+
+  std::string ToString() const;
+};
 
 // PgSysTablePrefetcher class allows to register multiple sys tables and read all of them in
 // a single RPC (Almost single, actual number of RPCs depends on sys table size).
 // GetData method is used to access particular table data.
 class PgSysTablePrefetcher {
  public:
-  PgSysTablePrefetcher(uint64_t latest_known_ysql_catalog_version, bool should_use_cache);
+  explicit PgSysTablePrefetcher(const PrefetcherOptions& options);
   ~PgSysTablePrefetcher();
 
   // Register new sys table to be read on a first GetData method call.
   void Register(const PgObjectId& table_id, const PgObjectId& index_id);
+
+  // Load registered tables
+  Status Prefetch(PgSession* session);
+
   // GetData of previously registered table.
-  Result<PrefetchedDataHolder> GetData(
-    PgSession* session, const LWPgsqlReadRequestPB& read_req, bool index_check_required);
+  PrefetchedDataHolder GetData(const LWPgsqlReadRequestPB& read_req, bool index_check_required);
 
  private:
   class Impl;
