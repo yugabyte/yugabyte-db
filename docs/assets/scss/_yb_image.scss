@@ -2,6 +2,10 @@
   display: inline-block;
   position: relative;
 
+  img {
+    margin: 0 !important;
+  }
+
   map {
     position: absolute;
     inset: 0;
