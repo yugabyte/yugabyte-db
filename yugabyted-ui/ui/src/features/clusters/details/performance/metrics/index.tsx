@@ -11,7 +11,8 @@ import { ItemTypes } from '@app/helpers/dnd/types';
 import { YBButton, YBSelect, YBDragableAndDropable, YBDragableAndDropableItem } from '@app/components';
 import {
   ClusterRegionInfo,
-  useGetClusterNodesQuery
+  useGetClusterNodesQuery,
+  useGetClusterQuery
 } from '@app/api/src';
 // import {
 //   MetricsOptionsModal,
@@ -25,6 +26,7 @@ import { useChartConfig } from '@app/features/clusters/details/overview/ChartCon
 // // Icons
 // import EditIcon from '@app/assets/edit.svg';
 import RefreshIcon from '@app/assets/refresh.svg';
+import { VCpuUsageChartV } from './VCpuUsageChartV';
 
 const useStyles = makeStyles((theme) => ({
   divider: {
@@ -72,11 +74,7 @@ export const Metrics: FC = () => {
   
   const isMultiRegionEnabled = false;
 
-  //   const { data: clusterData } = useGetClusterQuery({
-  //     accountId: params.accountId,
-  //     projectId: params.projectId,
-  //     clusterId: params.clusterId
-  //   });
+  const { data: clusterData } = useGetClusterQuery();
 
   const ALL_REGIONS = { label: t('clusterDetail.overview.allRegions'), value: '' };
   const ALL_NODES = { label: t('clusterDetail.performance.metrics.allNodes'), value: 'all' };
@@ -148,7 +146,10 @@ export const Metrics: FC = () => {
         open={isMetricsOptionsModalOpen}
         setVisibility={setIsMetricsOptionsModalOpen}
   />*/}
-      <Grid container justify="space-between" alignItems="center">
+      {clusterData?.data &&
+        <VCpuUsageChartV cluster={clusterData.data} />
+      }
+      <Grid container justifyContent="space-between" alignItems="center">
         <Grid item xs={6}>
           <Box display="flex">
             {isMultiRegionEnabled && (

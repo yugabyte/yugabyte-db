@@ -49,7 +49,7 @@ const data = {
   ]
 };
 
-export const VCpuUsageChart: FC<VCpuUsageChartProps> = ({ cluster }) => {
+export const VCpuUsageChartH: FC<VCpuUsageChartProps> = ({ cluster }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 

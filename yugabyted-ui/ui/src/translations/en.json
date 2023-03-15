@@ -869,6 +869,8 @@
           "displayMetrics": "DISPLAY THE FOLLOWING METRICS:",
           "region": "region",
           "regions": "regions",
+          "vCpuUsage": "vCPU Usage",
+          "totalVCpu": "Total vCPU Usage",
           "options": {
             "overall": "Overall",
             "general": "General",
