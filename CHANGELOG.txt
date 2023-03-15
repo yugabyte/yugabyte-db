@@ -1,3 +1,9 @@
+4.7.3
+BUG FIXES
+=========
+-- Fix partition_gap_fill() to work with epoch partitioning (Github Issue #503).
+
+
 4.7.2
 BUG FIXES
 =========

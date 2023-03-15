@@ -1,4 +1,7 @@
-CREATE FUNCTION partition_gap_fill(p_parent_table text) RETURNS integer
+-- Fixed partition_gap_fill to work with epoch partitioning
+
+
+CREATE OR REPLACE FUNCTION partition_gap_fill(p_parent_table text) RETURNS integer
     LANGUAGE plpgsql 
     AS $$
 DECLARE
