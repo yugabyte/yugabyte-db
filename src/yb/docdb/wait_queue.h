@@ -48,7 +48,7 @@ class WaitingTxnRegistry {
 
 // Callback used by the WaitQueue to signal the result of waiting. Can be used by conflict
 // resolution to signal failure to client or retry conflict resolution.
-using WaitDoneCallback = std::function<void(const Status&)>;
+using WaitDoneCallback = std::function<void(const Status&, HybridTime)>;
 
 // This class is responsible for coordinating conflict transactions which are still running. A
 // running transaction can enter the wait queue while blocking on other running transactions in
@@ -94,6 +94,15 @@ class WaitQueue {
   void StartShutdown();
 
   void CompleteShutdown();
+
+  // Accept a signal that the given transaction was committed at the given commit_ht.
+  void SignalCommitted(const TransactionId& id, HybridTime commit_ht);
+
+  // Accept a signal that the given transaction was aborted.
+  void SignalAborted(const TransactionId& id);
+
+  // Accept a signal that the given transaction was promoted.
+  void SignalPromoted(const TransactionId& id, TransactionStatusResult&& res);
 
   // Provides access to a monotonically increasing serial number to be used by waiting requests to
   // enforce fairness in a best effort manner. Incoming requests should retain a serial number as
