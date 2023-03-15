@@ -46,7 +46,6 @@
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/shared_lock_manager.h"
-#include "yb/docdb/wait_queue.h"
 
 #include "yb/gutil/ref_counted.h"
 
@@ -467,8 +466,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   MvccManager* mvcc_manager() { return &mvcc_; }
 
   docdb::SharedLockManager* shared_lock_manager() { return &shared_lock_manager_; }
-
-  docdb::WaitQueue* wait_queue() { return wait_queue_.get(); }
 
   std::atomic<int64_t>* monotonic_counter() { return &monotonic_counter_; }
 
@@ -1084,8 +1081,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       GUARDED_BY(num_sst_files_changed_listener_mutex_);
 
   std::shared_ptr<TabletRetentionPolicy> retention_policy_;
-
-  std::unique_ptr<docdb::WaitQueue> wait_queue_;
 
   std::mutex full_compaction_token_mutex_;
 
