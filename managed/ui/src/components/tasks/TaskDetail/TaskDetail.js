@@ -90,7 +90,7 @@ class TaskDetail extends Component {
       return <Highlighter type="json" text={truncatedError} element="pre" />;
     };
 
-    const getErrorMessageDisplay = (errorString, taskUUID, allowRetry) => {
+    const getErrorMessageDisplay = (errorString, taskUUID) => {
       let errorElement = getTruncatedErrorString(errorString);
       let displayMessage = 'Expand';
       let displayIcon = <i className="fa fa-expand"></i>;
@@ -110,7 +110,7 @@ class TaskDetail extends Component {
             {displayMessage}
           </div>
           {/* TODO use API response to check retryable. */}
-          {allowRetry && isNonEmptyString(currentTaskData.title) &&
+          {isNonEmptyString(currentTaskData.title) &&
             currentTaskData.retryable && (
             <div
               className="btn btn-orange text-center pull-right task-detail-button"
@@ -143,11 +143,7 @@ class TaskDetail extends Component {
           if (subTask.errorString === 'null') {
             subTask.errorString = "Task failed";
           }
-          let allowRetry = false;
-          if (universe) {
-            allowRetry = (taskUUID === universe.universeDetails.updatingTaskUUID);
-          }
-          errorString = getErrorMessageDisplay(subTask.errorString, taskUUID, allowRetry);
+          errorString = getErrorMessageDisplay(subTask.errorString, taskUUID);
         }
         return (
           <div className="task-detail-info" key={subTask.creationTime}>
