@@ -30,6 +30,8 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
+import lombok.Getter;
+import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -37,6 +39,8 @@ import play.data.validation.Constraints;
 @Entity
 @Table(uniqueConstraints = @UniqueConstraint(columnNames = {"customer_uuid", "name"}))
 @ApiModel(description = "KMS configuration")
+@Getter
+@Setter
 public class KmsConfig extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(KmsConfig.class);
 
@@ -44,19 +48,19 @@ public class KmsConfig extends Model {
 
   @Id
   @ApiModelProperty(value = "KMS config UUID", accessMode = READ_ONLY)
-  public UUID configUUID;
+  private UUID configUUID;
 
   @Column(length = 100, nullable = false)
   @ApiModelProperty(value = "KMS config name", example = "kms config name")
-  public String name;
+  private String name;
 
   @Column(nullable = false)
   @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
-  public UUID customerUUID;
+  private UUID customerUUID;
 
   @Column(length = 100, nullable = false)
   @ApiModelProperty(value = "KMS key provider")
-  public KeyProvider keyProvider;
+  private KeyProvider keyProvider;
 
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "TEXT")
@@ -64,12 +68,12 @@ public class KmsConfig extends Model {
   @Encrypted
   @JsonIgnore
   @ApiModelProperty(value = "Auth config")
-  public ObjectNode authConfig;
+  private ObjectNode authConfig;
 
   @Constraints.Required
   @Column(nullable = false)
   @ApiModelProperty(value = "KMS configuration version")
-  public int version;
+  private int version;
 
   public static final Finder<UUID, KmsConfig> find =
       new Finder<UUID, KmsConfig>(KmsConfig.class) {};
@@ -96,11 +100,11 @@ public class KmsConfig extends Model {
   public static KmsConfig createKMSConfig(
       UUID customerUUID, KeyProvider keyProvider, ObjectNode authConfig, String name) {
     KmsConfig kmsConfig = new KmsConfig();
-    kmsConfig.keyProvider = keyProvider;
-    kmsConfig.customerUUID = customerUUID;
-    kmsConfig.authConfig = authConfig;
-    kmsConfig.version = SCHEMA_VERSION;
-    kmsConfig.name = name;
+    kmsConfig.setKeyProvider(keyProvider);
+    kmsConfig.setCustomerUUID(customerUUID);
+    kmsConfig.setAuthConfig(authConfig);
+    kmsConfig.setVersion(SCHEMA_VERSION);
+    kmsConfig.setName(name);
     kmsConfig.save();
     return kmsConfig;
   }
@@ -108,7 +112,7 @@ public class KmsConfig extends Model {
   public static ObjectNode getKMSAuthObj(UUID configUUID) {
     KmsConfig config = get(configUUID);
     if (config == null) return null;
-    return config.authConfig;
+    return config.getAuthConfig();
   }
 
   public static List<KmsConfig> listKMSConfigs(UUID customerUUID) {
@@ -136,7 +140,7 @@ public class KmsConfig extends Model {
   public static KmsConfig updateKMSConfig(UUID configUUID, ObjectNode updatedConfig) {
     KmsConfig existingConfig = get(configUUID);
     if (existingConfig == null) return null;
-    existingConfig.authConfig = updatedConfig;
+    existingConfig.setAuthConfig(updatedConfig);
     existingConfig.save();
     return existingConfig;
   }

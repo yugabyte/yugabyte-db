@@ -43,7 +43,9 @@ public class DeleteTablesFromUniverse extends AbstractTaskBase {
   public String getName() {
     return String.format(
         "%s (Universe=%s, fullTableNames=%s)",
-        super.getName(), taskParams().universeUUID, taskParams().getFullTablesNameListToDelete());
+        super.getName(),
+        taskParams().getUniverseUUID(),
+        taskParams().getFullTablesNameListToDelete());
   }
 
   @Override
@@ -55,7 +57,7 @@ public class DeleteTablesFromUniverse extends AbstractTaskBase {
       throw new RuntimeException("taskParams().keyspaceTablesMap cannot be null");
     }
 
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String universeMasterAddresses = universe.getMasterAddresses();
     String universeCertificate = universe.getCertificateNodetoNode();
     try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {

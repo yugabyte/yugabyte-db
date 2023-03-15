@@ -65,7 +65,7 @@ public class TemplateManager extends DevopsBase {
     commandArgs.add(path);
 
     Provider provider = Provider.getOrBadRequest(accessKey.getProviderUUID());
-    ProviderDetails details = provider.details;
+    ProviderDetails details = provider.getDetails();
     commandArgs.add("--ssh_user");
     commandArgs.add(details.sshUser);
 

@@ -52,21 +52,22 @@ public class CloudProviderDelete extends AbstractTaskBase {
     UUID providerUUID = taskParams().providerUUID;
     log.info("Trying to delete provider with UUID {}", providerUUID);
     Customer customer = taskParams().customer;
-    Provider provider = Provider.getOrBadRequest(customer.uuid, providerUUID);
+    Provider provider = Provider.getOrBadRequest(customer.getUuid(), providerUUID);
 
-    if (customer.getUniversesForProvider(provider.uuid).size() > 0) {
+    if (customer.getUniversesForProvider(provider.getUuid()).size() > 0) {
       throw new IllegalStateException("Cannot delete Provider with Universes");
     }
 
     // Clear the key files in the DB.
-    String keyFileBasePath = accessManager.getOrCreateKeyFilePath(provider.uuid);
+    String keyFileBasePath = accessManager.getOrCreateKeyFilePath(provider.getUuid());
     // We would delete only the files for k8s provider
     // others are already taken care off during access key deletion.
-    FileData.deleteFiles(keyFileBasePath, provider.code.equals(CloudType.kubernetes.toString()));
+    FileData.deleteFiles(
+        keyFileBasePath, provider.getCode().equals(CloudType.kubernetes.toString()));
 
     // Clear Access Key related metadata
-    for (AccessKey accessKey : AccessKey.getAll(provider.uuid)) {
-      final String provisionInstanceScript = provider.details.provisionInstanceScript;
+    for (AccessKey accessKey : AccessKey.getAll(provider.getUuid())) {
+      final String provisionInstanceScript = provider.getDetails().provisionInstanceScript;
       if (!provisionInstanceScript.isEmpty()) {
         new File(provisionInstanceScript).delete();
       }

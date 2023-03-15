@@ -77,7 +77,7 @@ public class ProviderEditRestrictionManager {
 
   protected Set<UUID> getProviderUUIDsToUse(UUID taskId, ITask task, ITaskParams params) {
     if (params instanceof UniverseTaskParams) {
-      UUID universeUUID = ((UniverseTaskParams) params).universeUUID;
+      UUID universeUUID = ((UniverseTaskParams) params).getUniverseUUID();
       Set<UUID> providerUUIDs = new HashSet<>();
       try {
         Universe universe = Universe.getOrBadRequest(universeUUID);

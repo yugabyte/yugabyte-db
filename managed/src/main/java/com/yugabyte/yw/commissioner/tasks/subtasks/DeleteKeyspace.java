@@ -54,7 +54,7 @@ public class DeleteKeyspace extends UniverseTaskBase {
   @Override
   public void run() {
     TableType tableType = taskParams().backupType;
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     final String keyspaceName = taskParams().getKeyspace();
     YBClient client = null;
     final String masterAddresses = universe.getMasterAddresses(true);

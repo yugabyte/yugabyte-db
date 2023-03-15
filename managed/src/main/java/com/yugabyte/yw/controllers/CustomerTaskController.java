@@ -80,7 +80,7 @@ public class CustomerTaskController extends AuthenticatedController {
     LinkedList<TaskInfo> result = new LinkedList<>(subTaskQuery.findList());
 
     if (TaskInfo.ERROR_STATES.contains(parentTask.getTaskState()) && result.isEmpty()) {
-      JsonNode taskError = parentTask.getTaskDetails().get("errorString");
+      JsonNode taskError = parentTask.getDetails().get("errorString");
       if ((taskError != null) && !StringUtils.isEmpty(taskError.asText())) {
         // Parent task hasn't `sub_task_group_type` set but can have some error details
         // which are not present in subtasks. Usually these errors encountered on a
@@ -99,9 +99,9 @@ public class CustomerTaskController extends AuthenticatedController {
       subTaskData.subTaskUUID = taskInfo.getTaskUUID();
       subTaskData.subTaskType = taskInfo.getTaskType().name();
       subTaskData.subTaskState = taskInfo.getTaskState().name();
-      subTaskData.creationTime = taskInfo.getCreationTime();
+      subTaskData.creationTime = taskInfo.getCreateTime();
       subTaskData.subTaskGroupType = taskInfo.getSubTaskGroupType().name();
-      JsonNode taskError = taskInfo.getTaskDetails().get("errorString");
+      JsonNode taskError = taskInfo.getDetails().get("errorString");
       subTaskData.errorString = (taskError == null) ? "null" : taskError.asText();
       subTasks.add(subTaskData);
     }
@@ -120,7 +120,7 @@ public class CustomerTaskController extends AuthenticatedController {
       taskData.title = task.getFriendlyDescription();
       taskData.createTime = task.getCreateTime();
       taskData.completionTime = task.getCompletionTime();
-      taskData.target = task.getTarget().name();
+      taskData.target = task.getTargetType().name();
       taskData.type = task.getType().name();
       taskData.typeName =
           task.getCustomTypeName() != null
@@ -131,7 +131,7 @@ public class CustomerTaskController extends AuthenticatedController {
       String correlationId = task.getCorrelationId();
       if (!Strings.isNullOrEmpty(correlationId)) taskData.correlationId = correlationId;
       ObjectNode versionNumbers = Json.newObject();
-      JsonNode taskDetails = taskInfo.getTaskDetails();
+      JsonNode taskDetails = taskInfo.getDetails();
       if (taskData.type == "UpgradeSoftware" && taskDetails.has(YB_PREV_SOFTWARE_VERSION)) {
         versionNumbers.put(
             YB_PREV_SOFTWARE_VERSION, taskDetails.get(YB_PREV_SOFTWARE_VERSION).asText());
@@ -221,7 +221,7 @@ public class CustomerTaskController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
     Map<UUID, List<CustomerTaskFormData>> taskList =
-        fetchTasks(customerUUID, universe.universeUUID);
+        fetchTasks(customerUUID, universe.getUniverseUUID());
     return PlatformResults.withData(taskList);
   }
 
@@ -294,7 +294,7 @@ public class CustomerTaskController extends AuthenticatedController {
               oldTaskParams.get("isHardReboot").asBoolean();
         }
         nodeTaskParams.nodeName = nodeName;
-        nodeTaskParams.universeUUID = universeUUID;
+        nodeTaskParams.setUniverseUUID(universeUUID);
 
         // Populate the user intent for software upgrades like gFlag upgrades.
         Universe universe = Universe.getOrBadRequest(universeUUID);
@@ -314,7 +314,7 @@ public class CustomerTaskController extends AuthenticatedController {
         universeUUID = UUID.fromString(universeUUIDStr);
         // Build restore V1 task params for restore task.
         BackupTableParams backupTableParams = new BackupTableParams();
-        backupTableParams.universeUUID = universeUUID;
+        backupTableParams.setUniverseUUID(universeUUID);
         backupTableParams.customerUuid = customerUUID;
         backupTableParams.actionType =
             BackupTableParams.ActionType.valueOf(oldTaskParams.get("actionType").textValue());
@@ -342,7 +342,7 @@ public class CustomerTaskController extends AuthenticatedController {
         universeUUID = UUID.fromString(universeUUIDStr);
         // Build backup task params for backup actions.
         MultiTableBackup.Params multiTableParams = new MultiTableBackup.Params();
-        multiTableParams.universeUUID = universeUUID;
+        multiTableParams.setUniverseUUID(universeUUID);
         multiTableParams.actionType =
             BackupTableParams.ActionType.valueOf(oldTaskParams.get("actionType").textValue());
         multiTableParams.storageConfigUUID =
@@ -401,17 +401,17 @@ public class CustomerTaskController extends AuthenticatedController {
     UUID targetUUID;
     String targetName;
     if (taskParams instanceof UniverseTaskParams) {
-      targetUUID = ((UniverseTaskParams) taskParams).universeUUID;
+      targetUUID = ((UniverseTaskParams) taskParams).getUniverseUUID();
       Universe universe = Universe.getOrBadRequest(targetUUID);
       if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
         String errMsg = String.format("Invalid task state: Task %s cannot be retried", taskUUID);
         return ApiResponse.error(BAD_REQUEST, errMsg);
       }
-      targetName = universe.name;
+      targetName = universe.getName();
     } else if (taskParams instanceof IProviderTaskParams) {
       targetUUID = ((IProviderTaskParams) taskParams).getProviderUUID();
       Provider provider = Provider.getOrBadRequest(targetUUID);
-      targetName = provider.name;
+      targetName = provider.getName();
       // Parallel execution is guarded by ProviderEditRestrictionManager
       CustomerTask lastTask = CustomerTask.getLastTaskByTargetUuid(targetUUID);
       if (lastTask == null || !lastTask.getId().equals(customerTask.getId())) {
@@ -432,7 +432,7 @@ public class CustomerTaskController extends AuthenticatedController {
         customer,
         targetUUID,
         newTaskUUID,
-        customerTask.getTarget(),
+        customerTask.getTargetType(),
         customerTask.getType(),
         targetName);
     LOG.info(

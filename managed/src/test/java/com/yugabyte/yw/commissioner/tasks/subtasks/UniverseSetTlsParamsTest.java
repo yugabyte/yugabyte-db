@@ -32,7 +32,7 @@ public class UniverseSetTlsParamsTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         universe -> {
           UniverseDefinitionTaskParams uParams = defaultUniverse.getUniverseDetails();
           PlacementInfo pi = uParams.getPrimaryCluster().placementInfo;
@@ -48,7 +48,7 @@ public class UniverseSetTlsParamsTest extends FakeDBApplication {
       boolean allowInsecure,
       UUID rootCA) {
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         universe -> {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           universeDetails.clusters.forEach(
@@ -68,7 +68,7 @@ public class UniverseSetTlsParamsTest extends FakeDBApplication {
       boolean allowInsecure,
       UUID rootCA) {
     UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
     params.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
     params.allowInsecure = allowInsecure;
@@ -83,7 +83,7 @@ public class UniverseSetTlsParamsTest extends FakeDBApplication {
       boolean enableClientToNodeEncrypt,
       boolean allowInsecure,
       UUID rootCA) {
-    Universe universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     universeDetails.clusters.forEach(
         c -> {

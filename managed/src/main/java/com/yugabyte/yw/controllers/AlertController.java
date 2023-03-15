@@ -903,8 +903,8 @@ public class AlertController extends AuthenticatedController {
 
   private Universe buildUniverseForTestAlert() {
     Universe universe = new Universe();
-    universe.name = "some-universe";
-    universe.universeUUID = UUID.randomUUID();
+    universe.setName("some-universe");
+    universe.setUniverseUUID(UUID.randomUUID());
     return universe;
   }
 

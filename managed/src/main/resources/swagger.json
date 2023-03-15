@@ -1288,7 +1288,9 @@
           "type" : "string"
         },
         "auditID" : {
+          "description" : "Audit UID",
           "format" : "int64",
+          "readOnly" : true,
           "type" : "integer"
         },
         "customerUUID" : {
@@ -1344,7 +1346,6 @@
           "type" : "string"
         }
       },
-      "required" : [ "auditID" ],
       "type" : "object"
     },
     "AuditLoggingConfig" : {
@@ -1532,10 +1533,6 @@
     "Backup" : {
       "description" : "A single backup. Includes the backup's status, expiration time, and configuration.",
       "properties" : {
-        "backupCategory" : {
-          "enum" : [ "YB_BACKUP_SCRIPT", "YB_CONTROLLER" ],
-          "type" : "string"
-        },
         "backupInfo" : {
           "$ref" : "#/definitions/BackupTableParams",
           "description" : "Details of the backup"
@@ -1623,11 +1620,6 @@
           "description" : "Universe name that created this backup",
           "type" : "string"
         },
-        "universeUUID" : {
-          "description" : "Universe UUID that created this backup",
-          "format" : "uuid",
-          "type" : "string"
-        },
         "updateTime" : {
           "description" : "Backup update time",
           "example" : "2022-12-12T13:07:18Z",
@@ -1640,7 +1632,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupCategory", "incrementalBackup", "parentBackup" ],
+      "required" : [ "incrementalBackup", "parentBackup" ],
       "type" : "object"
     },
     "BackupApiFilter" : {
@@ -2707,6 +2699,12 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "universeDetailSubsets" : {
+          "items" : {
+            "$ref" : "#/definitions/UniverseDetailSubset"
+          },
+          "type" : "array"
+        },
         "universeDetails" : {
           "description" : "Associated universe details for the certificate",
           "items" : {
@@ -2722,7 +2720,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "customCertPathParams", "customHCPKICertInfo", "customServerCertInfo" ],
+      "required" : [ "customCertPathParams", "customHCPKICertInfo", "customServerCertInfo", "universeDetailSubsets" ],
       "type" : "object"
     },
     "CertificateParams" : {
@@ -2963,7 +2961,8 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe"
+          "description" : "XCluster related states in this universe",
+          "readOnly" : true
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -4494,7 +4493,8 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe"
+          "description" : "XCluster related states in this universe",
+          "readOnly" : true
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -5140,7 +5140,8 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe"
+          "description" : "XCluster related states in this universe",
+          "readOnly" : true
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -5612,11 +5613,6 @@
         },
         "cronExpression" : {
           "description" : "Cron expression for a recurring backup",
-          "type" : "string"
-        },
-        "customerUUID" : {
-          "description" : "Customer UUID",
-          "format" : "uuid",
           "type" : "string"
         },
         "customerUuid" : {
@@ -7633,7 +7629,8 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe"
+          "description" : "XCluster related states in this universe",
+          "readOnly" : true
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -7856,7 +7853,8 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe"
+          "description" : "XCluster related states in this universe",
+          "readOnly" : true
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -8893,7 +8891,8 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe"
+          "description" : "XCluster related states in this universe",
+          "readOnly" : true
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -9318,7 +9317,8 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe"
+          "description" : "XCluster related states in this universe",
+          "readOnly" : true
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -9773,7 +9773,8 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe"
+          "description" : "XCluster related states in this universe",
+          "readOnly" : true
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -9991,7 +9992,8 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe"
+          "description" : "XCluster related states in this universe",
+          "readOnly" : true
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -10235,7 +10237,8 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe"
+          "description" : "XCluster related states in this universe",
+          "readOnly" : true
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -10440,7 +10443,8 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe"
+          "description" : "XCluster related states in this universe",
+          "readOnly" : true
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -10645,7 +10649,8 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe"
+          "description" : "XCluster related states in this universe",
+          "readOnly" : true
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -11046,7 +11051,8 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe"
+          "description" : "XCluster related states in this universe",
+          "readOnly" : true
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -11622,7 +11628,8 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe"
+          "description" : "XCluster related states in this universe",
+          "readOnly" : true
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -11723,24 +11730,23 @@
           "type" : "string"
         },
         "tableDetails" : {
+          "description" : "Tables participating in this xCluster config",
           "items" : {
             "$ref" : "#/definitions/XClusterTableConfig"
           },
-          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
-        "tableIds" : {
-          "items" : {
-            "type" : "string"
-          },
-          "type" : "array",
-          "uniqueItems" : true
+        "tableType" : {
+          "description" : "tableType",
+          "enum" : [ "UNKNOWN", "YSQL", "YCQL" ],
+          "type" : "string"
         },
         "tables" : {
           "items" : {
             "type" : "string"
           },
+          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
@@ -11772,7 +11778,6 @@
           "type" : "string"
         }
       },
-      "required" : [ "tableIds" ],
       "type" : "object"
     },
     "XClusterConfigCreateFormData" : {
@@ -11908,24 +11913,23 @@
           "type" : "string"
         },
         "tableDetails" : {
+          "description" : "Tables participating in this xCluster config",
           "items" : {
             "$ref" : "#/definitions/XClusterTableConfig"
           },
-          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
-        "tableIds" : {
-          "items" : {
-            "type" : "string"
-          },
-          "type" : "array",
-          "uniqueItems" : true
+        "tableType" : {
+          "description" : "tableType",
+          "enum" : [ "UNKNOWN", "YSQL", "YCQL" ],
+          "type" : "string"
         },
         "tables" : {
           "items" : {
             "type" : "string"
           },
+          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
@@ -11957,7 +11961,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "lag", "tableIds" ],
+      "required" : [ "lag" ],
       "type" : "object"
     },
     "XClusterConfigNeedBootstrapFormData" : {

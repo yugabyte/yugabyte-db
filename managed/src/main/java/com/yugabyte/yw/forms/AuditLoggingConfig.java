@@ -2,12 +2,11 @@
 
 package com.yugabyte.yw.forms;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-import java.text.SimpleDateFormat;
-import javax.validation.constraints.Min;
-import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.BeanValidator;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.text.SimpleDateFormat;
+import javax.validation.constraints.Min;
 import lombok.Data;
 import play.data.validation.Constraints.Required;
 
@@ -33,12 +32,11 @@ public class AuditLoggingConfig {
       required = false)
   private int maxHistory = 30;
 
-  public void setRolloverPattern(String rolloverPattern) {
+  public void validate(BeanValidator validator) {
     try {
       new SimpleDateFormat(rolloverPattern);
     } catch (Exception e) {
-      throw new PlatformServiceException(BAD_REQUEST, "Incorrect pattern " + rolloverPattern);
+      validator.error().forField("rolloverPattern", "Incorrect pattern").throwError();
     }
-    this.rolloverPattern = rolloverPattern;
   }
 }

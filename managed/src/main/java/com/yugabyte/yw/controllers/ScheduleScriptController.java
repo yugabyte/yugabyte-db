@@ -57,7 +57,7 @@ public class ScheduleScriptController extends AuthenticatedController {
     taskParams.platformUrl = request().host();
     taskParams.universeUUID = universeUUID;
     UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
-    taskParams.userUUID = user.getUser().uuid;
+    taskParams.userUUID = user.getUser().getUuid();
 
     // Using RuntimeConfig to save the script params because this isn't intended to be that commonly
     // used. If we start using it more commonly, we should migrate to a separate db table for these
@@ -85,7 +85,7 @@ public class ScheduleScriptController extends AuthenticatedController {
     try {
       ExternalScriptConfObject runtimeConfigObject =
           new ExternalScriptConfObject(
-              scriptContent, scriptParam, schedule.scheduleUUID.toString());
+              scriptContent, scriptParam, schedule.getScheduleUUID().toString());
       String json = mapper.writeValueAsString(runtimeConfigObject);
       config.setValue(ExternalScriptHelper.EXT_SCRIPT_RUNTIME_CONFIG_PATH, json);
     } catch (Exception e) {
@@ -97,7 +97,7 @@ public class ScheduleScriptController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.ScheduledScript,
-            Objects.toString(schedule.scheduleUUID, null),
+            Objects.toString(schedule.getScheduleUUID(), null),
             Audit.ActionType.ExternalScriptSchedule);
     return PlatformResults.withData(schedule);
   }
@@ -134,7 +134,7 @@ public class ScheduleScriptController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.ScheduledScript,
-            Objects.toString(schedule.scheduleUUID, null),
+            Objects.toString(schedule.getScheduleUUID(), null),
             Audit.ActionType.StopScheduledScript);
     return PlatformResults.withData(schedule);
   }
@@ -156,7 +156,7 @@ public class ScheduleScriptController extends AuthenticatedController {
     taskParams.platformUrl = request().host();
     taskParams.universeUUID = universeUUID;
     UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
-    taskParams.userUUID = user.getUser().uuid;
+    taskParams.userUUID = user.getUser().getUuid();
 
     Universe universe = Universe.getOrBadRequest(universeUUID);
     RuntimeConfig<Universe> config = sConfigFactory.forUniverse(universe);
@@ -183,7 +183,7 @@ public class ScheduleScriptController extends AuthenticatedController {
     try {
       ExternalScriptConfObject runtimeConfigObject =
           new ExternalScriptConfObject(
-              scriptContent, scriptParam, schedule.scheduleUUID.toString());
+              scriptContent, scriptParam, schedule.getScheduleUUID().toString());
       String json = mapper.writeValueAsString(runtimeConfigObject);
       config.setValue(ExternalScriptHelper.EXT_SCRIPT_RUNTIME_CONFIG_PATH, json);
     } catch (Exception e) {
@@ -194,7 +194,7 @@ public class ScheduleScriptController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.ScheduledScript,
-            Objects.toString(schedule.scheduleUUID, null),
+            Objects.toString(schedule.getScheduleUUID(), null),
             Audit.ActionType.UpdateScheduledScript);
     return PlatformResults.withData(schedule);
   }

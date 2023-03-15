@@ -20,7 +20,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -147,7 +146,7 @@ public class TlsToggle extends UpgradeTaskBase {
       }
     }
 
-    if (taskParams().ybcInstalled) {
+    if (taskParams().isYbcInstalled()) {
       createStopYbControllerTasks(nodes.getRight())
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       createYbcFlagsUpdateTasks(nodes.getRight());
@@ -231,7 +230,7 @@ public class TlsToggle extends UpgradeTaskBase {
   private void createUniverseSetTlsParamsTask() {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseSetTlsParams");
     UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
-    params.universeUUID = taskParams().universeUUID;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
     params.enableNodeToNodeEncrypt = taskParams().enableNodeToNodeEncrypt;
     params.enableClientToNodeEncrypt = taskParams().enableClientToNodeEncrypt;
     params.allowInsecure = taskParams().allowInsecure;

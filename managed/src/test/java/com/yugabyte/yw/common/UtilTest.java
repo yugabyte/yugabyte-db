@@ -65,7 +65,7 @@ public class UtilTest extends FakeDBApplication {
   @Test
   public void testGetNodePrefix() {
     Customer c = ModelFactory.testCustomer();
-    String nodePrefix = Util.getNodePrefix(c.getCustomerId(), "demo");
+    String nodePrefix = Util.getNodePrefix(c.getId(), "demo");
     assertEquals("yb-tc-demo", nodePrefix);
   }
 

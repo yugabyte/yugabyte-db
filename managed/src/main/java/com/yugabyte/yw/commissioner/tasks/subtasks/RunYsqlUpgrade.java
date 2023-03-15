@@ -79,7 +79,7 @@ public class RunYsqlUpgrade extends AbstractTaskBase {
       log.info("Skipping YSQL upgrade as current YB version is {}", taskParams().ybSoftwareVersion);
       return;
     }
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
 

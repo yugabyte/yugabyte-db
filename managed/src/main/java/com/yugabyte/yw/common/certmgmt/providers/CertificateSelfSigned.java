@@ -50,7 +50,7 @@ public class CertificateSelfSigned extends CertificateProviderBase {
   }
 
   public CertificateSelfSigned(CertificateInfo rootCertConfigInfo, Config config) {
-    this(rootCertConfigInfo.uuid, config);
+    this(rootCertConfigInfo.getUuid(), config);
   }
 
   @Override
@@ -76,13 +76,13 @@ public class CertificateSelfSigned extends CertificateProviderBase {
       boolean syncCertsToDB = CertificateHelper.DEFAULT_CLIENT.equals(username);
 
       CertificateInfo certInfo = CertificateInfo.get(rootCA);
-      if (certInfo.privateKey == null) {
+      if (certInfo.getPrivateKey() == null) {
         throw new PlatformServiceException(BAD_REQUEST, "Keyfile cannot be null!");
       }
       // The first entry will be the certificate that needs to sign the necessary certificate.
       X509Certificate cer =
           CertificateHelper.convertStringToX509CertList(
-                  FileUtils.readFileToString(new File(certInfo.certificate)))
+                  FileUtils.readFileToString(new File(certInfo.getCertificate())))
               .get(0);
       X500Name subject = new JcaX509CertificateHolder(cer).getSubject();
       log.debug("Root CA Certificate is:: {}", CertificateHelper.getCertificateProperties(cer));
@@ -91,7 +91,7 @@ public class CertificateSelfSigned extends CertificateProviderBase {
       try {
         pk =
             CertificateHelper.getPrivateKey(
-                FileUtils.readFileToString(new File(certInfo.privateKey)));
+                FileUtils.readFileToString(new File(certInfo.getPrivateKey())));
       } catch (Exception e) {
         log.error(
             "Unable to create certificate for username {} using root CA {}", username, rootCA, e);

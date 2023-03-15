@@ -23,7 +23,6 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 
 import java.io.IOException;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -55,13 +54,13 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
         cloudProviderFormData.config);
     // Hack to ensure old API remains functional.
     Provider reqProvider = new Provider();
-    reqProvider.code = cloudProviderFormData.code.toString();
+    reqProvider.setCode(cloudProviderFormData.code.toString());
     if (!reqBody.isNull() && reqBody.has("details")) {
       ObjectMapper objectMapper = new ObjectMapper();
-      reqProvider.details =
-          objectMapper.readValue(reqBody.get("details").toString(), ProviderDetails.class);
+      reqProvider.setDetails(
+          objectMapper.readValue(reqBody.get("details").toString(), ProviderDetails.class));
     } else {
-      reqProvider.setConfig(cloudProviderFormData.config);
+      reqProvider.setConfigMap(cloudProviderFormData.config);
     }
     Provider provider =
         cloudProviderHandler.createProvider(
@@ -75,7 +74,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.CloudProvider,
-            Objects.toString(provider.uuid, null),
+            Objects.toString(provider.getUuid(), null),
             Audit.ActionType.Create,
             Json.toJson(cloudProviderFormData));
     return PlatformResults.withData(provider);
@@ -97,7 +96,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.CloudProvider,
-            Objects.toString(newProvider.uuid, null),
+            Objects.toString(newProvider.getUuid(), null),
             Audit.ActionType.SetupDocker);
     return PlatformResults.withData(newProvider);
   }
@@ -117,7 +116,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.CloudProvider,
-            Objects.toString(provider.uuid, null),
+            Objects.toString(provider.getUuid(), null),
             Audit.ActionType.CreateKubernetes,
             requestBody);
     CloudInfoInterface.mayBeMassageResponse(provider);
@@ -144,7 +143,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
   public Result initialize(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     cloudProviderHandler.refreshPricing(customerUUID, provider);
-    return YBPSuccess.withMessage(provider.code.toUpperCase() + " Initialized");
+    return YBPSuccess.withMessage(provider.getCode().toUpperCase() + " Initialized");
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
@@ -160,7 +159,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.CloudProvider,
-            Objects.toString(provider.uuid, null),
+            Objects.toString(provider.getUuid(), null),
             Audit.ActionType.Bootstrap,
             requestBody,
             taskUUID);

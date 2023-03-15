@@ -64,7 +64,7 @@ public class CertificateControllerTest extends FakeDBApplication {
         .when(spyConf)
         .getString("yb.storage.path");
     for (String cert : test_certs) {
-      test_certs_uuids.add(CertificateHelper.createRootCA(spyConf, cert, customer.uuid));
+      test_certs_uuids.add(CertificateHelper.createRootCA(spyConf, cert, customer.getUuid()));
     }
   }
 
@@ -116,8 +116,8 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   @Test
   public void testListCertificates() {
-    ModelFactory.createUniverse(customer.getCustomerId(), test_certs_uuids.get(0));
-    Result result = listCertificates(customer.uuid);
+    ModelFactory.createUniverse(customer.getId(), test_certs_uuids.get(0));
+    Result result = listCertificates(customer.getUuid());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     List<LinkedHashMap> certs = Json.fromJson(json, List.class);
@@ -137,13 +137,13 @@ public class CertificateControllerTest extends FakeDBApplication {
     }
     assertEquals(test_certs, result_labels);
     assertEquals(test_certs_uuids, result_uuids);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testDeleteCertificate() {
     UUID cert_uuid = test_certs_uuids.get(0);
-    Result result = deleteCertificate(customer.uuid, cert_uuid);
+    Result result = deleteCertificate(customer.getUuid(), cert_uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
   }
@@ -151,7 +151,7 @@ public class CertificateControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteInvalidCertificate() {
     UUID uuid = UUID.randomUUID();
-    Result result = assertPlatformException(() -> deleteCertificate(customer.uuid, uuid));
+    Result result = assertPlatformException(() -> deleteCertificate(customer.getUuid(), uuid));
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
   }
@@ -159,11 +159,11 @@ public class CertificateControllerTest extends FakeDBApplication {
   @Test
   public void testGetCertificate() {
     UUID cert_uuid = test_certs_uuids.get(0);
-    Result result = getCertificate(customer.uuid, test_certs.get(0));
+    Result result = getCertificate(customer.getUuid(), test_certs.get(0));
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertEquals(cert_uuid, UUID.fromString(json.asText()));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -177,10 +177,10 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
     bodyJson.put("certType", "SelfSigned");
-    Result result = assertPlatformException(() -> uploadCertificate(customer.uuid, bodyJson));
+    Result result = assertPlatformException(() -> uploadCertificate(customer.getUuid(), bodyJson));
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -192,9 +192,9 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
     bodyJson.put("certType", "SelfSigned");
-    Result result = assertPlatformException(() -> uploadCertificate(customer.uuid, bodyJson));
+    Result result = assertPlatformException(() -> uploadCertificate(customer.getUuid(), bodyJson));
     assertEquals(BAD_REQUEST, result.status());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -213,15 +213,15 @@ public class CertificateControllerTest extends FakeDBApplication {
     certJson.put("nodeKeyPath", "/tmp/nodeKeyPath");
     bodyJson.set("customCertInfo", certJson);
 
-    Result result = uploadCertificate(customer.uuid, bodyJson);
+    Result result = uploadCertificate(customer.getUuid(), bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     UUID certUUID = UUID.fromString(json.asText());
     CertificateInfo ci = CertificateInfo.get(certUUID);
-    assertEquals(ci.label, "test");
-    assertTrue(ci.certificate.contains("/tmp"));
-    assertEquals(ci.certType, CertConfigType.CustomCertHostPath);
-    assertAuditEntry(1, customer.uuid);
+    assertEquals(ci.getLabel(), "test");
+    assertTrue(ci.getCertificate().contains("/tmp"));
+    assertEquals(ci.getCertType(), CertConfigType.CustomCertHostPath);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -241,18 +241,18 @@ public class CertificateControllerTest extends FakeDBApplication {
     certJson.put("serverKeyContent", server_key_content);
     bodyJson.put("customServerCertData", certJson);
 
-    Result result = uploadCertificate(customer.uuid, bodyJson);
+    Result result = uploadCertificate(customer.getUuid(), bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     UUID certUUID = UUID.fromString(json.asText());
     CertificateInfo ci = CertificateInfo.get(certUUID);
     CertificateInfo.CustomServerCertInfo customServerCertInfo = ci.getCustomServerCertInfo();
-    assertEquals(ci.label, "test");
-    assertTrue(ci.certificate.contains("/tmp"));
+    assertEquals(ci.getLabel(), "test");
+    assertTrue(ci.getCertificate().contains("/tmp"));
     assertTrue(customServerCertInfo.serverCert.contains("/tmp"));
     assertTrue(customServerCertInfo.serverKey.contains("/tmp"));
-    assertEquals(ci.certType, CertConfigType.CustomServerCert);
-    assertAuditEntry(1, customer.uuid);
+    assertEquals(ci.getCertType(), CertConfigType.CustomServerCert);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -263,7 +263,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     CertificateParams.CustomCertInfo emptyCustomCertPathParams = null;
     CertificateInfo.create(
         certUUID,
-        customer.uuid,
+        customer.getUuid(),
         "test",
         date,
         date,
@@ -284,7 +284,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     certJson.put("nodeKeyPath", "/tmp/nodeKeyPath");
     bodyJson.set("customCertInfo", certJson);
 
-    Result result = updateCertificate(customer.uuid, certUUID, bodyJson);
+    Result result = updateCertificate(customer.getUuid(), certUUID, bodyJson);
     assertEquals(OK, result.status());
     customCertInfo = CertificateInfo.get(certUUID).getCustomCertPathParams();
     assertNotNull(customCertInfo);
@@ -301,7 +301,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     createTempFile("certificate_controller_test_ca.crt", "test-cert");
     CertificateInfo.create(
         certUUID,
-        customer.uuid,
+        customer.getUuid(),
         "test",
         date,
         date,
@@ -323,7 +323,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("customCertInfo", certJson);
 
     Result result =
-        assertPlatformException(() -> updateCertificate(customer.uuid, certUUID, bodyJson));
+        assertPlatformException(() -> updateCertificate(customer.getUuid(), certUUID, bodyJson));
     assertEquals(BAD_REQUEST, result.status());
   }
 
@@ -336,40 +336,40 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
     bodyJson.put("certContent", cert_content);
-    UUID rootCA = CertificateHelper.createRootCA(spyConf, "test-universe", customer.uuid);
-    Result result = createClientCertificate(customer.uuid, rootCA, bodyJson);
+    UUID rootCA = CertificateHelper.createRootCA(spyConf, "test-universe", customer.getUuid());
+    Result result = createClientCertificate(customer.getUuid(), rootCA, bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     String clientCert = json.get("yugabytedb.crt").asText();
     String clientKey = json.get("yugabytedb.key").asText();
     assertNotNull(clientCert);
     assertNotNull(clientKey);
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
   public void testGetRootCertificate() {
-    UUID rootCA = CertificateHelper.createRootCA(spyConf, "test-universe", customer.uuid);
-    Result result = getRootCertificate(customer.uuid, rootCA);
+    UUID rootCA = CertificateHelper.createRootCA(spyConf, "test-universe", customer.getUuid());
+    Result result = getRootCertificate(customer.getUuid(), rootCA);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     String rootCert = json.get("root.crt").asText();
     assertNotNull(rootCert);
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
   public void testCreateSelfSignedCertificate() {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("label", "create_self_signed_cert_test");
-    Result result = createSelfSignedCertificate(customer.uuid, bodyJson);
+    Result result = createSelfSignedCertificate(customer.getUuid(), bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     UUID certUUID = UUID.fromString(json.asText());
     CertificateInfo ci = CertificateInfo.get(certUUID);
-    System.out.println(ci.label);
-    assertEquals(ci.label, "create_self_signed_cert_test");
-    assertEquals(ci.certType, CertConfigType.SelfSigned);
-    assertAuditEntry(1, customer.uuid);
+    System.out.println(ci.getLabel());
+    assertEquals(ci.getLabel(), "create_self_signed_cert_test");
+    assertEquals(ci.getCertType(), CertConfigType.SelfSigned);
+    assertAuditEntry(1, customer.getUuid());
   }
 }

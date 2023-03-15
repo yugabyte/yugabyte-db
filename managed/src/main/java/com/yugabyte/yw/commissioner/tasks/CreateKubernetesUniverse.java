@@ -80,7 +80,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
               pi,
               placement.masters,
               taskParams().nodePrefix,
-              universe.name,
+              universe.getName(),
               provider,
               taskParams().communicationPorts.masterRpcPort,
               newNamingStyle);
@@ -88,14 +88,14 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
       createPodsTask(
-          universe.name,
+          universe.getName(),
           placement,
           masterAddresses,
           false, /*isReadOnlyCluster*/
-          taskParams().enableYbc);
+          taskParams().isEnableYbc());
 
       createSingleKubernetesExecutorTask(
-          universe.name,
+          universe.getName(),
           KubernetesCommandExecutor.CommandType.POD_INFO,
           pi,
           false); /*isReadOnlyCluster*/
@@ -130,9 +130,16 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
         // Skip choosing masters from read cluster.
         boolean isReadClusterMultiAz = PlacementInfoUtil.isMultiAZ(readClusterProvider);
         createPodsTask(
-            universe.name, readClusterPlacement, masterAddresses, true, taskParams().enableYbc);
+            universe.getName(),
+            readClusterPlacement,
+            masterAddresses,
+            true,
+            taskParams().isEnableYbc());
         createSingleKubernetesExecutorTask(
-            universe.name, KubernetesCommandExecutor.CommandType.POD_INFO, readClusterPI, true);
+            universe.getName(),
+            KubernetesCommandExecutor.CommandType.POD_INFO,
+            readClusterPI,
+            true);
         readOnlyTserversAdded =
             getPodsToAdd(
                 readClusterPlacement.tservers,
@@ -150,14 +157,18 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Install YBC on the pods
-      if (taskParams().enableYbc) {
-        installYbcOnThePods(universe.name, tserversAdded, false, taskParams().ybcSoftwareVersion);
+      if (taskParams().isEnableYbc()) {
+        installYbcOnThePods(
+            universe.getName(), tserversAdded, false, taskParams().getYbcSoftwareVersion());
         if (readClusters.size() == 1) {
           installYbcOnThePods(
-              universe.name, readOnlyTserversAdded, true, taskParams().ybcSoftwareVersion);
+              universe.getName(),
+              readOnlyTserversAdded,
+              true,
+              taskParams().getYbcSoftwareVersion());
         }
         createWaitForYbcServerTask(allTserversAdded);
-        createUpdateYbcTask(taskParams().ybcSoftwareVersion)
+        createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 

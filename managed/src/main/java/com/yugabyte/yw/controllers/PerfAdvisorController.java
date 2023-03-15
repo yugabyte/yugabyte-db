@@ -194,7 +194,7 @@ public class PerfAdvisorController extends AuthenticatedController {
     recommendations.forEach(updater);
 
     convertException(
-        () -> performanceRecommendationService.save(recommendations, user.getUser().uuid),
+        () -> performanceRecommendationService.save(recommendations, user.getUser().getUuid()),
         "Save performance recommendations");
 
     auditService()
@@ -240,7 +240,7 @@ public class PerfAdvisorController extends AuthenticatedController {
   public Result getSettings(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    if (!customer.getCustomerId().equals(universe.customerId)) {
+    if (!customer.getId().equals(universe.getCustomerId())) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Universe " + universeUUID + " does not belong to customer " + customerUUID);
     }
@@ -283,7 +283,7 @@ public class PerfAdvisorController extends AuthenticatedController {
   public Result updateSettings(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    if (!customer.getCustomerId().equals(universe.customerId)) {
+    if (!customer.getId().equals(universe.getCustomerId())) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Universe " + universeUUID + " does not belong to customer " + customerUUID);
     }
@@ -313,7 +313,7 @@ public class PerfAdvisorController extends AuthenticatedController {
   public Result runPerfAdvisor(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    if (!customer.getCustomerId().equals(universe.customerId)) {
+    if (!customer.getId().equals(universe.getCustomerId())) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Universe " + universeUUID + " does not belong to customer " + customerUUID);
     }
@@ -337,7 +337,7 @@ public class PerfAdvisorController extends AuthenticatedController {
   public Result getLatestRun(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    if (!customer.getCustomerId().equals(universe.customerId)) {
+    if (!customer.getId().equals(universe.getCustomerId())) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Universe " + universeUUID + " does not belong to customer " + customerUUID);
     }

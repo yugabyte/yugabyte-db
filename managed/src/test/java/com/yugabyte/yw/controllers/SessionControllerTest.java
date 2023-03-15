@@ -223,7 +223,7 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -240,7 +240,7 @@ public class SessionControllerTest {
     assertEquals(OK, result.status());
     assertNull("UI Session should not be created", json.get("authToken"));
     assertNotNull(json.get("apiToken"));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -260,7 +260,7 @@ public class SessionControllerTest {
     assertThat(
         json.get("error").toString(),
         allOf(notNullValue(), containsString("Invalid User Credentials")));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -279,7 +279,7 @@ public class SessionControllerTest {
     assertThat(
         json.get("error").toString(),
         allOf(notNullValue(), containsString("{\"password\":[\"This field is required\"]}")));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -299,7 +299,7 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
 
     settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "false");
   }
@@ -325,7 +325,7 @@ public class SessionControllerTest {
     assertThat(
         json.get("error").toString(),
         allOf(notNullValue(), containsString("Invalid User Credentials")));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
 
     settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "false");
   }
@@ -349,7 +349,7 @@ public class SessionControllerTest {
     assertThat(
         json.get("error").toString(),
         allOf(notNullValue(), containsString("Invalid User Credentials")));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -367,7 +367,7 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
 
     settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "false");
   }
@@ -387,7 +387,7 @@ public class SessionControllerTest {
     assertEquals(OK, result.status());
     assertNotNull(json.get("apiToken"));
     assertNotNull(json.get("customerUUID"));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -402,7 +402,7 @@ public class SessionControllerTest {
 
     Result result = routeWithYWErrHandler(app, fakeRequest("GET", "/api/insecure_login"));
     assertUnauthorized(result, "No read only customer exists.");
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -415,7 +415,7 @@ public class SessionControllerTest {
     Result result = routeWithYWErrHandler(app, fakeRequest("GET", "/api/insecure_login"));
 
     assertUnauthorized(result, "Insecure login unavailable.");
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -436,7 +436,7 @@ public class SessionControllerTest {
     assertNotNull(json.get("authToken"));
     assertNotNull(json.get("apiToken"));
     Customer c1 = Customer.get(UUID.fromString(json.get("customerUUID").asText()));
-    assertAuditEntry(1, c1.uuid);
+    assertAuditEntry(1, c1.getUuid());
 
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "foo2@bar.com");
@@ -446,8 +446,8 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
-    assertAuditEntry(2, c1.uuid);
-    assertNotNull(alertDestinationService.getDefaultDestination(c1.uuid));
+    assertAuditEntry(2, c1.getUuid());
+    assertNotNull(alertDestinationService.getDefaultDestination(c1.getUuid()));
   }
 
   @Test
@@ -485,7 +485,7 @@ public class SessionControllerTest {
     Customer c1 = Customer.get(UUID.fromString(json.get("customerUUID").asText()));
     Users user = Users.get(UUID.fromString(json.get("userUUID").asText()));
     assertEquals(Role.SuperAdmin, user.getRole());
-    assertAuditEntry(1, c1.uuid);
+    assertAuditEntry(1, c1.getUuid());
 
     ObjectNode registerJson2 = Json.newObject();
     registerJson2.put("code", "fb");
@@ -504,7 +504,7 @@ public class SessionControllerTest {
     // Register duplicate
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
-    assertAuditEntry(2, c1.uuid);
+    assertAuditEntry(2, c1.getUuid());
     checkCount("count", "2");
     result =
         routeWithYWErrHandler(
@@ -668,13 +668,13 @@ public class SessionControllerTest {
     loginJson.put("password", "password");
     Result result = route(app, fakeRequest("POST", "/api/login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
 
     assertEquals(OK, result.status());
     String authToken = json.get("authToken").asText();
     result = route(app, fakeRequest("GET", "/api/logout").header("X-AUTH-TOKEN", authToken));
     assertEquals(OK, result.status());
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -694,7 +694,7 @@ public class SessionControllerTest {
     json = Json.parse(contentAsString(result));
     String authToken2 = json.get("authToken").asText();
     assertEquals(authToken1, authToken2);
-    assertAuditEntry(2, customer.uuid);
+    assertAuditEntry(2, customer.getUuid());
   }
 
   @Test
@@ -706,7 +706,7 @@ public class SessionControllerTest {
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
     Result result = route(app, fakeRequest("POST", "/api/login").bodyJson(loginJson));
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
 
     JsonNode json = Json.parse(contentAsString(result));
     String authToken = json.get("authToken").asText();
@@ -722,7 +722,7 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("apiToken"));
-    assertAuditEntry(2, customer.uuid);
+    assertAuditEntry(2, customer.getUuid());
   }
 
   @Test
@@ -755,7 +755,7 @@ public class SessionControllerTest {
     json = Json.parse(contentAsString(result));
     String apiToken2 = json.get("apiToken").asText();
     assertNotEquals(apiToken1, apiToken2);
-    assertAuditEntry(3, customer.uuid);
+    assertAuditEntry(3, customer.getUuid());
   }
 
   @Test
@@ -792,9 +792,9 @@ public class SessionControllerTest {
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
     Users user = ModelFactory.testUser(customer);
     String authToken = user.createAuthToken();
-    Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
+    Universe universe = ModelFactory.createUniverse(customer.getId());
     Http.RequestBuilder request =
-        fakeRequest("GET", "/universes/" + universe.universeUUID + "/proxy/www.test.com")
+        fakeRequest("GET", "/universes/" + universe.getUniverseUUID() + "/proxy/www.test.com")
             .header("X-AUTH-TOKEN", authToken);
     Result result = routeWithYWErrHandler(app, request);
     assertBadRequest(result, "Invalid proxy request");
@@ -807,9 +807,10 @@ public class SessionControllerTest {
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
     Users user = ModelFactory.testUser(customer);
     String authToken = user.createAuthToken();
-    Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
+    Universe universe = ModelFactory.createUniverse(customer.getId());
     Http.RequestBuilder request =
-        fakeRequest("GET", "/universes/" + universe.universeUUID + "/proxy/" + "127.0.0.1:7000")
+        fakeRequest(
+                "GET", "/universes/" + universe.getUniverseUUID() + "/proxy/" + "127.0.0.1:7000")
             .header("X-AUTH-TOKEN", authToken);
     Result result = routeWithYWErrHandler(app, request);
     assertBadRequest(result, "Invalid proxy request");
@@ -830,19 +831,19 @@ public class SessionControllerTest {
     AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ-3", "subnet-3");
     InstanceType i =
         InstanceType.upsert(
-            provider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+            provider.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, provider, i, 3);
-    Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
+    Universe universe = ModelFactory.createUniverse(customer.getId());
     Universe.saveDetails(
-        universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, "test-prefix"));
-    universe = Universe.getOrBadRequest(universe.universeUUID);
+        universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent, "test-prefix"));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.stream().findFirst().get();
     System.out.println("PRIVATE IP: " + node.cloudInfo.private_ip);
     Http.RequestBuilder request =
         fakeRequest(
                 "GET",
                 "/universes/"
-                    + universe.universeUUID
+                    + universe.getUniverseUUID()
                     + "/proxy/"
                     + node.cloudInfo.private_ip
                     + ":7001/")
@@ -866,12 +867,12 @@ public class SessionControllerTest {
     AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ-3", "subnet-3");
     InstanceType i =
         InstanceType.upsert(
-            provider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+            provider.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, provider, i, 3);
-    Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
+    Universe universe = ModelFactory.createUniverse(customer.getId());
     Universe.saveDetails(
-        universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, "test-prefix"));
-    universe = Universe.getOrBadRequest(universe.universeUUID);
+        universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent, "test-prefix"));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     UniverseDefinitionTaskParams details = universe.getUniverseDetails();
     NodeDetails node = details.nodeDetailsSet.stream().findFirst().get();
 
@@ -879,11 +880,11 @@ public class SessionControllerTest {
     node.cloudInfo.private_ip = "host-n1";
     universe.setUniverseDetails(details);
     universe.update();
-    universe = Universe.getOrBadRequest(universe.universeUUID);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
 
     String nodeAddr = node.cloudInfo.private_ip + ":" + node.masterHttpPort;
     Http.RequestBuilder request =
-        fakeRequest("GET", "/universes/" + universe.universeUUID + "/proxy/" + nodeAddr + "/")
+        fakeRequest("GET", "/universes/" + universe.getUniverseUUID() + "/proxy/" + nodeAddr + "/")
             .header("X-AUTH-TOKEN", authToken);
     Result result = routeWithYWErrHandler(app, request);
     // Expect the request to fail since the hostname isn't real.
@@ -903,18 +904,19 @@ public class SessionControllerTest {
     AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ-3", "subnet-3");
     InstanceType i =
         InstanceType.upsert(
-            provider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+            provider.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, provider, i, 3);
-    Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
+    Universe universe = ModelFactory.createUniverse(customer.getId());
     Universe.saveDetails(
-        universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, "test-prefix"));
-    universe = Universe.getOrBadRequest(universe.universeUUID);
+        universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent, "test-prefix"));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.stream().findFirst().get();
     String nodeAddr = node.cloudInfo.private_ip + ":" + node.masterHttpPort;
     Result result =
         route(
             app,
-            fakeRequest("GET", "/universes/" + universe.universeUUID + "/proxy/" + nodeAddr + "/"));
+            fakeRequest(
+                "GET", "/universes/" + universe.getUniverseUUID() + "/proxy/" + nodeAddr + "/"));
     // Expect the request to fail since the hostname isn't real.
     // This shows that it got past validation though
     assertForbidden(result, "Unable To Authenticate User");

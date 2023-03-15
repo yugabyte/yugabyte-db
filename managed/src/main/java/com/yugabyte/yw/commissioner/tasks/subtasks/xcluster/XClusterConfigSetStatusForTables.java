@@ -49,7 +49,7 @@ public class XClusterConfigSetStatusForTables extends XClusterConfigTaskBase {
 
     try {
       // Save the desired status in the DB.
-      xClusterConfig.setStatusForTables(taskParams().tableIds, taskParams().desiredStatus);
+      xClusterConfig.updateStatusForTables(taskParams().tableIds, taskParams().desiredStatus);
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);

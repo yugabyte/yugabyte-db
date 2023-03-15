@@ -37,7 +37,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    log.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
+    log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
 
     try {
 
@@ -106,10 +106,10 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
           newTservers, universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL);
 
       // Start ybc process on all the nodes
-      if (taskParams().enableYbc) {
+      if (taskParams().isEnableYbc()) {
         createStartYbcProcessTasks(
             newTservers, universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
-        createUpdateYbcTask(taskParams().ybcSoftwareVersion)
+        createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 

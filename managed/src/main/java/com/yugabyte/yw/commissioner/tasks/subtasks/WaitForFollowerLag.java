@@ -50,7 +50,7 @@ public class WaitForFollowerLag extends AbstractTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = taskParams().node;
     ServerType serverType = taskParams().serverType;
     double epsilon = 0.00001d;

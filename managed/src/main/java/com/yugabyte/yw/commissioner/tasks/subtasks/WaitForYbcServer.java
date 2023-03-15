@@ -53,7 +53,7 @@ public class WaitForYbcServer extends UniverseTaskBase {
   @Override
   public void run() {
     boolean isYbcConfigured = true;
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String certFile = universe.getCertificateNodetoNode();
     YbcClient client = null;
     Random rand = new Random();
@@ -68,7 +68,7 @@ public class WaitForYbcServer extends UniverseTaskBase {
                 .collect(Collectors.toSet());
     String errMsg = "";
 
-    log.info("Universe uuid: {}, ybcPort: {} to be used", universe.universeUUID, ybcPort);
+    log.info("Universe uuid: {}, ybcPort: {} to be used", universe.getUniverseUUID(), ybcPort);
     for (NodeDetails node : nodeDetailsSet) {
       String nodeIp = node.cloudInfo.private_ip;
       log.info("Node IP: {} to connect to YBC", nodeIp);

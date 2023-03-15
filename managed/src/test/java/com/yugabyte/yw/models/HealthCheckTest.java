@@ -35,8 +35,7 @@ public class HealthCheckTest extends FakeDBApplication {
     } catch (InterruptedException e) {
       // Ignore in test..
     }
-    HealthCheck check =
-        HealthCheck.addAndPrune(universeUUID, defaultCustomer.getCustomerId(), details);
+    HealthCheck check = HealthCheck.addAndPrune(universeUUID, defaultCustomer.getId(), details);
     assertNotNull(check);
     return check;
   }
@@ -71,7 +70,7 @@ public class HealthCheckTest extends FakeDBApplication {
     addChecks(universeUUID, HealthCheck.RECORD_LIMIT);
     List<HealthCheck> after = HealthCheck.getAll(universeUUID);
     for (HealthCheck check : after) {
-      assertTrue(now.compareTo(check.idKey.checkTime) < 0);
+      assertTrue(now.compareTo(check.getIdKey().checkTime) < 0);
     }
   }
 
@@ -82,7 +81,7 @@ public class HealthCheckTest extends FakeDBApplication {
     HealthCheck check2 = addCheck(universeUUID);
     HealthCheck latest = HealthCheck.getLatest(universeUUID);
     assertNotNull(latest);
-    assertEquals(latest.idKey.checkTime, check2.idKey.checkTime);
+    assertEquals(latest.getIdKey().checkTime, check2.getIdKey().checkTime);
   }
 
   @Test

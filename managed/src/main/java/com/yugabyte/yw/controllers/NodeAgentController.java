@@ -28,7 +28,7 @@ public class NodeAgentController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.NodeAgent,
-            nodeAgent.uuid.toString(),
+            nodeAgent.getUuid().toString(),
             Audit.ActionType.AddNodeAgent);
     return PlatformResults.withData(nodeAgent);
   }

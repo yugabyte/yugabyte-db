@@ -727,12 +727,14 @@ public class AlertControllerTest extends FakeDBApplication {
     AlertDestination firstDestination = createAlertDestination(true);
     assertThat(firstDestination.getUuid(), notNullValue());
     assertThat(
-        alertDestinationService.getDefaultDestination(customer.uuid), equalTo(firstDestination));
+        alertDestinationService.getDefaultDestination(customer.getUuid()),
+        equalTo(firstDestination));
 
     AlertDestination secondDestination = createAlertDestination(true);
     assertThat(secondDestination.getUuid(), notNullValue());
     assertThat(
-        alertDestinationService.getDefaultDestination(customer.uuid), equalTo(secondDestination));
+        alertDestinationService.getDefaultDestination(customer.getUuid()),
+        equalTo(secondDestination));
   }
 
   @Test
@@ -778,13 +780,15 @@ public class AlertControllerTest extends FakeDBApplication {
     AlertDestination firstDestination = createAlertDestination(true);
     assertThat(firstDestination.getUuid(), notNullValue());
     assertThat(
-        alertDestinationService.getDefaultDestination(customer.uuid), equalTo(firstDestination));
+        alertDestinationService.getDefaultDestination(customer.getUuid()),
+        equalTo(firstDestination));
 
     AlertDestination secondDestination = createAlertDestination(false);
     assertThat(secondDestination.getUuid(), notNullValue());
     // To be sure the default destination hasn't been changed.
     assertThat(
-        alertDestinationService.getDefaultDestination(customer.uuid), equalTo(firstDestination));
+        alertDestinationService.getDefaultDestination(customer.getUuid()),
+        equalTo(firstDestination));
 
     secondDestination.setDefaultDestination(true);
 
@@ -802,7 +806,8 @@ public class AlertControllerTest extends FakeDBApplication {
 
     assertThat(receivedDestination.isDefaultDestination(), is(true));
     assertThat(
-        alertDestinationService.getDefaultDestination(customer.uuid), equalTo(secondDestination));
+        alertDestinationService.getDefaultDestination(customer.getUuid()),
+        equalTo(secondDestination));
   }
 
   @Test
@@ -811,7 +816,8 @@ public class AlertControllerTest extends FakeDBApplication {
 
     AlertDestination destination = createAlertDestination(true);
     assertThat(destination.getUuid(), notNullValue());
-    assertThat(alertDestinationService.getDefaultDestination(customer.uuid), equalTo(destination));
+    assertThat(
+        alertDestinationService.getDefaultDestination(customer.getUuid()), equalTo(destination));
 
     destination.setDefaultDestination(false);
     Result result =
@@ -830,7 +836,8 @@ public class AlertControllerTest extends FakeDBApplication {
         "{\"defaultDestination\":[\"can't set the alert destination as non-default - "
             + "make another destination as default at first.\"]}");
     destination.setDefaultDestination(true);
-    assertThat(alertDestinationService.getDefaultDestination(customer.uuid), equalTo(destination));
+    assertThat(
+        alertDestinationService.getDefaultDestination(customer.getUuid()), equalTo(destination));
   }
 
   @Test
@@ -928,7 +935,9 @@ public class AlertControllerTest extends FakeDBApplication {
 
     Result result =
         doRequestWithAuthToken(
-            "GET", "/api/customers/" + customer.uuid + "/alerts/" + initial.getUuid(), authToken);
+            "GET",
+            "/api/customers/" + customer.getUuid() + "/alerts/" + initial.getUuid(),
+            authToken);
     assertThat(result.status(), equalTo(OK));
     JsonNode alertsJson = Json.parse(contentAsString(result));
     Alert alert = Json.fromJson(alertsJson, Alert.class);
@@ -1029,7 +1038,11 @@ public class AlertControllerTest extends FakeDBApplication {
     Result result =
         doRequestWithAuthToken(
             "POST",
-            "/api/customers/" + customer.uuid + "/alerts/" + initial.getUuid() + "/acknowledge",
+            "/api/customers/"
+                + customer.getUuid()
+                + "/alerts/"
+                + initial.getUuid()
+                + "/acknowledge",
             authToken);
     assertThat(result.status(), equalTo(OK));
 

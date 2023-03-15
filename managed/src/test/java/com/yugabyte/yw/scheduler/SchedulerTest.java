@@ -62,10 +62,10 @@ public class SchedulerTest extends FakeDBApplication {
 
   @Test
   public void testSkippedFutureScheduleTask() {
-    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
     Schedule s =
         ModelFactory.createScheduleBackup(
-            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(), universe.getUniverseUUID(), s3StorageConfig.getConfigUUID());
     s.updateNextScheduleTaskTime(DateUtils.addHours(new Date(), 2));
     scheduler.scheduleRunner();
     verify(mockCommissioner, times(0)).submit(any(), any());
@@ -75,36 +75,36 @@ public class SchedulerTest extends FakeDBApplication {
   public void testClearScheduleBacklog() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
     Schedule s =
         ModelFactory.createScheduleBackup(
-            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(), universe.getUniverseUUID(), s3StorageConfig.getConfigUUID());
     s.updateBacklogStatus(true);
     scheduler.scheduleRunner();
     verify(mockCommissioner, times(1)).submit(any(), any());
     s.refresh();
-    assertEquals(false, s.getBacklogStatus());
+    assertEquals(false, s.isBacklogStatus());
   }
 
   @Test
   public void testEnableScheduleBacklog() {
-    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
     Schedule s =
         ModelFactory.createScheduleBackup(
-            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(), universe.getUniverseUUID(), s3StorageConfig.getConfigUUID());
     setUniverseBackupInProgress(true, universe);
     scheduler.scheduleRunner();
     verify(mockCommissioner, times(0)).submit(any(), any());
     s.refresh();
-    assertEquals(true, s.getBacklogStatus());
+    assertEquals(true, s.isBacklogStatus());
   }
 
   @Test
   public void testSkipScheduleTaskIfRunning() {
-    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
     Schedule s =
         ModelFactory.createScheduleBackup(
-            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(), universe.getUniverseUUID(), s3StorageConfig.getConfigUUID());
     ScheduleTask.create(UUID.randomUUID(), s.getScheduleUUID());
     scheduler.scheduleRunner();
     verify(mockCommissioner, times(0)).submit(any(), any());
@@ -112,10 +112,10 @@ public class SchedulerTest extends FakeDBApplication {
 
   @Test
   public void testRetryTaskOnServiceUnavailable() {
-    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
     Schedule s =
         ModelFactory.createScheduleBackup(
-            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(), universe.getUniverseUUID(), s3StorageConfig.getConfigUUID());
     Date dt = new Date();
     s.updateNextScheduleTaskTime(dt);
     s.setCronExpression("0 0 * * *");
@@ -124,7 +124,7 @@ public class SchedulerTest extends FakeDBApplication {
         .when(mockCommissioner)
         .submit(any(), any());
     scheduler.scheduleRunner();
-    s = Schedule.getOrBadRequest(s.scheduleUUID);
+    s = Schedule.getOrBadRequest(s.getScheduleUUID());
     Date next = s.getNextScheduleTaskTime();
     assertTrue(next.before(DateUtils.addHours(new Date(), 1)));
   }
@@ -139,6 +139,6 @@ public class SchedulerTest extends FakeDBApplication {
             universe.setUniverseDetails(universeDetails);
           }
         };
-    Universe.saveDetails(universe.universeUUID, updater);
+    Universe.saveDetails(universe.getUniverseUUID(), updater);
   }
 }

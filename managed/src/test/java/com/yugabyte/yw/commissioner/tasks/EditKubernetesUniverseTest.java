@@ -39,7 +39,6 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
-import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.client.utils.Serialization;
 
 import java.io.File;
@@ -105,14 +104,18 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     setup();
 
     config.put("KUBECONFIG", "test");
-    kubernetesProvider.setConfig(config);
+    kubernetesProvider.setConfigMap(config);
     kubernetesProvider.save();
     editUniverse.setUserTaskUUID(UUID.randomUUID());
     Region r = Region.create(kubernetesProvider, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     InstanceType i =
         InstanceType.upsert(
-            kubernetesProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+            kubernetesProvider.getUuid(),
+            "c3.xlarge",
+            10,
+            5.5,
+            new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent =
         getTestUserIntent(r, kubernetesProvider, i, 3);
     userIntent.replicationFactor = 1;
@@ -120,13 +123,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     userIntent.tserverGFlags = new HashMap<>();
     userIntent.universeName = "demo-universe";
     userIntent.ybSoftwareVersion = YB_SOFTWARE_VERSION;
-    defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
+    defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(userIntent, NODE_PREFIX, setMasters /* setMasters */));
     Universe.saveDetails(
-        defaultUniverse.universeUUID, ApiUtils.mockUniverseUpdaterWithActivePods(1, 3));
-    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+        defaultUniverse.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithActivePods(1, 3));
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
     defaultUniverse.save();
@@ -245,7 +248,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       assertEquals(task, tasks.get(0).getTaskType());
       JsonNode expectedResults = resultList.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
 
@@ -293,7 +296,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
 
-    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
 
     // After changing to 5 tservers.
     String podsString =
@@ -331,7 +334,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(pods);
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
     taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
     UniverseDefinitionTaskParams.UserIntent newUserIntent =
@@ -378,7 +381,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
 
-    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
     String podsString =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
             + "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
@@ -399,7 +402,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(pods);
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
     taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
     UniverseDefinitionTaskParams.UserIntent newUserIntent =
@@ -450,7 +453,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
 
-    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
     String podsString =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
             + "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
@@ -476,11 +479,11 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(pods);
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
     taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
     InstanceType.upsert(
-        kubernetesProvider.uuid, "c5.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+        kubernetesProvider.getUuid(), "c5.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent newUserIntent =
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
     newUserIntent.instanceType = "c5.xlarge";

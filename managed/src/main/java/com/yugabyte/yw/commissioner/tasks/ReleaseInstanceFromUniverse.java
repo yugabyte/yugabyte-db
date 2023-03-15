@@ -50,7 +50,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
         "Started {} task for node {} in univ uuid={}",
         getName(),
         taskParams().nodeName,
-        taskParams().universeUUID);
+        taskParams().getUniverseUUID());
     NodeDetails currentNode = null;
     try {
       checkUniverseVersion();
@@ -60,7 +60,8 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
 
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
-        String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
+        String msg =
+            "No node " + taskParams().nodeName + " found in universe " + universe.getName();
         log.error(msg);
         throw new RuntimeException(msg);
       }

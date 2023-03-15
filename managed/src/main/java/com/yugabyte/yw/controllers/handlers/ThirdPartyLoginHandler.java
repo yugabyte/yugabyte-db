@@ -101,16 +101,16 @@ public class ThirdPartyLoginHandler {
   }
 
   public void onLoginSuccess(Context ctx, Users user) {
-    Customer cust = Customer.get(user.customerUUID);
+    Customer cust = Customer.get(user.getCustomerUUID());
     ctx.response()
         .setCookie(
-            Cookie.builder("customerId", cust.uuid.toString())
+            Cookie.builder("customerId", cust.getUuid().toString())
                 .withSecure(ctx.request().secure())
                 .withHttpOnly(false)
                 .build());
     ctx.response()
         .setCookie(
-            Cookie.builder("userId", user.uuid.toString())
+            Cookie.builder("userId", user.getUuid().toString())
                 .withSecure(ctx.request().secure())
                 .withHttpOnly(false)
                 .build());

@@ -25,7 +25,6 @@ import static play.test.Helpers.contentAsString;
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
@@ -253,12 +252,12 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
         .thenReturn(new ShellResponse());
     JsonNode haConfigJson = createHAConfig();
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
-    UUID configUUID = config.getUUID();
+    UUID configUUID = config.getUuid();
     Result createResult = createPlatformInstance(configUUID, "http://abc.com/", true, false);
     assertOk(createResult);
     JsonNode instanceJson = Json.parse(contentAsString(createResult));
     PlatformInstance instance = Json.fromJson(instanceJson, PlatformInstance.class);
-    UUID instanceUUID = instance.getUUID();
+    UUID instanceUUID = instance.getUuid();
     PlatformInstance remoteLeader = PlatformInstance.create(config, "http://def.com/", true, false);
     remoteLeader.save();
     String uri =
@@ -278,12 +277,12 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
         .thenReturn(new ShellResponse());
     JsonNode haConfigJson = createHAConfig();
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
-    UUID configUUID = config.getUUID();
+    UUID configUUID = config.getUuid();
     Result createResult = createPlatformInstance(configUUID, "http://abc.com/", true, false);
     assertOk(createResult);
     JsonNode instanceJson = Json.parse(contentAsString(createResult));
     PlatformInstance instance = Json.fromJson(instanceJson, PlatformInstance.class);
-    UUID instanceUUID = instance.getUUID();
+    UUID instanceUUID = instance.getUuid();
     String uri =
         String.format(
             "/api/settings/ha/config/%s/instance/%s/promote",
@@ -309,7 +308,7 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
 
     JsonNode haConfigJson = createHAConfig();
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
-    UUID configUUID = config.getUUID();
+    UUID configUUID = config.getUuid();
     Result createResult = createPlatformInstance(configUUID, "http://abc.com/", true, true);
     assertOk(createResult);
     createResult = createPlatformInstance(configUUID, "http://def.com/", false, false);

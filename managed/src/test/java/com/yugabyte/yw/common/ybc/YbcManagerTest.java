@@ -52,7 +52,7 @@ public class YbcManagerTest extends FakeDBApplication {
             mockNodeManager);
     spyYbcManager = spy(ybcManager);
     testCustomer = ModelFactory.testCustomer();
-    testUniverse = ModelFactory.createUniverse(testCustomer.getCustomerId());
+    testUniverse = ModelFactory.createUniverse(testCustomer.getId());
     ModelFactory.addNodesToUniverse(testUniverse.getUniverseUUID(), 3);
   }
 

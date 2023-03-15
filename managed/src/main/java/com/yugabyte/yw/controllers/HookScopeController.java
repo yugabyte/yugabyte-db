@@ -91,10 +91,10 @@ public class HookScopeController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.HookScope,
-            hookScope.uuid.toString(),
+            hookScope.getUuid().toString(),
             Audit.ActionType.CreateHookScope,
             request().body().asJson());
-    log.info("Created hook scope with uuid {}", hookScope.uuid);
+    log.info("Created hook scope with uuid {}", hookScope.getUuid());
     return PlatformResults.withData(hookScope);
   }
 
@@ -142,11 +142,11 @@ public class HookScopeController extends AuthenticatedController {
     verifyAuth(customer);
     HookScope hookScope = HookScope.getOrBadRequest(customerUUID, hookScopeUUID);
     Hook hook = Hook.getOrBadRequest(customerUUID, hookUUID);
-    if (hook.hookScope == null || !hook.hookScope.uuid.equals(hookScopeUUID)) {
+    if (hook.getHookScope() == null || !hook.getHookScope().getUuid().equals(hookScopeUUID)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Hook " + hookUUID + " is not attached to hook scope " + hookScopeUUID);
     }
-    hook.hookScope = null;
+    hook.setHookScope(null);
     hook.update();
     auditService()
         .createAuditEntryWithReqBody(
@@ -166,7 +166,7 @@ public class HookScopeController extends AuthenticatedController {
       log.warn(
           "Not performing SuperAdmin authorization for this endpoint, customer={} as platform is in"
               + " cloud mode",
-          customer.uuid);
+          customer.getUuid());
       tokenAuthenticator.adminOrThrow(ctx());
     } else {
       tokenAuthenticator.superAdminOrThrow(ctx());

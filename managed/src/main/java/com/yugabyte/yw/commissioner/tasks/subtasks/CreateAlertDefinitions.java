@@ -28,15 +28,15 @@ public class CreateAlertDefinitions extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ")";
+    return super.getName() + "(" + taskParams().getUniverseUUID() + ")";
   }
 
   @Override
   public void run() {
     try {
       log.info("Running {}", getName());
-      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-      Customer customer = Customer.get(universe.customerId);
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+      Customer customer = Customer.get(universe.getCustomerId());
 
       AlertConfigurationFilter filter =
           AlertConfigurationFilter.builder()

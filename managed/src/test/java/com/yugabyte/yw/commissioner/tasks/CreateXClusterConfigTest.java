@@ -205,11 +205,11 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
       TestUtils.setFakeHttpContext(defaultUser);
       CustomerTask.create(
           defaultCustomer,
-          targetUniverse.universeUUID,
+          targetUniverse.getUniverseUUID(),
           taskUUID,
           TargetType.XClusterConfig,
           CustomerTask.TaskType.CreateXClusterConfig,
-          xClusterConfig.name);
+          xClusterConfig.getName());
       return waitForTask(taskUUID);
     } catch (InterruptedException e) {
       assertNull(e.getMessage());
@@ -354,10 +354,10 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(xClusterConfig, requestedTableInfoList);
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
-    assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
+    assertEquals(XClusterConfigStatusType.Running, xClusterConfig.getStatus());
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
-    assertEquals(1, targetUniverse.version);
+    assertEquals(1, targetUniverse.getVersion());
     assertFalse("universe unlocked", targetUniverse.universeIsLocked());
     assertFalse("update completed", targetUniverse.getUniverseDetails().updateInProgress);
     assertTrue("update successful", targetUniverse.getUniverseDetails().updateSucceeded);
@@ -398,10 +398,10 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(xClusterConfig, requestedTableInfoList);
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
-    assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
+    assertEquals(XClusterConfigStatusType.Running, xClusterConfig.getStatus());
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
-    assertEquals(2, targetUniverse.version);
+    assertEquals(2, targetUniverse.getVersion());
     assertFalse("universe unlocked", targetUniverse.universeIsLocked());
     assertFalse("update completed", targetUniverse.getUniverseDetails().updateInProgress);
     assertTrue("update successful", targetUniverse.getUniverseDetails().updateSucceeded);
@@ -447,9 +447,9 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     assertEquals(Failure, taskInfo.getTaskState());
 
     assertEquals(TaskType.XClusterConfigSetup, taskInfo.getSubTasks().get(2).getTaskType());
-    String taskErrMsg = taskInfo.getSubTasks().get(2).getTaskDetails().get("errorString").asText();
+    String taskErrMsg = taskInfo.getSubTasks().get(2).getDetails().get("errorString").asText();
     assertThat(taskErrMsg, containsString(setupErrMsg));
-    assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.status);
+    assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.getStatus());
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
     assertFalse("universe unlocked", targetUniverse.universeIsLocked());
@@ -498,13 +498,13 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     assertEquals(Failure, taskInfo.getTaskState());
 
     assertEquals(TaskType.XClusterConfigSetup, taskInfo.getSubTasks().get(2).getTaskType());
-    String taskErrMsg = taskInfo.getSubTasks().get(2).getTaskDetails().get("errorString").asText();
+    String taskErrMsg = taskInfo.getSubTasks().get(2).getDetails().get("errorString").asText();
     String expectedErrMsg =
         String.format(
             "XClusterConfig(%s) operation failed: code: %s\nmessage: \"%s\"",
-            xClusterConfig.uuid, ErrorCode.UNKNOWN_ERROR, isSetupDoneErrMsg);
+            xClusterConfig.getUuid(), ErrorCode.UNKNOWN_ERROR, isSetupDoneErrMsg);
     assertThat(taskErrMsg, containsString(expectedErrMsg));
-    assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.status);
+    assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.getStatus());
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
     assertFalse("universe unlocked", targetUniverse.universeIsLocked());
