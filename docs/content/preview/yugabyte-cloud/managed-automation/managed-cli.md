@@ -17,12 +17,20 @@ rightNav:
 
 ## Overview
 
-The [YugabyteDB Managed Command Line Interface](https://github.com/yugabyte/ybm-cli) (ybm) is an open source tool that enables you to interact with YugabyteDB Managed accounts using commands in your command-line shell. With minimal configuration, the CLI enables you to start running commands that implement functionality equivalent to that provided by the browser-based YugabyteDB Managed interface from the command prompt in your shell.
+The [YugabyteDB Managed Command Line Interface](https://github.com/yugabyte/ybm-cli) (`ybm`) is an open source tool that enables you to interact with YugabyteDB Managed accounts using commands in your command-line shell. With minimal configuration, the CLI enables you to start running commands that implement functionality equivalent to that provided by the browser-based YugabyteDB Managed interface from the command prompt in your shell.
 
 You can install the ybm CLI using Homebrew:
 
 ```sh
 brew install yugabyte/yugabytedb/ybm
+```
+
+## Get started
+
+If you don't have a YBM account yet, you can use the followign command to bring up the sign up page:
+
+```sh
+ybm signup
 ```
 
 ## Global configuration
@@ -32,7 +40,7 @@ Using ybm CLI requires providing, at minimum, an [API key](../managed-apikeys/) 
 You can pass these values as flags when running ybm commands. For example:
 
 ```sh
-ybm --apikey AWERDFSSS --host cloud.yugabyte.com cluster get
+ybm --apikey "eyJ..." cluster list
 ```
 
 For convenience, you can configure ybm with default values for these flags as follows:
@@ -40,30 +48,21 @@ For convenience, you can configure ybm with default values for these flags as fo
 - Use the `auth` command to write these values to a YAML configuration file. For example:
 
   ```sh
-  ybm auth --apikey AWERDFSSS --host cloud.yugabyte.com
+  ybm auth --apikey "eyJ..."
   ```
 
   By default, this writes the values to the file `.ybm-cli.yaml` under your `$HOME` directory.
-
-  To switch between multiple configurations while using ybm, use the `--config` flag to specify the configuration file. For example, to use a configuration file named `.ybm-cli-portal.yaml` instead of the default configuration, execute the following command:
-
-  ```sh
-  ybm --config ~/.ybm-cli-portal.yaml cluster get
-  ```
 
 - Using [environment variables](#environment-variables). Environment variables must begin with `YBM_`. For example:
 
   ```sh
   export YBM_APIKEY=AWERDFSSS
-  export YBM_HOST=cloud.yugabyte.com
-  ybm cluster get
+  ybm cluster list
   ```
-
-By default, `https://` is added to the host if no scheme is provided. To use http, add `http://` to the host.
 
 ### Autocompletion
 
-You can configure command autocompletion for your shell using the `completion` resource. For example:
+You can configure command autocompletion for your shell using the `completion` command. For example:
 
 ```sh
 ybm completion bash
@@ -75,6 +74,9 @@ This generates an autocompletion script for the specified shell. Available optio
 - fish
 - powershell
 - zsh
+
+Further instructions on how to enable autocomplete for the respective shells are available in the [AutoComplete page](../managed-cli-autocomplete/).
+
 
 ## Syntax
 
@@ -107,7 +109,7 @@ ybm --help
 For help with specific `ybm` resource commands, run `ybm [ resource ] [ command ] -h`. For example, you can print the command-line help for the `ybm create` command by running the following:
 
 ```sh
-ybm read-replica create -h
+ybm cluster read-replica create -h
 ```
 
 ## Resources
@@ -116,10 +118,10 @@ The following resources can be managed using the CLI:
 
 - [backup](#backup)
 - [cluster](#cluster)
+  - [read-replica](#read-replica)
 - [network-allow-list](#network-allow-list)
-- [read-replica](#read-replica)
 - [vpc](#vpc)
-- [vpc-peering](#vpc-peering)
+  - [vpc-peering](#vpc-peering)
 
 <!--
 - [cdc-sink](#cdc-sink)
@@ -145,8 +147,7 @@ Examples:
 
   ```sh
   ybm backup create \
-      --cluster-name=test-cluster \
-      --credentials=username=admin,password=password123
+      --cluster-name=test-cluster
   ```
 
 #### create
@@ -186,6 +187,7 @@ Use the `cluster` resource to perform operations on a YugabyteDB cluster, includ
 - pause and resume clusters
 - get information about clusters
 - add IP allow lists to clusters
+- create/update/delete read replicas
 
 ```text
 Usage: ybm cluster [command] [flags]
@@ -212,26 +214,27 @@ Create a cluster.
 : The database credentials for the default user.
 
 --cloud-type=_provider_
-: Cloud provider. `aws` or `gcp`.
+: Cloud provider. `AWS` or `GCP`.
 
 --cluster-type=_type_
-: Deployment type. `synchronous` or `geo_partitioned`.
+: Deployment type. `SYNCHRONOUS` or `GEO_PARTITIONED`.
 
---node-config=_number_
-: Number of nodes for the cluster
+--node-config=num-cores=_num-cores_,disk-size-gb=_disk-size-gb_
+: Number of nodes and disk size for the cluster, provided as key-value pairs.
+: If specified, num-cores is mandatory, disk-size-gb is optional.
 
 --region-info=region=_region-name_,num_nodes=_number-of-nodes_,vpc=_vpc-name_
 : Region details for multi-region cluster, provided as key-value pairs.
 : Specify one `--region-info` flag for each region in the cluster.
 
 --cluster-tier=_tier_
-: Type of cluster; `sandbox` or `dedicated`.
+: Type of cluster; `Sandbox` or `Dedicated`.
 
 --fault-tolerance=_tolerance_
-: Fault tolerance for the cluster. `none`, `zone`, or `region`.
+: Fault tolerance for the cluster. `NONE`, `ZONE`, or `REGION`.
 
 --database-track=_track_
-: Database version to use for the cluster. `stable` or `preview`.
+: Database version to use for the cluster. `Stable` or `Preview`.
 
 #### delete
 
@@ -240,9 +243,16 @@ Delete the specified cluster.
 --cluster-name=_name_
 : Name of the cluster.
 
-#### get
+#### list
 
-Fetch information about the specified cluster.
+List all the clusters to which you have access.
+
+--cluster-name=_name_
+: The name of the cluster to filter
+
+#### describe
+
+Fetch detailed information about the specified cluster.
 
 --cluster-name=_name_
 : Name of the cluster.
@@ -253,26 +263,27 @@ Fetch information about the specified cluster.
 : Name of the cluster to update.
 
 --cloud-type=_provider_
-: Cloud provider. `aws` or `gcp`.
+: Cloud provider. `AWS` or `GCP`.
 
 --cluster-type=_type_
-: Deployment type. `synchronous` or `geo_partitioned`.
+: Deployment type. `SYNCHRONOUS` or `GEO_PARTITIONED`.
 
---node-config=_number_
-: Number of nodes for the cluster
+--node-config=num-cores=_num-cores_,disk-size-gb=_disk-size-gb_
+: Number of nodes and disk size for the cluster, provided as key-value pairs.
+: If specified, num-cores is mandatory, disk-size-gb is optional.
 
 --region-info=region=_region-name_,num_nodes=_number-of-nodes_,vpc=_vpc-name_
 : Region details for multi-region cluster, provided as key-value pairs.
 : Specify one `--region-info` flag for each region in the cluster.
 
 --cluster-tier=_tier_
-: Type of cluster; `sandbox` or `dedicated`.
+: Type of cluster; `Sandbox` or `Dedicated`.
 
 --fault-tolerance=_tolerance_
-: Fault tolerance for the cluster. `none`, `zone`, or `region`.
+: Fault tolerance for the cluster. `NONE`, `ZONE`, or `REGION`.
 
 --database-track=_track_
-: Database version to use for the cluster. `stable` or `preview`.
+: Database version to use for the cluster. `Stable` or `Preview`.
 
 #### pause
 
@@ -284,17 +295,121 @@ Fetch information about the specified cluster.
 --cluster-name=_name_
 : Name of the cluster to resume.
 
-#### describe-regions
+#### cert download
 
-Equivalent of `cloud-regions get`.
+--out
+: File where to store the Root CA certificate that can be used to
+: connect to your YugabyteDB Managed database.
 
-#### describe-instances
 
-Equivalent of `instance-types get`.
+-----
 
-#### add-network-allow-list
+### cluster network
 
-Equivalent of `network-allow-list assign`.
+#### allow-list assign
+
+--cluster-name=_name_
+: The cluster name to which to assign the allow lists.
+
+--network-allow-list=_name_
+: The network allow list to assign to the cluster.
+
+#### allow-list unassign
+
+--cluster-name=_name_
+: The cluster name from which to unassign the allow lists.
+
+--network-allow-list=_name_
+: The network allow list to unassign from the cluster.
+
+
+#### endpoint list
+
+--cluster-name=_name_
+: The cluster for which to list the endpoints.
+
+--region=_region_
+: Filter the endpoints only from this region.
+
+--accessibility=_type_
+: Filter the endpoints only with this accessibility type (`PUBLIC`, `PRIVATE`, `PRIVATE_SERVICE_ENDPOINT`).
+
+-----
+
+### cluster read-replica
+
+Use the `read-replica` resource to perform operations on a YugabyteDB cluster read replica, including the following:
+
+- create, update, and delete read replicas
+- get information about read replicas
+
+```text
+Usage: ybm cluster read-replica [command] [flags]
+```
+
+Examples:
+
+- Create a read-replica cluster:
+
+  ```sh
+  ybm cluster read-replica create \
+    --replica=num_cores=<region-num_cores>,\
+    memory_mb=<memory_mb>,\
+    disk_size_gb=<disk_size_gb>,\
+    code=<GCP or AWS>,\
+    region=<region>,\
+    num_nodes=<num_nodes>,\
+    vpc=<vpc_name>,\
+    num_replicas=<num_replicas>,\
+    multi_zone=<multi_zone>
+  ```
+
+#### create
+
+--cluster-name=_name_
+: Name of the cluster to which you want to add read replicas.
+
+--replica=_arguments_
+: Specifications for the read replica provided as key-value pairs, as follows:
+
+- num_cores - number of vCPUs per node
+- memory_mb - memory (MB) per node
+- disk_size_gb - disk size (GB) per node
+- code - cloud provider (`AWS` or `GCP`)
+- region - region in which to deploy the read replica
+- num_nodes - number of nodes for the read replica
+- vpc_name - name of the VPC in which to deploy the read replica
+- num_replicas - the replication factor
+- multi-zone - whether the read replica is multi-zone.
+
+#### delete
+
+--cluster-name=_name_
+: Name of the cluster whose read replicas you want to delete.
+
+#### list
+
+--cluster-name=_name_
+: Name of the cluster whose read replicas you want to fetch.
+
+#### update
+
+--cluster-name=_name_
+: Name of the cluster whose read replicas you want to update.
+
+--replica=_arguments_
+: Specifications for the read replica provided as key-value pairs, as follows:
+
+- num_cores - number of vCPUs per node
+- memory_mb - memory (MB) per node
+- disk_size_gb - disk size (GB) per node
+- code - cloud provider (`AWS` or `GCP`)
+- region - region in which to deploy the read replica
+- num_nodes - number of nodes for the read replica
+- vpc_name - name of the VPC in which to deploy the read replica
+- num_replicas - the replication factor
+- multi-zone - 
+
 
 -----
 
@@ -343,82 +458,6 @@ Examples:
 
 -----
 
-### read-replica
-
-Use the `read-replica` resource to perform operations on a YugabyteDB cluster read replica, including the following:
-
-- create, update, and delete read replicas
-- get information about read replicas
-
-```text
-Usage: ybm read-replica [command] [flags]
-```
-
-Examples:
-
-- Create a read-replica cluster:
-
-  ```sh
-  ybm read-replica create \
-    --replica=num_cores=<region-num_cores>,\
-    memory_mb=<memory_mb>,\
-    disk_size_gb=<disk_size_gb>,\
-    code=<GCP or AWS>,\
-    region=<region>,\
-    num_nodes=<num_nodes>,\
-    vpc=<vpc_name>,\
-    num_replicas=<num_replicas>,\
-    multi_zone=<multi_zone>
-  ```
-
-#### create
-
---cluster-name=_name_
-: Name of the cluster to which you want to add read replicas.
-
---replica=_arguments_
-: Specifications for the read replica provided as key-value pairs, as follows:
-
-- num_cores - number of vCPUs per node
-- memory_mb - memory (MB) per node
-- disk_size_gb - disk size (GB) per node
-- code - cloud provider (`aws` or `gcp`)
-- region - region in which to deploy the read replica
-- num_nodes - number of nodes for the read replica
-- vpc_name - name of the VPC in which to deploy the read replica
-- num_replicas - the replication factor
-- multi-zone - whether the read replica is multi-zone.
-
-#### delete
-
---cluster-name=_name_
-: Name of the cluster whose read replicas you want to delete.
-
-#### get
-
---cluster-name=_name_
-: Name of the cluster whose read replicas you want to fetch.
-
-#### update
-
---cluster-name=_name_
-: Name of the cluster whose read replicas you want to update.
-
---replica=_arguments_
-: Specifications for the read replica provided as key-value pairs, as follows:
-
-- num_cores - number of vCPUs per node
-- memory_mb - memory (MB) per node
-- disk_size_gb - disk size (GB) per node
-- code - cloud provider (`aws` or `gcp`)
-- region - region in which to deploy the read replica
-- num_nodes - number of nodes for the read replica
-- vpc_name - name of the VPC in which to deploy the read replica
-- num_replicas - the replication factor
-- multi-zone - 
-
------
-
 ### vpc
 
 Use the `vpc` resource to create and delete VPCs.
@@ -444,7 +483,7 @@ Examples:
 : Name for the VPC.
 
 --cloud=_provider_
-: Cloud provider. `aws` or `gcp`.
+: Cloud provider. `AWS` or `GCP`.
 
 --region=_region(s)_
 : Comma-delimited list of regions for the VPC.
@@ -467,15 +506,15 @@ Examples:
 
 -----
 
-### vpc-peering
+### vpc peering
 
-Use the `vpc-peering` resource to perform operations on VPC peerings, including the following:
+Use the `vpc peering` resource to perform operations on VPC peerings, including the following:
 
 - create and delete VPC peerings
 - get information about a peering
 
 ```text
-Usage: ybm vpc-peering [command] [flags]
+Usage: ybm vpc peering [command] [flags]
 ```
 
 Examples:
@@ -483,7 +522,7 @@ Examples:
 - Create a VPC peering on GCP:
 
   ```sh
-  ybm vpc-peering create \
+  ybm vpc peering create \
       --name=demo-peer \
       --vpc-name=demo-vpc \
       --cloud=GCP \
@@ -502,7 +541,7 @@ Examples:
 : Name of the YugabyteDB VPC to be peered.
 
 --cloud=_provider_ (this is cloud-type above)
-: Cloud provider. `aws` or `gcp`.
+: Cloud provider. `AWS` or `GCP`.
 
 --app-vpc-project-id=_project ID_
 : Project ID of the application VPC being peered. GCP only; required.
@@ -702,10 +741,6 @@ The following are combinations of environment variables and their uses:
 
   The API key to use to authenticate to your YugabyteDB Managed account.
 
-- `YBM_HOST`
-
-  The YugabyteDB Managed host.
-
 - `YBM_CI`
 
   Set to `true` to avoid outputting unnecessary log lines.
@@ -726,7 +761,7 @@ ybm cluster create \
 ybm cluster create \
     --cluster-name=test-cluster \
     --credentials=username=admin,password=password123 \
-    --cloud-type=gcp \
+    --cloud-type=GCP \
     --node-config=3 \
     --region-info=region=aws.us-east-2.us-east-2a,vpc=aws-us-east-2 \
     --region-info=region=aws.us-east-2.us-east-2b,vpc=aws-us-east-2 \
@@ -747,7 +782,7 @@ ybm network-allow-list create \
 ### Assign an IP allow list to a cluster
 
 ```sh
-ybm cluster assign \
+ybm cluster network allow-list assign \
   --cluster-name test-cluster\
   --network-allow-list "my computer""
 ```
