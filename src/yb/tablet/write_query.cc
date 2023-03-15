@@ -457,7 +457,13 @@ docdb::ConflictManagementPolicy GetConflictManagementPolicy(
   if (!pairs.empty() && write_batch.has_wait_policy()) {
     switch (write_batch.wait_policy()) {
       case WAIT_BLOCK:
-        conflict_management_policy = docdb::WAIT_ON_CONFLICT;
+        if (wait_queue) {
+          conflict_management_policy = docdb::WAIT_ON_CONFLICT;
+        } else {
+          YB_LOG_EVERY_N(WARNING, 100)
+              << "Received WAIT_BLOCK request from query layer but wait queues are not enabled at "
+              << "tserver. Reverting to WAIT_ERROR behavior.";
+        }
         break;
       case WAIT_SKIP:
         conflict_management_policy = docdb::SKIP_ON_CONFLICT;

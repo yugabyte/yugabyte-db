@@ -1203,9 +1203,9 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
       doc_ops, write_batch, hybrid_time, read_time, conflicts_metric,
       conflict_management_policy);
   if (conflict_management_policy == WAIT_ON_CONFLICT) {
-    if (!wait_queue) {
-      return STATUS_FORMAT(NotSupported, "Wait queues are not enabled");
-    }
+    RSTATUS_DCHECK(
+        wait_queue, InternalError,
+        "Cannot use Wait-on-Conflict behavior - wait queue is not initialized");
     DCHECK(lock_batch);
     auto resolver = std::make_shared<WaitOnConflictResolver>(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback),
@@ -1239,9 +1239,9 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
       &doc_ops, resolution_ht, conflicts_metric, conflict_management_policy);
 
   if (conflict_management_policy == WAIT_ON_CONFLICT) {
-    if (!wait_queue) {
-      return STATUS_FORMAT(NotSupported, "Wait queues are not enabled");
-    }
+    RSTATUS_DCHECK(
+        wait_queue, InternalError,
+        "Cannot use Wait-on-Conflict behavior - wait queue is not initialized");
     auto resolver = std::make_shared<WaitOnConflictResolver>(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback),
         wait_queue, lock_batch);
