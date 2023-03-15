@@ -22,6 +22,7 @@ import { useFormFieldStyles } from '../../../universeMainStyle';
 interface PlacementsFieldProps {
   disabled: boolean;
   isPrimary: boolean;
+  isEditMode: boolean;
 }
 
 // Override MuiFormControl style to ensure flexDirection is inherited
@@ -57,7 +58,11 @@ const useStyles = makeStyles((theme) => ({
 export type PlacementWithId = Placement & { id: any };
 
 const DEFAULT_MIN_NUM_NODE = 1;
-export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): ReactElement => {
+export const PlacementsField = ({
+  disabled,
+  isPrimary,
+  isEditMode
+}: PlacementsFieldProps): ReactElement => {
   const { control, setValue, getValues } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
   const classes = useFormFieldStyles();
@@ -114,9 +119,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
   //get Minimum AZ count to update before making universe_configure call
   const getMinCountAZ = (index: number) => {
     const initialCount = 0;
-    const totalNodesinAz = fields
-      .map((e) => e.numNodesInAZ)
-      .reduce((prev, cur) => prev + cur, initialCount);
+    const totalNodesinAz = fields.reduce((prev, cur) => prev + cur.numNodesInAZ, initialCount);
     const min = fields[index].numNodesInAZ - (totalNodesinAz - getValues(REPLICATION_FACTOR_FIELD));
     return min > 0 ? min : DEFAULT_MIN_NUM_NODE;
   };
@@ -137,6 +140,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
               }}
               onChange={(e) => {
                 handleAZChange(field, e.target.value, index);
+                setValue(USER_AZSELECTED_FIELD, true);
               }}
             >
               {[field, ...unUsedZones].map((az) => (
@@ -175,6 +179,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
                 name={prefferedAZField}
                 onChange={(e) => {
                   setValue(prefferedAZField, e.target.checked);
+                  setValue(USER_AZSELECTED_FIELD, true);
                 }}
                 defaultChecked={field.isAffinitized}
                 value={field.isAffinitized}
@@ -231,13 +236,14 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
               data-testid="PlacementsField-AddAZButton"
               onClick={() => {
                 const initialCount = 0;
-                const totalNodesinAz = fields
-                  .map((e) => e.numNodesInAZ)
-                  .reduce((prev, cur) => prev + cur, initialCount);
+                const totalNodesinAz = fields.reduce(
+                  (prev, cur) => prev + cur.numNodesInAZ,
+                  initialCount
+                );
                 const remainingAZ = getValues(REPLICATION_FACTOR_FIELD) - totalNodesinAz;
                 append({
                   ...unUsedZones[0],
-                  numNodesInAZ: remainingAZ || 0,
+                  numNodesInAZ: remainingAZ > 0 || isEditMode ? 1 : 0,
                   replicationFactor: 1,
                   isAffinitized: true
                 });

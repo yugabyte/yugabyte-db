@@ -1,4 +1,4 @@
-import React, { ChangeEvent, useState, FC, ReactNode, useCallback, Fragment } from 'react';
+import React, { ChangeEvent, useState, FC, ReactNode, Fragment } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { Box } from '@material-ui/core';
@@ -101,59 +101,56 @@ export const RecommendationBox: FC<RecommendationProps> = ({ key, type, data }) 
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const getTypeTagColor = useCallback(
-    (recommendationType: RecommendationType) => {
-      switch (recommendationType) {
-        case RecommendationType.UNUSED_INDEX:
-          return (
-            <span className={clsx(classes.recommendationTitle, classes.tagGreen)}>
-              {t('clusterDetail.performance.typeTag.IndexSuggestion')}
-            </span>
-          );
-        case RecommendationType.RANGE_SHARDING:
-          return (
-            <span className={clsx(classes.recommendationTitle, classes.tagGreen)}>
-              {t('clusterDetail.performance.typeTag.SchemaSuggestion')}
-            </span>
-          );
-        case RecommendationType.QUERY_LOAD_SKEW:
-          return (
-            <span className={clsx(classes.recommendationTitle, classes.tagBlue)}>
-              {t('clusterDetail.performance.typeTag.QueryLoadSkew')}
-            </span>
-          );
-        case RecommendationType.CONNECTION_SKEW:
-          return (
-            <span className={clsx(classes.recommendationTitle, classes.tagBlue)}>
-              {t('clusterDetail.performance.typeTag.ConnectionSkew')}
-            </span>
-          );
-        case RecommendationType.CPU_SKEW:
-          return (
-            <span className={clsx(classes.recommendationTitle, classes.tagBlue)}>
-              {t('clusterDetail.performance.typeTag.CpuSkew')}
-            </span>
-          );
-        case RecommendationType.CPU_USAGE:
-          return (
-            <span className={clsx(classes.recommendationTitle, classes.tagBlue)}>
-              {t('clusterDetail.performance.typeTag.CpuUsage')}
-            </span>
-          );
-        case RecommendationType.HOT_SHARD:
-          return (
-            <span className={clsx(classes.recommendationTitle, classes.tagBlue)}>
-              {t('clusterDetail.performance.typeTag.HotShard')}
-            </span>
-          );
-        case RecommendationType.ALL:
-          return null;
-        default:
-          return assertUnreachableCase(recommendationType);
-      }
-    },
-    [t]
-  );
+  const getTypeTagColor = (recommendationType: RecommendationType) => {
+    switch (recommendationType) {
+      case RecommendationType.UNUSED_INDEX:
+        return (
+          <span className={clsx(classes.recommendationTitle, classes.tagGreen)}>
+            {t('clusterDetail.performance.typeTag.IndexSuggestion')}
+          </span>
+        );
+      case RecommendationType.RANGE_SHARDING:
+        return (
+          <span className={clsx(classes.recommendationTitle, classes.tagGreen)}>
+            {t('clusterDetail.performance.typeTag.SchemaSuggestion')}
+          </span>
+        );
+      case RecommendationType.QUERY_LOAD_SKEW:
+        return (
+          <span className={clsx(classes.recommendationTitle, classes.tagBlue)}>
+            {t('clusterDetail.performance.typeTag.QueryLoadSkew')}
+          </span>
+        );
+      case RecommendationType.CONNECTION_SKEW:
+        return (
+          <span className={clsx(classes.recommendationTitle, classes.tagBlue)}>
+            {t('clusterDetail.performance.typeTag.ConnectionSkew')}
+          </span>
+        );
+      case RecommendationType.CPU_SKEW:
+        return (
+          <span className={clsx(classes.recommendationTitle, classes.tagBlue)}>
+            {t('clusterDetail.performance.typeTag.CpuSkew')}
+          </span>
+        );
+      case RecommendationType.CPU_USAGE:
+        return (
+          <span className={clsx(classes.recommendationTitle, classes.tagBlue)}>
+            {t('clusterDetail.performance.typeTag.CpuUsage')}
+          </span>
+        );
+      case RecommendationType.HOT_SHARD:
+        return (
+          <span className={clsx(classes.recommendationTitle, classes.tagBlue)}>
+            {t('clusterDetail.performance.typeTag.HotShard')}
+          </span>
+        );
+      case RecommendationType.ALL:
+        return null;
+      default:
+        return assertUnreachableCase(recommendationType);
+    }
+  };
 
   const getSummaryContent = (recommendationType: RecommendationType, recommendationData: any) => {
     if (recommendationType === RecommendationType.UNUSED_INDEX) {
