@@ -714,7 +714,8 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
     bool is_breaking_catalog_change = false;
     if (IsTransactionalDdlStatement(pstmt,
                                     &is_catalog_version_increment,
-                                    &is_breaking_catalog_change))
+                                    &is_breaking_catalog_change,
+                                    context))
     {
       ybpgm_Store(Transaction, INSTR_TIME_GET_MICROSEC(end), 0);
     }
