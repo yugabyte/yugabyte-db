@@ -148,7 +148,7 @@ components:
       - source: public
         image_name: postgres
         name: postgres
-        version: 14.6
+        version: 14.7
         env_vars:
           - name: POSTGRES_DB
             static_val: 'yugaware'
@@ -226,7 +226,7 @@ components:
       - source: public
         name: prometheus
         image_name: prom/prometheus
-        version: v2.41.0
+        version: v2.42.0
         volumes:
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
             container_path: /prometheus
