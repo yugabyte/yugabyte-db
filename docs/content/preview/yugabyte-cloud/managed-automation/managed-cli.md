@@ -27,7 +27,7 @@ brew install yugabyte/yugabytedb/ybm
 
 ## Get started
 
-If you don't have a YBM account yet, you can use the followign command to bring up the sign up page:
+If you don't have a YBM account yet, you can use the following command to bring up the sign up page:
 
 ```sh
 ybm signup
@@ -75,8 +75,7 @@ This generates an autocompletion script for the specified shell. Available optio
 - powershell
 - zsh
 
-Further instructions on how to enable autocomplete for the respective shells are available in the [AutoComplete page](../managed-cli-autocomplete/).
-
+For instructions on how to enable autocomplete for the respective shells, refer to [Configure autocompletion](../managed-cli-autocomplete/).
 
 ## Syntax
 
@@ -118,10 +117,11 @@ The following resources can be managed using the CLI:
 
 - [backup](#backup)
 - [cluster](#cluster)
-  - [read-replica](#read-replica)
+  - [network](#cluster-network)
+  - [read-replica](#cluster-read-replica)
 - [network-allow-list](#network-allow-list)
 - [vpc](#vpc)
-  - [vpc-peering](#vpc-peering)
+  - [peering](#vpc-peering)
 
 <!--
 - [cdc-sink](#cdc-sink)
@@ -166,7 +166,7 @@ Examples:
 --backup-id=_id_
 : The ID of the backup to delete.
 
-#### get
+#### list
 
 --cluster-name=_name_
 : Name of the cluster of which you want to view the backups.
@@ -187,7 +187,7 @@ Use the `cluster` resource to perform operations on a YugabyteDB cluster, includ
 - pause and resume clusters
 - get information about clusters
 - add IP allow lists to clusters
-- create/update/delete read replicas
+- create, update, and delete read replicas
 
 ```text
 Usage: ybm cluster [command] [flags]
@@ -301,10 +301,25 @@ Fetch detailed information about the specified cluster.
 : File where to store the Root CA certificate that can be used to
 : connect to your YugabyteDB Managed database.
 
-
 -----
 
 ### cluster network
+
+Use the `network` resource to perform to assign allow lists and list cluster endpoints.
+
+```text
+Usage: ybm cluster network [command] [flags]
+```
+
+Examples:
+
+- Assign an allow list:
+
+  ```sh
+  ybm cluster network allow-list assign \
+    --cluster-name=<cluster_name>,\
+    network-allow-list=<allow_list_name>
+  ```
 
 #### allow-list assign
 
@@ -322,17 +337,16 @@ Fetch detailed information about the specified cluster.
 --network-allow-list=_name_
 : The network allow list to unassign from the cluster.
 
-
 #### endpoint list
 
 --cluster-name=_name_
 : The cluster for which to list the endpoints.
 
 --region=_region_
-: Filter the endpoints only from this region.
+: Return endpoints only from this region.
 
 --accessibility=_type_
-: Filter the endpoints only with this accessibility type (`PUBLIC`, `PRIVATE`, `PRIVATE_SERVICE_ENDPOINT`).
+: Return endpoints only with this accessibility type (`PUBLIC`, `PRIVATE`, `PRIVATE_SERVICE_ENDPOINT`).
 
 -----
 
@@ -409,7 +423,6 @@ Examples:
 - vpc_name - name of the VPC in which to deploy the read replica
 - num_replicas - the replication factor
 - multi-zone - 
-
 
 -----
 
