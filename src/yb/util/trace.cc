@@ -43,6 +43,7 @@
 #include "yb/gutil/walltime.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/random.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/object_pool.h"
@@ -51,6 +52,10 @@
 DEFINE_bool(enable_tracing, false, "Flag to enable/disable tracing across the code.");
 TAG_FLAG(enable_tracing, advanced);
 TAG_FLAG(enable_tracing, runtime);
+
+DEFINE_int32(sampled_trace_1_in_n, 1000, "Flag to enable/disable sampled tracing. 0 disables.");
+TAG_FLAG(sampled_trace_1_in_n, advanced);
+TAG_FLAG(sampled_trace_1_in_n, runtime);
 
 DEFINE_bool(use_monotime_for_traces, false, "Flag to enable use of MonoTime::Now() instead of "
     "CoarseMonoClock::Now(). CoarseMonoClock is much cheaper so it is better to use it. However "
@@ -95,7 +100,8 @@ void DumpChildren(
       *out << kNestedChildPrefix;
     }
     *out << "Related trace:" << std::endl;
-    *out << child_trace->DumpToString(tracing_depth, include_time_deltas);
+    *out << (child_trace ? child_trace->DumpToString(tracing_depth, include_time_deltas)
+                         : "Not collected");
   }
 }
 
@@ -271,6 +277,34 @@ ThreadSafeArena* Trace::GetAndInitArena() {
     }
   }
   return arena;
+}
+
+scoped_refptr<Trace> Trace::NewTrace() {
+  if (GetAtomicFlag(&FLAGS_enable_tracing)) {
+    return scoped_refptr<Trace>(new Trace());
+  }
+  const int32_t sampling_freq = GetAtomicFlag(&FLAGS_sampled_trace_1_in_n);
+  if (sampling_freq <= 0) {
+    VLOG(2) << "Sampled tracing returns " << nullptr;
+    return nullptr;
+  }
+  static yb::ThreadSafeRandom rng(static_cast<uint32_t>(GetCurrentTimeMicros()));
+
+  auto ret = scoped_refptr<Trace>(rng.OneIn(sampling_freq) ? new Trace() : nullptr);
+  VLOG(2) << "Sampled tracing returns " << (ret ? "non-null" : "nullptr");
+  if (ret) {
+    TRACE_TO(ret.get(), "Sampled trace created probabilistically");
+  }
+  return ret;
+}
+
+scoped_refptr<Trace>  Trace::NewTraceForParent(Trace* parent) {
+  if (parent) {
+    scoped_refptr<Trace> trace(new Trace);
+    parent->AddChildTrace(trace.get());
+    return trace;
+  }
+  return NewTrace();
 }
 
 void Trace::SubstituteAndTrace(

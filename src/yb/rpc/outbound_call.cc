@@ -157,7 +157,7 @@ OutboundCall::OutboundCall(const RemoteMethod* remote_method,
       start_(CoarseMonoClock::Now()),
       controller_(DCHECK_NOTNULL(controller)),
       response_(DCHECK_NOTNULL(response_storage)),
-      trace_(new Trace),
+      trace_(Trace::NewTraceForParent(Trace::CurrentTrace())),
       call_id_(NextCallId()),
       remote_method_(remote_method),
       callback_(std::move(callback)),
@@ -166,10 +166,6 @@ OutboundCall::OutboundCall(const RemoteMethod* remote_method,
       rpc_metrics_(std::move(rpc_metrics)),
       method_metrics_(std::move(method_metrics)) {
   TRACE_TO_WITH_TIME(trace_, start_, "$0.", remote_method_->ToString());
-
-  if (Trace::CurrentTrace()) {
-    Trace::CurrentTrace()->AddChildTrace(trace_.get());
-  }
 
   DVLOG(4) << "OutboundCall " << this << " constructed with state_: " << StateName(state_)
            << " and RPC timeout: "
