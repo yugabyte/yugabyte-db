@@ -7,6 +7,7 @@ description: Get started using YugabyteDB in less than five minutes on Kubernete
 aliases:
   - /quick-start-kubernetes/
 type: docs
+unversioned: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
