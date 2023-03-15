@@ -12,4 +12,4 @@ Headings in read files do _not_ appear in the right navigation.
 
 ### Another heading in the included file
 
-Use `readfile` to add repetitive text to multiple pages.
+Use readfile to add repetitive text to multiple pages.
