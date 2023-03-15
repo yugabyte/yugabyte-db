@@ -53,4 +53,4 @@ You can enable EAR for clusters as follows:
 1. Enter the Access key of an IAM identity with permissions for the CMK. An access key consists of an access key ID and the secret access key.
 1. Click **Encrypt**.
 
-YugabyteDB Managed validates the key and, if successful, starts encrypting the data.
+YugabyteDB Managed validates the key and, if successful, starts encrypting the data. Only new data is encrypted with the new key. Old data remains unencrypted until compaction churn triggers a re-encryption with the new key.
