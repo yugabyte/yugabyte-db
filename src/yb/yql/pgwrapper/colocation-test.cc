@@ -502,10 +502,10 @@ TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(TransactionsOnTablesWi
   PGConn conn1 = ASSERT_RESULT(ConnectToDB(database_name));
   ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", colocated_db_name));
   conn1 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
-  PGConn conn2 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
   ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE t1 (a int PRIMARY KEY, b int)"));
   ASSERT_OK(
       conn1.ExecuteFormat("CREATE TABLE t2 (i int, j int REFERENCES t1(a) ON DELETE CASCADE)"));
+  PGConn conn2 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
 
   for (int i = 0; i < num_iterations; ++i) {
     // Insert 50 rows in t1.
