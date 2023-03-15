@@ -122,6 +122,7 @@ The following resources can be managed using the CLI:
 - [network-allow-list](#network-allow-list)
 - [vpc](#vpc)
   - [peering](#vpc-peering)
+- [region](#region)
 
 <!--
 - [cdc-sink](#cdc-sink)
@@ -617,6 +618,49 @@ List the VPC peering connections configured for your account.
 : Name of a peering.
 
 -----
+
+### region
+
+Use the `region` resource to query cloud region information.
+
+```text
+Usage: ybm region [command] [flags]
+```
+
+Examples:
+
+- List AWS regions:
+
+  ```sh
+  ybm region list \
+    --cloud-provider=AWS
+  ```
+
+#### list
+
+List the regions available for the specified cloud provider.
+
+--cloud-provider=_name_
+: Cloud provider. `AWS` or `GCP`.
+
+#### instance list
+
+List the available instance types for the specified cloud provider and region.
+
+--cloud-provider=_name_
+: Cloud provider. `AWS` or `GCP`.
+
+--region=_name_
+: The region in the cloud provider for which to fetch instance types.
+
+--tier=_name_
+: Type of cluster; `Sandbox` or `Dedicated`. Default is Dedicated.
+
+--show-disabled=false
+: Whether to show disabled instance types; `true` or `false`. Default is true.
+
+-----
+
 <!--
 ### cdc-sink
 
