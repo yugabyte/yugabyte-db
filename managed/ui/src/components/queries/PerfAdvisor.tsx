@@ -203,7 +203,7 @@ export const PerfAdvisor: FC = () => {
     return () => {
       localStorage.setItem(universeUUID, '');
     };
-  }, []);
+  }, [universeUUID]);
 
   const filteredByDatabaseRecommendations = recommendations.filter((rec) => {
     if (databaseSelection) {

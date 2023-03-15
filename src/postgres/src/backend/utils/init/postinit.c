@@ -693,7 +693,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 			YbGetCatalogCacheVersionForTablePrefetching();
 		YBCPgResetCatalogReadTime();
 		YBCStartSysTablePrefetching(
-			catalog_master_version, false /* should_use_cache */);
+			catalog_master_version, YB_YQL_PREFETCHER_NO_CACHE);
 		YbRegisterSysTableForPrefetching(
 			AuthIdRelationId);        // pg_authid
 		YbRegisterSysTableForPrefetching(
@@ -708,6 +708,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 		}
 		YbTryRegisterCatalogVersionTableForPrefetching();
 
+		HandleYBStatus(YBCPrefetchRegisteredSysTables());
 		/*
 		 * If per database catalog version mode is enabled, this will load the
 		 * catalog version of template1. It is fine because at this time we
@@ -1023,13 +1024,16 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	 * if the snapshot has been invalidated.  Assume it's no good anymore.
 	 */
 	InvalidateCatalogSnapshot();
+	if (IsYugaByteEnabled() && YBCIsSysTablePrefetchingStarted())
+		YBCStopSysTablePrefetching();
 
 	/*
 	 * Recheck pg_database to make sure the target database hasn't gone away.
 	 * If there was a concurrent DROP DATABASE, this ensures we will die
 	 * cleanly without creating a mess.
+	 * In YB mode DB existance is checked on cache load/refresh.
 	 */
-	if (!bootstrap)
+	if (!IsYugaByteEnabled() && !bootstrap)
 	{
 		HeapTuple	tuple;
 
@@ -1085,32 +1089,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	 */
 	// See if tablegroup catalog exists - needs to happen before cache fully initialized.
 	if (IsYugaByteEnabled())
-	{
-		HandleYBStatus(YBCPgTableExists(MyDatabaseId,
-										YbTablegroupRelationId,
-										&YbTablegroupCatalogExists));
-
-		if (YBCIsSysTablePrefetchingStarted())
-		{
-			YBCStopSysTablePrefetching();
-			YBCPgResetCatalogReadTime();
-			/*
-			 * This prefetch can happen at a higher catalog version than
-			 * what we have set to yb_catalog_cache_version earlier but
-			 * having a mix of prefetched content is fine as long as they
-			 * are all >= yb_catalog_cache_version.
-			 */
-			YBCStartSysTablePrefetching(
-				YbGetLastKnownCatalogCacheVersion(),
-				*YBCGetGFlags()->ysql_enable_read_request_caching);
-			YbRegisterSysTableForPrefetching(
-				AuthMemRelationId);       // pg_auth_members
-			YbRegisterSysTableForPrefetching(
-				DatabaseRelationId);      // pg_database
-			YbRegisterSysTableForPrefetching(
-				DbRoleSettingRelationId); // pg_db_role_setting
-		}
-	}
+		HandleYBStatus(YBCPgTableExists(
+			MyDatabaseId, YbTablegroupRelationId, &YbTablegroupCatalogExists));
 
 	RelationCacheInitializePhase3();
 

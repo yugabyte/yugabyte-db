@@ -177,7 +177,7 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
   void updateCurrentAuthConfigProperties(UUID configUUID, ObjectNode authConfig) {
     LOG.debug("updateCurrentAuthConfigProperties called for {}", configUUID.toString());
     try {
-      KmsConfig config = KmsConfig.get(configUUID);
+      KmsConfig config = KmsConfig.getOrBadRequest(configUUID);
       UUID customerUUID = config.customerUUID;
 
       UpdateAuthConfigProperties(customerUUID, configUUID, authConfig);
@@ -200,6 +200,27 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
       LOG.error(errMsg, e);
       throw new RuntimeException(errMsg, e);
     }
+  }
+
+  @Override
+  public byte[] encryptKeyWithService(UUID configUUID, byte[] universeKey) {
+    byte[] encryptedUniverseKey = null;
+    try {
+      ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
+      encryptedUniverseKey =
+          HashicorpEARServiceUtil.encryptUniverseKey(configUUID, authConfig, universeKey);
+      if (encryptedUniverseKey == null) {
+        throw new RuntimeException("Encrypted universe key is null.");
+      }
+    } catch (Exception e) {
+      final String errMsg =
+          String.format(
+              "Error occurred encrypting universe key in Hashicorp KMS with config UUID '%s'.",
+              configUUID);
+      LOG.error(errMsg, e);
+      throw new RuntimeException(errMsg, e);
+    }
+    return encryptedUniverseKey;
   }
 
   protected void cleanupWithService(UUID universeUUID, UUID configUUID) {

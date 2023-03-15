@@ -216,6 +216,10 @@ bool YBCStatusIsDuplicateKey(YBCStatus s) {
   return StatusWrapper(s)->IsAlreadyPresent();
 }
 
+bool YBCStatusIsSnapshotTooOld(YBCStatus s) {
+  return FetchErrorCode(s) == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
+}
+
 uint32_t YBCStatusPgsqlError(YBCStatus s) {
   return to_underlying(FetchErrorCode(s));
 }

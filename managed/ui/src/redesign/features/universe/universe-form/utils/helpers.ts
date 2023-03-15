@@ -142,6 +142,7 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
     instanceConfig: {
       instanceType: userIntent.instanceType,
       deviceInfo: userIntent.deviceInfo,
+      useSpotInstance: userIntent.useSpotInstance,
       assignPublicIP: !!userIntent.assignPublicIP,
       useTimeSync: !!userIntent.useTimeSync,
       enableClientToNodeEncrypt: !!userIntent.enableClientToNodeEncrypt,
@@ -199,6 +200,7 @@ export const getUserIntent = ({ formData }: { formData: UniverseFormData }) => {
     enableYCQLAuth: instanceConfig.enableYCQLAuth,
     useTimeSync: instanceConfig.useTimeSync,
     enableYEDIS: instanceConfig.enableYEDIS,
+    useSpotInstance: instanceConfig.useSpotInstance,
     accessKeyCode: advancedConfig.accessKeyCode,
     ybSoftwareVersion: advancedConfig.ybSoftwareVersion,
     enableIPV6: advancedConfig.enableIPV6,

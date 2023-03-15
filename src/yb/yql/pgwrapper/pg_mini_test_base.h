@@ -18,6 +18,8 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+#include "yb/gutil/macros.h"
+
 #include "yb/util/result.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -91,7 +93,8 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
 class MetricWatcher {
  public:
   using DeltaFunctor = std::function<Status()>;
-  MetricWatcher(const server::RpcServerBase& server, const MetricPrototype& metric);
+  MetricWatcher(std::reference_wrapper<const server::RpcServerBase> server,
+                std::reference_wrapper<const MetricPrototype> metric);
 
   Result<size_t> Delta(const DeltaFunctor& functor) const;
 
@@ -100,6 +103,8 @@ class MetricWatcher {
 
   const server::RpcServerBase& server_;
   const MetricPrototype& metric_;
+
+  DISALLOW_COPY_AND_ASSIGN(MetricWatcher);
 };
 
 } // namespace pgwrapper

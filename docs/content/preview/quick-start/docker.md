@@ -7,6 +7,7 @@ description: Get started using YugabyteDB in less than five minutes on Docker.
 aliases:
   - /quick-start/docker/
 type: docs
+unversioned: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
