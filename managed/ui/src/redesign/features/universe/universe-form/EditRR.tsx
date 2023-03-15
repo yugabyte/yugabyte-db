@@ -54,7 +54,7 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid }) => {
     }
   );
 
-  const onCancel = () => browserHistory.goBack();
+  const onCancel = () => browserHistory.push(`/universes/${uuid}`);
 
   const onSubmit = (formData: UniverseFormData) => {
     const configurePayload = {

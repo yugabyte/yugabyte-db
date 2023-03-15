@@ -25,7 +25,6 @@ import {
   DEVICE_INFO_FIELD
 } from '../../../utils/constants';
 import { useSectionStyles } from '../../../universeMainStyle';
-import InfoMessageIcon from '../../../../../../assets/info-message.svg';
 
 const CONTAINER_WIDTH = '605px';
 
