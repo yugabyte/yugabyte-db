@@ -67,7 +67,7 @@ regions:
   eastasia:
     cidr_prefix: "10.25"
     image: "almalinux:almalinux:8_5:8.5.20220311"
-    zones: []
+    zones: ['1','2','3']
   northcentralus:
     cidr_prefix: "10.26"
     image: "almalinux:almalinux:8_5:8.5.20220311"
@@ -83,7 +83,7 @@ regions:
   brazilsouth:
     cidr_prefix: "10.29"
     image: "almalinux:almalinux:8_5:8.5.20220311"
-    zones: []
+    zones: ['1','2','3']
   australiasoutheast:
     cidr_prefix: "10.30"
     image: "almalinux:almalinux:8_5:8.5.20220311"
@@ -91,7 +91,7 @@ regions:
   centralindia:
     cidr_prefix: "10.31"
     image: "almalinux:almalinux:8_5:8.5.20220311"
-    zones: []
+    zones: ['1','2','3']
   southindia:
     cidr_prefix: "10.33"
     image: "almalinux:almalinux:8_5:8.5.20220311"
@@ -115,7 +115,7 @@ regions:
   koreacentral:
     cidr_prefix: "10.38"
     image: "almalinux:almalinux:8_5:8.5.20220311"
-    zones: []
+    zones: ['1','2','3']
   koreasouth:
     cidr_prefix: "10.39"
     image: "almalinux:almalinux:8_5:8.5.20220311"
@@ -127,15 +127,15 @@ regions:
   southafricanorth:
     cidr_prefix: "10.41"
     image: "almalinux:almalinux:8_5:8.5.20220311"
-    zones: []
+    zones: ['1','2','3']
   uaenorth:
     cidr_prefix: "10.42"
     image: "almalinux:almalinux:8_5:8.5.20220311"
-    zones: []
+    zones: ['1','2','3']
   switzerlandnorth:
     cidr_prefix: "10.43"
     image: "almalinux:almalinux:8_5:8.5.20220311"
-    zones: []
+    zones: ['1','2','3']
   germanywestcentral:
     cidr_prefix: "10.44"
     image: "almalinux:almalinux:8_5:8.5.20220311"
@@ -143,7 +143,7 @@ regions:
   norwayeast:
     cidr_prefix: "10.45"
     image: "almalinux:almalinux:8_5:8.5.20220311"
-    zones: []
+    zones: ['1','2','3']
   westus3:
     cidr_prefix: "10.46"
     image: "almalinux:almalinux:8_5:8.5.20220311"
