@@ -46,10 +46,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http.Status;
 
 @Slf4j
+@Singleton
 public class UpgradeUniverseHandler {
 
   private final Commissioner commissioner;

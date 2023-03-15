@@ -22,8 +22,8 @@ import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.ExternalScriptHelper;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.ExternalScriptHelper.ExternalScriptConfObject;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
 import java.io.File;
 import java.io.IOException;
@@ -31,7 +31,6 @@ import java.nio.file.Files;
 import java.util.Objects;
 import java.util.UUID;
 import org.apache.commons.lang3.math.NumberUtils;
-import play.mvc.Http;
 import play.mvc.Http.MultipartFormData;
 import play.mvc.Result;
 
@@ -57,7 +56,7 @@ public class ScheduleScriptController extends AuthenticatedController {
     taskParams.timeLimitMins = Long.toString(timeLimitMins);
     taskParams.platformUrl = request().host();
     taskParams.universeUUID = universeUUID;
-    UserWithFeatures user = (UserWithFeatures) Http.Context.current().args.get("user");
+    UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
     taskParams.userUUID = user.getUser().uuid;
 
     // Using RuntimeConfig to save the script params because this isn't intended to be that commonly
@@ -156,7 +155,7 @@ public class ScheduleScriptController extends AuthenticatedController {
     taskParams.timeLimitMins = Long.toString(timeLimitMins);
     taskParams.platformUrl = request().host();
     taskParams.universeUUID = universeUUID;
-    UserWithFeatures user = (UserWithFeatures) Http.Context.current().args.get("user");
+    UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
     taskParams.userUUID = user.getUser().uuid;
 
     Universe universe = Universe.getOrBadRequest(universeUUID);

@@ -128,8 +128,6 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
-      when(mockConfigHelper.getAWSInstancePrefixesSupported())
-          .thenReturn(Arrays.asList("c5.", "c5d.", "c4.", "c3."));
     } catch (Exception ignored) {
     }
 

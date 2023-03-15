@@ -53,7 +53,7 @@ import javax.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
-import play.Configuration;
+import com.typesafe.config.Config;
 import play.data.validation.Constraints;
 import play.libs.Json;
 import play.mvc.Http.Status;
@@ -69,8 +69,8 @@ public class ReleaseManager {
   private static final String YB_PACKAGE_REGEX =
       "yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz";
 
-  public final ConfigHelper configHelper;
-  private final Configuration appConfig;
+  private final ConfigHelper configHelper;
+  private final Config appConfig;
   private final GFlagsValidation gFlagsValidation;
   private final Commissioner commissioner;
   private final AWSUtil awsUtil;
@@ -79,7 +79,7 @@ public class ReleaseManager {
   @Inject
   public ReleaseManager(
       ConfigHelper configHelper,
-      Configuration appConfig,
+      Config appConfig,
       GFlagsValidation gFlagsValidation,
       Commissioner commissioner,
       AWSUtil awsUtil,
