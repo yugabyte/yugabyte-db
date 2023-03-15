@@ -15,12 +15,11 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static play.mvc.Http.Status.METHOD_NOT_ALLOWED;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.METHOD_NOT_ALLOWED;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsBytes;
 
-import akka.stream.IOResult;
 import akka.stream.javadsl.FileIO;
 import akka.stream.javadsl.Source;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -28,30 +27,24 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.net.HostAndPort;
-import com.typesafe.config.Config;
-import com.yugabyte.yw.common.FakeApiHelper;
+import com.google.protobuf.ByteString;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.UniverseSpec;
-import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.UniverseSpec;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
-import com.google.protobuf.ByteString;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -63,11 +56,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletionStage;
 import org.apache.commons.io.FileUtils;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.Mock;
 import org.yb.CommonTypes;
 import org.yb.Schema;
 import org.yb.client.GetTableSchemaResponse;
@@ -273,7 +264,7 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     bodyJson.put("skipReleases", true);
 
     Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody(
+        doRequestWithAuthTokenAndBody(
             "POST", xClusterApiEndpoint, user.createAuthToken(), createXClusterRequestParams);
     assertOk(result);
 
@@ -465,11 +456,11 @@ public class AttachDetachControllerTest extends FakeDBApplication {
   }
 
   private Result detachUniverse(JsonNode bodyJson) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", detachEndpoint, authToken, bodyJson);
+    return doRequestWithAuthTokenAndBody("POST", detachEndpoint, authToken, bodyJson);
   }
 
   private Result attachUniverse(
       List<Http.MultipartFormData.Part<Source<akka.util.ByteString, ?>>> bodyData) {
-    return FakeApiHelper.doRequestWithMultipartData("POST", attachEndpoint, bodyData, mat);
+    return doRequestWithMultipartData("POST", attachEndpoint, bodyData, mat);
   }
 }

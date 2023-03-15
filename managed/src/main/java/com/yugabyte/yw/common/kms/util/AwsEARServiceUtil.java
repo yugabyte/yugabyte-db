@@ -193,7 +193,7 @@ public class AwsEARServiceUtil {
     try {
       ObjectMapper mapper = new ObjectMapper();
       Application application = Play.current().injector().instanceOf(Application.class);
-      policy = (ObjectNode) mapper.readTree(application.resourceAsStream(CMK_POLICY));
+      policy = (ObjectNode) mapper.readTree(application.environment().resourceAsStream(CMK_POLICY));
     } catch (Exception e) {
       String errMsg = "Error occurred retrieving default cmk policy base";
       LOG.error(errMsg, e);

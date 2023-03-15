@@ -191,7 +191,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.RunYsqlQuery,
-            Json.toJson(formData.data()));
+            Json.toJson(formData.get()));
     return PlatformResults.withRawData(queryResult);
   }
 }

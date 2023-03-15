@@ -16,17 +16,15 @@ import akka.stream.javadsl.Source;
 import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.models.CustomerLicense;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerLicense;
 import com.yugabyte.yw.models.Users;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -59,14 +57,13 @@ public class CustomerLicenseControllerTest extends FakeDBApplication {
             new Http.MultipartFormData.FilePart<>(
                 "licenseFile", "license.txt", "application/octet-stream", uploadedFile));
       }
-      return FakeApiHelper.doRequestWithAuthTokenAndMultipartData(
+      return doRequestWithAuthTokenAndMultipartData(
           "POST", uri, defaultUser.createAuthToken(), bodyData, mat);
     } else {
       ObjectNode bodyJson = Json.newObject();
       bodyJson.put("licenseType", licenseType);
       bodyJson.put("licenseContent", licenseContent);
-      return FakeApiHelper.doRequestWithAuthTokenAndBody(
-          "POST", uri, defaultUser.createAuthToken(), bodyJson);
+      return doRequestWithAuthTokenAndBody("POST", uri, defaultUser.createAuthToken(), bodyJson);
     }
   }
 

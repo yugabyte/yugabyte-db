@@ -15,6 +15,8 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.controllers.RequestContext;
+import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -22,8 +24,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
@@ -74,7 +76,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
-import play.mvc.Http.Context;
 
 public class Util {
   public static final Logger LOG = LoggerFactory.getLogger(Util.class);
@@ -890,15 +891,12 @@ public class Util {
     }
   }
 
-  public static String maybeGetEmailFromContext(Context context) {
-    String userEmail =
-        Optional.ofNullable(context)
-            .map(context1 -> (UserWithFeatures) context1.args.get("user"))
-            .map(UserWithFeatures::getUser)
-            .map(Users::getEmail)
-            .map(Object::toString)
-            .orElse("Unknown");
-    return userEmail;
+  public static String maybeGetEmailFromContext() {
+    return Optional.ofNullable(RequestContext.getIfPresent(TokenAuthenticator.USER))
+        .map(UserWithFeatures::getUser)
+        .map(Users::getEmail)
+        .map(Object::toString)
+        .orElse("Unknown");
   }
 
   public static Universe lockUniverse(Universe universe) {

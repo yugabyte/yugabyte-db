@@ -26,9 +26,8 @@ import com.yugabyte.yw.models.helpers.JsonFieldsValidator;
 import com.yugabyte.yw.scheduler.Scheduler;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
 import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
 import org.pac4j.play.CallbackController;
@@ -36,8 +35,6 @@ import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.mvc.Http;
-import play.mvc.Result;
 import org.yb.client.YBClient;
 
 public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
@@ -92,11 +89,16 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   }
 
   public Application provideApplication(Map<String, Object> additionalConfiguration) {
+    return provideApplication(app -> app.configure(additionalConfiguration));
+  }
+
+  public Application provideApplication(
+      Function<GuiceApplicationBuilder, GuiceApplicationBuilder> overrides) {
     GuiceApplicationBuilder guiceApplicationBuilder =
         new GuiceApplicationBuilder().disable(GuiceModule.class);
+    guiceApplicationBuilder = overrides.apply(guiceApplicationBuilder);
     return configureApplication(
             guiceApplicationBuilder
-                .configure(additionalConfiguration)
                 .configure(testDatabase())
                 .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
                 .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
@@ -155,15 +157,5 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
     alertService = app.injector().instanceOf(AlertService.class);
     alertDefinitionService = app.injector().instanceOf(AlertDefinitionService.class);
     alertConfigurationService = app.injector().instanceOf(AlertConfigurationService.class);
-  }
-
-  /**
-   * If you want to quickly fix existing test that returns YWError json when exception gets thrown
-   * then use this function instead of Helpers.route(). Alternatively change the test to expect that
-   * YWException get thrown
-   */
-  public Result routeWithYWErrHandler(Http.RequestBuilder requestBuilder)
-      throws InterruptedException, ExecutionException, TimeoutException {
-    return FakeApiHelper.routeWithYWErrHandler(requestBuilder, getApp());
   }
 }
