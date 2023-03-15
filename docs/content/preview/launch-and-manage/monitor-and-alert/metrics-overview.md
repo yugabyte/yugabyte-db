@@ -157,8 +157,8 @@ A description of key metrics in this category is listed in the following table:
 | :------ | :--- | :--- | :---------- |
 | `async_replication_committed_lag_micros` | microseconds | counter | The time in microseconds for the replication lag on the target cluster. This metric is available only on the source cluster. |
 | `time_since_last_getchanges` | microseconds | counter | The time elapsed in microseconds from when the source cluster got a request to replicate from the target cluster. This metric is available only on the source cluster. |
-| `consumer_safe_time_lag` | | | The time elapsed in microseconds between the physical time and safe time. Safe time is when data has been replicated to all the tablets on the consumer cluster. This metric is available only on the target cluster. |
-| `consumer_safe_time_skew` | | | The time elapsed in microseconds for replication between the first and the last tablet replica on the consumer cluster. This metric is available only on the target cluster. |
+| `consumer_safe_time_lag` | microseconds | counter | The time elapsed in microseconds between the physical time and safe time. Safe time is when data has been replicated to all the tablets on the consumer cluster. This metric is available only on the target cluster. |
+| `consumer_safe_time_skew` | microseconds | counter | The time elapsed in microseconds for replication between the first and the last tablet replica on the consumer cluster. This metric is available only on the target cluster. |
 
 ## Cache and storage subsystems
 
