@@ -1487,8 +1487,7 @@ DefineIndex(Oid relationId,
 	 * change.
 	 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
 	 */
-	YBDecrementDdlNestingLevel(true /* is_catalog_version_increment */,
-	                           false /* is_breaking_catalog_change */);
+	YBDecrementDdlNestingLevel();
 	CommitTransactionCommand();
 
 	/* Delay after committing pg_index update. */
@@ -1506,7 +1505,8 @@ DefineIndex(Oid relationId,
 	pgstat_progress_update_param(PROGRESS_CREATEIDX_INDEX_OID,
 								 indexRelationId);
 
-	YBIncrementDdlNestingLevel();
+	YBIncrementDdlNestingLevel(true /* is_catalog_version_increment */,
+							   false /* is_breaking_catalog_change */);
 
 	/*
 	 * Update the pg_index row to mark the index as ready for inserts.
@@ -1520,8 +1520,7 @@ DefineIndex(Oid relationId,
 	 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
 	 * level 1).
 	 */
-	YBDecrementDdlNestingLevel(true /* is_catalog_version_increment */,
-	                           false /* is_breaking_catalog_change */);
+	YBDecrementDdlNestingLevel();
 	CommitTransactionCommand();
 
 	/* Delay after committing pg_index update. */
@@ -1532,7 +1531,8 @@ DefineIndex(Oid relationId,
 									"concurrent index backfill");
 
 	StartTransactionCommand();
-	YBIncrementDdlNestingLevel();
+	YBIncrementDdlNestingLevel(true /* is_catalog_version_increment */,
+							   false /* is_breaking_catalog_change */);
 
 	if (IsYugaByteEnabled())
 		pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
