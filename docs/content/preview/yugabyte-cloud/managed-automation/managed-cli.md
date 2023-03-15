@@ -186,6 +186,7 @@ Use the `cluster` resource to perform operations on a YugabyteDB cluster, includ
 - create, update, and delete clusters
 - pause and resume clusters
 - get information about clusters
+- download the cluster certificate
 - add IP allow lists to clusters
 - create, update, and delete read replicas
 
@@ -259,6 +260,8 @@ Fetch detailed information about the specified cluster.
 
 #### update
 
+Update the specified cluster.
+
 --cluster-name=_name_
 : Name of the cluster to update.
 
@@ -275,6 +278,7 @@ Fetch detailed information about the specified cluster.
 --region-info=region=_region-name_,num_nodes=_number-of-nodes_,vpc=_vpc-name_
 : Region details for multi-region cluster, provided as key-value pairs.
 : Specify one `--region-info` flag for each region in the cluster.
+: If specified, region and num-nodes is mandatory, vpc is optional.
 
 --cluster-tier=_tier_
 : Type of cluster; `Sandbox` or `Dedicated`.
@@ -282,30 +286,38 @@ Fetch detailed information about the specified cluster.
 --fault-tolerance=_tolerance_
 : Fault tolerance for the cluster. `NONE`, `ZONE`, or `REGION`.
 
---database-track=_track_
+--database-version=_version_
 : Database version to use for the cluster. `Stable` or `Preview`.
 
 #### pause
+
+Pause the specified cluster.
 
 --cluster-name=_name_
 : Name of the cluster to pause.
 
 #### resume
 
+Resume the specified cluster.
+
 --cluster-name=_name_
 : Name of the cluster to resume.
 
 #### cert download
 
+Download the [cluster certificate](../../cloud-secure-clusters/cloud-authentication/) to a specified location.
+
+--force
+: Overwrite the output file if it exists.
+
 --out
-: File where to store the Root CA certificate that can be used to
-: connect to your YugabyteDB Managed database.
+: Full path with file name for the downloaded the cluster certificate file.
 
 -----
 
 ### cluster network
 
-Use the `network` resource to perform to assign allow lists and list cluster endpoints.
+Use the `cluster network` resource to assign allow lists and list cluster endpoints.
 
 ```text
 Usage: ybm cluster network [command] [flags]
@@ -339,6 +351,8 @@ Examples:
 
 #### endpoint list
 
+List the endpoints of the specified cluster. This includes public and private host addresses, and private service endpoints.
+
 --cluster-name=_name_
 : The cluster for which to list the endpoints.
 
@@ -352,7 +366,7 @@ Examples:
 
 ### cluster read-replica
 
-Use the `read-replica` resource to perform operations on a YugabyteDB cluster read replica, including the following:
+Use the `cluster read-replica` resource to perform operations on a YugabyteDB cluster read replica, including the following:
 
 - create, update, and delete read replicas
 - get information about read replicas
@@ -428,7 +442,7 @@ Examples:
 
 ### network-allow-list
 
-Use the `network-allow-list` resource to perform operations on a YugabyteDB cluster allow list, including the following:
+Use the `network-allow-list` resource to perform operations on allow lists, including the following:
 
 - create and delete allow lists
 - get information about an IP allow list
@@ -450,6 +464,8 @@ Examples:
 
 #### create
 
+Create an allow list.
+
 --name=_name_
 : Name for the IP allow list.
 
@@ -461,13 +477,17 @@ Examples:
 
 #### delete
 
+Delete the specified allow list.
+
 --name=_name_
 : Name of the IP allow list to delete.
 
-#### get
+#### list
+
+List the allow lists configured for your account.
 
 --name=_name_
-: Name of the IP allow list.
+: Name of an IP allow list.
 
 -----
 
@@ -492,6 +512,8 @@ Examples:
 
 #### create
 
+Create a VPC.
+
 --name=_name_
 : Name for the VPC.
 
@@ -509,13 +531,17 @@ Examples:
 
 #### delete
 
---name=_name_
-: Name of the VPC.
-
-#### get
+Delete a specific VPC.
 
 --name=_name_
 : Name of the VPC.
+
+#### list
+
+List the VPCs configured for your account.
+
+--name=_name_
+: Name of a VPC.
 
 -----
 
@@ -547,6 +573,8 @@ Examples:
 
 #### create
 
+Create a peering connection.
+
 --name=_name_
 : Name for the peering.
 
@@ -576,13 +604,17 @@ Examples:
 
 #### delete
 
---name=_name_
-: Name of the peering.
-
-#### get
+Delete a specific peering connection.
 
 --name=_name_
 : Name of the peering.
+
+#### list
+
+List the VPC peering connections configured for your account.
+
+--name=_name_
+: Name of a peering.
 
 -----
 <!--
@@ -628,7 +660,7 @@ Examples:
 --password=_password_
 : Sink user password.
 
-#### get
+#### list
 
 --name=_name_
 : Name of the sink.
@@ -700,7 +732,7 @@ Examples:
 --kafka-prefix=_prefix_
 : Prefix for the Kafka topics.
 
-#### get
+#### list
 
 --cluster-name=_name_
 : Name of the cluster with the streams you want to fetch.
