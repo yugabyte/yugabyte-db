@@ -212,7 +212,7 @@ public class YbcControllerTest extends FakeDBApplication {
   private Result disableYbc(UUID universeUUID) {
     String url =
         "/api/customers/" + defaultCustomer.uuid + "/universes/" + universeUUID + "/ybc/disable";
-    return FakeApiHelper.doRequestWithAuthToken("PUT", url, defaultUser.createAuthToken());
+    return doRequestWithAuthToken("PUT", url, defaultUser.createAuthToken());
   }
 
   private Result upgradeYbc(UUID universeUUID, String ybcVersion) {
@@ -221,7 +221,7 @@ public class YbcControllerTest extends FakeDBApplication {
     if (!StringUtils.isEmpty(ybcVersion)) {
       url += "?ybcVersion=" + ybcVersion;
     }
-    return FakeApiHelper.doRequestWithAuthToken("PUT", url, defaultUser.createAuthToken());
+    return doRequestWithAuthToken("PUT", url, defaultUser.createAuthToken());
   }
 
   private Result installYbc(UUID universeUUID, String ybcVersion) {
@@ -230,6 +230,6 @@ public class YbcControllerTest extends FakeDBApplication {
     if (!StringUtils.isEmpty(ybcVersion)) {
       url += "?ybcVersion=" + ybcVersion;
     }
-    return FakeApiHelper.doRequestWithAuthToken("PUT", url, defaultUser.createAuthToken());
+    return doRequestWithAuthToken("PUT", url, defaultUser.createAuthToken());
   }
 }

@@ -11,9 +11,9 @@ import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
+import com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
-import com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector;
 import com.yugabyte.yw.commissioner.RefreshKmsService;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
@@ -35,6 +35,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
+import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.InstanceType;
@@ -46,12 +47,12 @@ import io.ebean.Ebean;
 import io.prometheus.client.hotspot.DefaultExports;
 import java.util.List;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 import play.Application;
-import play.Configuration;
 import play.Environment;
-import play.Logger;
 
 /** We will use this singleton to do actions specific to the app environment, like db seed etc. */
+@Slf4j
 @Singleton
 public class AppInit {
 
@@ -92,18 +93,17 @@ public class AppInit {
       YbcUpgrade ybcUpgrade,
       PerfAdvisorGarbageCollector perfRecGC,
       SnapshotCleanup snapshotCleanup,
+      FileDataService fileDataService,
       @Named("AppStartupTimeMs") Long startupTime)
       throws ReflectiveOperationException {
-    Logger.info("Yugaware Application has started");
+    log.info("Yugaware Application has started");
 
-    Configuration appConfig = application.configuration();
-    String mode = appConfig.getString("yb.mode", "PLATFORM");
+    String mode = config.getString("yb.mode");
 
     if (!environment.isTest()) {
       // Check if we have provider data, if not, we need to seed the database
-      if (Customer.find.query().where().findCount() == 0
-          && appConfig.getBoolean("yb.seedData", false)) {
-        Logger.debug("Seed the Yugaware DB");
+      if (Customer.find.query().where().findCount() == 0 && config.getBoolean("yb.seedData")) {
+        log.debug("Seed the Yugaware DB");
 
         List<?> all =
             yaml.load(environment.resourceAsStream("db_seed.yml"), application.classloader());
@@ -119,11 +119,11 @@ public class AppInit {
                   .getConfig(ConfigHelper.ConfigType.FileDataSync)
                   .getOrDefault("synced", "false")
                   .toString());
-      String storagePath = appConfig.getString("yb.storage.path");
-      configHelper.syncFileData(storagePath, ywFileDataSynced);
+      String storagePath = config.getString("yb.storage.path");
+      fileDataService.syncFileData(storagePath, ywFileDataSynced);
 
       if (mode.equals("PLATFORM")) {
-        String devopsHome = appConfig.getString("yb.devops.home");
+        String devopsHome = config.getString("yb.devops.home");
         if (devopsHome == null || devopsHome.length() == 0) {
           throw new RuntimeException("yb.devops.home is not set in application.conf");
         }
@@ -142,7 +142,7 @@ public class AppInit {
       for (Provider provider : providerList) {
         if (provider.code.equals("aws")) {
           for (InstanceType instanceType :
-              InstanceType.findByProvider(provider, application.config(), configHelper)) {
+              InstanceType.findByProvider(provider, application.config())) {
             if (instanceType.instanceTypeDetails != null
                 && (instanceType.instanceTypeDetails.volumeDetailsList == null)) {
               awsInitializer.initialize(provider.customerUUID, provider.uuid);
@@ -160,8 +160,8 @@ public class AppInit {
 
       // Enter all the configuration data. This is the first thing that should be
       // done as the other init steps may depend on this data.
-      configHelper.loadConfigsToDB(application);
-      configHelper.loadSoftwareVersiontoDB(application);
+      configHelper.loadConfigsToDB(environment);
+      configHelper.loadSoftwareVersiontoDB(environment);
 
       // Run and delete any extra migrations.
       for (ExtraMigration m : ExtraMigration.getAll()) {
@@ -176,11 +176,11 @@ public class AppInit {
           new Thread(
               () -> {
                 try {
-                  Logger.info("Attempting to query latest ARM release link.");
-                  releaseManager.findLatestArmRelease(configHelper.getCurrentVersion(application));
-                  Logger.info("Imported ARM release download link.");
+                  log.info("Attempting to query latest ARM release link.");
+                  releaseManager.findLatestArmRelease(ConfigHelper.getCurrentVersion(environment));
+                  log.info("Imported ARM release download link.");
                 } catch (Exception e) {
-                  Logger.warn("Error importing ARM release download link", e);
+                  log.warn("Error importing ARM release download link", e);
                 }
               });
       armReleaseThread.start();
@@ -233,12 +233,12 @@ public class AppInit {
       long elapsed = (System.currentTimeMillis() - startupTime) / 1000;
       String elapsedStr = String.valueOf(elapsed);
       if (elapsed > MAX_APP_INITIALIZATION_TIME) {
-        Logger.warn("Completed initialization in " + elapsedStr + " seconds.");
+        log.warn("Completed initialization in " + elapsedStr + " seconds.");
       } else {
-        Logger.info("Completed initialization in " + elapsedStr + " seconds.");
+        log.info("Completed initialization in " + elapsedStr + " seconds.");
       }
 
-      Logger.info("AppInit completed");
+      log.info("AppInit completed");
     }
   }
 }

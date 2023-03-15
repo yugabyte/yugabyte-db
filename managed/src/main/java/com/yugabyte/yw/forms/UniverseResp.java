@@ -11,6 +11,7 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
@@ -34,7 +35,7 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.yaml.snakeyaml.Yaml;
-import play.Play;
+import play.Environment;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 // TODO is this description accurate?
@@ -42,6 +43,8 @@ import play.Play;
 @ApiModel(description = "Universe-creation response")
 @Slf4j
 public class UniverseResp {
+
+  @Inject private Environment environment;
 
   public static UniverseResp create(Universe universe, UUID taskUUID, Config config) {
     UniverseResourceDetails.Context context = new Context(config, universe);
@@ -238,8 +241,7 @@ public class UniverseResp {
         String sampleAppCommandTxt =
             yaml.dump(
                 yaml.load(
-                    Play.application()
-                        .resourceAsStream("templates/k8s-sample-app-command-pod.yml")));
+                    environment.resourceAsStream("templates/k8s-sample-app-command-pod.yml")));
         sampleAppCommandTxt =
             sampleAppCommandTxt
                 .replace("<root_cert_content>", certContent)
@@ -248,8 +250,7 @@ public class UniverseResp {
         String secretCommandTxt =
             yaml.dump(
                 yaml.load(
-                    Play.application()
-                        .resourceAsStream("templates/k8s-sample-app-command-secret.yml")));
+                    environment.resourceAsStream("templates/k8s-sample-app-command-secret.yml")));
         secretCommandTxt =
             secretCommandTxt
                 .replace("<root_cert_content>", certContent)

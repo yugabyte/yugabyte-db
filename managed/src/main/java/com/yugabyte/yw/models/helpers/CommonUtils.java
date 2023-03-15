@@ -18,10 +18,11 @@ import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.controllers.RequestContext;
+import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedResponse;
@@ -768,7 +769,7 @@ public class CommonUtils {
 
   /** Get the user sending the API request from the HTTP context. */
   public static Users getUserFromContext(Http.Context ctx) {
-    return ((UserWithFeatures) ctx.args.get("user")).getUser();
+    return RequestContext.get(TokenAuthenticator.USER).getUser();
   }
 
   public static boolean isAutoFlagSupported(String dbVersion) {

@@ -10,11 +10,9 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static junit.framework.TestCase.fail;
 import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.route;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -30,7 +28,6 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.swagger.PlatformModelConverter;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileWriter;
@@ -47,17 +44,14 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
-import java.util.stream.Stream;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.stream.Collectors;
-
+import java.util.stream.Stream;
 import org.apache.commons.io.IOUtils;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import play.api.routing.Router;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;

@@ -15,11 +15,10 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
-import static com.yugabyte.yw.common.FakeApiHelper.routeWithYWErrHandler;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
@@ -27,6 +26,7 @@ import static play.test.Helpers.contentAsString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseYbDbAdminHandler;
@@ -38,6 +38,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
+import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -46,10 +47,14 @@ import play.test.Helpers;
 @RunWith(JUnitParamsRunner.class)
 public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase {
 
+  @Override
+  protected GuiceApplicationBuilder appOverrides(GuiceApplicationBuilder applicationBuilder) {
+    // Setting platform type as correct.
+    return applicationBuilder.configure("yb.mode", "OSS");
+  }
+
   @Test
   public void testRunQueryWithInvalidUniverse() throws Exception {
-    // Setting platform type as correct.
-    when(mockAppConfig.getString("yb.mode", "PLATFORM")).thenReturn("OSS");
     // Setting insecure mode.
     ConfigHelper configHelper = new ConfigHelper();
     configHelper.loadConfigToDB(
@@ -64,7 +69,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
             .header("X-AUTH-TOKEN", authToken)
             .bodyJson(bodyJson)
             .header("Origin", "https://" + UniverseYbDbAdminHandler.LEARN_DOMAIN_NAME);
-    Result result = routeWithYWErrHandler(request, app);
+    Result result = routeWithYWErrHandler(request);
     assertBadRequest(
         result,
         String.format(
@@ -237,7 +242,10 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
       configHelper.loadConfigToDB(
           ConfigHelper.ConfigType.Security, ImmutableMap.of("level", "insecure"));
     }
-    when(mockAppConfig.getString("yb.mode", "PLATFORM")).thenReturn(ybmode == null ? "" : ybmode);
+    Config customConfig = mock(Config.class);
+    when(customConfig.getString("yb.mode")).thenReturn(ybmode == null ? "" : ybmode);
+    UniverseYbDbAdminHandler handler = app.injector().instanceOf(UniverseYbDbAdminHandler.class);
+    handler.setAppConfig(customConfig);
 
     ObjectNode bodyJson =
         Json.newObject().put("query", "select * from product limit 1").put("db_name", "demo");
@@ -250,7 +258,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     if (!StringUtils.isEmpty(origin)) {
       request = request.header("Origin", origin);
     }
-    Result result = routeWithYWErrHandler(request, app);
+    Result result = routeWithYWErrHandler(request);
 
     JsonNode json = Json.parse(contentAsString(result));
     if (isGoodResult) {

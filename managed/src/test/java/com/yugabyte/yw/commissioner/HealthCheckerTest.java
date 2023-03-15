@@ -92,7 +92,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   private HealthChecker healthChecker;
 
-  @Mock private play.Configuration mockConfig;
+  @Mock private Config mockConfig;
   @Mock private PlatformScheduler mockPlatformScheduler;
   @Mock private ExecutorService executorService;
 

@@ -1,16 +1,9 @@
 package com.yugabyte.yw.commissioner.tasks;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-
-import java.io.File;
-import java.util.UUID;
-import javax.inject.Inject;
-
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.AccessManager;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.AccessKey;
@@ -19,7 +12,9 @@ import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
-
+import java.io.File;
+import java.util.UUID;
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -83,7 +78,7 @@ public class CloudProviderDelete extends AbstractTaskBase {
           // Clear Node instance for the provider.
           NodeInstance.deleteByProvider(providerUUID);
           // Delete the instance types for the provider.
-          InstanceType.deleteInstanceTypesForProvider(provider, config, configHelper);
+          InstanceType.deleteInstanceTypesForProvider(provider, config);
 
           // Delete the provider.
           provider.delete();

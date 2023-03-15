@@ -6,9 +6,9 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
-import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Ebean;
 import io.ebean.ExpressionList;
@@ -29,6 +29,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
@@ -47,6 +48,14 @@ import play.libs.Json;
 @Entity
 public class InstanceType extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(InstanceType.class);
+
+  private static final List<String> AWS_INSTANCE_PREFIXES_SUPPORTED =
+      ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3.");
+  private static final List<String> GRAVITON_AWS_INSTANCE_PREFIXES_SUPPORTED =
+      ImmutableList.of("m6g.", "c6gd.", "c6g.", "t4g.");
+  private static final List<String> CLOUD_AWS_INSTANCE_PREFIXES_SUPPORTED =
+      ImmutableList.of(
+          "m3.", "c5.", "c5d.", "c4.", "c3.", "i3.", "t2.", "t3.", "t4g.", "m6i.", "m5.");
 
   static final String YB_AWS_DEFAULT_VOLUME_COUNT_KEY = "yb.aws.default_volume_count";
   static final String YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY = "yb.aws.default_volume_size_gb";
@@ -189,9 +198,8 @@ public class InstanceType extends Model {
   }
 
   /** Delete Instance Types corresponding to given provider */
-  public static void deleteInstanceTypesForProvider(
-      Provider provider, Config config, ConfigHelper configHelper) {
-    for (InstanceType instanceType : findByProvider(provider, config, configHelper, true)) {
+  public static void deleteInstanceTypesForProvider(Provider provider, Config config) {
+    for (InstanceType instanceType : findByProvider(provider, config, true)) {
       instanceType.delete();
     }
   }
@@ -216,17 +224,13 @@ public class InstanceType extends Model {
   }
 
   private static List<InstanceType> populateDefaultsIfEmpty(
-      List<InstanceType> entries,
-      Config config,
-      ConfigHelper configHelper,
-      boolean allowUnsupported) {
+      List<InstanceType> entries, Config config, boolean allowUnsupported) {
     // For AWS, we would filter and show only supported instance prefixes
     entries =
         entries
             .stream()
             .filter(
-                supportedInstanceTypes(
-                    configHelper.getAWSInstancePrefixesSupported(), allowUnsupported))
+                supportedInstanceTypes(getAWSInstancePrefixesSupported(config), allowUnsupported))
             .collect(Collectors.toList());
     for (InstanceType instanceType : entries) {
       if (instanceType.instanceTypeDetails == null) {
@@ -243,14 +247,13 @@ public class InstanceType extends Model {
   }
 
   /** Query Helper to find supported instance types for a given cloud provider. */
-  public static List<InstanceType> findByProvider(
-      Provider provider, Config config, ConfigHelper configHelper) {
-    return findByProvider(provider, config, configHelper, false);
+  public static List<InstanceType> findByProvider(Provider provider, Config config) {
+    return findByProvider(provider, config, false);
   }
 
   /** Query Helper to find supported instance types for a given cloud provider. */
   public static List<InstanceType> findByProvider(
-      Provider provider, Config config, ConfigHelper configHelper, boolean allowUnsupported) {
+      Provider provider, Config config, boolean allowUnsupported) {
     List<InstanceType> entries =
         InstanceType.find
             .query()
@@ -259,7 +262,7 @@ public class InstanceType extends Model {
             .eq("active", true)
             .findList();
     if (provider.code.equals("aws")) {
-      return populateDefaultsIfEmpty(entries, config, configHelper, allowUnsupported);
+      return populateDefaultsIfEmpty(entries, config, allowUnsupported);
     } else {
       return entries;
     }
@@ -273,6 +276,16 @@ public class InstanceType extends Model {
         Integer.parseInt(metadata.get("numCores").toString()),
         Double.parseDouble(metadata.get("memSizeGB").toString()),
         Json.fromJson(metadata.get("instanceTypeDetails"), InstanceTypeDetails.class));
+  }
+
+  public static List<String> getAWSInstancePrefixesSupported(Config config) {
+    if (config.getBoolean("yb.cloud.enabled")) {
+      return CLOUD_AWS_INSTANCE_PREFIXES_SUPPORTED;
+    }
+    return Stream.concat(
+            AWS_INSTANCE_PREFIXES_SUPPORTED.stream(),
+            GRAVITON_AWS_INSTANCE_PREFIXES_SUPPORTED.stream())
+        .collect(Collectors.toList());
   }
 
   /** Default details for volumes attached to this instance. */
