@@ -312,22 +312,7 @@ public class Commissioner {
   // Returns the TaskExecutionListener instance.
   private TaskExecutionListener getTaskExecutionListener() {
     final Consumer<TaskInfo> beforeTaskConsumer = getBeforeTaskConsumer();
-    TaskExecutionListener listener =
-        new TaskExecutionListener() {
-          @Override
-          public void beforeTask(TaskInfo taskInfo) {
-            LOG.info("About to execute task {}", taskInfo);
-            if (beforeTaskConsumer != null) {
-              beforeTaskConsumer.accept(taskInfo);
-            }
-          }
-
-          @Override
-          public void afterTask(TaskInfo taskInfo, Throwable t) {
-            LOG.info("Task {} is completed", taskInfo);
-            providerEditRestrictionManager.onTaskFinished(taskInfo.getTaskUUID());
-          }
-        };
+    Listener listener = new Listener(providerEditRestrictionManager, beforeTaskConsumer);
     return listener;
   }
 
@@ -367,7 +352,6 @@ public class Commissioner {
     }
     return consumer;
   }
-
   /**
    * A progress monitor to constantly write a last updated timestamp in the DB so that this process
    * and all its subtasks are considered to be alive.
