@@ -3313,20 +3313,5 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST(PerfScanG7RangePK100Columns), PgMiniRf1Pac
     LOG(INFO) << kNumScansPerIteration << " scan(s) took: " << AsString(s.elapsed());
   }
 }
-
-class PgMiniTestNoSavePoints : public PgMiniTest {
- public:
-  void SetUp() override {
-    FLAGS_enable_pg_savepoints = 0;
-    PgMiniTest::SetUp();
-  }
-};
-
-TEST_F(PgMiniTestNoSavePoints, YB_DISABLE_TEST_IN_TSAN(TestSavePointCanBeDisabled)) {
-  auto conn1 = ASSERT_RESULT(Connect());
-  ASSERT_NOK(conn1.Execute("SAVEPOINT A"))
-      << "setting FLAGS_enable_pg_savepoints to false should have made SAVEPOINT produce an error";
-}
-
 } // namespace pgwrapper
 } // namespace yb
