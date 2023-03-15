@@ -646,7 +646,7 @@ public class HealthChecker {
     String providerCode;
     int masterIndex = 0;
     int tserverIndex = 0;
-    CustomerTask lastTask = CustomerTask.getLatestByUniverseUuid(params.universe.universeUUID);
+    CustomerTask lastTask = CustomerTask.getLastTaskByTargetUuid(params.universe.universeUUID);
     Long potentialStartTime = null;
     if (lastTask != null && lastTask.getCompletionTime() != null) {
       potentialStartTime = lastTask.getCompletionTime().getTime();

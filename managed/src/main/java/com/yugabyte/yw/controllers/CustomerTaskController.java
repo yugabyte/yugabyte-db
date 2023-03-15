@@ -7,24 +7,28 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Strings;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
+import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CustomerTaskFormData;
 import com.yugabyte.yw.forms.PlatformResults;
-import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.SubTaskFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -170,9 +174,10 @@ public class CustomerTaskController extends AuthenticatedController {
         TaskInfo.find(taskUuids)
             .stream()
             .collect(Collectors.toMap(TaskInfo::getTaskUUID, Function.identity()));
+    Map<UUID, CustomerTask> lastTaskByTarget = new HashMap<>();
     for (CustomerTask task : customerTaskList) {
       Optional<ObjectNode> optTaskProgress =
-          commissioner.buildTaskStatus(task, taskInfoMap.get(task.getTaskUUID()));
+          commissioner.buildTaskStatus(task, taskInfoMap.get(task.getTaskUUID()), lastTaskByTarget);
 
       optTaskProgress.ifPresent(
           taskProgress -> {
@@ -244,9 +249,9 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Retry a Universe task",
-      notes = "Retry a Universe task.",
-      response = UniverseResp.class)
+      value = "Retry a Universe or Provider task",
+      notes = "Retry a Universe or Provider task.",
+      response = PlatformResults.YBPTask.class)
   public Result retryTask(UUID customerUUID, UUID taskUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
@@ -261,21 +266,15 @@ public class CustomerTaskController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
 
-    UniverseTaskParams taskParams = null;
+    AbstractTaskParams taskParams = null;
     switch (taskType) {
       case CreateUniverse:
       case EditUniverse:
       case ReadOnlyClusterCreate:
-        UniverseDefinitionTaskParams params =
-            Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
-        // Reset the error string.
-        params.setErrorString(null);
-        taskParams = params;
+        taskParams = Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
         break;
       case ResizeNode:
-        ResizeNodeParams resizeNodeParams = Json.fromJson(oldTaskParams, ResizeNodeParams.class);
-        resizeNodeParams.setErrorString(null);
-        taskParams = resizeNodeParams;
+        taskParams = Json.fromJson(oldTaskParams, ResizeNodeParams.class);
         break;
       case AddNodeToUniverse:
       case RemoveNodeFromUniverse:
@@ -385,6 +384,9 @@ public class CustomerTaskController extends AuthenticatedController {
 
         taskParams = multiTableParams;
         break;
+      case CloudProviderDelete:
+        taskParams = Json.fromJson(oldTaskParams, CloudProviderDelete.Params.class);
+        break;
       default:
         String errMsg =
             String.format(
@@ -393,32 +395,51 @@ public class CustomerTaskController extends AuthenticatedController {
         return ApiResponse.error(BAD_REQUEST, errMsg);
     }
 
-    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
+    // Reset the error string.
+    taskParams.setErrorString(null);
 
-    if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
-      String errMsg = String.format("Invalid task state: Task %s cannot be retried", taskUUID);
-      return ApiResponse.error(BAD_REQUEST, errMsg);
+    UUID targetUUID;
+    String targetName;
+    if (taskParams instanceof UniverseTaskParams) {
+      targetUUID = ((UniverseTaskParams) taskParams).universeUUID;
+      Universe universe = Universe.getOrBadRequest(targetUUID);
+      if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
+        String errMsg = String.format("Invalid task state: Task %s cannot be retried", taskUUID);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+      targetName = universe.name;
+    } else if (taskParams instanceof IProviderTaskParams) {
+      targetUUID = ((IProviderTaskParams) taskParams).getProviderUUID();
+      Provider provider = Provider.getOrBadRequest(targetUUID);
+      targetName = provider.name;
+      // Parallel execution is guarded by ProviderEditRestrictionManager
+      CustomerTask lastTask = CustomerTask.getLastTaskByTargetUuid(targetUUID);
+      if (lastTask == null || !lastTask.getId().equals(customerTask.getId())) {
+        throw new PlatformServiceException(BAD_REQUEST, "Can restart only last task");
+      }
+    } else {
+      throw new PlatformServiceException(BAD_REQUEST, "Unknown type for task params " + taskParams);
     }
     taskParams.setPreviousTaskUUID(taskUUID);
     UUID newTaskUUID = commissioner.submit(taskType, taskParams);
     LOG.info(
         "Submitted retry task to universe for {}:{}, task uuid = {}.",
-        universe.universeUUID,
-        universe.name,
+        targetUUID,
+        targetName,
         newTaskUUID);
 
     CustomerTask.create(
         customer,
-        universe.universeUUID,
+        targetUUID,
         newTaskUUID,
         customerTask.getTarget(),
         customerTask.getType(),
-        universe.name);
+        targetName);
     LOG.info(
-        "Saved task uuid {} in customer tasks table for universe {}:{}",
+        "Saved task uuid {} in customer tasks table for target {}:{}",
         newTaskUUID,
-        universe.universeUUID,
-        universe.name);
+        targetUUID,
+        targetName);
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -429,7 +450,7 @@ public class CustomerTaskController extends AuthenticatedController {
             Json.toJson(taskParams),
             newTaskUUID);
 
-    return PlatformResults.withData(new UniverseResp(universe, newTaskUUID));
+    return new PlatformResults.YBPTask(taskUUID, targetUUID).asResult();
   }
 
   @ApiOperation(
