@@ -72,10 +72,10 @@ public class NativeKubernetesManager extends KubernetesManager {
       this.baos = baos;
     }
 
-    @Override
-    public void onOpen(Response response) {
-      log.info("Reading data... ");
-    }
+    // @Override
+    // public void onOpen(Response response) {
+    //   log.info("Reading data... ");
+    // }
 
     @Override
     public void onFailure(Throwable t, Response failureResponse) {
@@ -275,13 +275,15 @@ public class NativeKubernetesManager extends KubernetesManager {
   @Override
   public boolean deleteStatefulSet(Map<String, String> config, String namespace, String stsName) {
     try (KubernetesClient client = getClient(config)) {
+      // We just check if the list of StatusDetails is empty or not.
       return client
           .apps()
           .statefulSets()
           .inNamespace(namespace)
           .withName(stsName)
           .withPropagationPolicy(DeletionPropagation.ORPHAN)
-          .delete();
+          .delete()
+          .isEmpty();
     }
   }
 
@@ -307,7 +309,12 @@ public class NativeKubernetesManager extends KubernetesManager {
       for (PersistentVolumeClaim pvc : pvcs) {
         log.info("Updating PVC size for {} to {}", pvc.getMetadata().getName(), newDiskSize);
         pvc.getSpec().getResources().getRequests().put("storage", new Quantity(newDiskSize));
-        client.persistentVolumeClaims().patch(PatchContext.of(PatchType.STRATEGIC_MERGE), pvc);
+        // The .withName is so we can chain the .patch, an update to the client
+        // seems to have changed it so that this is required.
+        client
+            .persistentVolumeClaims()
+            .withName(pvc.getMetadata().getName())
+            .patch(PatchContext.of(PatchType.STRATEGIC_MERGE), pvc);
       }
       return true;
     }
