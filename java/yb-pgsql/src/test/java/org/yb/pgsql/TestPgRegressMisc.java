@@ -36,7 +36,12 @@ public class TestPgRegressMisc extends BasePgSQLTest {
   }
 
   @Test
-  public void testPgRegressMisc() throws Exception {
+  public void testPgRegressMiscIndependent() throws Exception {
+    runPgRegressTest("yb_misc_independent_schedule");
+  }
+
+  @Test
+  public void testPgRegressMiscSerial() throws Exception {
     runPgRegressTest("yb_misc_serial_schedule");
   }
 }

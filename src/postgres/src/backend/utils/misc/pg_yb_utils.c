@@ -1025,6 +1025,12 @@ YBIsInitDbAlreadyDone()
 
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 static int ddl_nesting_level = 0;
+typedef struct DdlTransactionState {
+	bool is_catalog_version_increment;
+	bool is_breaking_catalog_change;
+	NodeTag original_node_tag;
+} DdlTransactionState;
+static DdlTransactionState ddl_transaction_state = {0};
 
 static void
 YBResetEnableNonBreakingDDLMode()
@@ -1051,26 +1057,44 @@ YBGetDdlNestingLevel()
 }
 
 void
-YBIncrementDdlNestingLevel()
+YBIncrementDdlNestingLevel(bool is_catalog_version_increment,
+						   bool is_breaking_catalog_change)
 {
 	if (ddl_nesting_level == 0)
 	{
 		HandleYBStatus(YBCPgEnterSeparateDdlTxnMode());
 	}
 	ddl_nesting_level++;
+
+	/*
+	* The is_catalog_version_increment and is_breaking_catalog_change flags
+	* should only be set if it is not already true.
+	*/
+	ddl_transaction_state.is_catalog_version_increment |= is_catalog_version_increment;
+	ddl_transaction_state.is_breaking_catalog_change |= is_breaking_catalog_change;
 }
 
 void
-YBDecrementDdlNestingLevel(bool is_catalog_version_increment, bool is_breaking_catalog_change)
+YBDecrementDdlNestingLevel()
 {
 	ddl_nesting_level--;
 	if (ddl_nesting_level == 0)
 	{
 		YBResetEnableNonBreakingDDLMode();
+		bool is_catalog_version_increment = ddl_transaction_state.is_catalog_version_increment;
+		bool is_breaking_catalog_change = ddl_transaction_state.is_breaking_catalog_change;
+		/*
+		 * Reset the two flags to false prior to executing
+		 * YbIncrementMasterCatalogVersionTableEntry() such that
+		 * even when it throws an exception we still reset the flags.
+		 */
+		ddl_transaction_state.is_catalog_version_increment = false;
+		ddl_transaction_state.is_breaking_catalog_change = false;
 		const bool increment_done =
 			is_catalog_version_increment &&
 			YBCPgHasWriteOperationsInDdlTxnMode() &&
-			YbIncrementMasterCatalogVersionTableEntry(is_breaking_catalog_change);
+			YbIncrementMasterCatalogVersionTableEntry(
+					is_breaking_catalog_change);
 
 		HandleYBStatus(YBCPgExitSeparateDdlTxnMode());
 
@@ -1141,17 +1165,39 @@ GetActualStmtNode(PlannedStmt *pstmt)
 }
 
 bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
-                                 bool *is_catalog_version_increment,
-                                 bool *is_breaking_catalog_change)
+								 bool *is_catalog_version_increment,
+								 bool *is_breaking_catalog_change,
+								 ProcessUtilityContext context)
 {
-	/* Assume the worst. */
-	*is_catalog_version_increment = true;
-	*is_breaking_catalog_change = true;
+	Node *parsetree = GetActualStmtNode(pstmt);
+	NodeTag node_tag = nodeTag(parsetree);
+
+	if (context == PROCESS_UTILITY_TOPLEVEL ||
+		context == PROCESS_UTILITY_QUERY)
+	{
+		/* Assume the worst. */
+		*is_catalog_version_increment = true;
+		*is_breaking_catalog_change = true;
+
+		/*
+		 * The node tag from the top-level or atomic process utility must
+		 * be persisted so that DDL commands with multiple nested
+		 * subcommands can determine whether catalog version should
+		 * be incremented.
+		 */
+		ddl_transaction_state.original_node_tag = node_tag;
+	}
+	else
+	{
+		Assert(context == PROCESS_UTILITY_SUBCOMMAND ||
+			   context == PROCESS_UTILITY_QUERY_NONATOMIC);
+
+		*is_catalog_version_increment = false;
+		*is_breaking_catalog_change = false;
+	}
 
 	bool is_ddl = true;
-	Node *parsetree = GetActualStmtNode(pstmt);
 
-	NodeTag node_tag = nodeTag(parsetree);
 	switch (node_tag) {
 		// The lists of tags here have been generated using e.g.:
 		// cat $( find src/postgres -name "nodes.h" ) | grep "T_Create" | sort | uniq |
@@ -1240,7 +1286,6 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_CreateStmt:
 		{
 			CreateStmt *stmt = castNode(CreateStmt, parsetree);
-			ListCell *lc = NULL;
 			/*
 			 * If a partition table is being created, this means pg_inherits
 			 * table that is being cached should be invalidated. If the cache
@@ -1268,29 +1313,6 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 				break;
 			}
 
-			foreach (lc, stmt->constraints)
-			{
-				Constraint *con = lfirst(lc);
-				if (con->contype == CONSTR_FOREIGN)
-				{
-					/*
-					 * Increment catalog version as it effectively alters the referenced table.
-					 * TODO Technically this could also be a breaking change in case we have
-					 * ongoing transactions affecting the referenced table.
-					 * But we do not support consistent FK checks (w.r.t concurrent
-					 * writes) yet anyway and the (upcoming) online, async
-					 * implementation should wait for ongoing transactions so we do not
-					 * have to force a transaction abort on PG side.
-					 */
-					*is_breaking_catalog_change = false;
-					break;
-				}
-			}
-
-			/*
-			 * If no FK constraints, this is a simple add object so nothing to
-			 * do (due to no negative caching).
-			 */
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
 			break;
@@ -1385,6 +1407,28 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			if (cmd->subtype == AT_AddColumn || cmd->subtype == AT_DropColumn) {
 				*is_breaking_catalog_change = false;
 			}
+
+			/*
+			 * Must increment catalog version when creating table with foreign
+			 * key reference and refresh PG cache on ongoing transactions.
+			 */
+			if ((context == PROCESS_UTILITY_SUBCOMMAND ||
+				 context == PROCESS_UTILITY_QUERY_NONATOMIC) &&
+				ddl_transaction_state.original_node_tag == T_CreateStmt &&
+				node_tag == T_AlterTableStmt)
+			{
+				ListCell   *lcmd;
+				foreach(lcmd, stmt->cmds)
+				{
+					AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
+					if (IsA(cmd->def, Constraint) &&
+						((Constraint *) cmd->def)->contype == CONSTR_FOREIGN)
+					{
+						*is_catalog_version_increment = true;
+						break;
+					}
+				}
+			}
 			break;
 		}
 
@@ -1463,11 +1507,13 @@ static void YBTxnDdlProcessUtility(
 	bool is_catalog_version_increment = true;
 	bool is_breaking_catalog_change = true;
 	bool is_txn_ddl = IsTransactionalDdlStatement(pstmt,
-	                                              &is_catalog_version_increment,
-	                                              &is_breaking_catalog_change);
+												  &is_catalog_version_increment,
+												  &is_breaking_catalog_change,
+												  context);
 
 	if (is_txn_ddl) {
-		YBIncrementDdlNestingLevel();
+		YBIncrementDdlNestingLevel(is_catalog_version_increment,
+								   is_breaking_catalog_change);
 	}
 	PG_TRY();
 	{
@@ -1493,7 +1539,7 @@ static void YBTxnDdlProcessUtility(
 	}
 	PG_END_TRY();
 	if (is_txn_ddl) {
-		YBDecrementDdlNestingLevel(is_catalog_version_increment, is_breaking_catalog_change);
+		YBDecrementDdlNestingLevel();
 	}
 }
 
