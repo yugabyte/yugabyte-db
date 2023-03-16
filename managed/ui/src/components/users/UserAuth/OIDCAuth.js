@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import * as Yup from 'yup';
-import { trimStart, trimEnd } from 'lodash';
+import { trimStart, trimEnd, isString } from 'lodash';
 import { toast } from 'react-toastify';
 import { Row, Col, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { Formik, Form, Field } from 'formik';
@@ -79,15 +79,17 @@ export const OIDCAuth = (props) => {
     const initValues = initializeFormValues();
     const promiseArray = Object.keys(formValues).reduce((promiseArr, key) => {
       if (formValues[key] !== initValues[key]) {
+        const keyName = `${OIDC_PATH}.${key}`;
+        const value = isString(formValues[key]) ? `"${formValues[key]}"` : formValues[key];
         promiseArr.push(
           formValues[key] !== ''
             ? setRunTimeConfig({
-              key: `${OIDC_PATH}.${key}`,
-              value: formValues[key]
-            })
+                key: keyName,
+                value
+              })
             : deleteRunTimeConfig({
-              key: `${OIDC_PATH}.${key}`
-            })
+                key: keyName
+              })
         );
       }
 
@@ -168,8 +170,11 @@ export const OIDCAuth = (props) => {
             <WarningIcon />
           </div>
           <div className="oidc-modal-c-content">
-            <b>Note!</b> {"By disabling OIDC users won't be able to login with your current\
-            authentication provider. Are you sure"}
+            <b>Note!</b>{' '}
+            {
+              "By disabling OIDC users won't be able to login with your current\
+            authentication provider. Are you sure"
+            }
           </div>
         </div>
       </YBModal>
