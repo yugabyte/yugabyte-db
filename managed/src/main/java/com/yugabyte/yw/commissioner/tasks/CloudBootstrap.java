@@ -49,15 +49,18 @@ public class CloudBootstrap extends CloudTaskBase {
   @ApiModel(value = "CloudBootstrapParams", description = "Cloud bootstrap parameters")
   public static class Params extends CloudTaskParams {
     public static Params fromProvider(Provider provider) {
-      return CloudBootstrap.Params.fromProvider(provider, provider.regions);
+      return CloudBootstrap.Params.fromProvider(provider, provider);
     }
 
-    public static Params fromProvider(Provider provider, List<Region> regions) {
+    public static Params fromProvider(Provider provider, Provider reqProvider) {
       Params taskParams = new Params();
+      List<Region> regions = reqProvider.regions;
       // This is the case of initial provider creation.
       // If user provides his own access keys, we should take the first one in the list.
-      if (provider.allAccessKeys != null && provider.allAccessKeys.size() > 0) {
-        AccessKey accessKey = provider.allAccessKeys.get(0);
+      // AccessKey in the provider object will be empty at this point as they are not yet
+      // synced in the DB.
+      if (reqProvider.allAccessKeys != null && reqProvider.allAccessKeys.size() > 0) {
+        AccessKey accessKey = reqProvider.allAccessKeys.get(0);
         taskParams.keyPairName = accessKey.getKeyInfo().keyPairName;
         taskParams.sshPrivateKeyContent = accessKey.getKeyInfo().sshPrivateKeyContent;
       }
