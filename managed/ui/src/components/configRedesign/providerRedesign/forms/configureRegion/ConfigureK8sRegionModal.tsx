@@ -10,8 +10,8 @@ import clsx from 'clsx';
 import { FormHelperText, makeStyles } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, object } from 'yup';
-import { v4 as uuidv4 } from 'uuid';
 import { yupResolver } from '@hookform/resolvers/yup';
+import { nanoid } from 'nanoid';
 
 import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
 import { ProviderCode, VPCSetupType } from '../../constants';
@@ -95,7 +95,7 @@ export const ConfigureK8sRegionModal = ({
     const newRegion = {
       ...formValues,
       code: formValues.regionData.value.code,
-      fieldId: formValues.fieldId ?? uuidv4()
+      fieldId: formValues.fieldId ?? nanoid()
     };
     onRegionSubmit(newRegion);
     formMethods.reset();

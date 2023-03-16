@@ -10,8 +10,8 @@ import clsx from 'clsx';
 import { FormHelperText, makeStyles } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, object, string } from 'yup';
-import { v4 as uuidv4 } from 'uuid';
 import { yupResolver } from '@hookform/resolvers/yup';
+import { nanoid } from 'nanoid';
 
 import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
 import { OnPremRegionFieldLabel } from './constants';
@@ -64,7 +64,7 @@ export const ConfigureOnPremRegionModal = ({
   const onSubmit: SubmitHandler<ConfigureOnPremRegionFormValues> = (formValues) => {
     const newRegion = {
       ...formValues,
-      fieldId: formValues.fieldId ?? uuidv4()
+      fieldId: formValues.fieldId ?? nanoid()
     };
     onRegionSubmit(newRegion);
     formMethods.reset();
