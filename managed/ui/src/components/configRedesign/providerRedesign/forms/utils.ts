@@ -6,6 +6,8 @@
  */
 import { AxiosError } from 'axios';
 import { FieldValues, Path, UseFormSetError } from 'react-hook-form';
+import { customAlphabet } from 'nanoid';
+
 import { YBBeanValidationError, YBPError } from '../../../../redesign/helpers/dtos';
 
 export const readFileAsText = (sshKeyFile: File) => {
@@ -80,3 +82,6 @@ export const getCreateProviderErrorMessage = (
   typeof error.response?.data.error === 'string' || error.response?.data.error instanceof String
     ? `Create provider request failed: ${error.response.data.error as string}`
     : 'Form validation failed.';
+
+const LOWER_CASE_ALPHANUMERIC = '0123456789abcdefghijklmnopqrstuvwxyz';
+export const generateLowerCaseAlphanumericId = customAlphabet(LOWER_CASE_ALPHANUMERIC);
