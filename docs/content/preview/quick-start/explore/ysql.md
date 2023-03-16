@@ -519,7 +519,7 @@ SELECT * FROM emp_evaluation_period e1
 
 ### Cross table pivots
 
-Use a cross table to show the sum of salary per job, by department. The shell [\crosstabview](../../../admin/ysqlsh/#crosstabview-colv-colh-cold-sortcolh) meta-command displays rows as columns. The following statement sums the salaries across jobs and departments and displays them as a cross table:
+Use a cross table to show the sum of salary per job, by department. The shell [\crosstabview](../../../admin/ysqlsh-meta-commands/#crosstabview-colv-colh-cold-sortcolh) meta-command displays rows as columns. The following statement sums the salaries across jobs and departments and displays them as a cross table:
 
 ```sql
 SELECT job, dname, sum(sal)

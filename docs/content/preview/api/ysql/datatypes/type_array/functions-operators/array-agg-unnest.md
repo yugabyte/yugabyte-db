@@ -110,9 +110,9 @@ as arr;
 
 Each of the three _"select... as arr"_ queries above produces the same result, as was shown after the first of them. This demonstrates their semantic equivalence.
 
-To prepare for the demonstration of `unnest()`, save the single-valued result from the most recent of the three queries (but any one of them would do) into a `ysqlsh` variable by using the `\gset` metacommand. This takes a single argument, conventionally spelled with a trailing underscore (for example, _"result&#95;"_) and re-runs the `SELECT` statement that, as the last submitted `ysqlsh` command, is still in the command buffer. (If the `SELECT` doesn't return a single row, then you get a clear error.) In general, when the `SELECT` list has _N_ members, called _"c1"_ through _"cN"_, each of these values is stored in automatically-created variables called _"result&#95;c1"_ through _"result&#95;cN"_.
+To prepare for the demonstration of `unnest()`, save the single-valued result from the most recent of the three queries (but any one of them would do) into a `ysqlsh` variable by using the `\gset` meta-command. This takes a single argument, conventionally spelled with a trailing underscore (for example, _"result&#95;"_) and re-runs the `SELECT` statement that, as the last submitted `ysqlsh` command, is still in the command buffer. (If the `SELECT` doesn't return a single row, then you get a clear error.) In general, when the `SELECT` list has _N_ members, called _"c1"_ through _"cN"_, each of these values is stored in automatically-created variables called _"result&#95;c1"_ through _"result&#95;cN"_.
 
-if you aren't already familiar with the `\gset` metacommand, you can read a brief account of how it works in [Meta-commands](../../../../../../admin/ysqlsh/#meta-commands) within the major section on `ysqlsh`.
+if you aren't already familiar with the `\gset` meta-command, you can read a brief account of how it works in [Meta-commands](../../../../../../admin/ysqlsh-meta-commands/) within the major section on `ysqlsh`.
 
 Immediately after running the _"with... select array_agg(...) as arr..."_ query above, do this:
 
@@ -121,7 +121,7 @@ Immediately after running the _"with... select array_agg(...) as arr..."_ query 
 \echo :result_arr
 ```
 
-The `\gset` metacommand is silent. The `\echo` metacommand shows this:
+The `\gset` meta-command is silent. The `\echo` meta-command shows this:
 
 ```
 {"(1,dog)","(2,cat)","(3,ant)"}
