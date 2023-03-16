@@ -14,6 +14,14 @@
         },
         "awsHostedZoneName" : {
           "type" : "string"
+        },
+        "hostVpcId" : {
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "hostVpcRegion" : {
+          "readOnly" : true,
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -4075,7 +4083,7 @@
     },
     "GCPCloudInfo" : {
       "properties" : {
-        "customGceNetwork" : {
+        "destVpcId" : {
           "type" : "string"
         },
         "gceApplicationCredentialsPath" : {
@@ -4083,6 +4091,10 @@
           "type" : "string"
         },
         "gceProject" : {
+          "type" : "string"
+        },
+        "hostVpcId" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "useHostCredentials" : {

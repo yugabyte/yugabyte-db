@@ -204,7 +204,8 @@ class Waiter():
 
 
 class NetworkManager():
-    def __init__(self, project, compute, metadata, dest_vpc_id, host_vpc_id, per_region_meta):
+    def __init__(self, project, compute, metadata, dest_vpc_id, host_vpc_id,
+                 per_region_meta, create_new_vpc=False):
         self.project = project
         self.compute = compute
         self.metadata = metadata
@@ -219,6 +220,7 @@ class NetworkManager():
         if self.host_vpc_id is not None:
             self.host_vpc_id = self.host_vpc_id.split("/")[-1]
         self.per_region_meta = per_region_meta
+        self.create_new_vpc = create_new_vpc
 
         self.waiter = Waiter(self.project, self.compute)
 
@@ -253,13 +255,23 @@ class NetworkManager():
         return self.network_info_as_json(network_name, output_region_to_subnet_map)
 
     def bootstrap(self):
-        # If given a target VPC, then don't create anything.
-        if self.dest_vpc_id:
+        # If create_new_vpc is not specified than use the specified the VPC.
+        if self.dest_vpc_id and not self.create_new_vpc:
+            # Try to fetch the specified network & fail in case it does not exist.
+            networks = self.get_networks(self.dest_vpc_id)
+            if len(networks) == 0:
+                raise YBOpsRuntimeError("Invalid target VPC: {}".format(self.dest_vpc_id))
             return self.get_network_data(self.dest_vpc_id)
-        # If we were not given a target VPC, then we'll try to provision our custom network.
+        # If create_new_vpc is specified we will be creating a new VPC with specified
+        # name if not present, else we will fail.
+        if self.dest_vpc_id:
+            global YB_NETWORK_NAME
+            YB_NETWORK_NAME = self.dest_vpc_id
         networks = self.get_networks(YB_NETWORK_NAME)
         if len(networks) > 0:
-            network_url = networks[0].get("selfLink")
+            raise YBOpsRuntimeError(
+                "Failed to create VPC as vpc with same name already exists: {}"
+                .format(YB_NETWORK_NAME))
         else:
             # Create the network if it didn't already exist.
             op = self.waiter.wait(self.create_network())
@@ -552,11 +564,13 @@ class GoogleCloudAdmin():
         self.metadata = metadata
         self.waiter = Waiter(self.project, self.compute)
 
-    def network(self, dest_vpc_id=None, host_vpc_id=None, per_region_meta=None):
+    def network(self, dest_vpc_id=None, host_vpc_id=None, per_region_meta=None,
+                create_new_vpc=False):
         if per_region_meta is None:
             per_region_meta = {}
         return NetworkManager(
-            self.project, self.compute, self.metadata, dest_vpc_id, host_vpc_id, per_region_meta)
+            self.project, self.compute, self.metadata, dest_vpc_id,
+            host_vpc_id, per_region_meta, create_new_vpc)
 
     @staticmethod
     def get_current_host_info():

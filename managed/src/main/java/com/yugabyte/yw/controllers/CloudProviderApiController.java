@@ -171,7 +171,8 @@ public class CloudProviderApiController extends AuthenticatedController {
     if (providerCode.isRequiresBootstrap()) {
       UUID taskUUID = null;
       try {
-        CloudBootstrap.Params taskParams = CloudBootstrap.Params.fromProvider(reqProvider);
+        CloudBootstrap.Params taskParams =
+            CloudBootstrap.Params.fromProvider(providerEbean, reqProvider);
 
         taskUUID = cloudProviderHandler.bootstrap(customer, providerEbean, taskParams);
         auditService()

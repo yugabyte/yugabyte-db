@@ -977,22 +977,12 @@ public class CloudProviderHandler {
             throw new IllegalStateException("Cannot use host vpc as there is no vpc");
           }
           String network = currentHostInfo.get("network").asText();
-          provider.hostVpcId = network;
-          // Destination VPC Network if specified by the client we will use that
-          // for provisioning nodes as part of the provider.
-          if (gcpCloudInfo.customGceNetwork != null) {
-            provider.destVpcId = gcpCloudInfo.customGceNetwork;
-          } else {
-            provider.destVpcId = network;
+          gcpCloudInfo.setHostVpcId(network);
+          // If destination VPC network is not specified, then we will use the
+          // host VPC as for both hostVpcId and destVpcId.
+          if (gcpCloudInfo.destVpcId == null) {
+            gcpCloudInfo.setDestVpcId(network);
           }
-          // We need to save the destVpcId into the provider config, because we'll need it during
-          // instance creation. Technically, we could make it a ybcloud parameter,
-          // but we'd still need to
-          // store it somewhere and the config is the easiest place to put it.
-          // As such, since all the
-          // config is loaded up as env vars anyway, might as well use in in devops like that...
-
-          gcpCloudInfo.setCustomGceNetwork(network);
           if (StringUtils.isBlank(gcpCloudInfo.getGceProject())) {
             gcpCloudInfo.setGceProject(currentHostInfo.get("host_project").asText());
           }
@@ -1001,9 +991,9 @@ public class CloudProviderHandler {
       case aws:
         JsonNode currentHostInfo = queryHelper.getCurrentHostInfo(provider.getCloudCode());
         if (hasHostInfo(currentHostInfo)) {
-          provider.hostVpcRegion = currentHostInfo.get("region").asText();
-          provider.hostVpcId = currentHostInfo.get("vpc-id").asText();
-          provider.destVpcId = null;
+          AWSCloudInfo awsCloudInfo = CloudInfoInterface.get(provider);
+          awsCloudInfo.setHostVpcRegion(currentHostInfo.get("region").asText());
+          awsCloudInfo.setHostVpcId(currentHostInfo.get("vpc-id").asText());
         }
         break;
       default:
