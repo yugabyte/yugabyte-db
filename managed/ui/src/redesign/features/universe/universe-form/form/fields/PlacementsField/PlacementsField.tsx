@@ -58,14 +58,9 @@ const useStyles = makeStyles((theme) => ({
 export type PlacementWithId = Placement & { id: any };
 
 const DEFAULT_MIN_NUM_NODE = 1;
-export const PlacementsField = ({
-  disabled,
-  isPrimary,
-  isEditMode
-}: PlacementsFieldProps): ReactElement => {
+export const PlacementsField = ({ isPrimary, isEditMode }: PlacementsFieldProps): ReactElement => {
   const { control, setValue, getValues } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
-  const classes = useFormFieldStyles();
   const helperClasses = useStyles();
 
   //watchers
@@ -116,10 +111,14 @@ export const PlacementsField = ({
     update(index, updateAz);
   };
 
+  const getTotalNodesinAZ = () => {
+    const initialCount = 0;
+    return fields.reduce((prev, cur) => prev + cur.numNodesInAZ, initialCount);
+  };
+
   //get Minimum AZ count to update before making universe_configure call
   const getMinCountAZ = (index: number) => {
-    const initialCount = 0;
-    const totalNodesinAz = fields.reduce((prev, cur) => prev + cur.numNodesInAZ, initialCount);
+    const totalNodesinAz = getTotalNodesinAZ();
     const min = fields[index].numNodesInAZ - (totalNodesinAz - getValues(REPLICATION_FACTOR_FIELD));
     return min > 0 ? min : DEFAULT_MIN_NUM_NODE;
   };
@@ -164,6 +163,7 @@ export const PlacementsField = ({
                     if (!e.target.value || Number(e.target.value) < getMinCountAZ(index))
                       onChange(getMinCountAZ(index));
                     else onChange(Number(e.target.value));
+                    setValue(USER_AZSELECTED_FIELD, true);
                   }}
                   {...rest}
                   inputProps={{
@@ -195,6 +195,7 @@ export const PlacementsField = ({
             <IconButton
               color="default"
               size="medium"
+              disabled={isLoading || getTotalNodesinAZ() - field.numNodesInAZ < replicationFactor}
               data-testid={`PlacementsField-RemoveButton${index}`}
               onClick={() => {
                 remove(index);
@@ -235,12 +236,7 @@ export const PlacementsField = ({
               disabled={isLoading}
               data-testid="PlacementsField-AddAZButton"
               onClick={() => {
-                const initialCount = 0;
-                const totalNodesinAz = fields.reduce(
-                  (prev, cur) => prev + cur.numNodesInAZ,
-                  initialCount
-                );
-                const remainingAZ = getValues(REPLICATION_FACTOR_FIELD) - totalNodesinAz;
+                const remainingAZ = getValues(REPLICATION_FACTOR_FIELD) - getTotalNodesinAZ();
                 append({
                   ...unUsedZones[0],
                   numNodesInAZ: remainingAZ > 0 || isEditMode ? 1 : 0,
