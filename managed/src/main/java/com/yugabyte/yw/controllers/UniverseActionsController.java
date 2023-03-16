@@ -182,32 +182,6 @@ public class UniverseActionsController extends AuthenticatedController {
     return new YBPTask(taskUUID, universe.universeUUID).asResult();
   }
 
-  @Deprecated
-  @ApiOperation(
-      value = "Toggle a universe's TLS state",
-      notes =
-          "Enable or disable node-to-node and client-to-node encryption. "
-              + "Supports rolling and non-rolling universe upgrades.",
-      nickname = "toggleUniverseTLS",
-      response = UniverseResp.class)
-  public Result toggleTls(UUID customerUuid, UUID universeUuid) {
-    Customer customer = Customer.getOrBadRequest(customerUuid);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUuid, customer);
-    ObjectNode formData = (ObjectNode) request().body().asJson();
-    ToggleTlsParams requestParams = ToggleTlsParams.bindFromFormData(formData);
-    UUID taskUUID = universeActionsHandler.toggleTls(customer, universe, requestParams);
-    auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.Universe,
-            universeUuid.toString(),
-            Audit.ActionType.ToggleTls,
-            Json.toJson(formData),
-            taskUUID);
-    return PlatformResults.withData(
-        UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf()));
-  }
-
   /**
    * Mark whether the universe needs to be backed up or not.
    *
