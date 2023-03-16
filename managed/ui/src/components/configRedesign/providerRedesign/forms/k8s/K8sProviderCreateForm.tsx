@@ -322,6 +322,7 @@ export const K8sProviderCreateForm = ({
       </FormProvider>
       {isRegionFormModalOpen && (
         <ConfigureK8sRegionModal
+          configuredRegions={regions}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
