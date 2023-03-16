@@ -13128,38 +13128,6 @@
         "tags" : [ "Universe management" ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/run_in_shell" : {
-      "post" : {
-        "description" : "This operation is no longer supported, for security reasons.",
-        "operationId" : "runInShell",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPError"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Run a shell command",
-        "tags" : [ "Universe database management" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/run_query" : {
       "post" : {
         "description" : "Runs a YSQL query. Only valid when the platform is running in `OSS` mode.",
