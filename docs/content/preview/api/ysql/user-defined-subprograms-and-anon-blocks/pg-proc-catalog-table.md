@@ -115,7 +115,7 @@ Unlike with, say, the `\echo` metacommand, you can direct the output from `\df` 
 
 ### '\df'
 
-The `\df` metacommand, when you use it bare, lists pre-determined metadata for every subprogram in the database. This is rarely useful because the number of results is typically large and often uninteresting. You can restrict the results. But you don't use SQL syntax. The rules are explained in the [ysqlsh](../../../../admin/ysqlsh/) section in the dedicated subsection for [`\df`](../../../../admin/ysqlsh/#df-antws-pattern-patterns). This example lists the subprograms in the schema _s2_:
+The `\df` metacommand, when you use it bare, lists pre-determined metadata for every subprogram in the database. This is rarely useful because the number of results is typically large and often uninteresting. You can restrict the results. But you don't use SQL syntax. The rules are explained in the [ysqlsh](../../../../admin/ysqlsh/) section in the dedicated subsection for [`\df`](../../../../admin/ysqlsh-meta-commands/#df-antws-pattern-patterns). This example lists the subprograms in the schema _s2_:
 
 ```plpgsql
 \df s2.*
@@ -133,7 +133,7 @@ This is result (following what you created using the code above):
 
 This produces a canonically formatted `create or replace` statement for the nominated subprogram. The optional `+` qualifier shows the line numbers. This can be useful for debugging runtime errors.
 
-The [`\sf`](../../../../admin/ysqlsh/#sf-function-description) metacommand takes a single argument: the (optionally) fully qualified _[subprogram_name](../../../../api/ysql/syntax_resources/grammar_diagrams/#subprogram-name)_ and its signature. (Its _[subprogram_call_signature](../../../../api/ysql/syntax_resources/grammar_diagrams/#subprogram-call-signature)_ is sufficient—and it's conventional always to use just this.)
+The [`\sf`](../../../../admin/ysqlsh-meta-commands/#sf-function-description) meta-command takes a single argument: the (optionally) fully qualified _[subprogram_name](../../../../api/ysql/syntax_resources/grammar_diagrams/#subprogram-name)_ and its signature. (Its _[subprogram_call_signature](../../../../api/ysql/syntax_resources/grammar_diagrams/#subprogram-call-signature)_ is sufficient—and it's conventional always to use just this.)
 
 Try this example. Notice that the function _bad(int)_ is contrived to cause a runtime error. Notice, too, that the various attributes besides the source text have been written in an order (following the source text)  that, while it is legal, is unusual.
 
