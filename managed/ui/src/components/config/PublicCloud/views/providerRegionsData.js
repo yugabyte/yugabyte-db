@@ -65,6 +65,14 @@ export const regionsData = [
   {
     destVpcRegion: 'us-west-2',
     zones: ['us-west-2a', 'us-west-2b', 'us-west-2c']
+  },
+  {
+    destVpcRegion: 'us-gov-east-1',
+    zones: ['us-gov-east-1a', 'us-gov-east-1b', 'us-gov-east-1c']
+  },
+  {
+    destVpcRegion: 'us-gov-west-1',
+    zones: ['us-gov-west-1a', 'us-gov-west-1b', 'us-gov-west-1c']
   }
 ];
 

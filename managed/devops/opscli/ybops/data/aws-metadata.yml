@@ -89,6 +89,12 @@ regions:
   eu-north-1:
     cidr_prefix: "10.112"
     image: ami-05d343ed0beb6c1eb
+  us-gov-east-1:
+    cidr_prefix: "10.114"
+    image: ami-00c6b007ba906a530 # Centos7 based AMI as we don't alma 8 with x86 in the region.
+  us-gov-west-1:
+    cidr_prefix: "10.115"
+    image: ami-08b470dba6016d395 # Centos7 based AMI as we don't alma 8 with x86 in the region.
 sg_rules:
   - ip_protocol: tcp
     from_port: 22
