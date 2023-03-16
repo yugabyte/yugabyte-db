@@ -37,6 +37,14 @@ To run the docs site locally and edit the docs, you'll need:
 
 * **Go**: `brew install go` installs the latest version.
 
+* **Python**: You need `python` to be available somewhere in your shell path.
+
+    Recent versions of macOS have only a `python3` executable, as does the Homebrew install. Add a symlink somewhere in your PATH. To add a symlink to the system python, you can run a command such as the following:
+
+    ```sh
+    ln -s /usr/bin/python3 /usr/local/bin/python
+    ```
+
 * **A GitHub account**.
 
 * **Git client**: The system Git binary is out of date, but works. If you like, you can use Homebrew to get a newer version (`brew install git`).
@@ -94,6 +102,7 @@ To get the docs site running in a live-reload server on your local machine, run 
 ```sh
 cd yugabyte-db/docs  # Make sure this is YOUR fork.
 npm ci               # Only necessary the first time you clone the repo.
+hugo mod get -u      # Installs Hugo as a dependency of the site.
 hugo mod clean       # Only necessary the first time you clone the repo.
 npm start            # Do this every time to build the docs and launch the live-reload server.
 ```
@@ -120,6 +129,8 @@ When the build is done, the `yugabyte-db/docs/public` folder contains a full HTM
 * If you get an error about missing command-line tools, make sure xcode-select is pointing to the right directory, and that the directory contains a `usr/bin` subdirectory. Run `xcode-select -p` to find the path to the tools. Re-run xcode-select --install.
 
 * If the live-reload server (`npm start`) is returning a Hugo error &mdash; say, about shortcodes &mdash; re-run `hugo mod clean`, followed by `npm start`. Also, be sure you've followed the instructions on this page to [configure Hugo](#configure-hugo).
+
+* Make sure your tools are up-to-date. Run `brew update` periodically, and if it reports anything out of date, run `brew upgrade`.
 
 ## Next steps
 

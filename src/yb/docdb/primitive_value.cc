@@ -13,6 +13,7 @@
 
 #include "yb/docdb/primitive_value.h"
 
+#include <memory>
 #include <string>
 
 #include <glog/logging.h>
@@ -504,6 +505,59 @@ void KeyEntryValue::AppendToKey(KeyBytes* key_bytes) const {
   FATAL_INVALID_ENUM_VALUE(KeyEntryType, type_);
 }
 
+size_t KeyEntryValue::GetEncodedKeyEntryValueSize(const DataType& data_type) {
+  constexpr size_t key_entry_type_size = 1;
+  switch (data_type) {
+    case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
+    case BOOL:
+      return key_entry_type_size;
+    case INT8: FALLTHROUGH_INTENDED;
+    case INT16: FALLTHROUGH_INTENDED;
+    case INT32: FALLTHROUGH_INTENDED;
+    case FLOAT:
+      return key_entry_type_size + sizeof(int32_t);
+
+    case UINT32: FALLTHROUGH_INTENDED;
+    case DATE:
+      return key_entry_type_size + sizeof(uint32_t);
+
+    case INT64: FALLTHROUGH_INTENDED;
+    case DOUBLE: FALLTHROUGH_INTENDED;
+    case TIME:
+      return key_entry_type_size + sizeof(int64_t);
+
+    case UINT64:
+      return key_entry_type_size + sizeof(uint64_t);
+
+    case TIMESTAMP:
+      return key_entry_type_size + sizeof(Timestamp);
+
+    case UUID: FALLTHROUGH_INTENDED;
+    case TIMEUUID: FALLTHROUGH_INTENDED;
+    case STRING: FALLTHROUGH_INTENDED;
+    case BINARY: FALLTHROUGH_INTENDED;
+    case DECIMAL: FALLTHROUGH_INTENDED;
+    case VARINT: FALLTHROUGH_INTENDED;
+    case INET: FALLTHROUGH_INTENDED;
+    case LIST: FALLTHROUGH_INTENDED;
+    case MAP: FALLTHROUGH_INTENDED;
+    case SET: FALLTHROUGH_INTENDED;
+    case TUPLE: FALLTHROUGH_INTENDED;
+    case TYPEARGS: FALLTHROUGH_INTENDED;
+    case USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
+    case FROZEN: FALLTHROUGH_INTENDED;
+    case JSONB: FALLTHROUGH_INTENDED;
+    case UINT8: FALLTHROUGH_INTENDED;
+    case UINT16: FALLTHROUGH_INTENDED;
+    case GIN_NULL: FALLTHROUGH_INTENDED;
+    case UNKNOWN_DATA:
+      return 0;
+  }
+
+  LOG(FATAL) << "GetEncodedKeyEntryValueSize: unsupported ql_type: "
+             << QLType::ToCQLString(data_type);
+}
+
 namespace {
 
 template <class Buffer>
@@ -765,24 +819,24 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
 
     case KeyEntryType::kFrozenDescending:
     case KeyEntryType::kFrozen: {
-      auto end_marker_value_type = KeyEntryType::kGroupEnd;
-      if (type == KeyEntryType::kFrozenDescending) {
-        end_marker_value_type = KeyEntryType::kGroupEndDescending;
-      }
+      const auto end_marker_value_type = (type == KeyEntryType::kFrozenDescending)
+          ? KeyEntryType::kGroupEndDescending
+          : KeyEntryType::kGroupEnd;
 
-      if (out) {
-        out->frozen_val_ = new FrozenContainer();
-      }
+      std::unique_ptr<FrozenContainer> frozen_val(out ? new FrozenContainer() : nullptr);
       while (!slice->empty()) {
         auto current_value_type = DecodeKeyEntryType(*slice->data());
         if (current_value_type == end_marker_value_type) {
           slice->consume_byte();
           type_ref = type;
+          if (frozen_val) {
+            out->frozen_val_ = frozen_val.release();
+          }
           return Status::OK();
         } else {
-          if (out) {
-            out->frozen_val_->emplace_back();
-            RETURN_NOT_OK(DecodeKey(slice, &out->frozen_val_->back()));
+          if (frozen_val) {
+            frozen_val->emplace_back();
+            RETURN_NOT_OK(DecodeKey(slice, &frozen_val->back()));
           } else {
             RETURN_NOT_OK(DecodeKey(slice, nullptr));
           }
@@ -947,29 +1001,24 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       return Status::OK();
     }
 
-    case KeyEntryType::kInetaddress: {
-      if (out) {
-        string bytes;
-        RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &bytes));
-        out->inetaddress_val_ = new InetAddress();
-        RETURN_NOT_OK(out->inetaddress_val_->FromSlice(bytes));
-      } else {
-        RETURN_NOT_OK(DecodeZeroEncodedStr(slice, nullptr));
-      }
-      type_ref = type;
-      return Status::OK();
-    }
-
+    case KeyEntryType::kInetaddress:
     case KeyEntryType::kInetaddressDescending: {
-      if (out) {
-        string bytes;
-        RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &bytes));
-        out->inetaddress_val_ = new InetAddress();
-        RETURN_NOT_OK(out->inetaddress_val_->FromSlice(bytes));
+      auto decoder = &DecodeComplementZeroEncodedStr;
+      if (type == KeyEntryType::kInetaddress) {
+        decoder = &DecodeZeroEncodedStr;
+      }
+      std::unique_ptr<InetAddress> inetaddress_val(out ? new InetAddress() : nullptr);
+      if (inetaddress_val) {
+        std::string bytes;
+        RETURN_NOT_OK(decoder(slice, &bytes));
+        RETURN_NOT_OK(inetaddress_val->FromSlice(bytes));
       } else {
-        RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, nullptr));
+        RETURN_NOT_OK(decoder(slice, nullptr));
       }
       type_ref = type;
+      if (inetaddress_val) {
+        out->inetaddress_val_ = inetaddress_val.release();
+      }
       return Status::OK();
     }
 
@@ -1120,17 +1169,18 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
     case ValueEntryType::kFrozen: {
       auto end_marker_value_type = KeyEntryType::kGroupEnd;
 
-      frozen_val_ = new FrozenContainer();
+      auto frozen_val = std::make_unique<FrozenContainer>();
       while (!slice.empty()) {
-        KeyEntryType current_value_type = static_cast<KeyEntryType>(*slice.data());
+        auto current_value_type = static_cast<KeyEntryType>(*slice.data());
         if (current_value_type == end_marker_value_type) {
           slice.consume_byte();
           type_ = value_type;
+          frozen_val_ = frozen_val.release();
           return Status::OK();
         } else {
           // Frozen elems are encoded as keys even in values.
-          frozen_val_->emplace_back();
-          RETURN_NOT_OK(frozen_val_->back().DecodeFromKey(&slice));
+          frozen_val->emplace_back();
+          RETURN_NOT_OK(frozen_val->back().DecodeFromKey(&slice));
         }
       }
 
@@ -2812,7 +2862,7 @@ double KeyEntryValue::GetDouble() const {
 }
 
 bool KeyEntryValue::IsColumnId() const {
-  return type_ == KeyEntryType::kColumnId || type_ == KeyEntryType::kSystemColumnId;
+  return docdb::IsColumnId(type_);
 }
 
 ColumnId KeyEntryValue::GetColumnId() const {

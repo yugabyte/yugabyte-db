@@ -230,6 +230,17 @@ TEST_F(CqlGeoTransactionsTest, TestTransactionTabletSelection) {
   CheckInsert(kOtherRegion, ExpectedResult::kGlobal);
 }
 
+TEST_F(CqlGeoTransactionsTest, TestInitialGlobalOp) {
+  SetupTables();
+  CreateTransactionTable(kLocalRegion);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = true;
+  // Not using the transaction pool.
+  CheckInsert(kOtherRegion, ExpectedResult::kGlobal);
+  // Using the transaction pool.
+  CheckInsert(kOtherRegion, ExpectedResult::kGlobal);
+}
+
 TEST_F(CqlGeoTransactionsTest, AddTransactionTablet) {
   SetupTables();
 

@@ -9,6 +9,11 @@ import {
   fetchCustomerTasksSuccess,
   fetchCustomerTasksFailure
 } from '../../../actions/tasks';
+import {
+  fetchRunTimeConfigs,
+  fetchRunTimeConfigsResponse,
+  DEFAULT_RUNTIME_GLOBAL_SCOPE
+} from '../../../actions/customers';
 import { openDialog, closeDialog } from '../../../actions/modal';
 
 const mapDispatchToProps = (dispatch) => {
@@ -25,6 +30,12 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(fetchCustomerTasksFailure(response.payload));
         }
       });
+    },
+
+    fetchGlobalRunTimeConfigs: () => {
+      return dispatch(fetchRunTimeConfigs(DEFAULT_RUNTIME_GLOBAL_SCOPE, true)).then((response) =>
+        dispatch(fetchRunTimeConfigsResponse(response.payload))
+      );
     },
 
     resetUniverseTasks: () => {

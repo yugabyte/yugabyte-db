@@ -58,7 +58,7 @@ class QLRocksDBStorage : public YQLStorageIf {
       const ReadHybridTime& read_time,
       YQLRowwiseIteratorIf::UniPtr* iter) const override;
 
-  Status InitIterator(YQLRowwiseIteratorIf* doc_iter,
+  Status InitIterator(DocRowwiseIterator* doc_iter,
                       const PgsqlReadRequestPB& request,
                       const Schema& schema,
                       const QLValuePB& ybctid) const override;
@@ -71,7 +71,8 @@ class QLRocksDBStorage : public YQLStorageIf {
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const DocKey& start_doc_key,
-      YQLRowwiseIteratorIf::UniPtr* iter) const override;
+      YQLRowwiseIteratorIf::UniPtr* iter,
+      boost::optional<size_t> end_referenced_key_column_index = boost::none) const override;
 
   Status GetIterator(
       uint64 stmt_id,
@@ -80,7 +81,8 @@ class QLRocksDBStorage : public YQLStorageIf {
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      const QLValuePB& ybctid,
+      const QLValuePB& min_ybctid,
+      const QLValuePB& max_ybctid,
       YQLRowwiseIteratorIf::UniPtr* iter) const override;
 
  private:

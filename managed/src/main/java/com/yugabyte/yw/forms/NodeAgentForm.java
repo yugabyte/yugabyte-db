@@ -16,6 +16,7 @@ public class NodeAgentForm {
   @Constraints.Required public String version;
   @Constraints.Required public String archType;
   @Constraints.Required public String osType;
+  @Constraints.Required public String home;
   public String state;
   @Constraints.Required public int port;
 
@@ -27,6 +28,7 @@ public class NodeAgentForm {
     nodeAgent.ip = ip;
     nodeAgent.port = port;
     nodeAgent.version = version;
+    nodeAgent.home = home;
     nodeAgent.archType = ArchType.parse(archType);
     nodeAgent.osType = OSType.parse(osType);
     nodeAgent.config = new HashMap<>();

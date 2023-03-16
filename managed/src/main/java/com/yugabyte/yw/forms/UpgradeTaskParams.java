@@ -5,8 +5,11 @@ package com.yugabyte.yw.forms;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Map;
@@ -17,6 +20,8 @@ import play.mvc.Http.Status;
 public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
 
   public UpgradeOption upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+  @Inject private RuntimeConfGetter runtimeConfGetter;
 
   public enum UpgradeTaskType {
     Everything,
@@ -70,6 +75,19 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
           "Cannot perform a rolling upgrade on universe "
+              + universe.universeUUID
+              + " as it has nodes in one of "
+              + NodeDetails.IN_TRANSIT_STATES
+              + " states.");
+    }
+
+    if (upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE
+        && universe.nodesInTransit(nodeState)
+        && !runtimeConfGetter.getConfForScope(
+            universe, UniverseConfKeys.allowUpgradeOnTransitUniverse)) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Cannot perform a non-rolling upgrade on universe "
               + universe.universeUUID
               + " as it has nodes in one of "
               + NodeDetails.IN_TRANSIT_STATES

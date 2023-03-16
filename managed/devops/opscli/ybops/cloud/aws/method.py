@@ -16,7 +16,7 @@ from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.cloud.aws.utils import get_yb_sg_name, create_dns_record_set, edit_dns_record_set, \
     delete_dns_record_set, list_dns_record_set, get_root_label
-from ybops.utils.ssh import get_ssh_host_port, DEFAULT_SSH_PORT
+from ybops.utils.ssh import DEFAULT_SSH_PORT
 import json
 import os
 import logging
@@ -248,7 +248,9 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
         if not host_info:
             logging.error("Host {} does not exist.".format(args.search_pattern))
             return
-        self.cloud.start_instance(host_info, [int(args.custom_ssh_port)])
+        self.update_ansible_vars_with_args(args)
+        server_ports = self.get_server_ports_to_check(args)
+        self.cloud.start_instance(host_info, server_ports)
 
 
 class AwsHardRebootInstancesMethod(AbstractInstancesMethod):
@@ -273,8 +275,9 @@ class AwsHardRebootInstancesMethod(AbstractInstancesMethod):
             logging.info("Stopping instance {}".format(args.search_pattern))
             self.cloud.stop_instance(host_info)
         logging.info("Starting instance {}".format(args.search_pattern))
-        extra_vars = get_ssh_host_port(host_info, args.custom_ssh_port)
-        self.cloud.start_instance(host_info, [DEFAULT_SSH_PORT, extra_vars["ssh_port"]])
+        self.update_ansible_vars_with_args(args)
+        server_ports = self.get_server_ports_to_check(args)
+        self.cloud.start_instance(host_info, server_ports)
 
 
 class AwsTagsMethod(AbstractInstancesMethod):

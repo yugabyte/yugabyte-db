@@ -17,7 +17,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -30,7 +30,7 @@ import static org.yb.AssertionWrappers.assertEquals;
 
 // In this test module we adjust the number of rows to be prefetched by PgGate and make sure that
 // the result for the query are correct.
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgIndexPagingState extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgIndexPagingState.class);
 

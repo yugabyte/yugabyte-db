@@ -96,6 +96,10 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
     pb.mutable_schema()->mutable_colocated_table_id()->set_colocation_id(clc_id);
   }
 
+  if (pb.has_parent_table_id()) {
+    state_->parent_to_child_tables[pb.parent_table_id()].push_back(table_id);
+  }
+
   // Add the table to the IDs map and to the name map (if the table is not deleted). Do not
   // add Postgres tables to the name map as the table name is not unique in a namespace.
   auto table_map_checkout = catalog_manager_->tables_.CheckOut();
@@ -187,22 +191,26 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
           IllegalState, "Loaded tablet that already in map: $0", tablet->tablet_id());
     }
 
-    for (int k = 0; k < metadata.table_ids_size(); ++k) {
-      table_ids.push_back(metadata.table_ids(k));
-    }
-
-    // This is for backwards compatibility: we want to ensure that the table_ids
-    // list contains the first table that created the tablet. If the table_ids field
-    // was empty, we "upgrade" the master to support this new invariant.
-    if (metadata.table_ids_size() == 0) {
-      l.mutable_data()->pb.add_table_ids(metadata.table_id());
-      Status s = catalog_manager_->sys_catalog_->Upsert(
-          catalog_manager_->leader_ready_term(), tablet);
-      if (PREDICT_FALSE(!s.ok())) {
-        return STATUS_FORMAT(
-            IllegalState, "An error occurred while inserting to sys-tablets: $0", s);
+    if (metadata.hosted_tables_mapped_by_parent_id()) {
+      table_ids = state_->parent_to_child_tables[first_table->id()];
+      table_ids.push_back(first_table->id());
+    } else {
+      for (int k = 0; k < metadata.table_ids_size(); ++k) {
+        table_ids.push_back(metadata.table_ids(k));
       }
-      table_ids.push_back(metadata.table_id());
+      // This is for backwards compatibility: we want to ensure that the table_ids
+      // list contains the first table that created the tablet. If the table_ids field
+      // was empty, we "upgrade" the master to support this new invariant.
+      if (metadata.table_ids_size() == 0) {
+        l.mutable_data()->pb.add_table_ids(metadata.table_id());
+        Status s =
+            catalog_manager_->sys_catalog_->Upsert(catalog_manager_->leader_ready_term(), tablet);
+        if (PREDICT_FALSE(!s.ok())) {
+          return STATUS_FORMAT(
+              IllegalState, "An error occurred while inserting to sys-tablets: $0", s);
+        }
+        table_ids.push_back(metadata.table_id());
+      }
     }
 
     tablet_deleted = l.mutable_data()->is_deleted();
@@ -238,7 +246,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
 
       existing_table_ids.push_back(table_id);
 
-      // Add the tablet to the Table.
+      // Add the tablet to the table.
       if (!tablet_deleted) {
         // Any table listed under the sys catalog tablet, is by definition a system table.
         // This is the easiest place to mark these as system tables, as we'll only go over
@@ -291,6 +299,9 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
 
     l.Commit();
   }
+  if (metadata.hosted_tables_mapped_by_parent_id()) {
+    tablet->SetTableIds(std::move(table_ids));
+  }
 
   if (first_table->IsColocationParentTable()) {
     SCHECK(tablet_colocation_map.size() == existing_table_ids.size(), IllegalState,
@@ -306,8 +317,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
 
   // Add the tablet to tablegroup_manager_ if the tablet is for a tablegroup.
   if (first_table->IsTablegroupParentTable()) {
-    auto lock = first_table->LockForRead();
-    if (!lock->started_hiding() && !lock->started_deleting()) {
+    if (first_table->IsOperationalForClient()) {
       const auto tablegroup_id = GetTablegroupIdFromParentTableId(first_table->id());
 
       auto* tablegroup =
@@ -319,8 +329,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       // Loop through tablet_colocation_map to add child tables to our tablegroup info.
       for (const auto& colocation_info : tablet_colocation_map) {
         if (!IsTablegroupParentTableId(colocation_info.second->id())) {
-          auto child_table_lock = colocation_info.second->LockForRead();
-          if (!child_table_lock->started_hiding() && !child_table_lock->started_deleting()) {
+          if (colocation_info.second->IsOperationalForClient()) {
             RETURN_NOT_OK(tablegroup->AddChildTable(colocation_info.second->id(),
                 colocation_info.first));
           }
@@ -505,6 +514,29 @@ Status ClusterConfigLoader::Visit(
 
     // Update in memory state.
     catalog_manager_->cluster_config_ = config;
+    l.Commit();
+  }
+
+  return Status::OK();
+}
+
+////////////////////////////////////////////////////////////
+// XCluster Config Loader
+////////////////////////////////////////////////////////////
+
+Status XClusterConfigLoader::Visit(
+    const std::string& unused_id, const SysXClusterConfigEntryPB& metadata) {
+  // Debug confirm that there is no xcluster_config_ set.
+  DCHECK(!catalog_manager_->xcluster_config_) << "Already have config data!";
+
+  // Prepare the config object.
+  std::shared_ptr<XClusterConfigInfo> config = std::make_shared<XClusterConfigInfo>();
+  {
+    auto l = config->LockForWrite();
+    l.mutable_data()->pb.CopyFrom(metadata);
+
+    // Update in memory state.
+    catalog_manager_->xcluster_config_ = config;
     l.Commit();
   }
 

@@ -101,7 +101,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertWithoutCommit)) {
               return;
             }
             // Run the statement again as "Try again" was reported.
-            ASSERT_TRUE(HasTryAgain(status)) << status;
+            ASSERT_TRUE(HasTransactionError(status)) << status;
             continue;
           }
 
@@ -115,7 +115,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertWithoutCommit)) {
       for (int rt = 0; rt < kRetryCount; rt++) {
         auto res = connection.Fetch("SELECT * FROM terr");
         if (!res.ok()) {
-          ASSERT_TRUE(HasTryAgain(res.status())) << res.status();
+          ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
           continue;
         }
 
@@ -182,7 +182,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertDuplicateWithoutCommit)) {
               return;
             }
             // Run the statement again as "Try again" was reported.
-            ASSERT_TRUE(HasTryAgain(status)) << status;
+            ASSERT_TRUE(HasTransactionError(status)) << status;
             continue;
           }
 
@@ -196,7 +196,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertDuplicateWithoutCommit)) {
       for (int rt = 0; rt < kRetryCount; rt++) {
         auto res = connection.Fetch("SELECT * FROM terr");
         if (!res.ok()) {
-          ASSERT_TRUE(HasTryAgain(res.status())) << res.status();
+          ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
           continue;
         }
 
@@ -266,7 +266,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(UpdateWithoutCommit)) {
               return;
             }
             // Run the statement again as "Try again" was reported.
-            ASSERT_TRUE(HasTryAgain(status)) << status;
+            ASSERT_TRUE(HasTransactionError(status)) << status;
             continue;
           }
         }
@@ -276,7 +276,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(UpdateWithoutCommit)) {
       for (int rt = 0; rt < kRetryCount; rt++) {
         auto res = connection.Fetch("SELECT * FROM terr");
         if (!res.ok()) {
-          ASSERT_TRUE(HasTryAgain(res.status())) << res.status();
+          ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
           continue;
         }
 
@@ -358,7 +358,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(DeleteWithoutCommit)) {
               return;
             }
             // Run the statement again as "Try again" was reported.
-            ASSERT_TRUE(HasTryAgain(status)) << status;
+            ASSERT_TRUE(HasTransactionError(status)) << status;
             continue;
           }
 
@@ -372,7 +372,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(DeleteWithoutCommit)) {
       for (int rt = 0; rt < kRetryCount; rt++) {
         auto res = connection.Fetch("SELECT * FROM terr");
         if (!res.ok()) {
-          ASSERT_TRUE(HasTryAgain(res.status())) << res.status();
+          ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
           continue;
         }
 

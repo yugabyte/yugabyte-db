@@ -70,7 +70,7 @@ public class GcpEARServiceTest extends FakeDBApplication {
   public Customer customer;
 
   @Spy public GcpEARServiceUtil mockGcpEARServiceUtil;
-  @Spy public GcpEARService mockGcpEARService;
+  @Spy public GcpEARService mockGcpEARService = new GcpEARService(null);
   @Mock public KeyRing mockKeyRing;
   @Mock public CryptoKey mockCryptoKey;
 
@@ -160,9 +160,7 @@ public class GcpEARServiceTest extends FakeDBApplication {
   public void testRetrieveKeyWithService() {
     // Decrypting the stored encrypted universe key known as keyRef
     EncryptionAtRestConfig encryptionAtRestConfig = new EncryptionAtRestConfig();
-    byte[] keyRef =
-        mockGcpEARService.retrieveKeyWithService(
-            universe.universeUUID, configUUID, randomBytes, encryptionAtRestConfig);
+    byte[] keyRef = mockGcpEARService.retrieveKeyWithService(configUUID, randomBytes);
     assertEquals(keyRef, randomBytes);
     verify(mockGcpEARServiceUtil, times(1)).decryptBytes(fakeAuthConfig, randomBytes);
   }
@@ -173,8 +171,7 @@ public class GcpEARServiceTest extends FakeDBApplication {
     // Used for KMS  edit operation
     EncryptionAtRestConfig encryptionAtRestConfig = new EncryptionAtRestConfig();
     byte[] keyRef =
-        mockGcpEARService.validateRetrieveKeyWithService(
-            universe.universeUUID, configUUID, randomBytes, encryptionAtRestConfig, fakeAuthConfig);
+        mockGcpEARService.validateRetrieveKeyWithService(configUUID, randomBytes, fakeAuthConfig);
     assertEquals(keyRef, randomBytes);
     verify(mockGcpEARServiceUtil, times(1)).decryptBytes(fakeAuthConfig, randomBytes);
   }

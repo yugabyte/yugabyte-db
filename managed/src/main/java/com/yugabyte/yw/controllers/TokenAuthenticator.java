@@ -83,7 +83,7 @@ public class TokenAuthenticator extends Action.Simple {
     this.jwtVerifier = jwtVerifier;
   }
 
-  private Users getCurrentAuthenticatedUser(Http.Context ctx) {
+  public Users getCurrentAuthenticatedUser(Http.Context ctx) {
     String token;
     Users user = null;
     boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
@@ -143,10 +143,7 @@ public class TokenAuthenticator extends Action.Simple {
     // Allow for disabling authentication on proxy endpoint so that
     // Prometheus can scrape database nodes.
     if (Pattern.matches(
-            String.format(
-                "^.*/universes/%s/proxy/%s/(metrics|prometheus-metrics)$",
-                patternForUUID, patternForHost),
-            path)
+            String.format("^.*/universes/%s/proxy/%s/(.*)$", patternForUUID, patternForHost), path)
         && !config.getBoolean("yb.security.enable_auth_for_proxy_metrics")) {
       return delegate.call(ctx);
     }
@@ -268,6 +265,9 @@ public class TokenAuthenticator extends Action.Simple {
     if (requestType.equals("POST") && READ_POST_ENDPOINTS.contains(endPoint)) {
       return true;
     }
+
+    if (endPoint.endsWith("/update_profile")) return true;
+
     // If the user is readonly, then don't get any further access.
     if (user.getRole() == Role.ReadOnly) {
       return false;

@@ -20,6 +20,7 @@
 #include <boost/asio/io_context.hpp>
 
 #include "yb/common/common_types_util.h"
+#include "yb/common/constants.h"
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -207,7 +208,7 @@ Result<TxnSnapshotId> FindSnapshotSuitableForRestoreAt(
 
 class MasterSnapshotCoordinator::Impl {
  public:
-  explicit Impl(SnapshotCoordinatorContext* context, enterprise::CatalogManager* cm)
+  explicit Impl(SnapshotCoordinatorContext* context, CatalogManager* cm)
       : context_(*context), cm_(cm), poller_(std::bind(&Impl::Poll, this)) {}
 
   Result<TxnSnapshotId> Create(
@@ -507,6 +508,7 @@ class MasterSnapshotCoordinator::Impl {
       .non_system_objects_to_restore = {},
       .existing_system_tables = {},
       .restoring_system_tables = {},
+      .parent_to_child_tables = {},
       .non_system_tablets_to_restore = {},
     });
     {
@@ -1213,6 +1215,25 @@ class MasterSnapshotCoordinator::Impl {
     }
   }
 
+  template <typename TableContainer>
+  void SetTaskMetadataForColocatedTable(
+      const TableContainer& table_ids, AsyncTabletSnapshotOp* task) {
+    for (const auto& table_id : table_ids) {
+      auto table_info_result = context_.GetTableById(table_id);
+      // TODO(Sanket): Should make this check FATAL once GHI#14609 is fixed.
+      if (!table_info_result.ok()) {
+        LOG(WARNING) << "Table " << table_id << " does not exist";
+        continue;
+      }
+      // Ignore if deleted or hidden.
+      if (!(*table_info_result)->IsOperationalForClient()) {
+        LOG(WARNING) << "Table " << table_id << " has been deleted";
+        continue;
+      }
+      task->SetColocatedTableMetadata(table_id, (*table_info_result)->LockForRead()->pb);
+    }
+  }
+
   void ExecuteRestoreOperation(
       const TabletRestoreOperation& operation, const TabletInfoPtr& tablet_info,
       int64_t leader_term) {
@@ -1234,14 +1255,10 @@ class MasterSnapshotCoordinator::Impl {
       // Populate metadata for colocated tables.
       if (tablet_info->colocated()) {
         auto lock = tablet_info->LockForRead();
-        for (const auto& table_id : lock->pb.table_ids()) {
-          auto table_info_result = context_.GetTableById(table_id);
-          // TODO(Sanket): Should make this check FATAL once GHI#14609 is fixed.
-          if (!table_info_result.ok()) {
-            LOG(WARNING) << "Table " << table_id << " does not exist";
-            continue;
-          }
-          task->SetColocatedTableMetadata(table_id, (*table_info_result)->LockForRead()->pb);
+        if (lock->pb.hosted_tables_mapped_by_parent_id()) {
+          SetTaskMetadataForColocatedTable(tablet_info->GetTableIds(), task.get());
+        } else {
+          SetTaskMetadataForColocatedTable(lock->pb.table_ids(), task.get());
         }
       }
     }
@@ -1728,7 +1745,7 @@ class MasterSnapshotCoordinator::Impl {
 
     // Enable tablet splitting again.
     if (restoration->schedule_id()) {
-      context_.EnableTabletSplitting("PITR");
+      context_.ReenableTabletSplitting(kPitrFeatureName);
     }
   }
 
@@ -1912,7 +1929,7 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   SnapshotCoordinatorContext& context_;
-  enterprise::CatalogManager* cm_;
+  CatalogManager* cm_;
   std::mutex mutex_;
   class ScheduleTag;
   using Snapshots = boost::multi_index_container<
@@ -1972,7 +1989,7 @@ class MasterSnapshotCoordinator::Impl {
 };
 
 MasterSnapshotCoordinator::MasterSnapshotCoordinator(
-    SnapshotCoordinatorContext* context, enterprise::CatalogManager* cm)
+    SnapshotCoordinatorContext* context, CatalogManager* cm)
     : impl_(new Impl(context, cm)) {}
 
 MasterSnapshotCoordinator::~MasterSnapshotCoordinator() {}

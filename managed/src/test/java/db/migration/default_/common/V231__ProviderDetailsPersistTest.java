@@ -80,7 +80,7 @@ public class V231__ProviderDetailsPersistTest extends FakeDBApplication {
     GCPCloudInfo gcpCloudInfo = gcpProvider.details.cloudInfo.gcp;
     assertNotNull(gcpCloudInfo);
     assertEquals("GCP Project ID", gcpCloudInfo.gceProject);
-    assertEquals("GCP Custom network", gcpCloudInfo.customGceNetwork);
+    assertEquals("GCP Custom network", gcpCloudInfo.destVpcId);
     assertNotNull(gcpCloudInfo.gceApplicationCredentials);
 
     // AWS Provider Check

@@ -16,7 +16,7 @@ import { RemoteObjSpec, SortOrder, TableHeaderColumn } from 'react-bootstrap-tab
 import { useQuery } from 'react-query';
 import { YBButton } from '../../common/forms/fields';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
-import { YBLoading } from '../../common/indicators';
+import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { getPITRConfigs } from '../common/PitrAPI';
 import { PointInTimeRecoveryEmpty } from './PointInTimeRecoveryEmpty';
 import { PointInTimeRecoveryEnableModal } from './PointInTimeRecoveryEnableModal';
@@ -25,6 +25,7 @@ import { PointInTimeRecoveryModal } from './PointInTimeRecoveryModal';
 import { TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { PointInTimeRecoveryDisableModal } from './PointInTimeRecoveryDisableModal';
 import './PointInTimeRecoveryList.scss';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 
 const DEFAULT_SORT_COLUMN = 'dbName';
 const DEFAULT_SORT_DIRECTION = 'ASC';
@@ -40,7 +41,7 @@ export const FormatUnixTimeStampTimeToTimezone = ({ timestamp }: { timestamp: an
 };
 
 export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string }) => {
-  const { data: configs, isLoading } = useQuery(
+  const { data: configs, isLoading, isError } = useQuery(
     ['scheduled_sanpshots', universeUUID],
     () => getPITRConfigs(universeUUID),
     {
@@ -60,7 +61,8 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
       <DropdownButton
         className="actions-btn"
         title="..."
-        id="pitr-actions-dropdown"
+        id={`pitr-actions-dropdown-${row.dbName}-${TableTypeLabel[row.tableType]}`}
+        data-testid={`PitrActionBtn-${row.dbName}-${TableTypeLabel[row.tableType]}`}
         noCaret
         pullRight
         onClick={(e: any) => e.stopPropagation()}
@@ -71,6 +73,7 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
             row.minRecoverTimeInMillis && setRecoveryItem(_.cloneDeep(row));
           }}
           disabled={!row.minRecoverTimeInMillis}
+          data-testid="PitrRecoveryAction"
         >
           Recover to a Point in Time
         </MenuItem>
@@ -81,6 +84,7 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
           }}
           className="action-danger"
           disabled={!row.minRecoverTimeInMillis}
+          data-testid="PitrDisableAction"
         >
           Disable Point-in-time Recovery
         </MenuItem>
@@ -89,6 +93,12 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
   };
 
   if (isLoading) return <YBLoading />;
+  if (isError)
+    return (
+      <Row className="point-in-time-recovery-err">
+        <YBErrorIndicator customErrorMessage="Unable to load PITR Configurations" />
+      </Row>
+    );
 
   const regex = new RegExp(searchText.replace(/\\/g, '\\\\').toLowerCase() ?? '');
   const pitr_list = configs.filter(
@@ -115,6 +125,7 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
               btnClass="btn btn-orange backup-empty-button"
               btnText="Enable Point-In-Time Recovery"
               onClick={() => setShowEnableModal(true)}
+              id="EnablePitrBtn"
             />
           </div>
           <div className="info-text">Databases/Keyspaces with Point-In-Time Recovery Enabled</div>
@@ -164,7 +175,7 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
             <TableHeaderColumn
               dataField="minRecoverTimeInMillis"
               dataFormat={(minTime) => {
-                return minTime ? <FormatUnixTimeStampTimeToTimezone timestamp={minTime} /> : '';
+                return minTime ? ybFormatDate(minTime) : '';
               }}
               dataSort
             >

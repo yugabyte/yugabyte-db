@@ -19,14 +19,14 @@ import com.google.gson.JsonObject;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.minicluster.Metrics;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.Statement;
 import java.util.Map;
 
 import static org.yb.AssertionWrappers.assertEquals;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgSelectLimit extends BasePgSQLTest {
 
   private static final String kTableName = "single_tablet_table";

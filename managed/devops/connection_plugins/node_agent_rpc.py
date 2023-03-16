@@ -109,6 +109,7 @@ class Connection(ConnectionBase):
         if self._connected:
             display.vvv("Closing gRPC connection to node agent {}:{}".format(self.ip, self.port))
             self.client.close()
+            self._connected = False
 
     def exec_command(self, cmd, in_data=None, sudoable=True):
         """

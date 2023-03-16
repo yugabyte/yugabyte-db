@@ -212,22 +212,8 @@ public class EmailHelper {
   /**
    * Returns the {@link SmtpData} instance fulfilled with parameters of the specified customer.
    *
-   * <p>If the the Smtp configuration doesn't exist for the customer, the default Smtp configuration
-   * is created with the next data:
-   *
-   * <p>
-   *
-   * <ul>
-   *   <li>stmpUsername is taken from the configuration file, parameter
-   *       <i><b>yb.health.ses_email_username</b></i>;
-   *   <li>smtpPassword is taken from the configuration file, parameter
-   *       <i><b>yb.health.ses_email_password</b></i>;
-   *   <li>useSSL is taken from the configuration file, parameter
-   *       <i><b>yb.health.default_ssl</b></i>, by default is <b>true</b>.
-   * </ul>
-   *
-   * <p>Also if emailFrom is empty (for both cases) it is filled with the default YB address (see
-   * {@link #getYbEmail})
+   * <p>Also if emailFrom is empty it is filled with the default YB address (see {@link
+   * #getYbEmail})
    *
    * @param customerUUID
    * @return filled SmtpData if all parameters exist or NULL otherwise
@@ -235,18 +221,11 @@ public class EmailHelper {
   public SmtpData getSmtpData(UUID customerUUID) {
     Customer customer = Customer.get(customerUUID);
     CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
-    SmtpData smtpData;
-    if (smtpConfig != null) {
-      smtpData = Json.fromJson(smtpConfig.data, SmtpData.class);
-    } else {
-      Config runtimeConfig = configFactory.forCustomer(customer);
-      smtpData = new SmtpData();
-      smtpData.smtpUsername = runtimeConfig.getString("yb.health.ses_email_username");
-      smtpData.smtpPassword = runtimeConfig.getString("yb.health.ses_email_password");
-      smtpData.useSSL = runtimeConfig.getBoolean("yb.health.default_ssl");
-      smtpData.useTLS = runtimeConfig.getBoolean("yb.health.default_tls");
-    }
 
+    if (smtpConfig == null) {
+      return null;
+    }
+    SmtpData smtpData = Json.fromJson(smtpConfig.data, SmtpData.class);
     if (StringUtils.isEmpty(smtpData.emailFrom)) {
       smtpData.emailFrom = getYbEmail(customer);
     }

@@ -17,6 +17,7 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.Security;
 import static com.yugabyte.yw.forms.PlatformResults.withData;
 
+import com.cronutils.utils.StringUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -36,17 +37,19 @@ import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.controllers.handlers.SessionHandler;
 import com.yugabyte.yw.controllers.handlers.ThirdPartyLoginHandler;
+import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SetSecurityFormData;
 import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
-import com.yugabyte.yw.models.Users.UserType;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import io.ebean.annotation.Transactional;
@@ -55,6 +58,7 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import io.swagger.annotations.ApiModelProperty.AccessMode;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.File;
@@ -65,6 +69,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.text.ParseException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -77,7 +82,6 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.input.ReversedLinesFileReader;
-import org.apache.directory.api.ldap.model.exception.LdapException;
 import org.pac4j.play.java.Secure;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -120,9 +124,9 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private UserService userService;
 
-  @Inject private LdapUtil ldapUtil;
-
   @Inject private TokenAuthenticator tokenAuthenticator;
+
+  @Inject private LoginHandler loginHandler;
 
   private final ApiHelper apiHelper;
 
@@ -198,7 +202,6 @@ public class SessionController extends AbstractPlatformController {
 
   @Data
   static class LogData {
-
     final List<String> lines;
   }
 
@@ -294,43 +297,8 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result login() {
-    boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
-    boolean useLdap =
-        runtimeConfigFactory
-            .globalRuntimeConf()
-            .getString("yb.security.ldap.use_ldap")
-            .equals("true");
-
-    CustomerLoginFormData data =
-        formFactory.getFormDataOrBadRequest(CustomerLoginFormData.class).get();
-
-    Users user = null;
-    Users existingUser =
-        Users.find.query().where().eq("email", data.getEmail().toLowerCase()).findOne();
-    if (existingUser != null) {
-      if (existingUser.userType == null || !existingUser.userType.equals(UserType.ldap)) {
-        user = Users.authWithPassword(data.getEmail().toLowerCase(), data.getPassword());
-        if (user == null) {
-          throw new PlatformServiceException(UNAUTHORIZED, "Invalid User Credentials.");
-        }
-      }
-    }
-    if (useLdap && user == null) {
-      try {
-        user = ldapUtil.loginWithLdap(data);
-      } catch (LdapException e) {
-        LOG.error("LDAP error {} authenticating user {}", e.getMessage(), data.getEmail());
-      }
-    }
-
-    if (user == null) {
-      throw new PlatformServiceException(UNAUTHORIZED, "Invalid User Credentials.");
-    }
-
-    if (useOAuth && !user.getRole().equals(Role.SuperAdmin)) {
-      throw new PlatformServiceException(
-          UNAUTHORIZED, "Only SuperAdmin access permitted via normal login when SSO is enabled.");
-    }
+    Users user =
+        loginHandler.login(formFactory.getFormDataOrBadRequest(CustomerLoginFormData.class).get());
 
     Customer cust = Customer.get(user.customerUUID);
 
@@ -359,6 +327,34 @@ public class SessionController extends AbstractPlatformController {
         Audit.TargetType.User,
         user.uuid.toString(),
         Audit.ActionType.Login,
+        null,
+        null,
+        null,
+        request().remoteAddress());
+    return withData(sessionInfo);
+  }
+
+  @ApiOperation(value = "Authenticate user and return api token", response = SessionInfo.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "CustomerLoginFormData",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.CustomerLoginFormData",
+          required = true))
+  public Result apiLogin() {
+    Users user =
+        loginHandler.login(formFactory.getFormDataOrBadRequest(CustomerLoginFormData.class).get());
+    Customer cust = Customer.get(user.customerUUID);
+
+    SessionInfo sessionInfo = new SessionInfo(null, user.getApiToken(), cust.uuid, user.uuid);
+    ctx().args.put("isAudited", true);
+    Audit.create(
+        user,
+        request().path(),
+        request().method(),
+        Audit.TargetType.User,
+        user.uuid.toString(),
+        ActionType.ApiLogin,
         null,
         null,
         null,
@@ -680,6 +676,56 @@ public class SessionController extends AbstractPlatformController {
                 return internalServerError(errorMsg);
               }
             });
+  }
+
+  @Data
+  @ApiModel("Current admin notification messages")
+  static class AdminNotifications {
+    @ApiModelProperty(value = "Messages", accessMode = AccessMode.READ_ONLY)
+    final List<AdminNotification> messages = new ArrayList<>();
+  }
+
+  @Data
+  @ApiModel("Admin notification")
+  static class AdminNotification {
+    @ApiModelProperty(value = "Notification code", accessMode = AccessMode.READ_ONLY)
+    private final String code;
+
+    @ApiModelProperty(
+        value = "Notification message with HTML markup",
+        accessMode = AccessMode.READ_ONLY)
+    private final String htmlMessage;
+  }
+
+  @ApiOperation(value = "getAdminNotifications", response = AdminNotifications.class)
+  @With(TokenAuthenticator.class)
+  public Result getAdminNotifications(UUID customerUUID) {
+    AdminNotifications notifications = new AdminNotifications();
+    notifications.getMessages().addAll(getAlertingNotifications(customerUUID));
+    return PlatformResults.withData(notifications);
+  }
+
+  private List<AdminNotification> getAlertingNotifications(UUID customerUUID) {
+    CustomerConfig alertingConfig = CustomerConfig.getAlertConfig(customerUUID);
+    if (alertingConfig == null) {
+      return Collections.emptyList();
+    }
+    AlertingData alertingData = Json.fromJson(alertingConfig.data, AlertingData.class);
+    if (StringUtils.isEmpty(alertingData.alertingEmail)) {
+      return Collections.emptyList();
+    }
+    CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
+    if (smtpConfig != null) {
+      return Collections.emptyList();
+    }
+    return Collections.singletonList(
+        new AdminNotification(
+            "__yb_missing_smtp_config__",
+            "With the recent upgrade of YugabyteDB Anywhere, "
+                + "you must configure SMTP server settings to receive health check "
+                + "alert email notifications. Please visit "
+                + "<a href=\"/admin/alertConfig/health-alerting?hide-notifications=true\">"
+                + "this page</a> to configure them."));
   }
 
   private Users getCurrentUser() {

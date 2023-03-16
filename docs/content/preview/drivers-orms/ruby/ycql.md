@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: YugabyteDB Ruby Driver for YCQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: Ruby drivers for YCQL
+description: Connect an application using YugabyteDB Ruby driver for YCQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -33,9 +34,9 @@ type: docs
   </li>
 </ul>
 
-## Install the Yugabyte Ruby Driver for YCQL
+## Install the YugabyteDB Ruby Driver for YCQL
 
-To install the [Yugabyte Ruby Driver for YCQL](https://github.com/yugabyte/cassandra-ruby-driver), run the following `gem install` command:
+To install the [YugabyteDB Ruby Driver for YCQL](https://github.com/yugabyte/cassandra-ruby-driver), run the following `gem install` command:
 
 ```sh
 $ gem install yugabyte-ycql-driver

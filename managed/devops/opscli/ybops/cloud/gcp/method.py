@@ -19,7 +19,7 @@ from ybops.cloud.common.method import (AbstractInstancesMethod, AbstractAccessMe
                                        DeleteRootVolumesMethod)
 from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
-from ybops.utils.ssh import format_rsa_key, validated_key_file, get_ssh_host_port, DEFAULT_SSH_PORT
+from ybops.utils.ssh import format_rsa_key, validated_key_file
 
 
 class GcpReplaceRootVolumeMethod(ReplaceRootVolumeMethod):
@@ -52,6 +52,8 @@ class GcpCreateInstancesMethod(CreateInstancesMethod):
                                  help="If to use preemptible instances.")
         self.parser.add_argument("--volume_type", choices=[GCP_SCRATCH, GCP_PERSISTENT],
                                  default="scratch", help="Storage type for GCP instances.")
+        self.parser.add_argument("--instance_template",
+                                 help="Instance type template for GCP instances")
 
     def run_ansible_create(self, args):
         server_type = args.type
@@ -106,7 +108,7 @@ class GcpCreateRootVolumesMethod(CreateRootVolumesMethod):
             "sourceImage": args.machine_image})
         return res["targetLink"]
 
-    # Not invoked. Just keeping if for consistency.
+    # Not invoked. Just keeping it for consistency.
     def delete_instance(self, args):
         name = args.search_pattern[:63] if len(args.search_pattern) > 63 else args.search_pattern
         self.cloud.get_admin().delete_instance(
@@ -313,7 +315,9 @@ class GcpResumeInstancesMethod(AbstractInstancesMethod):
                                  help="The ip of the instance to resume.")
 
     def callback(self, args):
-        self.cloud.start_instance(vars(args), [args.custom_ssh_port])
+        self.update_ansible_vars_with_args(args)
+        server_ports = self.get_server_ports_to_check(args)
+        self.cloud.start_instance(vars(args), server_ports)
 
 
 class GcpPauseInstancesMethod(AbstractInstancesMethod):
@@ -351,8 +355,9 @@ class GcpHardRebootInstancesMethod(AbstractInstancesMethod):
             logging.info("Stopping instance {}".format(args.search_pattern))
             self.cloud.stop_instance(host_info)
         logging.info("Starting instance {}".format(args.search_pattern))
-        extra_vars = get_ssh_host_port(host_info, args.custom_ssh_port)
-        self.cloud.start_instance(host_info, [DEFAULT_SSH_PORT, extra_vars["ssh_port"]])
+        self.update_ansible_vars_with_args(args)
+        server_ports = self.get_server_ports_to_check(args)
+        self.cloud.start_instance(host_info, server_ports)
 
 
 class GcpUpdateMountedDisksMethod(UpdateMountedDisksMethod):

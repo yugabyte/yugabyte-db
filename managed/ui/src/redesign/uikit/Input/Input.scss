@@ -1,30 +1,31 @@
-@import '../common';
+@use '../common';
 
 .yb-uikit-input {
   $arrows-width: 26px;
 
   &--disabled {
-    background-color: $YB_BORDER_1;
+    background-color: common.$YB_BORDER_1;
   }
 
   &--invalid {
-    border-color: $YB_ERROR;
-    box-shadow: 0 0 5px rgba($YB_ERROR, 0.2);
+    border-color: common.$YB_ERROR;
+    box-shadow: 0 0 5px rgba(common.$YB_ERROR, 0.2);
   }
 
-  @include input-wrapper();
+  @include common.input-wrapper();
 
   input {
-    @include input-control();
+    @include common.input-control();
 
     &[disabled] {
-      background-color: $YB_BORDER_1;
+      background-color: common.$YB_BORDER_1;
     }
 
     &[type='number'] {
       padding-right: $arrows-width + 10px;
       // hide arrows for firefox
       -moz-appearance: textfield;
+
       // hide arrows for chrome/safari/etc
       &::-webkit-inner-spin-button,
       &::-webkit-outer-spin-button {
@@ -40,44 +41,44 @@
     top: 0;
     width: $arrows-width;
     height: 100%;
-    background-color: $YB_INPUT_NUMBERS_BG;
-    border-left: 1px solid $YB_BORDER_1;
+    background-color: common.$YB_INPUT_NUMBERS_BG;
+    border-left: 1px solid common.$YB_BORDER_1;
     display: flex;
     justify-content: space-evenly;
     flex-direction: column;
 
     &--disabled {
       pointer-events: none; // to turn off on hover styles
-      background-color: $YB_BORDER_1;
-      border-left-color: $YB_INPUT_NUMBERS_BG;
+      background-color: common.$YB_BORDER_1;
+      border-left-color: common.$YB_INPUT_NUMBERS_BG;
 
       & .yb-uikit-input__number-delim {
-        border-top-color: $YB_INPUT_NUMBERS_BG;
+        border-top-color: common.$YB_INPUT_NUMBERS_BG;
       }
     }
   }
 
   &__number-up {
-    @include chevron-up();
+    @include common.chevron-up();
     margin-left: 7px;
     cursor: pointer;
 
     &:hover {
-      border-bottom-color: $YB_TEXT_1;
+      border-bottom-color: common.$YB_TEXT_1;
     }
   }
 
   &__number-down {
-    @include chevron-down();
+    @include common.chevron-down();
     margin-left: 7px;
     cursor: pointer;
 
     &:hover {
-      border-top-color: $YB_TEXT_1;
+      border-top-color: common.$YB_TEXT_1;
     }
   }
 
   &__number-delim {
-    border-top: 1px solid $YB_BORDER_1;
+    border-top: 1px solid common.$YB_BORDER_1;
   }
 }

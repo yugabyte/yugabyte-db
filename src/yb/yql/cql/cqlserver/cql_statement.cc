@@ -17,6 +17,13 @@
 
 #include <openssl/md5.h>
 
+DEFINE_RUNTIME_bool(cql_use_metadata_cache_for_schema_version_check, false,
+                    "Use the internal Table Metadata Cache in TS to check the Table "
+                    "Schema Version when processing the YCQL PREPARE query."
+                    "Use the flag with caution: with the flag enabled PREPARE works "
+                    "faster, but it may return a stale table schema.");
+TAG_FLAG(cql_use_metadata_cache_for_schema_version_check, advanced);
+
 using std::string;
 
 namespace yb {
@@ -29,6 +36,12 @@ CQLStatement::CQLStatement(
 }
 
 CQLStatement::~CQLStatement() {
+}
+
+Result<bool> CQLStatement::IsYBTableAltered(ql::QLEnv* ql_env) const {
+  const ql::ParseTree& parser_tree = VERIFY_RESULT(GetParseTree());
+  const bool use_cache = FLAGS_cql_use_metadata_cache_for_schema_version_check;
+  return parser_tree.IsYBTableAltered(ql_env, use_cache);
 }
 
 ql::CQLMessage::QueryId CQLStatement::GetQueryId(const string& keyspace, const string& query) {

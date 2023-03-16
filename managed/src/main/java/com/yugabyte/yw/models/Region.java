@@ -8,6 +8,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.google.common.base.Strings;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -17,6 +18,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.common.YBADeprecated;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
@@ -41,6 +43,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -50,6 +53,7 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
+import javax.persistence.Transient;
 import org.apache.commons.collections.CollectionUtils;
 import play.data.validation.Constraints;
 import play.libs.Json;
@@ -80,10 +84,11 @@ public class Region extends Model {
       accessMode = READ_ONLY)
   public String name;
 
-  @Deprecated
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(
-      hidden = true,
-      value = "The AMI to be used in this region.",
+      value =
+          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
+              + "Moved to details.cloudInfo aws/gcp/azure ybImage property",
       example = "TODO",
       accessMode = READ_WRITE)
   public String ybImage;
@@ -119,8 +124,15 @@ public class Region extends Model {
 
   @JsonIgnore
   public void setActiveFlag(Boolean active) {
+    if (active && !this.active) {
+      throw new IllegalStateException("Cannot activate already inactive region");
+    }
     this.active = active;
   }
+
+  @Transient
+  @ApiModelProperty(hidden = true)
+  public String providerCode;
 
   @Encrypted
   @DbJson
@@ -139,18 +151,24 @@ public class Region extends Model {
         .count();
   }
 
+  @JsonProperty("securityGroupId")
   public void setSecurityGroupId(String securityGroupId) {
-    Provider p = this.provider;
-    if (p.getCloudCode() == CloudType.aws) {
+    CloudType cloudType = this.getProviderCloudCode();
+    if (cloudType == CloudType.aws) {
       AWSRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setSecurityGroupId(securityGroupId);
-    } else if (p.getCloudCode() == CloudType.azu) {
+    } else if (cloudType == CloudType.azu) {
       AzureRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setSecurityGroupId(securityGroupId);
     }
   }
 
-  @JsonIgnore
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
+  @ApiModelProperty(
+      required = false,
+      value =
+          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
+              + "Moved to regionDetails.cloudInfo aws/azure securityGroupId property")
   public String getSecurityGroupId() {
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);
     String sgNode = "";
@@ -160,18 +178,24 @@ public class Region extends Model {
     return sgNode == null || sgNode.isEmpty() ? null : sgNode;
   }
 
+  @JsonProperty("vnetName")
   public void setVnetName(String vnetName) {
-    Provider p = this.provider;
-    if (p.getCloudCode() == CloudType.aws) {
+    CloudType cloudType = this.getProviderCloudCode();
+    if (cloudType.equals(CloudType.aws)) {
       AWSRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setVnet(vnetName);
-    } else if (p.getCloudCode() == CloudType.azu) {
+    } else if (cloudType.equals(CloudType.azu)) {
       AzureRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setVnet(vnetName);
     }
   }
 
-  @JsonIgnore
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
+  @ApiModelProperty(
+      required = false,
+      value =
+          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
+              + "Moved to regionDetails.cloudInfo aws/azure vnet property")
   public String getVnetName() {
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);
     String vnetNode = "";
@@ -182,8 +206,8 @@ public class Region extends Model {
   }
 
   public void setArchitecture(Architecture arch) {
-    Provider p = this.provider;
-    if (p.getCloudCode() == CloudType.aws) {
+    CloudType cloudType = this.getProviderCloudCode();
+    if (cloudType.equals(CloudType.aws)) {
       AWSRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setArch(arch);
     }
@@ -191,15 +215,14 @@ public class Region extends Model {
 
   @JsonIgnore
   public Architecture getArchitecture() {
-    Provider p = this.provider;
-    if (p.getCloudCode() == CloudType.aws) {
+    CloudType cloudType = this.getProviderCloudCode();
+    if (cloudType.equals(CloudType.aws)) {
       AWSRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       return regionCloudInfo.getArch();
     }
     return null;
   }
 
-  @JsonIgnore
   public String getYbImage() {
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);
     if (envVars.containsKey("ybImage")) {
@@ -209,14 +232,14 @@ public class Region extends Model {
   }
 
   public void setYbImage(String ybImage) {
-    Provider p = this.provider;
-    if (p.getCloudCode().equals(CloudType.aws)) {
+    CloudType cloudType = this.getProviderCloudCode();
+    if (cloudType.equals(CloudType.aws)) {
       AWSRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setYbImage(ybImage);
-    } else if (p.getCloudCode().equals(CloudType.gcp)) {
+    } else if (cloudType.equals(CloudType.gcp)) {
       GCPRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setYbImage(ybImage);
-    } else if (p.getCloudCode().equals(CloudType.azu)) {
+    } else if (cloudType.equals(CloudType.azu)) {
       AzureRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setYbImage(ybImage);
     }
@@ -230,7 +253,9 @@ public class Region extends Model {
   @Deprecated
   @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {
-    CloudInfoInterface.setCloudProviderInfoFromConfig(this, configMap);
+    if (configMap != null && !configMap.isEmpty()) {
+      CloudInfoInterface.setCloudProviderInfoFromConfig(this, configMap);
+    }
   }
 
   @JsonProperty("details")
@@ -240,8 +265,7 @@ public class Region extends Model {
 
   @JsonProperty("details")
   public RegionDetails getMaskRegionDetails() {
-    CloudInfoInterface.maskRegionDetails(this);
-    return details;
+    return CloudInfoInterface.maskRegionDetails(this);
   }
 
   @JsonIgnore
@@ -250,6 +274,13 @@ public class Region extends Model {
       details = new RegionDetails();
     }
     return details;
+  }
+
+  @JsonIgnore
+  public boolean isUpdateNeeded(Region region) {
+    return !Objects.equals(this.getSecurityGroupId(), region.getSecurityGroupId())
+        || !Objects.equals(this.getVnetName(), region.getVnetName())
+        || !Objects.equals(this.getYbImage(), region.getYbImage());
   }
 
   /** Query Helper for PlacementRegion with region code */
@@ -291,10 +322,10 @@ public class Region extends Model {
     region.provider = provider;
     region.code = code;
     region.name = name;
-    region.setYbImage(ybImage);
     region.latitude = latitude;
     region.longitude = longitude;
     region.setRegionDetails(details);
+    region.setYbImage(ybImage);
     region.save();
     return region;
   }
@@ -326,6 +357,9 @@ public class Region extends Model {
     region.details = new RegionDetails();
     if (metadata.has("ybImage")) {
       region.setYbImage(metadata.get("ybImage").textValue());
+    }
+    if (metadata.has("architecture")) {
+      region.setArchitecture(Architecture.valueOf(metadata.get("architecture").textValue()));
     }
     region.save();
     return region;
@@ -406,20 +440,33 @@ public class Region extends Model {
   public static List<Region> fetchValidRegions(
       UUID customerUUID, UUID providerUUID, int minZoneCount) {
     String regionQuery =
-        " select r.uuid, r.code, r.name"
+        " select r.uuid, r.code, r.name, r.provider_uuid"
             + "   from region r join provider p on p.uuid = r.provider_uuid "
-            + "   left outer join availability_zone zone on zone.region_uuid = r.uuid "
-            + "  where p.uuid = :p_UUID and p.customer_uuid = :c_UUID"
+            + "   left outer join availability_zone zone "
+            + " on zone.region_uuid = r.uuid and zone.active = true "
+            + "  where p.uuid = :p_UUID and p.customer_uuid = :c_UUID and r.active = true"
             + "  group by r.uuid "
             + " having count(zone.uuid) >= "
             + minZoneCount;
 
-    RawSql rawSql = RawSqlBuilder.parse(regionQuery).create();
+    RawSql rawSql =
+        RawSqlBuilder.parse(regionQuery).columnMapping("r.provider_uuid", "provider.uuid").create();
     Query<Region> query = Ebean.find(Region.class);
     query.setRawSql(rawSql);
     query.setParameter("p_UUID", providerUUID);
     query.setParameter("c_UUID", customerUUID);
     return query.findList();
+  }
+
+  @JsonIgnore
+  public CloudType getProviderCloudCode() {
+    if (provider != null) {
+      return provider.getCloudCode();
+    } else if (!Strings.isNullOrEmpty(providerCode)) {
+      return CloudType.valueOf(providerCode);
+    }
+
+    return CloudType.other;
   }
 
   public void disableRegionAndZones() {

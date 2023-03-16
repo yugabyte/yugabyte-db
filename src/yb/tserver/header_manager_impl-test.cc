@@ -33,8 +33,6 @@ using yb::tserver::GenerateTestUniverseKeyManager;
 
 namespace yb {
 
-namespace enterprise {
-
 class TestHeaderManagerImpl : public YBTest {};
 
 TEST_F(TestHeaderManagerImpl, FileOps) {
@@ -52,5 +50,4 @@ TEST_F(TestHeaderManagerImpl, FileOps) {
   ASSERT_TRUE(params->Equals(*new_params.get()));
 }
 
-} // namespace enterprise
 } // namespace yb

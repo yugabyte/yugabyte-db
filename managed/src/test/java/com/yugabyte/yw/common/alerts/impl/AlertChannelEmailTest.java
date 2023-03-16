@@ -16,10 +16,14 @@ import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
-import com.yugabyte.yw.common.alerts.SmtpData;
+import com.yugabyte.yw.common.alerts.AlertChannelTemplateService;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
+import com.yugabyte.yw.common.alerts.SmtpData;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.Customer;
 import java.util.Collections;
 import java.util.List;
@@ -31,7 +35,6 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
@@ -47,11 +50,23 @@ public class AlertChannelEmailTest extends FakeDBApplication {
 
   @Mock private EmailHelper emailHelper;
 
-  @InjectMocks private AlertChannelEmail are;
+  private AlertChannelEmail are;
+
+  AlertTemplateVariableService alertTemplateVariableService;
+
+  AlertChannelTemplateService alertChannelTemplateService;
+
+  AlertChannelTemplatesExt alertChannelTemplatesExt;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
+    alertChannelTemplateService = app.injector().instanceOf(AlertChannelTemplateService.class);
+    alertChannelTemplatesExt =
+        alertChannelTemplateService.getWithDefaults(defaultCustomer.getUuid(), ChannelType.Email);
+    alertTemplateVariableService = app.injector().instanceOf(AlertTemplateVariableService.class);
+
+    are = new AlertChannelEmail(emailHelper, alertTemplateVariableService);
   }
 
   private AlertChannel createChannel(
@@ -105,10 +120,10 @@ public class AlertChannelEmailTest extends FakeDBApplication {
       assertThrows(
           PlatformNotificationException.class,
           () -> {
-            are.sendNotification(defaultCustomer, alert, channel);
+            are.sendNotification(defaultCustomer, alert, channel, alertChannelTemplatesExt);
           });
     } else {
-      are.sendNotification(defaultCustomer, alert, channel);
+      are.sendNotification(defaultCustomer, alert, channel, alertChannelTemplatesExt);
     }
     verify(emailHelper, exceptionExpected ? never() : times(1))
         .sendEmail(
@@ -130,7 +145,7 @@ public class AlertChannelEmailTest extends FakeDBApplication {
     assertThrows(
         PlatformNotificationException.class,
         () -> {
-          are.sendNotification(defaultCustomer, alert, channel);
+          are.sendNotification(defaultCustomer, alert, channel, alertChannelTemplatesExt);
         });
   }
 }

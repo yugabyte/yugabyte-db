@@ -96,21 +96,16 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
         }
       }
 
-      createStartMasterTasks(masterNodeList)
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-      createWaitForServersTasks(masterNodeList, ServerType.MASTER)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createStartMasterProcessTasks(masterNodeList);
 
-      if (EncryptionAtRestUtil.getNumKeyRotations(universe.universeUUID) > 0) {
+      if (EncryptionAtRestUtil.getNumUniverseKeys(universe.universeUUID) > 0) {
         createSetActiveUniverseKeysTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      for (NodeDetails node : tserverNodeList) {
-        createTServerTaskForNode(node, "start")
-            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-      }
+      createStartTServerTasks(tserverNodeList)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       createWaitForServersTasks(tserverNodeList, ServerType.TSERVER)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
       if (universe.isYbcEnabled()) {
         createStartYbcTasks(tserverNodeList)

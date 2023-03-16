@@ -67,10 +67,7 @@ version_menu_pagelinks = true
   url = "/v2.8"
   version = "v2.8"
 [[versions]]
-  url = "/v2.6"
-  version = "v2.6"
-[[versions]]
-  url = "https://docs-archive.yugabyte.com/v2.4"
+  url = "https://docs-archive.yugabyte.com/v2.6"
   version = "Unsupported versions"
 
 # Custom params, regardless of theme

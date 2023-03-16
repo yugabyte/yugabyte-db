@@ -7,12 +7,13 @@ import { YBCheckBox } from '../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../common/indicators';
 import { EditConfig } from './EditConfig';
 import { ResetConfig } from './ResetConfig';
-import { RunTimeConfigData } from '../../redesign/helpers/dtos';
+import { RunTimeConfigData } from '../../redesign/utils/dtos';
 import { getPromiseState } from '../../utils/PromiseUtils';
 import { isNonEmptyArray } from '../../utils/ObjectUtils';
 
 import './AdvancedConfig.scss';
 
+const DEFAULT_RUNTIME_TAG_FILTER = ['PUBLIC'];
 const ConfigScopePriority = {
   GLOBAL: 1,
   CUSTOMER: 2,
@@ -24,6 +25,7 @@ interface GlobalConfigProps {
   setRuntimeConfig: (key: string, value: string, scope?: string) => void;
   deleteRunTimeConfig: (key: string, scope?: string) => void;
   scope: string;
+  configTagFilter: string[] | undefined;
   universeUUID?: string;
   providerUUID?: string;
   customerUUID?: string;
@@ -33,13 +35,17 @@ export const ConfigData: FC<GlobalConfigProps> = ({
   setRuntimeConfig,
   deleteRunTimeConfig,
   scope,
+  configTagFilter,
   universeUUID,
   providerUUID,
   customerUUID
 }) => {
   const { t } = useTranslation();
+  const tagFilter = configTagFilter ?? DEFAULT_RUNTIME_TAG_FILTER;
   const runtimeConfigs = useSelector((state: any) => state.customer.runtimeConfigs);
-  const runtimeConfigsKeyInfo = useSelector((state: any) => state.customer.runtimeConfigsKeyInfo);
+  const runtimeConfigsKeyMetadata = useSelector(
+    (state: any) => state.customer.runtimeConfigsKeyMetadata
+  );
   // Helps in deciding if the logged in user can mutate the config values
   const isScopeMutable = runtimeConfigs?.data?.mutableScope;
   const [editConfig, setEditConfig] = useState<boolean>(false);
@@ -50,6 +56,7 @@ export const ConfigData: FC<GlobalConfigProps> = ({
     configID: 0,
     configKey: '',
     configValue: '',
+    configTags: [],
     isConfigInherited: true,
     displayName: '',
     helpTxt: '',
@@ -60,44 +67,41 @@ export const ConfigData: FC<GlobalConfigProps> = ({
   const runtimeConfigEntries = runtimeConfigs?.data?.configEntries;
 
   useEffect(() => {
-    if (isNonEmptyArray(runtimeConfigEntries)) {
-      const runtimeConfigItems = runtimeConfigEntries
-        .map((entry: any, idx: number) => {
+    if (isNonEmptyArray(runtimeConfigEntries) && isNonEmptyArray(runtimeConfigsKeyMetadata?.data)) {
+      const filteredConfigsMetadata = runtimeConfigsKeyMetadata.data.filter(
+        (configKeyMetadata: any) =>
+          configKeyMetadata.tags.some((tag: string) => tagFilter.includes(tag))
+      );
+
+      const runtimeConfigItems = filteredConfigsMetadata
+        ?.map((configKeyMetadata: any, idx: number) => {
           return {
+            displayName: configKeyMetadata.displayName,
+            helpTxt: configKeyMetadata.helpTxt,
+            type: configKeyMetadata.dataType?.name,
+            scope: configKeyMetadata.scope,
+            configKey: configKeyMetadata.key,
             configID: idx + 1,
-            configKey: entry.key,
-            configValue: entry.value,
-            isConfigInherited: entry.inherited
+            configTags: configKeyMetadata.tags
           };
         })
         ?.filter((item: any) => {
-          return runtimeConfigsKeyInfo?.data?.find((keyInfo: any) => {
+          return runtimeConfigEntries?.find((entry: any) => {
             let isScopeValid = false;
             if (ConfigScopePriority[scope] === 1) {
               isScopeValid = true;
-            } else if (
-              ConfigScopePriority[scope] === 2 &&
-              ConfigScopePriority[keyInfo.scope] >= 2
-            ) {
+            } else if (ConfigScopePriority[scope] === 2 && ConfigScopePriority[item.scope] >= 2) {
               isScopeValid = true;
-            } else if (
-              ConfigScopePriority[scope] === 3 &&
-              ConfigScopePriority[keyInfo.scope] === 3
-            ) {
+            } else if (ConfigScopePriority[scope] === 3 && ConfigScopePriority[item.scope] === 3) {
               isScopeValid = true;
-            } else if (
-              ConfigScopePriority[scope] === 4 &&
-              ConfigScopePriority[keyInfo.scope] === 4
-            ) {
+            } else if (ConfigScopePriority[scope] === 4 && ConfigScopePriority[item.scope] === 4) {
               isScopeValid = true;
             }
-            if (keyInfo.key === item.configKey && isScopeValid) {
-              item.displayName = keyInfo.displayName;
-              item.helpTxt = keyInfo.helpTxt;
-              item.type = keyInfo.dataType?.name;
-              item.scope = keyInfo.scope;
+            if (entry.key === item.configKey && isScopeValid) {
+              item.configValue = entry.value;
+              item.isConfigInherited = entry.inherited;
             }
-            return keyInfo.key === item.configKey && isScopeValid;
+            return entry.key === item.configKey && isScopeValid;
           });
         });
       setListItems(runtimeConfigItems);

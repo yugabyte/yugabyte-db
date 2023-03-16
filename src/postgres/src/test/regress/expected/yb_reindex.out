@@ -361,7 +361,7 @@ SELECT deptype FROM pg_depend
 /*+IndexScan(pg_depend_depender_index) */
 SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
-ERROR:  Query error: ybctid not found in indexed table
+ERROR:  ybctid not found in indexed table
 /*+SeqScan(yb) */
 SELECT i FROM yb WHERE j = -5;
  i

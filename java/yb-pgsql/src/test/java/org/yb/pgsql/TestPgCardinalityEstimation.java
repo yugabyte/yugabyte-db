@@ -28,12 +28,12 @@ import java.sql.Statement;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 import org.yb.util.json.Checker;
 import org.yb.util.json.Checkers;
 import org.yb.util.json.JsonUtil;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgCardinalityEstimation extends BasePgSQLTest {
   private static final String TABLE_NAME = "t50000";
   private static final int TABLE_ROWS = 50000;

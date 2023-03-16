@@ -58,6 +58,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 
 /**
  * TaskExecutor is the executor service for tasks and their subtasks. It is very similar to the
@@ -84,15 +85,14 @@ import org.apache.commons.lang3.StringUtils;
  *
  * <pre>
  * void createProvisionNodes(List<Node> nodes, SubTaskGroupType groupType) {
- *    SubTasksGroup group = taskExecutor.createSubTaskGroup("provision-nodes",
- *                                  groupType);
- *    for (Node node : nodes) {
- *        // Create the subtask instance and initialize.
- *        ITask subTask = createAndInitSubTask(node);
- *        // Add the concurrent subtasks to the group.
- *        group.addSubTask(subTask);
- *    }
- *    runnableTask.addSubTaskGroup(group);
+ *   SubTasksGroup group = taskExecutor.createSubTaskGroup("provision-nodes", groupType);
+ *   for (Node node : nodes) {
+ *     // Create the subtask instance and initialize.
+ *     ITask subTask = createAndInitSubTask(node);
+ *     // Add the concurrent subtasks to the group.
+ *     group.addSubTask(subTask);
+ *   }
+ *   runnableTask.addSubTaskGroup(group);
  * }
  * </pre>
  *
@@ -101,14 +101,14 @@ import org.apache.commons.lang3.StringUtils;
  * <pre>
  * // Run method of task
  * void run() {
- *    // Same as the current queue = new SubTaskGroupQueue(UUID);
- *    runnableTask = taskExecutor.getRunnableTask(UUID).
- *    // Creates subtask group which is then added to runnableTask.
- *    createTasks1(nodes);
- *    createTasks2(nodes);
- *    createTasks3(nodes);
- *    // Same as the current queue.run();
- *    runnableTask.runSubTasks();
+ *   // Same as the current queue = new SubTaskGroupQueue(UUID);
+ *   runnableTask = taskExecutor.getRunnableTask(UUID).
+ *   // Creates subtask group which is then added to runnableTask.
+ *   createTasks1(nodes);
+ *   createTasks2(nodes);
+ *   createTasks3(nodes);
+ *   // Same as the current queue.run();
+ *   runnableTask.runSubTasks();
  * }
  * </pre>
  */
@@ -583,7 +583,7 @@ public class TaskExecutor {
 
     // Wait for all the subtasks to complete. In this method, the state updates on
     // exceptions are done for tasks which are not yet running and exception occurs.
-    private void waitForSubTasks() {
+    private void waitForSubTasks(boolean abortOnFailure) {
       UUID parentTaskUUID = runnableTask.getTaskUUID();
       Instant waitStartTime = Instant.now();
       List<RunnableSubTask> runnableSubTasks =
@@ -597,7 +597,6 @@ public class TaskExecutor {
         while (iter.hasNext()) {
           RunnableSubTask runnableSubTask = iter.next();
           Future<?> future = runnableSubTask.future;
-
           try {
             future.get(TASK_SPIN_WAIT_INTERVAL_MS, TimeUnit.MILLISECONDS);
             removeCompletedSubTask(iter, runnableSubTask, null);
@@ -605,8 +604,13 @@ public class TaskExecutor {
             // Ignore state update because this exception is thrown
             // during the task execution and is already taken care
             // by RunnableSubTask.
-            anyEx = e.getCause();
-            removeCompletedSubTask(iter, runnableSubTask, anyEx);
+            anyEx = (anyEx != null) ? anyEx : e.getCause();
+            removeCompletedSubTask(iter, runnableSubTask, e.getCause());
+            // Call parent task abort if abortOnFailure set.
+            if (abortOnFailure) {
+              runnableTask.setAbortTime(Instant.now());
+              runnableTask.cancelWaiterIfAborted();
+            }
           } catch (TimeoutException e) {
             // The exception is ignored if the elapsed time has not surpassed
             // the time limit.
@@ -631,17 +635,20 @@ public class TaskExecutor {
               future.cancel(true);
               // Report aborted to the parent task.
               // Update the subtask state to aborted if the execution timed out.
-              anyEx = new CancellationException(e.getMessage());
-              runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Aborted, anyEx);
+              Throwable thisEx = new CancellationException(e.getMessage());
+              anyEx = (anyEx != null) ? anyEx : thisEx;
+              runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Aborted, thisEx);
               removeCompletedSubTask(iter, runnableSubTask, anyEx);
             }
           } catch (CancellationException e) {
-            anyEx = e;
+            anyEx = (anyEx != null) ? anyEx : e;
             runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Aborted, e);
             removeCompletedSubTask(iter, runnableSubTask, e);
           } catch (InterruptedException e) {
-            anyEx = new CancellationException(e.getMessage());
-            runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Aborted, anyEx);
+            future.cancel(true);
+            Throwable thisEx = new CancellationException(e.getMessage());
+            anyEx = (anyEx != null) ? anyEx : thisEx;
+            runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Aborted, thisEx);
             removeCompletedSubTask(iter, runnableSubTask, anyEx);
           } catch (Exception e) {
             anyEx = e;
@@ -798,11 +805,18 @@ public class TaskExecutor {
       } catch (CancellationException e) {
         t = e;
         updateTaskDetailsOnError(TaskInfo.State.Aborted, e);
+        onCancelled();
         throw e;
       } catch (Exception e) {
-        t = e;
-        updateTaskDetailsOnError(TaskInfo.State.Failure, e);
-        Throwables.propagate(e);
+        if (ExceptionUtils.hasCause(e, CancellationException.class)) {
+          t = new CancellationException(e.getMessage());
+          updateTaskDetailsOnError(TaskInfo.State.Aborted, e);
+          onCancelled();
+        } else {
+          t = e;
+          updateTaskDetailsOnError(TaskInfo.State.Failure, e);
+        }
+        Throwables.propagate(t);
       } finally {
         taskCompletionTime = Instant.now();
         if (log.isDebugEnabled()) {
@@ -940,6 +954,15 @@ public class TaskExecutor {
         taskExecutionListener.afterTask(taskInfo, t);
       }
     }
+
+    void onCancelled() {
+      try {
+        task.onCancelled(taskInfo);
+      } catch (Exception e) {
+        // Do not propagate the exception as the task is already cancelled.
+        log.warn("Error occurred in onCancelled", e);
+      }
+    }
   }
 
   /** Task runnable */
@@ -1059,6 +1082,16 @@ public class TaskExecutor {
      * start execution of the subtasks.
      */
     public void runSubTasks() {
+      runSubTasks(false);
+    }
+
+    /**
+     * Equivalent to runSubTasks() method, additional abortOnFailure to abort peer subtasks if one
+     * fails.
+     *
+     * @param abortOnFailure boolean whether to abort peer subtasks on failure of one subtask.
+     */
+    public void runSubTasks(boolean abortOnFailure) {
       RuntimeException anyRe = null;
       try {
         for (SubTaskGroup subTaskGroup : subTaskGroups) {
@@ -1082,7 +1115,7 @@ public class TaskExecutor {
               // TODO Does it make sense to abort the task?
               // There can be conflicts between aborted and failed task states.
               // Wait for already submitted subtasks.
-              subTaskGroup.waitForSubTasks();
+              subTaskGroup.waitForSubTasks(abortOnFailure);
             }
           } catch (CancellationException e) {
             throw new CancellationException(subTaskGroup.toString() + " is cancelled.");
@@ -1164,7 +1197,8 @@ public class TaskExecutor {
           super.run();
           break;
         } catch (Exception e) {
-          if ((currentAttempt == retryLimit - 1) || e instanceof CancellationException) {
+          if ((currentAttempt == retryLimit - 1)
+              || ExceptionUtils.hasCause(e, CancellationException.class)) {
             throw e;
           }
 

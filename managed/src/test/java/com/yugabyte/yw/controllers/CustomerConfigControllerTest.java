@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigUI;
 import com.yugabyte.yw.models.Backup;
@@ -258,6 +259,10 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     assertEquals(customerTask.getTargetUUID(), configUUID);
     fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+
+    // Set http context
+    TestUtils.setFakeHttpContext(defaultUser);
+
     ModelFactory.createScheduleBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
     result = FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
     assertOk(result);
@@ -717,6 +722,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST15").configUUID;
     CustomerConfig config = customerConfigService.getOrBadRequest(defaultCustomer.uuid, configUUID);
     config.setState(ConfigState.QueuedForDeletion);
+    config.save();
     config.refresh();
 
     CustomerConfig fromDb = CustomerConfig.get(configUUID);

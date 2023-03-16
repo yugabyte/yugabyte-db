@@ -3446,4 +3446,168 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
               assertEquals(UniverseTaskBase.ServerType.MASTER, node.dedicatedTo);
             });
   }
+
+  @Test
+  public void testNotOptimalExpandExisting() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, aws);
+
+    Universe existing = createFromConfig(provider, "Existing", "r1-az1-3-3;r1-az2-0-0;r1-az3-0-0");
+    AvailabilityZone az1 = AvailabilityZone.getByCode(provider, "az1");
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.universeUUID = existing.getUniverseUUID();
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.nodeDetailsSet = new HashSet<>(existing.getUniverseDetails().nodeDetailsSet);
+    params.getPrimaryCluster().userIntent.numNodes += 3;
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getCustomerId(), params.getPrimaryCluster().uuid, EDIT);
+
+    Map<UUID, Integer> azUuidToNumNodes =
+        PlacementInfoUtil.getAzUuidToNumNodes(params.nodeDetailsSet);
+    // Keeping current placement
+    assertEquals(new HashMap<>(ImmutableMap.of(az1.uuid, 6)), azUuidToNumNodes);
+  }
+
+  @Test
+  public void testNotOptimalExpandCreation() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, aws);
+
+    Universe existing = createFromConfig(provider, "Existing", "r1-az1-3-3;r1-az2-0-0;r1-az3-0-0");
+    AvailabilityZone az1 = AvailabilityZone.getByCode(provider, "az1");
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.nodeDetailsSet = existing.getUniverseDetails().nodeDetailsSet;
+    params.userAZSelected = true;
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getCustomerId(), params.getPrimaryCluster().uuid, CREATE);
+
+    params.userAZSelected = false;
+    params.getPrimaryCluster().userIntent.numNodes += 3;
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getCustomerId(), params.getPrimaryCluster().uuid, CREATE);
+
+    Map<UUID, Integer> azUuidToNumNodes =
+        PlacementInfoUtil.getAzUuidToNumNodes(params.nodeDetailsSet);
+
+    assertEquals(new HashMap<>(ImmutableMap.of(az1.uuid, 6)), azUuidToNumNodes);
+  }
+
+  @Test
+  public void testRemoveZone() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, aws);
+
+    Universe existing = createFromConfig(provider, "Existing", "r1-az1-2-1;r1-az2-1-1;r1-az3-1-1");
+    AvailabilityZone az1 = AvailabilityZone.getByCode(provider, "az1");
+    AvailabilityZone az2 = AvailabilityZone.getByCode(provider, "az2");
+    AvailabilityZone az3 = AvailabilityZone.getByCode(provider, "az3");
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.universeUUID = existing.getUniverseUUID();
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.nodeDetailsSet = existing.getUniverseDetails().nodeDetailsSet;
+    params
+        .getPrimaryCluster()
+        .placementInfo
+        .azStream()
+        .filter(az -> az.uuid.equals(az2.uuid))
+        .forEach(az -> az.numNodesInAZ = 0);
+    params.userAZSelected = true;
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getCustomerId(), params.getPrimaryCluster().uuid, EDIT);
+
+    Map<UUID, Integer> azUuidToNumNodes =
+        PlacementInfoUtil.getAzUuidToNumNodes(params.nodeDetailsSet, true);
+
+    assertEquals(new HashMap<>(ImmutableMap.of(az1.uuid, 2, az3.uuid, 1)), azUuidToNumNodes);
+  }
+
+  @Test
+  public void testAddZoneCreate() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, aws);
+
+    Universe existing = createFromConfig(provider, "Existing", "r1-az1-4-3;r1-az2-0-0;r1-az3-0-0");
+    AvailabilityZone az1 = AvailabilityZone.getByCode(provider, "az1");
+    AvailabilityZone az2 = AvailabilityZone.getByCode(provider, "az2");
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.nodeDetailsSet = existing.getUniverseDetails().nodeDetailsSet;
+    params.nodeDetailsSet.forEach(
+        n -> {
+          n.state = ToBeAdded;
+          n.isMaster = false;
+        });
+    PlacementAZ placementAZ = new PlacementAZ();
+    placementAZ.uuid = az2.uuid;
+    placementAZ.name = az2.name;
+    params
+        .getPrimaryCluster()
+        .placementInfo
+        .cloudList
+        .get(0)
+        .regionList
+        .get(0)
+        .azList
+        .add(placementAZ);
+    params.userAZSelected = true;
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getCustomerId(), params.getPrimaryCluster().uuid, CREATE);
+
+    Map<UUID, Integer> azUuidToNumNodes =
+        PlacementInfoUtil.getAzUuidToNumNodes(params.nodeDetailsSet, true);
+
+    assertEquals(new HashMap<>(ImmutableMap.of(az1.uuid, 2, az2.uuid, 2)), azUuidToNumNodes);
+  }
+
+  @Test
+  public void testAddZoneEdit() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, aws);
+
+    Universe existing = createFromConfig(provider, "Existing", "r1-az1-4-3;r1-az2-0-0;r1-az3-0-0");
+    AvailabilityZone az1 = AvailabilityZone.getByCode(provider, "az1");
+    AvailabilityZone az2 = AvailabilityZone.getByCode(provider, "az2");
+    AvailabilityZone az3 = AvailabilityZone.getByCode(provider, "az3");
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.universeUUID = existing.getUniverseUUID();
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.nodeDetailsSet = existing.getUniverseDetails().nodeDetailsSet;
+    params.userAZSelected = true;
+
+    PlacementAZ placementAZ = new PlacementAZ();
+    placementAZ.uuid = az2.uuid;
+    placementAZ.name = az2.name;
+    placementAZ.numNodesInAZ = 1;
+    params
+        .getPrimaryCluster()
+        .placementInfo
+        .cloudList
+        .get(0)
+        .regionList
+        .get(0)
+        .azList
+        .add(placementAZ);
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getCustomerId(), params.getPrimaryCluster().uuid, EDIT);
+
+    Map<UUID, Integer> azUuidToNumNodes =
+        PlacementInfoUtil.getAzUuidToNumNodes(params.nodeDetailsSet);
+
+    assertEquals(new HashMap<>(ImmutableMap.of(az1.uuid, 4, az2.uuid, 1)), azUuidToNumNodes);
+  }
 }

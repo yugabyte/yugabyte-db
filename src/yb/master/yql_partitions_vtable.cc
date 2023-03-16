@@ -33,10 +33,10 @@
 
 DECLARE_int32(partitions_vtable_cache_refresh_secs);
 
-DEFINE_UNKNOWN_bool(use_cache_for_partitions_vtable, true,
+DEFINE_RUNTIME_bool(use_cache_for_partitions_vtable, true,
             "Whether we should use caching for system.partitions table.");
 
-DEFINE_UNKNOWN_bool(generate_partitions_vtable_on_changes, true,
+DEFINE_RUNTIME_bool(generate_partitions_vtable_on_changes, true,
             "Whether we should generate the system.partitions vtable whenever relevant partition "
             "changes occur.");
 
@@ -258,9 +258,15 @@ Status YQLPartitionsVTable::InsertTabletIntoRowUnlocked(
   return Status::OK();
 }
 
-void YQLPartitionsVTable::RemoveFromCache(const TableId& table_id) const {
+void YQLPartitionsVTable::RemoveFromCache(const std::vector<TableId>& table_ids) const {
+  if (!GeneratePartitionsVTableOnChanges() || table_ids.empty()) {
+    return;
+  }
+
   std::lock_guard<std::shared_timed_mutex> lock(mutex_);
-  table_to_partition_start_to_row_map_.erase(table_id);
+  for (const auto& table_id : table_ids) {
+    table_to_partition_start_to_row_map_.erase(table_id);
+  }
   // Need to update the cache as the map has been modified.
   update_cache_ = true;
 }

@@ -19,5 +19,5 @@ PingCap's TiDB is a MySQL-compatible distributed database built on TiKV, and tak
 
 The following posts cover some more details around how YugabyteDB differs from TiDB.
 
-- [What is Distributed SQL?](https://blog.yugabyte.com/what-is-distributed-sql/)
-- [Implementing Distributed Transactions the Google Way: Percolator vs. Spanner](https://blog.yugabyte.com/implementing-distributed-transactions-the-google-way-percolator-vs-spanner/)
+- [What is Distributed SQL?](https://www.yugabyte.com/blog/what-is-distributed-sql/)
+- [Implementing Distributed Transactions the Google Way: Percolator vs. Spanner](https://www.yugabyte.com/blog/implementing-distributed-transactions-the-google-way-percolator-vs-spanner/)

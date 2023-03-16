@@ -34,12 +34,13 @@ import static play.test.Helpers.contentAsString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
 import java.net.URLEncoder;
@@ -232,6 +233,8 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getCustomerId());
 
+    // Set http context
+    TestUtils.setFakeHttpContext(user);
     UUID randUUID = UUID.randomUUID();
     CustomerTask.create(
         customer,

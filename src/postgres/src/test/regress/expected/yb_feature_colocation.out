@@ -158,6 +158,22 @@ SELECT * FROM tab_range_nonkey2 WHERE a = 1;
  1 | 1
 (1 row)
 
+/*+IndexScan(tab_range_nonkey2 idx_range)*/EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey2 WHERE a <= 3;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Index Scan using idx_range on tab_range_nonkey2
+   Index Cond: (a <= 3)
+(2 rows)
+
+/*+IndexScan(tab_range_nonkey2 idx_range)*/SELECT * FROM tab_range_nonkey2 WHERE a <= 3;
+ a | b 
+---+---
+ 0 | 0
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(4 rows)
+
 UPDATE tab_range_nonkey2 SET b = b + 1 WHERE a > 3;
 SELECT * FROM tab_range_nonkey2;
  a | b
@@ -204,6 +220,22 @@ SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
 ---+---
  1 | 1
 (1 row)
+
+EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey_noco WHERE a <= 3;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Index Scan using tab_range_nonkey_noco_pkey on tab_range_nonkey_noco
+   Index Cond: (a <= 3)
+(2 rows)
+
+SELECT * FROM tab_range_nonkey_noco WHERE a <= 3;
+ a | b 
+---+---
+ 0 | 0
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(4 rows)
 
 UPDATE tab_range_nonkey_noco SET b = b + 1 WHERE a > 3;
 SELECT * FROM tab_range_nonkey_noco;
@@ -513,6 +545,55 @@ SELECT * FROM tab_range_nonkey2;
 ERROR:  relation "tab_range_nonkey2" does not exist
 LINE 1: SELECT * FROM tab_range_nonkey2;
                       ^
+-- Alter colocated table ADD PRIMARY KEY
+CREATE TABLE tbl_no_pk (k INT, v INT) WITH (colocation = true);
+\d tbl_no_pk
+             Table "public.tbl_no_pk"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k      | integer |           |          |
+ v      | integer |           |          |
+Colocation: true
+
+INSERT INTO tbl_no_pk (k, v) VALUES (1, 1), (2, 2), (3, 3);
+ALTER TABLE tbl_no_pk ADD PRIMARY KEY (k ASC);
+\d tbl_no_pk
+             Table "public.tbl_no_pk"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k      | integer |           | not null |
+ v      | integer |           |          |
+Indexes:
+    "tbl_no_pk_pkey" PRIMARY KEY, lsm (k ASC), colocation: true
+Colocation: true
+
+SELECT * FROM tbl_no_pk ORDER BY k;
+ k | v
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(3 rows)
+
+-- Alter colocated table "DROP PRIMARY KEY"
+ALTER TABLE tbl_no_pk DROP CONSTRAINT tbl_no_pk_pkey;
+\d tbl_no_pk
+             Table "public.tbl_no_pk"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k      | integer |           | not null |
+ v      | integer |           |          |
+Colocation: true
+
+SELECT * FROM tbl_no_pk ORDER BY k;
+ k | v
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(3 rows)
+
+DROP TABLE tbl_no_pk;
 -- DROP TABLE
 -- drop colocated table with default index
 DROP TABLE tab_range;
@@ -591,13 +672,47 @@ EXPLAIN SELECT * FROM tab_range_nonkey5 WHERE a = 1;
  public | tab_range_range_pkey        | index | yugabyte | tab_range_range
 (11 rows)
 
+-- Test colocated tables/indexes with SPLIT INTO/SPLIT AT
+CREATE TABLE invalid_tbl_split_into (k INT) SPLIT INTO 10 TABLETS;
+ERROR:  cannot create colocated table with split option
+CREATE TABLE invalid_tbl_split_at (k INT) SPLIT AT VALUES ((100));
+ERROR:  cannot create colocated table with split option
+CREATE TABLE test_tbl (k INT);
+CREATE INDEX invalid_idx_split_into ON test_tbl (k) SPLIT INTO 10 TABLETS;
+ERROR:  cannot create colocated index with split option
+CREATE INDEX invalid_idx_split_at ON test_tbl (k) SPLIT AT VALUES ((100));
+ERROR:  cannot create colocated index with split option
+DROP TABLE test_tbl;
+-- Test colocated partitioned table and partition tables
+CREATE TABLE partitioned_table (
+    k1 INT,
+    v1 INT,
+    v2 TEXT
+)
+PARTITION BY HASH (k1)
+WITH (colocation_id='123456');
+SELECT * FROM yb_table_properties('partitioned_table'::regclass::oid);
+ num_tablets | num_hash_key_columns | is_colocated | tablegroup_oid | colocation_id
+-------------+----------------------+--------------+----------------+---------------
+           1 |                    0 | t            |          16399 |        123456
+(1 row)
+
+CREATE TABLE table_partition PARTITION OF partitioned_table
+FOR VALUES WITH (modulus 2, remainder 0)
+WITH (colocation_id='234567');
+SELECT * FROM yb_table_properties('table_partition'::regclass::oid);
+ num_tablets | num_hash_key_columns | is_colocated | tablegroup_oid | colocation_id
+-------------+----------------------+--------------+----------------+---------------
+           1 |                    0 | t            |          16399 |        234567
+(1 row)
+
 -- drop database
 \c yugabyte
 DROP DATABASE colocation_test;
 -- Test syntax change as a result of Colocation GA change
 -- Fail: only one of 'colocation' and 'colocated' options can be specified in CREATE DATABASE
 CREATE DATABASE colocation_test colocated = true colocation = true;
-WARNING:  'colocated' syntax will be deprecated in a future release
+WARNING:  'colocated' syntax is deprecated and will be removed in a future release
 LINE 1: CREATE DATABASE colocation_test colocated = true colocation ...
                                         ^
 HINT:  Use 'colocation' instead of 'colocated'.
@@ -606,7 +721,7 @@ LINE 1: CREATE DATABASE colocation_test colocated = true colocation ...
                                                          ^
 -- Succeed with deprecated warning: create a colocated database using old syntax
 CREATE DATABASE colocation_test colocated = true;
-WARNING:  'colocated' syntax will be deprecated in a future release
+WARNING:  'colocated' syntax is deprecated and will be removed in a future release
 LINE 1: CREATE DATABASE colocation_test colocated = true;
                                         ^
 HINT:  Use 'colocation' instead of 'colocated'.
@@ -621,7 +736,7 @@ ERROR:  cannot specify both of 'colocation' and 'colocated' options
 HINT:  Use 'colocation' instead of 'colocated'.
 -- Succeed with deprecated warning: create a colocated table using old syntax
 CREATE TABLE tbl_colocated (k INT, v INT) WITH (colocated = true);
-WARNING:  'colocated' syntax will be deprecated in a future release
+WARNING:  'colocated' syntax is deprecated and will be removed in a future release
 HINT:  Use 'colocation' instead of 'colocated'.
 -- Succeed: create a colocated table using new syntax
 CREATE TABLE tbl_colocation (k INT, v INT) WITH (colocation = true);
@@ -668,7 +783,7 @@ AND objid = 'tbl'::regclass AND refclassid = 'pg_yb_tablegroup'::regclass
 AND refobjid = pg_yb_tablegroup.oid AND grpname = 'default';
  classid | objid | objsubid | refclassid | refobjid | refobjsubid | deptype | grpname | grpowner | grptablespace | grpacl | grpoptions
 ---------+-------+----------+------------+----------+-------------+---------+---------+----------+---------------+--------+------------
-    1259 | 16502 |        0 |       8036 |    16505 |           0 | n       | default |       10 |             0 |        |
+    1259 | 16530 |        0 |       8036 |    16533 |           0 | n       | default |       10 |             0 |        |
 (1 row)
 
 DROP TABLEGROUP "default";
@@ -706,6 +821,9 @@ ON pg_roles.oid = pg_class.relowner WHERE pg_class.relname = 'unique_idx';
 (1 row)
 
 RESET SESSION AUTHORIZATION;
+-- The default tablegroup cannot be used explicitly
+CREATE TABLE invalid_tbl (k int) TABLEGROUP "default";
+ERROR:  cannot use tablegroups in a colocated database
 -- Drop database
 \c yugabyte
 DROP DATABASE colocation_test;

@@ -20,6 +20,11 @@ public class GCPRegionCloudInfo implements CloudInfoInterface {
       accessMode = AccessMode.READ_WRITE)
   public String ybImage;
 
+  @ApiModelProperty(
+      value = "The instance template to be used for nodes created in this region.",
+      accessMode = AccessMode.READ_WRITE)
+  public String instanceTemplate;
+
   @JsonIgnore
   public Map<String, String> getEnvVars() {
     Map<String, String> envVars = new HashMap<>();
@@ -38,5 +43,10 @@ public class GCPRegionCloudInfo implements CloudInfoInterface {
   @JsonIgnore
   public void withSensitiveDataMasked() {
     // pass
+  }
+
+  @JsonIgnore
+  public void mergeMaskedFields(CloudInfoInterface providerCloudInfo) {
+    // Pass
   }
 }

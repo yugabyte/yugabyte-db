@@ -22,6 +22,7 @@ const getValidationSchema = (type) => {
         message: 'Path should starts with gs, s3 or https'
       })
       .required('Path is required'),
+    helmChart: Yup.string(),
   };
 
   switch (type) {
@@ -33,14 +34,17 @@ const getValidationSchema = (type) => {
       shape['credentialsJson'] = Yup.string().required('Credentials Json is required');
       break;
     case 'http':
-      shape['x86_64Checksum'] = Yup.string()
+      shape['x86_64_checksum'] = Yup.string()
       .required('Checksum is required')
       .matches(/(MD5|SHA1|SHA256):\w+/, {
         message: 'Checksum must have a pattern of [MD5|SHA1|SHA256]:[checksum_value];'
           + ' e.g., MD5:99d42a85b0d2b2813d6cea877aaab919'
       });
-      shape['helmChartChecksum'] = Yup.string()
-      .required('Checksum is required')
+      shape['helmChartChecksum'] = Yup.string().when('helmChart', {
+        is: (val) => val && val.length > 0,
+        then: Yup.string().required('Checksum is required'),
+        otherwise: Yup.string(),
+      })
       .matches(/(MD5|SHA1|SHA256):\w+/, {
         message: 'Checksum must have a pattern of [MD5|SHA1|SHA256]:[checksum_value];'
           + ' e.g., MD5:99d42a85b0d2b2813d6cea877aaab919'
@@ -75,7 +79,7 @@ const GcsFields = () => (
 const HttpFields = () => (
   <>
     <PathField />
-    <Field name="x86_64Checksum" component={YBFormInput} label="Checksum" />
+    <Field name="x86_64_checksum" component={YBFormInput} label="Checksum" />
     <Field name="helmChart" label="Helm chart" component={YBFormInput} />
     <Field name="helmChartChecksum" label="Helm chart checksum" component={YBFormInput} />
   </>
@@ -131,14 +135,26 @@ const preparePayload = (values) => {
 
   payload[version][importType]['paths'] = {
     x86_64: values['x86_64'],
-    helmChart: values['helmChart'],
-    helmChartChecksum: values['helmChartChecksum'],
   };
 
   if (importType === 'http') {
     payload[version][importType]['paths'] = {
       ...payload[version][importType]['paths'],
-      x86_64Checksum: values['x86_64Checksum']
+      x86_64_checksum: values['x86_64_checksum']
+    };
+  }
+
+  if (values['helmChart']) {
+    payload[version][importType]['paths'] = {
+      ...payload[version][importType]['paths'],
+      helmChart: values['helmChart'],
+    };
+  }
+
+  if (values['helmChartChecksum']) {
+    payload[version][importType]['paths'] = {
+      ...payload[version][importType]['paths'],
+      helmChartChecksum: values['helmChartChecksum'],
     };
   }
 

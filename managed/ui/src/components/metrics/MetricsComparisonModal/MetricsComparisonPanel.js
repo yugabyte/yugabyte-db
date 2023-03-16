@@ -12,6 +12,7 @@ import moment from 'moment';
 import React from 'react';
 import { METRIC_COLORS } from '../MetricsConfig';
 import { useSelector } from 'react-redux';
+import { ybFormatDate, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
 
 export const MetricsComparisonPanel = ({ metricsData, metricsKey, metricsLayout, side }) => {
   const currentUser = useSelector((state) => state.customer.currentUser);
@@ -70,7 +71,7 @@ export const MetricsComparisonPanel = ({ metricsData, metricsKey, metricsLayout,
               width={42}
             />
             <Tooltip
-              labelFormatter={(value) => timeFormatter(value, 'HH:mm:ss MMM D, YYYY [UTC]ZZ')}
+              labelFormatter={(value) => ybFormatDate(value, YBTimeFormats.YB_HOURS_FIRST_TIMESTAMP)}
             />
             <Legend align="left"/>
             {chartLines}

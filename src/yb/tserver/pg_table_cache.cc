@@ -32,8 +32,7 @@ namespace {
 struct CacheEntry {
   std::promise<Result<client::YBTablePtr>> promise;
   std::shared_future<Result<client::YBTablePtr>> future;
-  master::GetTableSchemaResponsePB info;
-  PgTablePartitionsPB partitions;
+  master::GetTableSchemaResponsePB schema;
 
   CacheEntry() : future(promise.get_future()) {
   }
@@ -48,12 +47,13 @@ class PgTableCache::Impl {
 
   Status GetInfo(
       const TableId& table_id,
-      master::GetTableSchemaResponsePB* info,
-      PgTablePartitionsPB* partitions) {
+      client::YBTablePtr* table,
+      master::GetTableSchemaResponsePB* schema) {
     auto entry = GetEntry(table_id);
-    RETURN_NOT_OK(entry->future.get());
-    *info = entry->info;
-    *partitions = entry->partitions;
+    const auto& table_result = entry->future.get();
+    RETURN_NOT_OK(table_result);
+    *table = *table_result;
+    *schema = entry->schema;
     return Status::OK();
   }
 
@@ -99,8 +99,10 @@ class PgTableCache::Impl {
   }
 
   Status OpenTable(
-      const TableId& table_id, client::YBTablePtr* table, master::GetTableSchemaResponsePB* info) {
-    RETURN_NOT_OK(client().OpenTable(table_id, table, info));
+      const TableId& table_id,
+      client::YBTablePtr* table,
+      master::GetTableSchemaResponsePB* schema) {
+    RETURN_NOT_OK(client().OpenTable(table_id, table, schema));
     RSTATUS_DCHECK(
         (**table).table_type() == client::YBTableType::PGSQL_TABLE_TYPE, RuntimeError,
         "Wrong table type");
@@ -116,17 +118,12 @@ class PgTableCache::Impl {
       }
       entry->promise.set_value(STATUS(InternalError, "Unexpected return"));
     });
-    const auto status = OpenTable(table_id, &table, &entry->info);
+    auto status = OpenTable(table_id, &table, &entry->schema);
     if (!status.ok()) {
       Invalidate(table_id);
-      entry->promise.set_value(status);
+      entry->promise.set_value(std::move(status));
       finished = true;
       return;
-    }
-    const auto partitions = table->GetVersionedPartitions();
-    entry->partitions.set_version(partitions->version);
-    for (const auto& key : partitions->keys) {
-      *entry->partitions.mutable_keys()->Add() = key;
     }
 
     entry->promise.set_value(table);
@@ -148,9 +145,9 @@ PgTableCache::~PgTableCache() {
 
 Status PgTableCache::GetInfo(
     const TableId& table_id,
-    master::GetTableSchemaResponsePB* info,
-    PgTablePartitionsPB* partitions) {
-  return impl_->GetInfo(table_id, info, partitions);
+    client::YBTablePtr* table,
+    master::GetTableSchemaResponsePB* schema) {
+  return impl_->GetInfo(table_id, table, schema);
 }
 
 Result<client::YBTablePtr> PgTableCache::Get(const TableId& table_id) {

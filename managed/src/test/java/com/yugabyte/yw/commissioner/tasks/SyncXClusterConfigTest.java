@@ -16,20 +16,22 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
+import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
-import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -56,6 +58,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
   private String configName;
   private String sourceUniverseName;
   private UUID sourceUniverseUUID;
+  private Users defaultUser;
   private Universe sourceUniverse;
   private String targetUniverseName;
   private UUID targetUniverseUUID;
@@ -73,7 +76,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     super.setUp();
 
     defaultCustomer = testCustomer("SyncXClusterConfig-test-customer");
-
+    defaultUser = ModelFactory.testUser(defaultCustomer);
     configName = "SyncXClusterConfigTest-test-config";
 
     sourceUniverseName = "SyncXClusterConfig-test-universe-1";
@@ -109,6 +112,8 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     XClusterConfigTaskParams taskParams = new XClusterConfigTaskParams(targetUniverseUUID);
     try {
       UUID taskUUID = commissioner.submit(TaskType.SyncXClusterConfig, taskParams);
+      // Set http context
+      TestUtils.setFakeHttpContext(defaultUser);
       CustomerTask.create(
           defaultCustomer,
           targetUniverse.universeUUID,

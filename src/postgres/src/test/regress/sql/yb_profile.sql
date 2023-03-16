@@ -41,3 +41,27 @@ DROP PROFILE IF EXISTS non_existing;
 
 CREATE PROFILE exists_profile LIMIT FAILED_LOGIN_ATTEMPTS 3;
 DROP PROFILE IF EXISTS exists_profile;
+
+--
+-- Test \h CREATE PROFILE
+--
+
+\h CREATE PROFILE
+
+--
+-- Test \h DROP PROFILE
+--
+
+\h DROP PROFILE
+
+--
+-- Test \h ALTER USER
+--
+
+\h ALTER USER
+
+--
+-- Test \h ALTER ROLE
+--
+
+\h ALTER ROLE

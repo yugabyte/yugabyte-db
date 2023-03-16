@@ -7,7 +7,9 @@ package common
 import (
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -27,15 +29,13 @@ func Install(version string) {
 	// Hidden file written on first install (.installCompleted) at the end of the install,
 	// if the file already exists then it means that an installation has already taken place,
 	// and that future installs are prohibited.
-	if _, err := os.Stat(InstalledFile); err == nil {
+	if _, err := os.Stat(YbaInstalledMarker()); err == nil {
 		log.Fatal("Install of YBA already completed, cannot perform reinstall without clean.")
 	}
 
 	// Change into the dir we are in so that we can specify paths relative to ourselves
 	// TODO(minor): probably not a good idea in the long run
 	os.Chdir(GetBinaryDir())
-
-	MarkInstallStart()
 
 	// set default values for unspecified config values
 	fixConfigValues()
@@ -49,49 +49,6 @@ func Install(version string) {
 
 	setupJDK()
 	setJDKEnvironmentVariable()
-}
-
-// MarkInstallStart creates the marker file we use to show an in-progress install.
-func MarkInstallStart() {
-	// .installStarted written at the beginning of Installations, and renamed to
-	// .installCompleted at the end of the install. That way, if an install fails midway,
-	// the operations can be tried again in an idempotent manner. We also write the mode
-	// of install to this file so that we can disallow installs between types (root ->
-	// non-root and non-root -> root both prohibited).
-	var data []byte
-	if HasSudoAccess() {
-		data = []byte("root\n")
-	} else {
-		data = []byte("non-root\n")
-	}
-	if err := os.WriteFile(installingFile, data, 0666); err != nil {
-		log.Fatal("failed to mark instal as in progress: " + err.Error())
-	}
-}
-
-func PostInstall() {
-	// Symlink at /usr/bin/yba-ctl -> /opt/yba-ctl/yba-ctl -> actual yba-ctl
-	if HasSudoAccess() {
-		CreateSymlink(GetInstallerSoftwareDir(), filepath.Dir(InputFile), goBinaryName)
-		CreateSymlink(filepath.Dir(InputFile), "/usr/bin", goBinaryName)
-	}
-
-	waitForYBAReady()
-
-	MarkInstallComplete()
-}
-
-// MarkInstallComplete moves the .installing file to .installed to indicate install success.
-func MarkInstallComplete() {
-	_, err := os.Stat(InstalledFile)
-	if err == nil {
-		return
-	}
-	if !os.IsNotExist(err) {
-		log.Fatal(fmt.Sprintf("Error querying file status %s : %s", InstalledFile, err))
-	}
-	RenameOrFail(installingFile, InstalledFile)
-
 }
 
 func createInstallDirs() {
@@ -108,10 +65,13 @@ func createInstallDirs() {
 		if err := MkdirAll(dir, os.ModePerm); err != nil {
 			log.Fatal(fmt.Sprintf("failed creating directory %s: %s", dir, err.Error()))
 		}
-		err := Chown(dir, viper.GetString("service_username"), viper.GetString("service_username"), true)
-		if err != nil {
-			log.Fatal("failed to change ownership of " + dir + " to " +
-				viper.GetString("service_username") + ": " + err.Error())
+		// Only change ownership for root installs.
+		if HasSudoAccess() {
+			err := Chown(dir, viper.GetString("service_username"), viper.GetString("service_username"), true)
+			if err != nil {
+				log.Fatal("failed to change ownership of " + dir + " to " +
+					viper.GetString("service_username") + ": " + err.Error())
+			}
 		}
 	}
 
@@ -130,10 +90,13 @@ func createUpgradeDirs() {
 		if err := MkdirAll(dir, os.ModePerm); err != nil {
 			log.Fatal(fmt.Sprintf("failed creating directory %s: %s", dir, err.Error()))
 		}
-		err := Chown(dir, viper.GetString("service_username"), viper.GetString("service_username"), true)
-		if err != nil {
-			log.Fatal("failed to change ownership of " + dir + " to " +
-				viper.GetString("service_username") + ": " + err.Error())
+		if HasSudoAccess() {
+			err := Chown(dir, viper.GetString("service_username"), viper.GetString("service_username"),
+				true)
+			if err != nil {
+				log.Fatal("failed to change ownership of " + dir + " to " +
+					viper.GetString("service_username") + ": " + err.Error())
+			}
 		}
 	}
 }
@@ -141,7 +104,7 @@ func createUpgradeDirs() {
 // Copies over necessary files for all services from yba_installer_full to the GetSoftwareRoot()
 func copyBits(vers string) {
 	yugabundleBinary := "yugabundle-" + GetVersion() + "-centos-x86_64.tar.gz"
-	neededFiles := []string{goBinaryName, versionMetadataJSON, yugabundleBinary,
+	neededFiles := []string{GoBinaryName, versionMetadataJSON, yugabundleBinary,
 		GetJavaPackagePath(), GetPostgresPackagePath()}
 
 	for _, file := range neededFiles {
@@ -172,56 +135,24 @@ func copyBits(vers string) {
 // all services when executing a clean.
 func Uninstall(serviceNames []string, removeData bool) {
 
-	// 1) Stop all running service processes
-	// 2) Delete service files (in root mode)/Stop cron/cleanup crontab in NonRoot
-	// 3) Delete service directories
-	// 4) Delete data dir in force mode (warn/ask for confirmation)
-
-	if HasSudoAccess() {
-
-		command := "service"
-
-		for index := range serviceNames {
-			commandCheck0 := "bash"
-			subCheck0 := Systemctl + " list-unit-files --type service | grep -w " + serviceNames[index]
-			argCheck0 := []string{"-c", subCheck0}
-			out0, _ := RunBash(commandCheck0, argCheck0)
-			if strings.TrimSuffix(string(out0), "\n") != "" {
-				argStop := []string{serviceNames[index], "stop"}
-				RunBash(command, argStop)
-			}
-
-		}
-	} else {
-
-		for index := range serviceNames {
-			commandCheck0 := "bash"
-			argCheck0 := []string{"-c", "pgrep -f " + serviceNames[index] + " | head -1"}
-			out0, _ := RunBash(commandCheck0, argCheck0)
-			// Need to stop the binary if it is running, can just do kill -9 PID (will work as the
-			// process itself was started by a non-root user.)
-			if strings.TrimSuffix(string(out0), "\n") != "" {
-				pid := strings.TrimSuffix(string(out0), "\n")
-				argStop := []string{"-c", "kill -9 " + pid}
-				RunBash(commandCheck0, argStop)
-			}
-		}
-	}
-
 	// Removed the InstallVersionDir if it exists if we are not performing an upgrade
 	// (since we would essentially perform a fresh install).
 
-	RemoveAll(GetInstallerSoftwareDir())
+	RemoveAll(GetSoftwareDir())
 
 	if removeData {
-		err := RemoveAll(GetYBAInstallerDataDir())
+		err := RemoveAll(GetBaseInstall())
 		if err != nil {
-			log.Info(fmt.Sprintf("Failed to delete yba installer data dir %s", GetYBAInstallerDataDir()))
+			pe := err.(*fs.PathError)
+			if !errors.Is(pe.Err, fs.ErrNotExist) {
+				log.Info(fmt.Sprintf("Failed to delete yba installer data dir %s", GetYBAInstallerDataDir()))
+			}
 		}
 	}
 
-	// Remove the hidden marker file
-	RemoveAll(InstalledFile)
+	// Remove yba-ctl
+	RemoveAll(YbactlInstallDir())
+	os.Remove("/usr/bin/" + GoBinaryName)
 }
 
 // Upgrade performs the upgrade procedures common to all services.
@@ -240,14 +171,10 @@ func Upgrade(version string) {
 
 }
 
+// PostUpgrade will update the active install symlink and remove old versions if needed
 func PostUpgrade() {
-
 	SetActiveInstallSymlink()
-
-	PostInstall()
-
 	PrunePastInstalls()
-
 }
 
 // SetActiveInstallSymlink will create <installRoot>/active symlink
@@ -386,33 +313,33 @@ func fixConfigValues() {
 
 	if len(viper.GetString("service_username")) == 0 {
 		log.Info(fmt.Sprintf("Systemd services will be run as user %s", DefaultServiceUser))
-		setYamlValue(InputFile, "service_username", DefaultServiceUser)
+		setYamlValue(InputFile(), "service_username", DefaultServiceUser)
 	}
 
 	if len(viper.GetString("platform.appSecret")) == 0 {
 		log.Debug("Generating default app secret for platform")
-		setYamlValue(InputFile, "platform.appSecret", GenerateRandomStringURLSafe(64))
+		setYamlValue(InputFile(), "platform.appSecret", GenerateRandomStringURLSafe(64))
 		InitViper()
 	}
 
 	if len(viper.GetString("platform.keyStorePassword")) == 0 {
 		log.Debug("Generating default app secret for platform")
-		setYamlValue(InputFile, "platform.keyStorePassword", GenerateRandomStringURLSafe(32))
+		setYamlValue(InputFile(), "platform.keyStorePassword", GenerateRandomStringURLSafe(32))
 		InitViper()
 	}
 
 	if len(viper.GetString("host")) == 0 {
 		host := GuessPrimaryIP()
 		log.Info("Guessing primary IP of host to be " + host)
-		setYamlValue(InputFile, "host", host)
+		setYamlValue(InputFile(), "host", host)
 		InitViper()
 	}
 
 	if len(viper.GetString("server_cert_path")) == 0 {
 		log.Info("Generating self-signed server certificates")
 		serverCertPath, serverKeyPath := generateSelfSignedCerts()
-		setYamlValue(InputFile, "server_cert_path", serverCertPath)
-		setYamlValue(InputFile, "server_key_path", serverKeyPath)
+		setYamlValue(InputFile(), "server_cert_path", serverCertPath)
+		setYamlValue(InputFile(), "server_key_path", serverKeyPath)
 		InitViper()
 	}
 
@@ -444,7 +371,7 @@ func generateSelfSignedCerts() (string, string) {
 
 }
 
-func waitForYBAReady() {
+func WaitForYBAReady() {
 	log.Info("Waiting for YBA ready.")
 
 	// Needed to access https URL without x509: certificate signed by unknown authority error

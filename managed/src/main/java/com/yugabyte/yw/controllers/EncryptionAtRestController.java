@@ -27,6 +27,8 @@ import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil.GcpKmsAuthConfigField;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
@@ -115,9 +117,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
         }
         if (formData.get(SMARTKEY_API_KEY_FIELDNAME) != null) {
           try {
-            Function<ObjectNode, String> token =
-                new SmartKeyEARService()::retrieveSessionAuthorization;
-            token.apply(formData);
+            ((SmartKeyEARService) keyManager.getServiceInstance(KeyProvider.SMARTKEY.name()))
+                .retrieveSessionAuthorization(formData);
           } catch (Exception e) {
             throw new PlatformServiceException(BAD_REQUEST, "Invalid API Key.");
           }
@@ -152,10 +153,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
           LOG.info(
               "Finished validating AZU provider config form data for key vault = "
                   + azuEARServiceUtil.getConfigFieldValue(
-                      formData, AzuEARServiceUtil.AZU_VAULT_URL_FIELDNAME)
+                      formData, AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName)
                   + ", key name = "
                   + azuEARServiceUtil.getConfigFieldValue(
-                      formData, AzuEARServiceUtil.AZU_KEY_NAME_FIELDNAME));
+                      formData, AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName));
         } catch (Exception e) {
           LOG.warn("Could not finish validating AZU provider config form data.");
           throw new PlatformServiceException(BAD_REQUEST, e.toString());
@@ -209,11 +210,11 @@ public class EncryptionAtRestController extends AuthenticatedController {
         // All the below fields are non editable
         List<String> nonEditableFields =
             Arrays.asList(
-                GcpEARServiceUtil.LOCATION_ID_FIELDNAME,
-                GcpEARServiceUtil.PROTECTION_LEVEL_FIELDNAME,
-                GcpEARServiceUtil.GCP_KMS_ENDPOINT_FIELDNAME,
-                GcpEARServiceUtil.KEY_RING_ID_FIELDNAME,
-                GcpEARServiceUtil.CRYPTO_KEY_ID_FIELDNAME);
+                GcpKmsAuthConfigField.LOCATION_ID.fieldName,
+                GcpKmsAuthConfigField.PROTECTION_LEVEL.fieldName,
+                GcpKmsAuthConfigField.GCP_KMS_ENDPOINT.fieldName,
+                GcpKmsAuthConfigField.KEY_RING_ID.fieldName,
+                GcpKmsAuthConfigField.CRYPTO_KEY_ID.fieldName);
         for (String field : nonEditableFields) {
           if (formData.has(field)) {
             if (!authconfig.has(field)
@@ -229,10 +230,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
         // All the below fields are non editable in AZU
         List<String> nonEditableFieldsAzu =
             Arrays.asList(
-                AzuEARServiceUtil.AZU_VAULT_URL_FIELDNAME,
-                AzuEARServiceUtil.AZU_KEY_NAME_FIELDNAME,
-                AzuEARServiceUtil.AZU_KEY_ALGORITHM_FIELDNAME,
-                AzuEARServiceUtil.AZU_KEY_SIZE_FIELDNAME);
+                AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName,
+                AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName,
+                AzuKmsAuthConfigField.AZU_KEY_ALGORITHM.fieldName,
+                AzuKmsAuthConfigField.AZU_KEY_SIZE.fieldName);
         for (String field : nonEditableFieldsAzu) {
           if (formData.has(field)) {
             if (!authconfig.has(field)
@@ -290,22 +291,22 @@ public class EncryptionAtRestController extends AuthenticatedController {
         // All these fields must be kept the same from the old authConfig (if it has)
         List<String> nonEditableFields =
             Arrays.asList(
-                GcpEARServiceUtil.LOCATION_ID_FIELDNAME,
-                GcpEARServiceUtil.PROTECTION_LEVEL_FIELDNAME,
-                GcpEARServiceUtil.GCP_KMS_ENDPOINT_FIELDNAME,
-                GcpEARServiceUtil.KEY_RING_ID_FIELDNAME,
-                GcpEARServiceUtil.CRYPTO_KEY_ID_FIELDNAME);
+                GcpKmsAuthConfigField.LOCATION_ID.fieldName,
+                GcpKmsAuthConfigField.PROTECTION_LEVEL.fieldName,
+                GcpKmsAuthConfigField.GCP_KMS_ENDPOINT.fieldName,
+                GcpKmsAuthConfigField.KEY_RING_ID.fieldName,
+                GcpKmsAuthConfigField.CRYPTO_KEY_ID.fieldName);
         for (String field : nonEditableFields) {
           if (authConfig.has(field)) {
             formData.set(field, authConfig.get(field));
           }
         }
         // GCP_CONFIG field can change. If no config is specified, use the same old one.
-        if (!formData.has(GcpEARServiceUtil.GCP_CONFIG_FIELDNAME)
-            && authConfig.has(GcpEARServiceUtil.GCP_CONFIG_FIELDNAME)) {
+        if (!formData.has(GcpKmsAuthConfigField.GCP_CONFIG.fieldName)
+            && authConfig.has(GcpKmsAuthConfigField.GCP_CONFIG.fieldName)) {
           formData.set(
-              GcpEARServiceUtil.GCP_CONFIG_FIELDNAME,
-              authConfig.get(GcpEARServiceUtil.GCP_CONFIG_FIELDNAME));
+              GcpKmsAuthConfigField.GCP_CONFIG.fieldName,
+              authConfig.get(GcpKmsAuthConfigField.GCP_CONFIG.fieldName));
         }
         LOG.info("Added all required fields to the formData to be edited");
         break;
@@ -313,10 +314,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
         // All these fields must be kept the same from the old authConfig (if it has)
         List<String> nonEditableFieldsAzu =
             Arrays.asList(
-                AzuEARServiceUtil.AZU_VAULT_URL_FIELDNAME,
-                AzuEARServiceUtil.AZU_KEY_NAME_FIELDNAME,
-                AzuEARServiceUtil.AZU_KEY_ALGORITHM_FIELDNAME,
-                AzuEARServiceUtil.AZU_KEY_SIZE_FIELDNAME);
+                AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName,
+                AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName,
+                AzuKmsAuthConfigField.AZU_KEY_ALGORITHM.fieldName,
+                AzuKmsAuthConfigField.AZU_KEY_SIZE.fieldName);
         for (String field : nonEditableFieldsAzu) {
           if (authConfig.has(field)) {
             formData.set(field, authConfig.get(field));
@@ -325,9 +326,9 @@ public class EncryptionAtRestController extends AuthenticatedController {
         // Below fields can change. If no new field is specified, use the same old one.
         List<String> editableFieldsAzu =
             Arrays.asList(
-                AzuEARServiceUtil.CLIENT_ID_FIELDNAME,
-                AzuEARServiceUtil.CLIENT_SECRET_FIELDNAME,
-                AzuEARServiceUtil.TENANT_ID_FIELDNAME);
+                AzuKmsAuthConfigField.CLIENT_ID.fieldName,
+                AzuKmsAuthConfigField.CLIENT_SECRET.fieldName,
+                AzuKmsAuthConfigField.TENANT_ID.fieldName);
         for (String field : editableFieldsAzu) {
           if (!formData.has(field) && authConfig.has(field)) {
             formData.set(field, authConfig.get(field));
@@ -608,6 +609,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
                   return Json.newObject()
                       .put("reference", history.uuid.keyRef)
                       .put("configUUID", history.configUuid.toString())
+                      .put("re_encryption_count", history.uuid.reEncryptionCount)
+                      .put("db_key_id", history.dbKeyId)
                       .put("timestamp", history.timestamp.toString());
                 })
             .collect(Collectors.toList()));

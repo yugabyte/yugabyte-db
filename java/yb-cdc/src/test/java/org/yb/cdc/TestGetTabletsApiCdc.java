@@ -24,7 +24,7 @@ import org.yb.cdc.util.CDCSubscriber;
 import org.yb.cdc.util.TestUtils;
 import org.yb.client.GetTabletListToPollForCDCResponse;
 import org.yb.client.YBClient;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import static org.yb.AssertionWrappers.*;
 
@@ -33,7 +33,7 @@ import java.util.Set;
 
 import org.awaitility.Awaitility;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestGetTabletsApiCdc extends CDCBaseClass {
   private final Logger LOGGER = LoggerFactory.getLogger(TestGetTabletsApiCdc.class);
 

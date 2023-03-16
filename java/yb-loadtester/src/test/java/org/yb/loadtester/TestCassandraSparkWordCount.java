@@ -29,9 +29,9 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestCassandraSparkWordCount extends BaseCQLTest {
 
     private CassandraSparkWordCount app = new CassandraSparkWordCount();

@@ -30,6 +30,7 @@
 #include "yb/common/placement_info.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/read_hybrid_time.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
@@ -171,15 +172,37 @@ bool IsReadOnly(const PgsqlOp& op) {
 
 class PgSession::RunHelper {
  public:
-  RunHelper(PgSession* pg_session, SessionType session_type)
-      : pg_session_(*pg_session), session_type_(session_type) {
+  RunHelper(PgSession* pg_session, SessionType session_type, HybridTime in_txn_limit)
+      : pg_session_(*pg_session),
+        session_type_(session_type),
+        in_txn_limit_(in_txn_limit) {
   }
 
-  Status Apply(const PgTableDesc& table,
-               PgsqlOpPtr op,
-               uint64_t* in_txn_limit,
-               ForceNonBufferable force_non_bufferable) {
+  Status Apply(const PgTableDesc& table, PgsqlOpPtr op, ForceNonBufferable force_non_bufferable) {
+    // Refer src/yb/yql/pggate/README for details about buffering.
+    //
+    // TODO(#16261): Consider the following scenario:
+    // 1) A read op arrives here and adds itself to operations_.
+    // 2) Two write ops follow which change the same row and are added to operations_.
+    //    Should they not be flushed separately? (as per requirement 2b in the README)
+    //
+    // Moreover, consider a situation in which they are flushed separately, but the in_txn_limit
+    // picked might be incorrect:
+    // 1) A non-bufferable write op on key k1 enters Apply() and is flushed.
+    // 2) A read which has a preset in_txn_limit enters and is added to operations_. The
+    //    in_txn_limit happens to be smaller than the write time of the write op in (1).
+    // 3) Another write to key k1 is added to operations_. But it will end up using the preset
+    //    in_txn_limit. Isn't this incorrect?
+    //
+    // Both scenarios might not occur with any sort of SQL statement. But we should still try to
+    // find statements that can lead to this and fix these cases. Even if we don't find anything
+    // that leads to such scenarios, we should fix these anyway (unless we prove these scenarios
+    // can never occur).
+
+    VLOG(2) << "Apply " << (op->is_read() ? "read" : "write") << " op, table name: "
+            << table.table_name().table_name() << ", table id: " << table.id();
     auto& buffer = pg_session_.buffer_;
+
     // Try buffering this operation if it is a write operation, buffering is enabled and no
     // operations have been already applied to current session (yb session does not exist).
     if (operations_.empty() && pg_session_.buffering_enabled_ &&
@@ -197,12 +220,21 @@ class PgSession::RunHelper {
       SCHECK(operations_.empty(),
             IllegalState,
             "Buffered operations must be flushed before applying first non-bufferable operation");
-      // Buffered operations can't be combined within single RPC with non bufferable operation
-      // in case non bufferable operation has preset in_txn_limit.
-      // Buffered operations must be flushed independently in this case.
-      // Also operations for catalog session can be combined with buffered operations
-      // as catalog session is used for read-only operations.
-      if ((IsTransactional() && in_txn_limit && *in_txn_limit) || IsCatalog()) {
+      // Buffered write operations can't be combined within a single RPC with non-bufferable read
+      // operations in case the reads have a preset in_txn_limit. This is because as per requirement
+      // 1 and 2b) in README.txt, the writes and reads will require a different in_txn_limit. In
+      // case the in_txn_limit wasn't yet picked for the reads, they can be flushed together with
+      // the writes since both would use the current hybrid time as the in_txn_limit.
+      //
+      // Note however that the buffer has to be flushed before the non-buffered op if:
+      // 1) it is a non-buffered read that is on a table that is touched by the buffered writes
+      // 2) it is a non-buffered write that touches the same key as a buffered write
+      //
+      // Also operations for a catalog session are read-only operations. And "buffer" only buffers
+      // write operations. Since the writes and catalog reads belong to different session types (as
+      // per PgClientSession), we can't send them to the local tserver proxy in 1 rpc, so we flush
+      // the buffer before performing catalog reads.
+      if ((IsTransactional() && in_txn_limit_) || IsCatalog()) {
         RETURN_NOT_OK(buffer.Flush());
       } else {
         operations_ = VERIFY_RESULT(buffer.FlushTake(table, *op, IsTransactional()));
@@ -228,19 +260,26 @@ class PgSession::RunHelper {
           (RowMarkNeedsHigherPriority(row_mark_type) ? kHigherPriorityRange : kLowerPriorityRange);
     read_only = read_only && !IsValidRowMarkType(row_mark_type);
 
-    return pg_session_.pg_txn_manager_->CalculateIsolation(
-        read_only, txn_priority_requirement, in_txn_limit);
+    return pg_session_.pg_txn_manager_->CalculateIsolation(read_only, txn_priority_requirement);
   }
 
-  Result<PerformFuture> Flush(std::string&& cache_key) {
+  Result<PerformFuture> Flush(std::optional<CacheOptions>&& cache_options) {
     if (operations_.empty()) {
       // All operations were buffered, no need to flush.
       return PerformFuture();
     }
 
+    if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
+      LOG(INFO) << "Flushing collected operations, using session type: "
+                << ToString(session_type_) << " num ops: " << operations_.size();
+    }
+
     return pg_session_.Perform(
         std::move(operations_),
-        {.use_catalog_session = IsCatalog(), .cache_key = std::move(cache_key)});
+        {.use_catalog_session = IsCatalog(),
+         .cache_options = std::move(cache_options),
+         .in_txn_limit = in_txn_limit_
+        });
   }
 
  private:
@@ -259,6 +298,7 @@ class PgSession::RunHelper {
   PgSession& pg_session_;
   const SessionType session_type_;
   BufferableOperations operations_;
+  const HybridTime in_txn_limit_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -425,13 +465,24 @@ Status PgSession::DropTablegroup(const PgOid database_oid,
 
 //--------------------------------------------------------------------------------------------------
 
-Result<PgTableDescPtr> PgSession::LoadTable(const PgObjectId& table_id) {
-  VLOG(3) << "Loading table descriptor for " << table_id;
-
+Result<PgTableDescPtr> PgSession::DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit) {
   auto cached_table_it = table_cache_.find(table_id);
-  bool exists = cached_table_it != table_cache_.end();
-  if (exists && cached_table_it->second) {
-    return cached_table_it->second;
+  const auto exists = cached_table_it != table_cache_.end();
+  const auto cache_hit = exists && cached_table_it->second;
+  SCHECK(!(fail_on_cache_hit && cache_hit), IllegalState,
+        "Cache entry found while cache miss is expected.");
+  if (cache_hit) {
+    auto status = cached_table_it->second->EnsurePartitionListIsUpToDate(&pg_client_);
+    if (status.ok()) {
+      return cached_table_it->second;
+    }
+
+    // Failed to reload table partitions, let's try to reload the table.
+    LOG(WARNING) << Format(
+        "Partition list refresh failed for table \"$0\": $1. Invalidating table cache.",
+        cached_table_it->second->table_name(), status);
+    InvalidateTableCache(table_id, InvalidateOnPgClient::kFalse);
+    return DoLoadTable(table_id, /* fail_on_cache_hit */ true);
   }
 
   VLOG(4) << "Table cache MISS: " << table_id;
@@ -443,6 +494,11 @@ Result<PgTableDescPtr> PgSession::LoadTable(const PgObjectId& table_id) {
     table_cache_.emplace(table_id, table);
   }
   return table;
+}
+
+Result<PgTableDescPtr> PgSession::LoadTable(const PgObjectId& table_id) {
+  VLOG(3) << "Loading table descriptor for " << table_id;
+  return DoLoadTable(table_id, /* fail_on_cache_hit */ false);
 }
 
 void PgSession::InvalidateTableCache(
@@ -529,10 +585,8 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations ops, bool 
       txn_priority_requirement = kHighestPriority;
     }
 
-    // Use 0 as the value of in_txn_limit to force setting current time as txn limit
-    uint64_t in_txn_limit = 0;
     RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
-        false /* read_only */, txn_priority_requirement, &in_txn_limit));
+        false /* read_only */, txn_priority_requirement));
   }
 
   // In case of flushing of non-transactional operations it is required to set read time with the
@@ -553,8 +607,10 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     options.set_use_catalog_session(true);
   } else {
     const auto txn_serial_no = pg_txn_manager_->SetupPerformOptions(&options);
-    ProcessPerformOnTxnSerialNo(
-        txn_serial_no, ops_options.ensure_read_time_is_set, &options);
+    if (pg_txn_manager_->IsTxnInProgress()) {
+      options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
+    }
+    ProcessPerformOnTxnSerialNo(txn_serial_no, ops_options.ensure_read_time_is_set, &options);
   }
   bool global_transaction = yb_force_global_transaction;
   for (auto i = ops.operations.begin(); !global_transaction && i != ops.operations.end(); ++i) {
@@ -595,8 +651,13 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
   }
 
-  if (!ops_options.cache_key.empty()) {
-    options.mutable_caching_info()->set_key(std::move(ops_options.cache_key));
+  if (ops_options.cache_options) {
+    auto& cache_options = *ops_options.cache_options;
+    auto& caching_info = *options.mutable_caching_info();
+    caching_info.set_key(std::move(cache_options.key));
+    if (cache_options.lifetime_threshold_ms) {
+      caching_info.mutable_lifetime_threshold_ms()->set_value(*cache_options.lifetime_threshold_ms);
+    }
   }
 
   pg_client_.PerformAsync(&options, &ops.operations, [promise](const PerformResult& result) {
@@ -692,8 +753,9 @@ Result<client::TabletServersInfo> PgSession::ListTabletServers() {
   return pg_client_.ListLiveTabletServers(false);
 }
 
-bool PgSession::ShouldUseFollowerReads() const {
-  return pg_txn_manager_->ShouldUseFollowerReads();
+Status PgSession::GetIndexBackfillProgress(std::vector<PgObjectId> index_ids,
+                                           uint64_t** backfill_statuses) {
+  return pg_client_.GetIndexBackfillProgress(index_ids, backfill_statuses);
 }
 
 void PgSession::SetTimeout(const int timeout_ms) {
@@ -702,10 +764,6 @@ void PgSession::SetTimeout(const int timeout_ms) {
 
 void PgSession::ResetCatalogReadPoint() {
   catalog_read_time_ = ReadHybridTime();
-}
-
-bool PgSession::HasCatalogReadPoint() const {
-  return static_cast<bool>(catalog_read_time_);
 }
 
 void PgSession::TrySetCatalogReadPoint(const ReadHybridTime& read_ht) {
@@ -783,15 +841,15 @@ Status PgSession::ValidatePlacement(const std::string& placement_info) {
 
 template<class Generator>
 Result<PerformFuture> PgSession::DoRunAsync(
-    const Generator& generator, uint64_t* in_txn_limit,
-    ForceNonBufferable force_non_bufferable, std::string&& cache_key) {
+    const Generator& generator, HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable,
+    std::optional<CacheOptions>&& cache_options) {
   auto table_op = generator();
   SCHECK(!table_op.IsEmpty(), IllegalState, "Operation list must not be empty");
   const auto* table = table_op.table;
   const auto* op = table_op.operation;
   const auto group_session_type = VERIFY_RESULT(GetRequiredSessionType(
       *pg_txn_manager_, *table, **op));
-  RunHelper runner(this, group_session_type);
+  RunHelper runner(this, group_session_type, in_txn_limit);
   const auto ddl_mode = pg_txn_manager_->IsDdlMode();
   for (; !table_op.IsEmpty(); table_op = generator()) {
     table = table_op.table;
@@ -802,32 +860,29 @@ Result<PerformFuture> PgSession::DoRunAsync(
         op_session_type, group_session_type,
         IllegalState, "Operations on different sessions can't be mixed");
     has_write_ops_in_ddl_mode_ = has_write_ops_in_ddl_mode_ || (ddl_mode && !IsReadOnly(**op));
-    RETURN_NOT_OK(runner.Apply(*table, *op, in_txn_limit, force_non_bufferable));
+    RETURN_NOT_OK(runner.Apply(*table, *op, force_non_bufferable));
   }
-  return runner.Flush(std::move(cache_key));
+  return runner.Flush(std::move(cache_options));
 }
 
 Result<PerformFuture> PgSession::RunAsync(const OperationGenerator& generator,
-                                          uint64_t* in_txn_limit,
+                                          HybridTime in_txn_limit,
                                           ForceNonBufferable force_non_bufferable) {
-  return DoRunAsync(
-      generator, in_txn_limit, force_non_bufferable, std::string() /* cache_key */);
+  return DoRunAsync(generator, in_txn_limit, force_non_bufferable);
 }
 
 Result<PerformFuture> PgSession::RunAsync(const ReadOperationGenerator& generator,
-                                          uint64_t* in_txn_limit,
+                                          HybridTime in_txn_limit,
                                           ForceNonBufferable force_non_bufferable) {
-  return DoRunAsync(
-      generator, in_txn_limit, force_non_bufferable, std::string() /* cache_key */);
+  return DoRunAsync(generator, in_txn_limit, force_non_bufferable);
 }
 
-Result<PerformFuture> PgSession::RunAsyncCacheable(
-    const ReadOperationGenerator& generator, uint64_t* in_txn_limit, std::string&& cache_key) {
-  SCHECK(!cache_key.empty(), InvalidArgument, "Cache key can't be empty");
+Result<PerformFuture> PgSession::RunAsync(
+    const ReadOperationGenerator& generator, CacheOptions&& cache_options) {
+  SCHECK(!cache_options.key.empty(), InvalidArgument, "Cache key can't be empty");
   // Ensure no buffered requests will be added to cached request.
   RETURN_NOT_OK(buffer_.Flush());
-  return DoRunAsync(
-      generator, in_txn_limit, ForceNonBufferable::kFalse, std::move(cache_key));
+  return DoRunAsync(generator, HybridTime(), ForceNonBufferable::kFalse, std::move(cache_options));
 }
 
 Result<bool> PgSession::CheckIfPitrActive() {

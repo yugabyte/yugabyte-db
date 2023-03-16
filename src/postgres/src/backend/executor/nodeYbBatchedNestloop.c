@@ -346,8 +346,7 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 	bnlstate->numLookupAttrs = num_hashClauseInfos;
 	bnlstate->innerAttrs =
 		palloc(num_hashClauseInfos * sizeof(AttrNumber));
-	int numattrs = plan->nl.nestParams->length;
-	ExprState **keyexprs = palloc(numattrs * (sizeof(ExprState*)));
+	ExprState **keyexprs = palloc(num_hashClauseInfos * (sizeof(ExprState*)));
 	List *outerParamExprs = NULL;
 	YbBNLHashClauseInfo *current_hinfo = plan->hashClauseInfos;
 

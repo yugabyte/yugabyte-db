@@ -17,6 +17,10 @@ export const REGISTER_RESPONSE = 'REGISTER_RESPONSE';
 export const FETCH_PASSWORD_POLICY = 'FETCH_PASSWORD_POLICY';
 export const FETCH_PASSWORD_POLICY_RESPONSE = 'FETCH_PASSWORD_POLICY_RESPONSE';
 
+// Validate Customer registration
+export const FETCH_ADMIN_NOTIFICATIONS = 'FETCH_ADMIN_NOTIFICATIONS';
+export const FETCH_ADMIN_NOTIFICATIONS_RESPONSE = 'FETCH_ADMIN_NOTIFICATIONS_RESPONSE';
+
 // Sign In Customer
 export const LOGIN = 'LOGIN';
 export const LOGIN_RESPONSE = 'LOGIN_RESPONSE';
@@ -244,6 +248,22 @@ export function fetchPasswordPolicy() {
 export function fetchPasswordPolicyResponse(response) {
   return {
     type: FETCH_PASSWORD_POLICY_RESPONSE,
+    payload: response
+  };
+}
+
+export function fetchAdminNotifications() {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/admin_notifications`);
+  return {
+    type: FETCH_ADMIN_NOTIFICATIONS,
+    payload: request
+  };
+}
+
+export function fetchAdminNotificationsResponse(response) {
+  return {
+    type: FETCH_ADMIN_NOTIFICATIONS_RESPONSE,
     payload: response
   };
 }

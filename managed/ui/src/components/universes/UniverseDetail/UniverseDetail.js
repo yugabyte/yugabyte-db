@@ -25,9 +25,13 @@ import { YBTabsWithLinksPanel } from '../../panels';
 import { ListTablesContainer, ListBackupsContainer, ReplicationContainer } from '../../tables';
 import { QueriesViewer } from '../../queries';
 import { isEmptyObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
-import { isKubernetesUniverse, isPausableUniverse , getPrimaryCluster , hasLiveNodes } from '../../../utils/UniverseUtils';
+import {
+  isKubernetesUniverse,
+  isPausableUniverse,
+  getPrimaryCluster,
+  hasLiveNodes
+} from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
-
 
 import { YBLoading, YBErrorIndicator } from '../../common/indicators';
 import { UniverseHealthCheckList } from './compounds/UniverseHealthCheckList';
@@ -41,11 +45,10 @@ import {
   getFeatureState
 } from '../../../utils/LayoutUtils';
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
-import Replication from '../../xcluster/Replication';
 import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
 import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
-import { PerfAdvisor } from '../../queries/PerfAdvisor.tsx';
-
+import { XClusterReplication } from '../../xcluster/XClusterReplication';
+import { EncryptionAtRest } from '../../../redesign/features/universe/universe-actions/encryption-at-rest/EncryptionAtRest';
 import './UniverseDetail.scss';
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
@@ -75,6 +78,11 @@ class UniverseDetail extends Component {
     this.props.resetUniverseInfo();
     this.props.resetTablesList();
   }
+
+  isNewUIEnabled = () => {
+    const { featureFlags } = this.props;
+    return featureFlags.test.enableNewUI || featureFlags.released.enableNewUI;
+  };
 
   componentDidMount() {
     const {
@@ -261,18 +269,21 @@ class UniverseDetail extends Component {
       onPremSkipProvisioning = onPremKey?.keyInfo.skipProvisioning;
     }
 
-    const isTopKMetricsEnabled = runtimeConfigs?.data?.configEntries?.find(
-      (c) => c.key === 'yb.metrics.ui.topk.enable'
-    )?.value === 'true';
+    const isTopKMetricsEnabled =
+      runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.metrics.ui.topk.enable')
+        ?.value === 'true';
+    const isPerfAdvisorEnabled =
+      runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.ui.feature_flags.perf_advisor')
+        ?.value === 'true';
 
     const type =
       pathname.indexOf('edit') < 0
         ? 'Create'
         : this.props.params.type
-          ? this.props.params.type === 'primary'
-            ? 'Edit'
-            : 'Async'
-          : 'Edit';
+        ? this.props.params.type === 'primary'
+          ? 'Edit'
+          : 'Async'
+        : 'Edit';
 
     if (pathname === '/universes/create') {
       return <UniverseFormContainer type="Create" />;
@@ -347,6 +358,7 @@ class UniverseDetail extends Component {
               updateAvailable={updateAvailable}
               showSoftwareUpgradesModal={showSoftwareUpgradesModal}
               tabRef={this.ybTabPanel}
+              isTopKMetricsEnabled={isTopKMetricsEnabled}
             />
           </Tab.Pane>
         ),
@@ -354,6 +366,7 @@ class UniverseDetail extends Component {
         isNotHidden(currentCustomer.data.features, 'universes.details.tables') && (
           <Tab.Pane
             eventKey={'tables'}
+            className={'universe-tables-list'}
             tabtitle="Tables"
             key="tables-tab"
             mountOnEnter={true}
@@ -402,19 +415,6 @@ class UniverseDetail extends Component {
           </Tab.Pane>
         ),
 
-        isNotHidden(currentCustomer.data.features, 'universes.details.perfadvisor', 'hidden') && (
-          <Tab.Pane
-            eventKey={'perfadvisor'}
-            tabtitle="Performance Advisor"
-            key="perfadvisor-tab"
-            mountOnEnter={true}
-            unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, 'universes.details.perfadvisor')}
-          >
-            <PerfAdvisor />
-          </Tab.Pane>
-        ),
-
         isNotHidden(currentCustomer.data.features, 'universes.details.queries') && (
           <Tab.Pane
             eventKey={'queries'}
@@ -425,7 +425,7 @@ class UniverseDetail extends Component {
             onExit={this.stripQueryParams}
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.queries')}
           >
-            <QueriesViewer />
+            <QueriesViewer isPerfAdvisorEnabled={isPerfAdvisorEnabled} />
           </Tab.Pane>
         ),
 
@@ -439,7 +439,7 @@ class UniverseDetail extends Component {
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.replication')}
           >
             {featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
-              <Replication currentUniverseUUID={currentUniverse.data.universeUUID} />
+              <XClusterReplication currentUniverseUUID={currentUniverse.data.universeUUID} />
             ) : (
               <ReplicationContainer />
             )}
@@ -473,40 +473,40 @@ class UniverseDetail extends Component {
       ...(isReadOnlyUniverse
         ? []
         : [
-          isNotHidden(currentCustomer.data.features, 'universes.details.backups') && (
-            <Tab.Pane
-              eventKey={'backups'}
-              tabtitle={<>Backups</>}
-              key="backups-tab"
-              mountOnEnter={true}
-              unmountOnExit={true}
-              disabled={isDisabled(currentCustomer.data.features, 'universes.details.backups')}
-            >
-              {featureFlags.test['backupv2'] || featureFlags.released['backupv2'] ? (
-                <UniverseLevelBackup />
-              ) : (
-                <ListBackupsContainer currentUniverse={currentUniverse.data} />
-              )}
-            </Tab.Pane>
-          ),
+            isNotHidden(currentCustomer.data.features, 'universes.details.backups') && (
+              <Tab.Pane
+                eventKey={'backups'}
+                tabtitle={<>Backups</>}
+                key="backups-tab"
+                mountOnEnter={true}
+                unmountOnExit={true}
+                disabled={isDisabled(currentCustomer.data.features, 'universes.details.backups')}
+              >
+                {featureFlags.test['backupv2'] || featureFlags.released['backupv2'] ? (
+                  <UniverseLevelBackup />
+                ) : (
+                  <ListBackupsContainer currentUniverse={currentUniverse.data} />
+                )}
+              </Tab.Pane>
+            ),
 
-          isNotHidden(currentCustomer.data.features, 'universes.details.health') && (
-            <Tab.Pane
-              eventKey={'health'}
-              tabtitle="Health"
-              key="health-tab"
-              mountOnEnter={true}
-              unmountOnExit={true}
-              disabled={isDisabled(currentCustomer.data.features, 'universes.details.heath')}
-            >
-              <UniverseHealthCheckList
-                universe={universe}
-                currentCustomer={currentCustomer}
-                currentUser={currentUser}
-              />
-            </Tab.Pane>
-          )
-        ])
+            isNotHidden(currentCustomer.data.features, 'universes.details.health') && (
+              <Tab.Pane
+                eventKey={'health'}
+                tabtitle="Health"
+                key="health-tab"
+                mountOnEnter={true}
+                unmountOnExit={true}
+                disabled={isDisabled(currentCustomer.data.features, 'universes.details.heath')}
+              >
+                <UniverseHealthCheckList
+                  universe={universe}
+                  currentCustomer={currentCustomer}
+                  currentUser={currentUser}
+                />
+              </Tab.Pane>
+            )
+          ])
     ].filter((element) => element);
 
     const currentBreadCrumb = (
@@ -550,6 +550,8 @@ class UniverseDetail extends Component {
     const enableThirdpartyUpgrade =
       featureFlags.test['enableThirdpartyUpgrade'] ||
       featureFlags.released['enableThirdpartyUpgrade'];
+
+    const isMKREnabled = featureFlags.test['enableMKR'] || featureFlags.released['enableMKR'];
 
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
@@ -612,13 +614,13 @@ class UniverseDetail extends Component {
                         runtimeConfigs.data.configEntries.find(
                           (c) => c.key === 'yb.upgrade.vmImage'
                         ).value === 'true' && (
-                        <YBMenuItem disabled={updateInProgress} onClick={showVMImageUpgradeModal}>
-                          <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
+                          <YBMenuItem disabled={updateInProgress} onClick={showVMImageUpgradeModal}>
+                            <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
                               Upgrade VM Image
-                          </YBLabelWithIcon>
-                        </YBMenuItem>
-                      )}
-                      {!universePaused && !useSystemd && (
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        )}
+                      {!universePaused && !useSystemd && !isItKubernetesUniverse && (
                         <YBMenuItem
                           disabled={updateInProgress || onPremSkipProvisioning}
                           onClick={showUpgradeSystemdModal}
@@ -652,16 +654,16 @@ class UniverseDetail extends Component {
                           currentCustomer.data.features,
                           'universes.details.overview.editUniverse'
                         ) && (
-                        <YBMenuItem
-                          to={`/universes/${uuid}/edit/primary`}
-                          availability={getFeatureState(
-                            currentCustomer.data.features,
-                            'universes.details.overview.editUniverse'
-                          )}
-                        >
-                          <YBLabelWithIcon icon="fa fa-pencil">Edit Universe</YBLabelWithIcon>
-                        </YBMenuItem>
-                      )}
+                          <YBMenuItem
+                            to={`/universes/${uuid}/edit/primary`}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.editUniverse'
+                            )}
+                          >
+                            <YBLabelWithIcon icon="fa fa-pencil">Edit Universe</YBLabelWithIcon>
+                          </YBMenuItem>
+                        )}
 
                       {!universePaused && (
                         <YBMenuItem
@@ -716,7 +718,13 @@ class UniverseDetail extends Component {
                       {!isReadOnlyUniverse && !universePaused && (
                         <YBMenuItem
                           disabled={updateInProgress}
-                          to={`/universes/${uuid}/edit/async`}
+                          to={
+                            this.isNewUIEnabled()
+                              ? `/universes/${uuid}/${
+                                  this.hasReadReplica(universeInfo) ? 'edit' : 'create'
+                                }/async`
+                              : `/universes/${uuid}/edit/async`
+                          }
                           availability={getFeatureState(
                             currentCustomer.data.features,
                             'universes.details.overview.readReplica'
@@ -761,7 +769,7 @@ class UniverseDetail extends Component {
                                   onClick={showSupportBundleModal}
                                 >
                                   <YBLabelWithIcon icon="fa fa-file-archive-o">
-                                      Support Bundles
+                                    Support Bundles
                                   </YBLabelWithIcon>
                                 </YBMenuItem>
                               }
@@ -788,7 +796,7 @@ class UniverseDetail extends Component {
                             }
                           >
                             {currentUniverse.data.universeConfig &&
-                              currentUniverse.data.universeConfig.takeBackups === 'true'
+                            currentUniverse.data.universeConfig.takeBackups === 'true'
                               ? 'Disable Backup'
                               : 'Enable Backup'}
                           </YBLabelWithIcon>
@@ -812,23 +820,21 @@ class UniverseDetail extends Component {
                       {isPausableUniverse(currentUniverse?.data) &&
                         !isEphemeralAwsStorage &&
                         (featureFlags.test['pausedUniverse'] ||
-                          featureFlags.released['pausedUniverse']) &&
-                            (
-                              <YBMenuItem
-                                onClick={showToggleUniverseStateModal}
-                                availability={getFeatureState(
-                                  currentCustomer.data.features,
-                                  'universes.details.overview.pausedUniverse'
-                                )}
-                              >
-                                <YBLabelWithIcon
-                                  icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
-                                >
-                                  {universePaused ? 'Resume Universe' : 'Pause Universe'}
-                                </YBLabelWithIcon>
-                              </YBMenuItem>
-                            )
-                      }
+                          featureFlags.released['pausedUniverse']) && (
+                          <YBMenuItem
+                            onClick={showToggleUniverseStateModal}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.pausedUniverse'
+                            )}
+                          >
+                            <YBLabelWithIcon
+                              icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
+                            >
+                              {universePaused ? 'Resume Universe' : 'Pause Universe'}
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        )}
                       <YBMenuItem
                         onClick={showDeleteUniverseModal}
                         availability={getFeatureState(
@@ -894,21 +900,33 @@ class UniverseDetail extends Component {
           universe={currentUniverse.data}
           type="primary"
         />
-        <EncryptionKeyModalContainer
-          modalVisible={showModal && visibleModal === 'manageKeyModal'}
-          onHide={closeModal}
-          handleSubmitKey={this.handleSubmitManageKey}
-          currentUniverse={currentUniverse}
-          name={currentUniverse.data.name}
-          uuid={currentUniverse.data.universeUUID}
-        />
+        {isMKREnabled ? (
+          <EncryptionAtRest
+            open={showModal && visibleModal === 'manageKeyModal'}
+            onClose={() => {
+              closeModal();
+              this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+            }}
+            universeDetails={currentUniverse.data}
+          />
+        ) : (
+          <EncryptionKeyModalContainer
+            modalVisible={showModal && visibleModal === 'manageKeyModal'}
+            onHide={closeModal}
+            handleSubmitKey={this.handleSubmitManageKey}
+            currentUniverse={currentUniverse}
+            name={currentUniverse.data.name}
+            uuid={currentUniverse.data.universeUUID}
+          />
+        )}
+
         <Measure onMeasure={this.onResize.bind(this)}>
           <YBTabsWithLinksPanel
             defaultTab={defaultTab}
             activeTab={activeTab}
             routePrefix={`/universes/${currentUniverse.data.universeUUID}/`}
             id={'universe-tab-panel'}
-            className="universe-detail"
+            className={'universe-detail'}
           >
             {tabElements}
           </YBTabsWithLinksPanel>

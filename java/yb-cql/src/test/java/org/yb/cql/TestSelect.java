@@ -62,6 +62,7 @@ public class TestSelect extends BaseCQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
 
     flagMap.put("ycql_allow_in_op_with_order_by", "true");
+    flagMap.put("ycql_enable_packed_row", "false");
     return flagMap;
   }
 

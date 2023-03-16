@@ -18,7 +18,7 @@ import org.junit.runner.RunWith;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.MiscUtil;
 import org.yb.util.ThrowingRunnable;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import org.yb.util.BuildTypeUtil;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestTransactionStatusTable extends BasePgSQLTest {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {

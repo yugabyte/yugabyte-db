@@ -171,6 +171,7 @@ class Waiter():
     def wait(self, operation, region=None, zone=None):
         # This allows easier chaining of waits on functions that are NOOPs if items already exist.
         if operation is None:
+            logging.warning("Returning waiting for a None Operation")
             return
         retry_count = 0
         name = operation["name"]
@@ -203,7 +204,8 @@ class Waiter():
 
 
 class NetworkManager():
-    def __init__(self, project, compute, metadata, dest_vpc_id, host_vpc_id, per_region_meta):
+    def __init__(self, project, compute, metadata, dest_vpc_id, host_vpc_id,
+                 per_region_meta, create_new_vpc=False):
         self.project = project
         self.compute = compute
         self.metadata = metadata
@@ -218,6 +220,7 @@ class NetworkManager():
         if self.host_vpc_id is not None:
             self.host_vpc_id = self.host_vpc_id.split("/")[-1]
         self.per_region_meta = per_region_meta
+        self.create_new_vpc = create_new_vpc
 
         self.waiter = Waiter(self.project, self.compute)
 
@@ -252,13 +255,23 @@ class NetworkManager():
         return self.network_info_as_json(network_name, output_region_to_subnet_map)
 
     def bootstrap(self):
-        # If given a target VPC, then don't create anything.
-        if self.dest_vpc_id:
+        # If create_new_vpc is not specified than use the specified the VPC.
+        if self.dest_vpc_id and not self.create_new_vpc:
+            # Try to fetch the specified network & fail in case it does not exist.
+            networks = self.get_networks(self.dest_vpc_id)
+            if len(networks) == 0:
+                raise YBOpsRuntimeError("Invalid target VPC: {}".format(self.dest_vpc_id))
             return self.get_network_data(self.dest_vpc_id)
-        # If we were not given a target VPC, then we'll try to provision our custom network.
+        # If create_new_vpc is specified we will be creating a new VPC with specified
+        # name if not present, else we will fail.
+        if self.dest_vpc_id:
+            global YB_NETWORK_NAME
+            YB_NETWORK_NAME = self.dest_vpc_id
         networks = self.get_networks(YB_NETWORK_NAME)
         if len(networks) > 0:
-            network_url = networks[0].get("selfLink")
+            raise YBOpsRuntimeError(
+                "Failed to create VPC as vpc with same name already exists: {}"
+                .format(YB_NETWORK_NAME))
         else:
             # Create the network if it didn't already exist.
             op = self.waiter.wait(self.create_network())
@@ -551,11 +564,13 @@ class GoogleCloudAdmin():
         self.metadata = metadata
         self.waiter = Waiter(self.project, self.compute)
 
-    def network(self, dest_vpc_id=None, host_vpc_id=None, per_region_meta=None):
+    def network(self, dest_vpc_id=None, host_vpc_id=None, per_region_meta=None,
+                create_new_vpc=False):
         if per_region_meta is None:
             per_region_meta = {}
         return NetworkManager(
-            self.project, self.compute, self.metadata, dest_vpc_id, host_vpc_id, per_region_meta)
+            self.project, self.compute, self.metadata, dest_vpc_id,
+            host_vpc_id, per_region_meta, create_new_vpc)
 
     @staticmethod
     def get_current_host_info():
@@ -582,6 +597,7 @@ class GoogleCloudAdmin():
     def create_disk(self, zone, instance_tags, body):
         if instance_tags is not None:
             body.update({"labels": json.loads(instance_tags)})
+        # Create a persistent disk with wait
         operation = self.compute.disks().insert(project=self.project,
                                                 zone=zone,
                                                 body=body).execute()
@@ -642,6 +658,7 @@ class GoogleCloudAdmin():
             self.compute.disks().delete(project=self.project, zone=zone, disk=disk_name).execute()
 
     def mount_disk(self, zone, instance, body):
+        logging.info("Attaching disk on instance {} in zone {}".format(instance, zone))
         operation = self.compute.instances().attachDisk(project=self.project,
                                                         zone=zone,
                                                         instance=instance,
@@ -649,6 +666,7 @@ class GoogleCloudAdmin():
         return self.waiter.wait(operation, zone=zone)
 
     def unmount_disk(self, zone, instance, name):
+        logging.info("Detaching disk {} from instance {}".format(name, instance))
         operation = self.compute.instances().detachDisk(project=self.project,
                                                         zone=zone,
                                                         instance=instance,
@@ -868,7 +886,8 @@ class GoogleCloudAdmin():
                         use_preemptible, can_ip_forward, machine_image, num_volumes, volume_type,
                         volume_size, boot_disk_size_gb=None, assign_public_ip=True,
                         assign_static_public_ip=False, ssh_keys=None, boot_script=None,
-                        auto_delete_boot_disk=True, tags=None, cloud_subnet_secondary=None):
+                        auto_delete_boot_disk=True, tags=None, cloud_subnet_secondary=None,
+                        gcp_instance_template=None):
         # Name of the project that target VPC network belongs to.
         host_project = self.get_host_project()
 
@@ -987,12 +1006,20 @@ class GoogleCloudAdmin():
         for _ in range(num_volumes):
             body["disks"].append(disk_config)
 
+        args = {
+            "project": self.project,
+            "zone": zone,
+            "body": body
+        }
         logging.info("[app] About to create GCP VM {} in region {}.".format(
             instance_name, region))
-        self.waiter.wait(self.compute.instances().insert(
-            project=self.project,
-            zone=zone,
-            body=body).execute(), zone=zone)
+        if gcp_instance_template:
+            template_url_format = "projects/{}/global/instanceTemplates/{}"
+            template_url = template_url_format.format(self.project, gcp_instance_template)
+            logging.info("[app] Creating VM {} using instance template {}"
+                         .format(instance_name, gcp_instance_template))
+            args["sourceInstanceTemplate"] = template_url
+        self.waiter.wait(self.compute.instances().insert(**args).execute(), zone=zone)
         logging.info("[app] Created GCP VM {}".format(instance_name))
 
     def get_console_output(self, zone, instance_name):

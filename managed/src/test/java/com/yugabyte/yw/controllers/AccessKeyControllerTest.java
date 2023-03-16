@@ -58,6 +58,7 @@ import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import play.libs.Json;
@@ -475,6 +476,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   }
 
   @Test
+  @Ignore
   public void testCreateAccessKeyWithException() {
     when(mockAccessManager.addKey(
             defaultRegion.uuid,

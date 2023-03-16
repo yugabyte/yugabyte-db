@@ -10,35 +10,6 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.certmgmt.CertificateHelper;
-import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.forms.UpgradeParams;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.TaskType;
-import junitparams.JUnitParamsRunner;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.ArgumentCaptor;
-import play.libs.Json;
-import play.mvc.Result;
-
-import java.util.UUID;
-
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
@@ -62,6 +33,34 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.UpgradeParams;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.UUID;
+import junitparams.JUnitParamsRunner;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import play.libs.Json;
+import play.mvc.Result;
 
 @RunWith(JUnitParamsRunner.class)
 public class UniverseActionsControllerTest extends UniverseControllerTestBase {
@@ -139,19 +138,8 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
     userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
-    UUID clusterUUID = UUID.randomUUID();
-    JsonNode clusterJson =
-        Json.newObject().put("uuid", clusterUUID.toString()).set("userIntent", userIntentJson);
-    ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
-    ObjectNode cloudInfo = Json.newObject();
-    cloudInfo.put("region", "region1");
-    ObjectNode nodeDetails = Json.newObject();
-    nodeDetails.put("nodeName", "testing-1");
-    nodeDetails.put("placementUuid", clusterUUID.toString());
-    nodeDetails.set("cloudInfo", cloudInfo);
-    ArrayNode nodeDetailsSet = Json.newArray().add(nodeDetails);
-    createBodyJson.set("clusters", clustersJsonArray);
-    createBodyJson.set("nodeDetailsSet", nodeDetailsSet);
+    createBodyJson.set("clusters", clustersArray(userIntentJson, Json.newObject()));
+    createBodyJson.set("nodeDetailsSet", Json.newArray());
     createBodyJson.put("nodePrefix", "demo-node");
 
     String createUrl = "/api/customers/" + customer.uuid + "/universes";
@@ -426,5 +414,35 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
         .put("enableNodeToNodeEncrypt", enableNodeToNodeEncrypt)
         .put("enableClientToNodeEncrypt", enableClientToNodeEncrypt)
         .put("rootCA", rootCA != null ? rootCA.toString() : "");
+  }
+
+  @Test
+  public void testUnlockUniverseSuccess() {
+    Universe u = createUniverse(customer.getCustomerId());
+
+    // Set universe to be in updating state.
+    Universe.UniverseUpdater updater =
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          universeDetails.updateInProgress = true;
+          universeDetails.updateSucceeded = false;
+          universe.setUniverseDetails(universeDetails);
+        };
+
+    // Save the updates to the universe.
+    u = Universe.saveDetails(u.universeUUID, updater);
+
+    // Validate that universe in update state.
+    assertEquals(true, u.getUniverseDetails().updateInProgress);
+    assertEquals(false, u.getUniverseDetails().updateSucceeded);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/unlock";
+    Result result = doRequestWithAuthToken("POST", url, authToken);
+    assertOk(result);
+
+    // Validate universe is unlocked.
+    u = Universe.getOrBadRequest(u.universeUUID);
+    assertEquals(false, u.getUniverseDetails().updateInProgress);
+    assertEquals(true, u.getUniverseDetails().updateSucceeded);
   }
 }

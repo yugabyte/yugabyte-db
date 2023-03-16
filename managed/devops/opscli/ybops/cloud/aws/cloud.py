@@ -63,11 +63,12 @@ class AwsCloud(AbstractCloud):
     def get_vpc_for_subnet(self, region, subnet):
         return get_vpc_for_subnet(get_client(region), subnet)
 
-    def get_image(self, region=None):
+    def get_image(self, region=None, architecture="x86_64"):
         regions = [region] if region is not None else self.get_regions()
+        imageKey = "arm_image" if architecture == "aarch64" else "image"
         output = {}
         for r in regions:
-            output[r] = self.metadata["regions"][r]["image"]
+            output[r] = self.metadata["regions"][r][imageKey]
         return output
 
     def get_image_arch(self, args):
@@ -207,7 +208,6 @@ class AwsCloud(AbstractCloud):
         return output
 
     def network_bootstrap(self, args):
-        result = {}
         # Generate region subset, based on passed in JSON.
         custom_payload = json.loads(args.custom_payload)
         per_region_meta = custom_payload.get("perRegionMetadata")
@@ -229,11 +229,13 @@ class AwsCloud(AbstractCloud):
         # per-item creation and x-region connectivity/glue.
         #
         # For now, let's leave it as a top-level knob to "do everything" vs "do nothing"...
-        user_provided_vpc_ids = 0
-        for r in per_region_meta.values():
-            if r.get("vpcId") is not None:
-                user_provided_vpc_ids += 1
-        if user_provided_vpc_ids > 0 and user_provided_vpc_ids != len(per_region_meta):
+        added_region_codes = custom_payload.get("addedRegionCodes")
+        if added_region_codes is None:
+            added_region_codes = per_region_meta.keys()
+
+        user_provided_vpc_ids = len([r for k, r in per_region_meta.items()
+                                    if k in added_region_codes and r.get("vpcId") is not None])
+        if user_provided_vpc_ids > 0 and user_provided_vpc_ids != len(added_region_codes):
             raise YBOpsRuntimeError("Either no regions or all regions must have vpcId specified.")
 
         components = {}
@@ -244,16 +246,20 @@ class AwsCloud(AbstractCloud):
         else:
             # Bootstrap the individual region items standalone (vpc, subnet, sg, RT, etc).
             for region in metadata_subset:
-                components[region] = client.bootstrap_individual_region(region)
+                if region in added_region_codes:
+                    components[region] = client.bootstrap_individual_region(region)
+                else:
+                    components[region] = YbVpcComponents.from_user_json(
+                        region, per_region_meta.get(region))
             # Cross link all the regions together.
-            client.cross_link_regions(components)
+            client.cross_link_regions(components, added_region_codes)
         return {region: c.as_json() for region, c in components.items()}
 
     def query_vpc(self, args):
         result = {}
         for region in self._get_all_regions_or_arg(args.region):
             result[region] = query_vpc(region)
-            result[region]["default_image"] = self.get_image(region).get(region)
+            result[region]["default_image"] = self.get_image(region, args.architecture).get(region)
         return result
 
     def get_current_host_info(self, args):
@@ -478,13 +484,15 @@ class AwsCloud(AbstractCloud):
         instance.terminate()
         instance.wait_until_terminated()
 
-    def reboot_instance(self, host_info, ssh_ports):
+    def reboot_instance(self, host_info, server_ports):
         boto3.client('ec2', region_name=host_info['region']).reboot_instances(
             InstanceIds=[host_info["id"]]
         )
-        self.wait_for_ssh_ports(host_info['private_ip'], host_info['name'], ssh_ports)
+        self.wait_for_server_ports(host_info["private_ip"], host_info["name"], server_ports)
 
     def mount_disk(self, host_info, vol_id, label):
+        logging.info("Mounting volume {} on host {}; label {}".format(
+                     vol_id, host_info['id'], label))
         ec2 = boto3.client('ec2', region_name=host_info['region'])
         ec2.attach_volume(
             Device=label,
@@ -495,6 +503,7 @@ class AwsCloud(AbstractCloud):
         waiter.wait(VolumeIds=[vol_id])
 
     def unmount_disk(self, host_info, vol_id):
+        logging.info("Unmounting volume {} from host {}".format(vol_id, host_info['id']))
         ec2 = boto3.client('ec2', region_name=host_info['region'])
         ec2.detach_volume(VolumeId=vol_id, InstanceId=host_info['id'])
         waiter = ec2.get_waiter('volume_available')
@@ -571,7 +580,7 @@ class AwsCloud(AbstractCloud):
         except ClientError as e:
             logging.error(e)
 
-    def start_instance(self, host_info, ssh_ports):
+    def start_instance(self, host_info, server_ports):
         ec2 = boto3.resource('ec2', host_info["region"])
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -587,8 +596,8 @@ class AwsCloud(AbstractCloud):
                 }
                 instance.wait_until_running(WaiterConfig=wait_config)
             # The OS boot up may take some time,
-            # so retry until the instance allows SSH connection.
-            self.wait_for_ssh_ports(host_info["private_ip"], host_info["id"], ssh_ports)
+            # so retry until the instance allows connection to either SSH or RPC.
+            self.wait_for_server_ports(host_info["private_ip"], host_info["id"], server_ports)
         except ClientError as e:
             logging.error(e)
         finally:

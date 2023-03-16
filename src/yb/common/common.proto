@@ -226,6 +226,11 @@ message IndexInfoPB {
 
   // Where clause for partial index.
   optional WherePredicateSpecPB where_predicate_spec = 33;
+
+  // When the backfill job on this index is cleared, this field is set to the number of indexed
+  // table rows processed by the backfill job. The (default) value is zero, otherwise.
+  // For partial indexes, this includes non-matching rows of the indexed table.
+  optional uint64 num_rows_processed_by_backfill_job = 34;
 }
 
 // The possible order modes for clients.
@@ -389,6 +394,16 @@ message ReadHybridTimePB {
 
   optional fixed64 global_limit_ht = 3;
 
+  // When a transaction reads data, all committed writes of other transactions with a timestamp
+  // <= read_ht are visible.
+  //
+  // However, a transaction's reads should be able to see all provisional writes from the same
+  // transaction irrespective of read_ht, except some based on additional constraints for YSQL (as
+  // described in src/yb/yql/pggate/README). The query layer uses in_txn_limit_ht to meet these
+  // constraints. If in_txn_limit_ht is set, any operation will not be able to read provisional
+  // writes from the same transaction which have a write timestamp higher than the in_txn_limit_ht.
+  //
+  // src/yb/yql/pggate/README also explains how this works along with YSQL's buffering logic.
   optional fixed64 in_txn_limit_ht = 4;
 
   optional fixed64 local_limit_ht = 5;
@@ -552,4 +567,9 @@ message DeletePlanPB {
   optional string key_conditions = 3;
   optional string filter = 4;
   optional int32 output_width = 5;
+}
+
+message TServerDBCatalogVersionInfo {
+  optional uint32 db_oid = 1;
+  optional int32 shm_index = 2;
 }

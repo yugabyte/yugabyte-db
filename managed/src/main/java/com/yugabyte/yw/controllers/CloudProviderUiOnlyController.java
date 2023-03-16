@@ -23,6 +23,7 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -46,7 +47,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
    */
   @ApiOperation(value = "UI_ONLY", nickname = "createCloudProvider", hidden = true)
   public Result create(UUID customerUUID) throws IOException {
-    JsonNode reqBody = CloudInfoInterface.mayBeMassageRequest(request().body().asJson());
+    JsonNode reqBody = CloudInfoInterface.mayBeMassageRequest(request().body().asJson(), false);
     CloudProviderFormData cloudProviderFormData =
         formFactory.getFormDataOrBadRequest(reqBody, CloudProviderFormData.class);
     fieldsValidator.validateFields(
@@ -68,7 +69,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
             cloudProviderFormData.code,
             cloudProviderFormData.name,
             reqProvider,
-            cloudProviderFormData.region);
+            false);
     CloudInfoInterface.mayBeMassageResponse(provider);
     auditService()
         .createAuditEntryWithReqBody(

@@ -20,6 +20,8 @@
 #include <variant>
 #include <vector>
 
+#include "yb/common/hybrid_time.h"
+
 #include "yb/gutil/macros.h"
 
 #include "yb/util/locks.h"
@@ -212,13 +214,7 @@ class PgDocResult {
 // No memory allocations is required in case of using PerformFuture.
 class PgDocResponse {
  public:
-  struct Data {
-    Data(const rpc::CallResponsePtr& response_, uint64_t in_txn_limit_)
-        : response(response_), in_txn_limit(in_txn_limit_) {
-    }
-    rpc::CallResponsePtr response;
-    uint64_t in_txn_limit;
-  };
+  using Data = PerformFuture::Data;
 
   class Provider {
    public:
@@ -229,18 +225,14 @@ class PgDocResponse {
   using ProviderPtr = std::unique_ptr<Provider>;
 
   PgDocResponse() = default;
-  PgDocResponse(PerformFuture future, uint64_t in_txn_limit);
+  explicit PgDocResponse(PerformFuture future);
   explicit PgDocResponse(ProviderPtr provider);
 
   bool Valid() const;
   Result<Data> Get(MonoDelta* wait_time);
 
  private:
-  struct PerformInfo {
-    PerformFuture future;
-    uint64_t in_txn_limit;
-  };
-  std::variant<PerformInfo, ProviderPtr> holder_;
+  std::variant<PerformFuture, ProviderPtr> holder_;
 };
 
 class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
@@ -248,7 +240,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   using SharedPtr = std::shared_ptr<PgDocOp>;
 
   using Sender = std::function<Result<PgDocResponse>(
-      PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, uint64_t, ForceNonBufferable)>;
+      PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, HybridTime, ForceNonBufferable)>;
 
   struct OperationRowOrder {
     OperationRowOrder(const PgsqlOpPtr& operation_, int64_t order_)
@@ -331,8 +323,6 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
     const PgSession::ScopedRefPtr& pg_session, PgTable* table,
     const Sender& = Sender(&PgDocOp::DefaultSender));
 
-  uint64_t& GetInTxnLimit();
-
   // Populate Protobuf requests using the collected information for this DocDB operator.
   virtual Result<bool> DoCreateRequests() = 0;
 
@@ -345,18 +335,6 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   // Session control.
   PgSession::ScopedRefPtr pg_session_;
-
-  // This time is set at the start (i.e., before sending the first batch of PgsqlOp ops) and must
-  // stay the same for the lifetime of the PgDocOp.
-  //
-  // Each query must only see data written by earlier queries in the same transaction, not data
-  // written by itself. Setting it at the start ensures that future operations of the PgDocOp only
-  // see data written by previous queries.
-  //
-  // NOTE: Each query might result in many PgDocOps. So using 1 in_txn_limit_ per PgDocOp is not
-  // enough. The same should be used across all PgDocOps in the query. This is ensured by the use
-  // of statement_in_txn_limit in yb_exec_params of EState.
-  uint64_t in_txn_limit_ = 0;
 
   // Target table.
   PgTable& table_;
@@ -455,15 +433,32 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   Status CompleteRequests();
 
+  // Returns a reference to the in_txn_limit_ht to be used.
+  //
+  // For read ops: usually one in txn limit is chosen for all for read ops of a SQL statement. And
+  // the hybrid time in such a situation references the statement level integer that is passed down
+  // to all PgDocOp instances via PgExecParameters.
+  //
+  // In case the reference to the statement level in_txn_limit_ht isn't passed in PgExecParameters,
+  // the local in_txn_limit_ht_ is used which is 0 at the start of the PgDocOp.
+  //
+  // For writes: the local in_txn_limit_ht_ is used if available.
+  //
+  // See ReadHybridTimePB for more details about in_txn_limit.
+  uint64_t& GetInTxnLimitHt();
+
   static Result<PgDocResponse> DefaultSender(
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t in_txn_limit, ForceNonBufferable force_non_bufferable);
+      HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable);
 
   // Result set either from selected or returned targets is cached in a list of strings.
   // Querying state variables.
   Status exec_status_ = Status::OK();
 
   Sender sender_;
+
+  // See ReadHybridTimePB for more details about in_txn_limit.
+  uint64_t in_txn_limit_ht_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(PgDocOp);
 };
@@ -511,14 +506,14 @@ class PgDocReadOp : public PgDocOp {
 
   // Helper functions for PopulateNextHashPermutationOps
   // Prepares a new read request from the pool of inactive operators.
-  LWPgsqlReadRequestPB *PrepareReadReq();
+  LWPgsqlReadRequestPB* PrepareReadReq();
   // True if the next call to GetNextPermutation will not fail.
-  bool HasNextPermutation();
+  bool HasNextPermutation() const;
   // Gets the next possible permutation of partition_exprs.
-  bool GetNextPermutation(std::vector<const LWPgsqlExpressionPB *> *exprs);
+  bool GetNextPermutation(std::vector<const LWPgsqlExpressionPB*>* exprs);
   // Binds a given permutation of partition expressions to the given read request.
-  void BindPermutation(const std::vector<const LWPgsqlExpressionPB *> &exprs,
-                       LWPgsqlReadRequestPB *read_op);
+  void BindPermutation(const std::vector<const LWPgsqlExpressionPB*>& exprs,
+                       LWPgsqlReadRequestPB* read_op) const;
 
   // Create operators by partitions.
   // - Optimization for aggregating or filtering requests.
@@ -527,8 +522,10 @@ class PgDocReadOp : public PgDocOp {
   // Create one sampling operator per partition and arrange their execution in random order
   Result<bool> PopulateSamplingOps();
 
-  // Set partition boundaries to a given partition.
-  Status SetScanPartitionBoundary();
+  // Set partition boundaries to a given partition. Return true if new boundaries combined with
+  // old boundaries, if any, are non-empty range. Obviously, there's no need to send request with
+  // empty range boundaries, because the result will be empty.
+  Result<bool> SetScanPartitionBoundary();
 
   Status CompleteProcessResponse() override;
 
@@ -552,6 +549,8 @@ class PgDocReadOp : public PgDocOp {
 
   void SetDistinctScan();
 
+  // Set bounds on the request so it only affect specified partition
+  // Returns false if current bounds fully exclude the partition
   Result<bool> SetLowerUpperBound(LWPgsqlReadRequestPB* request, size_t partition);
 
   // Get the read_op for a specific operation index from pgsql_ops_.
@@ -596,8 +595,8 @@ class PgDocReadOp : public PgDocOp {
   // For a query clause "h1 = 1 AND h2 IN (2,3) AND h3 IN (4,5,6) AND h4 = 7",
   // there are 1*2*3*1 = 6 possible permutation.
   // As such, this field will take on values 0 through 5.
-  int total_permutation_count_ = 0;
-  int next_permutation_idx_ = 0;
+  size_t total_permutation_count_ = 0;
+  size_t next_permutation_idx_ = 0;
 
   // Used internally for PopulateNextHashPermutationOps to holds all partition expressions.
   // Elements correspond to a hash columns, in the same order as they were defined

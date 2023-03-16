@@ -11918,32 +11918,32 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Insert",
-      "expr" : "max(rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"InsertStmt\", quantile=\"p95\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.95, rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"InsertStmt\", quantile=\"p95\"}[300s])) by (service_method)",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "Select",
-      "expr" : "max(rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"SelectStmt\", quantile=\"p95\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.95, rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"SelectStmt\", quantile=\"p95\"}[300s])) by (service_method)",
       "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "Delete",
-      "expr" : "max(rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"DeleteStmt\", quantile=\"p95\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.95, rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"DeleteStmt\", quantile=\"p95\"}[300s])) by (service_method)",
       "refId" : "C"
     }, {
       "hide" : false,
       "legendFormat" : "Update",
-      "expr" : "max(rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"UpdateStmt\", quantile=\"p95\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.95, rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"UpdateStmt\", quantile=\"p95\"}[300s])) by (service_method)",
       "refId" : "D"
     }, {
       "hide" : false,
       "legendFormat" : "Transactions",
-      "expr" : "max(rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"Transaction\", quantile=\"p95\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.95, rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"Transaction\", quantile=\"p95\"}[300s])) by (service_method)",
       "refId" : "E"
     }, {
       "hide" : false,
       "legendFormat" : "Other",
-      "expr" : "max(rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"OtherStmts\", quantile=\"p95\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.95, rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"OtherStmts\", quantile=\"p95\"}[300s])) by (service_method)",
       "refId" : "F"
     } ],
     "gridPos" : {
@@ -12035,32 +12035,32 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Insert",
-      "expr" : "max(rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"InsertStmt\", quantile=\"p99\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.99, rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"InsertStmt\", quantile=\"p99\"}[300s])) by (service_method)",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "Select",
-      "expr" : "max(rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"SelectStmt\", quantile=\"p99\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.99, rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"SelectStmt\", quantile=\"p99\"}[300s])) by (service_method)",
       "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "Delete",
-      "expr" : "max(rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"DeleteStmt\", quantile=\"p99\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.99, rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"DeleteStmt\", quantile=\"p99\"}[300s])) by (service_method)",
       "refId" : "C"
     }, {
       "hide" : false,
       "legendFormat" : "Update",
-      "expr" : "max(rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"UpdateStmt\", quantile=\"p99\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.99, rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"UpdateStmt\", quantile=\"p99\"}[300s])) by (service_method)",
       "refId" : "D"
     }, {
       "hide" : false,
       "legendFormat" : "Transactions",
-      "expr" : "max(rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"Transaction\", quantile=\"p99\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.99, rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"Transaction\", quantile=\"p99\"}[300s])) by (service_method)",
       "refId" : "E"
     }, {
       "hide" : false,
       "legendFormat" : "Other",
-      "expr" : "max(rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"OtherStmts\", quantile=\"p99\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.99, rpc_latency{service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_cqlserver\", service_method=\"OtherStmts\", quantile=\"p99\"}[300s])) by (service_method)",
       "refId" : "F"
     } ],
     "gridPos" : {
@@ -14776,7 +14776,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
-      "expr" : "max(rpc_latency{service_type=\"RedisServerService\", node_prefix=~\"$dbcluster\", server_type=\"yb_redisserver\", quantile=\"p95\"}) by (service_method) > 0",
+      "expr" : "max(quantile_over_time(0.95, rpc_latency{service_type=\"RedisServerService\", node_prefix=~\"$dbcluster\", server_type=\"yb_redisserver\", quantile=\"p95\"}[300s])) by (service_method) > 0",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -14868,7 +14868,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
-      "expr" : "max(rpc_latency{service_type=\"RedisServerService\", node_prefix=~\"$dbcluster\", server_type=\"yb_redisserver\", quantile=\"p99\"}) by (service_method) > 0",
+      "expr" : "max(quantile_over_time(0.99, rpc_latency{service_type=\"RedisServerService\", node_prefix=~\"$dbcluster\", server_type=\"yb_redisserver\", quantile=\"p99\"}[300s])) by (service_method) > 0",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -15647,22 +15647,22 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Insert",
-      "expr" : "max(rpc_latency{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"InsertStmt\", quantile=\"p95\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.95, rpc_latency{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"InsertStmt\", quantile=\"p95\"}[300s])) by (service_method)",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "Select",
-      "expr" : "max(rpc_latency{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"SelectStmt\", quantile=\"p95\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.95, rpc_latency{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"SelectStmt\", quantile=\"p95\"}[300s])) by (service_method)",
       "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "Delete",
-      "expr" : "max(rpc_latency{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"DeleteStmt\", quantile=\"p95\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.95, rpc_latency{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"DeleteStmt\", quantile=\"p95\"}[300s])) by (service_method)",
       "refId" : "C"
     }, {
       "hide" : false,
       "legendFormat" : "Update",
-      "expr" : "max(rpc_latency{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"UpdateStmt\", quantile=\"p95\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.95, rpc_latency{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"UpdateStmt\", quantile=\"p95\"}[300s])) by (service_method)",
       "refId" : "D"
     } ],
     "gridPos" : {
@@ -15754,22 +15754,22 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Insert",
-      "expr" : "max(rpc_latency{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"InsertStmt\", quantile=\"p99\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.99, rpc_latency{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"InsertStmt\", quantile=\"p99\"}[300s])) by (service_method)",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "Select",
-      "expr" : "max(rpc_latency{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"SelectStmt\", quantile=\"p99\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.99, rpc_latency{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"SelectStmt\", quantile=\"p99\"}[300s])) by (service_method)",
       "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "Delete",
-      "expr" : "max(rpc_latency{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"DeleteStmt\", quantile=\"p99\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.99, rpc_latency{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"DeleteStmt\", quantile=\"p99\"}[300s])) by (service_method)",
       "refId" : "C"
     }, {
       "hide" : false,
       "legendFormat" : "Update",
-      "expr" : "max(rpc_latency{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"UpdateStmt\", quantile=\"p99\"}) by (service_method)",
+      "expr" : "max(quantile_over_time(0.99, rpc_latency{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=\"yb_ysqlserver\", service_method=\"UpdateStmt\", quantile=\"p99\"}[300s])) by (service_method)",
       "refId" : "D"
     } ],
     "gridPos" : {

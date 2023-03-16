@@ -22,6 +22,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -29,7 +30,11 @@ import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.mvc.Result;
 
-@Api
+// Keeping hidden until we have separate internal API publication
+@Api(
+    value = "Universe CDC Management",
+    hidden = true,
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class UniverseCdcStreamController extends AuthenticatedController {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseCdcStreamController.class);
 

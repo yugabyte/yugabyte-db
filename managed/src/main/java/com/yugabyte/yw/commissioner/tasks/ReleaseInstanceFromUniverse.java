@@ -52,7 +52,6 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
         taskParams().nodeName,
         taskParams().universeUUID);
     NodeDetails currentNode = null;
-    boolean hitException = false;
     try {
       checkUniverseVersion();
 
@@ -95,9 +94,9 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       if (instanceExists(taskParams())) {
         if (userIntent.providerType == CloudType.onprem) {
           // Stop master and tservers.
-          createStopServerTasks(currentNodeDetails, "master", true /* isForceDelete */)
+          createStopServerTasks(currentNodeDetails, ServerType.MASTER, true /* isForceDelete */)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          createStopServerTasks(currentNodeDetails, "tserver", true /* isForceDelete */)
+          createStopServerTasks(currentNodeDetails, ServerType.TSERVER, true /* isForceDelete */)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
           if (universe.isYbcEnabled()) {
             createStopYbControllerTasks(new HashSet<>(currentNodeDetails), true /*isIgnoreError*/)
@@ -137,7 +136,6 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-      hitException = true;
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the

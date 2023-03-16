@@ -60,6 +60,7 @@ struct PackedRowData {
 struct PackedColumnData {
   const PackedRowData* row = nullptr;
   Slice encoded_value;
+  bool liveness_column;
 
   explicit operator bool() const {
     return row != nullptr;
@@ -111,6 +112,33 @@ Slice NullSlice() {
 
 } // namespace
 
+Result<DocHybridTime> GetTableTombstoneTime(
+    const Slice& root_doc_key, const DocDB& doc_db,
+    const TransactionOperationContext& txn_op_context,
+    CoarseTimePoint deadline, const ReadHybridTime& read_time) {
+  if (root_doc_key[0] == KeyEntryTypeAsChar::kColocationId ||
+      root_doc_key[0] == KeyEntryTypeAsChar::kTableId) {
+    DocKey table_id;
+    RETURN_NOT_OK(table_id.DecodeFrom(root_doc_key, DocKeyPart::kUpToId));
+
+    auto table_id_encoded = table_id.Encode();
+    auto iter = CreateIntentAwareIterator(
+        doc_db, BloomFilterMode::USE_BLOOM_FILTER, table_id_encoded.AsSlice(),
+        rocksdb::kDefaultQueryId, txn_op_context, deadline, read_time);
+    iter->Seek(table_id_encoded);
+
+    Slice value;
+    DocHybridTime doc_ht = DocHybridTime::kMin;
+    RETURN_NOT_OK(iter->FindLatestRecord(table_id_encoded, &doc_ht, &value));
+    if (VERIFY_RESULT(Value::IsTombstoned(value))) {
+      SCHECK_NE(doc_ht, DocHybridTime::kInvalid, Corruption,
+                "Invalid hybrid time for table tombstone");
+      return doc_ht;
+    }
+  }
+  return DocHybridTime::kInvalid;
+}
+
   // TODO(dtxn) scan through all involved transactions first to cache statuses in a batch,
   // so during building subdocument we don't need to request them one by one.
   // TODO(dtxn) we need to restart read with scan_ht = commit_ht if some transaction was committed
@@ -135,10 +163,12 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
   DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", sub_doc_key.ToDebugHexString(),
                   iter->read_time().ToString());
   iter->SeekToLastDocKey();
-  SchemaPackingStorage schema_packing_storage;
+
+  SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE);
   DocDBTableReader doc_reader(
       iter.get(), deadline, projection, TableType::YQL_TABLE_TYPE, schema_packing_storage);
-  RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(sub_doc_key));
+  RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(VERIFY_RESULT(docdb::GetTableTombstoneTime(
+      sub_doc_key, doc_db, txn_op_context, deadline, read_time))));
 
   iter->Seek(sub_doc_key);
   SubDocument result;
@@ -173,29 +203,9 @@ void DocDBTableReader::SetTableTtl(const Schema& table_schema) {
   table_expiration_ = Expiration(TableTTL(table_schema));
 }
 
-Status DocDBTableReader::UpdateTableTombstoneTime(const Slice& root_doc_key) {
-  if (root_doc_key[0] == KeyEntryTypeAsChar::kColocationId ||
-      root_doc_key[0] == KeyEntryTypeAsChar::kTableId) {
-    // Update table_tombstone_time based on what is written to RocksDB if its not already set.
-    // Otherwise, just accept its value.
-    // TODO -- this is a bit of a hack to allow DocRowwiseIterator to pass along the table tombstone
-    // time read at a previous invocation of this same code. If instead the DocRowwiseIterator owned
-    // an instance of SubDocumentReaderBuilder, and this method call was hoisted up to that level,
-    // passing around this table_tombstone_time would no longer be necessary.
-    DocKey table_id;
-    RETURN_NOT_OK(table_id.DecodeFrom(root_doc_key, DocKeyPart::kUpToId));
-    iter_->Seek(table_id);
-
-    Slice value;
-    auto table_id_encoded = table_id.Encode();
-    DocHybridTime doc_ht = DocHybridTime::kMin;
-
-    RETURN_NOT_OK(iter_->FindLatestRecord(table_id_encoded, &doc_ht, &value));
-    if (VERIFY_RESULT(Value::IsTombstoned(value))) {
-      SCHECK_NE(doc_ht, DocHybridTime::kInvalid, Corruption,
-                "Invalid hybrid time for table tombstone");
-      table_tombstone_time_ = doc_ht;
-    }
+Status DocDBTableReader::UpdateTableTombstoneTime(DocHybridTime doc_ht) {
+  if (doc_ht.is_valid()) {
+    table_tombstone_time_ = doc_ht;
   }
   return Status::OK();
 }
@@ -258,7 +268,6 @@ class DocDBTableReader::GetHelperBase {
     RETURN_NOT_OK(Scan(CheckExistOnly::kTrue));
     if (Found()) {
       EmptyDocFound();
-      reader_.iter_->SeekOutOfSubDoc(root_doc_key_);
       return true;
     }
 
@@ -288,7 +297,8 @@ class DocDBTableReader::GetHelperBase {
     }
     DVLOG_WITH_PREFIX_AND_FUNC(4)
         << "(" << check_exist_only << "), found: " << last_found_ << ", column index: "
-        << column_index_ << ", " << GetResultAsString();
+        << column_index_ << ", finished: " << !reader_.iter_->valid() << ", "
+        << GetResultAsString();
     return Status::OK();
   }
 
@@ -374,7 +384,6 @@ class DocDBTableReader::GetHelperBase {
     }
     ++column_index_;
     if (column_index_ == reader_.projection_->size()) {
-      reader_.iter_->SeekOutOfSubDoc(root_doc_key_);
       return false;
     }
     UpdatePackedColumnData();
@@ -395,10 +404,14 @@ class DocDBTableReader::GetHelperBase {
       return false;
     }
     Slice value = packed_column_data_.encoded_value;
-    auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value));
+    ValueControlFields control_fields;
+    if (packed_column_data_.liveness_column) {
+      control_fields = packed_column_data_.row->control_fields;
+    } else {
+      control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value));
+    }
     const auto& write_time = packed_column_data_.row->doc_ht;
-    auto expiration = GetNewExpiration(
-        parent_exp, control_fields.ttl, write_time);
+    auto expiration = GetNewExpiration(parent_exp, control_fields.ttl, write_time);
     if (IsObsolete(expiration)) {
       return false;
     }
@@ -451,7 +464,7 @@ class DocDBTableReader::GetHelperBase {
       packed_row_.Assign(value);
       packed_row_data_.doc_ht = doc_ht;
       packed_row_data_.control_fields = control_fields;
-      *root_expiration = GetNewExpiration(*root_expiration, control_fields.ttl, doc_ht);
+      *root_expiration = GetNewExpiration(*root_expiration, ValueControlFields::kMaxTtl, doc_ht);
     } else if (value_type != ValueEntryType::kTombstone && value_type != ValueEntryType::kInvalid) {
       // Used in tests only
       RETURN_NOT_OK(SetRootValue(value_type, value));
@@ -474,6 +487,7 @@ class DocDBTableReader::GetHelperBase {
       return PackedColumnData {
         .row = &packed_row_data_,
         .encoded_value = NullSlice(),
+        .liveness_column = true,
       };
     }
 
@@ -488,6 +502,7 @@ class DocDBTableReader::GetHelperBase {
     return PackedColumnData {
       .row = &packed_row_data_,
       .encoded_value = slice->empty() ? NullSlice() : *slice,
+      .liveness_column = false,
     };
   }
 
@@ -631,9 +646,10 @@ class DocDBTableReader::GetHelper : public DocDBTableReader::GetHelperBase {
   Result<bool> ApplyEntryValue(
       const Slice& value_slice, const ValueControlFields& control_fields,
       CheckExistOnly check_exist_only) {
-    DVLOG_WITH_PREFIX_AND_FUNC(4)
-        << "State: " << AsString(state_) << ", value: " << value_slice.ToDebugHexString();
     auto& current = state_.back();
+    DVLOG_WITH_PREFIX_AND_FUNC(4)
+        << "State: " << AsString(state_) << ", value: " << value_slice.ToDebugHexString()
+        << ", obsolete: " << IsObsolete(current.expiration);
     if (!IsObsolete(current.expiration)) {
       if (VERIFY_RESULT(TryDecodeValue(
               control_fields.timestamp, current.write_time.hybrid_time(), current.expiration,
@@ -663,6 +679,7 @@ class DocDBTableReader::GetHelper : public DocDBTableReader::GetHelperBase {
   }
 
   Result<bool> DecodePackedColumn() override {
+    state_.resize(1);
     return DoDecodePackedColumn(state_.back().expiration, [&] {
       return &result_.AllocateChild((*reader_.projection_)[column_index_]);
     });

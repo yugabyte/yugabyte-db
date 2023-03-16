@@ -33,7 +33,6 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/logging.h"
-#include "yb/util/lru_cache.h"
 #include "yb/util/string_util.h"
 #include "yb/util/flags.h"
 
@@ -50,8 +49,7 @@ DEFINE_UNKNOWN_uint32(external_intent_cleanup_secs, 60 * 60 * 24,  // 24 hours b
 DEFINE_UNKNOWN_uint64(intents_compaction_filter_max_errors_to_log, 100,
               "Maximum number of errors to log for life cycle of the intents compcation filter.");
 
-DEFINE_RUNTIME_int32(external_transaction_lru_cache_capacity, 1024,
-                     "External transaction LRU cache capacity for the intents compaction filter.");
+DECLARE_uint32(external_transaction_retention_window_secs);
 
 using std::shared_ptr;
 using std::unique_ptr;
@@ -68,8 +66,7 @@ namespace {
 class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
  public:
   explicit DocDBIntentsCompactionFilter(tablet::Tablet* tablet, const KeyBounds* key_bounds)
-      : tablet_(tablet), compaction_start_time_(tablet->clock()->Now().GetPhysicalValueMicros()),
-        external_transaction_lru_cache_(FLAGS_external_transaction_lru_cache_capacity) {}
+      : tablet_(tablet), compaction_start_time_(tablet->clock()->Now().GetPhysicalValueMicros()) {}
 
   ~DocDBIntentsCompactionFilter() override;
 
@@ -97,8 +94,6 @@ class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
 
   Result<rocksdb::FilterDecision> FilterExternalIntent(const Slice& key);
 
-  Result<bool> IsExternalTransaction(const TransactionId& transaction_id);
-
   tablet::Tablet* const tablet_;
   const MicrosTime compaction_start_time_;
 
@@ -109,23 +104,6 @@ class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
   // We use this to only log a message that the filter is being used once on the first call to
   // the Filter function.
   bool filter_usage_logged_ = false;
-
-  struct ExternalTxnCacheEntry {
-    explicit ExternalTxnCacheEntry(TransactionId&& transaction_id_)
-        : transaction_id(std::move(transaction_id_)) {}
-
-    TransactionId transaction_id;
-    std::optional<bool> is_external;
-  };
-  // This cache stores a mapping of transaction_id to a bool indicating whether the transaction
-  // comes from an external producer source. External transactions are always retained for
-  // --external_intent_cleanup_secs, since it is possible that transactions with aborted status
-  // are committed in the future.
-  LRUCache<
-      ExternalTxnCacheEntry,
-      boost::multi_index::member<
-          ExternalTxnCacheEntry, TransactionId, &ExternalTxnCacheEntry::transaction_id>
-  > external_transaction_lru_cache_;
 };
 
 #define MAYBE_LOG_ERROR_AND_RETURN_KEEP(result) { \
@@ -152,17 +130,6 @@ void DocDBIntentsCompactionFilter::CleanupTransactions() {
 }
 
 DocDBIntentsCompactionFilter::~DocDBIntentsCompactionFilter() {
-}
-
-Result<bool> DocDBIntentsCompactionFilter::IsExternalTransaction(
-    const TransactionId& transaction_id) {
-  auto transaction_id_copy = transaction_id;
-  auto& entry = *external_transaction_lru_cache_.emplace(std::move(transaction_id_copy));
-  if (!entry.is_external) {
-    const_cast<ExternalTxnCacheEntry&>(entry).is_external =
-        VERIFY_RESULT(tablet_->transaction_participant()->IsExternalTransaction(transaction_id));
-  }
-  return *entry.is_external;
 }
 
 rocksdb::FilterDecision DocDBIntentsCompactionFilter::Filter(
@@ -224,20 +191,16 @@ Result<boost::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterTrans
     return boost::none;
   }
 
-  Slice key_slice = key;
-  const auto transaction_id = VERIFY_RESULT_PREPEND(
-      DecodeTransactionIdFromIntentValue(&key_slice), "Could not decode Transaction metadata");
-
-  if (VERIFY_RESULT_PREPEND(
-          IsExternalTransaction(transaction_id),
-          "Could determine if this is an ExternalTransaction")) {
-    if (delta_micros <
-        GetAtomicFlag(&FLAGS_external_intent_cleanup_secs) * MonoTime::kMicrosecondsPerSecond) {
+  if (metadata_pb.external_transaction()) {
+    if (delta_micros < GetAtomicFlag(&FLAGS_external_transaction_retention_window_secs) *
+                       MonoTime::kMicrosecondsPerSecond) {
       return boost::none;
     }
   }
 
-  return transaction_id;
+  Slice key_slice = key;
+  return VERIFY_RESULT_PREPEND(
+      DecodeTransactionIdFromIntentValue(&key_slice), "Could not decode Transaction metadata");
 }
 
 Result<rocksdb::FilterDecision>

@@ -34,6 +34,18 @@
 #include "yb/util/string_util.h"
 
 namespace yb {
+
+const char* DatabasePrefix(YQLDatabase db) {
+  switch(db) {
+    case YQL_DATABASE_UNKNOWN: break;
+    case YQL_DATABASE_CQL: return kDBTypePrefixCql;
+    case YQL_DATABASE_PGSQL: return kDBTypePrefixYsql;
+    case YQL_DATABASE_REDIS: return kDBTypePrefixRedis;
+  }
+  CHECK(false) << "Unexpected db type " << db;
+  return kDBTypePrefixUnknown;
+}
+
 namespace master {
 
 namespace {
@@ -225,6 +237,11 @@ bool IsColocationParentTableId(const TableId& table_id) {
 bool IsColocatedDbParentTableId(const TableId& table_id) {
   return table_id.find(kColocatedDbParentTableIdSuffix) == 32 &&
       boost::algorithm::ends_with(table_id, kColocatedDbParentTableIdSuffix);
+}
+
+bool IsColocatedDbParentTableName(const TableName& table_name) {
+  return table_name.find(kColocatedDbParentTableNameSuffix) == 32 &&
+      boost::algorithm::ends_with(table_name, kColocatedDbParentTableNameSuffix);
 }
 
 TableId GetColocatedDbParentTableId(const NamespaceId& database_id) {

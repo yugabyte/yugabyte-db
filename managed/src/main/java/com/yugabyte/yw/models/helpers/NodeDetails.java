@@ -35,7 +35,6 @@ import org.slf4j.LoggerFactory;
 @ApiModel(description = "Details of a cloud node")
 public class NodeDetails {
   public static final Logger LOG = LoggerFactory.getLogger(NodeDetails.class);
-
   // The id of the node. This is usually present in the node name.
   @ApiModelProperty(value = "Node ID")
   public int nodeIdx = -1;
@@ -63,6 +62,9 @@ public class NodeDetails {
 
   @ApiModelProperty(value = "Machine image name")
   public String machineImage;
+
+  @ApiModelProperty(value = "SSH user override for the AMI")
+  public String sshUserOverride;
 
   // Indicates that disks in fstab are mounted using using uuid (not as by path).
   @ApiModelProperty(value = "Disks are mounted by uuid")
@@ -168,7 +170,7 @@ public class NodeDetails {
     None,
     ToStart,
     Configured,
-    ToStop,
+    ToStop
   }
 
   // The current state of the node.
@@ -324,23 +326,32 @@ public class NodeDetails {
   }
 
   @JsonIgnore
-  public boolean isActive() {
+  public boolean isNodeRunning() {
     return !(state == NodeState.Unreachable
         || state == NodeState.MetricsUnavailable
-        || state == NodeState.ToBeRemoved
-        || state == NodeState.Removing
-        || state == NodeState.Removed
-        || state == NodeState.Starting
-        || state == NodeState.Stopping
-        || state == NodeState.Stopped
+        || state == NodeState.ToBeAdded
         || state == NodeState.Adding
         || state == NodeState.BeingDecommissioned
         || state == NodeState.Decommissioned
-        || state == NodeState.SystemdUpgrade
         || state == NodeState.Terminating
-        || state == NodeState.Terminated
-        || state == NodeState.Rebooting
-        || state == NodeState.HardRebooting);
+        || state == NodeState.Terminated);
+  }
+
+  @JsonIgnore
+  public boolean isActive() {
+    // TODO For some reason ToBeAdded node is treated as 'Active', which it's not the case.
+    // Need to better figure out the meaning of 'Active' - and it's usage - as currently it's used
+    // for master selection, for example.
+    return (isNodeRunning() || state == NodeState.ToBeAdded)
+        && !(state == NodeState.ToBeRemoved
+            || state == NodeState.Removing
+            || state == NodeState.Removed
+            || state == NodeState.Starting
+            || state == NodeState.Stopping
+            || state == NodeState.Stopped
+            || state == NodeState.SystemdUpgrade
+            || state == NodeState.Rebooting
+            || state == NodeState.HardRebooting);
   }
 
   @JsonIgnore

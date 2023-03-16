@@ -68,7 +68,7 @@ You can't change the Fault tolerance of a cluster after it's created.
 
 ![Add Cluster Wizard - Region and size](/images/yb-cloud/cloud-addcluster-paid3.2.png)
 
-**Region**: Choose the [region](../../../release-notes#cloud-provider-regions) where the cluster will be located, or click **Request a multi-region cluster** to contact Yugabyte Support to arrange multi-region deployment.
+**Region**: Choose the [region](../../../release-notes#cloud-provider-regions) where the cluster will be located.
 
 **Nodes**: Enter the number of nodes for the cluster. Node and Availability Zone Level clusters have a minimum of 3 nodes; Availability Zone Level clusters increment by 3.
 

@@ -221,6 +221,7 @@ public class Commissioner {
     responseJson.put("percent", taskInfo.getPercentCompleted());
     String correlationId = task.getCorrelationId();
     if (!Strings.isNullOrEmpty(correlationId)) responseJson.put("correlationId", correlationId);
+    responseJson.put("userEmail", task.getUserEmail());
 
     // Get subtask groups and add other details to it if applicable.
     UserTaskDetails userTaskDetails;

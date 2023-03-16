@@ -1718,10 +1718,13 @@ pg_stat_activity| SELECT s.datid,
     s.backend_xid,
     s.backend_xmin,
     s.query,
-    s.backend_type
-   FROM ((pg_stat_get_activity(NULL::integer) s(datid, pid, usesysid, application_name, state, query, wait_event_type, wait_event, xact_start, query_start, backend_start, state_change, client_addr, client_hostname, client_port, backend_xid, backend_xmin, backend_type, ssl, sslversion, sslcipher, sslbits, sslcompression, sslclientdn)
+    s.backend_type,
+    yb_pg_stat_get_backend_catalog_version(b.beid) AS catalog_version
+   FROM (((pg_stat_get_activity(NULL::integer) s(datid, pid, usesysid, application_name, state, query, wait_event_type, wait_event, xact_start, query_start, backend_start, state_change, client_addr, client_hostname, client_port, backend_xid, backend_xmin, backend_type, ssl, sslversion, sslcipher, sslbits, sslcompression, sslclientdn)
      LEFT JOIN pg_database d ON ((s.datid = d.oid)))
-     LEFT JOIN pg_authid u ON ((s.usesysid = u.oid)));
+     LEFT JOIN pg_authid u ON ((s.usesysid = u.oid)))
+     LEFT JOIN (pg_stat_get_backend_idset() beid(beid)
+     CROSS JOIN LATERAL pg_stat_get_backend_pid(beid.beid) pid(pid)) b ON ((b.pid = s.pid)));
 pg_stat_all_indexes| SELECT c.oid AS relid,
     i.oid AS indexrelid,
     n.nspname AS schemaname,
@@ -1835,7 +1838,35 @@ pg_stat_progress_copy| SELECT s.pid,
     s.param2 AS bytes_total,
     s.param3 AS tuples_processed,
     s.param4 AS tuples_excluded
-   FROM (pg_stat_get_progress_info('COPY'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10)
+   FROM (pg_stat_get_progress_info('COPY'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15, param16, param17)
+     LEFT JOIN pg_database d ON ((s.datid = d.oid)));
+pg_stat_progress_create_index| SELECT s.pid,
+    s.datid,
+    d.datname,
+    s.relid,
+    (s.param7)::oid AS index_relid,
+        CASE s.param1
+            WHEN 1 THEN 'CREATE INDEX NONCONCURRENTLY'::text
+            WHEN 2 THEN 'CREATE INDEX CONCURRENTLY'::text
+            WHEN 3 THEN 'REINDEX NONCONCURRENTLY'::text
+            WHEN 4 THEN 'REINDEX CONCURRENTLY'::text
+            ELSE NULL::text
+        END AS command,
+        CASE s.param10
+            WHEN 0 THEN 'initializing'::text
+            WHEN 1 THEN 'backfilling'::text
+            ELSE NULL::text
+        END AS phase,
+    s.param4 AS lockers_total,
+    s.param5 AS lockers_done,
+    s.param6 AS current_locker_pid,
+    s.param16 AS blocks_total,
+    s.param17 AS blocks_done,
+    s.param12 AS tuples_total,
+    s.param13 AS tuples_done,
+    s.param14 AS partitions_total,
+    s.param15 AS partitions_done
+   FROM (pg_stat_get_progress_info('CREATE INDEX'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15, param16, param17)
      LEFT JOIN pg_database d ON ((s.datid = d.oid)));
 pg_stat_progress_vacuum| SELECT s.pid,
     s.datid,
@@ -1857,7 +1888,7 @@ pg_stat_progress_vacuum| SELECT s.pid,
     s.param5 AS index_vacuum_count,
     s.param6 AS max_dead_tuples,
     s.param7 AS num_dead_tuples
-   FROM (pg_stat_get_progress_info('VACUUM'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10)
+   FROM (pg_stat_get_progress_info('VACUUM'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15, param16, param17)
      LEFT JOIN pg_database d ON ((s.datid = d.oid)));
 pg_stat_replication| SELECT s.pid,
     s.usesysid,
@@ -2368,6 +2399,14 @@ shoelace_obsolete| SELECT shoelace.sl_name,
   WHERE (NOT (EXISTS ( SELECT shoe.shoename
            FROM shoe
           WHERE (shoe.slcolor = shoelace.sl_color))));
+yb_terminated_queries| SELECT d.datname AS databasename,
+    s.backend_pid,
+    s.query_text,
+    s.termination_reason,
+    s.query_start AS query_start_time,
+    s.query_end AS query_end_time
+   FROM (yb_pg_stat_get_queries(NULL::oid) s(db_oid, backend_pid, query_text, termination_reason, query_start, query_end)
+     LEFT JOIN pg_database d ON ((s.db_oid = d.oid)));
 SELECT tablename, rulename, definition FROM pg_rules
 	ORDER BY tablename, rulename;
 pg_settings|pg_settings_n|CREATE RULE pg_settings_n AS

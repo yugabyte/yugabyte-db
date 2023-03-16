@@ -17,7 +17,7 @@ import com.yugabyte.sample.apps.CassandraSparkKeyValueCopy;
 import com.yugabyte.sample.common.CmdLineOpts;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 import org.yb.cql.BaseCQLTest;
 import org.yb.minicluster.IOMetrics;
 import org.yb.minicluster.MiniYBClusterBuilder;
@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestSparkLocality extends BaseCQLTest {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {

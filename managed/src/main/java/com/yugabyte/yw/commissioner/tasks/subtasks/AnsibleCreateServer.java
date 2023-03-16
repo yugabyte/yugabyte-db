@@ -18,15 +18,13 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.RecoverableException;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
-import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -50,6 +48,9 @@ public class AnsibleCreateServer extends NodeTaskBase {
     public boolean assignPublicIP = true;
     public boolean assignStaticPublicIP = false;
 
+    public boolean useSpotInstance = false;
+    public Double spotPrice = 0.0;
+
     // If this is set to the universe's AWS KMS CMK arn, AWS EBS volume
     // encryption will be enabled
     public String cmkArn;
@@ -68,7 +69,6 @@ public class AnsibleCreateServer extends NodeTaskBase {
   @Override
   public void run() {
     Provider p = taskParams().getProvider();
-    List<AccessKey> accessKeys = AccessKey.getAll(p.uuid);
     boolean skipProvision = false;
 
     if (p.code.equals(Common.CloudType.onprem.name())) {
@@ -80,7 +80,7 @@ public class AnsibleCreateServer extends NodeTaskBase {
     } else if (instanceExists(taskParams())) {
       log.info("Waiting for SSH to succeed on existing instance {}", taskParams().nodeName);
       getNodeManager()
-          .nodeCommand(NodeManager.NodeCommandType.Wait_For_SSH, taskParams())
+          .nodeCommand(NodeManager.NodeCommandType.Wait_For_Connection, taskParams())
           .processErrors();
       setNodeStatus(NodeStatus.builder().nodeState(NodeState.InstanceCreated).build());
     } else {

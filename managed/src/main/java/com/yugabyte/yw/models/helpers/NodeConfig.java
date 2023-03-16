@@ -118,6 +118,8 @@ public class NodeConfig {
 
     SSH_ACCESS("Ability to ssh into node as yugabyte user with key supplied in provider"),
 
+    NODE_AGENT_ACCESS("Reachability of node agent server"),
+
     MASTER_HTTP_PORT("Master http port is open"),
 
     MASTER_RPC_PORT("Master rpc port is open"),
@@ -140,7 +142,9 @@ public class NodeConfig {
 
     YSQL_SERVER_HTTP_PORT("YSQL server http port is open"),
 
-    YSQL_SERVER_RPC_PORT("YSQL server rpc port is open");
+    YSQL_SERVER_RPC_PORT("YSQL server rpc port is open"),
+
+    VM_MAX_MAP_COUNT("VM max memory map count");
 
     private final String description;
 

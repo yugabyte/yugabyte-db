@@ -111,7 +111,14 @@ class MasterPathHandlers {
     kNumColumns
   };
 
-  const std::string kSystemPlatformNamespace = "system_platform";
+  enum NamespaceColumns {
+    kNamespaceName,
+    kNamespaceId,
+    kNamespaceLanguage,
+    kNamespaceState,
+    kNamespaceColocated,
+    kNumNamespaceColumns
+  };
 
   struct TabletCounts {
     uint32_t user_tablet_leaders = 0;
@@ -200,6 +207,10 @@ class MasterPathHandlers {
   void HandleCatalogManager(const Webserver::WebRequest& req,
                             Webserver::WebResponse* resp,
                             bool only_user_tables = false);
+  void HandleNamespacesHTML(const Webserver::WebRequest& req,
+                            Webserver::WebResponse* resp,
+                            bool only_user_namespaces = false);
+  void HandleNamespacesJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleTablePage(const Webserver::WebRequest& req,
                        Webserver::WebResponse* resp);
   void HandleTasksPage(const Webserver::WebRequest& req,

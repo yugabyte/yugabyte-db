@@ -89,7 +89,16 @@ public class RestartXClusterConfig extends EditXClusterConfig {
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
-      setXClusterConfigStatus(XClusterConfigStatusType.Running);
+
+      // Set XClusterConfig status to Running if at least one table is running.
+      Set<String> tablesInRunningStatus =
+          xClusterConfig.getTableIdsInStatus(
+              xClusterConfig.getTables(), XClusterTableConfig.Status.Running);
+      if (tablesInRunningStatus.isEmpty()) {
+        setXClusterConfigStatus(XClusterConfigStatusType.Failed);
+      } else {
+        setXClusterConfigStatus(XClusterConfigStatusType.Running);
+      }
       // Set tables in updating status to failed.
       Set<String> tablesInUpdatingStatus =
           xClusterConfig.getTableIdsInStatus(

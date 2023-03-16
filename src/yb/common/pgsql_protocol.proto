@@ -20,6 +20,7 @@ import "yb/common/common.proto";
 import "yb/common/common_types.proto";
 import "yb/common/transaction.proto";
 import "yb/common/value.proto";
+import "yb/common/wire_protocol.proto";
 import "yb/rpc/lightweight_message.proto";
 
 //--------------------------------------------------------------------------------------------------
@@ -519,7 +520,6 @@ message PgsqlResponsePB {
     PGSQL_STATUS_DUPLICATE_KEY_ERROR = 5;
   }
 
-  // TODO: AppStatusPB can consolidate status + error_message + pg_error_code
   // Internal Status information
   optional RequestStatus status = 1 [ default = PGSQL_STATUS_OK ]; // required
 
@@ -527,6 +527,7 @@ message PgsqlResponsePB {
   optional bool skipped = 6;
 
   // User readable error message associated with Internal & External Status
+  // DEPRECATED: please use error_status instead
   optional string error_message = 2;
 
   // Sidecar of rows data returned
@@ -556,10 +557,12 @@ message PgsqlResponsePB {
 
   // PostgreSQL error code encoded as in errcodes.h or yb_pg_errcodes.h.
   // See https://www.postgresql.org/docs/11/errcodes-appendix.html
+  // DEPRECATED: please use error_status instead
   optional uint64 pg_error_code = 8;
 
   // Transaction error code, obtained by static_cast of TransactionErrorTag::Decode
   // of Status::ErrorData(TransactionErrorTag::kCategory)
+  // DEPRECATED: please use error_status instead
   optional uint32 txn_error_code = 9;
 
   // Random sample state to hand over to the next block
@@ -572,4 +575,13 @@ message PgsqlResponsePB {
   // that sent out the 'BACKFILL' request statement.
   optional bytes backfill_spec = 13;
   optional bool is_backfill_batch_done = 14;
+
+  // Table's partition list version obtained from YBTable during response preparation.
+  // Table cache should be invalidated on partition list version mismatch detected.
+  optional uint32 partition_list_version = 15;
+
+  // Encapsulates data from a Status instance
+  // Repeated field provides support for multiple Statuses per response, allowing to return
+  // not only detailed error, but also warnings and notices.
+  repeated AppStatusPB error_status = 16;
 }

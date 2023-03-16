@@ -69,8 +69,6 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
   void FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override {}
 
-  void FillStatusTablets(std::vector<BlockingTransactionData>* inout) override { }
-
   boost::optional<TabletId> FindStatusTablet(const TransactionId& id) override {
     return boost::none;
   }
@@ -86,6 +84,11 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
   const TabletId& tablet_id() const override {
     static TabletId tablet_id;
     return tablet_id;
+  }
+
+  Result<IsExternalTransaction> IsExternalTransactionResult(
+      const TransactionId& transaction_id) override {
+    return IsExternalTransaction::kFalse;
   }
 
  private:

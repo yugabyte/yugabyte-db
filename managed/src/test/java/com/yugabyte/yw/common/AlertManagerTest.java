@@ -24,17 +24,21 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelManager;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
+import com.yugabyte.yw.common.alerts.AlertChannelTemplateService;
+import com.yugabyte.yw.common.alerts.AlertChannelTemplateServiceTest;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertNotificationContext;
 import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.common.alerts.impl.AlertChannelEmail;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
+import com.yugabyte.yw.models.AlertChannelTemplates;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDestination;
@@ -95,6 +99,7 @@ public class AlertManagerTest extends FakeDBApplication {
   private AlertChannel defaultChannel;
 
   private AlertChannelService alertChannelService;
+  private AlertChannelTemplateService alertChannelTemplateService;
   private AlertDestinationService alertDestinationService;
 
   @Before
@@ -107,6 +112,7 @@ public class AlertManagerTest extends FakeDBApplication {
     definition = ModelFactory.createAlertDefinition(defaultCustomer, universe, configuration);
 
     alertChannelService = app.injector().instanceOf(AlertChannelService.class);
+    alertChannelTemplateService = app.injector().instanceOf(AlertChannelTemplateService.class);
     alertDestinationService = app.injector().instanceOf(AlertDestinationService.class);
     am =
         new AlertManager(
@@ -114,6 +120,7 @@ public class AlertManagerTest extends FakeDBApplication {
             alertService,
             alertConfigurationService,
             alertChannelService,
+            alertChannelTemplateService,
             alertDestinationService,
             channelsManager,
             metricService);
@@ -161,7 +168,7 @@ public class AlertManagerTest extends FakeDBApplication {
     ArgumentCaptor<Alert> captor = ArgumentCaptor.forClass(Alert.class);
     doThrow(new PlatformNotificationException("test"))
         .when(emailChannel)
-        .sendNotification(eq(defaultCustomer), captor.capture(), any());
+        .sendNotification(eq(defaultCustomer), captor.capture(), any(), any());
     am.sendNotificationForState(alert, State.ACTIVE, report, context);
     assertThat(captor.getValue().getUuid(), equalTo(alert.getUuid()));
 
@@ -229,9 +236,16 @@ public class AlertManagerTest extends FakeDBApplication {
     configuration.setDestinationUUID(destination.getUuid());
     configuration.save();
 
+    AlertChannelTemplates templates =
+        AlertChannelTemplateServiceTest.createTemplates(
+            defaultCustomer.getUuid(), ChannelType.Email);
+    alertChannelTemplateService.save(templates);
+    AlertChannelTemplatesExt templatesWithDefaults =
+        alertChannelTemplateService.getWithDefaults(defaultCustomer.getUuid(), ChannelType.Email);
+
     am.sendNotificationForState(alert, State.ACTIVE, report, context);
     verify(emailHelper, never()).sendEmail(any(), anyString(), anyString(), any(), any());
-    verify(emailChannel, times(2)).sendNotification(any(), any(), any());
+    verify(emailChannel, times(2)).sendNotification(any(), any(), any(), eq(templatesWithDefaults));
   }
 
   @Test
@@ -240,7 +254,7 @@ public class AlertManagerTest extends FakeDBApplication {
 
     am.sendNotificationForState(alert, State.ACTIVE, report, context);
     ArgumentCaptor<AlertChannel> channelCaptor = ArgumentCaptor.forClass(AlertChannel.class);
-    verify(emailChannel, times(1)).sendNotification(any(), any(), channelCaptor.capture());
+    verify(emailChannel, times(1)).sendNotification(any(), any(), channelCaptor.capture(), any());
 
     assertThat(AlertUtils.getJsonTypeName(channelCaptor.getValue().getParams()), is("Email"));
     AlertChannelEmailParams params = (AlertChannelEmailParams) channelCaptor.getValue().getParams();
@@ -256,7 +270,7 @@ public class AlertManagerTest extends FakeDBApplication {
         .thenReturn(Collections.emptyList());
 
     am.sendNotificationForState(alert, State.ACTIVE, report, context);
-    verify(emailChannel, never()).sendNotification(any(), any(), any());
+    verify(emailChannel, never()).sendNotification(any(), any(), any(), any());
 
     Metric amStatus =
         AssertHelper.assertMetricValue(
@@ -273,7 +287,7 @@ public class AlertManagerTest extends FakeDBApplication {
         .thenReturn(Collections.singletonList(DEFAULT_EMAIL));
 
     am.sendNotificationForState(alert, State.ACTIVE, report, context);
-    verify(emailChannel, times(1)).sendNotification(any(), any(), any());
+    verify(emailChannel, times(1)).sendNotification(any(), any(), any(), any());
 
     amStatus =
         AssertHelper.assertMetricValue(
@@ -315,7 +329,7 @@ public class AlertManagerTest extends FakeDBApplication {
 
     ArgumentCaptor<Alert> captor = ArgumentCaptor.forClass(Alert.class);
     verify(emailChannel, times(expectedCount))
-        .sendNotification(eq(defaultCustomer), captor.capture(), any());
+        .sendNotification(eq(defaultCustomer), captor.capture(), any(), any());
 
     if (expectedCount > 0) {
       assertThat(captor.getValue().getUuid(), equalTo(alert.getUuid()));
@@ -336,7 +350,8 @@ public class AlertManagerTest extends FakeDBApplication {
     am.sendNotificationForState(alert, State.ACTIVE, report, context);
 
     ArgumentCaptor<Alert> captor = ArgumentCaptor.forClass(Alert.class);
-    verify(emailChannel, times(1)).sendNotification(eq(defaultCustomer), captor.capture(), any());
+    verify(emailChannel, times(1))
+        .sendNotification(eq(defaultCustomer), captor.capture(), any(), any());
     assertThat(captor.getValue().getState(), is(State.ACTIVE));
   }
 

@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -12,9 +13,13 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -45,68 +50,156 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
   public void run() {
     runUpgrade(
         () -> {
-          UniverseDefinitionTaskParams.UserIntent userIntent = getUserIntent();
-
-          boolean changedByMasterFlags =
-              GFlagsUtil.syncGflagsToIntent(taskParams().masterGFlags, userIntent);
-          boolean changedByTserverFlags =
-              GFlagsUtil.syncGflagsToIntent(taskParams().tserverGFlags, userIntent);
-          log.debug(
-              "Intent changed by master {} by tserver {}",
-              changedByMasterFlags,
-              changedByTserverFlags);
-
-          // Fetch master and tserver nodes if there is change in gflags
-          List<NodeDetails> masterNodes =
-              (changedByMasterFlags || changedByTserverFlags)
-                      || !taskParams().masterGFlags.equals(getUserIntent().masterGFlags)
-                  ? fetchMasterNodes(taskParams().upgradeOption)
-                  : new ArrayList<>();
-
-          List<NodeDetails> tServerNodes =
-              (changedByMasterFlags || changedByTserverFlags)
-                      || !taskParams().tserverGFlags.equals(getUserIntent().tserverGFlags)
-                  ? fetchTServerNodes(taskParams().upgradeOption)
-                  : new ArrayList<>();
-
           Universe universe = getUniverse();
-
-          if (!config.getBoolean("yb.cloud.enabled")
-              && !confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride)) {
-            masterNodes.forEach(
-                node ->
-                    checkForbiddenToOverrideGFlags(
-                        node,
-                        userIntent,
-                        universe,
-                        ServerType.MASTER,
-                        taskParams().masterGFlags,
-                        config));
-            tServerNodes.forEach(
-                node ->
-                    checkForbiddenToOverrideGFlags(
-                        node,
-                        userIntent,
-                        universe,
-                        ServerType.TSERVER,
-                        taskParams().tserverGFlags,
-                        config));
-          }
-
           // Verify the request params and fail if invalid
           taskParams().verifyParams(universe);
-          // Upgrade GFlags in all nodes
-          createGFlagUpgradeTasks(userIntent, masterNodes, tServerNodes);
-          // Update the list of parameter key/values in the universe with the new ones.
-          updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
-              .setSubTaskGroupType(getTaskSubGroupType());
+
+          boolean checkForbiddenToOverride =
+              !config.getBoolean("yb.cloud.enabled")
+                  && !confGetter.getConfForScope(
+                      universe, UniverseConfKeys.gflagsAllowUserOverride);
+          List<UniverseDefinitionTaskParams.Cluster> curClusters =
+              universe.getUniverseDetails().clusters;
+          Map<UUID, UniverseDefinitionTaskParams.Cluster> newClusters =
+              taskParams().getNewVersionsOfClusters(universe);
+          for (UniverseDefinitionTaskParams.Cluster curCluster : curClusters) {
+            UniverseDefinitionTaskParams.UserIntent userIntent = curCluster.userIntent;
+            UniverseDefinitionTaskParams.Cluster newCluster = newClusters.get(curCluster.uuid);
+            Map<String, String> masterGflags =
+                GFlagsUtil.getBaseGFlags(ServerType.MASTER, newCluster, newClusters.values());
+            Map<String, String> tserverGflags =
+                GFlagsUtil.getBaseGFlags(ServerType.TSERVER, newCluster, newClusters.values());
+            log.debug(
+                "Cluster {} master: new flags {} old flags {}",
+                curCluster.clusterType,
+                masterGflags,
+                GFlagsUtil.getBaseGFlags(ServerType.MASTER, curCluster, curClusters));
+            log.debug(
+                "Cluster {} tserver: new flags {} old flags {}",
+                curCluster.clusterType,
+                tserverGflags,
+                GFlagsUtil.getBaseGFlags(ServerType.TSERVER, curCluster, curClusters));
+
+            boolean changedByMasterFlags =
+                curCluster.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY
+                    && GFlagsUtil.syncGflagsToIntent(masterGflags, userIntent);
+            boolean changedByTserverFlags =
+                curCluster.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY
+                    && GFlagsUtil.syncGflagsToIntent(tserverGflags, userIntent);
+            log.debug(
+                "Intent changed by master {} by tserver {}",
+                changedByMasterFlags,
+                changedByTserverFlags);
+
+            // Fetch master and tserver nodes if there is change in gflags
+            List<NodeDetails> masterNodes = fetchMasterNodes(taskParams().upgradeOption);
+            List<NodeDetails> tServerNodes = fetchTServerNodes(taskParams().upgradeOption);
+            boolean applyToAllNodes = changedByMasterFlags || changedByTserverFlags;
+            masterNodes =
+                masterNodes
+                    .stream()
+                    .filter(n -> n.placementUuid.equals(curCluster.uuid))
+                    .filter(
+                        n ->
+                            applyToAllNodes
+                                || nodeHasGflagsChanges(
+                                    n,
+                                    ServerType.MASTER,
+                                    curCluster,
+                                    curClusters,
+                                    newCluster,
+                                    newClusters.values()))
+                    .collect(Collectors.toList());
+            tServerNodes =
+                tServerNodes
+                    .stream()
+                    .filter(n -> n.placementUuid.equals(curCluster.uuid))
+                    .filter(
+                        n ->
+                            applyToAllNodes
+                                || nodeHasGflagsChanges(
+                                    n,
+                                    ServerType.TSERVER,
+                                    curCluster,
+                                    curClusters,
+                                    newCluster,
+                                    newClusters.values()))
+                    .collect(Collectors.toList());
+
+            if (checkForbiddenToOverride) {
+              masterNodes.forEach(
+                  node ->
+                      checkForbiddenToOverrideGFlags(
+                          node,
+                          userIntent,
+                          universe,
+                          ServerType.MASTER,
+                          GFlagsUtil.getGFlagsForNode(
+                              node, ServerType.MASTER, newCluster, newClusters.values()),
+                          config));
+              tServerNodes.forEach(
+                  node ->
+                      checkForbiddenToOverrideGFlags(
+                          node,
+                          userIntent,
+                          universe,
+                          ServerType.TSERVER,
+                          GFlagsUtil.getGFlagsForNode(
+                              node, ServerType.TSERVER, newCluster, newClusters.values()),
+                          config));
+            }
+            // Upgrade GFlags in all nodes
+            createGFlagUpgradeTasks(
+                userIntent,
+                masterNodes,
+                tServerNodes,
+                curCluster,
+                curClusters,
+                newCluster,
+                newClusters.values());
+            // Update the list of parameter key/values in the universe with the new ones.
+            if (hasUpdatedGFlags(newCluster.userIntent, curCluster.userIntent)) {
+              updateGFlagsPersistTasks(
+                      curCluster,
+                      newCluster.userIntent.masterGFlags,
+                      newCluster.userIntent.tserverGFlags,
+                      newCluster.userIntent.specificGFlags)
+                  .setSubTaskGroupType(getTaskSubGroupType());
+            }
+          }
         });
+  }
+
+  private boolean hasUpdatedGFlags(
+      UniverseDefinitionTaskParams.UserIntent newIntent,
+      UniverseDefinitionTaskParams.UserIntent curIntent) {
+    return !Objects.equals(newIntent.specificGFlags, curIntent.specificGFlags)
+        || !Objects.equals(newIntent.masterGFlags, curIntent.masterGFlags)
+        || !Objects.equals(newIntent.tserverGFlags, curIntent.tserverGFlags);
+  }
+
+  private boolean nodeHasGflagsChanges(
+      NodeDetails node,
+      ServerType serverType,
+      UniverseDefinitionTaskParams.Cluster curCluster,
+      List<UniverseDefinitionTaskParams.Cluster> curClusters,
+      UniverseDefinitionTaskParams.Cluster newClusterVersion,
+      Collection<UniverseDefinitionTaskParams.Cluster> newClusters) {
+    Map<String, String> newGflags =
+        GFlagsUtil.getGFlagsForNode(node, serverType, newClusterVersion, newClusters);
+    Map<String, String> oldGflags =
+        GFlagsUtil.getGFlagsForNode(node, serverType, curCluster, curClusters);
+    return !newGflags.equals(oldGflags);
   }
 
   private void createGFlagUpgradeTasks(
       UniverseDefinitionTaskParams.UserIntent userIntent,
       List<NodeDetails> masterNodes,
-      List<NodeDetails> tServerNodes) {
+      List<NodeDetails> tServerNodes,
+      UniverseDefinitionTaskParams.Cluster curCluster,
+      List<UniverseDefinitionTaskParams.Cluster> curClusters,
+      UniverseDefinitionTaskParams.Cluster newCluster,
+      Collection<UniverseDefinitionTaskParams.Cluster> newClusters) {
     switch (taskParams().upgradeOption) {
       case ROLLING_UPGRADE:
         createRollingUpgradeTaskFlow(
@@ -115,8 +208,10 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                     userIntent,
                     nodes,
                     processTypes,
-                    taskParams().masterGFlags,
-                    taskParams().tserverGFlags),
+                    curCluster,
+                    curClusters,
+                    newCluster,
+                    newClusters),
             masterNodes,
             tServerNodes,
             RUN_BEFORE_STOPPING,
@@ -129,8 +224,10 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                     userIntent,
                     nodes,
                     processTypes,
-                    taskParams().masterGFlags,
-                    taskParams().tserverGFlags),
+                    curCluster,
+                    curClusters,
+                    newCluster,
+                    newClusters),
             masterNodes,
             tServerNodes,
             RUN_BEFORE_STOPPING,
@@ -144,8 +241,10 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                   userIntent,
                   nodeList,
                   processTypes,
-                  taskParams().masterGFlags,
-                  taskParams().tserverGFlags);
+                  curCluster,
+                  curClusters,
+                  newCluster,
+                  newClusters);
               createSetFlagInMemoryTasks(
                       nodeList,
                       processType,
@@ -161,5 +260,35 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
             DEFAULT_CONTEXT);
         break;
     }
+  }
+
+  private void createServerConfFileUpdateTasks(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      List<NodeDetails> nodes,
+      Set<ServerType> processTypes,
+      UniverseDefinitionTaskParams.Cluster curCluster,
+      Collection<UniverseDefinitionTaskParams.Cluster> curClusters,
+      UniverseDefinitionTaskParams.Cluster newCluster,
+      Collection<UniverseDefinitionTaskParams.Cluster> newClusters) {
+    // If the node list is empty, we don't need to do anything.
+    if (nodes.isEmpty()) {
+      return;
+    }
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s",
+            SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
+    for (NodeDetails node : nodes) {
+      ServerType processType = getSingle(processTypes);
+      Map<String, String> newGFlags =
+          GFlagsUtil.getGFlagsForNode(node, processType, newCluster, newClusters);
+      Map<String, String> oldGFlags =
+          GFlagsUtil.getGFlagsForNode(node, processType, curCluster, curClusters);
+      subTaskGroup.addSubTask(
+          getAnsibleConfigureServerTask(userIntent, node, processType, oldGFlags, newGFlags));
+    }
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 }

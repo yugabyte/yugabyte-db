@@ -149,6 +149,10 @@ public class UniverseInfoController extends AuthenticatedController {
   public Result getLiveQueries(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    if (universe.getUniverseDetails().universePaused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Can't get live queries for a paused universe");
+    }
     log.info("Live queries for customer {}, universe {}", customer.uuid, universe.universeUUID);
     JsonNode resultNode = universeInfoHandler.getLiveQuery(universe);
     return PlatformResults.withRawData(resultNode);
@@ -162,6 +166,10 @@ public class UniverseInfoController extends AuthenticatedController {
     log.info("Slow queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    if (universe.getUniverseDetails().universePaused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Can't get slow queries for a paused universe");
+    }
     JsonNode resultNode = universeInfoHandler.getSlowQueries(universe);
     return Results.ok(resultNode);
   }
@@ -174,6 +182,10 @@ public class UniverseInfoController extends AuthenticatedController {
     log.info("Resetting Slow queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    if (universe.getUniverseDetails().universePaused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Can't reset slow queries for a paused universe");
+    }
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -195,7 +207,7 @@ public class UniverseInfoController extends AuthenticatedController {
       notes =
           "Checks the health of all tablet servers and masters in the universe, as well as certain conditions on the machines themselves, including disk utilization, presence of FATAL or core files, and more.",
       nickname = "healthCheckUniverse",
-      response = Object.class)
+      response = Details.class)
   public Result healthCheck(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe.getValidUniverseOrBadRequest(universeUUID, customer);

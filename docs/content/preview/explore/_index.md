@@ -17,9 +17,7 @@ showRightNav: true
 
 The Explore documentation introduces you to YugabyteDB's features, often through examples.
 
-Most examples demonstrating database features, such as API compatibility, can be run on a single-node universe either on your computer, using the free Sandbox universe (cluster) in YugabyteDB Managed, or using a universe created via YugabyteDB Anywhere.
-
-More advanced scenarios use a multi-node deployment. Refer to [Set up YugabyteDB universe](#set-up-yugabytedb-universe) for instructions on creating universes to run the examples.
+Most examples demonstrating database features, such as API compatibility, can be run on a single-node universe either on your computer, using the free Sandbox universe (cluster) in YugabyteDB Managed, or using a universe created via YugabyteDB Anywhere. More advanced scenarios use a multi-node deployment. Refer to [Set up YugabyteDB universe](#set-up-yugabytedb-universe) for instructions on creating universes to run the examples.
 
 ## Overview
 
@@ -29,7 +27,7 @@ The following table describes the YugabyteDB features you can explore, along wit
 | :--- | :--- | :--- |
 | [SQL features](ysql-language-features/) | Learn about YugabyteDB's compatibility with PostgreSQL, including data types, queries, expressions, operators, extensions, and more. | Single-node<br/>local/cloud |
 | [Going beyond SQL](ysql-language-features/going-beyond-sql/) | Learn about reducing read latency via follower reads and moving data closer to users using tablespaces. | Multi-node<br/>local |
-| [Continuous availability](fault-tolerance/macos/) | Learn how YugabyteDB achieves high availability when a node fails. | Multi-node<br/>local |
+| [Continuous availability](fault-tolerance/) | Learn how YugabyteDB achieves high availability when a node fails. | Multi-node<br/>local |
 | [Horizontal scalability](linear-scalability/) | See how YugabyteDB handles loads while dynamically adding or removing nodes. | Multi-node<br/>local |
 | [Transactions](transactions/) | Understand how distributed transactions and isolation levels work in YugabyteDB. | Single-node<br/>local/cloud |
 | [Indexes and constraints](indexes-constraints/) | Explore indexes in YugabyteDB, including primary and foreign keys, secondary, unique, partial, and expression indexes, and more. | Single-node<br/>local/cloud |
@@ -72,13 +70,121 @@ You can run examples using a universe set up on your local machine or in a cloud
     </a>
   </li>
 </ul>
-
-
-
-
-
 <div class="tab-content">
-  <div id="cloud" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cloud-tab">
+  <div id="local" class="tab-pane fade show active" role="tabpanel" aria-labelledby="local-tab">
+
+To run the examples, you need to create a single- or multi-node universe.
+
+For testing and learning YugabyteDB, use the [yugabyted](../reference/configuration/yugabyted/) utility to create and manage universes.
+
+The following instructions show how to _simulate_ a single- or multi-node universe on a single computer. To deploy an actual multi-zone universe using yugabyted, follow the instructions in [Create a multi-zone cluster](../reference/configuration/yugabyted/#create-a-multi-zone-cluster).
+
+{{< tabpane text=true >}}
+
+  {{% tab header="Single-node universe" lang="Single-node universe" %}}
+
+If a local universe is currently running, first [destroy it](../reference/configuration/yugabyted/#destroy-a-local-cluster).
+
+You can create a single-node local universe with a replication factor (RF) of 1 by running the following command:
+
+```sh
+./bin/yugabyted start --advertise_address=127.0.0.1
+```
+
+Or, if you are running macOS Monterey, use the following command:
+
+```sh
+./bin/yugabyted start --advertise_address=127.0.0.1 \
+                      --master_webserver_port=9999
+```
+
+For more information, refer to [Quick Start](../quick-start/linux/#create-a-local-cluster).
+
+  {{% /tab %}}
+
+  {{% tab header="Multi-node universe" lang="Multi-node universe" %}}
+
+If a local universe is currently running, first [destroy it](../reference/configuration/yugabyted/#destroy-a-local-cluster).
+
+Start a local three-node universe with an RF of `3` by first creating a single node universe, as follows:
+
+```sh
+./bin/yugabyted start \
+                --advertise_address=127.0.0.1 \
+                --base_dir=/tmp/ybd1 \
+                --cloud_location=aws.us-east-2.us-east-2a
+```
+
+On macOS, the additional nodes need loopback addresses configured, as follows:
+
+```sh
+sudo ifconfig lo0 alias 127.0.0.2
+sudo ifconfig lo0 alias 127.0.0.3
+```
+
+Next, join two more nodes with the previous node. yugabyted automatically applies a replication factor of `3` when a third node is added, as follows:
+
+```sh
+./bin/yugabyted start \
+                --advertise_address=127.0.0.2 \
+                --base_dir=/tmp/ybd2 \
+                --cloud_location=aws.us-east-2.us-east-2b \
+                --join=127.0.0.1
+```
+
+```sh
+./bin/yugabyted start \
+                --advertise_address=127.0.0.3 \
+                --base_dir=/tmp/ybd3 \
+                --cloud_location=aws.us-east-2.us-east-2c \
+                --join=127.0.0.1
+```
+
+After starting the yugabyted processes on all the nodes, configure the data placement constraint of the universe, as follows:
+
+```sh
+./bin/yugabyted configure data_placement --fault_tolerance=zone --base_dir=/tmp/ybd1
+```
+
+This command can be executed on any node where you already started YugabyteDB.
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
+**Connect to universes**
+
+To run the examples in your universe, you use either the ysqlsh or ycqlsh CLI to interact with YugabyteDB via the YSQL or YCQL API.
+
+You can start ysqlsh as follows:
+
+```sh
+./bin/ysqlsh
+```
+
+```output
+ysqlsh (11.2-YB-2.0.0.0-b0)
+Type "help" for help.
+
+yugabyte=#
+```
+
+You can start ycqlsh as follows:
+
+```sh
+./bin/ycqlsh
+```
+
+```output
+Connected to local cluster at 127.0.0.1:9042.
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+Use HELP for help.
+ycqlsh>
+```
+
+  </div>
+
+  <div id="cloud" class="tab-pane fade" role="tabpanel" aria-labelledby="cloud-tab">
 
 To run the examples in YugabyteDB Managed, create a single- or multi-node universe (which is referred to as cluster in YugabyteDB Managed).
 
@@ -120,145 +226,12 @@ Note that if your Cloud Shell session is idle for more than 5 minutes, your brow
 
   </div>
 
-  <div id="local" class="tab-pane fade" role="tabpanel" aria-labelledby="local-tab">
-
-To run the examples, you need to create a single- or multi-node universe.
-
-For testing and learning YugabyteDB on your computer, use the [yugabyted](../reference/configuration/yugabyted/) utility to create and manage universes.
-
-{{< tabpane text=true >}}
-
-  {{% tab header="Single-node universe" lang="Single-node universe" %}}
-
-You can create a single-node local universe with a replication factor (RF) of 1 by running the following command:
-
-```sh
-./bin/yugabyted start --advertise_address=127.0.0.1
-```
-
-Or, if you are running macOS Monterey, use the following command:
-
-```sh
-./bin/yugabyted start --advertise_address=127.0.0.1 \
-                      --master_webserver_port=9999
-```
-
-For more information, refer to [Quick Start](../quick-start/linux/#create-a-local-cluster).
-
-To stop a single-node universe, execute the following:
-
-```sh
-./bin/yugabyted destroy
-```
-
-  {{% /tab %}}
-
-  {{% tab header="Multi-node universe" lang="Multi-node universe" %}}
-
-The following instructions show how to simulate a multi-node universe on a single computer. To deploy a true multi-node universe, follow the instructions in [Deploy](../deploy/).
-
-If a single-node universe is currently running, first destroy it, as follows:
-
-```sh
-./bin/yugabyted destroy
-```
-
-Start a local three-node universe with an RF of `3` by first creating a single node universe, as follows:
-
-```sh
-./bin/yugabyted start \
-                --advertise_address=127.0.0.1 \
-                --base_dir=/tmp/ybd1 \
-                --cloud_location=aws.us-east-2.us-east-2a
-```
-
-On macOS, the additional nodes need loopback addresses configured, as follows:
-
-```sh
-sudo ifconfig lo0 alias 127.0.0.2
-sudo ifconfig lo0 alias 127.0.0.3
-```
-
-Next, join two more nodes with the previous node. yugabyted automatically applies a replication factor of `3` when a third node is added, as follows:
-
-```sh
-./bin/yugabyted start \
-                --advertise_address=127.0.0.2 \
-                --base_dir=/tmp/ybd2 \
-                --cloud_location=aws.us-east-2.us-east-2b \
-                --join=127.0.0.1
-```
-
-```sh
-./bin/yugabyted start \
-                --advertise_address=127.0.0.3 \
-                --base_dir=/tmp/ybd3 \
-                --cloud_location=aws.us-east-2.us-east-2c \
-                --join=127.0.0.1
-```
-
-After starting the yugabyted processes on all the nodes, configure the data placement constraint of the universe, as follows:
-
-```sh
-./bin/yugabyted configure --fault_tolerance=zone --base_dir=/tmp/ybd1
-```
-
-This command can be executed on any node where you already started YugabyteDB.
-
-To destroy the multi-node universe, execute the following:
-
-```sh
-./bin/yugabyted destroy --base_dir=/tmp/ybd1
-./bin/yugabyted destroy --base_dir=/tmp/ybd2
-./bin/yugabyted destroy --base_dir=/tmp/ybd3
-```
-
-  {{% /tab %}}
-
-{{< /tabpane >}}
-
-**Connect to universes**
-
-To run the examples in your universe, you use either the ysqlsh or ycqlsh CLI to interact with YugabyteDB via the YSQL or YCQL API.
-
-You can start ysqlsh as follows:
-
-```sh
-./bin/ysqlsh
-```
-
-```output
-ysqlsh (11.2-YB-2.0.0.0-b0)
-Type "help" for help.
-
-yugabyte=#
-```
-
-You can start ycqlsh as follows:
-
-```sh
-./bin/ycqlsh
-```
-
-```output
-Connected to local cluster at 127.0.0.1:9042.
-[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
-Use HELP for help.
-ycqlsh>
-```
-  </div>
-
-
-
   <div id="anywhere" class="tab-pane fade" role="tabpanel" aria-labelledby="anywhere-tab">
 
-To run the examples in YugabyteDB Anywhere, create a single- or multi-node universe by following instructions provided in [Create a multi-zone universe](../yugabyte-platform/create-deployments/create-universe-multi-zone/).
+To run the examples in YugabyteDB Anywhere, [create a universe](../yugabyte-platform/create-deployments/create-universe-multi-zone/).
 
   </div>
-
 </div>
-
-
 
 ## Set up YB Workload Simulator
 
@@ -302,10 +275,8 @@ wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/downlo
   </li>
 </ul>
 
-
 <div class="tab-content">
   <div id="cloudworkload" class="tab-pane fade" role="tabpanel" aria-labelledby="cloud-tab">
-
 
 To connect the application to your cluster, ensure that you have downloaded the cluster SSL certificate and your computer is added to the IP allow list. Refer to [Before you begin](../develop/build-apps/cloud-add-ip/).
 
@@ -321,7 +292,6 @@ java -Dnode=<host name> \
     -Dsslrootcert=<path-to-cluster-certificate> \
     -jar ./yb-workload-sim-0.0.3.jar
 ```
-
 
 - `<host name>` - The host name of your YugabyteDB cluster. For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
 - `<dbname>` - The name of the database you are connecting to (the default is yugabyte).
@@ -343,7 +313,6 @@ To start the application against a running local universe, use the following com
 ```sh
 java -jar \
     -Dnode=127.0.0.1 \
-    -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a \
     ./yb-workload-sim-0.0.3.jar
 ```
 
@@ -354,43 +323,38 @@ The `-Dspring.datasource` flag enables [topology-aware load balancing](../driver
   </div>
 
 <div id="anywhereworkload" class="tab-pane fade" role="tabpanel" aria-labelledby="anywhere-tab">
+<!--You start by moving the YB Workload Simulator JAR file from your local directory to the YugabyteDB Anywhere instance on AWS EC2, as follows:-->
 
-You start by moving the YB Workload Simulator JAR file from your local directory to the YugabyteDB Anywhere instance on AWS EC2, as follows:
-
+<!--
 ```sh
 scp -i <path_to_your_pem_file> yb-workload-sim-0.0.3.jar ec2-user@<YugabyteDB_Anywhere_instance_IP_address>:/tmp/
 ```
+-->
 
-For example:
+<!-- For example:-->
+<!--
 
 ```sh
 scp -i Documents/Yugabyte/Security-Keys/AWS/AWS-east-1.pem yb-workload-sim-0.0.3.jar ec2-user@123.456.789.2XS:/tmp/
 ```
+-->
 
-You can launch the application from your YugabyteDB Anywhere instance by using the terminal, as follows:
+To start the application against a running YugabyteDB Anywhere universe, use the following command from a local terminal:
+<!-- You can launch the application from your YugabyteDB Anywhere instance by using the terminal, as follows:-->
 
-1. Navigate to your `tmp` directory and execute `mkdir logs` to create a log file in case there are any errors during the setup.
+<!--
 
-2. Start the application against a running YugabyteDB Anywhere universe by executing the following commands in the terminal:
+  1. Navigate to your `tmp` directory and execute `mkdir logs` to create a log file in case there are any errors during the setup.
+    2. Start the application against a running YugabyteDB Anywhere universe by executing the following commands in the terminal:
+
+-->
 
    ```sh
    java -Dnode=<node_ip> \
          -Ddbname=<dbname> \
          -Ddbuser=<dbuser> \
          -Ddbpassword=<dbpassword> \
-         -Dport=<port> \
-         -Dmax-pool-size=100 \
-         -Dspring.profiles.active=application.yaml \
-         -Dserver.port=8080 \
-         -DidCounter=1 \
-         -Dssl=false \
-         -Dsslmode=disable \
-         -Dworkload=genericWorkload \
-         -DadditionalEndpoints= \
-         -Dspring.datasource.hikari.maximumPoolSize=100 \
          -Dspring.datasource.hikari.data-source-properties.topologyKeys=<aws.regions.zones> \
-         -DloggingDir="/tmp/logs" \
-         -DXmx=32g \
          -jar ./yb-workload-sim-0.0.3.jar
    ```
 
@@ -400,9 +364,7 @@ You can launch the application from your YugabyteDB Anywhere instance by using t
 
    - `<dbname>` - The name of the database you are connecting to (the default is yugabyte).
 
-   - `<dbuser>` and `<dbpassword>` - The user name and password for the YugabyteDB database.
-
-   - `<port>` - 5433.
+   - `<dbuser>` and `<dbpassword>` - The user name and password for the YugabyteDB database. <!-- - `<port>` - 5433. -->
 
    - `<aws.regions.zones>` - The zones in your universe, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Node details are displayed in **Universes > UniverseName > Nodes**. For example, to add topology keys for a single-region multi-zone universe, you would enter the following:
 
@@ -410,8 +372,10 @@ You can launch the application from your YugabyteDB Anywhere instance by using t
      -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c
      ```
 
-The preceding instructions are applicable to a YSQL workload. To run a YCQL workload, add the following parameters before the `-jar ./yb-workload-sim-0.0.3.jar` command:
+<!-- The preceding instructions are applicable to a YSQL workload.
+To run a YCQL workload, add the following parameters before the `-jar ./yb-workload-sim-0.0.3.jar` command: -->
 
+<!-- 
 ```sh
 -Dworkload=genericCassandraWorkload \
 -Dspring.data.cassandra.contact-points=<host_ip> \
@@ -420,18 +384,19 @@ The preceding instructions are applicable to a YSQL workload. To run a YCQL work
 -Dspring.data.cassandra.userid=cassandra \
 -Dspring.data.cassandra.password=<cassandra_password> \
 ```
+-->
 
-Replace `<host_ip>`, `<datacenter>`, and `<cassandra_password>` with appropriate values.
+<!-- Replace `<host_ip>`, `<datacenter>`, and `<cassandra_password>` with appropriate values.-->
 
-In the local environment, you would need to execute the following:
+<!--In the local environment, you would need to execute the following: -->
 
+<!--
 ```sh
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
+-->
 
 </div>
-
-
 
 To view the application UI, navigate to `http://<machine_ip_or_dns>:8080` (for example, `http://localhost:8080`).
 

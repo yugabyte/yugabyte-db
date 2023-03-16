@@ -1,6 +1,6 @@
 export enum Restore_States {
   IN_PROGRESS = 'InProgress',
-  SUCCESS = 'Success',
+  COMPLETED = 'Completed',
   FAILED = 'Failed',
   ABORTED = 'Aborted'
 }
@@ -24,8 +24,8 @@ export const RESTORE_STATUS_OPTIONS: { value: Restore_States | null; label: stri
     value: Restore_States.IN_PROGRESS
   },
   {
-    label: 'Success',
-    value: Restore_States.SUCCESS
+    label: 'Completed',
+    value: Restore_States.COMPLETED
   },
   {
     label: 'Failed',

@@ -47,12 +47,19 @@ public class KubernetesOverridesUpgradeParams extends UpgradeTaskParams {
       return; // universe overrides modified.
     }
 
+    // Avoid NPEs
+    if (userIntent.azOverrides == null) userIntent.azOverrides = new HashMap<>();
+
+    if (azOverrides.size() != userIntent.azOverrides.size()) {
+      return; // azOverrides modified.
+    }
+
     Set<String> extraAZs = Sets.difference(azOverrides.keySet(), userIntent.azOverrides.keySet());
     if (!extraAZs.isEmpty()) {
       return; // extra azs found.
     }
 
-    for (String az : azOverrides.keySet()) {
+    for (String az : azOverrides.keySet()) { // Check each AZ keys.
       String newAZOverridesStr = azOverrides.get(az);
       Map<String, Object> newAZOverrides = HelmUtils.convertYamlToMap(newAZOverridesStr);
       String curAZOverridesStr = userIntent.azOverrides.get(az);

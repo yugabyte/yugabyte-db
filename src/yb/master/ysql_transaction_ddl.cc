@@ -16,6 +16,7 @@
 #include "yb/client/transaction_rpc.h"
 
 #include "yb/common/ql_expr.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
@@ -28,15 +29,21 @@
 
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/status_log.h"
-#include "yb/util/flags.h"
+
+#include "yb/util/flags/flag_tags.h"
 
 DEFINE_UNKNOWN_int32(ysql_transaction_bg_task_wait_ms, 200,
   "Amount of time the catalog manager background task thread waits "
   "between runs");
+
+DEFINE_test_flag(bool, skip_transaction_verification, false,
+    "Test only flag to keep the txn metadata in SysTablesEntryPB and skip"
+    " transaction verification on the master");
 
 using std::string;
 using std::vector;
@@ -121,10 +128,9 @@ YsqlTransactionDdl::GetPgCatalogTableScanIterator(const TableId& pg_catalog_tabl
   // Use Scan to query the given table, filtering by lookup_oid_col.
   RETURN_NOT_OK(schema.CreateProjectionByNames(col_names, projection, schema.num_key_columns()));
   const auto oid_col_id = VERIFY_RESULT(projection->ColumnIdByName(oid_col_name)).rep();
-  auto iter = VERIFY_RESULT(catalog_tablet->NewRowIterator(
-      projection->CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_catalog_table_id));
+  auto iter = VERIFY_RESULT(catalog_tablet->NewUninitializedDocRowIterator(
+      projection->CopyWithoutColumnIds(), ReadHybridTime(), pg_catalog_table_id));
 
-  auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
   PgsqlConditionPB cond;
   cond.add_operands()->set_column_id(oid_col_id);
   cond.set_op(QL_OP_EQUAL);
@@ -133,7 +139,7 @@ YsqlTransactionDdl::GetPgCatalogTableScanIterator(const TableId& pg_catalog_tabl
   docdb::DocPgsqlScanSpec spec(
       *projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
       &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
-  RETURN_NOT_OK(doc_iter->Init(spec));
+  RETURN_NOT_OK(iter->Init(spec));
   return iter;
 }
 
@@ -142,6 +148,9 @@ void YsqlTransactionDdl::VerifyTransaction(
     scoped_refptr<TableInfo> table,
     bool has_ysql_ddl_txn_state,
     std::function<Status(bool)> complete_callback) {
+  if (FLAGS_TEST_skip_transaction_verification) {
+    return;
+  }
 
   SleepFor(MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_bg_task_wait_ms));
 

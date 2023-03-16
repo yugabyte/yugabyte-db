@@ -32,7 +32,7 @@ Generic</a>
 
 ## Prerequisites
 
-Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure a cloud provider](/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/).
+Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure cloud provider](../../configure-yugabyte-platform/set-up-cloud-provider/aws/).
 
 ## Create a universe
 
@@ -65,7 +65,7 @@ The **Universes** view allows you to examine various aspects of the universe:
 - **Nodes** provide details on nodes included in the universe and allows you to perform actions on a specific node (connect, stop, remove, display live and slow queries, download logs). You can also use **Nodes** to open the cloud provider's instances page. For example, in case of GCP, if you navigate to **Compute Engine > VM Instances** and search for instances that contain the name of your universe in the instances name, you should see a list of instances.
 - **Metrics** displays graphs representing information on operations, latency, and other parameters for each type of node and server.
 - **Queries** displays details about live and slow queries that you can filter by column and text.
-- **Replication** provides information about any [xCluster replication](../../create-deployments/async-replication-platform/) in the universe.
+- **Replication** provides information about any [asynchronous replication](../../create-deployments/async-replication-platform/) (also known as xCluster) in the universe.
 - **Tasks** provides details about the state of tasks running on the universe, as well as the tasks that have run in the past against this universe.
 - **Backups** displays information about scheduled backups, if any, and allows you to create, restore, and delete backups.
 - **Health** displays the detailed performance status of the nodes and components involved in their operation. **Health** also allows you to pause health check alerts.
@@ -130,7 +130,7 @@ You can run one of the key-value workloads against the YCQL API and the YEDIS AP
   - Click the **Export** icon for **YCQL Services** to trigger export into a shell variable on the database node **yb-dev-helloworld1-n1** to which you are connected. Remember to replace the following IP addresses with those displayed in the YugabyteDB Anywhere UI.
 
     ```sh
-    $ export YCQL_ENDPOINTS="10.138.0.3:9042,10.138.0.4:9042,10.138.0.5:9042"
+    export YCQL_ENDPOINTS="10.138.0.3:9042,10.138.0.4:9042,10.138.0.5:9042"
     ```
 
 - Export the `YEDIS_ENDPOINTS` environment variable by repeating the preceding procedure and as per the following illustration and command:
@@ -138,7 +138,7 @@ You can run one of the key-value workloads against the YCQL API and the YEDIS AP
   ![YCQL end points](/images/ee/multi-zone-universe-yedis-endpoints.png)
 
   ```sh
-  $ export YEDIS_ENDPOINTS="10.138.0.3:6379,10.138.0.4:6379,10.138.0.5:6379"
+  export YEDIS_ENDPOINTS="10.138.0.3:6379,10.138.0.4:6379,10.138.0.5:6379"
   ```
 
 ### CassandraKeyValue workload

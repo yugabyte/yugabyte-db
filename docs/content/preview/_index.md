@@ -1,17 +1,17 @@
 ---
-title: YugabyteDB
+title: Home
 description: YugabyteDB documentation is the best source to learn the most in-depth information about the YugabyteDB database, YugabyteDB Managed, and YugabyteDB Anywhere.
 headcontent: Open source cloud native distributed SQL database
 weight: 1
 type: indexpage
 resourcesIntro: Quick Links
 resources:
-  - title: Migrate to YugabyteDB
-    url: /preview/migrate/
+  - title: Download
+    url: https://download.yugabyte.com/#/
   - title: Deploy
     url: /preview/deploy/
-  - title: Manage
-    url: /preview/manage/
+  - title: Migrate to YugabyteDB
+    url: /preview/migrate/
   - title: Troubleshoot
     url: /preview/troubleshoot/
 ---

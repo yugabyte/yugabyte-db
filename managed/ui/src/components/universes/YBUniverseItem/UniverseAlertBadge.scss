@@ -1,4 +1,4 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 .universe-alert-badge {
   float: right;
   position: relative;
@@ -47,14 +47,14 @@
 }
 
 #alert-popover {
-  background: $YB_BG_WHITE_3;
+  background: colors.$YB_BG_WHITE_3;
   border: 1px solid #D7DEE4;
   box-shadow: 0px 0px 8px rgba(0, 0, 0, 0.1);
   border-radius: 8px;
   width: 325px;
   display: flex;
   flex-direction: column;
-  color: $YB_DARKER_GRAY;
+  color: colors.$YB_DARKER_GRAY;
   margin-top: 0px;
   padding: 16px;
 

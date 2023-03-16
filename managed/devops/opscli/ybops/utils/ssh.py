@@ -510,7 +510,7 @@ class SSHClient(object):
             run_command(cmd)
 
     @retry_ssh_errors
-    def upload_file_to_remote_server(self, local_file_name, remote_file_name):
+    def upload_file_to_remote_server(self, local_file_name, remote_file_name, **kwargs):
         '''
             Function to upload a file from local server on the remote machine.
             Parameters:
@@ -521,6 +521,12 @@ class SSHClient(object):
             self.sftp_client = self.client.open_sftp()
             try:
                 self.sftp_client.put(local_file_name, remote_file_name)
+                chmod = kwargs.get('chmod', 0)
+                if chmod != 0:
+                    self.sftp_client.chmod(remote_file_name, chmod)
+            except Exception as e:
+                logging.warning('Caught exception on file transfer', e)
+                raise e
             finally:
                 self.sftp_client.close()
         else:

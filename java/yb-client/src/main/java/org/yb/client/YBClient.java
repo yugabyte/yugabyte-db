@@ -1614,6 +1614,19 @@ public class YBClient implements AutoCloseable {
     return d.join(2*getDefaultAdminOperationTimeoutMs());
   }
 
+  public GetChangesResponse getChangesCDCSDK(YBTable table, String streamId,
+                                             String tabletId, long term,
+                                             long index, byte[] key,
+                                             int write_id, long time,
+                                             boolean needSchemaInfo,
+                                             CdcSdkCheckpoint explicitCheckpoint,
+                                             String tableId) throws Exception {
+    Deferred<GetChangesResponse> d = asyncClient.getChangesCDCSDK(
+      table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo,
+      explicitCheckpoint, tableId);
+    return d.join(2*getDefaultAdminOperationTimeoutMs());
+  }
+
   public GetCheckpointResponse getCheckpoint(YBTable table, String streamId,
                                               String tabletId) throws Exception {
     Deferred<GetCheckpointResponse> d = asyncClient
@@ -1681,6 +1694,14 @@ public class YBClient implements AutoCloseable {
     return d.join(2*getDefaultAdminOperationTimeoutMs());
   }
 
+  public GetCheckpointForColocatedTableResponse
+    getCheckpointForColocatedTable(YBTable table, String streamId,
+                                   String tabletId) throws Exception {
+    Deferred<GetCheckpointForColocatedTableResponse> d =
+      asyncClient.getCheckpointForColocatedTableResponse(table, streamId, tabletId);
+    return d.join(2*getDefaultAdminOperationTimeoutMs());
+  }
+
   public SetCheckpointResponse commitCheckpoint(YBTable table, String streamId,
                                                 String tabletId,
                                                 long term,
@@ -1708,6 +1729,52 @@ public class YBClient implements AutoCloseable {
     });
     d.addCallback(setCheckpointResponse -> {
       return setCheckpointResponse;
+    });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+    /**
+   * Get the auto flag config for servers.
+   * @return auto flag config for each server if exists, else a MasterErrorException.
+   */
+  public GetAutoFlagsConfigResponse autoFlagsConfig() throws Exception {
+    Deferred<GetAutoFlagsConfigResponse> d = asyncClient.autoFlagsConfig();
+    d.addErrback(new Callback<Exception, Exception>() {
+      @Override
+      public Exception call(Exception o) throws Exception {
+        o.printStackTrace();
+        throw o;
+      }
+    });
+    d.addCallback(getAutoFlagsConfigResponse -> {
+      return getAutoFlagsConfigResponse;
+    });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+    /**
+   * Promotes the auto flag config for each servers.
+   * @param maxFlagClass class category up to which auto flag should be promoted.
+   * @param promoteNonRuntimeFlags promotes auto flag non-runtime flags if true.
+   * @param force promotes auto flag forcefully if true.
+   * @return response from the server for promoting auto flag config, else a MasterErrorException.
+   */
+  public PromoteAutoFlagsResponse promoteAutoFlags(String maxFlagClass,
+                                                   boolean promoteNonRuntimeFlags,
+                                                   boolean force) throws Exception {
+    Deferred<PromoteAutoFlagsResponse> d = asyncClient.getPromoteAutoFlagsResponse(
+        maxFlagClass,
+        promoteNonRuntimeFlags,
+        force);
+    d.addErrback(new Callback<Exception, Exception>() {
+      @Override
+      public Exception call(Exception o) throws Exception {
+        o.printStackTrace();
+        throw o;
+      }
+    });
+    d.addCallback(promoteAutoFlagsResponse -> {
+      return promoteAutoFlagsResponse;
     });
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
   }
@@ -1870,6 +1937,13 @@ public class YBClient implements AutoCloseable {
                                              boolean listDeletedSnapshots) throws Exception {
     Deferred<ListSnapshotsResponse> d =
       asyncClient.listSnapshots(snapshotUUID, listDeletedSnapshots);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public DeleteSnapshotResponse deleteSnapshot(
+      UUID snapshotUUID) throws Exception {
+    Deferred<DeleteSnapshotResponse> d =
+      asyncClient.deleteSnapshot(snapshotUUID);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

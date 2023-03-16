@@ -69,6 +69,11 @@ class ConsensusServiceProxy;
 namespace tserver {
 class TabletServerAdminServiceProxy;
 class TabletServerServiceProxy;
+class TabletServerBackupServiceProxy;
+}
+
+namespace cdc {
+class CDCServiceProxy;
 }
 
 namespace master {
@@ -78,9 +83,13 @@ class TSInformationPB;
 class ReplicationInfoPB;
 class TServerMetricsPB;
 
-typedef util::SharedPtrTuple<tserver::TabletServerAdminServiceProxy,
-                             tserver::TabletServerServiceProxy,
-                             consensus::ConsensusServiceProxy> ProxyTuple;
+typedef util::SharedPtrTuple<
+    tserver::TabletServerAdminServiceProxy,
+    tserver::TabletServerServiceProxy,
+    tserver::TabletServerBackupServiceProxy,
+    cdc::CDCServiceProxy,
+    consensus::ConsensusServiceProxy>
+    ProxyTuple;
 
 // Master-side view of a single tablet server.
 //
@@ -145,7 +154,7 @@ class TSDescriptor {
   bool IsBlacklisted(const BlacklistSet& blacklist) const;
 
   // Should this ts have any leader load on it.
-  virtual bool IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const;
+  bool IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const;
 
   // Return an RPC proxy to a service.
   template <class TProxy>
@@ -319,6 +328,9 @@ class TSDescriptor {
 
   void DecayRecentReplicaCreationsUnlocked();
 
+  // Is the ts in a read-only placement.
+  bool IsReadOnlyTS(const ReplicationInfoPB& replication_info) const;
+
   struct TSMetrics {
 
     // Stores the total RAM usage of a tserver that is sent in every heartbeat.
@@ -392,7 +404,7 @@ class TSDescriptor {
   // The (read replica) cluster uuid to which this tserver belongs.
   std::string placement_uuid_;
 
-  enterprise::ProxyTuple proxies_;
+  ProxyTuple proxies_;
 
   // Set of tablet uuids for which a delete is pending on this tablet server.
   std::set<std::string> tablets_pending_delete_;

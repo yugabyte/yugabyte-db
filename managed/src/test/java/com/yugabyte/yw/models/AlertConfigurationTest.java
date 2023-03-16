@@ -23,6 +23,8 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableServiceTest;
 import com.yugabyte.yw.common.alerts.MaintenanceService;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
@@ -74,6 +76,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
   private AlertDestination alertDestination;
 
   private MaintenanceService maintenanceService;
+  private AlertTemplateVariableService alertTemplateVariableService;
 
   @Before
   public void setUp() {
@@ -82,6 +85,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
     otherUniverse = ModelFactory.createUniverse("some other");
 
     maintenanceService = app.injector().instanceOf(MaintenanceService.class);
+    alertTemplateVariableService = app.injector().instanceOf(AlertTemplateVariableService.class);
 
     alertDestination =
         ModelFactory.createAlertDestination(
@@ -556,7 +560,8 @@ public class AlertConfigurationTest extends FakeDBApplication {
       futures.add(
           executor.submit(
               () -> {
-                alertConfigurationService.save(ImmutableList.of(configuration, configuration2));
+                alertConfigurationService.save(
+                    customer.getUuid(), ImmutableList.of(configuration, configuration2));
                 return null;
               }));
     }
@@ -670,6 +675,17 @@ public class AlertConfigurationTest extends FakeDBApplication {
     testValidationCreate(
         configuration -> configuration.setDurationSec(-1),
         "errorJson: {\"durationSec\":[\"must be greater than or equal to 0\"]}");
+
+    testValidationCreate(
+        configuration -> configuration.setLabels(ImmutableMap.of("test", "some_value")),
+        "errorJson: {\"labels\":[\"variable 'test' does not exist\"]}");
+
+    AlertTemplateVariable variable =
+        AlertTemplateVariableServiceTest.createTestVariable(customer.getUuid(), "test");
+    alertTemplateVariableService.save(variable);
+    testValidationCreate(
+        configuration -> configuration.setLabels(ImmutableMap.of("test", "some_value")),
+        "errorJson: {\"labels\":[\"variable 'test' does not have value 'some_value'\"]}");
 
     testValidationUpdate(
         configuration -> configuration.setCustomerUUID(randomUUID).setDestinationUUID(null),

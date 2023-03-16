@@ -23,11 +23,11 @@ User tables are implicitly managed as multiple shards by DocDB. These shards are
 
 For information on sharding, see the following blog posts:
 
-- [Data sharding in a distributed SQL database](https://blog.yugabyte.com/how-data-sharding-works-in-a-distributed-sql-database/)
+- [Data sharding in a distributed SQL database](https://www.yugabyte.com/blog/how-data-sharding-works-in-a-distributed-sql-database/)
 
-- [Analysis of four data sharding strategies when building a distributed SQL database](https://blog.yugabyte.com/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/)
+- [Analysis of four data sharding strategies when building a distributed SQL database](https://www.yugabyte.com/blog/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/)
 
-- [Overcoming MongoDB sharding and replication limitations with YugabyteDB](https://blog.yugabyte.com/overcoming-mongodb-sharding-and-replication-limitations-with-yugabyte-db/)
+- [Overcoming MongoDB sharding and replication limitations with YugabyteDB](https://www.yugabyte.com/blog/overcoming-mongodb-sharding-and-replication-limitations-with-yugabyte-db/)
 
 YugabyteDB currently supports two ways of sharding data: hash (also known as consistent hash) sharding and range sharding.
 
@@ -80,7 +80,7 @@ CREATE TABLE items (
 
 ### Advantages
 
-This sharding strategy is ideal for massively-scalable workloads because it distributes data evenly across all the nodes in the cluster, while retaining ease of adding nodes into the cluster. [Algorithmic hash sharding](https://blog.yugabyte.com/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/) is also very effective at distributing data across nodes, but the distribution strategy depends on the number of nodes. With consistent hash sharding, there are many more shards than the number of nodes and an explicit mapping table is maintained to track the assignment of shards to nodes. When adding new nodes, a subset of shards from existing nodes can be efficiently moved into the new nodes without requiring a massive data reassignment.
+This sharding strategy is ideal for massively-scalable workloads because it distributes data evenly across all the nodes in the cluster, while retaining ease of adding nodes into the cluster. [Algorithmic hash sharding](https://www.yugabyte.com/blog/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/) is also very effective at distributing data across nodes, but the distribution strategy depends on the number of nodes. With consistent hash sharding, there are many more shards than the number of nodes and an explicit mapping table is maintained to track the assignment of shards to nodes. When adding new nodes, a subset of shards from existing nodes can be efficiently moved into the new nodes without requiring a massive data reassignment.
 
 ### Disadvantages
 

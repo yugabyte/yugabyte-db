@@ -8,6 +8,7 @@ import static org.mockito.Mockito.spy;
 import static play.inject.Bindings.bind;
 
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
@@ -37,6 +38,7 @@ import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.mvc.Http;
 import play.mvc.Result;
+import org.yb.client.YBClient;
 
 public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public Commissioner mockCommissioner = mock(Commissioner.class);
@@ -74,6 +76,9 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public YbcClientService mockYbcClientService = mock(YbcClientService.class);
   public YbcUpgrade mockYbcUpgrade = mock(YbcUpgrade.class);
   public YbcManager mockYbcManager = mock(YbcManager.class);
+  public AWSCloudImpl mockAWSCloudImpl = mock(AWSCloudImpl.class);
+  public YBClient mockYBClient = mock(YBClient.class);
+  public SwamperHelper mockSwamperHelper = mock(SwamperHelper.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -111,6 +116,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
                 .overrides(bind(YBClientService.class).toInstance(mockService))
+                .overrides(bind(YBClient.class).toInstance(mockYBClient))
                 .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
                 .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
                 .overrides(bind(YamlWrapper.class).toInstance(mockYamlWrapper))
@@ -129,7 +135,9 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(JsonFieldsValidator.class).toInstance(mockJsonFieldValidator))
                 .overrides(bind(YbcClientService.class).toInstance(mockYbcClientService))
                 .overrides(bind(YbcManager.class).toInstance(mockYbcManager))
-                .overrides(bind(YbcUpgrade.class).toInstance(mockYbcUpgrade)))
+                .overrides(bind(YbcUpgrade.class).toInstance(mockYbcUpgrade))
+                .overrides(bind(AWSCloudImpl.class).toInstance(mockAWSCloudImpl))
+                .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper)))
         .build();
   }
 

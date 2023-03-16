@@ -467,6 +467,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
     verify(mockKubernetesManager, times(1))
         .helmInstall(
+            eq(defaultUniverse.universeUUID),
             eq(YB_SOFTWARE_VERSION),
             eq(config1),
             eq(kubernetesProvider.uuid),
@@ -483,6 +484,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(1))
         .helmInstall(
+            eq(defaultUniverse.universeUUID),
             eq(YB_SOFTWARE_VERSION),
             eq(config2),
             eq(kubernetesProvider.uuid),
@@ -499,6 +501,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(1))
         .helmInstall(
+            eq(defaultUniverse.universeUUID),
             eq(YB_SOFTWARE_VERSION),
             eq(config3),
             eq(kubernetesProvider.uuid),
@@ -602,6 +605,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
     verify(mockKubernetesManager, times(1))
         .helmInstall(
+            eq(defaultUniverse.universeUUID),
             eq(YB_SOFTWARE_VERSION),
             eq(config),
             eq(kubernetesProvider.uuid),

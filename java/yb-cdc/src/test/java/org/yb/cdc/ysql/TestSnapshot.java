@@ -28,9 +28,9 @@ import java.util.*;
 import static org.yb.AssertionWrappers.*;
 import org.junit.Before;
 import org.junit.Test;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestSnapshot extends CDCBaseClass {
   private final static Logger LOG = LoggerFactory.getLogger(TestSnapshot.class);
 

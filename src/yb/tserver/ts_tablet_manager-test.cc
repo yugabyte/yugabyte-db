@@ -147,7 +147,7 @@ class TsTabletManagerTest : public YBTest {
 
     test_data_root_ = GetTestPath("TsTabletManagerTest-fsroot");
     CreateMiniTabletServer();
-    ASSERT_OK(mini_server_->Start());
+    ASSERT_OK(mini_server_->Start(tserver::WaitTabletsBootstrapped::kFalse));
     mini_server_->FailHeartbeats();
 
     config_ = mini_server_->CreateLocalConfig();
@@ -191,7 +191,6 @@ class TsTabletManagerTest : public YBTest {
     LOG(INFO) << "Restarting tablet manager";
     ASSERT_NO_FATAL_FAILURE(CreateMiniTabletServer());
     ASSERT_OK(mini_server_->Start());
-    ASSERT_OK(mini_server_->WaitStarted());
     tablet_manager_ = mini_server_->server()->tablet_manager();
   }
 
@@ -242,7 +241,6 @@ TEST_F(TsTabletManagerTest, TestCreateTablet) {
   LOG(INFO) << "Restarting tablet manager";
   CreateMiniTabletServer();
   ASSERT_OK(mini_server_->Start());
-  ASSERT_OK(mini_server_->WaitStarted());
   tablet_manager_ = mini_server_->server()->tablet_manager();
 
   // Ensure that the tablet got re-loaded and re-opened off disk.
@@ -262,7 +260,6 @@ TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
     LOG(INFO) << "Restarting tablet manager";
     CreateMiniTabletServer();
     ASSERT_OK(mini_server_->Start());
-    ASSERT_OK(mini_server_->WaitStarted());
     tablet_manager_ = mini_server_->server()->tablet_manager();
   };
 
@@ -378,7 +375,7 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
     mini_server_->Shutdown();
     LOG(INFO) << "Restarting tablet manager";
     CreateMiniTabletServer();
-    ASSERT_OK(mini_server_->Start());
+    ASSERT_OK(mini_server_->Start(tserver::WaitTabletsBootstrapped::kFalse));
     auto* tablet_manager = mini_server_->server()->tablet_manager();
     ASSERT_NE(nullptr, tablet_manager);
     tablet_manager->tablet_memory_manager()->FlushTabletIfLimitExceeded();

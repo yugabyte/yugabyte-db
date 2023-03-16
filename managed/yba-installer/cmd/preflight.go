@@ -8,14 +8,18 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
 )
 
+var (
+	skippedPreflightChecks []string
+	upgradePreflightChecks bool
+)
+
 var preflightCmd = &cobra.Command{
 	Use: "preflight",
-	Short: "The preflight command checks makes sure that your system is ready to " +
-		"install Yugabyte Anywhere.",
+	Short: "Run preflight checks to make sure that your system is ready to " +
+		"install YugabyteDB Anywhere.",
 	Long: `
-        The preflight command goes through a series of Preflight checks that each have a
-        critcal and warning level, and alerts you if these requirements are not met on your
-        Operating System.`,
+        The preflight command goes through a series of Preflight checks and alerts you if these
+				requirements are not met. Preflight checks are also run during install and upgrade.`,
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		// Print all known checks
@@ -26,9 +30,14 @@ var preflightCmd = &cobra.Command{
 				fmt.Println("  " + check.Name())
 			}
 		} else {
+			var checksToRun []preflight.Check
+			checksToRun = preflight.InstallChecksWithPostgres
+			if upgradePreflightChecks {
+				checksToRun = preflight.UpgradeChecks
+			}
 			// TODO: We should allow the user to better specify which checks to run.
 			// Will do this as we implement a set of upgrade preflight checks
-			results := preflight.Run(preflight.InstallChecksWithPostgres, skippedPreflightChecks...)
+			results := preflight.Run(checksToRun, skippedPreflightChecks...)
 			preflight.PrintPreflightResults(results)
 			if preflight.ShouldFail(results) {
 				log.Fatal("preflight failed")
@@ -40,7 +49,9 @@ var preflightCmd = &cobra.Command{
 func init() {
 	// skippedPreflightChecks is defined in install, but is useful here too
 	preflightCmd.Flags().StringSliceVarP(&skippedPreflightChecks, "skip_preflight", "s",
-		[]string{}, "Preflight checks to skip")
+		[]string{}, "Preflight checks to skip by name")
+	preflightCmd.Flags().BoolVar(&upgradePreflightChecks, "upgrade", false,
+		"run preflight checks for upgrade")
 
 	rootCmd.AddCommand(preflightCmd)
 }

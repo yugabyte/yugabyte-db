@@ -227,7 +227,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
       // Restore to the target universe.
       RestoreBackupParams restoreBackupParams =
-          getRestoreBackupParams(targetUniverse, backupRequestParams, backup);
+          getRestoreBackupParams(sourceUniverse, targetUniverse, backupRequestParams, backup);
       Restore restore =
           createAllRestoreSubtasks(
               restoreBackupParams,
@@ -388,7 +388,10 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
   }
 
   static RestoreBackupParams getRestoreBackupParams(
-      Universe targetUniverse, BackupRequestParams backupRequestParams, Backup backup) {
+      Universe sourceUniverse,
+      Universe targetUniverse,
+      BackupRequestParams backupRequestParams,
+      Backup backup) {
     RestoreBackupParams restoreTaskParams = new RestoreBackupParams();
     // For the following parameters the default values will be used:
     //    restoreTaskParams.alterLoadBalancer = true
@@ -398,12 +401,11 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     // The following parameters are set. For others, the defaults are good.
     restoreTaskParams.customerUUID = backupRequestParams.customerUUID;
     restoreTaskParams.universeUUID = targetUniverse.universeUUID;
-    restoreTaskParams.kmsConfigUUID = backupRequestParams.kmsConfigUUID;
-    if (restoreTaskParams.kmsConfigUUID != null) {
-      restoreTaskParams.actionType = RestoreBackupParams.ActionType.RESTORE;
-    } else {
-      restoreTaskParams.actionType = RestoreBackupParams.ActionType.RESTORE_KEYS;
+    if (sourceUniverse.getUniverseDetails().encryptionAtRestConfig != null) {
+      restoreTaskParams.kmsConfigUUID =
+          sourceUniverse.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID;
     }
+    restoreTaskParams.actionType = RestoreBackupParams.ActionType.RESTORE;
     restoreTaskParams.enableVerboseLogs = backupRequestParams.enableVerboseLogs;
     restoreTaskParams.storageConfigUUID = backupRequestParams.storageConfigUUID;
     restoreTaskParams.useTablespaces = backupRequestParams.useTablespaces;

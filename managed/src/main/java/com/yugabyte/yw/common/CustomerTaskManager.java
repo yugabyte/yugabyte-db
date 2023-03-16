@@ -242,8 +242,8 @@ public class CustomerTaskManager {
               break;
             default:
               LOG.error(String.format("Invalid task type: %s during platform restart", taskType));
+              return;
           }
-          taskParams.firstTry = false;
           taskParams.setPreviousTaskUUID(taskUUID);
           UUID newTaskUUID = commissioner.submit(taskType, taskParams);
           beginTransaction();

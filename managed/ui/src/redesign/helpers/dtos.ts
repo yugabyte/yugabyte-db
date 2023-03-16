@@ -1,6 +1,23 @@
 import { YBTableRelationType } from './constants';
 import { DeepPartial } from './types';
 
+export interface HostInfo {
+  aws:
+    | {
+        'instance-id': string;
+        privateIp: string;
+        region: string;
+        'vpc-id': string;
+      }
+    | string;
+  gcp:
+    | {
+        network: string;
+        project: string;
+      }
+    | string;
+}
+
 export interface PlacementAZ {
   uuid: string;
   name: string;
@@ -105,10 +122,11 @@ export interface UserIntent {
   instanceTags: FlagsObject | FlagsArray;
 }
 
-export enum ClusterType {
-  PRIMARY = 'PRIMARY',
-  ASYNC = 'ASYNC'
-}
+export const ClusterType = {
+  PRIMARY: 'PRIMARY',
+  ASYNC: 'ASYNC'
+} as const;
+export type ClusterType = typeof ClusterType[keyof typeof ClusterType];
 
 export interface Cluster {
   placementInfo: {
@@ -269,13 +287,13 @@ export interface Region {
 }
 
 // InstanceType.java
-interface VolumeDetails {
+export interface VolumeDetails {
   volumeSizeGB: number;
   volumeType: 'EBS' | 'SSD' | 'HDD' | 'NVME';
   mountPath: string;
 }
 
-interface InstanceTypeDetails {
+export interface InstanceTypeDetails {
   tenancy: 'Shared' | 'Dedicated' | 'Host' | null;
   volumeDetailsList: VolumeDetails[];
 }
@@ -389,6 +407,7 @@ export interface GraphFilter {
   selectedRegionClusterUUID?: string | null;
   selectedRegionCode?: string | null;
   selectedZoneName?: string | null;
+  currentSelectedNodeType: string | null;
 }
 
 export interface MetricSettings {
@@ -403,74 +422,38 @@ export interface MetricQueryParams {
   nodePrefix: string;
   nodeNames: string[];
 }
-export interface CpuMeasureQueryData {
-  maxNodeName: string;
-  maxNodeValue: number;
-  otherNodesAvgValue: number;
-}
-export interface CpuMeasureRecommendation {
-  data: CpuMeasureQueryData;
-  summary: React.ReactNode | string;
+
+// TODO: Need to move the above enums to global dtos file under src/redesign/utils as part of PLAT-7010
+
+// ---------------------------------------------------------------------------
+// Platform Result Types
+// Sources:
+// src/main/java/com/yugabyte/yw/forms/PlatformResults.java
+// src/main/java/com/yugabyte/yw/models/helpers/BaseBeanValidator.java
+// ---------------------------------------------------------------------------
+export interface YBPTask {
+  resourceUUID: string;
+  taskUUID: string;
 }
 
-export interface CpuUsageRecommendation {
-  summary: React.ReactNode | string;
+export interface YBPSuccess {
+  message: string;
+  success: true;
 }
 
-export interface IndexSchemaQueryData {
-  table_name: string;
-  index_name: string;
-  index_command: string;
+export interface YBPError {
+  error: string;
+  httpMethod: string;
+  requestUri: string;
+  success: false;
+
+  errorJson?: string;
 }
 
-export interface IndexSchemaRecommendation {
-  data: IndexSchemaQueryData[];
-  summary: React.ReactNode | string;
+export interface YBBeanValidationError {
+  error: {
+    [fieldKey: string]: string[];
+  };
+  success: false;
 }
-
-export interface NodeDistributionData {
-  numSelect: number;
-  numInsert: number;
-  numUpdate: number;
-  numDelete: number;
-}
-
-export interface QueryLoadData {
-  maxNodeName: string;
-  percentDiff: number;
-  maxNodeDistribution: NodeDistributionData;
-  otherNodesDistribution: NodeDistributionData;
-}
-
-export interface QueryLoadRecommendation {
-  data: QueryLoadData;
-  summary: React.ReactNode | string;
-}
-
-export enum RecommendationTypeEnum {
-  All = 'All',
-  SchemaSuggestion = 'SchemaSuggestion',
-  QueryLoadSkew = 'QueryLoadSkew',
-  IndexSuggestion = 'IndexSuggestion',
-  ConnectionSkew = 'ConnectionSkew',
-  CpuSkew = 'CpuSkew',
-  CpuUsage = 'CpuUsage'
-}
-
-export interface RunTimeConfigData {
-  configID: number;
-  configKey: string;
-  configValue: string;
-  isConfigInherited: boolean;
-  displayName: string;
-  helpTxt: string;
-  type: string;
-  scope: string;
-}
-
-export enum RunTimeConfigScope {
-  GLOBAL = 'GLOBAL',
-  UNIVERSE = 'UNIVERSE',
-  PROVIDER = 'PROVIDER',
-  CUSTOMER = 'CUSTOMER'
-}
+// ---------------------------------------------------------------------------

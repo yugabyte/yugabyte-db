@@ -54,6 +54,7 @@ ADD_YB_LIBRARY(yb_common_proto
   NONLINK_DEPS ${COMMON_PROTO_TGTS})
 
 set(COMMON_BASE_SRCS
+  column_id.cc
   json_util.cc
   jsonb.cc
   ql_datatype.cc
@@ -65,6 +66,7 @@ set(COMMON_BASE_SRCS
 set(COMMON_BASE_LIBS
   yb_util
   yb_common_proto
+  yb_bfcommon
   )
 
 ADD_YB_LIBRARY(yb_common_base
@@ -75,7 +77,6 @@ set(COMMON_SRCS
   clock.cc
   common_flags.cc
   common_types_util.cc
-  column_id.cc
   consistent_read_point.cc
   entity_ids.cc
   hybrid_time.cc
@@ -89,10 +90,13 @@ set(COMMON_SRCS
   roles_permissions.cc
   row_mark.cc
   snapshot.cc
+  termination_monitor.cc
   transaction.cc
   transaction_error.cc
+  wire_protocol.cc
   ybc_util.cc
   ybc-internal.cc
+  llvm_profile_dumper.cc
   )
 
 set(COMMON_LIBS
@@ -126,7 +130,7 @@ set(QL_SRCS
   ql_scanspec.cc
   row.cc
   schema.cc
-  wire_protocol.cc
+  ql_wire_protocol.cc
 )
 
 set(QL_LIBS
@@ -175,3 +179,4 @@ ADD_YB_TEST(placement_info-test)
 ADD_YB_TEST(schema-test)
 ADD_YB_TEST(types-test)
 ADD_YB_TEST(wire_protocol-test)
+ADD_YB_TEST(subtxn_set_and_pb-test)

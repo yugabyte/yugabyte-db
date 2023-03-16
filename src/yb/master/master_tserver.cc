@@ -153,9 +153,10 @@ tserver::TServerSharedData& MasterTabletServer::SharedObject() {
 }
 
 Status MasterTabletServer::get_ysql_db_oid_to_cat_version_info_map(
-    bool size_only, tserver::GetTserverCatalogVersionInfoResponsePB *resp) const {
+    const tserver::GetTserverCatalogVersionInfoRequestPB& req,
+    tserver::GetTserverCatalogVersionInfoResponsePB *resp) const {
   if (FLAGS_create_initial_sys_catalog_snapshot) {
-    return master_->get_ysql_db_oid_to_cat_version_info_map(size_only, resp);
+    return master_->get_ysql_db_oid_to_cat_version_info_map(req, resp);
   }
   return STATUS_FORMAT(NotSupported, "Unexpected call of $0", __FUNCTION__);
 }

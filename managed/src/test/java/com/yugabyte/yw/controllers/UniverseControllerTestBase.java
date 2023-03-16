@@ -89,7 +89,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
 
   private HealthChecker healthChecker;
   protected Customer customer;
-  private Users user;
+  protected Users user;
   protected KmsConfig kmsConfig;
   protected String authToken;
   protected YBClientService mockService;
@@ -269,6 +269,13 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
       default:
         throw new UnsupportedOperationException();
     }
+  }
+
+  protected ArrayNode clustersArray(ObjectNode userIntentJson, ObjectNode placementInfoJson) {
+    ObjectNode cluster = Json.newObject();
+    cluster.set("userIntent", userIntentJson);
+    cluster.set("placementInfo", placementInfoJson);
+    return Json.newArray().add(cluster);
   }
 
   protected ObjectNode createDeviceInfo(

@@ -17,7 +17,7 @@ For additional information, see the following:
 
 - [Alerts](../../alerts-monitoring/alert/)
 - [Metrics](../../troubleshoot/universe-issues/#use-metrics/)
-- [Alerts and Notifications in YugabyteDB Anywhere](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/)
+- [Alerts and Notifications in YugabyteDB Anywhere](https://www.yugabyte.com/blog/yugabytedb-2-8-alerts-and-notifications/)
 
 You can use preconfigured alerts provided by YugabyteDB Anywhere, or create and configure your own alerts based on the metrics' conditions.
 

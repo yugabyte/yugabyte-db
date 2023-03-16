@@ -36,8 +36,10 @@
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/partition.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/master/cdc_rpc_tasks.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
@@ -46,6 +48,7 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/util/atomic.h"
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
@@ -55,6 +58,11 @@ using std::string;
 using strings::Substitute;
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
+
+DEFINE_RUNTIME_AUTO_bool(
+    use_parent_table_id_field, kLocalPersisted, false, true,
+    "Whether to use the new schema for colocated tables based on the parent_table_id field.");
+TAG_FLAG(use_parent_table_id_field, advanced);
 
 namespace yb {
 namespace master {
@@ -151,6 +159,33 @@ Status TabletInfo::CheckRunning() const {
   }
 
   return Status::OK();
+}
+
+void TabletInfo::SetTableIds(std::vector<TableId>&& table_ids) {
+  std::lock_guard l(lock_);
+  table_ids_ = std::move(table_ids);
+}
+
+void TabletInfo::AddTableId(const TableId& table_id) {
+  std::lock_guard l(lock_);
+  table_ids_.push_back(table_id);
+}
+
+std::vector<TableId> TabletInfo::GetTableIds() const {
+  std::lock_guard l(lock_);
+  return table_ids_;
+}
+
+void TabletInfo::RemoveTableIds(const std::unordered_set<TableId>& tables_to_remove) {
+  std::lock_guard l(lock_);
+  std::vector<TableId> new_table_ids;
+  new_table_ids.reserve(table_ids_.size());
+  for (auto& table_id : table_ids_) {
+    if (!tables_to_remove.contains(table_id)) {
+      new_table_ids.push_back(std::move(table_id));
+    }
+  }
+  table_ids_ = std::move(new_table_ids);
 }
 
 Status TabletInfo::GetLeaderNotFoundStatus() const {
@@ -951,6 +986,25 @@ void TableInfo::SetTablespaceIdForTableCreation(const TablespaceId& tablespace_i
   tablespace_id_for_table_creation_ = tablespace_id;
 }
 
+google::protobuf::RepeatedField<int> TableInfo::GetHostedStatefulServices() const {
+  auto l = LockForRead();
+  return l->pb.hosted_stateful_services();
+}
+
+bool TableInfo::AttachedYCQLIndexDeletionInProgress(const TableId& index_table_id) const {
+  auto l = LockForRead();
+  const auto& indices = l->pb.indexes();
+  const auto index_info_it = std::find_if(
+      indices.begin(), indices.end(), [&index_table_id](const IndexInfoPB& index_info) {
+        return index_info.table_id() == index_table_id;
+      });
+  return // If the index has been already detached from the table:
+         index_info_it == indices.end() ||
+         // OR if the index is in the deletion process - it's visible via the permissions:
+         index_info_it->index_permissions() >=
+             IndexPermissions::INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING;
+}
+
 void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string& msg) {
   VLOG_WITH_FUNC(2) << "Setting state for " << name() << " to "
                     << SysTablesEntryPB::State_Name(state) << " reason: " << msg;
@@ -973,6 +1027,18 @@ Result<bool> PersistentTableInfo::is_being_modified_by_ddl_transaction(
   const TransactionId& txn) const {
   return has_ysql_ddl_txn_verifier_state() &&
     txn == VERIFY_RESULT(FullyDecodeTransactionId(pb_transaction_id()));
+}
+
+bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info) {
+  const auto& live_placement_info = replication_info.live_replicas();
+  if (!(live_placement_info.placement_blocks().empty() && live_placement_info.num_replicas() <= 0 &&
+        live_placement_info.placement_uuid().empty()) ||
+      !replication_info.read_replicas().empty() ||
+      !replication_info.affinitized_leaders().empty() ||
+      !replication_info.multi_affinitized_leaders().empty()) {
+    return true;
+  }
+  return false;
 }
 
 // ================================================================================================
@@ -1106,6 +1172,136 @@ void XClusterSafeTimeInfo::Clear() {
   auto l = LockForWrite();
   l.mutable_data()->pb.Clear();
   l.Commit();
+}
+
+// ================================================================================================
+// CDCStreamInfo
+// ================================================================================================
+
+const google::protobuf::RepeatedPtrField<std::string> CDCStreamInfo::table_id() const {
+  return LockForRead()->pb.table_id();
+}
+
+const NamespaceId CDCStreamInfo::namespace_id() const {
+  return LockForRead()->pb.namespace_id();
+}
+
+std::string CDCStreamInfo::ToString() const {
+  auto l = LockForRead();
+  if (l->pb.has_namespace_id()) {
+    return Format(
+        "$0 [namespace=$1] {metadata=$2} ", id(), l->pb.namespace_id(), l->pb.ShortDebugString());
+  }
+  return Format("$0 [table=$1] {metadata=$2} ", id(), l->pb.table_id(0), l->pb.ShortDebugString());
+}
+
+// ================================================================================================
+// UniverseReplicationInfo
+// ================================================================================================
+
+Result<std::shared_ptr<CDCRpcTasks>> UniverseReplicationInfo::GetOrCreateCDCRpcTasks(
+    google::protobuf::RepeatedPtrField<HostPortPB> producer_masters) {
+  std::vector<HostPort> hp;
+  HostPortsFromPBs(producer_masters, &hp);
+  std::string master_addrs = HostPort::ToCommaSeparatedString(hp);
+
+  std::lock_guard<decltype(lock_)> l(lock_);
+  if (cdc_rpc_tasks_ != nullptr) {
+    // Master Addresses changed, update YBClient with new retry logic.
+    if (master_addrs_ != master_addrs) {
+      RETURN_NOT_OK(cdc_rpc_tasks_->UpdateMasters(master_addrs));
+      master_addrs_ = master_addrs;
+    }
+    return cdc_rpc_tasks_;
+  }
+
+  auto rpc_task = VERIFY_RESULT(CDCRpcTasks::CreateWithMasterAddrs(producer_id_, master_addrs));
+  cdc_rpc_tasks_ = rpc_task;
+  master_addrs_ = master_addrs;
+  return rpc_task;
+}
+
+std::string UniverseReplicationInfo::ToString() const {
+  auto l = LockForRead();
+  return strings::Substitute("$0 [data=$1] ", id(), l->pb.ShortDebugString());
+}
+
+void UniverseReplicationInfo::SetSetupUniverseReplicationErrorStatus(const Status& status) {
+  std::lock_guard<decltype(lock_)> l(lock_);
+  setup_universe_replication_error_ = status;
+}
+
+Status UniverseReplicationInfo::GetSetupUniverseReplicationErrorStatus() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  return setup_universe_replication_error_;
+}
+
+void UniverseReplicationInfo::StoreReplicationError(
+    const TableId& consumer_table_id,
+    const CDCStreamId& stream_id,
+    const ReplicationErrorPb error,
+    const std::string& error_detail) {
+  std::lock_guard<decltype(lock_)> l(lock_);
+  table_replication_error_map_[consumer_table_id][stream_id][error] = error_detail;
+}
+
+void UniverseReplicationInfo::ClearReplicationError(
+    const TableId& consumer_table_id,
+    const CDCStreamId& stream_id,
+    const ReplicationErrorPb error) {
+  std::lock_guard<decltype(lock_)> l(lock_);
+
+  if (table_replication_error_map_.count(consumer_table_id) == 0 ||
+      table_replication_error_map_[consumer_table_id].count(stream_id) == 0 ||
+      table_replication_error_map_[consumer_table_id][stream_id].count(error) == 0) {
+    return;
+  }
+
+  table_replication_error_map_[consumer_table_id][stream_id].erase(error);
+
+  if (table_replication_error_map_[consumer_table_id][stream_id].empty()) {
+    table_replication_error_map_[consumer_table_id].erase(stream_id);
+  }
+
+  if (table_replication_error_map_[consumer_table_id].empty()) {
+    table_replication_error_map_.erase(consumer_table_id);
+  }
+}
+
+UniverseReplicationInfo::TableReplicationErrorMap
+UniverseReplicationInfo::GetReplicationErrors() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  return table_replication_error_map_;
+}
+
+////////////////////////////////////////////////////////////
+// SnapshotInfo
+////////////////////////////////////////////////////////////
+
+SnapshotInfo::SnapshotInfo(SnapshotId id) : snapshot_id_(std::move(id)) {}
+
+SysSnapshotEntryPB::State SnapshotInfo::state() const {
+  return LockForRead()->state();
+}
+
+const std::string SnapshotInfo::state_name() const {
+  return LockForRead()->state_name();
+}
+
+std::string SnapshotInfo::ToString() const {
+  return YB_CLASS_TO_STRING(snapshot_id);
+}
+
+bool SnapshotInfo::IsCreateInProgress() const {
+  return LockForRead()->is_creating();
+}
+
+bool SnapshotInfo::IsRestoreInProgress() const {
+  return LockForRead()->is_restoring();
+}
+
+bool SnapshotInfo::IsDeleteInProgress() const {
+  return LockForRead()->is_deleting();
 }
 
 }  // namespace master

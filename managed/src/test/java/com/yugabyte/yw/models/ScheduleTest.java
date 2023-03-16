@@ -8,6 +8,7 @@ import static org.junit.Assert.assertNotNull;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.util.List;
@@ -19,11 +20,15 @@ import play.libs.Json;
 public class ScheduleTest extends FakeDBApplication {
   private Customer defaultCustomer;
   private CustomerConfig s3StorageConfig;
+  private Users defaultUser;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST27");
+    defaultUser = ModelFactory.testUser(defaultCustomer);
+    // Set http context
+    TestUtils.setFakeHttpContext(defaultUser);
   }
 
   @Test

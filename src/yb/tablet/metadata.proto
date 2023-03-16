@@ -187,8 +187,8 @@ message RaftGroupReplicaSuperBlockPB {
   // retaining any log files unnecessarily.
   optional int64 cdc_min_replicated_index = 26 [ default = 9223372036854775807 ];
 
-  // Is this tablet currently a consumer tablet for 2dc replication.
-  optional bool is_under_twodc_replication = 27;
+  // Is this tablet currently a consumer tablet for xcluster replication.
+  optional bool is_under_xcluster_replication = 27;
 
   // Reject client queries (read and write) to this tablet like it does not present.
   optional bool hidden = 28;
@@ -208,6 +208,17 @@ message RaftGroupReplicaSuperBlockPB {
   optional OpIdPB cdc_sdk_min_checkpoint_op_id = 33;
 
   optional fixed64 cdc_sdk_safe_time = 34;
+
+  // List of stateful services hosted by this tablet.
+  repeated StatefulServiceKind hosted_stateful_services = 35;
+
+  // Is this tablet currently a being replicated with cdc.
+  optional bool is_under_cdc_sdk_replication = 36;
+
+  // OpId of the last change metadata operation performed on this tablet.
+  // This value is used to determine if a particular raft op should be replayed
+  // during local tablet bootstrap of the tablet.
+  optional OpIdPB last_change_metadata_op_id = 37;
 }
 
 message FilePB {

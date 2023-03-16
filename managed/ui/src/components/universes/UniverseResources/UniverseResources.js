@@ -17,7 +17,7 @@ export default class UniverseResources extends Component {
   };
 
   render() {
-    const { resources, renderType } = this.props;
+    const { resources, renderType, runtimeConfigs } = this.props;
     let empty = true;
     let costPerDay = '$0.00';
     let costPerMonth = '$0.00';
@@ -32,16 +32,22 @@ export default class UniverseResources extends Component {
       const pricePerHour = resources.pricePerHour;
       empty = false;
       renderCosts = Number(pricePerHour) > 0;
-      costPerDay = (<YBCost
-        value={pricePerHour}
-        multiplier={'day'}
-        isPricingKnown={isPricingKnown}
-      />);
-      costPerMonth = (<YBCost
-        value={pricePerHour}
-        multiplier={'month'}
-        isPricingKnown={isPricingKnown}
-      />);
+      costPerDay = (
+        <YBCost
+          value={pricePerHour}
+          multiplier={'day'}
+          isPricingKnown={isPricingKnown}
+          runtimeConfigs={runtimeConfigs}
+        />
+      );
+      costPerMonth = (
+        <YBCost
+          value={pricePerHour}
+          multiplier={'month'}
+          isPricingKnown={isPricingKnown}
+          runtimeConfigs={runtimeConfigs}
+        />
+      );
       numCores = resources.numCores;
       memSizeGB = resources.memSizeGB ? resources.memSizeGB : 0;
       volumeSizeGB = resources.volumeSizeGB ? resources.volumeSizeGB : 0;

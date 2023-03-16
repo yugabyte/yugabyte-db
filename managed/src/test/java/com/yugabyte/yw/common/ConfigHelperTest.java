@@ -62,6 +62,8 @@ public class ConfigHelperTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     when(mockAppConfig.getInt("yb.fs_stateless.max_files_count_persist")).thenReturn(100);
     when(mockAppConfig.getBoolean("yb.fs_stateless.suppress_error")).thenReturn(true);
+    when(mockAppConfig.getBoolean("yb.fs_stateless.disable_sync_db_to_fs_startup"))
+        .thenReturn(false);
     when(mockAppConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 10000);
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockAppConfig);
   }

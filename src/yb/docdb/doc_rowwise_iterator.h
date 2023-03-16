@@ -34,6 +34,7 @@
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/operation_counter.h"
+#include "yb/docdb/doc_read_context.h"
 
 namespace yb {
 namespace docdb {
@@ -50,7 +51,17 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
-                     RWOperationCounter* pending_op_counter = nullptr);
+                     RWOperationCounter* pending_op_counter = nullptr,
+                     boost::optional<size_t> end_referenced_key_column_index = boost::none);
+
+  DocRowwiseIterator(std::unique_ptr<Schema> projection,
+                     std::shared_ptr<DocReadContext> doc_read_context,
+                     const TransactionOperationContext& txn_op_context,
+                     const DocDB& doc_db,
+                     CoarseTimePoint deadline,
+                     const ReadHybridTime& read_time,
+                     RWOperationCounter* pending_op_counter = nullptr,
+                     boost::optional<size_t> end_referenced_key_column_index = boost::none);
 
   DocRowwiseIterator(std::unique_ptr<Schema> projection,
                      std::reference_wrapper<const DocReadContext> doc_read_context,
@@ -58,17 +69,15 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
-                     RWOperationCounter* pending_op_counter = nullptr)
-      : DocRowwiseIterator(
-            *projection, doc_read_context, txn_op_context, doc_db, deadline,
-            read_time, pending_op_counter) {
-    projection_owner_ = std::move(projection);
-  }
+                     RWOperationCounter* pending_op_counter = nullptr,
+                     boost::optional<size_t> end_referenced_key_column_index = boost::none);
 
-  virtual ~DocRowwiseIterator();
+  void SetupProjectionSubkeys();
+
+  ~DocRowwiseIterator() override;
 
   // Init scan iterator.
-  Status Init(TableType table_type, const Slice& sub_doc_key = Slice());
+  void Init(TableType table_type, const Slice& sub_doc_key = Slice());
   // Init QL read scan.
   Status Init(const QLScanSpec& spec);
   Status Init(const PgsqlScanSpec& spec);
@@ -101,6 +110,8 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
 
   HybridTime RestartReadHt() override;
 
+  HybridTime TEST_MaxSeenHt() override;
+
   // Returns the tuple id of the current tuple. The tuple id returned is the serialized DocKey
   // and without the cotable id.
   Result<Slice> GetTupleId() const override;
@@ -112,25 +123,24 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // Retrieves the next key to read after the iterator finishes for the given page.
   Status GetNextReadSubDocKey(SubDocKey* sub_doc_key) override;
 
-  // Iterates over records until callback fails or returns false to stop iteration.
-  Status Iterate(const YQLScanCallback& callback) override;
-
   void set_debug_dump(bool value) {
     debug_dump_ = value;
   }
 
-  static bool is_hybrid_scan_enabled();
+  // Used only in debug mode to ensure that generated key offsets are correct for provided key.
+  bool ValidateDocKeyOffsets(const Slice& iter_key);
 
  private:
+  void CheckInitOnce();
   template <class T>
   Status DoInit(const T& spec);
   void ConfigureForYsql();
   void InitResult();
 
-  Result<bool> InitScanChoices(
+  void InitScanChoices(
       const DocQLScanSpec& doc_spec, const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key);
 
-  Result<bool> InitScanChoices(
+  void InitScanChoices(
       const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
       const KeyBytes& upper_doc_key);
 
@@ -142,15 +152,21 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // Read next row into a value map using the specified projection.
   Status DoNextRow(boost::optional<const Schema&> projection, QLTableRow* table_row) override;
 
-  // Returns OK if row_key_ is pointing to a system key.
-  Status ValidateSystemKey();
+  Result<DocHybridTime> GetTableTombstoneTime(const Slice& root_doc_key) const {
+    return docdb::GetTableTombstoneTime(
+        root_doc_key, doc_db_, txn_op_context_, deadline_, read_time_);
+  }
 
-  const Schema& projection_;
+  bool is_initialized_ = false;
+
+  const std::unique_ptr<Schema> projection_owner_;
   // Used to maintain ownership of projection_.
   // Separate field is used since ownership could be optional.
-  std::unique_ptr<Schema> projection_owner_;
+  const Schema& projection_;
 
   // The schema for all columns, not just the columns we're scanning.
+  const std::shared_ptr<DocReadContext> doc_read_context_holder_;
+  // Used to maintain ownership of doc_read_context_.
   const DocReadContext& doc_read_context_;
 
   const TransactionOperationContext txn_op_context_;
@@ -178,6 +194,14 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
 
   // Indicates whether we've already finished iterating.
   bool done_;
+
+  // Reference to object owned by Schema (DocReadContext schema object) for easier access.
+  // This is only set when DocKey offsets are present in schema.
+  const std::optional<DocKeyOffsets>& doc_key_offsets_;
+
+  // The next index of last referenced key column index. Restricts the number of key columns present
+  // in output row.
+  const size_t end_referenced_key_column_index_;
 
   IsFlatDoc is_flat_doc_ = IsFlatDoc::kFalse;
 

@@ -35,6 +35,7 @@ public class HashicorpVaultConfigParams {
   public static final String HC_VAULT_ADDRESS = "HC_VAULT_ADDRESS";
   public static final String HC_VAULT_ENGINE = "HC_VAULT_ENGINE";
   public static final String HC_VAULT_MOUNT_PATH = "HC_VAULT_MOUNT_PATH";
+  public static final String HC_VAULT_KEY_NAME = "HC_VAULT_KEY_NAME";
 
   // Params sent from UI - added to the auth config (Only EAT)
   public static final String HC_VAULT_PKI_ROLE = "HC_VAULT_PKI_ROLE";

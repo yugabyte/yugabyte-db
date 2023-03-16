@@ -12,8 +12,7 @@ export const ROOT_URL =
   (IN_DEVELOPMENT_MODE ? 'http://localhost:9000/api/v1' : '/api/v1');
 
 // Allow requests made to endpoints in ‘routes’ file.
-export const BASE_URL =
-  (IN_DEVELOPMENT_MODE ? "http://localhost:9000" : '');
+export const BASE_URL = IN_DEVELOPMENT_MODE ? 'http://localhost:9000' : '';
 
 export const MAP_SERVER_URL = IN_DEVELOPMENT_MODE
   ? `https://s3-us-west-2.amazonaws.com/${process.env.REACT_APP_YB_MAP_URL}/map`
@@ -44,7 +43,7 @@ export const REGION_METADATA = [
   { code: 'us-west-1', name: 'US West (N. California)', latitude: 37, longitude: -121 },
   { code: 'us-west-2', name: 'US West (Oregon)', latitude: 44, longitude: -121 },
   { code: 'us-east-1', name: 'US East (N. Virginia)', latitude: 36.8, longitude: -79 },
-  { code: 'us-east-2', name: 'US East (Ohio)', latitude: 40, longitude:-83 },
+  { code: 'us-east-2', name: 'US East (Ohio)', latitude: 40, longitude: -83 },
   { code: 'us-south', name: 'US South', latitude: 28, longitude: -99 },
   { code: 'us-north', name: 'US North', latitude: 48, longitude: -118 },
   { code: 'south-asia', name: 'South Asia', latitude: 18.4, longitude: 78.4 },

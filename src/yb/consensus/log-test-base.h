@@ -71,6 +71,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
+#include "yb/consensus/log_index.h"
 
 METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
@@ -396,6 +397,35 @@ Status CorruptLogFile(Env* env, const std::string& log_path,
                         "Couldn't rewrite corrupt log file");
 
   return Status::OK();
+}
+
+Result<SegmentSequence> GetReadableSegments(const std::string& wal_dir_path) {
+  SegmentSequence segments;
+  std::unique_ptr<LogReader> reader;
+  RETURN_NOT_OK(LogReader::Open(Env::Default(), nullptr, "Log reader", wal_dir_path,
+                                 nullptr, nullptr, &reader));
+  RETURN_NOT_OK(reader->GetSegmentsSnapshot(&segments));
+  return segments;
+}
+
+Result<uint32_t> GetEntries(const SegmentSequence& segments) {
+  uint32_t num_entries = 0;
+  for (const scoped_refptr<log::ReadableLogSegment>& segment : segments) {
+    auto read_entries = segment->ReadEntries();
+    RETURN_NOT_OK(read_entries.status);
+    num_entries += read_entries.entries.size();
+  }
+  return num_entries;
+}
+
+Result<uint32_t> GetEntries(const std::string& wal_dir_path) {
+  SegmentSequence segments = VERIFY_RESULT(GetReadableSegments(wal_dir_path));
+  return GetEntries(segments);
+}
+
+Result<size_t> GetSegmentsCount(const std::string& wal_dir_path) {
+  SegmentSequence segments = VERIFY_RESULT(GetReadableSegments(wal_dir_path));
+  return segments.size();
 }
 
 } // namespace log

@@ -18,6 +18,8 @@
 #include <algorithm>
 #include <functional>
 #include <limits>
+#include <map>
+#include <optional>
 #include <ostream>
 #include <unordered_map>
 #include <utility>
@@ -37,6 +39,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/tostring.h"
 
 #include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/pg_op.h"
@@ -46,6 +49,9 @@
 #include "yb/yql/pggate/pggate_flags.h"
 
 DEFINE_RUNTIME_bool(ysql_enable_read_request_caching, false, "Enable read request caching");
+DEFINE_NON_RUNTIME_uint32(
+    pg_cache_response_renew_soft_lifetime_limit_ms, 3 * 60 * 1000,
+    "Lifetime limit for response cache soft renewing process");
 
 namespace yb {
 namespace pggate {
@@ -72,6 +78,11 @@ struct PrefetchedInfo {
   PgObjectId index_id;
   ColumnIdsContainer index_targets;
   DataHolder data;
+};
+
+struct Settings {
+  uint64_t latest_known_ysql_catalog_version;
+  bool should_use_cache;
 };
 
 using DataContainer = std::unordered_map<PgObjectId, PrefetchedInfo, PgObjectIdHash>;
@@ -227,14 +238,32 @@ void SetupPaging(LWPgsqlReadRequestPB* req) {
   req->set_limit(FLAGS_ysql_prefetch_limit);
 }
 
-std::string BuildCacheKey(
+template<class PB>
+uint8_t* WritePBWithSize(uint8_t* out, const PB* pb) {
+  using google::protobuf::io::CodedOutputStream;
+
+  if (!pb) {
+    return CodedOutputStream::WriteVarint32ToArray(0U, out);
+  }
+  out = CodedOutputStream::WriteVarint32ToArray(narrow_cast<uint32_t>(pb->SerializedSize()), out);
+  return pb->SerializeToArray(out);
+}
+
+[[nodiscard]] std::string BuildCacheKey(
+    yb::ThreadSafeArena* arena, const ReadHybridTime& catalog_read_time,
     const std::vector<OperationInfo>& ops, uint64_t latest_known_ysql_catalog_version) {
   using google::protobuf::io::CodedOutputStream;
-  const auto kMaxFieldSize =
+  constexpr auto kMaxFieldSize =
       CodedOutputStream::StaticVarintSize32<std::numeric_limits<uint32_t>::max()>::value;
   auto total_size =
       CodedOutputStream::VarintSize64(latest_known_ysql_catalog_version) +
-      ops.size() * kMaxFieldSize;
+      (ops.size() + 1) * kMaxFieldSize;
+  std::optional<LWReadHybridTimePB> read_time_pb;
+  if (catalog_read_time) {
+    read_time_pb.emplace(arena);
+    catalog_read_time.ToPB(&*read_time_pb);
+    total_size += read_time_pb->SerializedSize();
+  }
   for (const auto& o : ops) {
     total_size += o.operation->read_request().SerializedSize();
   }
@@ -242,6 +271,7 @@ std::string BuildCacheKey(
   result.resize(total_size);
   auto* start = pointer_cast<uint8_t*>(result.data());
   auto* out = CodedOutputStream::WriteVarint64ToArray(latest_known_ysql_catalog_version, start);
+  out = WritePBWithSize(out, read_time_pb ? &*read_time_pb : nullptr);
   for (const auto& o : ops) {
     auto& req = o.operation->read_request();
     std::optional<uint64_t> stmt_id;
@@ -249,9 +279,7 @@ std::string BuildCacheKey(
       stmt_id = req.stmt_id();
       req.clear_stmt_id();
     }
-    out = CodedOutputStream::WriteVarint32ToArray(
-      narrow_cast<uint32_t>(o.operation->read_request().SerializedSize()), out);
-    out = req.SerializeToArray(out);
+    out = WritePBWithSize(out, &o.operation->read_request());
     if (stmt_id) {
       req.set_stmt_id(*stmt_id);
     }
@@ -260,6 +288,30 @@ std::string BuildCacheKey(
   DCHECK_LE(actual_size, total_size);
   result.resize(actual_size);
   return result;
+}
+
+[[nodiscard]] PgSession::CacheOptions BuildCacheOptions(
+    yb::ThreadSafeArena* arena, const ReadHybridTime& catalog_read_time,
+    const std::vector<OperationInfo>& ops, const PrefetcherOptions& options) {
+  std::optional<uint32_t> threshold_ms;
+  switch(options.cache_mode) {
+    case PrefetchingCacheMode::NO_CACHE:
+      DCHECK(false);
+      break;
+    case PrefetchingCacheMode::TRUST_CACHE:
+      break;
+    case PrefetchingCacheMode::RENEW_CACHE_SOFT:
+      threshold_ms = FLAGS_pg_cache_response_renew_soft_lifetime_limit_ms;
+      break;
+    case PrefetchingCacheMode::RENEW_CACHE_HARD:
+      threshold_ms = 0;
+      break;
+  }
+  return {
+      .key = BuildCacheKey(
+          arena, catalog_read_time, ops, options.latest_known_ysql_catalog_version),
+      .lifetime_threshold_ms = threshold_ms
+  };
 }
 
 auto MakeGenerator(const std::vector<OperationInfo>& ops) {
@@ -276,23 +328,24 @@ auto MakeGenerator(const std::vector<OperationInfo>& ops) {
 }
 
 Result<rpc::CallResponsePtr> Run(
-    PgSession* session, const std::vector<OperationInfo>& ops,
-    uint64_t latest_known_ysql_catalog_version) {
-  auto response = VERIFY_RESULT(PREDICT_FALSE(FLAGS_ysql_enable_read_request_caching)
-      ? session->RunAsyncCacheable(
-            make_lw_function(MakeGenerator(ops)), nullptr /* in_txn_limit */,
-            BuildCacheKey(ops, latest_known_ysql_catalog_version))
-      : session->RunAsync(make_lw_function(MakeGenerator(ops)), nullptr /* in_txn_limit */));
-  return response.Get();
+    yb::ThreadSafeArena* arena, PgSession* session,
+    const std::vector<OperationInfo>& ops, const PrefetcherOptions& options) {
+  auto result = options.cache_mode == PrefetchingCacheMode::NO_CACHE
+    ? VERIFY_RESULT(session->RunAsync(make_lw_function(MakeGenerator(ops)), HybridTime()))
+    : VERIFY_RESULT(session->RunAsync(
+          make_lw_function(MakeGenerator(ops)),
+          BuildCacheOptions(arena, session->catalog_read_time(), ops, options)));
+  return VERIFY_RESULT(result.Get()).response;
 }
 
 // Helper class to load data from all registered tables
 class Loader {
  public:
-  Loader(PgSession* session, size_t estimated_size, uint64_t latest_known_ysql_catalog_version)
+  Loader(PgSession* session, const std::shared_ptr<ThreadSafeArena>& arena,
+         size_t estimated_size, const PrefetcherOptions& options)
       : session_(session),
-        arena_(SharedArena()),
-        latest_known_ysql_catalog_version_(latest_known_ysql_catalog_version) {
+        arena_(arena),
+        options_(options) {
     op_info_.reserve(estimated_size);
   }
 
@@ -341,7 +394,7 @@ class Loader {
   Status Load(DataContainer* data_container) {
     VLOG(2) << "Loader::Load";
     while (!op_info_.empty()) {
-      auto response = VERIFY_RESULT(Run(session_, op_info_, latest_known_ysql_catalog_version_));
+      auto response = VERIFY_RESULT(Run(arena_.get(), session_, op_info_, options_));
       Status remove_predicate_status;
       ResultFunctorAdapter<bool, OperationInfo&> remove_predicate(
           &remove_predicate_status,
@@ -356,8 +409,7 @@ class Loader {
                        std::move(sidecar));
             return !VERIFY_RESULT(PrepareNextRequest(*op_info.table, op_info.operation.get()));
           }, true /* bad_status_value */);
-      op_info_.erase(
-          std::remove_if(op_info_.begin(), op_info_.end(), remove_predicate), op_info_.end());
+      std::erase_if(op_info_, remove_predicate);
       RETURN_NOT_OK(remove_predicate_status);
     }
     return Status::OK();
@@ -367,15 +419,21 @@ class Loader {
   PgSession* session_;
   std::vector<OperationInfo> op_info_;
   std::shared_ptr<ThreadSafeArena> arena_;
-  const uint64_t latest_known_ysql_catalog_version_;
+  const PrefetcherOptions options_;
 };
 
 } // namespace
 
+std::string PrefetcherOptions::ToString() const {
+  return YB_STRUCT_TO_STRING(latest_known_ysql_catalog_version, cache_mode);
+}
+
 class PgSysTablePrefetcher::Impl {
  public:
-  explicit Impl(uint64_t latest_known_ysql_catalog_version)
-      : latest_known_ysql_catalog_version_(latest_known_ysql_catalog_version) {}
+  explicit Impl(const PrefetcherOptions& options)
+      : arena_(SharedArena()), options_(options) {
+    VLOG(1) << "Starting prefetcher with " << options_.ToString();
+  }
 
   void Register(const PgObjectId& table_id, const PgObjectId& index_id) {
     VLOG(1) << "Register " << table_id << " " << index_id;
@@ -384,47 +442,53 @@ class PgSysTablePrefetcher::Impl {
     }
   }
 
-  Result<PrefetchedDataHolder> GetData(
-      PgSession* session, const LWPgsqlReadRequestPB& read_req, bool index_check_required) {
+  PrefetchedDataHolder GetData(const LWPgsqlReadRequestPB& read_req, bool index_check_required) {
+    LOG_IF(DFATAL, !registered_for_loading_.empty())
+        << "All registered table must be prefetched first";
     const PgObjectId table_id(read_req.table_id());
     auto i = data_.find(table_id);
     if (i != data_.end()) {
-      return GetDataWithTargetsCheck(table_id, i->second, read_req, index_check_required);
-    }
-    // Check that current table is registered for loading.
-    // Absence of the table in the list means that this table must be registered first in our code.
-    // DLOG(FATAL) is used instead of SCHECK to let user on release build proceed by reading
-    // data from a master in a non efficient way (by using separate RPC).
-    if (registered_for_loading_.find(table_id) == registered_for_loading_.end()) {
-      DLOG(FATAL) << "Sys table prefetching is enabled but requested table "
+      auto data = GetDataWithTargetsCheck(table_id, i->second, read_req, index_check_required);
+      if (data.ok()) {
+        return std::move(*data);
+      }
+      LOG(DFATAL) << data.status();
+    } else {
+      LOG(DFATAL) << "Sys table prefetching is enabled but table "
                   << table_id
-                  << " was not registered. The list of tables ready for prefetching is: "
-                  << CollectionToString(registered_for_loading_,
-                                        [](const auto& item) { return item.first; });
-      return PrefetchedDataHolder();
-    }
-    Loader loader(session, registered_for_loading_.size(), latest_known_ysql_catalog_version_);
+                  << " was not prefetched. Prefetched tables are: "
+                  << CollectionToString(data_, [](const auto& item) { return item.first; });
+     }
+    return PrefetchedDataHolder();
+  }
+
+  Status Prefetch(PgSession* session) {
+    SCHECK(!registered_for_loading_.empty(),
+           IllegalState,
+           "No tables were registered for prefetching");
+    Loader loader(session, arena_, registered_for_loading_.size(), options_);
     for (const auto& t : registered_for_loading_) {
       RETURN_NOT_OK(loader.Apply(t.first, t.second));
     }
     registered_for_loading_.clear();
-    RETURN_NOT_OK(loader.Load(&data_));
-    return GetDataWithTargetsCheck(table_id, data_[table_id], read_req, index_check_required);
+    return loader.Load(&data_);
   }
 
-  uint64_t latest_known_ysql_catalog_version() const {
-    return latest_known_ysql_catalog_version_;
+  const PrefetcherOptions& options() const {
+    return options_;
   }
 
  private:
-  std::unordered_map<PgObjectId, PgObjectId, PgObjectIdHash> registered_for_loading_;
+  std::shared_ptr<ThreadSafeArena> arena_;
+  // The order of entries in the registered_for_loading_ map is mandatory because it affects
+  // cache key building process.
+  std::map<PgObjectId, PgObjectId> registered_for_loading_;
   DataContainer data_;
-  const uint64_t latest_known_ysql_catalog_version_;
+  const PrefetcherOptions options_;
 };
 
-PgSysTablePrefetcher::PgSysTablePrefetcher(uint64_t latest_known_ysql_catalog_version)
-    : impl_(new Impl(latest_known_ysql_catalog_version)) {
-}
+PgSysTablePrefetcher::PgSysTablePrefetcher(const PrefetcherOptions& options)
+    : impl_(new Impl(options)) {}
 
 PgSysTablePrefetcher::~PgSysTablePrefetcher() = default;
 
@@ -432,14 +496,18 @@ void PgSysTablePrefetcher::Register(const PgObjectId& table_id, const PgObjectId
   impl_->Register(table_id, index_id);
 }
 
-Result<PrefetchedDataHolder> PgSysTablePrefetcher::GetData(
-    PgSession* session, const LWPgsqlReadRequestPB& read_req, bool index_check_required) {
-  auto result = impl_->GetData(session, read_req, index_check_required);
-  if (!result.ok()) {
+Status PgSysTablePrefetcher::Prefetch(PgSession* session) {
+  auto status = impl_->Prefetch(session);
+  if (!status.ok()) {
     // Reset the state in case of failure to prevent using of incomplete data in future calls.
-    impl_.reset(new Impl(impl_->latest_known_ysql_catalog_version()));
+    impl_.reset(new Impl(impl_->options()));
   }
-  return result;
+  return status;
+}
+
+PrefetchedDataHolder PgSysTablePrefetcher::GetData(
+    const LWPgsqlReadRequestPB& read_req, bool index_check_required) {
+  return impl_->GetData(read_req, index_check_required);
 }
 
 } // namespace pggate

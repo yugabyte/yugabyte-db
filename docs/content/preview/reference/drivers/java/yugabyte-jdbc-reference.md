@@ -1,9 +1,12 @@
 ---
-title: JDBC Drivers
+title: YugabyteDB JDBC Smart Driver
+headerTitle: JDBC Drivers
 linkTitle: JDBC Drivers
-description: JDBC Drivers for YSQL
+description: Java JDBC Smart Driver for YSQL
 headcontent: JDBC Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
+aliases:
+  - /preview/reference/drivers/yugabytedb-jdbc-driver/
 menu:
   preview:
     name: JDBC Drivers
@@ -31,23 +34,14 @@ type: docs
 
 </ul>
 
-[YugabyteDB JDBC smart driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional [connection load balancing](../../../../drivers-orms/smart-drivers/) features.
+YugabyteDB JDBC smart driver is a JDBC driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional connection load balancing features.
 
-## Connection load balancing
+For more information on the YugabyteDB Java smart driver, see the following:
 
-The YugabyteDB JDBC smart driver has the following connection load balancing features:
-
-- Cluster-aware (uniform)
-
-    In this mode, the driver makes the best effort to uniformly distribute the connections to each YugabyteDB server.
-
-- Topology-aware
-
-    Because YugabyteDB clusters can have servers in different regions and availability zones, the driver can be configured to create connections only on servers that are in specific regions and zones. This is beneficial for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
-
-The driver package includes a `YBClusterAwareDataSource` class that uses one initial contact point for the YugabyteDB cluster as a means of discovering all the nodes and, if required, refreshing the list of live endpoints with every new connection attempt. The refresh is triggered if stale information (older than 5 minutes) is discovered.
-
-The driver can be configured with popular pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and its availability zones, and configure another pool to talk to a completely different region.
+- [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
+- [CRUD operations](../../../../drivers-orms/java/yugabyte-jdbc)
+- [GitHub repository](https://github.com/yugabyte/pgjdbc)
+- [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 
  <!-- place holder for adding link to YugabyteDB University course for Java Developers -->
 
@@ -98,12 +92,14 @@ The driver requires YugabyteDB version 2.7.2.0 or higher, and Java 8 or above.
 
 The following connection properties need to be added to enable load balancing:
 
-- load-balance - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
-- topology-keys - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`.
+- `load-balance` - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
+- `topology-keys` - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`. Specify all zones in a region as `cloud.region.*`. To designate fallback locations for when the primary location is unreachable, specify a priority in the form `:n`, where `n` is the order of precedence. For example, `cloud1.datacenter1.rack1:1,cloud1.datacenter1.rack2:2`.
+
+By default, the driver refreshes the list of nodes every 300 seconds (5 minutes ). You can change this value by including the `yb-servers-refresh-interval` parameter.
 
 ### Use the driver
 
-The YugabyteDB JDBC driver's driver class is `com.yugabyte.Driver`.
+The YugabyteDB JDBC driver's driver class is `com.yugabyte.Driver`. The driver package includes a `YBClusterAwareDataSource` class that uses one initial contact point for the YugabyteDB cluster as a means of discovering all the nodes and, if required, refreshing the list of live endpoints with every new connection attempt. The refresh is triggered if stale information (by default, older than 5 minutes) is discovered.
 
 To use the driver, do the following:
 
@@ -115,6 +111,15 @@ To use the driver, do the following:
   String yburl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true";
   DriverManager.getConnection(yburl);
   ```
+
+  To provide alternate hosts during the initial connection in case the first address fails, specify multiple hosts in the connection string, as follows:
+
+  ```java
+  String yburl = "jdbc:yugabytedb://127.0.0.1:5433,127.0.0.2:5433,127.0.0.3:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true";
+  DriverManager.getConnection(yburl);
+  ```
+
+  After the driver establishes the initial connection, it fetches the list of available servers from the universe, and performs load balancing of subsequent connection requests across these servers.
 
   To specify topology keys, you set the `topology-keys` property to comma separated values, as per the following example:
 
@@ -203,6 +208,7 @@ java -jar yb-sample-apps.jar  \
 ```
 
 The application creates 30 connections, 1 for each reader and writer threads. To verify the behavior, wait for the app to create connections and then visit `http://<host>:13000/rpcz` from your browser for each node to see that the connections are equally distributed among the nodes.
+
 This URL presents a list of connections where each element of the list has some information about the connection as shown in the following screenshot. You can count the number of connections from that list, or search for the occurrence count of the `host` keyword on that webpage. Each node should have 10 connections.
 
 ![Load balancing with host connections](/images/develop/ecosystem-integrations/jdbc-load-balancing.png)
@@ -268,8 +274,3 @@ The driver requires YugabyteDB version 2.7.2.0 or higher.
   The `run` script starts a YugabyteDB cluster, demonstrates load balancing through Java applications, and then destroys the cluster.
 
   When started, the script displays a menu with two options: `UniformLoadBalance` and `TopologyAwareLoadBalance`. Choose one of these options to run the corresponding script with its Java application in the background.
-
-## Learn more
-
-- [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
-- [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)

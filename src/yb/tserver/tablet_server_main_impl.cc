@@ -38,6 +38,8 @@
 #include <boost/optional/optional.hpp>
 #include <glog/logging.h>
 
+#include "yb/common/termination_monitor.h"
+#include "yb/common/llvm_profile_dumper.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/consensus_queue.h"
 
@@ -55,6 +57,7 @@
 #include "yb/tserver/tserver_call_home.h"
 #include "yb/rpc/io_thread_pool.h"
 #include "yb/rpc/scheduler.h"
+#include "yb/rpc/secure_stream.h"
 #include "yb/server/skewed_clock.h"
 #include "yb/server/secure.h"
 #include "yb/tserver/factory.h"
@@ -71,20 +74,13 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/thread.h"
 
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
 #include "yb/tserver/server_main_util.h"
 
 using std::string;
-
-#if defined(YB_PROFGEN) && defined(__clang__)
-extern "C" int __llvm_profile_write_file(void);
-extern "C" void __llvm_profile_set_filename(const char *);
-extern "C" void __llvm_profile_reset_counters();
-#endif
-
-
 using namespace std::placeholders;
 
 using yb::redisserver::RedisServer;
@@ -97,6 +93,7 @@ using yb::pgwrapper::PgProcessConf;
 using yb::pgwrapper::PgSupervisor;
 
 using namespace yb::size_literals;  // NOLINT
+using namespace std::chrono_literals;
 
 DEFINE_NON_RUNTIME_bool(start_redis_proxy, true,
     "Starts a redis proxy along with the tablet server");
@@ -160,17 +157,19 @@ void SetProxyAddresses() {
   SetProxyAddress(&FLAGS_pgsql_proxy_bind_address, "YSQL", PgProcessConf::kDefaultPort);
 }
 
-#if defined(YB_PROFGEN) && defined(__clang__)
-// Force profile dumping
-void PeriodicDumpLLVMProfileFile() {
-  __llvm_profile_set_filename("tserver-%p-%m.profraw");
-  while (true) {
-    __llvm_profile_write_file();
-    __llvm_profile_reset_counters();
-    SleepFor(MonoDelta::FromSeconds(60));
+// Runs the IO service in a loop until it is stopped. Invokes trigger_termination_fn if there is an
+// error and the IO service has not been stopped.
+void RunIOService(
+    std::function<void()> trigger_termination_fn, boost::asio::io_service* io_service) {
+  // Runs forever unless there is some error or explicitly stopped.
+  boost::system::error_code ec;
+  io_service->run(ec);
+
+  if (!io_service->stopped()) {
+    LOG(WARNING) << "Stopping process as IO service run failed: " << ec;
+    trigger_termination_fn();
   }
 }
-#endif
 
 int TabletServerMain(int argc, char** argv) {
 #ifndef NDEBUG
@@ -194,6 +193,8 @@ int TabletServerMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(MasterTServerParseFlagsAndInit(
       TabletServerOptions::kServerType, &argc, &argv));
 
+  auto termination_monitor = TerminationMonitor::Create();
+
   SetProxyAddresses();
 
   // Object that manages the universe key registry used for encrypting and decrypting data keys.
@@ -211,7 +212,7 @@ int TabletServerMain(int argc, char** argv) {
   tablet_server_options->env = env.get();
   tablet_server_options->rocksdb_env = rocksdb_env.get();
   tablet_server_options->universe_key_manager = universe_key_manager.get();
-  enterprise::Factory factory;
+  Factory factory;
 
   auto server = factory.CreateTabletServer(*tablet_server_options);
 
@@ -242,11 +243,11 @@ int TabletServerMain(int argc, char** argv) {
     auto& pg_process_conf = *pg_process_conf_result;
     pg_process_conf.master_addresses = tablet_server_options->master_addresses_flag;
     pg_process_conf.certs_dir = FLAGS_certs_dir.empty()
-        ? server::DefaultCertsDir(*server->fs_manager())
-        : FLAGS_certs_dir;
+       ? server::DefaultCertsDir(*server->fs_manager())
+       : FLAGS_certs_dir;
     pg_process_conf.certs_for_client_dir = FLAGS_certs_for_client_dir.empty()
-        ? pg_process_conf.certs_dir
-        : FLAGS_certs_for_client_dir;
+       ? pg_process_conf.certs_dir
+       : FLAGS_certs_for_client_dir;
     pg_process_conf.enable_tls = FLAGS_use_client_to_server_encryption;
 
     // Follow the same logic as elsewhere, check FLAGS_cert_node_filename then
@@ -261,14 +262,14 @@ int TabletServerMain(int argc, char** argv) {
           HostPort::ParseStrings(server->options().rpc_opts.rpc_bind_addresses, 0);
       LOG_AND_RETURN_FROM_MAIN_NOT_OK(rpc_bind_addresses);
       pg_process_conf.cert_base_name = !server_broadcast_addresses->empty()
-                                     ? server_broadcast_addresses->front().host()
-                                     : rpc_bind_addresses->front().host();
+                                           ? server_broadcast_addresses->front().host()
+                                           : rpc_bind_addresses->front().host();
     }
-    LOG(INFO) << "Starting PostgreSQL server listening on "
-              << pg_process_conf.listen_addresses << ", port " << pg_process_conf.pg_port;
+      LOG(INFO) << "Starting PostgreSQL server listening on "
+                << pg_process_conf.listen_addresses << ", port " << pg_process_conf.pg_port;
 
-    pg_supervisor = std::make_unique<PgSupervisor>(pg_process_conf, server.get());
-    LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->Start());
+      pg_supervisor = std::make_unique<PgSupervisor>(pg_process_conf, server.get());
+      LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->Start());
   }
 
   std::unique_ptr<RedisServer> redis_server;
@@ -280,25 +281,17 @@ int TabletServerMain(int argc, char** argv) {
     redis_server_options.SetMasterAddresses(tablet_server_options->GetMasterAddresses());
     redis_server_options.dump_info_path =
         (tablet_server_options->dump_info_path.empty()
-             ? ""
-             : tablet_server_options->dump_info_path + "-redis");
+              ? ""
+              : tablet_server_options->dump_info_path + "-redis");
     redis_server.reset(new RedisServer(redis_server_options, server.get()));
     LOG(INFO) << "Starting redis server...";
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(redis_server->Start());
     LOG(INFO) << "Redis server successfully started.";
   }
 
-#if defined(YB_PROFGEN) && defined(__clang__)
-  // TODO After the TODO below is fixed the call of
-  // PeriodicDumpLLVMProfileFile can be moved to the infinite while loop
-  //  at the end of the function.
-  std::thread llvm_profile_dump_thread(PeriodicDumpLLVMProfileFile);
-#endif
-
-  // TODO(neil): After CQL server is starting, it blocks this thread from moving on.
-  // This should be fixed such that all processes or service by tablet server are treated equally
-  // by using different threads for each process.
   std::unique_ptr<CQLServer> cql_server;
+  std::unique_ptr<boost::asio::io_service> io_service;
+  scoped_refptr<Thread> io_service_thread;
   if (FLAGS_start_cql_proxy) {
     CQLServerOptions cql_server_options;
     cql_server_options.rpc_opts.rpc_bind_addresses = FLAGS_cql_proxy_bind_address;
@@ -308,35 +301,56 @@ int TabletServerMain(int argc, char** argv) {
     cql_server_options.SetMasterAddresses(tablet_server_options->GetMasterAddresses());
     cql_server_options.dump_info_path =
         (tablet_server_options->dump_info_path.empty()
-             ? ""
-             : tablet_server_options->dump_info_path + "-cql");
-    boost::asio::io_service io;
-    cql_server = factory.CreateCQLServer(cql_server_options, &io, server.get());
+              ? ""
+              : tablet_server_options->dump_info_path + "-cql");
+
+    io_service = std::make_unique<boost::asio::io_service>();
+    cql_server = factory.CreateCQLServer(cql_server_options, io_service.get(), server.get());
     LOG(INFO) << "Starting CQL server...";
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(cql_server->Start());
     LOG(INFO) << "CQL server successfully started.";
 
-    // Should run forever unless there are some errors.
-    boost::system::error_code ec;
-    io.run(ec);
-    if (ec) {
-      LOG(WARNING) << "IO service run failure: " << ec;
-    }
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(Thread::Create(
+        "io_service", "loop", &RunIOService,
+        [&termination_monitor]() { termination_monitor->Terminate(); }, io_service.get(),
+        &io_service_thread));
+  }
 
-    LOG (WARNING) << "CQL Server shutting down";
+  auto llvm_profile_dumper_result = std::make_unique<LlvmProfileDumper>();
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(llvm_profile_dumper_result->Start());
+
+  termination_monitor->WaitForTermination();
+
+  llvm_profile_dumper_result.reset();
+
+  if (io_service) {
+    io_service->stop();
+    if (io_service_thread) {
+      LOG_AND_RETURN_FROM_MAIN_NOT_OK(ThreadJoiner(io_service_thread.get()).Join());
+    }
+  }
+
+  if (cql_server) {
+    LOG(WARNING) << "Stopping CQL server";
     cql_server->Shutdown();
   }
 
-  while (true) {
-    SleepFor(MonoDelta::FromSeconds(60));
+  if (redis_server) {
+    LOG(WARNING) << "Stopping Redis server";
+    redis_server->Shutdown();
   }
 
-#if defined(YB_PROFGEN) && defined(__clang__)
-  // Currently unreachable
-  llvm_profile_dump_thread.join();
-#endif
+  if (pg_supervisor) {
+    LOG(WARNING) << "Stopping PostgreSQL";
+    pg_supervisor->Stop();
+  }
 
-  return 0;
+  call_home.reset();
+
+  LOG(WARNING) << "Stopping Tablet server";
+  server->Shutdown();
+
+  return EXIT_SUCCESS;
 }
 
 }  // namespace tserver

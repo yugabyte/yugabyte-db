@@ -535,7 +535,7 @@ CREATE TABLE test_include (c1 int, c2 int, c3 int);
 INSERT INTO test_include VALUES (1, 1, 1), (1, 2, 2), (2, 2, 2), (3, 3, 3);
 -- Expect duplicate key error
 CREATE UNIQUE INDEX ON test_include (c1) include (c2);
-ERROR:  Aborted: ERROR:  duplicate key value violates unique constraint "test_include_c1_c2_idx"
+ERROR:  ERROR:  duplicate key value violates unique constraint "test_include_c1_c2_idx"
 \d test_include
             Table "public.test_include"
  Column |  Type   | Collation | Nullable | Default
@@ -656,7 +656,7 @@ ERROR:  HASH columns must be present to split by number of tablets
 CREATE INDEX ON test_split (h2 ASC, r1) SPLIT INTO 20 TABLETS;
 ERROR:  HASH columns must be present to split by number of tablets
 CREATE INDEX ON test_split (h1 HASH) SPLIT INTO 10000 TABLETS;
-ERROR:  Invalid argument: num_tablets exceeds system limit
+ERROR:  num_tablets exceeds system limit
 -- Test hash methods
 CREATE TABLE test_method (
   h1 int, h2 int, r1 int, r2 int, v1 int, v2 int,

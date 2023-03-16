@@ -81,8 +81,8 @@ bool QLRangeBasedFileFilter::Filter(const rocksdb::FdWithBoundaries& file) const
     bool lower_compare_min_value = lower_bound_incl ? 0 : 1;
     bool upper_compare_min_value = upper_bound_incl ? 0 : 1;
 
-    if (Compare(&upper_bound, smallest) < lower_compare_min_value
-        || Compare(largest, &lower_bound) < upper_compare_min_value) {
+    if (Compare(&upper_bound, smallest) < upper_compare_min_value
+        || Compare(largest, &lower_bound) < lower_compare_min_value) {
       return false;
     }
   }

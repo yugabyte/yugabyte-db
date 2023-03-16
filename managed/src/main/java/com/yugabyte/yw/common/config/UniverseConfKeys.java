@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.util.List;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.VersionCheckMode;
+import com.yugabyte.yw.common.NodeManager.SkipCertValidationType;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 
@@ -105,6 +106,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "Single connection mode makes it work even on tiny DB nodes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ybEditWaitForLeadersOnPreferred =
+      new ConfKeyInfo<>(
+          "yb.edit.wait_for_leaders_on_preferred",
+          ScopeType.UNIVERSE,
+          "YB Edit Wait For Leaders On Preferred Only",
+          "Controls whether we perform the createWaitForLeadersOnPreferredOnly subtask"
+              + "in editUniverse",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> ybNumReleasesToKeepDefault =
       new ConfKeyInfo<>(
           "yb.releases.num_releases_to_keep_default",
@@ -121,13 +131,24 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Number Of Cloud Releases To Keep",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  // TODO(): Add correct metadata
   public static final ConfKeyInfo<Integer> dbMemPostgresMaxMemMb =
       new ConfKeyInfo<>(
           "yb.dbmem.postgres.max_mem_mb",
           ScopeType.UNIVERSE,
           "DB Postgres Max Mem",
-          "TODO",
+          "Amount of memory to limit the postgres process to via the ysql cgroup",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> dbMemPostgresReadReplicaMaxMemMb =
+      new ConfKeyInfo<>(
+          "yb.dbmem.postgres.rr_max_mem_mb",
+          ScopeType.UNIVERSE,
+          "DB Postgres Max Mem for read replicas",
+          "The amount of memory in MB to limit the postgres process in read replicas to via the "
+              + "ysql cgroup. "
+              + "If the value is -1, it will default to the 'yb.dbmem.postgres.max_mem_mb' value. "
+              + "0 will not set any cgroup limits. "
+              + ">0 set max memory of postgres to this value for read replicas",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Long> dbMemAvailableLimit =
@@ -293,12 +314,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.BETA));
   // TODO(Shashank): Add correct metadata
-  public static final ConfKeyInfo<Boolean> setBatchNestedLoop =
+  public static final ConfKeyInfo<Boolean> setEnableNestloopOff =
       new ConfKeyInfo<>(
-          "yb.query_stats.slow_queries.set_batch_nested_loop",
+          "yb.query_stats.slow_queries.set_enable_nestloop_off",
           ScopeType.UNIVERSE,
-          "Set Batch Nested Loop",
-          "TODO - Leave this for feature owners to fill in",
+          "Turn off batch nest loop for running slow sql queries",
+          "This config turns off and on batch nestloop during running the join statement "
+              + "for slow queries. If true, it will be turned off and we expect better "
+              + "performance.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
   // TODO(Shashank)
@@ -497,5 +520,112 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Performance Advisor rejected connections interval mins",
           "Defines time interval for rejected connections recommendation check, in minutes",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Double> perfAdvisorHotShardWriteSkewThresholdPct =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.hot_shard_write_skew_threshold_pct",
+          ScopeType.UNIVERSE,
+          "Performance Advisor hot shard write skew threshold",
+          "Defines max difference between average node writes and hot shard node writes before "
+              + "hot shard recommendation is raised",
+          ConfDataType.DoubleType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Double> perfAdvisorHotShardReadSkewThresholdPct =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.hot_shard_read_skew_threshold_pct",
+          ScopeType.UNIVERSE,
+          "Performance Advisor hot shard read skew threshold",
+          "Defines max difference between average node reads and hot shard node reads before "
+              + "hot shard recommendation is raised",
+          ConfDataType.DoubleType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> perfAdvisorHotShardIntervalMins =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.hot_shard_interval_mins",
+          ScopeType.UNIVERSE,
+          "Performance Advisor hot shard interval mins",
+          "Defines time interval for hot hard recommendation check, in minutes",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> perfAdvisorHotShardMinimalWrites =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.hot_shard_min_node_writes",
+          ScopeType.UNIVERSE,
+          "Performance Advisor hot shard minimal writes",
+          "Defines min writes for hot shard recommendation to be raised",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> perfAdvisorHotShardMinimalReads =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.hot_shard_min_node_reads",
+          ScopeType.UNIVERSE,
+          "Performance Advisor hot shard minimal reads",
+          "Defines min reads for hot shard recommendation to be raised",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<SkipCertValidationType> tlsSkipCertValidation =
+      new ConfKeyInfo<>(
+          "yb.tls.skip_cert_validation",
+          ScopeType.UNIVERSE,
+          "Skip TLS Cert Validation",
+          "Used to skip certificates validation for the configure phase."
+              + "Possible values - ALL, HOSTNAME, NONE",
+          ConfDataType.SkipCertValdationEnum,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> deleteOrphanSnapshotOnStartup =
+      new ConfKeyInfo<>(
+          "yb.snapshot_cleanup.delete_orphan_on_startup",
+          ScopeType.UNIVERSE,
+          "Clean Orphan snapshots",
+          "Clean orphan(non-scheduled) snapshots on Yugaware startup/restart",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> nodeUIHttpsEnabled =
+      new ConfKeyInfo<>(
+          "yb.node_ui.https.enabled",
+          ScopeType.UNIVERSE,
+          "Enable https on Master/TServer UI",
+          "Allow https on Master/TServer UI for a universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> helmTimeoutSecs =
+      new ConfKeyInfo<>(
+          "yb.helm.timeout_secs",
+          ScopeType.UNIVERSE,
+          "Helm Timeout in Seconds",
+          "Timeout used for internal universe-level helm operations like install/upgrade in secs",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enablePerfAdvisor =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.perf_advisor",
+          ScopeType.UNIVERSE,
+          "Enable Perf Advisor to view recommendations",
+          "Builds recommendations to help tune our applications accordingly",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> promoteAutoFlag =
+      new ConfKeyInfo<>(
+          "yb.upgrade.promote_auto_flag",
+          ScopeType.UNIVERSE,
+          "Promote AutoFlags",
+          "Promotes Auto flags while upgrading YB-DB",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowUpgradeOnTransitUniverse =
+      new ConfKeyInfo<>(
+          "yb.upgrade.allow_upgrade_on_transit_universe",
+          ScopeType.UNIVERSE,
+          "Allow upgrade on transit universe",
+          "Allow universe upgrade when nodes are in transit mode",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> promoteAutoFlagsForceFully =
+      new ConfKeyInfo<>(
+          "yb.upgrade.promote_flags_forcefully",
+          ScopeType.UNIVERSE,
+          "Promote AutoFlags Forcefully",
+          "Promote AutoFlags Forcefully during software upgrade",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -436,7 +436,7 @@ TEST_F(QLTransactionTest, Heartbeat) {
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);
   ASSERT_OK(WriteRows(session));
-  std::this_thread::sleep_for(GetTransactionTimeout() * 2);
+  std::this_thread::sleep_for(GetTransactionTimeout(false /* is_external */) * 2);
   ASSERT_OK(txn->CommitFuture().get());
   VerifyData();
   AssertNoRunningTransactions();
@@ -447,7 +447,7 @@ TEST_F(QLTransactionTest, Expire) {
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);
   ASSERT_OK(WriteRows(session));
-  std::this_thread::sleep_for(GetTransactionTimeout() * 2);
+  std::this_thread::sleep_for(GetTransactionTimeout(false /* is_external */) * 2);
   auto commit_status = txn->CommitFuture().get();
   ASSERT_TRUE(commit_status.IsExpired()) << "Bad status: " << commit_status;
   std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_transaction_heartbeat_usec * 2));
@@ -1531,7 +1531,7 @@ TEST_F_EX(QLTransactionTest, RemoteBootstrap, RemoteBootstrapTest) {
 
   // Start all servers. Cluster verifier should check that all tablets are synchronized.
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Start(tserver::WaitTabletsBootstrapped::kFalse));
   }
 
   ASSERT_OK(WaitFor([this] { return CheckAllTabletsRunning(); }, 20s * kTimeMultiplier,

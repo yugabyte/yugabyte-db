@@ -142,7 +142,7 @@ func GenerateTemplate(component common.Component) {
 		}
 
 		// TODO: Use viper to parse additional entries
-		if component.Name() == "yb-platform" {
+		if component.Name() == "yb-platform" && common.HasSudoAccess() {
 
 			file, err := os.OpenFile(serviceFileName, os.O_APPEND|os.O_WRONLY, 0644)
 			if err != nil {

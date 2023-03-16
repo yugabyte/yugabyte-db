@@ -243,6 +243,7 @@ export default class AZSelectorTable extends Component {
       });
       newPlacementInfo.cloudList[0].regionList = newRegionList;
       const newTaskParams = _.cloneDeep(universeConfigTemplate, true);
+      newTaskParams.userAZSelected = true;
       if (isNonEmptyArray(newTaskParams.clusters)) {
         newTaskParams.clusters.forEach((cluster) => {
           if (clusterType === 'primary' && cluster.clusterType === 'PRIMARY') {
@@ -266,23 +267,7 @@ export default class AZSelectorTable extends Component {
         newTaskParams.currentClusterType = clusterType.toUpperCase();
         newTaskParams.clusterOperation = 'EDIT';
         newTaskParams.expectedUniverseVersion = currentUniverse.data.version;
-        newTaskParams.userAZSelected = true;
         newTaskParams.resetAZConfig = false;
-        if (
-          isNonEmptyObject(
-            getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType)
-          )
-        ) {
-          if (
-            _.isEqual(
-              getClusterByType(newTaskParams.clusters, clusterType).placementInfo,
-              getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType)
-                .placementInfo
-            )
-          ) {
-            newTaskParams.resetAZConfig = true;
-          }
-        }
         this.props.submitConfigureUniverse(newTaskParams);
       } else {
         const placementStatusObject = {

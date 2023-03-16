@@ -20,12 +20,15 @@ const initialStateFeatureInTest = {
   enableMultiRegionConfig: false,
   enableGcpKMS: true,
   enableAzuKMS: true,
-  enableRunTimeConfig: false,
+  enableRunTimeConfig: true,
   enablePITR: true,
-  enableDedicatedNodes: false,
   enableNotificationTemplates: false,
   enableRestore: false,
-  enablePrefillKubeConfig: false
+  enablePrefillKubeConfig: false,
+  enableNewUI: true, // feature flag to enable new revamped UI,
+  enableCustomEmailTemplates: false,
+  enableAWSProviderValidation: false,
+  enableMKR: false
 };
 
 const initialStateFeatureReleased = {
@@ -48,12 +51,12 @@ const initialStateFeatureReleased = {
   enableMultiRegionConfig: false,
   enableGcpKMS: true,
   enableAzuKMS: true,
-  enableRunTimeConfig: false,
+  enableRunTimeConfig: true,
   enablePITR: true,
-  enableDedicatedNodes: false,
   enableNotificationTemplates: false,
   enableRestore: false,
-  enablePrefillKubeConfig: false
+  enablePrefillKubeConfig: false,
+  enableCustomEmailTemplates: false
 };
 
 export const FeatureFlag = (

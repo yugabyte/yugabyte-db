@@ -8,7 +8,7 @@ import {
 
 import { YBControlledSelect } from '../../../common/forms/fields';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
-import { SortOrder, XClusterTableEligibility } from '../../constants';
+import { XClusterTableEligibility } from '../../constants';
 import { formatBytes, tableSort } from '../../ReplicationUtils';
 import { TableEligibilityPill } from './TableEligibilityPill';
 
@@ -16,6 +16,7 @@ import { KeyspaceRow, XClusterTableCandidate, XClusterTableType } from '../..';
 import { TableType } from '../../../../redesign/helpers/dtos';
 
 import styles from './ExpandedTableSelect.module.scss';
+import { SortOrder } from '../../../../redesign/helpers/constants';
 
 const TABLE_MIN_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40, 50, 100, 1000] as const;

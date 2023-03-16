@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertsResponse;
@@ -67,8 +68,6 @@ public class MetricQueryHelper {
   public static final String ALERTS_PATH = "alerts";
 
   public static final String MANAGEMENT_COMMAND_RELOAD = "reload";
-  private static final String PROMETHEUS_METRICS_URL_PATH = "yb.metrics.url";
-  private static final String PROMETHEUS_MANAGEMENT_URL_PATH = "yb.metrics.management.url";
   public static final String PROMETHEUS_MANAGEMENT_ENABLED = "yb.metrics.management.enabled";
 
   private static final String CONTAINER_METRIC_PREFIX = "container";
@@ -261,10 +260,26 @@ public class MetricQueryHelper {
               universeFilterLabel, getNamespacesFilter(universe, nodePrefix, newNamingStyle));
           // Check if the universe is using newNamingStyle.
           if (newNamingStyle) {
-            // TODO(bhavin192): account for max character limit in
-            // Helm release name, which is 53 characters.
-            // The default value in metrics.yml is yb-tserver-(.*)
-            filterJson.put(nodeFilterLabel, nodePrefix + "-(.*)-yb-tserver-(.*)");
+            Set<String> nodePrefixes = new HashSet<String>();
+            for (Cluster cluster : universe.getUniverseDetails().clusters) {
+              Provider provider =
+                  Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+              for (Region r : provider.regions) {
+                for (AvailabilityZone az : r.zones) {
+                  boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+                  String helmRelease =
+                      KubernetesUtil.getHelmReleaseName(
+                          isMultiAZ,
+                          nodePrefix,
+                          universe.name,
+                          az.name,
+                          cluster.clusterType == ClusterType.ASYNC,
+                          newNamingStyle);
+                  nodePrefixes.add(helmRelease + "-yb-tserver-(.*)");
+                }
+              }
+            }
+            filterJson.put(nodeFilterLabel, StringUtils.join(nodePrefixes, '|'));
           }
         }
       } else {
@@ -370,12 +385,6 @@ public class MetricQueryHelper {
       }
     }
 
-    String metricsUrl = appConfig.getString(PROMETHEUS_METRICS_URL_PATH);
-    if ((null == metricsUrl || metricsUrl.isEmpty())) {
-      LOG.error("Error fetching metrics data: no prometheus metrics URL configured");
-      return Json.newObject();
-    }
-
     ExecutorService threadPool =
         platformExecutorFactory.createFixedExecutor(
             getClass().getSimpleName(),
@@ -468,7 +477,7 @@ public class MetricQueryHelper {
   }
 
   public void postManagementCommand(String command) {
-    final String queryUrl = getPrometheusManagementUrl(command);
+    final String queryUrl = metricUrlProvider.getMetricsManagementUrl() + "/" + command;
     if (!apiHelper.postRequest(queryUrl)) {
       throw new RuntimeException(
           "Failed to perform " + command + " on prometheus instance " + queryUrl);
@@ -479,20 +488,8 @@ public class MetricQueryHelper {
     return appConfig.getBoolean(PROMETHEUS_MANAGEMENT_ENABLED);
   }
 
-  private String getPrometheusManagementUrl(String path) {
-    final String prometheusManagementUrl = appConfig.getString(PROMETHEUS_MANAGEMENT_URL_PATH);
-    if (StringUtils.isEmpty(prometheusManagementUrl)) {
-      throw new RuntimeException(PROMETHEUS_MANAGEMENT_URL_PATH + " not set");
-    }
-    return prometheusManagementUrl + "/" + path;
-  }
-
   private String getPrometheusQueryUrl(String path) {
-    final String metricsUrl = appConfig.getString(PROMETHEUS_METRICS_URL_PATH);
-    if (StringUtils.isEmpty(metricsUrl)) {
-      throw new RuntimeException(PROMETHEUS_METRICS_URL_PATH + " not set");
-    }
-    return metricsUrl + "/" + path;
+    return metricUrlProvider.getMetricsApiUrl() + "/" + path;
   }
 
   // Return a regex string for filtering the metrics based on

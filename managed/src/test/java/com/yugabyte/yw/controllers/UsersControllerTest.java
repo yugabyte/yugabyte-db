@@ -449,4 +449,200 @@ public class UsersControllerTest extends FakeDBApplication {
                         .bodyJson(params)));
     assertEquals(result.status(), BAD_REQUEST);
   }
+
+  @Test
+  public void testUpdateUserProfileReadOnlyUserPasswordChange() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "readonly@test.com", Role.ReadOnly);
+    String testTimezone1 = "America/Toronto";
+    String testTimezone2 = "America/Los_Angeles";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.ReadOnly);
+    ObjectNode params = Json.newObject();
+    params.put("email", "readonly@test.com");
+    params.put("password", "new-Password1!");
+    params.put("confirmPassword", "new-Password1!");
+    params.put("role", "ReadOnly");
+    params.put("timezone", testTimezone1);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                .cookie(validCookie)
+                .bodyJson(params));
+    testUser1 = Users.get(testUser1.uuid);
+    assertTrue(hashBuilder.isValid("new-Password1!", testUser1.passwordHash));
+    assertAuditEntry(1, customer1.uuid);
+  }
+
+  public void testUpdateUserProfileReadOnlyUserTZChange() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "readonly@test.com", Role.ReadOnly);
+    String testTimezone1 = "America/Toronto";
+    String testTimezone2 = "America/Los_Angeles";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.ReadOnly);
+    ObjectNode params = Json.newObject();
+    params.put("email", "readonly@test.com");
+    params.put("password", "");
+    params.put("confirmPassword", "");
+    params.put("role", "ReadOnly");
+    params.put("timezone", testTimezone2);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                .cookie(validCookie)
+                .bodyJson(params));
+    assertEquals(result.status(), BAD_REQUEST);
+  }
+
+  public void testUpdateUserProfileReadOnlyUserRoleChange() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "readonly@test.com", Role.ReadOnly);
+    String testTimezone1 = "America/Toronto";
+    String testTimezone2 = "America/Los_Angeles";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.ReadOnly);
+    ObjectNode params = Json.newObject();
+    params.put("email", "readonly@test.com");
+    params.put("password", "");
+    params.put("confirmPassword", "");
+    params.put("role", "Admin");
+    params.put("timezone", testTimezone1);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                .cookie(validCookie)
+                .bodyJson(params));
+    assertEquals(result.status(), BAD_REQUEST);
+  }
+
+  public void testUpdateUserProfileSuperAdminUserPWChangeOfReadOnly() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "superadmin@test.com", Role.SuperAdmin);
+    String testTimezone1 = "America/Toronto";
+    String testTimezone2 = "America/Los_Angeles";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.SuperAdmin);
+    Users testUser2 = ModelFactory.testUser(customer1, "readonly@test.com", Role.ReadOnly);
+    testUser2.setTimezone(testTimezone2);
+    ObjectNode params = Json.newObject();
+    params.put("email", "readonly@test.com");
+    params.put("password", "newpassword#123");
+    params.put("confirmPassword", "newpassword#123");
+    params.put("role", "ReadOnly");
+    params.put("timezone", testTimezone2);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.uuid), testUser2.uuid))
+                .cookie(validCookie)
+                .bodyJson(params));
+    assertEquals(result.status(), BAD_REQUEST);
+  }
+
+  public void testUpdateUserProfileSuperAdminUserRoleChangeOfReadOnly() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "superadmin@test.com", Role.SuperAdmin);
+    String testTimezone1 = "America/Toronto";
+    String testTimezone2 = "America/Los_Angeles";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.SuperAdmin);
+    Users testUser2 = ModelFactory.testUser(customer1, "readonly@test.com", Role.ReadOnly);
+    testUser2.setTimezone(testTimezone2);
+    ObjectNode params = Json.newObject();
+    params.put("email", "readonly@test.com");
+    params.put("password", "");
+    params.put("confirmPassword", "");
+    params.put("role", "Admin");
+    params.put("timezone", testTimezone2);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.uuid), testUser2.uuid))
+                .cookie(validCookie)
+                .bodyJson(params));
+    assertEquals(OK, result.status());
+    assertEquals(testUser2.getRole(), Role.Admin);
+  }
+
+  public void testUpdateUserProfileSuperAdminUserTZChangeOfReadOnly() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "superadmin@test.com", Role.SuperAdmin);
+    String testTimezone1 = "America/Toronto";
+    String testTimezone2 = "America/Los_Angeles";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.SuperAdmin);
+    Users testUser2 = ModelFactory.testUser(customer1, "readonly@test.com", Role.ReadOnly);
+    testUser2.setTimezone(testTimezone2);
+    ObjectNode params = Json.newObject();
+    params.put("email", "readonly@test.com");
+    params.put("password", "");
+    params.put("confirmPassword", "");
+    params.put("role", "ReadOnly");
+    params.put("timezone", testTimezone1);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.uuid), testUser2.uuid))
+                .cookie(validCookie)
+                .bodyJson(params));
+    assertEquals(OK, result.status());
+    assertEquals(testUser2.getTimezone(), testTimezone1);
+  }
+
+  public void testUpdateUserProfileSuperAdminUserRoleChangeOfReadOnlyToSuperAdmin()
+      throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "superadmin@test.com", Role.SuperAdmin);
+    String testTimezone1 = "America/Toronto";
+    String testTimezone2 = "America/Los_Angeles";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.SuperAdmin);
+    Users testUser2 = ModelFactory.testUser(customer1, "readonly@test.com", Role.ReadOnly);
+    testUser2.setTimezone(testTimezone2);
+    ObjectNode params = Json.newObject();
+    params.put("email", "readonly@test.com");
+    params.put("password", "");
+    params.put("confirmPassword", "");
+    params.put("role", "SuperAdmin");
+    params.put("timezone", testTimezone2);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.uuid), testUser2.uuid))
+                .cookie(validCookie)
+                .bodyJson(params));
+    assertEquals(BAD_REQUEST, result.status());
+  }
 }

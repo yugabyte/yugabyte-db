@@ -93,12 +93,9 @@ ReplicaState::ReplicaState(
   }
 
   CHECK(IsAcceptableAtomicImpl(leader_state_cache_));
-
-  // Actually we don't need this lock, but GetActiveRoleUnlocked checks that we are holding the
-  // lock.
-  auto lock = LockForRead();
-  CoarseTimePoint now;
-  RefreshLeaderStateCacheUnlocked(&now);
+  LeaderStateCache cache;
+  cache.Set(LeaderStatus::NOT_LEADER, 0, CoarseTimePoint::min());
+  leader_state_cache_.store(cache);
 }
 
 ReplicaState::~ReplicaState() {
@@ -106,6 +103,9 @@ ReplicaState::~ReplicaState() {
 
 Status ReplicaState::StartUnlocked(const OpIdPB& last_id_in_wal) {
   DCHECK(IsLocked());
+
+  CoarseTimePoint now;
+  RefreshLeaderStateCacheUnlocked(&now);
 
   // Our last persisted term can be higher than the last persisted operation
   // (i.e. if we called an election) but reverse should never happen.
@@ -901,7 +901,7 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(
     auto current_id = round->id();
 
     if (PREDICT_TRUE(prev_id)) {
-      CHECK_OK(CheckOpInSequence(prev_id, current_id));
+      CHECK_OK_PREPEND(CheckOpInSequence(prev_id, current_id), LogPrefix());
     }
 
     if (current_id.index > committed_op_id.index) {
@@ -1042,8 +1042,16 @@ void ReplicaState::UpdateLastReceivedOpIdUnlocked(const OpId& op_id) {
       << ", Trace:" << std::endl << (trace ? trace->DumpToString(true) : "No trace found");
 
   last_received_op_id_ = op_id;
-  last_received_op_id_current_leader_ = op_id;
   next_index_ = op_id.index + 1;
+  last_received_op_id_current_leader_ = op_id;
+}
+
+void ReplicaState::UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(const OpId& op_id) {
+  if (last_received_op_id_current_leader_.empty()) {
+    VLOG_WITH_PREFIX(0) << __func__ << " Updating last_received opid from "
+      << last_received_op_id_current_leader_.ToString() << " to " << op_id.ToString();
+    last_received_op_id_current_leader_ = op_id;
+  }
 }
 
 const yb::OpId& ReplicaState::GetLastReceivedOpIdUnlocked() const {
@@ -1334,11 +1342,12 @@ Result<MicrosTime> ReplicaState::MajorityReplicatedHtLeaseExpiration(
 Status ReplicaState::SetMajorityReplicatedLeaseExpirationUnlocked(
     const MajorityReplicatedData& majority_replicated_data,
     EnumBitSet<SetMajorityReplicatedLeaseExpirationFlag> flags) {
-  if (!leader_no_op_committed_) {
+  if (PREDICT_FALSE(!leader_no_op_committed_ && GetActiveConfigUnlocked().peers_size() != 1)) {
     // Don't setting leader lease until NoOp at current term is committed.
     // If the older leader containing old, unreplicated operations is elected as leader again,
     // when replicating old operations to current node, might have a too low hybrid time.
     // See https://github.com/yugabyte/yugabyte-db/issues/14225 for more details.
+    // Under leader only mode, this case shouldn't happen, it's safe to set the lease exp.
     return STATUS_FORMAT(IllegalState,
                          "NoOp of current term is not committed "
                          "(majority_replicated_lease_expiration_ = $0, "

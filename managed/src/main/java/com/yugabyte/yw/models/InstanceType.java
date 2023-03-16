@@ -156,7 +156,12 @@ public class InstanceType extends Model {
     if (instanceType == null) {
       instanceType = new InstanceType();
       instanceType.idKey = InstanceTypeKey.create(instanceTypeCode, providerUuid);
+    } else if (!instanceType.isActive()) {
+      instanceType.delete();
+      instanceType = new InstanceType();
+      instanceType.idKey = InstanceTypeKey.create(instanceTypeCode, providerUuid);
     }
+
     instanceType.memSizeGB = memSize;
     instanceType.numCores = numCores;
     instanceType.instanceTypeDetails = instanceTypeDetails;

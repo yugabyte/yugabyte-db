@@ -44,8 +44,8 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.messages.h"
@@ -206,6 +206,12 @@ DEFINE_UNKNOWN_int64(time_based_wal_gc_clock_delta_usec, 0,
              "segment is safe to be garbage collected. This is needed for clusters running with a "
              "skewed hybrid clock, because the clock used for time-based WAL GC is the wall clock, "
              "not hybrid clock.");
+
+DEFINE_UNKNOWN_int64(reuse_unclosed_segment_threshold, -1,
+            "If the last left in-progress segment size is smaller or equal to this threshold, "
+            "Log will reuse this last segment as writable active_segment at startup."
+            "Otherwise, Log will create a new segment. If the value is negative, it means"
+            "reuse unclosed segment feature is disabled");
 
 // Validate that log_min_segments_to_retain >= 1
 static bool ValidateLogsToRetain(const char* flagname, int value) {
@@ -678,7 +684,7 @@ Status Log::Init() {
   }
 
   if (create_new_segment_at_start_) {
-    RETURN_NOT_OK(EnsureInitialNewSegmentAllocated());
+    RETURN_NOT_OK(EnsureSegmentInitializedUnlocked());
   }
   return Status::OK();
 }
@@ -942,18 +948,107 @@ Status Log::AllocateSegmentAndRollOver() {
   return s.Wait();
 }
 
-Status Log::EnsureInitialNewSegmentAllocated() {
+Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& recover_segment) {
+  auto read_entries = recover_segment->ReadEntries();
+  RETURN_NOT_OK(read_entries.status);
+  int64_t file_size = read_entries.end_offset;
+  // For now, we want to test reuse unclosed segment feature aggressively in debug builds.
+  // Thus, by using IsDebug(), we can trigger this feature in most restart from a crash scenario.
+  int64_t reuse_unclosed_segment_threshold = FLAGS_reuse_unclosed_segment_threshold;
+  if (IsDebug() && reuse_unclosed_segment_threshold >= 0) {
+    reuse_unclosed_segment_threshold = max_segment_size_;
+  }
+  if (file_size > reuse_unclosed_segment_threshold) {
+    LOG(INFO) << "Fail to reuse " << recover_segment->path() << " as active_segment due to "
+              << "its actual file size is greater than reuse_unclosed_segment_threshold";
+    RETURN_NOT_OK(recover_segment->RebuildFooterByScanning(read_entries));
+    return false;
+  }
+
+  uint64_t real_size = recover_segment->file_size();
+  if (options_.preallocate_segments) {
+    // File was likely to be pre-allocated. In this case, real_size is the preallocation size.
+    cur_max_segment_size_ = real_size;
+  } else {
+    cur_max_segment_size_ = options_.initial_segment_size_bytes;
+    while (cur_max_segment_size_ <= real_size) {
+      cur_max_segment_size_ *= 2;
+    }
+    cur_max_segment_size_ = std::min(cur_max_segment_size_, max_segment_size_);
+  }
+  // Restore footer_builder_ and log index for this segment first.
+  footer_builder_.Clear();
+  RETURN_NOT_OK(recover_segment->RestoreFooterBuilderAndLogIndex(&footer_builder_,
+                                                                 log_index_.get(),
+                                                                 read_entries));
+  if (footer_builder_.has_min_replicate_index()) {
+    min_replicate_index_.store(footer_builder_.min_replicate_index(),
+                               std::memory_order_release);
+  }
+  next_segment_path_ = recover_segment->path();
+  auto opts = GetNewSegmentWritableFileOptions();
+  opts.mode = Env::OPEN_EXISTING;
+  opts.initial_offset = file_size;
+  // There are two reasons of why we want to set the initial offset:
+  // 1. Overwrite corrupted entry, because last entry in the segment is possible to be corrupted
+  //    under the case that server crashed in the middle of writing entry.
+  // 2. Before server crash, file might get preallocated to certain size.
+  //    This set intial offset option ensure we start with offset at last valid entry,
+  //    instead of at the end of preallocated block.
+  RETURN_NOT_OK(env_util::OpenFileForWrite(opts, get_env(), next_segment_path_,
+                                           &next_segment_file_));
+  std::unique_ptr<WritableLogSegment> new_segment(
+      new WritableLogSegment(next_segment_path_, next_segment_file_));
+
+  active_segment_sequence_number_ = recover_segment->header().sequence_number();
+  RETURN_NOT_OK(new_segment->ReuseHeader(recover_segment->header(),
+                                         recover_segment->first_entry_offset(), file_size));
+
+  {
+    std::lock_guard<std::mutex> lock(active_segment_mutex_);
+    active_segment_ = std::move(new_segment);
+  }
+
+  LOG(INFO) << "Successfully restored footer_builder_ and log_index_ for segment: "
+            << recover_segment->path() << ". Reopen the file for write with starting offset: "
+            << file_size;
+  return true;
+}
+
+Status Log::EnsureSegmentInitialized() {
+  std::lock_guard<percpu_rwlock> write_lock(state_lock_);
+  return EnsureSegmentInitializedUnlocked();
+}
+
+Status Log::EnsureSegmentInitializedUnlocked() {
   if (log_state_ == LogState::kLogWriting) {
     // New segment already created.
     return Status::OK();
   }
   if (log_state_ != LogState::kLogInitialized) {
     return STATUS_FORMAT(
-        IllegalState, "Unexpected log state in EnsureInitialNewSegmentAllocated: $0", log_state_);
+        IllegalState, "Unexpected log state in EnsureSegmentInitialized(): $0", log_state_);
   }
-  RETURN_NOT_OK(AsyncAllocateSegment());
-  RETURN_NOT_OK(allocation_status_.Get());
-  RETURN_NOT_OK(SwitchToAllocatedSegment());
+
+  bool reuse_last_segment = false;
+  // For last segment that doesn't have a footer, if its file size (last readable offset)
+  // is within the reuse_unclosed_segment_threshold, we will reuse it as active_segment_.
+  // Otherwise, close this segment by building a footer in memory.
+  SegmentSequence segments;
+  RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
+  if (!segments.empty()) {
+    const scoped_refptr<ReadableLogSegment>& last_segment = VERIFY_RESULT(segments.back());
+    if (!last_segment->HasFooter()) {
+      // Reuse this segment as writable active_segment.
+      reuse_last_segment = VERIFY_RESULT(ReuseAsActiveSegment(last_segment));
+    }
+  }
+  // Allocate new segment as writable active_segment.
+  if (!reuse_last_segment) {
+    RETURN_NOT_OK(AsyncAllocateSegment());
+    RETURN_NOT_OK(allocation_status_.Get());
+    RETURN_NOT_OK(SwitchToAllocatedSegment());
+  }
   log_index_->SetMinIndexedSegmentNumber(active_segment_sequence_number_);
 
   RETURN_NOT_OK(appender_->Init());
@@ -1431,14 +1526,18 @@ void Log::SetSchemaForNextLogSegment(const Schema& schema,
   schema_version_ = version;
 }
 
+Status Log::TEST_WriteCorruptedEntryBatchAndSync() {
+  return active_segment_->TEST_WriteCorruptedEntryBatchAndSync();
+}
+
 Status Log::Close() {
-  if (PREDICT_FALSE(FLAGS_TEST_simulate_abrupt_server_restart)) {
-    return Status::OK();
-  }
   // Allocation pool is used from appender pool, so we should shutdown appender first.
   appender_->Shutdown();
   allocation_token_.reset();
 
+  if (PREDICT_FALSE(FLAGS_TEST_simulate_abrupt_server_restart)) {
+    return Status::OK();
+  }
   std::lock_guard<percpu_rwlock> l(state_lock_);
   switch (log_state_) {
     case kLogWriting:
@@ -1740,7 +1839,7 @@ Status Log::SwitchToAllocatedSegment() {
     header.set_deprecated_schema_version(schema_version_);
   }
 
-  RETURN_NOT_OK(new_segment->WriteHeaderAndOpen(header));
+  RETURN_NOT_OK(new_segment->WriteHeader(header));
   // Transform the currently-active segment into a readable one, since we need to be able to replay
   // the segments for other peers.
   {

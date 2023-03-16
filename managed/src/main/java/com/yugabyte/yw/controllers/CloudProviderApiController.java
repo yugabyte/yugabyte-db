@@ -11,12 +11,16 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Throwables;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.forms.EditAccessKeyRotationScheduleParams;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -28,7 +32,6 @@ import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Schedule;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -52,6 +55,7 @@ import play.mvc.Result;
 public class CloudProviderApiController extends AuthenticatedController {
 
   @Inject private CloudProviderHandler cloudProviderHandler;
+  @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   @ApiOperation(
       value = "List cloud providers",
@@ -73,22 +77,20 @@ public class CloudProviderApiController extends AuthenticatedController {
     return PlatformResults.withData(provider);
   }
 
-  @ApiOperation(
-      value = "Delete a cloud provider",
-      notes = "This endpoint is used only for integration tests.",
-      hidden = true,
-      response = YBPSuccess.class)
+  @ApiOperation(value = "Delete a cloud provider", response = YBPSuccess.class)
   public Result delete(UUID customerUUID, UUID providerUUID) {
-    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    cloudProviderHandler.delete(customer, provider);
+
+    UUID taskUUID = cloudProviderHandler.delete(customer, providerUUID);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.CloudProvider,
             providerUUID.toString(),
-            Audit.ActionType.Delete);
-    return YBPSuccess.withMessage("Deleted provider: " + providerUUID);
+            Audit.ActionType.Delete,
+            null,
+            taskUUID);
+    return new YBPTask(taskUUID, providerUUID).asResult();
   }
 
   @ApiOperation(
@@ -115,14 +117,27 @@ public class CloudProviderApiController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.models.Provider",
           required = true,
           paramType = "body"))
-  public Result edit(UUID customerUUID, UUID providerUUID) {
+  public Result edit(UUID customerUUID, UUID providerUUID, boolean validate) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    JsonNode requestBody = request().body().asJson();
+
+    if (!runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
+      // Relaxing the edit provider call for used provider for YBM specific
+      // use case, as they already rely on edit provider flow.
+      long universeCount = provider.getUniverseCount();
+      if (universeCount > 0) {
+        throw new PlatformServiceException(
+            FORBIDDEN,
+            String.format(
+                "There %s %d universe%s using this provider, cannot modify",
+                universeCount > 1 ? "are" : "is", universeCount, universeCount > 1 ? "s" : ""));
+      }
+    }
+
+    JsonNode requestBody = mayBeMassageRequest(request().body().asJson(), true);
     Provider editProviderReq = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
     UUID taskUUID =
-        cloudProviderHandler.editProvider(
-            customer, provider, editProviderReq, getFirstRegionCode(provider));
+        cloudProviderHandler.editProvider(customer, provider, editProviderReq, validate);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -133,32 +148,6 @@ public class CloudProviderApiController extends AuthenticatedController {
     return new YBPTask(taskUUID, providerUUID).asResult();
   }
 
-  @ApiOperation(value = "Patch a provider", response = YBPTask.class, nickname = "patchProvider")
-  @ApiImplicitParams(
-      @ApiImplicitParam(
-          value = "patch provider form data",
-          name = "PatchProviderRequest",
-          dataType = "com.yugabyte.yw.models.Provider",
-          required = true,
-          paramType = "body"))
-  public Result patch(UUID customerUUID, UUID providerUUID) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    JsonNode requestBody = request().body().asJson();
-    Provider editProviderReq = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
-    cloudProviderHandler.mergeProviderConfig(provider, editProviderReq);
-    cloudProviderHandler.editProvider(
-        customer, provider, editProviderReq, getFirstRegionCode(provider));
-    auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.CloudProvider,
-            providerUUID.toString(),
-            Audit.ActionType.Update,
-            Json.toJson(editProviderReq));
-    return YBPSuccess.withMessage("Patched provider: " + providerUUID);
-  }
-
   @ApiOperation(value = "Create a provider", response = YBPTask.class, nickname = "createProviders")
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -166,8 +155,8 @@ public class CloudProviderApiController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.Provider",
           required = true))
-  public Result create(UUID customerUUID) {
-    JsonNode requestBody = request().body().asJson();
+  public Result create(UUID customerUUID, boolean validate) {
+    JsonNode requestBody = mayBeMassageRequest(request().body().asJson(), false);
     Provider reqProvider =
         formFactory.getFormDataOrBadRequest(request().body().asJson(), Provider.class);
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -179,17 +168,14 @@ public class CloudProviderApiController extends AuthenticatedController {
     } else {
       providerEbean =
           cloudProviderHandler.createProvider(
-              customer,
-              providerCode,
-              reqProvider.name,
-              reqProvider,
-              getFirstRegionCode(reqProvider));
+              customer, providerCode, reqProvider.name, reqProvider, validate);
     }
 
     if (providerCode.isRequiresBootstrap()) {
       UUID taskUUID = null;
       try {
-        CloudBootstrap.Params taskParams = CloudBootstrap.Params.fromProvider(reqProvider);
+        CloudBootstrap.Params taskParams =
+            CloudBootstrap.Params.fromProvider(providerEbean, reqProvider);
 
         taskUUID = cloudProviderHandler.bootstrap(customer, providerEbean, taskParams);
         auditService()
@@ -323,13 +309,6 @@ public class CloudProviderApiController extends AuthenticatedController {
     return PlatformResults.withData(accessKeyRotationSchedules);
   }
 
-  private static String getFirstRegionCode(Provider provider) {
-    for (Region r : provider.regions) {
-      return r.code;
-    }
-    return null;
-  }
-
   @ApiOperation(
       value = "Edit a access key rotation schedule",
       response = Schedule.class,
@@ -359,5 +338,50 @@ public class CloudProviderApiController extends AuthenticatedController {
             Audit.ActionType.Edit,
             request().body().asJson());
     return PlatformResults.withData(schedule);
+  }
+
+  // v2 API version 1 backward compatiblity support.
+  public JsonNode mayBeMassageRequest(JsonNode requestBody, Boolean forEdit) {
+    JsonNode config = requestBody.get("config");
+    if (config == null) {
+      return requestBody;
+    }
+    if (forEdit) {
+      ((ObjectNode) requestBody).remove("config");
+    }
+    String providerCode = requestBody.get("code").asText();
+    ObjectMapper mapper = Json.mapper();
+    JsonNode regions = requestBody.get("regions");
+    ArrayNode regionsNode = mapper.createArrayNode();
+    if (regions != null && regions.isArray()) {
+      for (JsonNode region : regions) {
+        ObjectNode regionWithProviderCode = mapper.createObjectNode();
+        regionWithProviderCode.put("providerCode", providerCode);
+        if (region.has("config") && forEdit) {
+          ((ObjectNode) region).remove("config");
+        }
+        regionWithProviderCode.setAll((ObjectNode) region);
+        JsonNode zones = region.get("zones");
+        ArrayNode zonesNode = mapper.createArrayNode();
+        if (zones != null && zones.isArray()) {
+          for (JsonNode zone : zones) {
+            ObjectNode zoneWithProviderCode = mapper.createObjectNode();
+            if (zone.has("config") && forEdit) {
+              ((ObjectNode) zone).remove("config");
+            }
+            zoneWithProviderCode.put("providerCode", providerCode);
+            zoneWithProviderCode.setAll((ObjectNode) zone);
+            zonesNode.add(zoneWithProviderCode);
+          }
+        }
+        regionWithProviderCode.remove("zones");
+        regionWithProviderCode.put("zones", zonesNode);
+        regionsNode.add(regionWithProviderCode);
+      }
+    }
+    ((ObjectNode) requestBody).remove("regions");
+    ((ObjectNode) requestBody).put("regions", regionsNode);
+
+    return CloudInfoInterface.mayBeMassageRequest(requestBody, true);
   }
 }

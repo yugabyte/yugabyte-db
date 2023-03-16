@@ -326,19 +326,6 @@ endfunction()
 #     can result in subtle bad code generation.  This has a small perf hit but worth it to avoid
 #     hard to debug crashes.
 
-function(YB_INCLUDE_EXTENSIONS)
-  file(RELATIVE_PATH CUR_REL_LIST_FILE "${YB_SRC_ROOT}" "${CMAKE_CURRENT_LIST_FILE}")
-  get_filename_component(CUR_REL_LIST_NAME_NO_EXT "${CUR_REL_LIST_FILE}" NAME_WE)
-  get_filename_component(CUR_REL_LIST_DIR "${CUR_REL_LIST_FILE}" DIRECTORY)
-
-  set(YB_MATCHING_ENTERPRISE_DIR "${YB_SRC_ROOT}/ent/${CUR_REL_LIST_DIR}" PARENT_SCOPE)
-  set(YB_MATCHING_ENTERPRISE_DIR "${YB_SRC_ROOT}/ent/${CUR_REL_LIST_DIR}")
-
-  set(INCLUDED_PATH "${YB_MATCHING_ENTERPRISE_DIR}/${CUR_REL_LIST_NAME_NO_EXT}-include.txt")
-  message("Including '${INCLUDED_PATH}' into '${CMAKE_CURRENT_LIST_FILE}'")
-  include("${INCLUDED_PATH}")
-endfunction()
-
 function(yb_remember_dependency target)
   if("${ARGN}" STREQUAL "")
     message(FATAL_ERROR "yb_remember_dependency() called with no arguments")
@@ -860,7 +847,19 @@ function(enable_lto_if_needed)
 
   detect_lto_type_from_linking_type()
   if(YB_LTO_ENABLED)
-    ADD_CXX_FLAGS("-flto=${YB_LTO_TYPE} -fuse-ld=lld")
+    if(YB_BUILD_TYPE STREQUAL "prof_gen")
+      # We need a "mostly static" build (one big binary and few libs)
+      # for tserver in order to dump all the counters. Our linking type "lto"
+      # does it, but it also turns on link-time optimizations (LTO) for clang.
+      # LTO and profile generation together produce incorrect counters for
+      # inlined functions in clang15. That's why we need to remove
+      # -lto=${YB_LTO_TYPE} from out "lto" linking type when building for prof_gen.
+      # TODO: remove after we switch to clang16 (the problem is fixed in current llvm main).
+      # https://github.com/yugabyte/yugabyte-db/issues/15093
+      ADD_CXX_FLAGS("-fuse-ld=lld")
+    else()
+      ADD_CXX_FLAGS("-flto=${YB_LTO_TYPE} -fuse-ld=lld")
+    endif()
     # In LTO mode, yb-master / yb-tserver executables are generated with LTO, but we first generate
     # yb-master-dynamic and yb-tserver-dynamic binaries that are dynamically linked.
     set_in_current_and_parent_scope(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "-dynamic" PARENT_SCOPE)

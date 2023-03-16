@@ -30,7 +30,7 @@ export const getScheduledBackupList = (pageno: number) => {
     },
     limit: records_to_fetch,
     offset: pageno * records_to_fetch,
-    sortBy: 'taskType'
+    sortBy: 'scheduleName'
   };
   return axios.post<Schedule_List_Reponse>(`${ROOT_URL}/customers/${cUUID}/schedules/page`, params);
 };

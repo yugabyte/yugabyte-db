@@ -51,9 +51,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   virtual ~PgTxnManager();
 
   Status BeginTransaction();
-  Status CalculateIsolation(bool read_only_op,
-                            TxnPriorityRequirement txn_priority_requirement,
-                            uint64_t* in_txn_limit = nullptr);
+
+  Status CalculateIsolation(bool read_only_op, TxnPriorityRequirement txn_priority_requirement);
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
@@ -72,7 +71,6 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   bool IsTxnInProgress() const { return txn_in_progress_; }
   IsolationLevel GetIsolationLevel() const { return isolation_level_; }
-  bool ShouldUseFollowerReads() const { return read_time_for_follower_reads_.is_valid(); }
   bool IsDdlMode() const { return ddl_type_ != DdlType::NonDdl; }
 
   uint64_t SetupPerformOptions(tserver::PgPerformOptionsPB* options);
@@ -123,7 +121,6 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   // and cancels the other transaction.
   uint64_t priority_ = 0;
   SavePriority use_saved_priority_ = SavePriority::kFalse;
-  HybridTime in_txn_limit_;
 
   PgCallbacks pg_callbacks_;
 

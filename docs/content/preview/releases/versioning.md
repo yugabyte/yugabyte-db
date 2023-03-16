@@ -7,7 +7,7 @@ menu:
   preview_releases:
     identifier: versioning
     parent: release-notes
-    weight: 4000
+    weight: 1000
 type: docs
 ---
 

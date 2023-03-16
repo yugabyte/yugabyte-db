@@ -38,7 +38,9 @@ export default class TaskListTable extends Component {
 
     function typeFormatter(cell, row) {
       return row.correlationId ? (
-        <Link to={`/logs/?queryRegex=${row.correlationId}`}>{row.typeName} {row.target}</Link>
+        <Link to={`/logs/?queryRegex=${row.correlationId}`}>
+          {row.typeName} {row.target}
+        </Link>
       ) : (
         `${row.typeName} ${row.target}`
       );
@@ -86,7 +88,6 @@ export default class TaskListTable extends Component {
               Are you sure you want to abort the task?
             </YBConfirmModal>
             <div className="task-abort-view yb-pending-color" onClick={showTaskAbortModal}>
-              <i className="fa fa-chevron-right"></i>
               Abort Task
             </div>
           </>
@@ -137,6 +138,14 @@ export default class TaskListTable extends Component {
                 dataFormat={successStringFormatter}
               >
                 Status
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="userEmail"
+                dataSort
+                columnClassName="no-border name-column"
+                className="no-border"
+              >
+                User
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="createTime"

@@ -14,8 +14,8 @@
 
 #include <algorithm>
 #include <atomic>
-#include <functional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "yb/client/tablet_server.h"
@@ -41,6 +41,8 @@
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
 
+#include "yb/server/skewed_clock.h"
+
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_memctx.h"
@@ -51,8 +53,6 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-
-using std::string;
 
 DEFINE_UNKNOWN_int32(ysql_client_read_write_timeout_ms, -1,
     "Timeout for YSQL's yb-client read/write "
@@ -103,12 +103,6 @@ inline YBCStatus YBCStatusOK() {
   return nullptr;
 }
 
-YBCStatus YBCStatusNotSupport(const string& feature_name = std::string()) {
-  return ToYBCStatus(feature_name.empty()
-      ? STATUS(NotSupported, "Feature is not supported")
-      : STATUS_FORMAT(NotSupported, "Feature '$0' not supported", feature_name));
-}
-
 // Using a raw pointer here to fully control object initialization and destruction.
 pggate::PgApiImpl* pgapi;
 std::atomic<bool> pgapi_shutdown_done;
@@ -129,12 +123,15 @@ YBCStatus ExtractValueFromResult(Result<T> result, T* value) {
   });
 }
 
-YBCStatus ProcessYbctid(
-    const YBCPgYBTupleIdDescriptor& source,
-    const std::function<Status(PgOid, const Slice&)>& processor) {
-  return ToYBCStatus(pgapi->ProcessYBTupleId(
-      source,
-      std::bind(processor, source.table_oid, std::placeholders::_1)));
+template<class Processor>
+Status ProcessYbctidImpl(const YBCPgYBTupleIdDescriptor& source, const Processor& processor) {
+  auto ybctid = VERIFY_RESULT(pgapi->BuildTupleId(source));
+  return processor(source.table_oid, ybctid.AsSlice());
+}
+
+template<class Processor>
+YBCStatus ProcessYbctid(const YBCPgYBTupleIdDescriptor& source, const Processor& processor) {
+  return ToYBCStatus(ProcessYbctidImpl(source, processor));
 }
 
 Slice YbctidAsSlice(uint64_t ybctid) {
@@ -159,6 +156,11 @@ inline std::optional<Bound> MakeBound(YBCPgBoundType type, uint64_t value) {
 
 void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks,
                      PgApiContext* context) {
+  // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
+  // However, this is added to allow simulating and testing of some known bugs until we remove
+  // HybridClock usage.
+  server::SkewedClock::Register();
+
   InitThreading();
 
   CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
@@ -205,7 +207,7 @@ const YBCPgCallbacks *YBCGetPgCallbacks() {
 }
 
 YBCStatus YBCPgInitSession(const char *database_name) {
-  const string db_name(database_name ? database_name : "");
+  const std::string db_name(database_name ? database_name : "");
   return ToYBCStatus(pgapi->InitSession(db_name));
 }
 
@@ -262,7 +264,7 @@ YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
 
 YBCStatus YbGetActualHeapSizeBytes(int64_t *consumption) {
 #ifdef YB_TCMALLOC_ENABLED
-    *consumption = yb::MemTracker::GetTCMallocActualHeapSizeBytes();
+    *consumption = pgapi ? pgapi->GetRootMemTracker().consumption() : 0;
 #else
     *consumption = 0;
 #endif
@@ -605,7 +607,7 @@ YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle) {
 
 YBCStatus YBCPgGetTableProperties(YBCPgTableDesc table_desc,
                                   YbTableProperties properties) {
-  CHECK_NOTNULL(properties)->num_tablets = table_desc->GetPartitionCount();
+  CHECK_NOTNULL(properties)->num_tablets = table_desc->GetPartitionListSize();
   properties->num_hash_key_columns = table_desc->num_hash_key_columns();
   properties->is_colocated = table_desc->IsColocated();
   properties->tablegroup_oid = table_desc->GetTablegroupOid();
@@ -646,14 +648,14 @@ static Status GetSplitPoints(YBCPgTableDesc table_desc,
   const Schema& schema = table_desc->schema();
   const auto& column_ids = table_desc->partition_schema().range_schema().column_ids;
   size_t num_range_key_columns = table_desc->num_range_key_columns();
-  size_t num_splits = table_desc->GetPartitionCount() - 1;
+  size_t num_splits = table_desc->GetPartitionListSize() - 1;
   docdb::KeyEntryValue v;
 
   // decode DocKeys
-  const auto& partitions_bounds = table_desc->GetPartitions();
+  const auto& partitions_bounds = table_desc->GetPartitionList();
   for (size_t split_idx = 0; split_idx < num_splits; ++split_idx) {
     // +1 skip the first empty string lower bound partition key
-    const std::string& column_bounds = partitions_bounds[split_idx + 1];
+    const auto& column_bounds = (partitions_bounds)[split_idx + 1];
     docdb::DocKeyDecoder decoder(column_bounds);
 
     for (size_t col_idx = 0; col_idx < num_range_key_columns; ++col_idx) {
@@ -749,6 +751,7 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               bool is_unique_index,
                               const bool skip_index_backfill,
                               bool if_not_exist,
+                              bool is_colocated_via_database,
                               const YBCPgOid tablegroup_oid,
                               const YBCPgOid colocation_id,
                               const YBCPgOid tablespace_oid,
@@ -759,7 +762,8 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
   const PgObjectId tablespace_id(database_oid, tablespace_oid);
   return ToYBCStatus(pgapi->NewCreateIndex(database_name, schema_name, index_name, index_id,
                                            table_id, is_shared_index, is_unique_index,
-                                           skip_index_backfill, if_not_exist, tablegroup_id,
+                                           skip_index_backfill, if_not_exist,
+                                           is_colocated_via_database, tablegroup_id,
                                            colocation_id, tablespace_id, handle));
 }
 
@@ -1131,7 +1135,7 @@ YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,
   if (typeentity == nullptr
       || typeentity->yb_type == YB_YQL_DATA_TYPE_UNKNOWN_DATA
       || !typeentity->allow_for_primary_key) {
-    return YBCStatusNotSupport();
+    return ToYBCStatus(STATUS(NotSupported, "Feature is not supported"));
   }
 
   if (typeentity->datum_fixed_size > 0) {
@@ -1145,7 +1149,7 @@ YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,
     return ToYBCStatus(status);
   }
 
-  string key_buf;
+  std::string key_buf;
   AppendToKey(val.value(), &key_buf);
   *type_size = key_buf.size();
   return YBCStatusOK();
@@ -1162,7 +1166,7 @@ YBCStatus YBCAppendDatumToKey(uint64_t data, const YBCPgTypeEntity *typeentity,
     return ToYBCStatus(status);
   }
 
-  string key_buf;
+  std::string key_buf;
   AppendToKey(val.value(), &key_buf);
   memcpy(key_ptr, key_buf.c_str(), key_buf.size());
   *bytes_written = key_buf.size();
@@ -1170,7 +1174,7 @@ YBCStatus YBCAppendDatumToKey(uint64_t data, const YBCPgTypeEntity *typeentity,
 }
 
 uint16_t YBCCompoundHash(const char *key, size_t length) {
-  return YBPartition::HashColumnCompoundValue(string(key, length));
+  return YBPartition::HashColumnCompoundValue(std::string_view(key, length));
 }
 
 //------------------------------------------------------------------------------------------------
@@ -1423,6 +1427,16 @@ void YBCGetAndResetReadRpcStats(YBCPgStatement handle, uint64_t* reads, uint64_t
   pgapi->GetAndResetReadRpcStats(handle, reads, read_wait, tbl_reads, tbl_read_wait);
 }
 
+YBCStatus YBCGetIndexBackfillProgress(YBCPgOid* index_oids, YBCPgOid* database_oids,
+                                      uint64_t** backfill_statuses,
+                                      int num_indexes) {
+  std::vector<PgObjectId> index_ids;
+  for (int i = 0; i < num_indexes; ++i) {
+    index_ids.emplace_back(PgObjectId(database_oids[i], index_oids[i]));
+  }
+  return ToYBCStatus(pgapi->GetIndexBackfillProgress(index_ids, backfill_statuses));
+}
+
 //------------------------------------------------------------------------------------------------
 // Thread-local variables.
 //------------------------------------------------------------------------------------------------
@@ -1455,16 +1469,32 @@ void* YBCPgGetThreadLocalJumpBuffer() {
   return PgGetThreadLocalJumpBuffer();
 }
 
-void YBCPgSetThreadLocalErrMsg(const void* new_msg) {
-  PgSetThreadLocalErrMsg(new_msg);
+void* YBCPgSetThreadLocalErrStatus(void* new_status) {
+  return PgSetThreadLocalErrStatus(new_status);
 }
 
-const void* YBCPgGetThreadLocalErrMsg() {
-  return PgGetThreadLocalErrMsg();
+void* YBCPgGetThreadLocalErrStatus() {
+  return PgGetThreadLocalErrStatus();
 }
 
-void YBCStartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version) {
-  pgapi->StartSysTablePrefetching(latest_known_ysql_catalog_version);
+void YBCStartSysTablePrefetching(
+  uint64_t latest_known_ysql_catalog_version, YBCPgSysTablePrefetcherCacheMode cache_mode) {
+  PrefetchingCacheMode mode = PrefetchingCacheMode::NO_CACHE;
+  switch (cache_mode) {
+    case YB_YQL_PREFETCHER_TRUST_CACHE:
+      mode = PrefetchingCacheMode::TRUST_CACHE;
+      break;
+    case YB_YQL_PREFETCHER_RENEW_CACHE_SOFT:
+      mode = PrefetchingCacheMode::RENEW_CACHE_SOFT;
+      break;
+    case YB_YQL_PREFETCHER_RENEW_CACHE_HARD:
+      LOG(DFATAL) << "Emergency fallback prefetching cache mode is used";
+      mode = PrefetchingCacheMode::RENEW_CACHE_HARD;
+      break;
+    default:
+      break;
+  }
+  pgapi->StartSysTablePrefetching(PrefetcherOptions{latest_known_ysql_catalog_version, mode});
 }
 
 void YBCStopSysTablePrefetching() {
@@ -1480,6 +1510,10 @@ void YBCRegisterSysTableForPrefetching(
   pgapi->RegisterSysTableForPrefetching(
       PgObjectId(database_oid, table_oid),
       index_oid == kPgInvalidOid ? PgObjectId() : PgObjectId(database_oid, index_oid));
+}
+
+YBCStatus YBCPrefetchRegisteredSysTables() {
+  return ToYBCStatus(pgapi->PrefetchRegisteredSysTables());
 }
 
 YBCStatus YBCPgCheckIfPitrActive(bool* is_active) {

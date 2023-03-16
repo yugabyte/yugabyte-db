@@ -613,6 +613,8 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
   for (const auto& id : snapshot_schedules) {
     req_schedules.Add()->assign(id.AsSlice().cdata(), id.size());
   }
+
+  req_.mutable_hosted_stateful_services()->CopyFrom(table_lock->pb.hosted_stateful_services());
 }
 
 std::string AsyncCreateReplica::description() const {

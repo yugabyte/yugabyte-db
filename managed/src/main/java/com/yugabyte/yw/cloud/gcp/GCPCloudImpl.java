@@ -2,10 +2,14 @@
 
 package com.yugabyte.yw.cloud.gcp;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
+import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.client.http.HttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
@@ -13,6 +17,7 @@ import com.google.api.services.compute.Compute;
 import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.Provider;
@@ -24,6 +29,8 @@ import play.libs.Json;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.security.GeneralSecurityException;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -70,21 +77,9 @@ public class GCPCloudImpl implements CloudAPI {
       return true;
     }
     try {
-      ObjectMapper mapper = Json.mapper();
-      JsonNode gcpCredentials = gcpCloudInfo.gceApplicationCredentials;
-      GoogleCredentials credentials =
-          GoogleCredentials.fromStream(
-              new ByteArrayInputStream(mapper.writeValueAsBytes(gcpCredentials)));
-      HttpRequestInitializer requestInitializer = new HttpCredentialsAdapter(credentials);
-      HttpTransport httpTransport = GoogleNetHttpTransport.newTrustedTransport();
-      // Create Compute Engine object for listing instances.
-      Compute compute =
-          new Compute.Builder(httpTransport, GsonFactory.getDefaultInstance(), requestInitializer)
-              .setApplicationName("")
-              .build();
+      Compute compute = buildComputeClient(gcpCloudInfo);
       compute.instances().aggregatedList(projectId).setMaxResults(1L).execute();
-
-    } catch (Exception e) {
+    } catch (GeneralSecurityException | IOException e) {
       log.error("Error in validating GCP credentials", e);
       return false;
     }
@@ -105,4 +100,45 @@ public class GCPCloudImpl implements CloudAPI {
       List<NodeID> nodeIDs,
       String protocol,
       List<Integer> ports) {}
+
+  @Override
+  public void validateInstanceTemplate(Provider provider, String instanceTemplate) {
+    GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
+    String projectId = gcpCloudInfo.getGceProject();
+
+    if (StringUtils.isBlank(projectId)) {
+      String errorMessage = "Project ID must be set for instance template validation";
+      log.error(errorMessage);
+      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+    }
+    String errorMessage = "Unable to validate GCP instance template: " + instanceTemplate;
+    try {
+      Compute compute = buildComputeClient(gcpCloudInfo);
+      compute.instanceTemplates().get(projectId, instanceTemplate).execute();
+    } catch (GeneralSecurityException e) {
+      log.error("GeneralSecurityException validating instance template", e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errorMessage);
+    } catch (GoogleJsonResponseException e) {
+      log.error("GoogleJsonResponseException validating instance template", e);
+      throw new PlatformServiceException(e.getStatusCode(), e.getMessage());
+    } catch (IOException e) {
+      log.error("IOException validating instance template", e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errorMessage);
+    }
+  }
+
+  private Compute buildComputeClient(GCPCloudInfo cloudInfo)
+      throws GeneralSecurityException, IOException {
+    ObjectMapper mapper = Json.mapper();
+    JsonNode gcpCredentials = cloudInfo.gceApplicationCredentials;
+    GoogleCredentials credentials =
+        GoogleCredentials.fromStream(
+            new ByteArrayInputStream(mapper.writeValueAsBytes(gcpCredentials)));
+    HttpRequestInitializer requestInitializer = new HttpCredentialsAdapter(credentials);
+    HttpTransport httpTransport = GoogleNetHttpTransport.newTrustedTransport();
+    // Create Compute Engine object.
+    return new Compute.Builder(httpTransport, GsonFactory.getDefaultInstance(), requestInitializer)
+        .setApplicationName("")
+        .build();
+  }
 }

@@ -72,7 +72,7 @@
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_wire_protocol.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
@@ -124,6 +124,8 @@ using yb::master::ListTablegroupsRequestPB;
 using yb::master::ListTablegroupsResponsePB;
 using yb::master::GetNamespaceInfoRequestPB;
 using yb::master::GetNamespaceInfoResponsePB;
+using yb::master::GetIndexBackfillProgressRequestPB;
+using yb::master::GetIndexBackfillProgressResponsePB;
 using yb::master::GetTableLocationsRequestPB;
 using yb::master::GetTableLocationsResponsePB;
 using yb::master::GetTabletLocationsRequestPB;
@@ -209,6 +211,7 @@ using yb::rpc::Messenger;
 using std::string;
 using std::vector;
 using std::make_pair;
+using google::protobuf::RepeatedField;
 using google::protobuf::RepeatedPtrField;
 
 using namespace yb::size_literals;  // NOLINT.
@@ -622,6 +625,22 @@ Status YBClient::BackfillIndex(const TableId& table_id, bool wait, CoarseTimePoi
   return data_->BackfillIndex(this, YBTableName(), table_id, deadline, wait);
 }
 
+Status YBClient::GetIndexBackfillProgress(
+    const std::vector<TableId>& index_ids,
+    RepeatedField<google::protobuf::uint64>* rows_processed_entries) {
+  GetIndexBackfillProgressRequestPB req;
+  GetIndexBackfillProgressResponsePB resp;
+  for (auto &index_id : index_ids) {
+    req.add_index_ids(index_id);
+  }
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetIndexBackfillProgress);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  *rows_processed_entries = std::move(resp.rows_processed_entries());
+  return Status::OK();
+}
+
 Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTable(this,
@@ -961,12 +980,13 @@ Status YBClient::IsDeleteNamespaceInProgress(const std::string& namespace_name,
                                             deadline, delete_in_progress);
 }
 
-YBNamespaceAlterer* YBClient::NewNamespaceAlterer(
+std::unique_ptr<YBNamespaceAlterer> YBClient::NewNamespaceAlterer(
     const string& namespace_name, const std::string& namespace_id) {
-  return new YBNamespaceAlterer(this, namespace_name, namespace_id);
+  return std::unique_ptr<YBNamespaceAlterer>(new YBNamespaceAlterer(
+      this, namespace_name, namespace_id));
 }
 
-Result<vector<master::NamespaceIdentifierPB>> YBClient::ListNamespaces(
+Result<vector<NamespaceInfo>> YBClient::ListNamespaces(
     const boost::optional<YQLDatabase>& database_type) {
   ListNamespacesRequestPB req;
   ListNamespacesResponsePB resp;
@@ -974,10 +994,16 @@ Result<vector<master::NamespaceIdentifierPB>> YBClient::ListNamespaces(
     req.set_database_type(*database_type);
   }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListNamespaces);
-  auto* namespaces = resp.mutable_namespaces();
-  vector<master::NamespaceIdentifierPB> result;
-  result.reserve(namespaces->size());
-  for (auto& ns : *namespaces) {
+  auto namespaces = resp.namespaces();
+  auto states = resp.states();
+  auto colocated = resp.colocated();
+  vector<NamespaceInfo> result;
+  result.reserve(namespaces.size());
+  for (int i = 0; i < namespaces.size(); ++i) {
+    NamespaceInfo ns;
+    ns.id = namespaces.Get(i);
+    ns.state = master::SysNamespaceEntryPB_State(states.Get(i));
+    ns.colocated = colocated.Get(i);
     result.push_back(std::move(ns));
   }
   return result;
@@ -1057,7 +1083,7 @@ Status YBClient::GrantRevokePermission(GrantRevokeStatementType statement_type,
 Result<bool> YBClient::NamespaceExists(const std::string& namespace_name,
                                        const boost::optional<YQLDatabase>& database_type) {
   for (const auto& ns : VERIFY_RESULT(ListNamespaces(database_type))) {
-    if (ns.name() == namespace_name) {
+    if (ns.id.name() == namespace_name) {
       return true;
     }
   }
@@ -1067,7 +1093,7 @@ Result<bool> YBClient::NamespaceExists(const std::string& namespace_name,
 Result<bool> YBClient::NamespaceIdExists(const std::string& namespace_id,
                                          const boost::optional<YQLDatabase>& database_type) {
   for (const auto& ns : VERIFY_RESULT(ListNamespaces(database_type))) {
-    if (ns.id() == namespace_id) {
+    if (ns.id.id() == namespace_id) {
       return true;
     }
   }
@@ -1920,6 +1946,13 @@ std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinR
   return std::make_pair(id, *requests.running_requests.begin());
 }
 
+Result<std::shared_ptr<internal::RemoteTabletServer>> YBClient::GetRemoteTabletServer(
+    const std::string& permanent_uuid) {
+  auto tserver = data_->meta_cache_->GetRemoteTabletServer(permanent_uuid);
+  RETURN_NOT_OK(tserver->InitProxy(this));
+  return tserver;
+}
+
 void YBClient::RequestsFinished(const std::set<RetryableRequestId>& request_ids) {
   if (request_ids.empty()) {
     return;
@@ -2288,7 +2321,7 @@ CoarseTimePoint YBClient::PatchAdminDeadline(CoarseTimePoint deadline) const {
   return CoarseMonoClock::Now() + default_admin_operation_timeout();
 }
 
-Result<vector<master::NamespaceIdentifierPB>> YBClient::ListNamespaces() {
+Result<vector<NamespaceInfo>> YBClient::ListNamespaces() {
   return ListNamespaces(boost::none);
 }
 
@@ -2332,6 +2365,21 @@ Result<std::optional<AutoFlagsConfigPB>> YBClient::GetAutoFlagConfig() {
   }
 
   return status;
+}
+
+Result<master::StatefulServiceInfoPB> YBClient::GetStatefulServiceLocation(
+    StatefulServiceKind service_kind) {
+  master::GetStatefulServiceLocationRequestPB req;
+  master::GetStatefulServiceLocationResponsePB resp;
+  req.set_service_kind(service_kind);
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetStatefulServiceLocation);
+
+  RSTATUS_DCHECK(resp.has_service_info(), IllegalState, "No service info in response");
+  RSTATUS_DCHECK(
+      resp.service_info().has_permanent_uuid(), IllegalState, "No permanent uuid in response");
+
+  return std::move(resp.service_info());
 }
 
 }  // namespace client

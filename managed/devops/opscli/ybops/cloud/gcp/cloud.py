@@ -85,7 +85,8 @@ class GcpCloud(AbstractCloud):
             args.volume_type, args.volume_size, args.boot_disk_size_gb, args.assign_public_ip,
             args.assign_static_public_ip, ssh_keys, boot_script=args.boot_script,
             auto_delete_boot_disk=args.auto_delete_boot_disk, tags=args.instance_tags,
-            cloud_subnet_secondary=args.cloud_subnet_secondary)
+            cloud_subnet_secondary=args.cloud_subnet_secondary,
+            gcp_instance_template=args.instance_template)
 
     def create_disk(self, args, body):
         self.get_admin().create_disk(args.zone, args.instance_tags, body)
@@ -109,9 +110,13 @@ class GcpCloud(AbstractCloud):
         return output
 
     def mount_disk(self, args, body):
+        logging.info("Mounting disk on host {} in zone {}; volume info is {}".format(
+                     args['search_pattern'], args['zone'], body))
         self.get_admin().mount_disk(args['zone'], args['search_pattern'], body)
 
     def unmount_disk(self, args, name):
+        logging.info("Unmounting disk {} from host {} in zone {}".format(
+                     name, args['search_pattern'], args['zone']))
         self.get_admin().unmount_disk(args['zone'], args['search_pattern'], name)
 
     def stop_instance(self, args):
@@ -132,7 +137,7 @@ class GcpCloud(AbstractCloud):
             raise YBOpsRuntimeError("Host {} cannot be stopped while in '{}' state".format(
                 instance['name'], instance_state))
 
-    def start_instance(self, args, ssh_ports):
+    def start_instance(self, args, server_ports):
         instance = self.get_admin().get_instances(args['zone'], args['search_pattern'])
         if not instance:
             logging.error("Host {} does not exist".format(args['search_pattern']))
@@ -149,7 +154,7 @@ class GcpCloud(AbstractCloud):
         else:
             raise YBOpsRuntimeError("Host {} cannot be started while in '{}' state".format(
                 instance['name'], instance_state))
-        self.wait_for_ssh_ports(instance['private_ip'], instance['name'], ssh_ports)
+        self.wait_for_server_ports(instance['private_ip'], instance['name'], server_ports)
 
     def delete_instance(self, args, filters=None):
         host_info = self.get_host_info(args, filters=filters)
@@ -166,9 +171,9 @@ class GcpCloud(AbstractCloud):
         self.get_admin().delete_instance(
             args.region, args.zone, args.search_pattern, has_static_ip=args.delete_static_public_ip)
 
-    def reboot_instance(self, host_info, ssh_ports):
+    def reboot_instance(self, host_info, server_ports):
         self.admin.reboot_instance(host_info['zone'], host_info['name'])
-        self.wait_for_ssh_ports(host_info['private_ip'], host_info['name'], ssh_ports)
+        self.wait_for_server_ports(host_info["private_ip"], host_info["id"], server_ports)
 
     def get_regions(self, args):
         regions_we_know_of = self.get_admin().get_regions()
@@ -304,7 +309,9 @@ class GcpCloud(AbstractCloud):
         dest_vpc_id = custom_payload.get("destVpcId")
         host_vpc_id = custom_payload.get("hostVpcId")
         per_region_meta = custom_payload.get("perRegionMetadata")
-        return self.get_admin().network(dest_vpc_id, host_vpc_id, per_region_meta).bootstrap()
+        create_new_vpc = custom_payload.get("createNewVpc")
+        return self.get_admin().network(
+            dest_vpc_id, host_vpc_id, per_region_meta, create_new_vpc).bootstrap()
 
     def network_cleanup(self, args):
         custom_payload = json.loads(args.custom_payload)

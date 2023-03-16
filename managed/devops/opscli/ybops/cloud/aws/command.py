@@ -23,7 +23,7 @@ from ybops.cloud.common.command import InstanceCommand, NetworkCommand, AccessCo
 from ybops.cloud.common.method import ConfigureInstancesMethod, AccessCreateVaultMethod, \
     InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, AccessEditVaultMethod, \
     TransferXClusterCerts, VerifySSHConnection, AddAuthorizedKey, RemoveAuthorizedKey, \
-    RebootInstancesMethod, RunHooks, WaitForSSHConnection
+    RebootInstancesMethod, RunHooks, WaitForConnection
 
 
 class AwsInstanceCommand(InstanceCommand):
@@ -55,7 +55,7 @@ class AwsInstanceCommand(InstanceCommand):
         self.add_method(RemoveAuthorizedKey(self))
         self.add_method(RebootInstancesMethod(self))
         self.add_method(RunHooks(self))
-        self.add_method(WaitForSSHConnection(self))
+        self.add_method(WaitForConnection(self))
         self.add_method(AwsHardRebootInstancesMethod(self))
 
 

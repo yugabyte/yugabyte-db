@@ -2,8 +2,9 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
+import _ from 'lodash';
+import moment from 'moment';
 import { MetricsPanelOverview } from '../';
-import './OverviewMetrics.scss';
 import { YBLoading } from '../../common/indicators';
 import {
   isNonEmptyObject,
@@ -14,10 +15,11 @@ import {
 import { YBPanelLegend } from '../../common/descriptors';
 import { YBWidget } from '../../panels';
 import { METRIC_COLORS } from '../MetricsConfig';
+import { NodeType } from '../../../redesign/utils/dtos';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { getFeatureState } from '../../../utils/LayoutUtils';
-import _ from 'lodash';
-import moment from 'moment';
+
+import './OverviewMetrics.scss';
 
 // TODO set predefined defaults another way not to share defaults this way
 const OVERVIEW_METRICS_INTERVAL_MS = 15000;
@@ -63,10 +65,10 @@ class OverviewMetrics extends Component {
     const self = this;
     const pollingInterval = getPromiseState(currentCustomer).isSuccess()
       ? getFeatureState(
-        currentCustomer.data.features,
-        'universes.details.overview.metricsInterval',
-        OVERVIEW_METRICS_INTERVAL_MS
-      )
+          currentCustomer.data.features,
+          'universes.details.overview.metricsInterval',
+          OVERVIEW_METRICS_INTERVAL_MS
+        )
       : OVERVIEW_METRICS_INTERVAL_MS;
 
     // set the polling for metrics but update start and end time interval boundaries
@@ -91,10 +93,10 @@ class OverviewMetrics extends Component {
     const { autoRefresh } = this.state;
     const pollingInterval = getPromiseState(currentCustomer).isSuccess()
       ? getFeatureState(
-        currentCustomer.data.features,
-        'universes.details.overview.metricsInterval',
-        OVERVIEW_METRICS_INTERVAL_MS
-      )
+          currentCustomer.data.features,
+          'universes.details.overview.metricsInterval',
+          OVERVIEW_METRICS_INTERVAL_MS
+        )
       : OVERVIEW_METRICS_INTERVAL_MS;
 
     // eslint-disable-next-line eqeqeq
@@ -116,7 +118,8 @@ class OverviewMetrics extends Component {
 
   queryMetricsType = (graphFilter) => {
     const { startMoment, endMoment, nodeName, nodePrefix } = graphFilter;
-    const { type, isKubernetesUniverse } = this.props;
+    const { type, isKubernetesUniverse, dedicatedNodes } = this.props;
+
     const params = {
       metrics: panelTypes[type].metrics,
       start: startMoment.format('X'),
@@ -135,7 +138,19 @@ class OverviewMetrics extends Component {
     if (isNonEmptyString(this.props.tableName)) {
       params.tableName = this.props.tableName;
     }
-    this.props.queryMetrics(params, type);
+
+    // Query the API for master and tserver nodes separately in case of dedicated nodes case
+    if (!isKubernetesUniverse && dedicatedNodes) {
+      // Call to query metrics API for master nodes
+      params.serverType = NodeType.Master.toUpperCase();
+      this.props.queryMetrics(params, type, true);
+
+      // Call to query metrics API for tserver nodes
+      params.serverType = NodeType.TServer.toUpperCase();
+      this.props.queryMetrics(params, type);
+    } else {
+      this.props.queryMetrics(params, type);
+    }
     if (isKubernetesUniverse) {
       this.props.queryMetrics(
         {
@@ -148,7 +163,6 @@ class OverviewMetrics extends Component {
   };
 
   componentWillUnmount() {
-    this.props.resetMetrics();
     // eslint-disable-next-line eqeqeq
     if (this.timeout != undefined) {
       clearInterval(this.timeout);

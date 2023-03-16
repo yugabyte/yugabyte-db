@@ -15,6 +15,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.ToString;
 
 import com.yugabyte.yw.models.AccessKey.MigratedKeyInfoFields;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
@@ -23,9 +24,13 @@ import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
 
-@Data
-@EqualsAndHashCode(callSuper = false)
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Data
+// Excluding cloudInfo as cloudInfo has its own equals & hashCode implementation.
+@EqualsAndHashCode(
+    callSuper = true,
+    exclude = {"cloudInfo"})
+@ToString(callSuper = true)
 public class ProviderDetails extends MigratedKeyInfoFields {
 
   @Data

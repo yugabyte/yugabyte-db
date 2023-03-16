@@ -660,7 +660,7 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 
 	/* See if we have any unbatchable filters. */
 	List *pclauses = NIL;
-	if (batchedrelids != NULL) {
+	if (!bms_is_empty(batchedrelids)) {
 		pclauses = generate_join_implied_equalities(
 			root,
 			bms_union(batchedrelids, index->rel->relids),

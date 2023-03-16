@@ -162,6 +162,8 @@ message CreateTabletRequestPB {
   optional bool colocated = 13 [ default = false ];
 
   repeated bytes snapshot_schedules = 16;
+
+  repeated StatefulServiceKind hosted_stateful_services = 17;
 }
 
 message CreateTabletResponsePB {

@@ -11,7 +11,8 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.UUID;
+import com.yugabyte.yw.models.Users;
+
 import junitparams.JUnitParamsRunner;
 import org.junit.Before;
 import org.junit.Test;
@@ -24,11 +25,13 @@ public class ScheduleUtilTest extends FakeDBApplication {
   private Customer defaultCustomer;
   private CustomerConfig customerConfig;
   private BackupRequestParams backupRequestParams;
+  private Users defaultUser;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    defaultUser = ModelFactory.testUser(defaultCustomer);
 
     backupRequestParams = new BackupRequestParams();
     backupRequestParams.universeUUID = defaultUniverse.universeUUID;
@@ -38,6 +41,8 @@ public class ScheduleUtilTest extends FakeDBApplication {
 
   @Test
   public void testDetectIncrementalBackup() {
+    // Set http context
+    TestUtils.setFakeHttpContext(defaultUser);
     Schedule schedule =
         Schedule.create(
             defaultCustomer.uuid, backupRequestParams, TaskType.CreateBackup, 1000, null);

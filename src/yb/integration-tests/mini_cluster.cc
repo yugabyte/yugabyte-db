@@ -381,7 +381,7 @@ Status MiniCluster::AddTabletServer(const tserver::TabletServerOptions& extra_op
   if (options_.ts_rocksdb_env) {
     tablet_server->options()->rocksdb_env = options_.ts_rocksdb_env;
   }
-  RETURN_NOT_OK(tablet_server->Start());
+  RETURN_NOT_OK(tablet_server->Start(tserver::WaitTabletsBootstrapped::kFalse));
   mini_tablet_servers_.push_back(tablet_server);
   return Status::OK();
 }
@@ -945,6 +945,10 @@ std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
 
 tserver::MiniTabletServer* GetLeaderForTablet(MiniCluster* cluster, const std::string& tablet_id) {
   for (size_t i = 0; i < cluster->num_tablet_servers(); i++) {
+    if (!cluster->mini_tablet_server(i)->is_started()) {
+      continue;
+    }
+
     if (cluster->mini_tablet_server(i)->server()->LeaderAndReady(tablet_id)) {
       return cluster->mini_tablet_server(i);
     }
@@ -1132,6 +1136,23 @@ Status WaitForInitDb(MiniCluster* cluster) {
   return STATUS_FORMAT(TimedOut, "Unable to init db in $0", kTimeout);
 }
 
+size_t CountExternalTransactions(MiniCluster* cluster) {
+  auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
+  auto total_transactions = 0;
+  for (const auto &peer : peers) {
+    if (peer->LeaderStatus() == consensus::LeaderStatus::NOT_LEADER) {
+      continue;
+    }
+    auto tablet = peer->shared_tablet();
+    auto coordinator = tablet ? tablet->transaction_coordinator() : nullptr;
+    if (!coordinator) {
+      continue;
+    }
+    total_transactions += coordinator->TEST_CountExternalTransactions();
+  }
+  return total_transactions;
+}
+
 size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter) {
   size_t result = 0;
   auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
@@ -1177,7 +1198,7 @@ void ShutdownAllTServers(MiniCluster* cluster) {
 
 Status StartAllTServers(MiniCluster* cluster) {
   for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
-    RETURN_NOT_OK(cluster->mini_tablet_server(i)->Start());
+    RETURN_NOT_OK(cluster->mini_tablet_server(i)->Start(tserver::WaitTabletsBootstrapped::kFalse));
   }
 
   return Status::OK();
@@ -1356,6 +1377,17 @@ void ActivateCompactionTimeLogging(MiniCluster* cluster) {
 
   for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
     cluster->GetTabletManager(i)->TEST_tablet_options()->listeners.push_back(listener);
+  }
+}
+
+void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter) {
+  auto peers = ListTabletPeers(cluster, filter);
+  for (const auto& peer : peers) {
+    auto tablet = peer->shared_tablet();
+    if (!tablet) {
+      continue;
+    }
+    tablet->TEST_DocDBDumpToLog(tablet::IncludeIntents::kTrue);
   }
 }
 

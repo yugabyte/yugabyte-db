@@ -44,13 +44,19 @@
 namespace yb {
 namespace master {
 
+struct TemporaryLoadingState {
+  std::unordered_map<TableId, std::vector<TableId>> parent_to_child_tables;
+};
+
 #define DECLARE_LOADER_CLASS(name, key_type, entry_pb_name, mutex) \
   class BOOST_PP_CAT(name, Loader) : \
       public Visitor<BOOST_PP_CAT(BOOST_PP_CAT(Persistent, name), Info)> { \
   public: \
     explicit BOOST_PP_CAT(name, Loader)( \
-        CatalogManager* catalog_manager, int64_t term = OpId::kUnknownTerm) \
-        : catalog_manager_(catalog_manager), term_(term) {} \
+                                         CatalogManager* catalog_manager, \
+                                         TemporaryLoadingState* state, \
+                                         int64_t term = OpId::kUnknownTerm) \
+      : catalog_manager_(catalog_manager), state_(state), term_(term) {} \
     \
   private: \
     Status Visit( \
@@ -58,6 +64,8 @@ namespace master {
         const entry_pb_name& metadata) override REQUIRES(mutex); \
     \
     CatalogManager *catalog_manager_; \
+    \
+    TemporaryLoadingState* state_; \
     \
     int64_t term_; \
     \
@@ -90,6 +98,8 @@ DECLARE_LOADER_CLASS(Tablet,        TabletId,    SysTabletsEntryPB,       catalo
 DECLARE_LOADER_CLASS(Namespace,     NamespaceId, SysNamespaceEntryPB,     catalog_manager_->mutex_);
 DECLARE_LOADER_CLASS(UDType,        UDTypeId,    SysUDTypeEntryPB,        catalog_manager_->mutex_);
 DECLARE_LOADER_CLASS(ClusterConfig, std::string, SysClusterConfigEntryPB, catalog_manager_->mutex_);
+DECLARE_LOADER_CLASS(
+    XClusterConfig, std::string, SysXClusterConfigEntryPB, catalog_manager_->mutex_);
 DECLARE_LOADER_CLASS(RedisConfig,   std::string, SysRedisConfigEntryPB,   catalog_manager_->mutex_);
 DECLARE_LOADER_CLASS(Role,       RoleName,    SysRoleEntryPB,
     catalog_manager_->permissions_manager()->mutex());

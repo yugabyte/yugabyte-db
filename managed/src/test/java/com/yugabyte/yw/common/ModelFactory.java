@@ -6,19 +6,22 @@ import static com.yugabyte.yw.common.AlertTemplate.MEMORY_CONSUMPTION;
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowMinusWithoutMillis;
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowPlusWithoutMillis;
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.TableSpaceStructures.PlacementBlock;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceInfo;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelParams;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
@@ -45,6 +48,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.MaintenanceWindow;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
@@ -56,6 +60,7 @@ import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
@@ -150,6 +155,11 @@ public class ModelFactory {
   public static Provider newProvider(
       Customer customer, Common.CloudType cloud, Map<String, String> config) {
     return Provider.create(customer.uuid, cloud, cloud.toString(), config);
+  }
+
+  public static Provider newProvider(
+      Customer customer, Common.CloudType cloud, ProviderDetails details) {
+    return Provider.create(customer.uuid, cloud, cloud.toString(), details);
   }
 
   /*
@@ -248,6 +258,27 @@ public class ModelFactory {
     }
     params.upsertPrimaryCluster(userIntent, pi);
     return Universe.create(params, customerId);
+  }
+
+  public static Universe addNodesToUniverse(UUID universeUUID, int numNodesToAdd) {
+    return Universe.saveDetails(
+        universeUUID,
+        new UniverseUpdater() {
+          @Override
+          public void run(Universe universe) {
+            UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+            for (int i = 1; i <= numNodesToAdd; i++) {
+              NodeDetails node = new NodeDetails();
+              node.cloudInfo = new CloudSpecificInfo();
+              node.state = NodeState.Live;
+              node.placementUuid = params.getPrimaryCluster().uuid;
+              node.cloudInfo.private_ip = "127.0.0." + Integer.toString(i);
+              params.nodeDetailsSet.add(node);
+            }
+            universe.setUniverseDetails(params);
+          }
+        },
+        false);
   }
 
   public static CustomerConfig createS3StorageConfig(Customer customer, String configName) {
@@ -596,7 +627,11 @@ public class ModelFactory {
 
   public static KmsConfig createKMSConfig(
       UUID customerUUID, String keyProvider, ObjectNode authConfig, String configName) {
-    EncryptionAtRestManager keyManager = new EncryptionAtRestManager();
+    RuntimeConfGetter mockRuntimeConfGetter = mock(RuntimeConfGetter.class);
+    lenient()
+        .when(mockRuntimeConfGetter.getConfForScope(any(Universe.class), any()))
+        .thenReturn(false);
+    EncryptionAtRestManager keyManager = new EncryptionAtRestManager(mockRuntimeConfGetter);
     EncryptionAtRestService keyService = keyManager.getServiceInstance(keyProvider);
     return keyService.createAuthConfig(customerUUID, configName, authConfig);
   }

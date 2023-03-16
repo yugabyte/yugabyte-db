@@ -21,6 +21,7 @@
 
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/pgsql_error.h"
 
 #include "yb/docdb/value_type.h"
@@ -32,7 +33,7 @@
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
-
+#include "yb/master/ts_manager.h"
 #include "yb/rocksdb/db.h"
 
 #include "yb/server/skewed_clock.h"
@@ -65,6 +66,7 @@ using namespace std::literals;
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(enable_pg_savepoints);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(rocksdb_use_logging_iterator);
 
@@ -97,9 +99,13 @@ DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 
+DECLARE_bool(rocksdb_disable_compactions);
+
 namespace yb {
 namespace pgwrapper {
 namespace {
+
+YB_STRONGLY_TYPED_BOOL(WaitForTS);
 
 template<IsolationLevel level>
 class TxnHelper {
@@ -149,7 +155,13 @@ std::string RowMarkTypeToPgsqlString(const RowMarkType row_mark_type) {
 YB_DEFINE_ENUM(TestStatement, (kInsert)(kDelete));
 
 Result<int64_t> GetCatalogVersion(PGConn* conn) {
-  return conn->FetchValue<int64_t>("SELECT current_version FROM pg_yb_catalog_version");
+  if (FLAGS_TEST_enable_db_catalog_version_mode) {
+    const auto db_oid = VERIFY_RESULT(conn->FetchValue<int32>(Format(
+        "SELECT oid FROM pg_database WHERE datname = '$0'", PQdb(conn->get()))));
+    return conn->FetchValue<PGUint64>(
+        Format("SELECT current_version FROM pg_yb_catalog_version where db_oid = $0", db_oid));
+  }
+  return conn->FetchValue<PGUint64>("SELECT current_version FROM pg_yb_catalog_version");
 }
 
 Result<bool> IsCatalogVersionChangedDuringDdl(PGConn* conn, const std::string& ddl_query) {
@@ -222,7 +234,7 @@ class PgMiniSingleTServerTest : public PgMiniTest {
 class PgMiniMasterFailoverTest : public PgMiniTest {
  protected:
   void ElectNewLeaderAfterShutdown();
-
+  void TestNonRespondingMaster(WaitForTS wait_for_ts);
  public:
   size_t NumMasters() override {
     return 3;
@@ -496,8 +508,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(WriteRetry)) {
   for (int key = 0; key != kKeys; ++key) {
     auto status = conn.ExecuteFormat("INSERT INTO t (key) VALUES ($0)", key);
     ASSERT_TRUE(status.ok() || PgsqlError(status) == YBPgErrorCode::YB_PG_UNIQUE_VIOLATION ||
-                status.ToString().find("Already present: Duplicate request") != std::string::npos)
-        << status;
+                status.ToString().find("Duplicate request") != std::string::npos) << status;
   }
 
   SetAtomicFlag(0, &FLAGS_TEST_respond_write_failed_probability);
@@ -825,7 +836,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SerializableReadOnly)) {
     ASSERT_TRUE(result.status().IsNetworkError()) << result.status();
     ASSERT_EQ(PgsqlError(result.status()), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)
         << result.status();
-    ASSERT_STR_CONTAINS(result.status().ToString(), "Conflicts with higher priority transaction");
+    ASSERT_STR_CONTAINS(result.status().ToString(), "conflicts with higher priority transaction");
   }
 }
 
@@ -866,6 +877,45 @@ class PgMiniSmallWriteBufferTest : public PgMiniTest {
     PgMiniTest::SetUp();
   }
 };
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TruncateColocatedBigTable)) {
+  // Simulate truncating a big colocated table with multiple sst files flushed to disk.
+  // To repro issue https://github.com/yugabyte/yugabyte-db/issues/15206
+  // When using bloom filter, it might fail to find the table tombstone because it's stored in
+  // a different sst file than the key is currently seeking.
+
+  FLAGS_rocksdb_disable_compactions = true;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("create tablegroup tg1"));
+  ASSERT_OK(conn.Execute("create table t1(k int primary key) tablegroup tg1"));
+  const auto& peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+  tablet::TabletPeerPtr tablet_peer = nullptr;
+  for (auto peer : peers) {
+    if (peer->shared_tablet()->doc_db().regular) {
+      tablet_peer = peer;
+      break;
+    }
+  }
+  ASSERT_NE(tablet_peer, nullptr);
+
+  // Insert 2 rows, and flush.
+  ASSERT_OK(conn.Execute("insert into t1 values (1)"));
+  ASSERT_OK(conn.Execute("insert into t1 values (2)"));
+  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+
+  // Truncate the table, and flush. Tabletombstone should be in a seperate sst file.
+  ASSERT_OK(conn.Execute("TRUNCATE t1"));
+  SleepFor(1s);
+  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+
+  // Check if the row still visible.
+  auto res = conn.FetchValue<int>("select k from t1 where k = 1");
+  ASSERT_NOK(res);
+  ASSERT_TRUE(res.status().message().Contains("Fetched 0 rows, while 1 expected"));
+
+  // Check if hit dup key error.
+  ASSERT_OK(conn.Execute("insert into t1 values (1)"));
+}
 
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallWriteBufferTest) {
   const std::string kTableName = "key_value";
@@ -1001,7 +1051,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     // Weak read + weak write on (1) has no conflicts.
     ASSERT_OK(extra_conn.Execute("COMMIT"));
     auto res = ASSERT_RESULT(
-        conn.template FetchValue<int64_t>("SELECT COUNT(*) FROM pktable WHERE v = 20"));
+        conn.template FetchValue<PGUint64>("SELECT COUNT(*) FROM pktable WHERE v = 20"));
     ASSERT_EQ(res, 1);
   }
 
@@ -1125,7 +1175,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
-    auto res = ASSERT_RESULT(conn.template FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
+    auto res = ASSERT_RESULT(conn.template FetchValue<PGUint64>("SELECT COUNT(*) FROM t"));
     ASSERT_EQ(res, 1);
   }
 
@@ -1243,7 +1293,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     ASSERT_OK(extra_conn.Execute("COMMIT"));
 
     ASSERT_OK(conn.Execute("COMMIT;"));
-    const auto count = ASSERT_RESULT(conn.template FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
+    const auto count = ASSERT_RESULT(conn.template FetchValue<PGUint64>("SELECT COUNT(*) FROM t"));
     ASSERT_EQ(4, count);
   }
 
@@ -1313,7 +1363,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
       ASSERT_NOK(low_pri_txn_commit_status);
     }
     const auto count = ASSERT_RESULT(
-      extra_conn.template FetchValue<int64_t>("SELECT COUNT(*) FROM t WHERE v = 10"));
+      extra_conn.template FetchValue<PGUint64>("SELECT COUNT(*) FROM t WHERE v = 10"));
     ASSERT_EQ(low_pri_txn_succeed ? 2 : 1, count);
   }
 };
@@ -1341,7 +1391,7 @@ class PgMiniTestTxnHelperSerializable
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
-    auto res = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM t WHERE v1 = 20"));
+    auto res = ASSERT_RESULT(conn.FetchValue<PGUint64>("SELECT COUNT(*) FROM t WHERE v1 = 20"));
     ASSERT_EQ(res, 1);
 
     ASSERT_OK(StartTxn(&conn));
@@ -1353,7 +1403,7 @@ class PgMiniTestTxnHelperSerializable
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
-    res = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM t WHERE v2 = 6"));
+    res = ASSERT_RESULT(conn.FetchValue<PGUint64>("SELECT COUNT(*) FROM t WHERE v2 = 6"));
     ASSERT_EQ(res, 1);
   }
 };
@@ -1381,7 +1431,8 @@ class PgMiniTestTxnHelperSnapshot
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
-    const auto res = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM t WHERE v = 20"));
+    const auto res = ASSERT_RESULT(conn.FetchValue<PGUint64>(
+        "SELECT COUNT(*) FROM t WHERE v = 20"));
     ASSERT_EQ(res, 1);
   }
 };
@@ -1800,7 +1851,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigSelect)) {
   }
 
   auto start = MonoTime::Now();
-  auto res = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(DISTINCT(value)) FROM t"));
+  auto res = ASSERT_RESULT(conn.FetchValue<PGUint64>("SELECT COUNT(DISTINCT(value)) FROM t"));
   auto finish = MonoTime::Now();
   LOG(INFO) << "Time: " << finish - start;
   ASSERT_EQ(res, kRows);
@@ -1877,7 +1928,7 @@ void PgMiniTest::SetupColocatedTableAndRunBenchmark(
     int64_t fetched_rows;
     auto start = MonoTime::Now();
     if (aggregate) {
-      fetched_rows = ASSERT_RESULT(conn.FetchValue<int64_t>(select_cmd));
+      fetched_rows = ASSERT_RESULT(conn.FetchValue<PGUint64>(select_cmd));
     } else {
       auto res = ASSERT_RESULT(conn.Fetch(select_cmd));
       fetched_rows = PQntuples(res.get());
@@ -2001,7 +2052,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DDLWithRestart)) {
   LOG(INFO) << "Start masters";
   ASSERT_OK(StartAllMasters(cluster_.get()));
 
-  auto res = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
+  auto res = ASSERT_RESULT(conn.FetchValue<PGUint64>("SELECT COUNT(*) FROM t"));
   ASSERT_EQ(res, 0);
 }
 
@@ -2155,7 +2206,7 @@ class PgMiniBackwardIndexScanTest : public PgMiniSingleTServerTest {
     }
 
     auto count = ASSERT_RESULT(
-        conn.FetchValue<int64_t>("SELECT COUNT(*) FROM events_backwardscan"));
+        conn.FetchValue<PGUint64>("SELECT COUNT(*) FROM events_backwardscan"));
     LOG(INFO) << "Total rows inserted: " << count;
 
     auto select_result = ASSERT_RESULT(conn.Fetch(
@@ -2205,7 +2256,7 @@ void PgMiniTest::TestBigInsert(bool restart) {
       [this, &stop = thread_holder.stop_flag(), &post_insert_reads, &restarted] {
     auto connection = ASSERT_RESULT(Connect());
     while (!stop.load(std::memory_order_acquire)) {
-      auto res = connection.FetchValue<int64_t>("SELECT SUM(a) FROM t");
+      auto res = connection.FetchValue<PGUint64>("SELECT SUM(a) FROM t");
       if (!res.ok()) {
         auto msg = res.status().message().ToBuffer();
         ASSERT_TRUE(msg.find("server closed the connection unexpectedly") != std::string::npos)
@@ -2934,7 +2985,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TablegroupCompactionWithRestart)) {
   conn = ASSERT_RESULT(ConnectToDB("testdb" /* database_name */));
   for (int i = 0; i < num_tables; ++i) {
     auto res =
-        ASSERT_RESULT(conn.template FetchValue<int64_t>(Format("SELECT COUNT(*) FROM test$0", i)));
+        ASSERT_RESULT(conn.template FetchValue<PGUint64>(Format("SELECT COUNT(*) FROM test$0", i)));
     ASSERT_EQ(res, keys);
   }
 }
@@ -2970,10 +3021,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
   ASSERT_LE(new_file_size, base_file_size + 100_KB);
 }
 
-// Use special mode when non leader master times out all rpcs.
-// Then step down master leader and perform backup.
-TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMaster),
-          PgMiniMasterFailoverTest) {
+void PgMiniMasterFailoverTest::TestNonRespondingMaster(WaitForTS wait_for_ts) {
   FLAGS_TEST_timeout_non_leader_master_rpcs = true;
   tools::TmpDirProvider tmp_dir;
 
@@ -2994,12 +3042,30 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMaster),
     return false;
   }, 10s, "Wait leader change"));
 
+  if (wait_for_ts) {
+    master::TSManager& ts_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->ts_manager();
+    ASSERT_OK(WaitFor([this, &ts_manager]() -> Result<bool> {
+      return ts_manager.GetAllDescriptors().size() == NumTabletServers();
+    }, 10s, "Wait all TServers to be registered"));
+  }
+
   ASSERT_OK(tools::RunBackupCommand(
       pg_host_port(), cluster_->GetMasterAddresses(), cluster_->GetTserverHTTPAddresses(),
       *tmp_dir, {"--backup_location", tmp_dir / "backup", "--no_upload", "--keyspace", "ysql.test",
        "create"}));
 }
 
+// Use special mode when non leader master times out all rpcs.
+// Then step down master leader and perform backup.
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMaster),
+          PgMiniMasterFailoverTest) {
+  TestNonRespondingMaster(WaitForTS::kFalse);
+}
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMasterWithTSWaiting),
+          PgMiniMasterFailoverTest) {
+  TestNonRespondingMaster(WaitForTS::kTrue);
+}
 
 // The test checks that YSQL doesn't wait for sent RPC response in case of process termination.
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoWaitForRPCOnTermination)) {
@@ -3119,6 +3185,20 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST(PerfScanG7RangePK100Columns), PgMiniRf1Pac
     s.stop();
     LOG(INFO) << kNumScansPerIteration << " scan(s) took: " << AsString(s.elapsed());
   }
+}
+
+class PgMiniTestNoSavePoints : public PgMiniTest {
+ public:
+  void SetUp() override {
+    FLAGS_enable_pg_savepoints = 0;
+    PgMiniTest::SetUp();
+  }
+};
+
+TEST_F(PgMiniTestNoSavePoints, YB_DISABLE_TEST_IN_TSAN(TestSavePointCanBeDisabled)) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_NOK(conn1.Execute("SAVEPOINT A"))
+      << "setting FLAGS_enable_pg_savepoints to false should have made SAVEPOINT produce an error";
 }
 
 } // namespace pgwrapper

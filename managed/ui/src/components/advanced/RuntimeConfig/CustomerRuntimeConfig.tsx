@@ -1,29 +1,29 @@
 import React, { FC, useEffect, useState } from 'react';
 import { MenuItem, Dropdown } from 'react-bootstrap';
+import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
 import { fetchCustomersList } from '../../../api/admin';
-import { RunTimeConfigScope } from '../../../redesign/helpers/dtos';
+import { RunTimeConfigScope, RuntimeConfigScopeProps } from '../../../redesign/utils/dtos';
 import { ConfigData } from '../ConfigData';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 
 import '../AdvancedConfig.scss';
 
-interface CustomerRuntimeConfigProps {
-  fetchRuntimeConfigs: (scope?: string) => void;
-  setRuntimeConfig: (key: string, value: string) => void;
-  deleteRunTimeConfig: (key: string) => void;
-  resetRuntimeConfigs: () => void;
-}
-
-export const CustomerRuntimeConfig: FC<CustomerRuntimeConfigProps> = ({
+export const CustomerRuntimeConfig: FC<RuntimeConfigScopeProps> = ({
+  configTagFilter,
   fetchRuntimeConfigs,
   setRuntimeConfig,
   deleteRunTimeConfig,
   resetRuntimeConfigs
 }) => {
   const { t } = useTranslation();
-  const customers = useQuery(['customers'], () => fetchCustomersList().then((res) => res.data));
+  const customers = useQuery(['customers'], () =>
+    fetchCustomersList().then((res: any) => res.data)
+  );
+  const currentUserInfo = useSelector((state: any) => state.customer.currentUser.data);
+  const currentCustomerInfo = useSelector((state: any) => state.customer.currentCustomer.data);
+  const isSuperAdmin = ['SuperAdmin'].includes(currentUserInfo.role);
   const [customerDropdownValue, setcustomerDropdownValue] = useState<string>();
   const [customerUUID, setCustomerUUID] = useState<string>();
 
@@ -35,6 +35,7 @@ export const CustomerRuntimeConfig: FC<CustomerRuntimeConfigProps> = ({
   useEffect(() => {
     resetRuntimeConfigs();
     if (customerUUID) {
+      // Super admin should be able to fetch runtime configs of all customers in case of multi-tenancy
       fetchRuntimeConfigs(customerUUID);
     }
   }, [customerUUID]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -48,18 +49,25 @@ export const CustomerRuntimeConfig: FC<CustomerRuntimeConfigProps> = ({
     return <YBLoading />;
   }
 
-  const customersList = customers.data;
+  let customersList = customers.data;
   if (customersList.length <= 0) {
     return (
       <YBErrorIndicator customErrorMessage={t('admin.advanced.globalConfig.CustomerConfigError')} />
     );
+  } else if (customersList.length > 0) {
+    if (!isSuperAdmin) {
+      customersList = customersList.filter(
+        (customer: any) => customer?.uuid === currentCustomerInfo?.uuid
+      );
+    }
+    if (customerDropdownValue === undefined) {
+      setcustomerDropdownValue(customersList[0].name);
+    }
+    if (customerUUID === undefined) {
+      setCustomerUUID(customersList[0].uuid);
+    }
   }
-  if (customersList.length > 0 && customerDropdownValue === undefined) {
-    setcustomerDropdownValue(customersList[0].name);
-  }
-  if (customersList.length > 0 && customerUUID === undefined) {
-    setCustomerUUID(customersList[0].uuid);
-  }
+
   return (
     <div className="customer-runtime-config-container">
       <div className="customer-runtime-config-container__display">
@@ -93,6 +101,7 @@ export const CustomerRuntimeConfig: FC<CustomerRuntimeConfigProps> = ({
         deleteRunTimeConfig={deleteRunTimeConfig}
         scope={RunTimeConfigScope.CUSTOMER}
         customerUUID={customerUUID}
+        configTagFilter={configTagFilter}
       />
     </div>
   );

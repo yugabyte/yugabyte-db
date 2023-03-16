@@ -36,8 +36,6 @@ public abstract class CloudTaskBase extends AbstractTaskBase {
   @Override
   public void initialize(ITaskParams params) {
     super.initialize(params);
-    // Create the threadpool for the subtasks to use.
-    createThreadpool();
     provider = Provider.get(taskParams().providerUUID);
     regionMetadata = configHelper.getRegionMetadata(Common.CloudType.valueOf(provider.code));
   }

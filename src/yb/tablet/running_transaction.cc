@@ -79,7 +79,7 @@ void RunningTransaction::BatchReplicated(const TransactionalBatchData& value) {
 }
 
 void RunningTransaction::SetLocalCommitData(
-    HybridTime time, const AbortedSubTransactionSet& aborted_subtxn_set) {
+    HybridTime time, const SubtxnSet& aborted_subtxn_set) {
   last_known_aborted_subtxn_set_ = aborted_subtxn_set;
   local_commit_time_ = time;
   last_known_status_hybrid_time_ = local_commit_time_;
@@ -89,7 +89,10 @@ void RunningTransaction::SetLocalCommitData(
 void RunningTransaction::Aborted() {
   VLOG_WITH_PREFIX(4) << __func__ << "()";
 
-  last_known_status_ = TransactionStatus::ABORTED;
+  if (last_known_status_ != TransactionStatus::ABORTED) {
+    last_known_status_ = TransactionStatus::ABORTED;
+    context_.NotifyAborted(id());
+  }
   last_known_status_hybrid_time_ = HybridTime::kMax;
 }
 
@@ -98,6 +101,10 @@ void RunningTransaction::RequestStatusAt(const StatusRequest& request,
   DCHECK_LE(request.global_limit_ht, HybridTime::kMax);
   DCHECK_LE(request.read_ht, request.global_limit_ht);
 
+  if (request.status_tablet_id) {
+    *request.status_tablet_id = status_tablet();
+  }
+
   if (last_known_status_hybrid_time_ > HybridTime::kMin) {
     auto transaction_status =
         GetStatusAt(request.global_limit_ht, last_known_status_hybrid_time_, last_known_status_,
@@ -105,7 +112,7 @@ void RunningTransaction::RequestStatusAt(const StatusRequest& request,
     // If we don't have status at global_limit_ht, then we should request updated status.
     if (transaction_status) {
       HybridTime last_known_status_hybrid_time = last_known_status_hybrid_time_;
-      AbortedSubTransactionSet local_commit_aborted_subtxn_set;
+      SubtxnSet local_commit_aborted_subtxn_set;
       if (transaction_status == TransactionStatus::COMMITTED ||
           transaction_status == TransactionStatus::PENDING) {
         local_commit_aborted_subtxn_set = last_known_aborted_subtxn_set_;
@@ -260,7 +267,7 @@ void RunningTransaction::StatusReceived(
 
 bool RunningTransaction::UpdateStatus(
     TransactionStatus transaction_status, HybridTime time_of_status,
-    HybridTime coordinator_safe_time, AbortedSubTransactionSet aborted_subtxn_set) {
+    HybridTime coordinator_safe_time, SubtxnSet aborted_subtxn_set) {
   if (!local_commit_time_ && transaction_status != TransactionStatus::ABORTED) {
     // If we've already committed locally, then last_known_aborted_subtxn_set_ is already set
     // properly. Otherwise, we should update it here.
@@ -303,7 +310,7 @@ void RunningTransaction::DoStatusReceived(const Status& status,
   decltype(status_waiters_) status_waiters;
   HybridTime time_of_status = HybridTime::kMin;
   TransactionStatus transaction_status = TransactionStatus::PENDING;
-  AbortedSubTransactionSet aborted_subtxn_set;
+  SubtxnSet aborted_subtxn_set;
   const bool ok = status.ok();
   int64_t new_request_id = -1;
   {
@@ -330,7 +337,7 @@ void RunningTransaction::DoStatusReceived(const Status& status,
           << "Empty aborted_subtxn_set in transaction status response. "
           << "This should only happen when nodes are on different versions, e.g. during upgrade.";
     } else {
-      auto aborted_subtxn_set_or_status = AbortedSubTransactionSet::FromPB(
+      auto aborted_subtxn_set_or_status = SubtxnSet::FromPB(
           response.aborted_subtxn_set(0).set());
       if (aborted_subtxn_set_or_status.ok()) {
         time_of_status = HybridTime(response.status_hybrid_time()[0]);
@@ -338,7 +345,7 @@ void RunningTransaction::DoStatusReceived(const Status& status,
         aborted_subtxn_set = aborted_subtxn_set_or_status.get();
       } else {
         LOG_WITH_PREFIX(DFATAL)
-            << "Could not deserialize AbortedSubTransactionSet: "
+            << "Could not deserialize SubtxnSet: "
             << "error - " << aborted_subtxn_set_or_status.status().ToString()
             << " response - " << response.ShortDebugString();
       }
@@ -352,6 +359,7 @@ void RunningTransaction::DoStatusReceived(const Status& status,
     auto did_abort_txn = UpdateStatus(
         transaction_status, time_of_status, coordinator_safe_time, aborted_subtxn_set);
     if (did_abort_txn) {
+      context_.NotifyAborted(id());
       context_.EnqueueRemoveUnlocked(id(), RemoveReason::kStatusReceived, &min_running_notifier);
     }
 
@@ -416,7 +424,7 @@ std::vector<StatusRequest> RunningTransaction::ExtractFinishedStatusWaitersUnloc
 
 void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_status,
                                        TransactionStatus transaction_status,
-                                       const AbortedSubTransactionSet& aborted_subtxn_set,
+                                       const SubtxnSet& aborted_subtxn_set,
                                        const std::vector<StatusRequest>& status_waiters) {
   for (const auto& waiter : status_waiters) {
     auto status_for_waiter = GetStatusAt(
@@ -458,7 +466,7 @@ Result<TransactionStatusResult> RunningTransaction::MakeAbortResult(
   HybridTime status_time = response.has_status_hybrid_time()
        ? HybridTime(response.status_hybrid_time())
        : HybridTime::kInvalid;
-  return TransactionStatusResult{response.status(), status_time, AbortedSubTransactionSet()};
+  return TransactionStatusResult{response.status(), status_time, SubtxnSet()};
 }
 
 void RunningTransaction::AbortReceived(const Status& status,
@@ -484,6 +492,7 @@ void RunningTransaction::AbortReceived(const Status& status,
       auto coordinator_safe_time = HybridTime::FromPB(response.coordinator_safe_time());
       if (UpdateStatus(
           result->status, result->status_time, coordinator_safe_time, result->aborted_subtxn_set)) {
+        context_.NotifyAborted(id());
         context_.EnqueueRemoveUnlocked(id(), RemoveReason::kAbortReceived, &min_running_notifier);
       }
     }

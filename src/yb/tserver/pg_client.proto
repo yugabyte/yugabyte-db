@@ -18,8 +18,9 @@ package yb.tserver;
 option java_package = "org.yb.tserver";
 
 import "yb/common/common.proto";
-import "yb/common/value.proto";
 import "yb/common/pgsql_protocol.proto";
+import "yb/common/transaction.proto";
+import "yb/common/value.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/master/master_ddl.proto";
 import "yb/master/master_types.proto";
@@ -44,9 +45,14 @@ service PgClientService {
       returns (PgGetCatalogMasterVersionResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
   rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
+  rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
+  rpc GetIndexBackfillProgress(PgGetIndexBackfillProgressRequestPB)
+      returns (PgGetIndexBackfillProgressResponsePB);
   rpc OpenTable(PgOpenTableRequestPB) returns (PgOpenTableResponsePB);
+  rpc GetTablePartitionList(PgGetTablePartitionListRequestPB)
+      returns (PgGetTablePartitionListResponsePB);
   rpc Perform(PgPerformRequestPB) returns (PgPerformResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
   };
@@ -288,6 +294,26 @@ message PgIsInitDbDoneResponsePB {
   bool done = 2;
 }
 
+message PgGetLockStatusRequestPB {
+  // The table to scan. If unset, scan all tables
+  bytes table_id = 1;
+
+  // If specified, only read the locks associated with this txn_id.
+  bytes transaction_id = 2;
+}
+
+message PgGetLockStatusResponsePB {
+  AppStatusPB status = 1;
+
+  message NodeLockStatusResponsePB {
+    bytes permanent_uuid = 1;
+
+    repeated TabletLockInfoPB tablet_lock_infos = 2;
+  }
+
+  repeated NodeLockStatusResponsePB node_locks = 2;
+}
+
 message PgListLiveTabletServersRequestPB {
   bool primary_only = 1;
 }
@@ -302,6 +328,17 @@ message PgLiveTabletServerPB {
   bool is_primary = 7;
   string public_ip = 8;
   uint32 pg_port = 9;
+}
+
+message PgGetIndexBackfillProgressRequestPB {
+ repeated PgObjectIdPB index_ids = 1;
+}
+
+message PgGetIndexBackfillProgressResponsePB {
+  AppStatusPB status = 1;
+  // The ordering of the indexes' results here is expected to be the same as the ordering in the
+  // corresponding request PB (PgGetIndexBackfillProgressRequestPB).
+  repeated uint64 rows_processed_entries = 2;
 }
 
 message PgListLiveTabletServersResponsePB {
@@ -327,6 +364,15 @@ message PgOpenTableResponsePB {
   PgTablePartitionsPB partitions = 3;
 }
 
+message PgGetTablePartitionListRequestPB {
+  string table_id = 1;
+}
+
+message PgGetTablePartitionListResponsePB {
+  AppStatusPB status = 1;
+  PgTablePartitionsPB partitions = 2;
+}
+
 message PgPerformOpPB {
   oneof op {
     PgsqlWriteRequestPB write = 1;
@@ -341,9 +387,20 @@ enum ReadTimeManipulation {
   RESTART = 2;
 }
 
+// TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
+// 'optional' in proto3
+message OptionalFixed64PB {
+  fixed64 value = 1;
+}
+
+message OptionalUint32PB {
+  uint32 value = 1;
+}
+
 message PgPerformOptionsPB {
-  message CachingInfo {
+  message CachingInfoPB {
     bytes key = 1;
+    OptionalUint32PB lifetime_threshold_ms = 2;
   }
 
   // Cannot use IsolationLevel enum, since we cannot use proto2 enum in proto3 messages.
@@ -351,7 +408,9 @@ message PgPerformOptionsPB {
   uint32 isolation = 2;
   bool ddl_mode = 3;
   uint64 txn_serial_no = 4;
-  fixed64 in_txn_limit_ht = 5;
+
+  // See ReadHybridTimePB for information about in_txn_limit_ht.
+  OptionalFixed64PB in_txn_limit_ht = 5;
   bool use_existing_priority = 6;
   fixed64 priority = 7;
   bool restart_transaction = 8;
@@ -363,7 +422,8 @@ message PgPerformOptionsPB {
   string namespace_id = 14;
   bool use_xcluster_database_consistency = 15;
   uint32 active_sub_transaction_id = 16;
-  CachingInfo caching_info = 17;
+  CachingInfoPB caching_info = 17;
+  bool read_from_followers = 18;
 }
 
 message PgPerformRequestPB {
@@ -377,6 +437,7 @@ message PgPerformResponsePB {
   AppStatusPB status = 1;
   repeated PgsqlResponsePB responses = 2;
   ReadHybridTimePB catalog_read_time = 3;
+  fixed64 used_in_txn_limit_ht = 4;
 }
 
 message PgReserveOidsRequestPB {
@@ -557,15 +618,13 @@ message PgCheckIfPitrActiveResponsePB {
 message PgGetTserverCatalogVersionInfoRequestPB {
   // True if we only want to return the size of the catalog version map from tserver.
   bool size_only = 1;
+  // If > 0, we ask for the catalog version of the given database from the tserver.
+  // If == 0, we ask for the catalog version map of all databases from the tserver.
+  uint32 db_oid = 2;
 }
 
 message PgGetTserverCatalogVersionInfoResponsePB {
   AppStatusPB status = 1;
-  message Entry {
-    uint32 db_oid = 1;
-    int32 shm_index = 2;
-    uint64 current_version = 3;
-  }
-  repeated Entry entries = 2;
+  repeated TServerDBCatalogVersionInfo entries = 2;
   uint32 num_entries = 3;
 }

@@ -1,14 +1,15 @@
 ---
-title: Explore follower reads in YCQL
+title: Explore follower reads - YCQL
 headerTitle: Follower reads
 linkTitle: Follower reads
-description: Learn how you can use follower reads to lower read latencies in local YugabyteDB clusters.
+description: Learn how to use follower reads to lower read latencies in local YugabyteDB clusters in YCQL.
 aliases:
   - /explore/tunable-reads/
   - /preview/explore/tunable-reads/
   - /preview/explore/follower-reads/
   - /preview/explore/high-performance/tunable-reads/
   - /preview/explore/multi-region-deployments/follower-reads-ycql/
+  - /preview/explore/follower-reads/fr-ycql/
 menu:
   preview:
     identifier: follower-reads-ycql

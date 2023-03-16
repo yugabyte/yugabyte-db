@@ -4,6 +4,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.controllers.handlers.GFlagsValidationHandler.GFLAGS_FILTER_TAGS;
 import static com.yugabyte.yw.controllers.handlers.GFlagsValidationHandler.GFLAGS_FILTER_PATTERN;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -53,7 +54,10 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
     GFlagDetails flag2 = new GFlagDetails();
     flag2.name = "update_metrics_interval_ms";
     flag2.type = "int32";
-    List<GFlagDetails> gflagList = new ArrayList<>(Arrays.asList(flag1, flag2));
+    GFlagDetails flag3 = new GFlagDetails();
+    flag3.name = "ysql_default_transaction_isolation";
+    flag3.type = "string";
+    List<GFlagDetails> gflagList = new ArrayList<>(Arrays.asList(flag1, flag2, flag3));
     when(mockGFlagsValidation.extractGFlags(any(), any(), anyBoolean())).thenReturn(gflagList);
   }
 
@@ -129,12 +133,12 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
     ObjectNode body = Json.newObject();
     ArrayNode gflags = Json.newArray();
     ObjectNode flag1 = Json.newObject();
-    flag1.put("name", "cdc_enable_replicate_intents");
+    flag1.put("Name", "cdc_enable_replicate_intents");
     flag1.put("MASTER", "true");
     flag1.put("TSERVER", "true");
     ObjectNode flag2 = Json.newObject();
-    flag2.put("name", "update_metrics_interval_ms");
-    flag2.put("MASTER", "string");
+    flag2.put("Name", "update_metrics_interval_ms");
+    flag2.put("MASTER", "1300");
     flag2.put("TSERVER", "15000");
     gflags.add(flag1);
     gflags.add(flag2);
@@ -146,24 +150,18 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
     AssertHelper.assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
 
-    ObjectNode expectedJson = Json.newObject();
+    ArrayNode expectedJson = Json.newObject().arrayNode();
     ObjectNode expectedFlag1Json = Json.newObject();
-    expectedFlag1Json.put("name", "cdc_enable_replicate_intents");
-    ObjectNode flag1MasterJson = Json.newObject();
-    flag1MasterJson.put("exist", "true");
-    expectedFlag1Json.set("MASTER", flag1MasterJson);
-    ObjectNode flag1TserverJson = Json.newObject();
-    flag1TserverJson.put("exist", "true");
-    expectedJson.arrayNode().add(expectedFlag1Json);
+    expectedFlag1Json.put("Name", "cdc_enable_replicate_intents");
+    expectedFlag1Json.set("MASTER", Json.newObject().put("exist", true));
+    expectedFlag1Json.set("TSERVER", Json.newObject().put("exist", true));
+    expectedJson.add(expectedFlag1Json);
     ObjectNode expectedFlag2Json = Json.newObject();
-    expectedFlag2Json.put("name", "cdc_enable_replicate_intents");
-    ObjectNode flag2MasterJson = Json.newObject();
-    flag2MasterJson.put("exist", "true");
-    expectedFlag2Json.set("MASTER", flag1MasterJson);
-    ObjectNode flag2TserverJson = Json.newObject();
-    flag2TserverJson.put("exist", "true");
-    expectedJson.arrayNode().add(expectedFlag2Json);
-    AssertHelper.assertJsonEqual(expectedJson, json);
+    expectedFlag2Json.put("Name", "update_metrics_interval_ms");
+    expectedFlag2Json.set("MASTER", Json.newObject().put("exist", true));
+    expectedFlag2Json.set("TSERVER", Json.newObject().put("exist", true));
+    expectedJson.add(expectedFlag2Json);
+    assertEquals(true, json.equals(expectedJson));
   }
 
   @Test
@@ -171,11 +169,11 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
     ObjectNode body = Json.newObject();
     ArrayNode gflags = Json.newArray();
     ObjectNode flag1 = Json.newObject();
-    flag1.put("name", "cdc_enable_replicate_intents");
+    flag1.put("Name", "cdc_enable_replicate_intents");
     flag1.put("MASTER", "string");
     flag1.put("TSERVER", "true");
     ObjectNode flag2 = Json.newObject();
-    flag2.put("name", "update_metrics_interval_ms");
+    flag2.put("Name", "update_metrics_interval_ms");
     flag2.put("MASTER", "string");
     flag2.put("TSERVER", "15000");
     gflags.add(flag1);
@@ -188,39 +186,35 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
     AssertHelper.assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
 
-    ObjectNode expectedJson = Json.newObject();
+    ArrayNode expectedJson = Json.newObject().arrayNode();
     ObjectNode expectedFlag1Json = Json.newObject();
-    expectedFlag1Json.put("name", "cdc_enable_replicate_intents");
-    ObjectNode flag1MasterJson = Json.newObject();
-    flag1MasterJson.put("exist", "true");
-    flag1MasterJson.put("error", "Given string is not a bool type");
-    expectedFlag1Json.set("MASTER", flag1MasterJson);
-    ObjectNode flag1TserverJson = Json.newObject();
-    flag1TserverJson.put("exist", "true");
-    flag1TserverJson.put("error", "Given string is not a int32 type");
-    expectedJson.arrayNode().add(expectedFlag1Json);
+    expectedFlag1Json.put("Name", "cdc_enable_replicate_intents");
+    expectedFlag1Json.set(
+        "MASTER",
+        Json.newObject().put("exist", true).put("error", "Given string is not a bool type"));
+    expectedFlag1Json.set("TSERVER", Json.newObject().put("exist", true));
+    expectedJson.add(expectedFlag1Json);
     ObjectNode expectedFlag2Json = Json.newObject();
-    expectedFlag2Json.put("name", "cdc_enable_replicate_intents");
-    ObjectNode flag2MasterJson = Json.newObject();
-    flag2MasterJson.put("exist", "true");
-    expectedFlag2Json.set("MASTER", flag1MasterJson);
-    ObjectNode flag2TserverJson = Json.newObject();
-    flag2TserverJson.put("exist", "true");
-    expectedJson.arrayNode().add(expectedFlag2Json);
-    AssertHelper.assertJsonEqual(expectedJson, json);
+    expectedFlag2Json.put("Name", "update_metrics_interval_ms");
+    expectedFlag2Json.set(
+        "MASTER",
+        Json.newObject().put("exist", true).put("error", "Given string is not a int32 type"));
+    expectedFlag2Json.set("TSERVER", Json.newObject().put("exist", true));
+    expectedJson.add(expectedFlag2Json);
+    assertEquals(true, json.equals(expectedJson));
   }
 
   @Test
-  public void testValiadtedGFlagWithIncorrectGFlagName() {
+  public void testValidateGFlagWithIncorrectGFlagName() {
     String gflagName = "invalid_gflag";
     ObjectNode body = Json.newObject();
     ArrayNode gflags = Json.newArray();
     ObjectNode flag1 = Json.newObject();
-    flag1.put("name", gflagName);
+    flag1.put("Name", gflagName);
     flag1.put("MASTER", "123");
     flag1.put("TSERVER", "123");
     ObjectNode flag2 = Json.newObject();
-    flag2.put("name", "update_metrics_interval_ms");
+    flag2.put("Name", "update_metrics_interval_ms");
     flag2.put("MASTER", "string");
     flag2.put("TSERVER", "15000");
     gflags.add(flag1);
@@ -232,25 +226,22 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
             "POST", url, defaultUser.createAuthToken(), body);
     AssertHelper.assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
-
-    ObjectNode expectedJson = Json.newObject();
+    ArrayNode expectedJson = Json.newObject().arrayNode();
     ObjectNode expectedFlag1Json = Json.newObject();
-    expectedFlag1Json.put("name", gflagName);
-    ObjectNode flag1MasterJson = Json.newObject();
-    flag1MasterJson.put("exist", "false");
-    expectedFlag1Json.set("MASTER", flag1MasterJson);
-    ObjectNode flag1TserverJson = Json.newObject();
-    flag1TserverJson.put("exist", "false");
-    expectedJson.arrayNode().add(expectedFlag1Json);
+    expectedFlag1Json.put("Name", gflagName);
+    expectedFlag1Json.set("MASTER", Json.newObject().put("exist", false));
+    expectedFlag1Json.set("TSERVER", Json.newObject().put("exist", false));
+    expectedJson.add(expectedFlag1Json);
     ObjectNode expectedFlag2Json = Json.newObject();
-    expectedFlag2Json.put("name", "cdc_enable_replicate_intents");
+    expectedFlag2Json.put("Name", "update_metrics_interval_ms");
     ObjectNode flag2MasterJson = Json.newObject();
-    flag2MasterJson.put("exist", "true");
-    expectedFlag2Json.set("MASTER", flag1MasterJson);
-    ObjectNode flag2TserverJson = Json.newObject();
-    flag2TserverJson.put("exist", "true");
-    expectedJson.arrayNode().add(expectedFlag2Json);
-    AssertHelper.assertJsonEqual(expectedJson, json);
+    flag2MasterJson.put("exist", true);
+    expectedFlag2Json.set(
+        "MASTER",
+        Json.newObject().put("exist", true).put("error", "Given string is not a int32 type"));
+    expectedFlag2Json.set("TSERVER", Json.newObject().put("exist", true));
+    expectedJson.add(expectedFlag2Json);
+    assertEquals(true, json.equals(expectedJson));
   }
 
   @Test
@@ -337,5 +328,28 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
               .stream()
               .anyMatch(regexMatcher -> regexMatcher.matcher(flag.get("name").asText()).find()));
     }
+  }
+
+  @Test
+  public void testGFlagWithNonPermissibleValue() {
+    String gFlagName = "ysql_default_transaction_isolation";
+    ObjectNode flag1 = Json.newObject();
+    flag1.put("Name", gFlagName);
+    flag1.put("TSERVER", "random_value");
+    ObjectNode body = Json.newObject().set("gflags", Json.newArray().add(flag1));
+    String url = "/api/v1/metadata" + "/version/1.1.1.1-b11" + "/validate_gflags";
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "POST", url, defaultUser.createAuthToken(), body);
+    AssertHelper.assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    ArrayNode expectedJson = Json.newObject().arrayNode();
+    ObjectNode expectedFlag1Json = Json.newObject();
+    expectedFlag1Json.put("Name", "ysql_default_transaction_isolation");
+    expectedFlag1Json.set("MASTER", Json.newObject().put("exist", true));
+    expectedFlag1Json.set(
+        "TSERVER", Json.newObject().put("exist", true).put("error", "Given value is not valid"));
+    expectedJson.add(expectedFlag1Json);
+    assertEquals(true, json.equals(expectedJson));
   }
 }

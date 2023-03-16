@@ -18,7 +18,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 import static org.yb.AssertionWrappers.*;
 
 import java.util.Map;
@@ -27,7 +27,7 @@ import com.google.common.collect.ImmutableMap;
 
 // This module is used to verify that certain GFLAGS are setup correctly. It only sets the flag
 // value, but the associated feature tests should be defined in their own file.
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgFlags extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgFlags.class);
 

@@ -31,9 +31,9 @@ import { convertScheduleToFormValues, convertMsecToTimeFrame } from './Scheduled
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router';
 import { keyBy } from 'lodash';
-import { FormatUnixTimeStampTimeToTimezone } from '../common/BackupUtils';
 import { ScheduledBackupEmpty } from '../components/BackupEmpty';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import './ScheduledBackupList.scss';
 
 const wrapTableName = (tablesList: string[] | undefined) => {
@@ -363,21 +363,13 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
             <Col lg={3}>
               <div className="info-title">Last backup</div>
               <div className="info-val">
-                {schedule.prevCompletedTask ? (
-                  <FormatUnixTimeStampTimeToTimezone timestamp={schedule.prevCompletedTask} />
-                ) : (
-                  '-'
-                )}
+                {schedule.prevCompletedTask ? ybFormatDate(schedule.prevCompletedTask) : '-'}
               </div>
             </Col>
             <Col lg={3}>
               <div className="info-title">Next backup</div>
               <div className="info-val">
-                {schedule.nextExpectedTask ? (
-                  <FormatUnixTimeStampTimeToTimezone timestamp={schedule.nextExpectedTask} />
-                ) : (
-                  '-'
-                )}
+                {schedule.nextExpectedTask ? ybFormatDate(schedule.nextExpectedTask) : '-'}
               </div>
             </Col>
           </Row>

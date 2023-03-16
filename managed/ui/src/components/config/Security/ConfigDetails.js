@@ -1,8 +1,8 @@
 import React from 'react';
-import moment from 'moment';
 import { YBModal } from '../../common/forms/fields';
 import { PROTECTION_LEVELS } from './KeyManagementConfiguration';
 import { GCP_KMS_REGIONS_FLATTENED } from '../PublicCloud/views/providerRegionsData';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 
 export const ConfigDetails = ({ data, visible, onHide }) => {
   const {
@@ -89,7 +89,7 @@ export const ConfigDetails = ({ data, visible, onHide }) => {
         label: 'Expiry',
         value:
           HC_VAULT_TTL && HC_VAULT_TTL_EXPIRY
-            ? moment(HC_VAULT_TTL_EXPIRY).format('DD MMMM YYYY')
+            ? ybFormatDate(HC_VAULT_TTL_EXPIRY)
             : 'Wont Expire'
       }
     ];

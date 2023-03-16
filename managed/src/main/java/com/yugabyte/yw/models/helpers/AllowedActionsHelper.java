@@ -132,19 +132,24 @@ public class AllowedActionsHelper {
     UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
     if (cluster.clusterType == PRIMARY) {
       if (node.isMaster) {
-        // a primary node is being removed
-        long numMasterNodesUp =
+        // Number of live masters excluding this node.
+        long numOtherMasterNodesUp =
             universe
                 .getUniverseDetails()
                 .getNodesInCluster(cluster.uuid)
                 .stream()
                 .filter(n -> n.isMaster && n.state == Live)
+                .filter(n -> !n.nodeName.equals(node.nodeName))
                 .count();
-        if (numMasterNodesUp <= (cluster.userIntent.replicationFactor + 1) / 2) {
+        if (numOtherMasterNodesUp < (cluster.userIntent.replicationFactor + 1) / 2) {
+          long currentCount = numOtherMasterNodesUp;
+          if (node.isMaster && node.state == Live) {
+            currentCount++;
+          }
           return errorMsg(
               action,
               "As it will under replicate the masters (count = "
-                  + numMasterNodesUp
+                  + currentCount
                   + ", replicationFactor = "
                   + cluster.userIntent.replicationFactor
                   + ")");

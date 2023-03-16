@@ -15,10 +15,10 @@ breadcrumbDisable: true
 resourcesIntro: Quick Links
 resources:
   - title: What's new
-    url: /preview/releases/release-notes/latest-release/
+    url: /preview/releases/yba-releases/
   - title: FAQ
     url: /preview/faq/yugabyte-platform/
-  - title: Free trial
+  - title: yugabyte.com
     url: https://www.yugabyte.com/anywhere/
 ---
 
@@ -77,32 +77,32 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
 
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
-	title="Build applications"
-	description="Start coding in your favorite programming language using examples."
-	buttonText="Get started"
-	buttonUrl="../develop/build-apps/"
+  title="Build applications"
+  description="Start coding in your favorite programming language using examples."
+  buttonText="Get started"
+  buttonUrl="../develop/build-apps/"
   >}}
 
   {{< sections/3-box-card
-	title="Yugabyte University"
-	description="Take free courses and workshops to learn YugabyteDB, YSQL, and YCQL."
-	linkText1="Developer workshops"
-	linkUrl1="https://university.yugabyte.com/collections/builder-workshop"
-	linkTarget1="_blank"
-	linkText2="YSQL exercises"
-	linkUrl2="https://university.yugabyte.com/courses/ysql-exercises-simple-queries"
-	linkTarget2="_blank"
+  title="Yugabyte University"
+  description="Take free courses and workshops to learn YugabyteDB, YSQL, and YCQL."
+  linkText1="Developer workshops"
+  linkUrl1="https://university.yugabyte.com/collections/builder-workshop"
+  linkTarget1="_blank"
+  linkText2="YSQL exercises"
+  linkUrl2="https://university.yugabyte.com/courses/ysql-exercises-simple-queries"
+  linkTarget2="_blank"
   >}}
 
   {{< sections/3-box-card
-	title="Support"
-	description="Ask questions, request assistance from our team, participate in our journey."
-	linkText1="Contact Support"
-	linkUrl1="https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360001955891"
-	linkTarget1="_blank"
-	linkText2="Join our community"
-	linkUrl2="https://communityinviter.com/apps/yugabyte-db/register"
-	linkTarget2="_blank"
+  title="Support"
+  description="Ask questions, request assistance from our team, participate in our journey."
+  linkText1="Contact Support"
+  linkUrl1="https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360001955891"
+  linkTarget1="_blank"
+  linkText2="Join our community"
+  linkUrl2="https://communityinviter.com/apps/yugabyte-db/register"
+  linkTarget2="_blank"
   >}}
 
 {{< /sections/3-boxes >}}

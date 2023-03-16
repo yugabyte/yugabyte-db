@@ -1,6 +1,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.YbcManager;
@@ -47,8 +48,19 @@ public class RestoreBackup extends UniverseTaskBase {
               .getUniverseDetails()
               .ybcSoftwareVersion
               .equals(ybcManager.getStableYbcVersion())) {
-        createUpgradeYbcTask(taskParams().universeUUID, ybcManager.getStableYbcVersion(), true)
-            .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+
+        if (universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(Common.CloudType.kubernetes)) {
+          createUpgradeYbcTaskOnK8s(taskParams().universeUUID, ybcManager.getStableYbcVersion())
+              .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+        } else {
+          createUpgradeYbcTask(taskParams().universeUUID, ybcManager.getStableYbcVersion(), true)
+              .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+        }
       }
 
       restore =
@@ -64,7 +76,10 @@ public class RestoreBackup extends UniverseTaskBase {
       // Run all the tasks.
       getRunnableTask().runSubTasks();
       unlockUniverseForUpdate();
-      restore.update(taskUUID, Restore.State.Completed);
+      if (restore != null) {
+        restore.update(taskUUID, Restore.State.Completed);
+      }
+
     } catch (CancellationException ce) {
       unlockUniverseForUpdate(false);
       // Aborted

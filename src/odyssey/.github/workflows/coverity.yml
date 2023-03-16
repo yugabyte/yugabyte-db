@@ -1,0 +1,47 @@
+name: coverity
+
+on:
+  push:
+    branches: [ coverity_scan ]
+
+jobs:
+  scan:
+    runs-on: ubuntu-18.04
+    env:
+      TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Cache Coverity build tool
+      uses: actions/cache@v2
+      with:
+        path: |
+          coverity_tool.tar.gz
+        key: ${{ runner.os }}
+
+    - name: Download Coverity build tool
+      run: |
+        wget -c -N https://scan.coverity.com/download/linux64 --post-data "token=$TOKEN&project=yandex%2Fodyssey" -O coverity_tool.tar.gz
+        mkdir coverity_tool
+        tar xzf coverity_tool.tar.gz --strip 1 -C coverity_tool
+      
+    - name: Install dependencies
+      run: sudo bash scripts/install_ci.sh
+    
+    - name: Pre-build
+      run: cmake -DCMAKE_BUILD_TYPE=Release
+      
+    - name: Build with Coverity build tool
+      run: |
+        export PATH=`pwd`/coverity_tool/bin:$PATH
+        cov-build --dir cov-int make -j2
+      
+    - name: Submit build result to Coverity Scan
+      run: |
+        tar czvf odyssey.tar.gz cov-int
+        curl --form token=$TOKEN \
+          --form email=amborodin@acm.org \
+          --form file=@odyssey.tar.gz \
+          --form version="Commit $GITHUB_SHA" \
+          --form description="Build submitted via CI" \
+          https://scan.coverity.com/builds?project=yandex%2Fodyssey

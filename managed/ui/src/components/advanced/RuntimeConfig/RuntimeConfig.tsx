@@ -14,6 +14,7 @@ interface RuntimeConfigProps {
   activeTab: string;
   defaultTab: string;
   routePrefix: string;
+  configTagFilter: string[];
   fetchRuntimeConfigs: () => void;
   setRuntimeConfig: (key: string, value: string, scope?: string) => void;
   deleteRunTimeConfig: (key: string, scope?: string) => void;
@@ -24,6 +25,7 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
   activeTab,
   defaultTab,
   routePrefix,
+  configTagFilter,
   fetchRuntimeConfigs,
   setRuntimeConfig,
   deleteRunTimeConfig,
@@ -50,6 +52,7 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
             deleteRunTimeConfig={deleteRunTimeConfig}
             fetchRuntimeConfigs={fetchRuntimeConfigs}
             resetRuntimeConfigs={resetRuntimeConfigs}
+            configTagFilter={configTagFilter}
           />
         </Tab>
 
@@ -63,6 +66,7 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
             deleteRunTimeConfig={deleteRunTimeConfig}
             fetchRuntimeConfigs={fetchRuntimeConfigs}
             resetRuntimeConfigs={resetRuntimeConfigs}
+            configTagFilter={configTagFilter}
           />
         </Tab>
 
@@ -76,6 +80,7 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
             deleteRunTimeConfig={deleteRunTimeConfig}
             fetchRuntimeConfigs={fetchRuntimeConfigs}
             resetRuntimeConfigs={resetRuntimeConfigs}
+            configTagFilter={configTagFilter}
           />
         </Tab>
 
@@ -84,12 +89,12 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
           title={t('admin.advanced.globalConfig.ProviderConfigTitle')}
           unmountOnExit
         >
-
           <ProviderRuntimeConfig
             setRuntimeConfig={setRuntimeConfig}
             deleteRunTimeConfig={deleteRunTimeConfig}
             fetchRuntimeConfigs={fetchRuntimeConfigs}
             resetRuntimeConfigs={resetRuntimeConfigs}
+            configTagFilter={configTagFilter}
           />
         </Tab>
       </YBTabsPanel>

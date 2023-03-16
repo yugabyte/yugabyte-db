@@ -108,6 +108,8 @@ message CreateTableRequestPB {
   optional bool is_matview = 26;
 
   optional bytes matview_pg_table_id = 24;
+
+  repeated StatefulServiceKind hosted_stateful_services = 27;
 }
 
 message CreateTableResponsePB {
@@ -523,6 +525,12 @@ message ListNamespacesResponsePB {
   optional MasterErrorPB error = 1;
 
   repeated NamespaceIdentifierPB namespaces = 2;
+
+  repeated int32 states = 3;
+
+  /* We use int32 because the repeated bool type is bugged.
+  See https://github.com/yugabyte/yugabyte-db/issues/15868 */
+  repeated int32 colocated = 4;
 }
 
 message GetNamespaceInfoRequestPB {

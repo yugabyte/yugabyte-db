@@ -263,7 +263,7 @@ To export the data, connect to the source PostgreSQL database using the psql too
 ```sql
 COPY <table_name>
     TO '<table_name>.csv'
-    WITH (FORMAT CSV DELIMITER ',' HEADER);
+    WITH (FORMAT CSV, HEADER false, DELIMITER ',');
 ```
 
 {{< note title="Note" >}}
@@ -280,7 +280,7 @@ COPY (
     WHERE <condition>
 )
 TO '<table_name>.csv'
-WITH (FORMAT CSV DELIMITER ',' HEADER);
+WITH (FORMAT CSV, HEADER false, DELIMITER ',');
 ```
 
 For all available options provided by the COPY TO command, refer to the [PostgreSQL documentation](https://www.postgresql.org/docs/current/sql-copy.html).
@@ -296,7 +296,7 @@ COPY (
     LIMIT num_rows_per_export OFFSET 0
 )
 TO '<table_name>_1.csv'
-WITH (FORMAT CSV DELIMITER ',' HEADER);
+WITH (FORMAT CSV, HEADER false, DELIMITER ',');
 ```
 
 ```sql
@@ -306,7 +306,7 @@ COPY (
     LIMIT num_rows_per_export OFFSET num_rows_per_export
 )
 TO '<table_name>_2.csv'
-WITH (FORMAT CSV DELIMITER ',' HEADER);
+WITH (FORMAT CSV, HEADER false, DELIMITER ',');
 ```
 
 ```sql
@@ -316,7 +316,7 @@ COPY (
     LIMIT num_rows_per_export OFFSET num_rows_per_export * 2
 )
 TO '<table_name>_3.csv'
-WITH (FORMAT CSV DELIMITER ',' HEADER);
+WITH (FORMAT CSV, HEADER false, DELIMITER ',');
 ```
 
 You can run the above commands in parallel to speed up the process. This approach will also produce multiple CSV files, allowing for parallel import on the YugabyteDB side.

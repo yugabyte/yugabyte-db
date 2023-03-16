@@ -431,6 +431,12 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   req.set_config_index(server_->GetCurrentMasterIndex());
   req.set_cluster_config_version(server_->cluster_config_version());
+  auto result = server_->XClusterConfigVersion();
+  if (result.ok()) {
+    req.set_xcluster_config_version(*result);
+  } else if (!result.status().IsNotFound()) {
+    return result.status();
+  }
   req.set_rtt_us(heartbeat_rtt_.ToMicroseconds());
   if (server_->has_faulty_drive()) {
     req.set_faulty_drive(true);
@@ -506,17 +512,23 @@ Status Heartbeater::Thread::TryHeartbeat() {
       } else {
         cluster_config_version = resp.cluster_config_version();
       }
-      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->
-          SetConfigVersionAndConsumerRegistry(cluster_config_version, &resp.consumer_registry()));
+      RETURN_NOT_OK(server_->SetConfigVersionAndConsumerRegistry(
+          cluster_config_version, &resp.consumer_registry()));
     } else if (resp.has_cluster_config_version()) {
-      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->
-          SetConfigVersionAndConsumerRegistry(resp.cluster_config_version(), nullptr));
+      RETURN_NOT_OK(
+          server_->SetConfigVersionAndConsumerRegistry(resp.cluster_config_version(), nullptr));
     }
 
     // Check whether the cluster is a producer of a CDC stream.
     if (resp.has_xcluster_enabled_on_producer() &&
         resp.xcluster_enabled_on_producer()) {
-      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->SetCDCServiceEnabled());
+      RETURN_NOT_OK(server_->SetCDCServiceEnabled());
+    }
+
+    if (resp.has_xcluster_producer_registry() && resp.has_xcluster_config_version()) {
+      RETURN_NOT_OK(server_->SetPausedXClusterProducerStreams(
+          resp.xcluster_producer_registry().paused_producer_stream_ids(),
+          resp.xcluster_config_version()));
     }
 
     // At this point we know resp is a successful heartbeat response from the master so set it as
@@ -713,6 +725,9 @@ Status Heartbeater::Thread::Stop() {
     should_run_ = false;
     cond_.Signal();
   }
+
+  rpcs_.Shutdown();
+
   RETURN_NOT_OK(ThreadJoiner(thread_.get()).Join());
   thread_ = nullptr;
   return Status::OK();

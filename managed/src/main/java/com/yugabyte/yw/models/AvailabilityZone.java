@@ -8,9 +8,11 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.base.Strings;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
-
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
@@ -19,13 +21,14 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.ManyToOne;
+import javax.persistence.Transient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -65,6 +68,9 @@ public class AvailabilityZone extends Model {
   }
 
   public void setActiveFlag(Boolean active) {
+    if (active && !this.active) {
+      throw new IllegalArgumentException("Cannot activate already inactive zone");
+    }
     this.active = active;
   }
 
@@ -75,6 +81,10 @@ public class AvailabilityZone extends Model {
   @Column(length = 80)
   @ApiModelProperty(value = "AZ secondary subnet", example = "secondary subnet id")
   public String secondarySubnet;
+
+  @Transient
+  @ApiModelProperty(hidden = true)
+  public String providerCode;
 
   @Deprecated
   @DbJson
@@ -95,8 +105,11 @@ public class AvailabilityZone extends Model {
   }
 
   @Deprecated
+  @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {
-    CloudInfoInterface.setCloudProviderInfoFromConfig(this, configMap);
+    if (configMap != null && !configMap.isEmpty()) {
+      CloudInfoInterface.setCloudProviderInfoFromConfig(this, configMap);
+    }
   }
 
   @Deprecated
@@ -113,8 +126,7 @@ public class AvailabilityZone extends Model {
 
   @JsonProperty("details")
   public AvailabilityZoneDetails getMaskAvailabilityZoneDetails() {
-    CloudInfoInterface.maskAvailabilityZoneDetails(this);
-    return details;
+    return CloudInfoInterface.maskAvailabilityZoneDetails(this);
   }
 
   @JsonIgnore
@@ -123,6 +135,13 @@ public class AvailabilityZone extends Model {
       details = new AvailabilityZoneDetails();
     }
     return details;
+  }
+
+  @JsonIgnore
+  public boolean shouldBeUpdated(AvailabilityZone zone) {
+    return !Objects.equals(this.subnet, zone.subnet)
+        || !Objects.equals(this.secondarySubnet, zone.secondarySubnet)
+        || !Objects.equals(this.getAvailabilityZoneDetails(), zone.getAvailabilityZoneDetails());
   }
 
   /** Query Helper for Availability Zone with primary key */
@@ -200,11 +219,15 @@ public class AvailabilityZone extends Model {
   }
 
   public static List<AvailabilityZone> getAZsForRegion(UUID regionUUID) {
-    return find.query().where().eq("region_uuid", regionUUID).findList();
+    return getAZsForRegion(regionUUID, true);
   }
 
-  public static Set<AvailabilityZone> getAllByCode(String code) {
-    return find.query().where().eq("code", code).findSet();
+  public static List<AvailabilityZone> getAZsForRegion(UUID regionUUID, boolean onlyActive) {
+    ExpressionList<AvailabilityZone> expr = find.query().where().eq("region_uuid", regionUUID);
+    if (onlyActive) {
+      expr.eq("active", true);
+    }
+    return expr.findList();
   }
 
   public static AvailabilityZone getByRegionOrBadRequest(UUID azUUID, UUID regionUUID) {
@@ -217,7 +240,11 @@ public class AvailabilityZone extends Model {
   }
 
   public static AvailabilityZone getByCode(Provider provider, String code) {
-    return maybeGetByCode(provider, code)
+    return getByCode(provider, code, true);
+  }
+
+  public static AvailabilityZone getByCode(Provider provider, String code, boolean onlyActive) {
+    return maybeGetByCode(provider, code, onlyActive)
         .orElseThrow(
             () ->
                 new RuntimeException(
@@ -225,10 +252,30 @@ public class AvailabilityZone extends Model {
   }
 
   public static Optional<AvailabilityZone> maybeGetByCode(Provider provider, String code) {
-    return getAllByCode(code)
+    return maybeGetByCode(provider, code, true);
+  }
+
+  public static Optional<AvailabilityZone> maybeGetByCode(
+      Provider provider, String code, boolean onlyActive) {
+    return find.query()
+        .where()
+        .eq("code", code)
+        .findSet()
         .stream()
         .filter(az -> az.getProvider().uuid.equals(provider.uuid))
+        .filter(az -> !onlyActive || az.active)
         .findFirst();
+  }
+
+  @JsonIgnore
+  public CloudType getProviderCloudCode() {
+    if (region != null) {
+      return region.getProviderCloudCode();
+    } else if (!Strings.isNullOrEmpty(providerCode)) {
+      return CloudType.valueOf(providerCode);
+    }
+
+    return CloudType.other;
   }
 
   public static AvailabilityZone getOrBadRequest(UUID zoneUuid) {

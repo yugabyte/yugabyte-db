@@ -31,8 +31,8 @@
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
 
@@ -2160,10 +2160,11 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
     // Finalize the execution.  We will send this result to users, and they send us subsequent
     // requests if the paging state is not empty.
     // 1. Case no child: The result is already in the node.
-    // 1. Case fully_covered index: The result is in child_select node.
-    // 2. Case partially_covered index:
+    // 2. Case fully_covered index: The result is in child_select node except the schema version in
+    // paging state which is from the parent node.
+    // 3. Case partially_covered index:
     //    - The result and row-counter are kept in parent node.
-    //    - The paging state is in the child node.
+    //    - The paging state is in the child node except the schema version from the parent node.
     if (!tnode_context->HasPendingOperations() && !child_context->HasPendingOperations()) {
       RETURN_NOT_OK(tnode_context->ComposeRowsResultForUser(child_select,
                                                             false /* for_new_batches */));
@@ -2492,7 +2493,8 @@ Status Executor::ProcessStatementStatus(const ParseTree& parse_tree, const Statu
         errcode == ErrorCode::TYPE_NOT_FOUND) {
       if (errcode == ErrorCode::INVALID_ARGUMENTS) {
         // Check the table schema is up-to-date.
-        const Result<bool> is_altered_res = parse_tree.IsYBTableAltered(ql_env_);
+        const Result<bool> is_altered_res =
+            parse_tree.IsYBTableAltered(ql_env_, false /* use_cache */);
         // The table is not available if (!is_altered_res.ok()).
         // Usually it happens if the table was deleted.
         if (is_altered_res.ok() && !(*is_altered_res)) {

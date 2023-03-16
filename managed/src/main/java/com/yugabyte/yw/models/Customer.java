@@ -77,10 +77,10 @@ public class Customer extends Model {
   public String name;
 
   @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
       value = "Creation time",
-      example = "2021-06-17T15:00:05-0400",
+      example = "2022-12-12T13:07:18Z",
       accessMode = READ_ONLY)
   public Date creationDate;
 

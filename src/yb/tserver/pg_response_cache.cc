@@ -13,9 +13,8 @@
 
 #include "yb/tserver/pg_response_cache.h"
 
-#include <atomic>
-#include <mutex>
 #include <future>
+#include <mutex>
 #include <utility>
 
 #include <boost/multi_index/member.hpp>
@@ -32,6 +31,7 @@
 
 #include "yb/tserver/pg_client.pb.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
@@ -44,56 +44,80 @@ METRIC_DEFINE_counter(server, pg_response_cache_hits,
                       yb::MetricUnit::kCacheHits,
                       "Total number of hits in PgClientService response cache");
 METRIC_DEFINE_counter(server, pg_response_cache_queries,
-                      "PgClientService Response Cache QUeries",
+                      "PgClientService Response Cache Queries",
                       yb::MetricUnit::kCacheQueries,
                       "Total number of queries to PgClientService response cache");
+METRIC_DEFINE_counter(server, pg_response_cache_renew_soft,
+                      "PgClientService Response Cache Renewed Soft",
+                      yb::MetricUnit::kCacheQueries,
+                      "Total number of PgClientService response cache entries renewed soft");
+METRIC_DEFINE_counter(server, pg_response_cache_renew_hard,
+                      "PgClientService Response Cache Renewed Hard",
+                      yb::MetricUnit::kCacheQueries,
+                      "Total number of PgClientService response cache entries renewed hard");
+
 DEFINE_NON_RUNTIME_uint64(
     pg_response_cache_capacity, 1024, "PgClientService response cache capacity.");
+
+DEFINE_test_flag(uint64, pg_response_cache_catalog_read_time_usec, 0,
+                 "Value to substitute original catalog_read_time in cached responses");
 
 namespace yb {
 namespace tserver {
 
 namespace {
 
-YB_DEFINE_ENUM(DataState, (kInitializing)(kInitialized)(kFailed));
+void TEST_UpdateCatalogReadTime(
+    PgPerformResponsePB* resp, const ReadHybridTime& new_catalog_read_time) {
+  ReadHybridTime original_catalog_read_time;
+  original_catalog_read_time.FromPB(resp->catalog_read_time());
+  LOG(INFO) << "Substitute original catalog_read_time " << original_catalog_read_time
+            << " with " << new_catalog_read_time;
+  new_catalog_read_time.ToPB(resp->mutable_catalog_read_time());
+  for (auto& r : *resp->mutable_responses()) {
+    if (r.has_paging_state()) {
+      new_catalog_read_time.ToPB(r.mutable_paging_state()->mutable_read_time());
+    }
+  }
+}
 
 class Data {
  public:
-  explicit Data(const CoarseTimePoint& deadline)
-      : state_(DataState::kInitializing),
-        deadline_(deadline),
+  explicit Data(const CoarseTimePoint& creation_time, const CoarseTimePoint& readiness_deadline)
+      : creation_time_(creation_time),
+        readiness_deadline_(readiness_deadline),
         future_(promise_.get_future()) {}
 
-  const PgResponseCache::Response& Get() const {
-    return future_.get();
+  Result<const PgResponseCache::Response&> Get(const CoarseTimePoint& deadline) const {
+    const auto& actual_deadline = std::min(deadline, readiness_deadline_);
+    if (future_.wait_until(actual_deadline) != std::future_status::timeout) {
+      return future_.get();
+    }
+    return STATUS(TimedOut, "Timeout on getting response from the cache");
   }
 
-  void Set(PgResponseCache::Response&& value, IsFailure is_failure) {
-    auto expected = DataState::kInitializing;
-    auto exchanged = state_.compare_exchange_strong(
-        expected,
-        is_failure ? DataState::kFailed : DataState::kInitialized,
-        std::memory_order_acq_rel);
-    if (!exchanged) {
-      LOG(DFATAL) << "Unexpected state " << expected;
-      return;
+  void Set(PgResponseCache::Response&& value) {
+    if (PREDICT_FALSE(FLAGS_TEST_pg_response_cache_catalog_read_time_usec > 0) &&
+        value.response.has_catalog_read_time()) {
+      TEST_UpdateCatalogReadTime(
+          &value.response,
+          ReadHybridTime::SingleTime(HybridTime::FromMicros(
+              FLAGS_TEST_pg_response_cache_catalog_read_time_usec)));
     }
     promise_.set_value(std::move(value));
   }
 
-  bool IsValid() const {
-    const auto state = state_.load(std::memory_order_acquire);
-    switch (state) {
-      case DataState::kInitializing: return CoarseMonoClock::Now() < deadline_;
-      case DataState::kInitialized: return true;
-      case DataState::kFailed: return false;
-    }
-    FATAL_INVALID_ENUM_VALUE(DataState, state);
+  [[nodiscard]] bool IsValid(const CoarseTimePoint& now) const {
+    return IsReady(future_) ? future_.get().is_ok_status : now < readiness_deadline_;
+  }
+
+  [[nodiscard]] const CoarseTimePoint& creation_time() const {
+    return creation_time_;
   }
 
  private:
-  std::atomic<DataState> state_;
-  const CoarseTimePoint deadline_;
+  const CoarseTimePoint creation_time_;
+  const CoarseTimePoint readiness_deadline_;
   std::promise<PgResponseCache::Response> promise_;
   std::shared_future<PgResponseCache::Response> future_;
 };
@@ -116,6 +140,8 @@ void FillResponse(PgPerformResponsePB* response,
     if (op.has_rows_data_sidecar()) {
       sidecars.Start().Append(rows_data_it->AsSlice());
       op.set_rows_data_sidecar(narrow_cast<int>(sidecars.Complete()));
+    } else {
+      DCHECK(!*rows_data_it);
     }
     ++rows_data_it;
   }
@@ -125,35 +151,58 @@ void FillResponse(PgPerformResponsePB* response,
 } // namespace
 
 class PgResponseCache::Impl {
-  auto DoGetEntry(std::string&& key, const CoarseTimePoint& deadline) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto& entry = *entries_.emplace(std::move(key));
+  [[nodiscard]] auto DoGetEntry(
+      PgPerformOptionsPB::CachingInfoPB* cache_info, const CoarseTimePoint& deadline) {
+    auto now = CoarseMonoClock::Now();
+    std::lock_guard lock(mutex_);
+    const auto& data = entries_.emplace(std::move(*cache_info->mutable_key()))->data;
     bool loading_required = false;
-    if (!entry.data || !entry.data->IsValid()) {
-      const_cast<Entry&>(entry).data = std::make_shared<Data>(deadline);
+    if (!data ||
+        !data->IsValid(now) ||
+        (cache_info->has_lifetime_threshold_ms() &&
+         RenewRequired(*data, now, cache_info->lifetime_threshold_ms().value()))) {
+      const_cast<std::shared_ptr<Data>&>(data) = std::make_shared<Data>(now, deadline);
       loading_required = true;
     }
-    return std::make_pair(entry.data, loading_required);
+    return std::make_pair(data, loading_required);
   }
 
  public:
   explicit Impl(MetricEntity* metric_entity)
       : entries_(FLAGS_pg_response_cache_capacity),
         queries_(METRIC_pg_response_cache_queries.Instantiate(metric_entity)),
-        hits_(METRIC_pg_response_cache_hits.Instantiate(metric_entity)) {
+        hits_(METRIC_pg_response_cache_hits.Instantiate(metric_entity)),
+        renew_soft_(METRIC_pg_response_cache_renew_soft.Instantiate(metric_entity)),
+        renew_hard_(METRIC_pg_response_cache_renew_hard.Instantiate(metric_entity)) {
   }
 
-  PgResponseCache::Setter Get(
-      std::string&& cache_key, PgPerformResponsePB* response, rpc::RpcContext* context) {
-    auto[data, loading_required] = DoGetEntry(std::move(cache_key), context->GetClientDeadline());
+  [[nodiscard]] bool RenewRequired(
+      const Data& data, const CoarseTimePoint& now, uint32_t lifetime_threshold_ms) {
+      if (lifetime_threshold_ms == 0) {
+        IncrementCounter(renew_hard_);
+        return true;
+      }
+
+      if (data.creation_time() < now - std::chrono::milliseconds(lifetime_threshold_ms)) {
+        IncrementCounter(renew_soft_);
+        return true;
+      }
+      return false;
+  }
+
+  Result<PgResponseCache::Setter> Get(
+      PgPerformOptionsPB::CachingInfoPB* cache_info,
+      PgPerformResponsePB* response, rpc::RpcContext* context) {
+    auto deadline = context->GetClientDeadline();
+    auto[data, loading_required] = DoGetEntry(cache_info, deadline);
     IncrementCounter(queries_);
     if (!loading_required) {
       IncrementCounter(hits_);
-      FillResponse(response, context, data->Get());
+      FillResponse(response, context, VERIFY_RESULT_REF(data->Get(deadline)));
       return PgResponseCache::Setter();
     }
-    return [empty_data = std::move(data)](Response&& response, IsFailure is_failure) {
-      empty_data->Set(std::move(response), is_failure);
+    return [empty_data = std::move(data)](Response&& response) {
+      empty_data->Set(std::move(response));
     };
   }
 
@@ -165,6 +214,8 @@ class PgResponseCache::Impl {
   > entries_ GUARDED_BY(mutex_);
   scoped_refptr<Counter> queries_;
   scoped_refptr<Counter> hits_;
+  scoped_refptr<Counter> renew_soft_;
+  scoped_refptr<Counter> renew_hard_;
 };
 
 PgResponseCache::PgResponseCache(MetricEntity* metric_entity)
@@ -173,9 +224,10 @@ PgResponseCache::PgResponseCache(MetricEntity* metric_entity)
 
 PgResponseCache::~PgResponseCache() = default;
 
-PgResponseCache::Setter PgResponseCache::Get(
-    std::string&& cache_key, PgPerformResponsePB* response, rpc::RpcContext* context) {
-  return impl_->Get(std::move(cache_key), response, context);
+Result<PgResponseCache::Setter> PgResponseCache::Get(
+    PgPerformOptionsPB::CachingInfoPB* cache_info,
+    PgPerformResponsePB* response, rpc::RpcContext* context) {
+  return impl_->Get(cache_info, response, context);
 }
 
 } // namespace tserver

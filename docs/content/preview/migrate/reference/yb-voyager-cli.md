@@ -1,5 +1,6 @@
 ---
-title: yb-voyager CLI
+title: yb-voyager CLI reference
+headcontent: yb-voyager command line interface
 linkTitle: yb-voyager CLI
 description: YugabyteDB Voyager CLI and SSL connectivity.
 menu:
@@ -212,6 +213,12 @@ yb-voyager export data status --export-dir /path/to/yb/export/dir
 [Import the schema](../../migrate-steps/#import-schema) to the target YugabyteDB.
 
 During migration, run the import schema command twice, first without the [--post-import-data](#post-import-data) argument and then with the argument. The second invocation creates indexes and triggers in the target schema, and must be done after [import data](../../migrate-steps/#import-data) is complete.
+
+{{< note title="For Oracle migrations" >}}
+
+For Oracle migrations using YugabyteDB Voyager v1.1, the Orafce extension is installed on the target database by default. This enables you to use a subset of predefined functions, operators, and packages from Oracle. The extension is installed in the public schema, and when listing functions or views, extra objects will be visible on the target database which may confuse you. You can remove the extension using the [DROP EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_drop_extension) command.
+
+{{< /note >}}
 
 #### Syntax
 
@@ -584,11 +591,19 @@ Cleans the data directories for already existing files and is applicable during 
 
 ### --table-list
 
-Comma-separated list of the tables for which data is exported. Do not use in conjunction with [--exclude-table-list](#exclude-table-list).
+Comma-separated list of the tables for which data needs to be migrated. Do not use in conjunction with [--exclude-table-list](#exclude-table-list).
 
 ### --exclude-table-list
 
-Comma-separated list of tables to exclude while exporting data.
+Comma-separated list of tables to exclude while migrating data.
+
+{{< note title="Note" >}}
+
+For `export data` command, the list of table names passed in the `--table-list` and `--exclude-table-list` are, by default, case insensitive. Enclose each name in double quotes to make it case sensitive.
+
+For `import data` command, the list of table names passed in the `--table-list` and `--exclude-table-list` are, by default, case sensitive. You don't need to enclose them in double quotes.
+
+{{< /note >}}
 
 ### --send-diagnostics
 
@@ -622,7 +637,7 @@ The following table summarizes the arguments and options you can pass to yb-voya
 | | `--source-ssl-cert` <br /> `--source-ssl-key` | These two arguments specify names of the files containing SSL certificate and key, respectively. The `<cert, key>` pair forms the identity of the client. |
 | | `--source-ssl-root-cert` | Specifies the path to a file containing SSL certificate authority (CA) certificate(s). If the file exists, the server's certificate will be verified to be signed by one of these authorities.
 | | `--source-ssl-crl` | Specifies the path to a file containing the SSL certificate revocation list (CRL). Certificates listed in this file, if it exists, will be rejected while attempting to authenticate the server's certificate.
-| Oracle | `--oracle-tns-alias` | A TNS (Transparent Network Substrate) alias that is configured to establish a secure connection with the server is passed to yb-voyager. When you pass [`--oracle-tns-alias`](../reference/yb-voyager-cli/#ssl-connectivity), you cannot use any other arguments to connect to your Oracle instance including [`--source-db-schema`](../reference/yb-voyager-cli/#source-db-schema) and [`--oracle-db-sid`](../reference/yb-voyager-cli/#oracle-db-sid).|
+| Oracle | `--oracle-tns-alias` | A TNS (Transparent Network Substrate) alias that is configured to establish a secure connection with the server is passed to yb-voyager. When you pass [`--oracle-tns-alias`](#ssl-connectivity), you cannot use any other arguments to connect to your Oracle instance including [`--source-db-schema`](#source-db-schema) and [`--oracle-db-sid`](#oracle-db-sid).|
 | YugabyteDB | `--target-ssl-mode` | Value of this argument determines whether an encrypted connection is established between yb-voyager and the database server; and whether the certificate of the database server is verified from a CA. <br /> **Options**<ul><li>disable: Only try a non-SSL connection.</li><li>allow: First try a non-SSL connection; if that fails, try an SSL connection. (Not supported for MySQL.)</li><li> prefer (default): First try an SSL connection; if that fails, try a non-SSL connection.</li><li>require: Only try an SSL connection. If a root CA file is present, verify the certificate in the same way as if verify-ca was specified.</li><li> verify-ca: Only try an SSL connection, and verify that the server certificate is issued by a trusted certificate authority (CA).</li><li>verify-full: Only try an SSL connection, verify that the server certificate is issued by a trusted CA and that the requested server host name matches that in the certificate.</li></ul>
 | | `--target-ssl-cert` <br /> `--target-ssl-key` | These two arguments specify names of the files containing SSL certificate and key, respectively. The `<cert, key>` pair forms the identity of the client. |
 | | `--target-ssl-root-cert` | Specifies the path to a file containing SSL certificate authority (CA) certificate(s). If the file exists, the server's certificate will be verified to be signed by one of these authorities. |

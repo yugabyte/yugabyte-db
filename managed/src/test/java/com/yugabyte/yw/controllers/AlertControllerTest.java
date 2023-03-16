@@ -48,8 +48,17 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
-import static org.hamcrest.MatcherAssert.*;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.anyOf;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.everyItem;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.in;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.Assert.fail;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
@@ -70,13 +79,21 @@ import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelParams;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
+import com.yugabyte.yw.common.alerts.AlertChannelTemplateService;
+import com.yugabyte.yw.common.alerts.AlertChannelTemplateServiceTest;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableServiceTest;
 import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.forms.AlertTemplateSettingsFormData;
+import com.yugabyte.yw.forms.AlertTemplateSystemVariable;
+import com.yugabyte.yw.forms.AlertTemplateVariablesFormData;
+import com.yugabyte.yw.forms.AlertTemplateVariablesList;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.forms.filters.AlertTemplateApiFilter;
@@ -85,6 +102,7 @@ import com.yugabyte.yw.forms.paging.AlertPagedApiQuery;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
+import com.yugabyte.yw.models.AlertChannelTemplates;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertConfiguration.SortBy;
 import com.yugabyte.yw.models.AlertConfiguration.TargetType;
@@ -93,6 +111,7 @@ import com.yugabyte.yw.models.AlertConfigurationThreshold;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.AlertTemplateSettings;
+import com.yugabyte.yw.models.AlertTemplateVariable;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
@@ -307,8 +326,10 @@ public class AlertControllerTest extends FakeDBApplication {
   private int alertDestinationIndex;
 
   private AlertChannelService alertChannelService;
+  private AlertChannelTemplateService alertChannelTemplateService;
   private AlertDestinationService alertDestinationService;
   private AlertConfigurationService alertConfigurationService;
+  private AlertTemplateVariableService alertTemplateVariableService;
   private AlertController alertController;
 
   private AlertConfiguration alertConfiguration;
@@ -323,8 +344,10 @@ public class AlertControllerTest extends FakeDBApplication {
     universe = ModelFactory.createUniverse();
 
     alertChannelService = app.injector().instanceOf(AlertChannelService.class);
+    alertChannelTemplateService = app.injector().instanceOf(AlertChannelTemplateService.class);
     alertDestinationService = app.injector().instanceOf(AlertDestinationService.class);
     alertConfigurationService = app.injector().instanceOf(AlertConfigurationService.class);
+    alertTemplateVariableService = app.injector().instanceOf(AlertTemplateVariableService.class);
     alertController = app.injector().instanceOf(AlertController.class);
     alertConfiguration = ModelFactory.createAlertConfiguration(customer, universe);
     alertDefinition = ModelFactory.createAlertDefinition(customer, universe, alertConfiguration);
@@ -1476,6 +1499,208 @@ public class AlertControllerTest extends FakeDBApplication {
                 + customer.getUuid()
                 + "/alert_template_settings/"
                 + settings.getUuid(),
+            authToken);
+    assertThat(result.status(), equalTo(OK));
+  }
+
+  @Test
+  public void testListTemplateVariables() {
+    AlertTemplateVariable variable =
+        AlertTemplateVariableServiceTest.createTestVariable(customer.getUuid(), "Test");
+    alertTemplateVariableService.save(variable);
+
+    Result result =
+        doRequestWithAuthToken(
+            "GET", "/api/customers/" + customer.getUuid() + "/alert_template_variables", authToken);
+    assertThat(result.status(), equalTo(OK));
+    JsonNode variableJson = Json.parse(contentAsString(result));
+    AlertTemplateVariablesList queriedVariables =
+        Json.fromJson(variableJson, AlertTemplateVariablesList.class);
+
+    assertThat(queriedVariables.getCustomVariables(), hasSize(1));
+    AlertTemplateVariable queriedVariable = queriedVariables.getCustomVariables().get(0);
+    assertThat(queriedVariable, equalTo(variable));
+
+    assertThat(
+        queriedVariables.getSystemVariables(),
+        containsInAnyOrder(AlertTemplateSystemVariable.values()));
+  }
+
+  @Test
+  public void testCreateTemplateVariables() {
+    AlertTemplateVariable variable =
+        AlertTemplateVariableServiceTest.createTestVariable(customer.getUuid(), "Test");
+    AlertTemplateVariablesFormData data = new AlertTemplateVariablesFormData();
+    data.variables = ImmutableList.of(variable);
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "PUT",
+            "/api/customers/" + customer.getUuid() + "/alert_template_variables",
+            authToken,
+            Json.toJson(data));
+    assertThat(result.status(), equalTo(OK));
+    JsonNode variableJson = Json.parse(contentAsString(result));
+    List<AlertTemplateVariable> queriedVariables =
+        Arrays.asList(Json.fromJson(variableJson, AlertTemplateVariable[].class));
+
+    assertThat(queriedVariables, hasSize(1));
+    AlertTemplateVariable queriedVariable = queriedVariables.get(0);
+    assertThat(queriedVariable.getUuid(), notNullValue());
+    queriedVariable.setUuid(null);
+    assertThat(queriedVariable, equalTo(variable));
+  }
+
+  @Test
+  public void testCreateTemplateVariableFailure() {
+    AlertTemplateVariable variable =
+        AlertTemplateVariableServiceTest.createTestVariable(customer.getUuid(), "Test");
+    variable.setName(null);
+    AlertTemplateVariablesFormData data = new AlertTemplateVariablesFormData();
+    data.variables = ImmutableList.of(variable);
+
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "PUT",
+                    "/api/customers/" + customer.getUuid() + "/alert_template_variables",
+                    authToken,
+                    Json.toJson(data)));
+    assertBadRequest(result, "{\"name\":[\"may not be null\"]}");
+  }
+
+  @Test
+  public void testUpdateTemplateVariable() {
+    AlertTemplateVariable variable =
+        AlertTemplateVariableServiceTest.createTestVariable(customer.getUuid(), "Test");
+    alertTemplateVariableService.save(variable);
+
+    variable.setPossibleValues(ImmutableSet.of("one", "foo"));
+    AlertTemplateVariablesFormData data = new AlertTemplateVariablesFormData();
+    data.variables = ImmutableList.of(variable);
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "PUT",
+            "/api/customers/" + customer.getUuid() + "/alert_template_variables",
+            authToken,
+            Json.toJson(data));
+    assertThat(result.status(), equalTo(OK));
+    JsonNode variableJson = Json.parse(contentAsString(result));
+    List<AlertTemplateVariable> queriedVariables =
+        Arrays.asList(Json.fromJson(variableJson, AlertTemplateVariable[].class));
+
+    assertThat(queriedVariables, hasSize(1));
+    AlertTemplateVariable queriedVariable = queriedVariables.get(0);
+    assertThat(queriedVariable, equalTo(variable));
+  }
+
+  @Test
+  public void testDeleteTemplateVariable() {
+    AlertTemplateVariable variable =
+        AlertTemplateVariableServiceTest.createTestVariable(customer.getUuid(), "Test");
+    alertTemplateVariableService.save(variable);
+
+    Result result =
+        doRequestWithAuthToken(
+            "DELETE",
+            "/api/customers/"
+                + customer.getUuid()
+                + "/alert_template_variables/"
+                + variable.getUuid(),
+            authToken);
+    assertThat(result.status(), equalTo(OK));
+  }
+
+  @Test
+  public void testGetChannelTemplates() {
+    AlertChannelTemplates templates =
+        AlertChannelTemplateServiceTest.createTemplates(customer.getUuid(), ChannelType.Email);
+    alertChannelTemplateService.save(templates);
+
+    Result result =
+        doRequestWithAuthToken(
+            "GET",
+            "/api/customers/" + customer.getUuid() + "/alert_channel_templates/Email",
+            authToken);
+    assertThat(result.status(), equalTo(OK));
+    JsonNode templateJson = Json.parse(contentAsString(result));
+    AlertChannelTemplatesExt resultTemplates =
+        Json.fromJson(templateJson, AlertChannelTemplatesExt.class);
+    assertThat(resultTemplates.getChannelTemplates(), equalTo(templates));
+    assertThat(
+        resultTemplates.getDefaultTitleTemplate(),
+        equalTo(
+            "YugabyteDB Anywhere {{ yugabyte_alert_severity }} alert"
+                + " {{ yugabyte_alert_policy_name }} {{ yugabyte_alert_status }} for"
+                + " {{ yugabyte_alert_source_name }}\n"));
+    assertThat(
+        resultTemplates.getDefaultTextTemplate(),
+        equalTo(
+            "{{ yugabyte_alert_policy_name }} alert with severity level "
+                + "'{{ yugabyte_alert_severity }}' for {{ yugabyte_alert_source_type }} "
+                + "'{{ yugabyte_alert_source_name }}' is {{ yugabyte_alert_status }}.\n\n"
+                + "{{ yugabyte_alert_message }}\n"));
+  }
+
+  @Test
+  public void testListChannelTemplates() {
+    AlertChannelTemplates templates =
+        AlertChannelTemplateServiceTest.createTemplates(customer.getUuid(), ChannelType.Email);
+    alertChannelTemplateService.save(templates);
+    AlertChannelTemplates templates2 =
+        AlertChannelTemplateServiceTest.createTemplates(customer.getUuid(), ChannelType.Slack);
+    alertChannelTemplateService.save(templates2);
+
+    Result result =
+        doRequestWithAuthToken(
+            "GET", "/api/customers/" + customer.getUuid() + "/alert_channel_templates", authToken);
+    assertThat(result.status(), equalTo(OK));
+    JsonNode templatesJson = Json.parse(contentAsString(result));
+    List<AlertChannelTemplatesExt> listedTemplatesWithDefault =
+        Arrays.asList(Json.fromJson(templatesJson, AlertChannelTemplatesExt[].class));
+    List<AlertChannelTemplates> listedTemplates =
+        listedTemplatesWithDefault
+            .stream()
+            .map(AlertChannelTemplatesExt::getChannelTemplates)
+            .filter(t -> t.getTextTemplate() != null)
+            .collect(Collectors.toList());
+    assertThat(listedTemplates, containsInAnyOrder(templates, templates2));
+    assertThat(listedTemplatesWithDefault, hasSize(4));
+  }
+
+  @Test
+  public void testSetChannelTemplates() {
+    AlertChannelTemplates templates =
+        AlertChannelTemplateServiceTest.createTemplates(customer.getUuid(), ChannelType.Email);
+    // Should be able to set without these fields
+    templates.setType(null);
+    templates.setCustomerUUID(null);
+
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/" + customer.getUuid() + "/alert_channel_templates/Email",
+            authToken,
+            Json.toJson(templates));
+    assertThat(result.status(), equalTo(OK));
+    JsonNode templateJson = Json.parse(contentAsString(result));
+    AlertChannelTemplates resultTemplates =
+        Json.fromJson(templateJson, AlertChannelTemplates.class);
+
+    AlertChannelTemplates expected =
+        AlertChannelTemplateServiceTest.createTemplates(customer.getUuid(), ChannelType.Email);
+    assertThat(resultTemplates, equalTo(expected));
+  }
+
+  @Test
+  public void testDeleteChannelTemplates() {
+    AlertChannelTemplates templates =
+        AlertChannelTemplateServiceTest.createTemplates(customer.getUuid(), ChannelType.Email);
+    alertChannelTemplateService.save(templates);
+    Result result =
+        doRequestWithAuthToken(
+            "DELETE",
+            "/api/customers/" + customer.getUuid() + "/alert_channel_templates/Email",
             authToken);
     assertThat(result.status(), equalTo(OK));
   }

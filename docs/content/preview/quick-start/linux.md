@@ -1,5 +1,5 @@
 ---
-title: YugabyteDB Quick start
+title: YugabyteDB Quick start for Linux
 headerTitle: Quick start
 linkTitle: Linux
 description: Test YugabyteDB's APIs and core features by creating a local cluster on a single host.
@@ -9,6 +9,7 @@ aliases:
 type: docs
 rightNav:
   hideH4: true
+unversioned: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

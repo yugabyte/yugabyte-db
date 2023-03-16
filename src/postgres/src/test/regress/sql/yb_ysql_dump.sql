@@ -163,3 +163,40 @@ CREATE TABLE p2 (k INT PRIMARY KEY, v TEXT);
 CREATE UNIQUE INDEX c2 ON p2 (v) SPLIT INTO 10 TABLETS;
 
 ALTER TABLE p2 ADD UNIQUE USING INDEX c2;
+
+------------------------------------------------
+-- Test included columns with primary key index and included columns with non-primary key index
+------------------------------------------------
+CREATE TABLE range_tbl_pk_with_include_clause (
+  k2 TEXT,
+  v DOUBLE PRECISION,
+  k1 INT,
+  PRIMARY KEY (k1 ASC, k2 ASC) INCLUDE (v)
+) SPLIT AT VALUES((1, '1'), (100, '100'));
+
+CREATE UNIQUE INDEX unique_idx_with_include_clause ON range_tbl_pk_with_include_clause (k1, k2) INCLUDE (v);
+
+CREATE TABLE hash_tbl_pk_with_include_clause (
+  k2 TEXT,
+  v DOUBLE PRECISION,
+  k1 INT,
+  PRIMARY KEY ((k1, k2) HASH) INCLUDE (v)
+) SPLIT INTO 8 TABLETS;
+
+CREATE UNIQUE INDEX non_unique_idx_with_include_clause ON hash_tbl_pk_with_include_clause (k1, k2) INCLUDE (v);
+
+CREATE TABLE range_tbl_pk_with_multiple_included_columns (
+  col1 INT,
+  col2 INT,
+  col3 INT,
+  col4 INT,
+  PRIMARY KEY (col1 ASC, col2 ASC) INCLUDE (col3, col4)
+);
+
+CREATE TABLE hash_tbl_pk_with_multiple_included_columns (
+  col1 INT,
+  col2 INT,
+  col3 INT,
+  col4 INT,
+  PRIMARY KEY (col1 HASH, col2 ASC) INCLUDE (col3, col4)
+);

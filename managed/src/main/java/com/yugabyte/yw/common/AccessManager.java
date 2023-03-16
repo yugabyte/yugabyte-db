@@ -218,6 +218,8 @@ public class AccessManager extends DevopsBase {
     keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
     keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
     keyInfo.deleteRemote = deleteRemote;
+    keyInfo.keyPairName = keyCode;
+    keyInfo.sshPrivateKeyContent = new String(Files.readAllBytes(destination));
 
     // TODO: Move this code for ProviderDetails update elsewhere
     ProviderDetails details = provider.details;
@@ -294,7 +296,8 @@ public class AccessManager extends DevopsBase {
       throw new RuntimeException("Could not create AccessKey", ioe);
     } finally {
       try {
-        if (tempFile != null) {
+        File tmpKeyFile = new File(tempFile.toString());
+        if (tmpKeyFile.exists()) {
           Files.delete(tempFile);
         }
       } catch (IOException e) {
@@ -393,7 +396,13 @@ public class AccessManager extends DevopsBase {
       commandArgs.add(privateKeyFilePath);
     }
 
-    JsonNode response = execAndParseCommandRegion(regionUUID, "add-key", commandArgs);
+    JsonNode response =
+        execAndParseShellResponse(
+            DevopsCommand.builder()
+                .regionUUID(regionUUID)
+                .command("add-key")
+                .commandArgs(commandArgs)
+                .build());
     if (response.has("error")) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
@@ -412,14 +421,21 @@ public class AccessManager extends DevopsBase {
       }
       keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
       keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
+      keyInfo.keyPairName = keyCode;
+      try {
+        Path privateKeyPath = Paths.get(keyInfo.privateKey);
+        keyInfo.sshPrivateKeyContent = new String(Files.readAllBytes(privateKeyPath));
+      } catch (IOException e) {
+        log.error("Failed to read private file content: {}", e);
+      }
       if (sshUser != null) {
         region.provider.details.sshUser = sshUser;
       } else {
-        switch (Common.CloudType.valueOf(region.provider.code)) {
+        switch (region.getProviderCloudCode()) {
           case aws:
           case azu:
           case gcp:
-            String defaultSshUser = Common.CloudType.valueOf(region.provider.code).getSshUser();
+            String defaultSshUser = region.getProviderCloudCode().getSshUser();
             if (defaultSshUser != null && !defaultSshUser.isEmpty()) {
               region.provider.details.sshUser = defaultSshUser;
             }
@@ -455,11 +471,21 @@ public class AccessManager extends DevopsBase {
     }
     commandArgs.add("--private_key_file");
     commandArgs.add(privateKeyFile);
-    return execAndParseCommandRegion(regionUUID, "create-vault", commandArgs);
+    return execAndParseShellResponse(
+        DevopsCommand.builder()
+            .regionUUID(regionUUID)
+            .command("create-vault")
+            .commandArgs(commandArgs)
+            .build());
   }
 
   public JsonNode listKeys(UUID regionUUID) {
-    return execAndParseCommandRegion(regionUUID, "list-keys", Collections.emptyList());
+    return execAndParseShellResponse(
+        DevopsCommand.builder()
+            .regionUUID(regionUUID)
+            .command("list-keys")
+            .commandArgs(Collections.emptyList())
+            .build());
   }
 
   public JsonNode deleteKey(UUID regionUUID, String keyCode) {
@@ -516,7 +542,13 @@ public class AccessManager extends DevopsBase {
       commandArgs.add("--delete_remote");
     }
     commandArgs.add("--ignore_auth_failure");
-    JsonNode response = execAndParseCommandRegion(regionUUID, "delete-key", commandArgs);
+    JsonNode response =
+        execAndParseShellResponse(
+            DevopsCommand.builder()
+                .regionUUID(regionUUID)
+                .command("delete-key")
+                .commandArgs(commandArgs)
+                .build());
     if (response.has("error")) {
       throw new RuntimeException(response.get("error").asText());
     }

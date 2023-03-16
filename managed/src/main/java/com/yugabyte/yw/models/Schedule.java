@@ -12,8 +12,12 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ScheduleUtil;
@@ -23,6 +27,7 @@ import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.ScheduleResp.BackupInfo;
 import com.yugabyte.yw.models.ScheduleResp.ScheduleRespBuilder;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.filters.ScheduleFilter;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList.KeyspaceTablesListBuilder;
@@ -70,6 +75,7 @@ import org.apache.commons.lang3.time.DateUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
+import play.mvc.Http.Context;
 
 @Entity
 @Table(
@@ -93,7 +99,8 @@ public class Schedule extends Model {
 
   public enum SortBy implements PagedQuery.SortByIF {
     taskType("taskType"),
-    scheduleUUID("scheduleUUID");
+    scheduleUUID("scheduleUUID"),
+    scheduleName("scheduleName");
 
     private final String sortField;
 
@@ -125,8 +132,16 @@ public class Schedule extends Model {
   @Column(nullable = false)
   private UUID customerUUID;
 
+  @JsonProperty
   public UUID getCustomerUUID() {
     return customerUUID;
+  }
+
+  @JsonIgnore
+  public void setCustomerUUID(UUID customerUUID) {
+    this.customerUUID = customerUUID;
+    ObjectNode scheduleTaskParams = (ObjectNode) getTaskParams();
+    scheduleTaskParams.set("customerUUID", Json.toJson(customerUUID));
   }
 
   @ApiModelProperty(value = "Number of failed backup attempts", accessMode = READ_ONLY)
@@ -209,7 +224,11 @@ public class Schedule extends Model {
   }
 
   @Column
-  @ApiModelProperty(value = "Time on which schedule is expected to run", accessMode = READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value = "Time on which schedule is expected to run",
+      accessMode = READ_ONLY,
+      example = "2022-12-12T13:07:18Z")
   private Date nextScheduleTaskTime;
 
   public Date getNextScheduleTaskTime() {
@@ -226,6 +245,14 @@ public class Schedule extends Model {
       accessMode = READ_ONLY)
   @Column(nullable = false)
   private boolean backlogStatus;
+
+  @Column
+  @ApiModelProperty(value = "User who created the schedule policy", accessMode = READ_ONLY)
+  private String userEmail;
+
+  public String getUserEmail() {
+    return userEmail;
+  }
 
   public boolean getBacklogStatus() {
     return this.backlogStatus;
@@ -247,7 +274,6 @@ public class Schedule extends Model {
   public void setCronExpressionAndTaskParams(String cronExpression, ITaskParams params) {
     this.cronExpression = cronExpression;
     this.taskParams = Json.toJson(params);
-    save();
   }
 
   public void setFailureCount(int count) {
@@ -255,7 +281,6 @@ public class Schedule extends Model {
     if (count >= MAX_FAIL_COUNT) {
       this.status = State.Paused;
     }
-    save();
   }
 
   public void resetSchedule() {
@@ -299,7 +324,6 @@ public class Schedule extends Model {
 
   public void setRunningState(boolean state) {
     this.runningState = state;
-    save();
   }
 
   public void updateIncrementalBackupFrequencyAndTimeUnit(
@@ -334,6 +358,7 @@ public class Schedule extends Model {
     schedule.cronExpression = cronExpression;
     schedule.ownerUUID = ownerUUID;
     schedule.frequencyTimeUnit = frequencyTimeUnit;
+    schedule.userEmail = Util.maybeGetEmailFromContext(Context.current.get());
     schedule.scheduleName =
         scheduleName != null ? scheduleName : "schedule-" + schedule.scheduleUUID;
     schedule.nextScheduleTaskTime = nextExpectedTaskTime(null, schedule);
@@ -431,6 +456,11 @@ public class Schedule extends Model {
         .eq("status", "Active")
         .eq("task_type", taskType)
         .findList();
+  }
+
+  public static List<Schedule> getAllSchedulesByOwnerUUIDAndType(
+      UUID ownerUUID, TaskType taskType) {
+    return find.query().where().eq("owner_uuid", ownerUUID).in("task_type", taskType).findList();
   }
 
   public static List<Schedule> getAllByCustomerUUIDAndType(UUID customerUUID, TaskType taskType) {

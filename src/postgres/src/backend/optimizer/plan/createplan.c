@@ -2609,6 +2609,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	AttrNumber attr_offset;
 	Bitmapset *update_attrs = NULL;
 	Bitmapset *pushdown_update_attrs = NULL;
+	/* Delay bailout because of not pushable expressions to analyze indexes. */
+	bool has_unpushable_exprs = false;
 
 	/* Verify YB is enabled. */
 	if (!IsYugaByteEnabled())
@@ -2802,16 +2804,18 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			 * elements not supported by DocDB, or expression pushdown is
 			 * disabled.
 			 *
-			 * However, if not pushable expression does not refer any target
-			 * table column, the Result node can evaluate it, and the statement
-			 * would still be one row.
+			 * If expression is not pushable, we can not do single line update,
+			 * but do not bail out until after we analyse indexes and make a
+			 * list of secondary indexes unaffected by the update. We can skip
+			 * update of those indexes regardless. Still allow to bail out
+			 * if there are triggers. There is no easy way to tell what columns
+			 * are affected by a trigger, so we should update all indexes.
 			 */
 			if (TupleDescAttr(tupDesc, resno - 1)->attnotnull ||
 				YBIsCollationValidNonC(ybc_get_attcollation(tupDesc, resno)) ||
 				!YbCanPushdownExpr(tle->expr, &colrefs))
 			{
-				RelationClose(relation);
-				return false;
+				has_unpushable_exprs = true;
 			}
 
 			pushdown_update_attrs = bms_add_member(pushdown_update_attrs,
@@ -2836,6 +2840,17 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	 * update/delete from the index, requiring the scan.
 	 */
 	if (has_applicable_indices(relation, update_attrs, no_update_index_list))
+	{
+		RelationClose(relation);
+		return false;
+	}
+
+	/*
+	 * Now it is OK to bail out because of unpushable expressions.
+	 * We have made a list, and can skip unaffected indexes even though
+	 * the update is not single row.
+	 */
+	if (has_unpushable_exprs)
 	{
 		RelationClose(relation);
 		return false;
@@ -4664,7 +4679,7 @@ create_nestloop_plan(PlannerInfo *root,
 
 	root->yb_cur_batched_relids = bms_union(root->yb_cur_batched_relids,
 										    batched_relids);
-	
+
 	yb_is_batched = yb_is_nestloop_batched(best_path);
 
 	outerrelids = best_path->outerjoinpath->parent->relids;
@@ -4691,7 +4706,7 @@ create_nestloop_plan(PlannerInfo *root,
 	{
 		/* Add the available batched outer rels. */
 		root->yb_availBatchedRelids =
-			lappend(root->yb_availBatchedRelids, outerrelids);
+			lcons(outerrelids, root->yb_availBatchedRelids);
 
 		/* Collect all the equality operators of the batched join conditions. */
 		/*
@@ -4702,6 +4717,8 @@ create_nestloop_plan(PlannerInfo *root,
 		ListCell *l;
 		yb_hashClauseInfos =
 			palloc0(joinrestrictclauses->length * sizeof(YbBNLHashClauseInfo));
+		
+		/* YB: This length is later adjusted in setrefs.c. */
 		yb_num_hashClauseInfos = joinrestrictclauses->length;
 
 		Relids batched_outerrelids =
@@ -4709,14 +4726,18 @@ create_nestloop_plan(PlannerInfo *root,
 						   yb_get_unbatched_relids(best_path));
 
 		Relids inner_relids = best_path->innerjoinpath->parent->relids;
-		
+
 		YbBNLHashClauseInfo *current_hinfo = yb_hashClauseInfos;
 		foreach(l, joinrestrictclauses)
 		{
 			Oid hashOpno = InvalidOid;
-			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);	
 			if (!list_member_ptr(joinclauses, rinfo->clause))
+			{
+				yb_num_hashClauseInfos--;
 				continue;
+			}
+
 			if (rinfo->can_join &&
 				OidIsValid(rinfo->hashjoinoperator) &&
 				can_batch_rinfo(rinfo, batched_outerrelids, inner_relids))
@@ -4726,10 +4747,10 @@ create_nestloop_plan(PlannerInfo *root,
 				RestrictInfo *batched_rinfo =
 					get_batched_restrictinfo(rinfo,batched_outerrelids,
 											 inner_relids);
-				
+
 				hashOpno = ((OpExpr *) batched_rinfo->clause)->opno;
 			}
-			
+
 			current_hinfo->hashOp = hashOpno;
 			current_hinfo++;
 		}
@@ -4740,6 +4761,15 @@ create_nestloop_plan(PlannerInfo *root,
 
 	bms_free(root->yb_cur_batched_relids);
 	root->yb_cur_batched_relids = prev_yb_cur_batched_relids;
+
+	/* restore availBatchedRelids */
+	if (yb_is_batched)
+	{
+		Assert(bms_equal((Relids) linitial(root->yb_availBatchedRelids),
+			   outerrelids));
+		root->yb_availBatchedRelids =
+			list_delete_first(root->yb_availBatchedRelids);
+	}
 
 	/* Restore curOuterRels */
 	bms_free(root->curOuterRels);
@@ -5370,9 +5400,9 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 			}
 			else
 			{
-				Var *var = (Var *) inner_expr;
-				scalar_type = var->vartype;
-				collid = var->varcollid;
+				Assert(IsA(inner_expr, Var) || IsA(inner_expr, RelabelType));
+				scalar_type = exprType((Node*) inner_expr);
+				collid = exprCollation((Node*)inner_expr);
 			}
 
 			ArrayExpr *arrexpr = makeNode(ArrayExpr);
@@ -6010,8 +6040,17 @@ is_index_only_refs(List *expr_refs, IndexOptInfo *indexinfo)
 		{
 			if (colref->attno == indexinfo->indexkeys[i])
 			{
-				found = true;
-				break;
+				/*
+				 * If index key can not return, it does not have actual value
+				 * to evaluate the expression.
+				 */
+				if (indexinfo->canreturn[i])
+				{
+					found = true;
+					break;
+				}
+				else
+					return false;
 			}
 		}
 		if (!found)

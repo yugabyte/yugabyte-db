@@ -13,7 +13,8 @@ import {
   isEmptyObject,
   isNonEmptyArray,
   trimSpecialChars,
-  normalizeToValidPort
+  normalizeToValidPort,
+  isEmptyString
 } from '../../../utils/ObjectUtils';
 import {
   YBTextInput,
@@ -41,17 +42,30 @@ import {
   getPlacementCloud
 } from '../../../utils/UniverseUtils';
 import pluralize from 'pluralize';
-import { AZURE_INSTANCE_TYPE_GROUPS } from '../../../redesign/universe/wizard/fields/InstanceTypeField/InstanceTypeField';
 import { isEphemeralAwsStorageInstance } from '../UniverseDetail/UniverseDetail';
 import { fetchSupportedReleases } from '../../../actions/universe';
 import { sortVersion } from '../../releases';
 import { HelmOverridesUniversePage } from './HelmOverrides';
+import { toast } from 'react-toastify';
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
   aws: 'c5.large',
   gcp: 'n1-standard-1',
   kubernetes: 'small'
+};
+
+const AZURE_INSTANCE_TYPE_GROUPS = {
+  'B-Series': /^standard_b.+/i,
+  'D-Series': /^standard_d.+/i,
+  'E-Series': /^standard_e.+/i,
+  'F-Series': /^standard_f.+/i,
+  'GS-Series': /^standard_gs.+/i,
+  'H-Series': /^standard_h.+/i,
+  'L-Series': /^standard_l.+/i,
+  'M-Series': /^standard_m.+/i,
+  'N-Series': /^standard_n.+/i,
+  'P-Series': /^standard_p.+/i
 };
 
 // Maps API storage types to UI display options
@@ -109,6 +123,9 @@ const UltraSSD_DISK_IOPS_MAX_PER_GB = 300;
 const UltraSSD_IOPS_TO_MAX_DISK_THROUGHPUT = 4;
 const UltraSSD_DISK_THROUGHPUT_CAP = 2500;
 
+const ASYNC_MAX_REPLICATION_FACTOR = 15;
+const ASYNC_MIN_REPLICATION_FACTOR = 1;
+
 const initialState = {
   universeName: '',
   instanceTypeSelected: '',
@@ -149,7 +166,6 @@ const initialState = {
   enableEncryptionAtRest: false,
   useSystemd: true,
   customizePorts: false,
-  dedicatedNodes: false,
   // Geo-partitioning settings.
   defaultRegion: '',
   mastersInDefaultRegion: true,
@@ -216,7 +232,6 @@ export default class ClusterFields extends Component {
     this.validatePassword = this.validatePassword.bind(this);
     this.validateConfirmPassword = this.validateConfirmPassword.bind(this);
     this.tlsCertChanged = this.tlsCertChanged.bind(this);
-    this.toggleDedicatedNodes = this.toggleDedicatedNodes.bind(this);
 
     this.currentInstanceType =
       this.props.clusterType === 'primary'
@@ -453,8 +468,7 @@ export default class ClusterFields extends Component {
           regionList: userIntent.regionList,
           volumeType: storageType === null ? 'SSD' : 'EBS', //TODO(wesley): fixme - establish volumetype/storagetype relationship
           useSystemd: userIntent.useSystemd,
-          mastersInDefaultRegion: universeDetails.mastersInDefaultRegion,
-          dedicatedNodes: userIntent.dedicatedNodes
+          mastersInDefaultRegion: universeDetails.mastersInDefaultRegion
         });
       }
       this.props.getRegionListItems(providerUUID);
@@ -1072,12 +1086,6 @@ export default class ClusterFields extends Component {
     this.setState({ useTimeSync: event.target.checked });
   }
 
-  toggleDedicatedNodes(event) {
-    const { updateFormField, clusterType } = this.props;
-    updateFormField(`${clusterType}.dedicatedNodes`, event.target.checked);
-    this.setState({ nodeSetViaAZList: false, dedicatedNodes: event.target.checked });
-  }
-
   toggleAssignPublicIP(event) {
     const { updateFormField, clusterType } = this.props;
     // Right now we only let primary cluster to update this flag, and
@@ -1314,20 +1322,33 @@ export default class ClusterFields extends Component {
         currentUniverse: { data }
       }
     } = this.props;
+
+    if (value === null) return;
+
+    let valToUpdate = value;
+
+    if (value > ASYNC_MAX_REPLICATION_FACTOR) {
+      toast.error(`Max Repilcation factor supported is ${ASYNC_MAX_REPLICATION_FACTOR}`);
+      valToUpdate = ASYNC_MAX_REPLICATION_FACTOR;
+    } else if (value < ASYNC_MIN_REPLICATION_FACTOR) {
+      toast.error(`Min Repilcation factor supported is ${ASYNC_MIN_REPLICATION_FACTOR}`);
+      valToUpdate = ASYNC_MIN_REPLICATION_FACTOR;
+    }
+
     const clusterExists = isDefinedNotNull(data.universeDetails)
       ? isEmptyObject(getClusterByType(data.universeDetails.clusters, clusterType))
       : null;
     const self = this;
 
     if (!clusterExists) {
-      this.setState({ nodeSetViaAZList: false, replicationFactor: value }, function () {
-        if (self.state.numNodes <= value) {
-          self.setState({ numNodes: value });
-          updateFormField(`${clusterType}.numNodes`, value);
+      this.setState({ nodeSetViaAZList: false, replicationFactor: valToUpdate }, function () {
+        if (self.state.numNodes <= valToUpdate) {
+          self.setState({ numNodes: valToUpdate });
+          updateFormField(`${clusterType}.numNodes`, valToUpdate);
         }
       });
     }
-    updateFormField(`${clusterType}.replicationFactor`, value);
+    updateFormField(`${clusterType}.replicationFactor`, valToUpdate);
   };
 
   hasFieldChanged = () => {
@@ -2017,7 +2038,6 @@ export default class ClusterFields extends Component {
       }
     }
 
-    let dedicatedNodes = <span />;
     let assignPublicIP = <span />;
     let useTimeSync = <span />;
     let enableYSQL = <span />;
@@ -2034,28 +2054,7 @@ export default class ClusterFields extends Component {
     let selectEncryptionAtRestConfig = <span />;
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
     const disableToggleOnChange = clusterType !== 'primary';
-    const showDedicatedNodesToggle =
-      featureFlags.test['enableDedicatedNodes'] || featureFlags.released['enableDedicatedNodes'];
-    if (
-      isDefinedNotNull(currentProvider) &&
-      (currentProvider.code === 'aws' ||
-        currentProvider.code === 'gcp' ||
-        currentProvider.code === 'azu' ||
-        currentProvider.code === 'onprem') &&
-      clusterType === 'primary' &&
-      showDedicatedNodesToggle
-    ) {
-      dedicatedNodes = (
-        <Field
-          name={`${clusterType}.dedicatedNodes`}
-          component={YBToggle}
-          checkedVal={this.state.dedicatedNodes}
-          onToggle={this.toggleDedicatedNodes}
-          label="Use dedicated nodes for processes"
-          subLabel="Place tserver and master processes on separate nodes."
-        />
-      );
-    }
+
     if (
       isDefinedNotNull(currentProvider) &&
       (currentProvider.code === 'aws' ||
@@ -2662,12 +2661,36 @@ export default class ClusterFields extends Component {
                       <Field
                         key="replicationFactor"
                         name={`${clusterType}.replicationFactor`}
-                        type="text"
+                        type="number"
                         component={YBControlledNumericInputWithLabel}
                         label="Replication Factor"
-                        minVal={1}
-                        maxVal={15}
+                        minVal={ASYNC_MIN_REPLICATION_FACTOR}
+                        maxVal={ASYNC_MAX_REPLICATION_FACTOR}
                         onInputChanged={this.replicationFactorChanged}
+                        className={
+                          getPromiseState(this.props.universe.universeConfigTemplate).isLoading() ||
+                          getPromiseState(cloud.instanceTypes).isLoading()
+                            ? 'readonly'
+                            : ''
+                        }
+                        input={{
+                          name: `${clusterType}.replicationFactor`,
+                          onKeyDown: (e) => {
+                            (getPromiseState(
+                              this.props.universe.universeConfigTemplate
+                            ).isLoading() ||
+                              getPromiseState(cloud.instanceTypes).isLoading()) &&
+                              e.preventDefault();
+                          }
+                        }}
+                        onInputBlur={(e) => {
+                          if (isEmptyString(e.target.value)) {
+                            this.replicationFactorChanged(ASYNC_MIN_REPLICATION_FACTOR);
+                          }
+                          if (Number(e.target.value) !== this.state.replicationFactor) {
+                            this.replicationFactorChanged(e.target.value);
+                          }
+                        }}
                         val={Number(this.state.replicationFactor)}
                       />
                     ]
@@ -2840,12 +2863,6 @@ export default class ClusterFields extends Component {
                 </Col>
               </Col>
             </Row>
-          </Row>
-
-          <Row>
-            <Col sm={12} md={12} lg={6}>
-              <div className="form-right-aligned-labels">{dedicatedNodes}</div>
-            </Col>
           </Row>
 
           <Row>

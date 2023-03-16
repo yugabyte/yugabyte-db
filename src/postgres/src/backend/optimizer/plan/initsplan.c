@@ -2691,12 +2691,17 @@ check_batchable(RestrictInfo *restrictinfo)
 	Node *outer = leftarg;
 	Node *inner = rightarg;
 
-	if (!IsA(inner, Var) && !IsA(outer, Var))
+	if (!IsA(inner, Var) &&
+		!(IsA(inner, RelabelType) && IsA(((RelabelType *) inner)->arg, Var)) &&
+		!IsA(outer, Var) &&
+		!(IsA(outer, RelabelType) && IsA(((RelabelType *) outer)->arg, Var)))
 		return;
 
 	int num_batched_rinfos = 2;
 
-	if (!IsA(inner, Var))
+	if (!IsA(inner, Var) &&
+		!(IsA(inner, RelabelType)
+		  && IsA(((RelabelType *) inner)->arg, Var)))
 	{
 		outer = rightarg;
 		inner = leftarg;

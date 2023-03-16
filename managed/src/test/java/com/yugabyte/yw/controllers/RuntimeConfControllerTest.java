@@ -38,9 +38,11 @@ import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigChangeListener;
 import com.yugabyte.yw.common.config.RuntimeConfigChangeNotifier;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -81,7 +83,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   private static final String GC_CHECK_INTERVAL_KEY = "yb.taskGC.gc_check_interval";
   private static final String EXT_SCRIPT_KEY = "yb.external_script";
   private static final String EXT_SCRIPT_SCHEDULE_KEY = "yb.external_script.schedule";
-  private static final String GLOBAL_KEY = "yb.ha.logScriptOutput";
+  private static final String GLOBAL_KEY = "yb.runtime_conf_ui.tag_filter";
 
   private Customer defaultCustomer;
   private Universe defaultUniverse;
@@ -456,12 +458,16 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   @Test
   public void scopeStrictnessTest() {
     // Global key can only be set in global scope
-    Result r = assertPlatformException(() -> setKey(GLOBAL_KEY, "false", defaultCustomer.uuid));
+    Result r =
+        assertPlatformException(() -> setKey(GLOBAL_KEY, "[\"PUBLIC\"]", defaultCustomer.uuid));
     assertEquals(BAD_REQUEST, r.status());
     JsonNode rJson = Json.parse(contentAsString(r));
     assertValue(rJson, "error", "Cannot set the key in this scope");
 
-    r = setKey(GLOBAL_KEY, "false", GLOBAL_SCOPE_UUID);
+    r = setKey(GLOBAL_KEY, "[\"PUBLIC\"]", GLOBAL_SCOPE_UUID);
+    final RuntimeConfGetter runtimeConfGetter = app.injector().instanceOf(RuntimeConfGetter.class);
+    List<ConfKeyTags> tags = runtimeConfGetter.getGlobalConf(GlobalConfKeys.tagList);
+    assertEquals(ConfKeyTags.PUBLIC, tags.get(0));
     assertEquals(OK, r.status());
   }
 
@@ -470,7 +476,12 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     Result r = assertPlatformException(() -> setKey(GLOBAL_KEY, "Random", GLOBAL_SCOPE_UUID));
     assertEquals(BAD_REQUEST, r.status());
     JsonNode rJson = Json.parse(contentAsString(r));
-    assertValue(rJson, "error", "Not a valid boolean value");
+    assertValue(
+        rJson,
+        "error",
+        "Not a valid list of tags."
+            + "All possible tags are "
+            + "PUBLIC, UIDriven, BETA, INTERNAL, YBM");
   }
 
   @Test
@@ -520,11 +531,12 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
             "yb.query_stats.live_queries.ws",
             "yb.perf_advisor",
             // TODO (PLAT-7110)
-            "yb.releases.path");
+            "yb.releases.path",
+            "yb.universe.user_tags.accepted_values");
     assertEquals(
         "Do not modify this list to get the test to pass without discussing "
             + "on #runtime-config channel.",
-        8,
+        9,
         excludedKeys.size());
     for (String key : excludedKeys) {
       if (path.startsWith(key)) return true;

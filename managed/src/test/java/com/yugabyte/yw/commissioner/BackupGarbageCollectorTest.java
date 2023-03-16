@@ -19,17 +19,19 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManagerYb;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import java.util.ArrayList;
@@ -57,6 +59,8 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
   private YbcManager mockYbcManager;
   private CustomerConfig s3StorageConfig;
 
+  private Users defaultUser;
+
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
@@ -65,6 +69,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     tableManagerYb = app.injector().instanceOf(TableManagerYb.class);
     mockBackupUtil = mock(BackupUtil.class);
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST0");
+    defaultUser = ModelFactory.testUser(defaultCustomer);
     backupGC =
         new BackupGarbageCollector(
             mockPlatformScheduler,
@@ -229,9 +234,13 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
     bp.universeUUID = defaultUniverse.universeUUID;
+    // Set http context
+    TestUtils.setFakeHttpContext(defaultUser);
+
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.QueuedForDeletion);
     customerConfig.setState(ConfigState.QueuedForDeletion);
+    customerConfig.save();
     List<String> backupLocations = new ArrayList<>();
     backupLocations.add(backup.getBackupInfo().storageLocation);
     when(mockBackupUtil.getBackupLocations(backup)).thenReturn(backupLocations);
@@ -254,6 +263,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.Completed);
     customerConfig.setState(ConfigState.QueuedForDeletion);
+    customerConfig.save();
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
@@ -273,6 +283,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
         .when(mockBackupUtil)
         .validateStorageConfig(any());
     customerConfig.setState(ConfigState.QueuedForDeletion);
+    customerConfig.save();
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,

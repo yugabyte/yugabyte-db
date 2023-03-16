@@ -57,10 +57,18 @@ Status SetValueFromQLBinaryWrapper(
       ql_value, pg_data_type, enum_oid_label_map, composite_atts_map, cdc_datum_message);
 }
 
-DocDBRocksDBUtil::DocDBRocksDBUtil() : doc_read_context_(kEmptyLogPrefix, Schema(), 1) {}
+DocDBRocksDBUtil::DocDBRocksDBUtil() {}
 
 DocDBRocksDBUtil::DocDBRocksDBUtil(InitMarkerBehavior init_marker_behavior)
-    : doc_read_context_(kEmptyLogPrefix, Schema(), 1), init_marker_behavior_(init_marker_behavior) {
+    : init_marker_behavior_(init_marker_behavior) {
+}
+
+DocReadContext& DocDBRocksDBUtil::doc_read_context() {
+  if (!doc_read_context_) {
+    doc_read_context_ = std::make_shared<DocReadContext>(
+        kEmptyLogPrefix, TableType::YQL_TABLE_TYPE, CreateSchema(), 0);
+  }
+  return *doc_read_context_;
 }
 
 rocksdb::DB* DocDBRocksDBUtil::rocksdb() {
@@ -291,14 +299,14 @@ void DocDBRocksDBUtil::SetHistoryCutoffHybridTime(HybridTime history_cutoff) {
 }
 
 void DocDBRocksDBUtil::SetTableTTL(uint64_t ttl_msec) {
-  doc_read_context_.schema.SetDefaultTimeToLive(ttl_msec);
+  doc_read_context().schema.SetDefaultTimeToLive(ttl_msec);
   retention_policy_->SetTableTTLForTests(MonoDelta::FromMilliseconds(ttl_msec));
 }
 
 string DocDBRocksDBUtil::DocDBDebugDumpToStr() {
-  return docdb::DocDBDebugDumpToStr(rocksdb(), SchemaPackingStorage()) +
+  return docdb::DocDBDebugDumpToStr(rocksdb(), doc_read_context().schema_packing_storage) +
          docdb::DocDBDebugDumpToStr(
-             intents_db(), SchemaPackingStorage(), StorageDbType::kIntents);
+             intents_db(), doc_read_context().schema_packing_storage, StorageDbType::kIntents);
 }
 
 Status DocDBRocksDBUtil::SetPrimitive(
@@ -454,9 +462,10 @@ Status DocDBRocksDBUtil::DeleteSubDoc(
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
-void DocDBRocksDBUtil::DocDBDebugDumpToConsole(const SchemaPackingStorage& schema_packing_storage) {
+void DocDBRocksDBUtil::DocDBDebugDumpToConsole() {
   DocDBDebugDump(
-      regular_db_.get(), std::cerr, schema_packing_storage, StorageDbType::kRegular);
+      regular_db_.get(), std::cerr, doc_read_context().schema_packing_storage,
+      StorageDbType::kRegular);
 }
 
 Status DocDBRocksDBUtil::FlushRocksDbAndWait() {
@@ -479,7 +488,7 @@ Status DocDBRocksDBUtil::ReinitDBOptions() {
       [this](const std::vector<rocksdb::FileMetaData*>&) {
         return delete_marker_retention_time_;
       } ,
-      /* schema_packing_provider= */ nullptr);
+      this);
   regular_db_options_.compaction_file_filter_factory =
       compaction_file_filter_factory_;
   regular_db_options_.max_file_size_for_compaction =
@@ -513,6 +522,28 @@ void DocDBRocksDBUtil::SetInitMarkerBehavior(InitMarkerBehavior init_marker_beha
     LOG(INFO) << "Setting init marker behavior to " << init_marker_behavior;
     init_marker_behavior_ = init_marker_behavior;
   }
+}
+
+Result<CompactionSchemaInfo> DocDBRocksDBUtil::CotablePacking(
+    const Uuid& table_id, uint32_t schema_version, HybridTime history_cutoff) {
+  if (schema_version == docdb::kLatestSchemaVersion) {
+    schema_version = 0;
+  }
+  auto& packing = VERIFY_RESULT_REF(
+      doc_read_context().schema_packing_storage.GetPacking(schema_version));
+  return docdb::CompactionSchemaInfo {
+    .table_type = TableType::YQL_TABLE_TYPE,
+    .schema_version = schema_version,
+    .schema_packing = rpc::SharedField(doc_read_context_, &packing),
+    .cotable_id = table_id,
+    .deleted_cols = {},
+    .enabled = docdb::PackedRowEnabled(TableType::YQL_TABLE_TYPE, false)
+  };
+}
+
+Result<CompactionSchemaInfo> DocDBRocksDBUtil::ColocationPacking(
+    ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) {
+  return CotablePacking(Uuid::Nil(), schema_version, history_cutoff);
 }
 
 }  // namespace docdb

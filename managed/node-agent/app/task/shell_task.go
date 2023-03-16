@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"node-agent/model"
 	"node-agent/util"
@@ -19,10 +18,17 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/olekukonko/tablewriter"
 	funk "github.com/thoas/go-funk"
+)
+
+const (
+	// MaxBufferCapacity is the max number of bytes allowed in the buffer
+	// before truncating the first bytes.
+	MaxBufferCapacity = 1000000
 )
 
 var (
@@ -33,26 +39,37 @@ var (
 		"api_token": true,
 		"password":  true,
 	}
+	userVariables = []string{"LOGNAME", "USER", "LNAME", "USERNAME"}
 )
 
 // ShellTask handles command execution.
 type ShellTask struct {
 	// Name of the task.
-	name string
-	cmd  string
-	user string
-	args []string
-	done bool
+	name     string
+	cmd      string
+	user     string
+	args     []string
+	stdout   util.Buffer
+	stderr   util.Buffer
+	exitCode *atomic.Value
 }
 
 // NewShellTask returns a shell task executor.
 func NewShellTask(name string, cmd string, args []string) *ShellTask {
-	return &ShellTask{name: name, cmd: cmd, args: args}
+	return NewShellTaskWithUser(name, "", cmd, args)
 }
 
 // NewShellTaskWithUser returns a shell task executor.
 func NewShellTaskWithUser(name string, user string, cmd string, args []string) *ShellTask {
-	return &ShellTask{name: name, user: user, cmd: cmd, args: args}
+	return &ShellTask{
+		name:     name,
+		user:     user,
+		cmd:      cmd,
+		args:     args,
+		exitCode: &atomic.Value{},
+		stdout:   util.NewBuffer(MaxBufferCapacity),
+		stderr:   util.NewBuffer(MaxBufferCapacity),
+	}
 }
 
 // TaskName returns the name of the shell task.
@@ -80,8 +97,8 @@ func (s *ShellTask) redactCommandArgs(args ...string) []string {
 	return redacted
 }
 
-func (s *ShellTask) command(name string, arg ...string) (*exec.Cmd, error) {
-	cmd := exec.Command(name, arg...)
+func (s *ShellTask) command(ctx context.Context, name string, arg ...string) (*exec.Cmd, error) {
+	cmd := exec.CommandContext(ctx, name, arg...)
 	userAcc, err := user.Current()
 	if err != nil {
 		return nil, err
@@ -92,7 +109,7 @@ func (s *ShellTask) command(name string, arg ...string) (*exec.Cmd, error) {
 		if err != nil {
 			return nil, err
 		}
-		util.FileLogger().Infof("Using user: %s, uid: %d, gid: %d",
+		util.FileLogger().Infof(ctx, "Using user: %s, uid: %d, gid: %d",
 			userAcc.Username, uid, gid)
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 		cmd.SysProcAttr.Credential = &syscall.Credential{
@@ -105,13 +122,15 @@ func (s *ShellTask) command(name string, arg ...string) (*exec.Cmd, error) {
 		pwd = "/tmp"
 	}
 	os.Setenv("PWD", pwd)
-	os.Setenv("USER", userAcc.Username)
 	os.Setenv("HOME", pwd)
+	for _, userVar := range userVariables {
+		os.Setenv(userVar, userAcc.Username)
+	}
 	cmd.Dir = pwd
 	return cmd, nil
 }
 
-func (s *ShellTask) userEnv(homeDir string) []string {
+func (s *ShellTask) userEnv(ctx context.Context, homeDir string) []string {
 	var out bytes.Buffer
 	env := []string{}
 	bashArgs := []string{}
@@ -120,12 +139,12 @@ func (s *ShellTask) userEnv(homeDir string) []string {
 		bashArgs = append(bashArgs, fmt.Sprintf("source %s 2> /dev/null", file))
 	}
 	bashArgs = append(bashArgs, "env")
-	cmd, err := s.command("bash", "-c", strings.Join(bashArgs, ";"))
+	cmd, err := s.command(ctx, "bash", "-c", strings.Join(bashArgs, ";"))
 	cmd.Stdout = &out
 	err = cmd.Run()
 	if err != nil {
 		util.FileLogger().Warnf(
-			"Failed to source files %v in %s. Error: %s", envFiles, homeDir, err.Error())
+			ctx, "Failed to source files %v in %s. Error: %s", envFiles, homeDir, err.Error())
 		return env
 	}
 	env = append(env, os.Environ()...)
@@ -140,48 +159,76 @@ func (s *ShellTask) userEnv(homeDir string) []string {
 }
 
 // Command returns a command with the environment set.
-func (s *ShellTask) Command(name string, arg ...string) (*exec.Cmd, error) {
-	cmd, err := s.command(name, arg...)
+func (s *ShellTask) Command(ctx context.Context, name string, arg ...string) (*exec.Cmd, error) {
+	cmd, err := s.command(ctx, name, arg...)
 	if err != nil {
-		util.FileLogger().Warnf("Failed to create command %s. Error: %s", name, err.Error())
+		util.FileLogger().Warnf(ctx, "Failed to create command %s. Error: %s", name, err.Error())
 		return nil, err
 	}
-	cmd.Env = append(cmd.Env, s.userEnv(cmd.Dir)...)
+	cmd.Env = append(cmd.Env, s.userEnv(ctx, cmd.Dir)...)
 	return cmd, nil
 }
 
 // Process runs the the command Task.
-func (s *ShellTask) Process(ctx context.Context) (string, error) {
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	var output string
-	util.FileLogger().Debugf("Starting the command - %s", s.name)
-	cmd, err := s.Command(s.cmd, s.args...)
+func (s *ShellTask) Process(ctx context.Context) (*TaskStatus, error) {
+	util.FileLogger().Debugf(ctx, "Starting the command - %s", s.name)
+	taskStatus := &TaskStatus{Info: s.stdout, ExitStatus: &ExitStatus{Code: 1, Error: s.stderr}}
+	cmd, err := s.Command(ctx, s.cmd, s.args...)
 	if err != nil {
-		util.FileLogger().Errorf("Command creation for %s failed - %s", s.name, err.Error())
-		return out.String(), err
+		util.FileLogger().Errorf(ctx, "Command creation for %s failed - %s", s.name, err.Error())
+		return taskStatus, err
 	}
-	cmd.Stdout = &out
-	cmd.Stderr = &errOut
-	redactedArgs := s.redactCommandArgs(s.args...)
-	util.FileLogger().Infof("Running command %s with args %v", s.cmd, redactedArgs)
+	cmd.Stdout = s.stdout
+	cmd.Stderr = s.stderr
+	if util.FileLogger().IsDebugEnabled() {
+		redactedArgs := s.redactCommandArgs(s.args...)
+		util.FileLogger().Infof(ctx, "Running command %s with args %v", s.cmd, redactedArgs)
+	}
 	err = cmd.Run()
-	if err != nil {
-		output = fmt.Sprintf("%s: %s", err.Error(), errOut.String())
-		util.FileLogger().Errorf("Command run - %s task failed - %s", s.name, err.Error())
-		util.FileLogger().Errorf("Command output for %s - %s", s.name, output)
+	if err == nil {
+		taskStatus.Info = s.stdout
+		taskStatus.ExitStatus.Code = 0
+		util.FileLogger().
+			Debugf(ctx, "Command %s executed successfully - %s", s.name, s.stdout.String())
 	} else {
-		output = out.String()
-		util.FileLogger().Debugf("Command Run - %s task successful", s.name)
-		util.FileLogger().Debugf("command output %s", output)
+		taskStatus.ExitStatus.Error = s.stderr
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			taskStatus.ExitStatus.Code = exitErr.ExitCode()
+		}
+		errMsg := fmt.Sprintf("%s: %s", err.Error(), s.stderr.String())
+		util.FileLogger().Errorf(ctx, "Command %s execution failed - %s", s.name, errMsg)
 	}
-	s.done = true
-	return output, err
+	s.exitCode.Store(taskStatus.ExitStatus.Code)
+	return taskStatus, err
 }
 
-// Done reports if the command execution is done.
-func (s *ShellTask) Done() bool {
-	return s.done
+// Handler implements the AsyncTask method.
+func (s *ShellTask) Handler() util.Handler {
+	return util.Handler(func(ctx context.Context) (any, error) {
+		return s.Process(ctx)
+	})
+}
+
+// CurrentTaskStatus implements the AsyncTask method.
+func (s *ShellTask) CurrentTaskStatus() *TaskStatus {
+	v := s.exitCode.Load()
+	if v == nil {
+		return &TaskStatus{
+			Info: s.stdout,
+		}
+	}
+	return &TaskStatus{
+		Info: s.stdout,
+		ExitStatus: &ExitStatus{
+			Code:  v.(int),
+			Error: s.stderr,
+		},
+	}
+}
+
+// String implements the AsyncTask method.
+func (s *ShellTask) String() string {
+	return s.cmd
 }
 
 type PreflightCheckHandler struct {
@@ -204,7 +251,7 @@ func NewPreflightCheckHandler(
 }
 
 func (handler *PreflightCheckHandler) Handle(ctx context.Context) (any, error) {
-	util.FileLogger().Debug("Starting Preflight checks handler.")
+	util.FileLogger().Debug(ctx, "Starting Preflight checks handler.")
 	var err error
 	preflightScriptPath := util.PreflightCheckPath()
 	shellCmdTask := NewShellTask(
@@ -214,13 +261,15 @@ func (handler *PreflightCheckHandler) Handle(ctx context.Context) (any, error) {
 	)
 	output, err := shellCmdTask.Process(ctx)
 	if err != nil {
-		util.FileLogger().Errorf("Pre-flight checks processing failed - %s", err.Error())
+		util.FileLogger().Errorf(ctx, "Pre-flight checks processing failed - %s", err.Error())
 		return nil, err
 	}
+	data := output.Info.String()
+	util.FileLogger().Debugf(ctx, "Preflight check output data: %s", data)
 	handler.result = &map[string]model.PreflightCheckVal{}
-	err = json.Unmarshal([]byte(output), handler.result)
+	err = json.Unmarshal([]byte(data), handler.result)
 	if err != nil {
-		util.FileLogger().Errorf("Pre-flight checks unmarshaling error - %s", err.Error())
+		util.FileLogger().Errorf(ctx, "Pre-flight checks unmarshaling error - %s", err.Error())
 		return nil, err
 	}
 	return handler.result, nil
@@ -281,19 +330,19 @@ func (handler *PreflightCheckHandler) getOptions(preflightScriptPath string) []s
 }
 
 func HandleUpgradeScript(ctx context.Context, config *util.Config) error {
-	util.FileLogger().Debug("Initializing the upgrade script")
+	util.FileLogger().Debug(ctx, "Initializing the upgrade script")
 	upgradeScriptTask := NewShellTask(
 		"upgradeScript",
 		util.DefaultShell,
 		[]string{
 			util.UpgradeScriptPath(),
-			"--type",
+			"--command",
 			"upgrade",
 		},
 	)
-	errStr, err := upgradeScriptTask.Process(ctx)
+	_, err := upgradeScriptTask.Process(ctx)
 	if err != nil {
-		return errors.New(errStr)
+		return err
 	}
 	version, err := util.Version()
 	if err != nil {

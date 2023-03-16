@@ -99,14 +99,15 @@ public class RuntimeConfService extends AuthenticatedController {
     return mutableKeys;
   }
 
-  public ScopedConfig getConfig(UUID customerUUID, UUID scopeUUID, boolean includeInherited) {
+  public ScopedConfig getConfig(
+      UUID customerUUID, UUID scopeUUID, boolean includeInherited, boolean isSuperAdmin) {
     log.trace(
         "customerUUID: {} scopeUUID: {} includeInherited: {}",
         customerUUID,
         scopeUUID,
         includeInherited);
 
-    ScopedConfig scopedConfig = getScopedConfigOrFail(customerUUID, scopeUUID);
+    ScopedConfig scopedConfig = getScopedConfigOrFail(customerUUID, scopeUUID, isSuperAdmin);
     Config fullConfig = scopedConfig.runtimeConfig(settableRuntimeConfigFactory);
     Map<String, String> overriddenInScope = RuntimeConfigEntry.getAsMapForScope(scopeUUID);
     for (String k : mutableKeys) {
@@ -139,8 +140,9 @@ public class RuntimeConfService extends AuthenticatedController {
     return maybeQuoted;
   }
 
-  public String getKeyOrBadRequest(UUID customerUUID, UUID scopeUUID, String path) {
-    return maybeGetKey(customerUUID, scopeUUID, path)
+  public String getKeyOrBadRequest(
+      UUID customerUUID, UUID scopeUUID, String path, boolean isSuperAdmin) {
+    return maybeGetKey(customerUUID, scopeUUID, path, isSuperAdmin)
         .orElseThrow(
             () ->
                 new PlatformServiceException(
@@ -148,15 +150,17 @@ public class RuntimeConfService extends AuthenticatedController {
                     String.format("Key %s is not defined in scope %s", path, scopeUUID)));
   }
 
-  public String getKeyIfPresent(UUID customerUUID, UUID scopeUUID, String path) {
-    return maybeGetKey(customerUUID, scopeUUID, path).orElse(null);
+  public String getKeyIfPresent(
+      UUID customerUUID, UUID scopeUUID, String path, boolean isSuperAdmin) {
+    return maybeGetKey(customerUUID, scopeUUID, path, isSuperAdmin).orElse(null);
   }
 
-  public Optional<String> maybeGetKey(UUID customerUUID, UUID scopeUUID, String path) {
+  public Optional<String> maybeGetKey(
+      UUID customerUUID, UUID scopeUUID, String path, boolean isSuperAdmin) {
     if (!mutableKeys.contains(path))
       throw new PlatformServiceException(NOT_FOUND, "No mutable key found: " + path);
 
-    Optional<ScopedConfig> scopedConfig = getScopedConfig(customerUUID, scopeUUID);
+    Optional<ScopedConfig> scopedConfig = getScopedConfig(customerUUID, scopeUUID, isSuperAdmin);
 
     if (!scopedConfig.isPresent()) {
       throw new PlatformServiceException(
@@ -176,7 +180,8 @@ public class RuntimeConfService extends AuthenticatedController {
   }
 
   @Transactional
-  public void setKey(UUID customerUUID, UUID scopeUUID, String path, String value) {
+  public void setKey(
+      UUID customerUUID, UUID scopeUUID, String path, String value, boolean isSuperAdmin) {
     if (!mutableKeys.contains(path)) {
       throw new PlatformServiceException(NOT_FOUND, "No mutable key found: " + path);
     }
@@ -192,7 +197,7 @@ public class RuntimeConfService extends AuthenticatedController {
         (logValue.length() < 50 ? logValue : "[long value hidden]"),
         logValue.length());
     final RuntimeConfig<?> mutableRuntimeConfig =
-        getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID);
+        getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID, isSuperAdmin);
     preConfigChangeValidate(scopeUUID, path, value);
     if (mutableObjects.contains(path)) {
       mutableRuntimeConfig.setObject(path, value);
@@ -216,18 +221,18 @@ public class RuntimeConfService extends AuthenticatedController {
     preChangeNotifier.notifyListeners(scopeUUID, path, newValue);
   }
 
-  public void deleteKey(UUID customerUUID, UUID scopeUUID, String path) {
+  public void deleteKey(UUID customerUUID, UUID scopeUUID, String path, boolean isSuperAdmin) {
     if (!mutableKeys.contains(path)) {
       throw new PlatformServiceException(NOT_FOUND, "No mutable key found: " + path);
     }
 
-    getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID).deleteEntry(path);
+    getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID, isSuperAdmin).deleteEntry(path);
     postConfigChange(scopeUUID, path);
   }
 
   private RuntimeConfig<? extends Model> getMutableRuntimeConfigForScopeOrFail(
-      UUID customerUUID, UUID scopeUUID) {
-    ScopedConfig scopedConfig = getScopedConfigOrFail(customerUUID, scopeUUID);
+      UUID customerUUID, UUID scopeUUID, boolean isSuperAdmin) {
+    ScopedConfig scopedConfig = getScopedConfigOrFail(customerUUID, scopeUUID, isSuperAdmin);
     if (!scopedConfig.mutableScope) {
       throw new PlatformServiceException(
           FORBIDDEN,
@@ -239,8 +244,9 @@ public class RuntimeConfService extends AuthenticatedController {
     return scopedConfig.runtimeConfig(settableRuntimeConfigFactory);
   }
 
-  private ScopedConfig getScopedConfigOrFail(UUID customerUUID, UUID scopeUUID) {
-    Optional<ScopedConfig> optScopedConfig = getScopedConfig(customerUUID, scopeUUID);
+  private ScopedConfig getScopedConfigOrFail(
+      UUID customerUUID, UUID scopeUUID, boolean isSuperAdmin) {
+    Optional<ScopedConfig> optScopedConfig = getScopedConfig(customerUUID, scopeUUID, isSuperAdmin);
     if (!optScopedConfig.isPresent()) {
       throw new PlatformServiceException(
           NOT_FOUND, String.format("No scope %s found for customer %s", scopeUUID, customerUUID));
@@ -248,9 +254,10 @@ public class RuntimeConfService extends AuthenticatedController {
     return optScopedConfig.get();
   }
 
-  public Optional<ScopedConfig> getScopedConfig(UUID customerUUID, UUID scopeUUID) {
+  public Optional<ScopedConfig> getScopedConfig(
+      UUID customerUUID, UUID scopeUUID, boolean isSuperAdmin) {
     RuntimeConfigFormData runtimeConfigFormData =
-        listScopes(Customer.getOrBadRequest(customerUUID), true);
+        listScopes(Customer.getOrBadRequest(customerUUID), isSuperAdmin);
     return runtimeConfigFormData
         .scopedConfigList
         .stream()

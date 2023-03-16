@@ -48,7 +48,7 @@ This document contains examples that are deliberately simplified. In many of the
 
 The process of undoing data changes involves creating and taking a snapshot of a table, and then performing a restore from either an absolute or relative time.
 
-Before attempting a restore, you need to confirm that there is no restore in progress for the subject keyspace or table; if multiple restore commands are issued, the data might enter an inconsistent state. For details, see [Restore to a point in time](../../../manage/backup-restore/point-in-time-recovery/#restore-to-a-point-in-time).  
+Before attempting a restore, you need to confirm that there is no restore in progress for the subject keyspace or table; if multiple restore commands are issued, the data might enter an inconsistent state. For details, see [Restore to a point in time](../../../manage/backup-restore/point-in-time-recovery/#restore-to-a-point-in-time).
 
 ### Create and snapshot a table
 
@@ -96,7 +96,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Create a snapshot schedule for the new `pitr` keyspace from a shell prompt. In the following example, the schedule is one snapshot every minute, and each snapshot is retained for ten minutes:
 
     ```sh
-    ./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> create_snapshot_schedule 1 10 ycql.pitr
+    ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 \ create_snapshot_schedule 1 10 ycql.pitr
     ```
 
     ```output.json
@@ -108,7 +108,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Verify that a snapshot has happened:
 
     ```sh
-    ./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> list_snapshot_schedules
+    ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_snapshot_schedules
     ```
 
     ```output.json
@@ -166,7 +166,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Restore the snapshot schedule to the timestamp you obtained before you added the data, at a terminal prompt:
 
     ```sh
-    ./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
+    ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 \ restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
     ```
 
     ```output.json
@@ -179,7 +179,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Next, verify the restoration is in `RESTORED` state (you'll observe more snapshots in the list, as well):
 
     ```sh
-    ./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> list_snapshots
+    ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 list_snapshots
     ```
 
     ```output

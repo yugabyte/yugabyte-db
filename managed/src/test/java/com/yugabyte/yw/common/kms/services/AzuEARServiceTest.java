@@ -64,7 +64,7 @@ public class AzuEARServiceTest extends FakeDBApplication {
   public Customer customer;
 
   @Spy public AzuEARServiceUtil mockAzuEARServiceUtil;
-  @Spy public AzuEARService mockAzuEARService;
+  @Spy public AzuEARService mockAzuEARService = new AzuEARService(null);
   @Mock public KeyClient mockKeyClient;
   @Mock public CryptographyClient mockCryptographyClient;
   @Mock public KeyVaultKey mockKeyVaultKey;
@@ -169,9 +169,7 @@ public class AzuEARServiceTest extends FakeDBApplication {
   public void testRetrieveKeyWithService() {
     // Decrypting the stored encrypted universe key known as keyRef
     EncryptionAtRestConfig encryptionAtRestConfig = new EncryptionAtRestConfig();
-    byte[] keyRef =
-        mockAzuEARService.retrieveKeyWithService(
-            universe.universeUUID, configUUID, fakeWrappedUniverseKey, encryptionAtRestConfig);
+    byte[] keyRef = mockAzuEARService.retrieveKeyWithService(configUUID, fakeWrappedUniverseKey);
     assertArrayEquals(keyRef, fakeUniverseKey);
     verify(mockAzuEARServiceUtil, times(1)).unwrapKey(any(), any());
   }
@@ -181,9 +179,7 @@ public class AzuEARServiceTest extends FakeDBApplication {
     // Decrypting the stored encrypted universe key known as keyRef using a new auth config
     // Used for KMS edit operation
     EncryptionAtRestConfig encryptionAtRestConfig = new EncryptionAtRestConfig();
-    byte[] keyRef =
-        mockAzuEARService.retrieveKeyWithService(
-            universe.universeUUID, configUUID, fakeWrappedUniverseKey, encryptionAtRestConfig);
+    byte[] keyRef = mockAzuEARService.retrieveKeyWithService(configUUID, fakeWrappedUniverseKey);
     assertArrayEquals(keyRef, fakeUniverseKey);
     verify(mockAzuEARServiceUtil, times(1)).unwrapKey(any(), any());
   }

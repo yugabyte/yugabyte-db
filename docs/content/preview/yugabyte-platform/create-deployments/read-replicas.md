@@ -1,8 +1,10 @@
 ---
-title: Create a read replica cluster
+title: Create a read replica cluster in YugabyteDB Anywhere
 headerTitle: Create a read replica cluster
 linkTitle: Read replica cluster
 description: Use YugabyteDB Anywhere to create a read replica cluster.
+aliases:
+  - /preview/manage/enterprise-edition/read-replicas/
 menu:
   preview_yugabyte-platform:
     identifier: create-read-replica-cluster

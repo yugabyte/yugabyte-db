@@ -25,7 +25,8 @@ func CreateBackupScript(outputPath string, dataDir string,
 		log.Debug("Create Backup Script has now been given executable permissions.")
 	}
 
-	args := []string{"create", "--output", outputPath, "--data_dir", dataDir, "--yba_installer"}
+	args := []string{"create", "--output", outputPath, "--data_dir", dataDir,
+		"--yba_installer", "--yba_version", common.GetVersion()}
 	if excludePrometheus {
 		args = append(args, "--exclude-prometheus")
 	}
@@ -36,20 +37,9 @@ func CreateBackupScript(outputPath string, dataDir string,
 		args = append(args, "--verbose")
 	}
 
-	if viper.GetBool("postgres.useExisting.enabled") {
-		args = append(args, "--db_username", viper.GetString("postgres.useExisting.username"))
-		args = append(args, "--db_host", viper.GetString("postgres.useExisting.host"))
-		args = append(args, "--db_port", viper.GetString("postgres.useExisting.port"))
-		// TODO: modify yb platform backup sript to accept a custom password
-	}
+	addPostgresArgs(args)
 
-	if viper.GetBool("postgres.install.enabled") {
-		args = append(args, "--db_username", "postgres")
-		args = append(args, "--db_host", "localhost")
-		args = append(args, "--db_port", viper.GetString("postgres.install.port"))
-	}
-
-	log.Info("Creating a backup of your Yugabyte Anywhere Installation.")
+	log.Info("Creating a backup of your YugabyteDB Anywhere Installation.")
 	common.RunBash(fileName, args)
 }
 
@@ -68,21 +58,38 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 
 	args := []string{"restore", "--input", inputPath,
 		"--destination", destination, "--data_dir", destination, "--disable_version_check",
-		"--yba_installer"}
+		"--yba_installer", "--yba_version", common.GetVersion()}
 	if skipRestart {
 		args = append(args, "--skip_restart")
 	}
 	if verbose {
 		args = append(args, "--verbose")
 	}
+	// Add prometheus user
 	if common.HasSudoAccess() {
-		args = append(args, "-u", userName, "-e", userName)
+		args = append(args, "-e", userName)
 	} else {
-		args = append(args, "-u", common.GetCurrentUser(), "-e", common.GetCurrentUser())
+		args = append(args, "-e", common.GetCurrentUser())
 	}
-	log.Info("Restoring a backup of your Yugabyte Anywhere Installation.")
+	addPostgresArgs(args)
+	log.Info("Restoring a backup of your YugabyteDB Anywhere Installation.")
 	common.RunBash(fileName, args)
 
+}
+
+func addPostgresArgs(args []string) {
+	if viper.GetBool("postgres.useExisting.enabled") {
+		args = append(args, "--db_username", viper.GetString("postgres.useExisting.username"))
+		args = append(args, "--db_host", viper.GetString("postgres.useExisting.host"))
+		args = append(args, "--db_port", viper.GetString("postgres.useExisting.port"))
+		// TODO: modify yb platform backup sript to accept a custom password
+	}
+
+	if viper.GetBool("postgres.install.enabled") {
+		args = append(args, "--db_username", "postgres")
+		args = append(args, "--db_host", "localhost")
+		args = append(args, "--db_port", viper.GetString("postgres.install.port"))
+	}
 }
 
 func createBackupCmd() *cobra.Command {
@@ -93,10 +100,10 @@ func createBackupCmd() *cobra.Command {
 
 	createBackup := &cobra.Command{
 		Use:   "createBackup outputPath",
-		Short: "The createBackup command is used to take a backup of your Yugabyte Anywhere instance.",
+		Short: "The createBackup command is used to take a backup of your YugabyteDB Anywhere instance.",
 		Long: `
     The createBackup command executes our yb_platform_backup.sh that creates a backup of your
-    Yugabyte Anywhere instance. Executing this command requires that you create and specify the
+    YugabyteDB Anywhere instance. Executing this command requires that you specify the
     outputPath where you want the backup .tar.gz file to be stored as the first argument to
     createBackup.
     `,
@@ -131,12 +138,11 @@ func restoreBackupCmd() *cobra.Command {
 
 	restoreBackup := &cobra.Command{
 		Use:   "restoreBackup inputPath",
-		Short: "The restoreBackup command restores a backup of your Yugabyte Anywhere instance.",
+		Short: "The restoreBackup command restores a backup of your YugabyteDB Anywhere instance.",
 		Long: `
-    The restoreBackup command executes our yb_platform_backup.sh that restores the backup of your
-    Yugabyte Anywhere instance. Executing this command requires that you create and specify the
-    inputPath where the backup .tar.gz file that will be restored is located as the first argument
-    to restoreBackup.
+    The restoreBackup command executes our yb_platform_backup.sh that restores from a previously
+		taken backup of your YugabyteDB Anywhere instance. Executing this command requires that you
+		specify the inputPath to the backup .tar.gz file as the only argument to restoreBackup.
     `,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {

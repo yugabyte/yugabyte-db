@@ -55,7 +55,7 @@ Limit the interfaces on which YugabyteDB instances listen for incoming connectio
 
 ## Enable encryption in transit
 
-[TLS encryption](https://en.wikipedia.org/wiki/Transport_Layer_Security) ensures that network communication between servers is secure. You can configure YugabyteDB to use TLS to encrypt intra-cluster and client to server network communication. Yugabyte recommends enabling encryption in transit in YugabyteDB clusters and clients to ensure privacy and integrity of data transferred over the network.
+[TLS encryption](https://en.wikipedia.org/wiki/Transport_Layer_Security) ensures that network communication between servers is secure. You can configure YugabyteDB to use TLS to encrypt intra-cluster and client to server network communication. You should enable encryption in transit in YugabyteDB clusters and clients to ensure privacy and integrity of data transferred over the network.
 
 For more information, see [Encryption in transit in YugabyteDB](../tls-encryption/).
 

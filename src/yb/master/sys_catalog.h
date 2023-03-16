@@ -219,6 +219,10 @@ class SysCatalogTable {
   Result<RelTypeOIDMap> ReadCompositeTypeFromPgClass(
       uint32_t database_oid, uint32_t type_oid = kPgInvalidOid);
 
+  // Read the pg_yb_tablegroup catalog and return the OID of the tablegroup named <grpname>.
+  Result<uint32_t> ReadPgYbTablegroupOid(const uint32_t database_oid,
+                                         const std::string& grpname);
+
   // Copy the content of co-located tables in sys catalog as a batch.
   Status CopyPgsqlTables(const std::vector<TableId>& source_table_ids,
                          const std::vector<TableId>& target_table_ids,
@@ -243,7 +247,6 @@ class SysCatalogTable {
 
  private:
   friend class CatalogManager;
-  friend class enterprise::CatalogManager;
 
   inline std::unique_ptr<SysCatalogWriter> NewWriter(int64_t leader_term);
 

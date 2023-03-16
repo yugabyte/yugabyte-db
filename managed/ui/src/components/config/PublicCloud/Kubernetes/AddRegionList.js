@@ -351,14 +351,13 @@ class AddRegionList extends Component {
                                         {typeof getIn(
                                           formik.errors,
                                           `regionList[${regionIndex}].zoneList`
-                                        ) === 'string' ?
-                                          (
-                                            <div className="input-feedback">
-                                              <ErrorMessage
-                                                name={`regionList[${regionIndex}].zoneList`}
-                                              />
-                                            </div>
-                                          ) : null}
+                                        ) === 'string' ? (
+                                          <div className="input-feedback">
+                                            <ErrorMessage
+                                              name={`regionList[${regionIndex}].zoneList`}
+                                            />
+                                          </div>
+                                        ) : null}
                                       </Col>
                                     </Row>
                                     <Row className="config-provider-row">
@@ -436,7 +435,6 @@ class AddRegionList extends Component {
                                         <Field
                                           name={`regionList[${regionIndex}].zoneList[${zoneIndex}].zoneKubeConfig`}
                                           component={YBFormDropZone}
-                                          className="upload-file-button"
                                           title={'Upload Kube Config file'}
                                         />
                                       </Col>
@@ -459,7 +457,9 @@ class AddRegionList extends Component {
 
                                     <Row className="config-provider-row">
                                       <Col lg={3}>
-                                        <div className="form-item-custom-label">Pod Address Template</div>
+                                        <div className="form-item-custom-label">
+                                          Pod Address Template
+                                        </div>
                                       </Col>
                                       <Col lg={7}>
                                         <Field

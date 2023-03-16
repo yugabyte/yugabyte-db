@@ -13,6 +13,7 @@ import {
   MetricConsts,
   MetricMeasure,
   MetricOrigin,
+  NodeType,
   DEFAULT_OUTLIER_NUM_NODES,
   MIN_OUTLIER_NUM_NODES,
   MAX_OUTLIER_NUM_NODES,
@@ -24,9 +25,11 @@ import { YBPanelItem } from '../../panels';
 import { FlexContainer, FlexGrow } from '../../common/flexbox/YBFlexBox';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { isDedicatedNodePlacement } from '../../../utils/UniverseUtils';
 import { MetricsComparisonModal } from '../MetricsComparisonModal/MetricsComparisonModal';
 import { NodeSelector } from '../MetricsComparisonModal/NodeSelector';
 import { RegionSelector } from '../MetricsComparisonModal/RegionSelector';
+import { NodeTypeSelector } from '../NodeTypeSelector/NodeTypeSelector';
 import { CustomDatePicker } from '../CustomDatePicker/CustomDatePicker';
 import { MetricsMeasureSelector } from '../MetricsMeasureSelector/MetricsMeasureSelector';
 import { OutlierSelector } from '../OutlierSelector/OutlierSelector';
@@ -79,6 +82,7 @@ export const DEFAULT_GRAPH_FILTER = {
   nodePrefix: MetricConsts.ALL,
   nodeName: MetricConsts.ALL,
   currentSelectedRegion: MetricConsts.ALL,
+  currentSelectedNodeType: NodeType.ALL,
   selectedRegionClusterUUID: null,
   selectedRegionCode: null,
   selectedZoneName: null,
@@ -95,11 +99,13 @@ class GraphPanelHeader extends Component {
     super(props);
     // Reset graph filters when user switches from Metrics view to individual Universe Metrics view
     this.props.resetMetrics();
+    this.props.resetGraphFilter();
     momentLocalizer(moment);
     const defaultFilter = filterTypes[DEFAULT_FILTER_KEY];
     let currentUniverse = MetricConsts.ALL;
     let currentUniversePrefix = MetricConsts.ALL;
     const currentRegion = MetricConsts.ALL;
+    const currentNodeType = NodeType.ALL;
 
     if (this.props.origin === MetricOrigin.UNIVERSE) {
       currentUniverse = this.props.universe.currentUniverse.data;
@@ -118,6 +124,7 @@ class GraphPanelHeader extends Component {
       filterValue: defaultFilter.value,
       currentSelectedUniverse: currentUniverse,
       currentSelectedRegion: currentRegion,
+      currentSelectedNodeType: currentNodeType,
       selectedRegionCode: null,
       selectedZoneName: null,
       selectedRegionClusterUUID: null,
@@ -140,6 +147,7 @@ class GraphPanelHeader extends Component {
         filterType: currentQuery.filterType,
         filterValue: currentQuery.filterValue,
         currentSelectedRegion: currentQuery.currentSelectedRegion,
+        currentSelectedNodeType: currentQuery.currentSelectedNodeType,
         selectedRegionCode: currentQuery.selectedRegionCode,
         selectedZoneName: currentQuery.selectedZoneName,
         selectedRegionClusterUUID: currentQuery.selectedRegionClusterUUID,
@@ -315,6 +323,7 @@ class GraphPanelHeader extends Component {
         nodePrefix: matchedUniverse.universeDetails.nodePrefix,
         nodeName: MetricConsts.ALL,
         currentSelectedRegion: MetricConsts.ALL,
+        currentSelectedNodeType: NodeType.ALL,
         selectedRegionCode: null,
         selectedZoneName: null,
         selectedRegionClusterUUID: null,
@@ -327,6 +336,7 @@ class GraphPanelHeader extends Component {
         nodeName: MetricConsts.ALL,
         nodePrefix: MetricConsts.ALL,
         currentSelectedRegion: MetricConsts.ALL,
+        currentSelectedNodeType: NodeType.ALL,
         selectedRegionCode: null,
         selectedZoneName: null,
         selectedRegionClusterUUID: null,
@@ -340,6 +350,7 @@ class GraphPanelHeader extends Component {
     newParams.selectedRegionCode = null;
     newParams.selectedZoneName = null;
     newParams.currentSelectedRegion = MetricConsts.ALL;
+    newParams.currentSelectedNodeType = NodeType.ALL;
 
     newParams.nodeName = MetricConsts.ALL;
     this.updateUrlQueryParams(newParams);
@@ -412,14 +423,25 @@ class GraphPanelHeader extends Component {
       nodeName: MetricConsts.ALL,
       isSingleNodeSelected: false,
       // Make sure zone and node dropdown resets everytime we change region and cluster dropdown
-      selectedZoneName: null
+      selectedZoneName: null,
+      currentSelectedNodeType: NodeType.ALL
     });
 
     newParams.selectedZoneName = null;
     newParams.nodeName = MetricConsts.ALL;
+    newParams.currentSelectedNodeType = NodeType.ALL;
     newParams.selectedRegionCode = regionCode;
     newParams.currentSelectedRegion = region;
     newParams.selectedRegionClusterUUID = clusterId;
+    this.updateUrlQueryParams(newParams);
+  };
+
+  onNodeTypeChanged = (nodeType) => {
+    const newParams = _.cloneDeep(this.state);
+    this.setState({
+      currentSelectedNodeType: nodeType
+    });
+    newParams.currentSelectedNodeType = nodeType;
     this.updateUrlQueryParams(newParams);
   };
 
@@ -499,6 +521,7 @@ class GraphPanelHeader extends Component {
     // TODO: Needs to be removed once Top K metrics is tested and integrated fully
     if (isEnabledTopKMetrics) {
       queryParams.currentSelectedRegion = filterParams.currentSelectedRegion;
+      queryParams.currentSelectedNodeType = filterParams.currentSelectedNodeType;
       queryParams.selectedZoneName = filterParams.selectedZoneName;
       queryParams.selectedRegionClusterUUID = filterParams.selectedRegionClusterUUID;
       queryParams.metricMeasure = filterParams.metricMeasure;
@@ -538,6 +561,7 @@ class GraphPanelHeader extends Component {
       endMoment,
       currentSelectedUniverse,
       currentSelectedRegion,
+      currentSelectedNodeType,
       selectedRegionClusterUUID
     } = this.state;
     const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
@@ -618,6 +642,8 @@ class GraphPanelHeader extends Component {
       this.state.nodeName !== MetricConsts.ALL &&
       this.state.nodeName !== MetricConsts.TOP &&
       `/universes/${this.state.currentSelectedUniverse.universeUUID}/queries?nodeName=${this.state.nodeName}`;
+    const isDedicatedNodes = isDedicatedNodePlacement(this.state.currentSelectedUniverse);
+
     return (
       <div className="graph-panel-header">
         <YBPanelItem
@@ -635,23 +661,36 @@ class GraphPanelHeader extends Component {
                     {universePicker}
                     {isTopKMetricsEnabled && this.props.origin !== MetricOrigin.TABLE && (
                       <RegionSelector
-                        selectedUniverse={this.state.currentSelectedUniverse}
+                        selectedUniverse={currentSelectedUniverse}
                         onRegionChanged={this.onRegionChanged}
                         currentSelectedRegion={currentSelectedRegion}
                         selectedRegionClusterUUID={selectedRegionClusterUUID}
                       />
                     )}
+                    {isTopKMetricsEnabled &&
+                      this.props.origin !== MetricOrigin.TABLE &&
+                      isDedicatedNodes && (
+                        <NodeTypeSelector
+                          selectedUniverse={currentSelectedUniverse}
+                          currentSelectedNodeType={currentSelectedNodeType}
+                          selectedRegionClusterUUID={selectedRegionClusterUUID}
+                          selectedRegionCode={this.state.selectedRegionCode}
+                          onNodeTypeChanged={this.onNodeTypeChanged}
+                        />
+                      )}
                     {this.props.origin !== MetricOrigin.TABLE && (
                       <NodeSelector
                         {...this.props}
                         nodeItemChanged={this.nodeItemChanged}
                         nodeItemChangedOld={this.nodeItemChangedOld}
-                        selectedUniverse={this.state.currentSelectedUniverse}
+                        selectedUniverse={currentSelectedUniverse}
                         selectedNode={this.state.nodeName}
                         selectedRegionClusterUUID={selectedRegionClusterUUID}
                         selectedZoneName={this.state.selectedZoneName}
                         isTopKMetricsEnabled={isTopKMetricsEnabled}
                         selectedRegionCode={this.state.selectedRegionCode}
+                        currentSelectedNodeType={currentSelectedNodeType}
+                        isDedicatedNodes={isDedicatedNodes}
                       />
                     )}
                     {liveQueriesLink && !universePaused && !isTopKMetricsEnabled && (

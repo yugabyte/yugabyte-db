@@ -41,6 +41,7 @@
 #include "yb/util/math_util.h"
 #include "yb/util/opid.h"
 #include "yb/util/opid.pb.h"
+#include "yb/util/mem_tracker.h"
 
 namespace rocksdb {
 
@@ -69,7 +70,7 @@ namespace tablet {
 struct TransactionApplyData {
   int64_t leader_term = -1;
   TransactionId transaction_id = TransactionId::Nil();
-  AbortedSubTransactionSet aborted;
+  SubtxnSet aborted;
   OpId op_id;
   HybridTime commit_ht;
   HybridTime log_ht;
@@ -111,8 +112,12 @@ class TransactionParticipant : public TransactionStatusManager {
  public:
   TransactionParticipant(
       TransactionParticipantContext* context, TransactionIntentApplier* applier,
-      const scoped_refptr<MetricEntity>& entity);
+      const scoped_refptr<MetricEntity>& entity, const std::shared_ptr<MemTracker>& parent);
   virtual ~TransactionParticipant();
+
+  void SetWaitQueue(std::unique_ptr<docdb::WaitQueue> wait_queue);
+
+  docdb::WaitQueue* wait_queue() const;
 
   // Notify participant that this context is ready and it could start performing its requests.
   void Start();
@@ -150,7 +155,8 @@ class TransactionParticipant : public TransactionStatusManager {
 
   void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term);
 
-  Result<bool> IsExternalTransaction(const TransactionId& transaction_id);
+  Result<IsExternalTransaction> IsExternalTransactionResult(
+      const TransactionId& transaction_id) override;
 
   void Cleanup(TransactionIdSet&& set) override;
 
@@ -176,8 +182,6 @@ class TransactionParticipant : public TransactionStatusManager {
 
   void FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override;
-
-  void FillStatusTablets(std::vector<BlockingTransactionData>* inout) override;
 
   boost::optional<TabletId> FindStatusTablet(const TransactionId& id) override;
 

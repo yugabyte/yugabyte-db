@@ -10,6 +10,7 @@ import (
 
 var logFileLogger = log.New()
 var stdLogger = log.New()
+
 // Fatal prints the error message to stdout at the error level, and
 // then kills the currently running process.
 func Fatal(errorMsg string) {
@@ -43,18 +44,19 @@ func Trace(msg string) {
 	stdLogger.Traceln(msg)
 }
 
-func AddOutputFile(filePath string) {
-	logFile, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
+// AddOutputFile adds a logging file
+func AddOutputFile(logfile string) {
+	logFile, err := os.OpenFile(logfile, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
 	if err != nil {
-		log.Fatalln("Unable to create log file " + filePath)
+		log.Fatalln("Unable to create log file " + logfile)
 	}
 
-	stdLogger.Infoln(fmt.Sprintf("Opened log file %s", filePath))
+	stdLogger.Debugln(fmt.Sprintf("Opened log file %s", logfile))
 
 	logFileLogger.SetFormatter(&log.TextFormatter{
 		DisableColors: true,
 		FullTimestamp: true,
-		DisableQuote: true, // needed for newlines to print in log file
+		DisableQuote:  true, // needed for newlines to print in log file
 	})
 
 	logFileLogger.SetLevel(log.TraceLevel)
@@ -66,8 +68,8 @@ func AddOutputFile(filePath string) {
 func Init(logLevel string) {
 
 	stdLogger.SetFormatter(&log.TextFormatter{
-		ForceColors:   true, // without this, logrus logs in logfmt output by default
-		FullTimestamp: true,
+		ForceColors:            true, // without this, logrus logs in logfmt output by default
+		FullTimestamp:          true,
 		DisableLevelTruncation: true,
 	})
 

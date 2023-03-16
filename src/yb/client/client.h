@@ -98,6 +98,12 @@ class TabletServerServiceProxy;
 
 namespace client {
 
+struct NamespaceInfo {
+    master::NamespaceIdentifierPB id;
+    master::SysNamespaceEntryPB_State state;
+    bool colocated;
+};
+
 namespace internal {
 class ClientMasterRpcBase;
 }
@@ -256,6 +262,10 @@ class YBClient {
   Status BackfillIndex(const TableId& table_id, bool wait = true,
                        CoarseTimePoint deadline = CoarseTimePoint());
 
+  Status GetIndexBackfillProgress(
+      const std::vector<TableId>& index_ids,
+      google::protobuf::RepeatedField<google::protobuf::uint64>* rows_processed_entries);
+
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   Status DeleteTable(const YBTableName& table_name, bool wait = true);
@@ -391,8 +401,8 @@ class YBClient {
                                      const std::string& namespace_id,
                                      bool *delete_in_progress);
 
-  YBNamespaceAlterer* NewNamespaceAlterer(const std::string& namespace_name,
-                                          const std::string& namespace_id);
+  [[nodiscard]] std::unique_ptr<YBNamespaceAlterer> NewNamespaceAlterer(
+      const std::string& namespace_name, const std::string& namespace_id);
 
   // For Postgres: reserve oids for a Postgres database.
   Status ReservePgsqlOids(const std::string& namespace_id,
@@ -411,8 +421,8 @@ class YBClient {
                                const std::string& role_name);
 
   // List all namespace identifiers.
-  Result<std::vector<master::NamespaceIdentifierPB>> ListNamespaces();
-  Result<std::vector<master::NamespaceIdentifierPB>> ListNamespaces(
+  Result<std::vector<NamespaceInfo>> ListNamespaces();
+  Result<std::vector<NamespaceInfo>> ListNamespaces(
       const boost::optional<YQLDatabase>& database_type);
 
   // Get namespace information.
@@ -776,6 +786,9 @@ class YBClient {
   // version that does not support AutoFlags.
   Result<std::optional<AutoFlagsConfigPB>> GetAutoFlagConfig();
 
+  Result<master::StatefulServiceInfoPB> GetStatefulServiceLocation(
+      StatefulServiceKind service_kind);
+
   std::future<Result<internal::RemoteTabletPtr>> LookupTabletByKeyFuture(
       const std::shared_ptr<YBTable>& table,
       const std::string& partition_key,
@@ -799,6 +812,11 @@ class YBClient {
   const CloudInfoPB& cloud_info() const;
 
   std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
+
+  // Get a RemoteTabletServer pointer from this client's meta_cache, if there is one present. Return
+  // null if none is found.
+  Result<std::shared_ptr<internal::RemoteTabletServer>> GetRemoteTabletServer(
+      const std::string& permanent_uuid);
 
   void RequestsFinished(const std::set<RetryableRequestId>& request_ids);
 

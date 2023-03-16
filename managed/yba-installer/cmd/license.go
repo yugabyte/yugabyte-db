@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/licensing/license"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/licensing/pubkey"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
@@ -19,12 +18,13 @@ var licensePath string
 
 var baseLicenseCmd = &cobra.Command{
 	Use:   "license",
-	Short: "Licensing commands for yugabyte",
+	Short: "Licensing commands for yugabyte. Manage the active license or validate a new license.",
 }
 
 var validateLicenseCmd = &cobra.Command{
-	Use:   "validate",
+	Use:   "validate [-l file]",
 	Short: "Validate yugabyte license.",
+	Long:  "Validate either the active license file, or provide a license using '-l'",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		var lic *license.License
@@ -35,25 +35,29 @@ var validateLicenseCmd = &cobra.Command{
 			lic, err = license.FromFile(licensePath)
 		}
 		if err != nil {
-			fmt.Println("No licensing found for Yugabyte Anywhere.")
+			fmt.Println("No licensing found for YugabyteDB Anywhere.")
 			os.Exit(1)
 		}
 
-		if !pubkey.Validate(lic.Sha256Data(), lic.Signature) {
-			fmt.Println("Found an invalid license for Yugabyte Anywhere")
+		if !lic.Validate() {
+			fmt.Println("Found an invalid license for YugabyteDB Anywhere")
 			os.Exit(1)
 		}
-		fmt.Println("Found valid Yugabyte Anywhere license.")
+		fmt.Println("Found valid YugabyteDB Anywhere license.")
 	},
 }
 
-var updateLicenseCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Add license to yba install",
+var addLicenseCmd = &cobra.Command{
+	Use:   "add -l license_file",
+	Short: "Add a license for YugabyteDB Anywhere.",
+	Long:  "Add a license for YugabyteDB Anywhere. This can also overwrite an existing license.",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
+		if _, err := os.Stat(licensePath); err != nil {
+			log.Fatal("Invalid license path given. Please provide a valid license with --license-path")
+		}
 		InstallLicense()
-		log.Info("Updated license, services can be started now")
+		log.Info("Added license, services can be started now")
 	},
 }
 
@@ -64,19 +68,20 @@ func InstallLicense() {
 	if err != nil {
 		log.Fatal("invalid license file given: " + err.Error())
 	}
-	if !pubkey.Validate(lic.Sha256Data(), lic.Signature) {
+	if !lic.Validate() {
 		log.Fatal("invalid license")
 	}
-	if err := lic.WriteToLocation(common.LicenseFileInstall); err != nil {
+	if err := lic.WriteToLocation(common.LicenseFile()); err != nil {
 		log.Fatal("failed to install license: " + err.Error())
 	}
 }
 
 func init() {
-	updateLicenseCmd.Flags().StringVarP(&licensePath, "license-path", "l", "", "path to license file")
-	updateLicenseCmd.MarkFlagRequired("license-path")
-	baseLicenseCmd.AddCommand(updateLicenseCmd)
-	baseLicenseCmd.Flags().StringVarP(&licensePath, "license-path", "l", "",
-		"validate given license instead of installed license")
+	baseLicenseCmd.AddCommand(addLicenseCmd)
+	baseLicenseCmd.AddCommand(validateLicenseCmd)
+	baseLicenseCmd.PersistentFlags().StringVarP(&licensePath, "license-path", "l", "",
+		"Path to a YugabyteDB Anywhere license file")
+	addLicenseCmd.MarkFlagRequired("license-path")
+
 	rootCmd.AddCommand(baseLicenseCmd)
 }

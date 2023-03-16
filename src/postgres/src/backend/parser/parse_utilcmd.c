@@ -474,7 +474,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	else if (colocated_option_specified)
 		ereport(WARNING,
 				(errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
-				 errmsg("'colocated' syntax will be deprecated in a future release"),
+				 errmsg("'colocated' syntax is deprecated and will be removed in a future release"),
 				 errhint("Use 'colocation' instead of 'colocated'.")));
 
 	if (IsYsqlUpgrade && cxt.isSystem &&
@@ -4388,6 +4388,16 @@ transformPartitionBoundValue(ParseState *pstate, A_Const *con,
 				 parser_errposition(pstate, con->location)));
 
 	return (Const *) value;
+}
+
+/*
+ * YB wrapper for invoking the static generateClonedExtStatsStmt function.
+ */
+CreateStatsStmt *
+YbGenerateClonedExtStatsStmt(RangeVar *heapRel, Oid heapRelid,
+							 Oid source_statsid)
+{
+	return generateClonedExtStatsStmt(heapRel, heapRelid, source_statsid);
 }
 
 void

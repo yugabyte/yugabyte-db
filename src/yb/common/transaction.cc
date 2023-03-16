@@ -37,15 +37,20 @@ const std::string kMetricsSnapshotsTableName = "metrics";
 const std::string kTransactionTablePrefix = "transactions_";
 
 TransactionStatusResult::TransactionStatusResult(TransactionStatus status_, HybridTime status_time_)
-    : TransactionStatusResult(status_, status_time_, AbortedSubTransactionSet()) {}
+    : TransactionStatusResult(status_, status_time_, SubtxnSet()) {}
 
 TransactionStatusResult::TransactionStatusResult(
     TransactionStatus status_, HybridTime status_time_,
-    AbortedSubTransactionSet aborted_subtxn_set_)
+    SubtxnSet aborted_subtxn_set_)
     : status(status_), status_time(status_time_), aborted_subtxn_set(aborted_subtxn_set_) {
   DCHECK(status == TransactionStatus::ABORTED || status_time.is_valid())
       << "Status: " << status << ", status_time: " << status_time;
 }
+
+TransactionStatusResult::TransactionStatusResult(
+    TransactionStatus status_, HybridTime status_time_, SubtxnSet aborted_subtxn_set_,
+    TabletId status_tablet_) : status(status_), status_time(status_time_),
+      aborted_subtxn_set(aborted_subtxn_set_), status_tablet(status_tablet_) {}
 
 namespace {
 
@@ -150,7 +155,7 @@ Result<SubTransactionMetadata> SubTransactionMetadata::FromPB(
     .subtransaction_id = source.has_subtransaction_id()
         ? source.subtransaction_id()
         : kMinSubTransactionId,
-    .aborted = VERIFY_RESULT(AbortedSubTransactionSet::FromPB(source.aborted().set())),
+    .aborted = VERIFY_RESULT(SubtxnSet::FromPB(source.aborted().set())),
   };
 }
 

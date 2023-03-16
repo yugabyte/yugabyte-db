@@ -16,6 +16,8 @@ import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.UniversePerfAdvisorRun;
+import com.yugabyte.yw.models.UniversePerfAdvisorRun.State;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.queries.QueryHelper;
@@ -24,15 +26,18 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.Builder;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
@@ -59,8 +64,6 @@ public class PerfAdvisorScheduler {
 
   /* Simple universe locking mechanism to prevent parallel universe runs */
   private final Map<UUID, Boolean> universesLock = new ConcurrentHashMap<>();
-
-  private final Map<UUID, Long> universeLastScheduledRun = new HashMap<>();
 
   private final SettableRuntimeConfigFactory configFactory;
 
@@ -92,23 +95,28 @@ public class PerfAdvisorScheduler {
     log.info("Running Perf Advisor Scheduler");
     int defaultUniBatchSize =
         configFactory.staticApplicationConf().getInt("yb.perf_advisor.universe_batch_size");
+
     try {
+      Map<Long, Customer> customerMap =
+          Customer.getAll()
+              .stream()
+              .collect(Collectors.toMap(Customer::getCustomerId, Function.identity()));
       Set<UUID> uuidList = Universe.getAllUUIDs();
       for (List<UUID> batch : Iterables.partition(uuidList, defaultUniBatchSize)) {
-        this.batchRun(batch);
+        this.batchRun(batch, customerMap);
       }
     } catch (Exception e) {
       log.error("Error running perf advisor scheduled run", e);
     }
   }
 
-  private void batchRun(List<UUID> univUuidSet) {
+  private void batchRun(List<UUID> univUuidSet, Map<Long, Customer> customerMap) {
     for (Universe universe : Universe.getAllWithoutResources(univUuidSet)) {
-      run(universe, true);
+      run(customerMap.get(universe.customerId), universe, true);
     }
   }
 
-  private RunResult run(Universe universe, boolean scheduled) {
+  private RunResult run(Customer customer, Universe universe, boolean scheduled) {
     // Check status of universe
     if (universe.getUniverseDetails().updateInProgress) {
       return RunResult.builder().failureReason("Universe update in progress").build();
@@ -119,11 +127,17 @@ public class PerfAdvisorScheduler {
 
     Config universeConfig = configFactory.forUniverse(universe);
     boolean enabled = universeConfig.getBoolean(UniverseConfKeys.perfAdvisorEnabled.getKey());
-    if (!enabled) {
+    if (scheduled && !enabled) {
       return RunResult.builder().failureReason("Perf advisor disabled for universe").build();
     }
     if (scheduled) {
-      Long lastRun = universeLastScheduledRun.get(universe.getUniverseUUID());
+      Optional<UniversePerfAdvisorRun> lastScheduledRun =
+          UniversePerfAdvisorRun.getLastRun(customer.getUuid(), universe.getUniverseUUID(), true);
+      Long lastRun =
+          lastScheduledRun
+              .map(UniversePerfAdvisorRun::getScheduleTime)
+              .map(Date::getTime)
+              .orElse(null);
       int runFrequencyMins =
           universeConfig.getInt(UniverseConfKeys.perfAdvisorUniverseFrequencyMins.getKey());
       if (lastRun != null
@@ -150,63 +164,94 @@ public class PerfAdvisorScheduler {
       return RunResult.builder().failureReason("No Live nodes found").build();
     }
 
-    JsonNode databaseNamesResult = queryHelper.listDatabaseNames(universe);
-    List<String> databases = new ArrayList<>();
-    Iterator<JsonNode> queryIterator = databaseNamesResult.get("result").elements();
-    while (queryIterator.hasNext()) {
-      databases.add(queryIterator.next().get("datname").asText());
-    }
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
-    NodeDetails tserverNode = CommonUtils.getServerToRunYsqlQuery(universe);
-    String databaseHost = tserverNode.cloudInfo.private_ip;
-    boolean ysqlAuth = universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth;
-    boolean tlsClient =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
-    PerfAdvisorScriptConfig scriptConfig =
-        new PerfAdvisorScriptConfig(
-            databases,
-            NodeManager.YUGABYTE_USER,
-            databaseHost,
-            tserverNode.ysqlServerRpcPort,
-            DB_QUERY_RECOMMENDATION_TYPES,
-            ysqlAuth,
-            tlsClient);
-    Customer customer = Customer.get(universe.customerId);
     RunResult.RunResultBuilder result =
         RunResult.builder().failureReason("Perf advisor run in progress");
     universesLock.computeIfAbsent(
         universe.universeUUID,
         (k) -> {
-          threadPool.submit(
-              () -> {
-                try {
-                  if (scheduled) {
-                    universeLastScheduledRun.put(
-                        universe.getUniverseUUID(), System.currentTimeMillis());
-                  }
-                  UniverseConfig uConfig =
-                      new UniverseConfig(
-                          customer.getUuid(),
-                          universe.universeUUID,
-                          universeNodeConfigList,
-                          scriptConfig,
-                          provider.getYbHome() + "/bin",
-                          universeConfig);
-                  platformPerfAdvisor.run(uConfig);
-                } finally {
-                  universesLock.remove(universe.universeUUID);
-                }
-              });
-          result.started(true).failureReason(null);
-          return true;
+          UniversePerfAdvisorRun run =
+              UniversePerfAdvisorRun.create(
+                  customer.getUuid(), universe.getUniverseUUID(), !scheduled);
+          try {
+            threadPool.submit(
+                () ->
+                    runPerfAdvisor(
+                        customer, universe, universeConfig, universeNodeConfigList, run));
+            result.started(true).failureReason(null);
+            return true;
+          } catch (Exception e) {
+            log.error(
+                "Failed to submit perf advisor task for universe " + universe.getUniverseUUID(), e);
+            run.setEndTime(new Date()).setState(State.FAILED).save();
+            throw e;
+          }
         });
     return result.build();
   }
 
-  public RunResult runPerfAdvisor(Universe universe) {
-    return run(universe, false);
+  private void runPerfAdvisor(
+      Customer customer,
+      Universe universe,
+      Config universeConfig,
+      List<UniverseNodeConfigInterface> universeNodeConfigList,
+      UniversePerfAdvisorRun run) {
+    try {
+      run.setStartTime(new Date()).setState(State.RUNNING).save();
+      JsonNode databaseNamesResult = queryHelper.listDatabaseNames(universe);
+      if (databaseNamesResult.has("error")) {
+        String errorMessage = databaseNamesResult.get("error").toString();
+        log.error(
+            "Failed to get database names for universe "
+                + universe.getUniverseUUID()
+                + ": "
+                + errorMessage);
+        run.setEndTime(new Date()).setState(State.FAILED).save();
+        return;
+      }
+      List<String> databases = new ArrayList<>();
+      Iterator<JsonNode> queryIterator = databaseNamesResult.get("result").elements();
+      while (queryIterator.hasNext()) {
+        databases.add(queryIterator.next().get("datname").asText());
+      }
+      Provider provider =
+          Provider.getOrBadRequest(
+              UUID.fromString(
+                  universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+      NodeDetails tserverNode = CommonUtils.getServerToRunYsqlQuery(universe);
+      String databaseHost = tserverNode.cloudInfo.private_ip;
+      boolean ysqlAuth =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth;
+      boolean tlsClient =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
+      PerfAdvisorScriptConfig scriptConfig =
+          new PerfAdvisorScriptConfig(
+              databases,
+              NodeManager.YUGABYTE_USER,
+              databaseHost,
+              tserverNode.ysqlServerRpcPort,
+              DB_QUERY_RECOMMENDATION_TYPES,
+              ysqlAuth,
+              tlsClient);
+      UniverseConfig uConfig =
+          new UniverseConfig(
+              customer.getUuid(),
+              universe.universeUUID,
+              universeNodeConfigList,
+              scriptConfig,
+              provider.getYbHome() + "/bin",
+              universeConfig);
+      platformPerfAdvisor.run(uConfig);
+      run.setEndTime(new Date()).setState(State.COMPLETED).save();
+    } catch (Exception e) {
+      log.error("Failed to run perf advisor for universe " + universe.getUniverseUUID(), e);
+      run.setEndTime(new Date()).setState(State.FAILED).save();
+    } finally {
+      universesLock.remove(universe.universeUUID);
+    }
+  }
+
+  public RunResult runPerfAdvisor(Customer customer, Universe universe) {
+    return run(customer, universe, false);
   }
 
   @Value

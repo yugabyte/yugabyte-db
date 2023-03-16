@@ -80,7 +80,10 @@ class SnapshotTestUtil {
   Status RestoreSnapshot(
       const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime());
   Result<TxnSnapshotId> StartSnapshot(const TableHandle& table);
+  // Set for_import to true if this snapshots is imported from another DB.
+  Result<TxnSnapshotId> StartSnapshot(const TableId& table_id, bool imported = false);
   Result<TxnSnapshotId> CreateSnapshot(const TableHandle& table);
+  Result<TxnSnapshotId> CreateSnapshot(const TableId& table_id, bool imported = false);
   Status DeleteSnapshot(const TxnSnapshotId& snapshot_id);
   Status WaitAllSnapshotsDeleted();
 

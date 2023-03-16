@@ -321,3 +321,6 @@ ADD_YB_TEST(utilities/checkpoint/checkpoint_test)
 ADD_YB_TEST(utilities/memory/memory_test)
 
 endif()
+
+set(YB_FUZZ_TARGET_LINK_LIBS rocksdb_test_util rocksdb ${YB_MIN_TEST_LIBS} rocksdb_tools)
+ADD_YB_FUZZ_TARGET(util/fuzz-targets/coding_fuzz_target)

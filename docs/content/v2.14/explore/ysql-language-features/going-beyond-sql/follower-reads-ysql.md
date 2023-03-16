@@ -28,7 +28,7 @@ type: docs
 In a distributed environment, when one node in a cluster is elected as the leader holding the latest data, it is possible that another node may assume that it is the leader, and that it holds the latest data. This could result in serving stale reads to a client. To avoid this confusion, YugabyteDB provides a _leader lease_ mechanism  where an elected node member is guaranteed to be the leader until its lease expires.
 
 The leader lease mechanism guarantees to serve strongly consistent reads where a client can fetch reads directly from the leader, because the leader under lease will have the latest data.
-The interactive animations in this [blog post](https://blog.yugabyte.com/low-latency-reads-in-geo-distributed-sql-with-raft-leader-leases/) explains the performance improvements using leader leases.
+The interactive animations in this [blog post](https://www.yugabyte.com/blog/low-latency-reads-in-geo-distributed-sql-with-raft-leader-leases/) explains the performance improvements using leader leases.
 
 ## Follower reads
 

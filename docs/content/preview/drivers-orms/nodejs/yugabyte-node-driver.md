@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: YugabyteDB node-postgres Smart Driver
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: Node.js drivers for YSQL
+description: Connect an application using YugabyteDB Node.js smart driver for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -40,7 +41,7 @@ type: docs
 
 </ul>
 
-The [YugabyteDB node-postgres smart driver](https://github.com/yugabyte/node-postgres) is a distributed Node.js driver for [YSQL](../../../api/ysql/), built on the [PostgreSQL node-postgres driver](https://github.com/brianc/node-postgres), with additional [connection load balancing](../../smart-drivers/) features.
+The [YugabyteDB node-postgres smart driver](https://github.com/yugabyte/node-postgres) is a Node.js driver for [YSQL](../../../api/ysql/), built on the [PostgreSQL node-postgres driver](https://github.com/brianc/node-postgres), with additional [connection load balancing](../../smart-drivers/) features.
 
 {{< note title="YugabyteDB Managed" >}}
 
@@ -76,13 +77,15 @@ The following table describes the connection parameters required to connect, inc
 | user | Database user | yugabyte |
 | password | User password | yugabyte |
 | `loadBalance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
-| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `loadBalance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
+| `ybServersRefreshInterval` | If `load_balance` is true, the interval in seconds to refresh the node list | 300
+| `topologyKeys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `loadBalance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
 
 Create a client to connect to the cluster using a connection string. The following is an example connection string for connecting to a YugabyteDB cluster with uniform and topology load balancing:
 
 ```sh
-postgresql://yugabyte:yugabyte@128.0.0.1:5433/yugabyte?loadBalance=true?
-    topology_keys=cloud.region.zone1,cloud.region.zone2
+postgresql://yugabyte:yugabyte@128.0.0.1:5433/yugabyte?loadBalance=true? \
+    ybServersRefreshInterval=240& \
+    topologyKeys=cloud.region.zone1,cloud.region.zone2
 ```
 
 After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.

@@ -46,6 +46,8 @@
 // should be avoided when possible.
 // String flags are not Runtime safe.
 
+#include <string_view>
+
 #include <gflags/gflags.h>
 
 #include "yb/util/enums.h"
@@ -149,6 +151,8 @@ auto AutoFlagValueAsString(const T& value) {
       yb::auto_flags_internal::BOOST_PP_CAT(IsValid_, type)(target_val), \
       "Target value of AutoFlag " BOOST_PP_STRINGIZE(name) " '" BOOST_PP_STRINGIZE(target_val) \
       "' is not assignable to " BOOST_PP_STRINGIZE(type)); \
+  static_assert((initial_val) != (target_val), "Initial and target value of AutoFlag " \
+  BOOST_PP_STRINGIZE(name) " are the same"); \
   BOOST_PP_CAT(DEFINE_, BOOST_PP_CAT(runtime_prefix, BOOST_PP_CAT(_, type)))( \
     name, initial_val, txt); \
   namespace { \
@@ -173,6 +177,8 @@ auto AutoFlagValueAsString(const T& value) {
       yb::auto_flags_internal::IsValid_string(target_val), \
       "Target value of AutoFlag " BOOST_PP_STRINGIZE(name) " '" target_val \
                                                            "' is not assignable to string"); \
+  static_assert(yb::auto_flags_internal::StringsNotEqual(initial_val, target_val), "Initial and " \
+  "target value of AutoFlag " BOOST_PP_STRINGIZE(name) " are the same"); \
   BOOST_PP_CAT(DEFINE_, BOOST_PP_CAT(runtime_prefix, _string))(name, initial_val, txt); \
   namespace { \
   yb::auto_flags_internal::AutoFlagDescRegisterer \
@@ -187,6 +193,10 @@ auto AutoFlagValueAsString(const T& value) {
   TAG_FLAG(name, stable)
 
 namespace auto_flags_internal {
+
+constexpr bool StringsNotEqual(char const* a, char const* b) {
+    return std::string_view(a) != b;
+}
 
 template <typename T>
 constexpr bool IsValid_bool(T a) {

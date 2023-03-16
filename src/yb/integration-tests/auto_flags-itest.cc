@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include "yb/common/wire_protocol.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
@@ -47,6 +48,52 @@ const string kFalse = "false";
 const MonoDelta kTimeout = 20s * kTimeMultiplier;
 const int kNumMasterServers = 3;
 const int kNumTServers = 3;
+
+namespace {
+void TestPromote(
+    std::function<Result<AutoFlagsConfigPB>()> get_current_config,
+    std::function<Result<master::PromoteAutoFlagsResponsePB>(master::PromoteAutoFlagsRequestPB)>
+        promote_auto_flags,
+    std::function<Status(uint32)>
+        validate_config_on_all_nodes) {
+  // Initial empty config
+  auto previous_config = ASSERT_RESULT(get_current_config());
+  ASSERT_EQ(0, previous_config.config_version());
+  ASSERT_EQ(0, previous_config.promoted_flags_size());
+
+  master::PromoteAutoFlagsRequestPB req;
+  req.set_max_flag_class(ToString(AutoFlagClass::kExternal));
+  req.set_promote_non_runtime_flags(true);
+  req.set_force(false);
+
+  // Promote all AutoFlags
+  auto resp = ASSERT_RESULT(promote_auto_flags(req));
+  ASSERT_TRUE(resp.has_new_config_version());
+  ASSERT_EQ(resp.new_config_version(), previous_config.config_version() + 1);
+
+  ASSERT_OK(validate_config_on_all_nodes(resp.new_config_version()));
+  previous_config = ASSERT_RESULT(get_current_config());
+  ASSERT_EQ(resp.new_config_version(), previous_config.config_version());
+  ASSERT_GE(previous_config.promoted_flags_size(), 1);
+
+  // Running again should be no op
+  resp.Clear();
+  const auto result = promote_auto_flags(req);
+  ASSERT_NOK(result);
+  const auto status = result.status();
+  ASSERT_TRUE(status.IsAlreadyPresent()) << status.ToString();
+  ASSERT_FALSE(resp.has_new_config_version()) << resp.new_config_version();
+
+  // Force to bump up version alone
+  req.set_force(true);
+  resp.Clear();
+  resp = ASSERT_RESULT(promote_auto_flags(req));
+  ASSERT_EQ(resp.new_config_version(), previous_config.config_version() + 1);
+  ASSERT_FALSE(resp.non_runtime_flags_promoted());
+
+  ASSERT_OK(validate_config_on_all_nodes(resp.new_config_version()));
+}
+}  // namespace
 
 class AutoFlagsMiniClusterTest : public YBMiniClusterTestBase<MiniCluster> {
  protected:
@@ -193,45 +240,22 @@ TEST_F(AutoFlagsMiniClusterTest, Promote) {
   // Start with an empty config
   FLAGS_limit_auto_flag_promote_for_new_universe = 0;
   ASSERT_OK(RunSetUp());
-
-  // Initial empty config
   auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
-  auto previous_config = leader_master->GetAutoFlagsConfig();
-  ASSERT_EQ(0, previous_config.config_version());
-  ASSERT_EQ(0, previous_config.promoted_flags_size());
 
-  master::PromoteAutoFlagsRequestPB req;
-  master::PromoteAutoFlagsResponsePB resp;
-  req.set_max_flag_class(ToString(AutoFlagClass::kExternal));
-  req.set_promote_non_runtime_flags(true);
-  req.set_force(false);
-
-  // Promote all AutoFlags
-  ASSERT_OK(leader_master->catalog_manager_impl()->PromoteAutoFlags(&req, &resp));
-  ASSERT_TRUE(resp.has_new_config_version());
-  ASSERT_EQ(resp.new_config_version(), previous_config.config_version() + 1);
-
-  ASSERT_OK(ValidateConfigOnMasters(resp.new_config_version()));
-  ASSERT_OK(ValidateConfigOnTservers(resp.new_config_version()));
-  previous_config = leader_master->GetAutoFlagsConfig();
-  ASSERT_EQ(resp.new_config_version(), previous_config.config_version());
-  ASSERT_GE(previous_config.promoted_flags_size(), 1);
-
-  // Running again should be no op
-  resp.Clear();
-  const auto status = leader_master->catalog_manager_impl()->PromoteAutoFlags(&req, &resp);
-  ASSERT_TRUE(status.IsAlreadyPresent()) << status.ToString();
-  ASSERT_FALSE(resp.has_new_config_version()) << resp.new_config_version();
-
-  // Force to bump up version alone
-  req.set_force(true);
-  resp.Clear();
-  ASSERT_OK(leader_master->catalog_manager_impl()->PromoteAutoFlags(&req, &resp));
-  ASSERT_EQ(resp.new_config_version(), previous_config.config_version() + 1);
-  ASSERT_FALSE(resp.non_runtime_flags_promoted());
-
-  ASSERT_OK(ValidateConfigOnMasters(resp.new_config_version()));
-  ASSERT_OK(ValidateConfigOnTservers(resp.new_config_version()));
+  ASSERT_NO_FATALS(TestPromote(
+      /* get_current_config */
+      [&]() { return leader_master->GetAutoFlagsConfig(); },
+      /* promote_auto_flags */
+      [&](const auto& req) -> Result<master::PromoteAutoFlagsResponsePB> {
+        master::PromoteAutoFlagsResponsePB resp;
+        RETURN_NOT_OK(leader_master->catalog_manager_impl()->PromoteAutoFlags(&req, &resp));
+        return resp;
+      },
+      /* validate_config_on_all_nodes */
+      [&](uint32_t config_version) {
+        RETURN_NOT_OK(ValidateConfigOnMasters(config_version));
+        return ValidateConfigOnTservers(config_version);
+      }));
 }
 
 class AutoFlagsExternalMiniClusterTest : public ExternalMiniClusterITestBase {
@@ -316,19 +340,9 @@ TEST_F(AutoFlagsExternalMiniClusterTest, NewCluster) {
   }
 }
 
-namespace {
-template <typename T>
-void RemoveFromVector(vector<T>* collection, const T& val) {
-  auto it = std::find(collection->begin(), collection->end(), val);
-  if (it != collection->end()) {
-    collection->erase(it);
-  }
-}
-}  // namespace
-
 // Create a Cluster with AutoFlags management turned off to simulate a cluster running old code.
 // Restart the cluster with AutoFlags management enabled to simulate an upgrade. Make sure nodes
-// added to this cluster works as expected.
+// added to this cluster works as expected. And finally make sure Promotion after the upgrade works.
 TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
   string disable_auto_flag_management = "--" + kDisableAutoFlagsManagementFlagName;
   ASSERT_NO_FATALS(BuildAndStart(
@@ -339,8 +353,8 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
   ASSERT_OK(CheckFlagOnAllNodes(kTESTAutoFlagsInitializedFlagName, kFalse));
 
   // Remove the disable_auto_flag_management flag from cluster config
-  RemoveFromVector(cluster_->mutable_extra_master_flags(), disable_auto_flag_management);
-  RemoveFromVector(cluster_->mutable_extra_tserver_flags(), disable_auto_flag_management);
+  ASSERT_TRUE(Erase(disable_auto_flag_management, cluster_->mutable_extra_master_flags()));
+  ASSERT_TRUE(Erase(disable_auto_flag_management, cluster_->mutable_extra_tserver_flags()));
 
   ASSERT_OK(cluster_->AddTabletServer());
   ASSERT_OK(cluster_->WaitForTabletServerCount(opts_.num_tablet_servers + 1, kTimeout));
@@ -381,35 +395,77 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
 
   // Remove disable_auto_flag_management from each process config and restart
   for (auto* master : cluster_->master_daemons()) {
-    RemoveFromVector(master->mutable_flags(), disable_auto_flag_management);
+    Erase(disable_auto_flag_management, master->mutable_flags());
 
     master->Shutdown();
     ASSERT_OK(master->Restart());
     ASSERT_OK(CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, master));
     const auto config_version = GetAutoFlagConfigVersion(master);
-    if (master == new_master) {
-      ASSERT_EQ(config_version, 0);
-    } else {
-      ASSERT_EQ(config_version, 1);
-    }
+    ASSERT_EQ(config_version, 0);
   }
 
   for (auto* tserver : cluster_->tserver_daemons()) {
-    RemoveFromVector(tserver->mutable_flags(), disable_auto_flag_management);
+    Erase(disable_auto_flag_management, tserver->mutable_flags());
 
     tserver->Shutdown();
     ASSERT_OK(tserver->Restart());
     ASSERT_OK(CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, tserver));
-    ASSERT_OK(WaitFor(
-        [&]() {
-          const auto config_version = GetAutoFlagConfigVersion(tserver);
-          return config_version == 1;
-        },
-        FLAGS_heartbeat_interval_ms * 3ms * kTimeMultiplier,
-        Format("Wait for tserver $0 to reach config version 1", tserver->id())));
+    const auto config_version = GetAutoFlagConfigVersion(tserver);
+    ASSERT_EQ(config_version, 0);
   }
 
   ASSERT_OK(CheckFlagOnAllNodes(kTESTAutoFlagsInitializedFlagName, kFalse));
+
+  ASSERT_NO_FATALS(TestPromote(
+      /* get_current_config */
+      [&]() -> Result<AutoFlagsConfigPB> {
+        master::GetAutoFlagsConfigRequestPB req;
+        master::GetAutoFlagsConfigResponsePB resp;
+        rpc::RpcController rpc;
+        rpc.set_timeout(kTimeout);
+        EXPECT_OK(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>().GetAutoFlagsConfig(
+            req, &resp, &rpc));
+        if (resp.has_error()) {
+          return StatusFromPB(resp.error().status())
+              .CloneAndPrepend(Format("Code $0", resp.error().code()));
+        }
+
+        return resp.config();
+      },
+      /* promote_auto_flags */
+      [&](const auto& req) -> Result<master::PromoteAutoFlagsResponsePB> {
+        auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>();
+        master::PromoteAutoFlagsResponsePB resp;
+        rpc::RpcController rpc;
+        rpc.set_timeout(opts_.timeout);
+        RETURN_NOT_OK(master_proxy.PromoteAutoFlags(req, &resp, &rpc));
+        if (resp.has_error()) {
+          return StatusFromPB(resp.error().status())
+              .CloneAndPrepend(Format("Code $0", resp.error().code()));
+        }
+
+        return resp;
+      },
+      /* validate_config_on_all_nodes */
+      [&](uint32_t config_version) -> Status {
+        for (auto* daemon : cluster_->daemons()) {
+          uint32_t version = 0;
+          RETURN_NOT_OK(WaitFor(
+              [&]() {
+                version = GetAutoFlagConfigVersion(daemon);
+                return version == config_version;
+              },
+              kTimeout, "Config version to be updated"));
+
+          SCHECK_EQ(
+              version, config_version, IllegalState,
+              Format(
+                  "Expected config version $0, got $1 on $2 $3", config_version, version,
+                  daemon->exe(), daemon->id()));
+        }
+
+        return OK();
+      }));
 }
 
 }  // namespace yb

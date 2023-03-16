@@ -74,7 +74,7 @@ Use the `DriverManager.getConnection` method for getting connection object for t
 The following is an example JDBC URL for connecting to YugabyteDB.
 
 ```java
-string yburl = "jdbc:yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true"
+String yburl = "jdbc:yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true";
 DriverManager.getConnection(yburl);
 ```
 
@@ -90,7 +90,7 @@ DriverManager.getConnection(yburl);
 The following is an example JDBC URL for connecting to a YugabyteDB cluster with SSL encryption enabled.
 
 ```java
-string yburl = "jdbc:yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true&ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt"
+String yburl = "jdbc:yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true&ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt";
 Connection conn = DriverManager.getConnection(yburl);
 ```
 

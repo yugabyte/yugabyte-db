@@ -38,6 +38,7 @@
 #include "yb/util/monotime.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 namespace pggate {
@@ -60,9 +61,10 @@ struct PerformResult {
   Status status;
   ReadHybridTime catalog_read_time;
   rpc::CallResponsePtr response;
+  HybridTime used_in_txn_limit;
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(status, catalog_read_time);
+    return YB_STRUCT_TO_STRING(status, catalog_read_time, used_in_txn_limit);
   }
 };
 
@@ -83,6 +85,8 @@ class PgClient {
   Result<PgTableDescPtr> OpenTable(
       const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time);
 
+  Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
+
   Status FinishTransaction(Commit commit, DdlType ddl_type);
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
@@ -99,6 +103,9 @@ class PgClient {
       tserver::PgDropTableRequestPB* req, CoarseTimePoint deadline);
 
   Status BackfillIndex(tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline);
+
+  Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
+                                  uint64_t** backfill_statuses);
 
   Result<int32> TabletServerCount(bool primary_only);
 
@@ -155,7 +162,7 @@ class PgClient {
   Result<bool> CheckIfPitrActive();
 
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
-      bool size_only);
+      bool size_only, uint32_t db_oid);
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DECLARE(r, data, method) \
   Status method(                             \

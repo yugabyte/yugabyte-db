@@ -23,7 +23,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.RandomUtil;
 import org.yb.util.BuildTypeUtil;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.Array;
 import java.sql.Connection;
@@ -45,7 +45,7 @@ import java.util.Random;
 
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgTransactions extends BasePgSQLTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransactions.class);

@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
@@ -153,18 +154,21 @@ public class TlsToggle extends UpgradeTaskBase {
       createStartYbcTasks(nodes.getRight())
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       // Wait for yb-controller to be responsive on each node.
-      createWaitForYbcServerTask(null).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createWaitForYbcServerTask(nodes.getRight())
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
   }
 
   protected void updateUniverseHttpsEnabledUI() {
     int nodeToNodeChange = getNodeToNodeChange();
-
+    boolean isNodeUIHttpsEnabled =
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.nodeUIHttpsEnabled);
     // HTTPS_ENABLED_UI will piggyback node-to-node encryption.
     if (nodeToNodeChange != 0) {
       String httpsEnabledUI =
           (nodeToNodeChange > 0
-                  && Universe.shouldEnableHttpsUI(true, getUserIntent().ybSoftwareVersion))
+                  && Universe.shouldEnableHttpsUI(
+                      true, getUserIntent().ybSoftwareVersion, isNodeUIHttpsEnabled))
               ? "true"
               : "false";
       saveUniverseDetails(
@@ -183,7 +187,7 @@ public class TlsToggle extends UpgradeTaskBase {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s", getTaskSubGroupType(), taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
       subTaskGroup.addSubTask(
           getAnsibleConfigureServerTaskForToggleTls(
@@ -198,8 +202,7 @@ public class TlsToggle extends UpgradeTaskBase {
   }
 
   private void createYbcFlagsUpdateTasks(List<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
     for (NodeDetails node : nodes) {
       subTaskGroup.addSubTask(getAnsibleConfigureServerTaskForYbcToggleTls(node));
     }
@@ -215,7 +218,7 @@ public class TlsToggle extends UpgradeTaskBase {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s", getTaskSubGroupType(), taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
       subTaskGroup.addSubTask(
           getAnsibleConfigureServerTaskForToggleTls(
@@ -226,8 +229,7 @@ public class TlsToggle extends UpgradeTaskBase {
   }
 
   private void createUniverseSetTlsParamsTask() {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("UniverseSetTlsParams", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseSetTlsParams");
     UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
     params.universeUUID = taskParams().universeUUID;
     params.enableNodeToNodeEncrypt = taskParams().enableNodeToNodeEncrypt;

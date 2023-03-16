@@ -38,6 +38,7 @@ import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
 import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Universe;
@@ -95,7 +96,9 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
     String getKeyUrl = String.format("https://some_base_url/crypto/v1/keys/%s/export", mockKid);
     Map<String, String> mockQueryParams =
         ImmutableMap.of("name", universe.universeUUID.toString(), "limit", "1");
-    when(mockEARManager.getServiceInstance(eq("SMARTKEY"))).thenReturn(new SmartKeyEARService());
+    // confGetter is not used in class SmartKeyEARService, so we can pass null.
+    when(mockEARManager.getServiceInstance(eq("SMARTKEY")))
+        .thenReturn(new SmartKeyEARService(null));
   }
 
   @Test
@@ -377,13 +380,13 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
     ObjectNode kmsConfigReq =
         Json.newObject()
             .put("name", configName)
-            .put(AzuEARServiceUtil.CLIENT_ID_FIELDNAME, "test-client-id")
-            .put(AzuEARServiceUtil.CLIENT_SECRET_FIELDNAME, "test-client-secret")
-            .put(AzuEARServiceUtil.TENANT_ID_FIELDNAME, "test-tenant-id")
-            .put(AzuEARServiceUtil.AZU_VAULT_URL_FIELDNAME, "test-vault-url")
-            .put(AzuEARServiceUtil.AZU_KEY_NAME_FIELDNAME, "test-key-name")
-            .put(AzuEARServiceUtil.AZU_KEY_ALGORITHM_FIELDNAME, "RSA")
-            .put(AzuEARServiceUtil.AZU_KEY_SIZE_FIELDNAME, 2048);
+            .put(AzuKmsAuthConfigField.CLIENT_ID.fieldName, "test-client-id")
+            .put(AzuKmsAuthConfigField.CLIENT_SECRET.fieldName, "test-client-secret")
+            .put(AzuKmsAuthConfigField.TENANT_ID.fieldName, "test-tenant-id")
+            .put(AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName, "test-vault-url")
+            .put(AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName, "test-key-name")
+            .put(AzuKmsAuthConfigField.AZU_KEY_ALGORITHM.fieldName, "RSA")
+            .put(AzuKmsAuthConfigField.AZU_KEY_SIZE.fieldName, 2048);
 
     KmsConfig result =
         KmsConfig.createKMSConfig(customer.uuid, keyProvider, kmsConfigReq, configName);
@@ -391,7 +394,7 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
     // Edit the key name field in the request body
     String kmsConfigUrl =
         String.format("/api/customers/%s/kms_configs/%s/edit", customer.uuid, result.configUUID);
-    kmsConfigReq.put(AzuEARServiceUtil.AZU_KEY_NAME_FIELDNAME, "test-key-name-2");
+    kmsConfigReq.put(AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName, "test-key-name-2");
 
     // Call the API and assert that the POST request throws exception
     Result updateKMSResult =

@@ -278,6 +278,11 @@
   to = "https://docs-archive.yugabyte.com/v2.4/"
   force = true
 
+[[redirects]]
+  from = "/v2.6/*"
+  to = "https://docs-archive.yugabyte.com/v2.6/"
+  force = true
+
 # [[redirects]]
 #   from = "/v2.6/*"
 #   to = "https://docs-archive.yugabyte.com/v2.6/"

@@ -9,11 +9,13 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
-import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.ArrayList;
@@ -29,15 +31,20 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class VMImageUpgrade extends UpgradeTaskBase {
 
   private final Map<UUID, List<String>> replacementRootVolumes = new ConcurrentHashMap<>();
 
+  private final RuntimeConfGetter confGetter;
+
   @Inject
-  protected VMImageUpgrade(BaseTaskDependencies baseTaskDependencies) {
+  protected VMImageUpgrade(
+      BaseTaskDependencies baseTaskDependencies, RuntimeConfGetter confGetter) {
     super(baseTaskDependencies);
+    this.confGetter = confGetter;
   }
 
   @Override
@@ -62,13 +69,26 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           Set<NodeDetails> nodeSet = fetchAllNodes(taskParams().upgradeOption);
           // Verify the request params and fail if invalid
           taskParams().verifyParams(getUniverse());
+
+          String newVersion = taskParams().ybSoftwareVersion;
+          if (taskParams().isSoftwareUpdateViaVm) {
+            createCheckUpgradeTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
+          }
+
           // Create task sequence for VM Image upgrade
           createVMImageUpgradeTasks(nodeSet);
 
           if (taskParams().isSoftwareUpdateViaVm) {
+            // Promote Auto flags on compatible versions.
+            if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.promoteAutoFlag)
+                && CommonUtils.isAutoFlagSupported(newVersion)) {
+              createCheckSoftwareVersionTask(nodeSet, newVersion)
+                  .setSubTaskGroupType(getTaskSubGroupType());
+              createPromoteAutoFlagTask().setSubTaskGroupType(getTaskSubGroupType());
+            }
+
             // Update software version in the universe metadata.
-            createUpdateSoftwareVersionTask(
-                    taskParams().ybSoftwareVersion, true /*isSoftwareUpdateViaVm*/)
+            createUpdateSoftwareVersionTask(newVersion, true /*isSoftwareUpdateViaVm*/)
                 .setSubTaskGroupType(getTaskSubGroupType());
           }
 
@@ -82,7 +102,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     for (NodeDetails node : nodes) {
       UUID region = taskParams().nodeToRegion.get(node.nodeUuid);
       String machineImage = taskParams().machineImages.get(region);
-
+      String sshUserOverride = taskParams().sshUserOverrideMap.get(region);
       if (!taskParams().forceVMImageUpgrade && machineImage.equals(node.machineImage)) {
         log.info(
             "Skipping node {} as it's already running on {} and force flag is not set",
@@ -106,6 +126,13 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
       createRootVolumeReplacementTask(node).setSubTaskGroupType(getTaskSubGroupType());
 
+      node.machineImage = machineImage;
+      if (StringUtils.isNotBlank(sshUserOverride)) {
+        node.sshUserOverride = sshUserOverride;
+      }
+
+      node.ybPrebuiltAmi =
+          taskParams().vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages;
       List<NodeDetails> nodeList = Collections.singletonList(node);
       createInstallNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createWaitForNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
@@ -143,10 +170,6 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           });
 
       createWaitForKeyInMemoryTask(node);
-
-      node.machineImage = machineImage;
-      node.ybPrebuiltAmi =
-          taskParams().vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages;
       createNodeDetailsUpdateTask(node, !taskParams().isSoftwareUpdateViaVm)
           .setSubTaskGroupType(getTaskSubGroupType());
     }
@@ -158,7 +181,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   private SubTaskGroup createRootVolumeCreationTasks(Collection<NodeDetails> nodes) {
     Map<UUID, List<NodeDetails>> rootVolumesPerAZ =
         nodes.stream().collect(Collectors.groupingBy(n -> n.azUuid));
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("CreateRootVolumes", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CreateRootVolumes");
 
     rootVolumesPerAZ.forEach(
         (key, value) -> {
@@ -205,7 +228,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   }
 
   private SubTaskGroup createRootVolumeReplacementTask(NodeDetails node) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("ReplaceRootVolume", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("ReplaceRootVolume");
     ReplaceRootVolume.Params replaceParams = new ReplaceRootVolume.Params();
     replaceParams.nodeName = node.nodeName;
     replaceParams.azUuid = node.azUuid;

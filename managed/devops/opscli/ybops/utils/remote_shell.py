@@ -8,7 +8,10 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+import json
+import logging
 import os
+import time
 
 from ybops.common.exceptions import YBOpsRecoverableError, YBOpsRuntimeError
 from ybops.utils.ssh import SSHClient
@@ -16,6 +19,100 @@ from ybops.node_agent.shell_client import RpcShellClient
 
 CONNECTION_ATTEMPTS = 5
 CONNECTION_ATTEMPT_DELAY_SEC = 3
+CONNECT_RETRY_LIMIT = 60
+# Retry in seconds
+CONNECT_RETRY_DELAY = 10
+
+
+# Similar method exists for SSH.
+def wait_for_server(connect_options, num_retries=CONNECT_RETRY_LIMIT, **kwargs):
+    """This method waits for the connection to the remote host to become available.
+    """
+
+    retry_count = 0
+    while retry_count < num_retries:
+        if can_connect(connect_options, **kwargs):
+            return True
+        time.sleep(1)
+        retry_count += 1
+
+    return False
+
+
+# Similar method exists for SSH.
+def can_connect(connect_options):
+    """This method checks if connection to remote host is available.
+    """
+
+    try:
+        client = RemoteShell(connect_options)
+        stdout = client.exec_command("echo 'test'", output_only=True)
+        stdout = stdout.splitlines()
+        if len(stdout) == 1 and (stdout[0] == "test"):
+            return True
+        return False
+    except Exception as e:
+        logging.error("Error connecting, {}".format(e))
+        return False
+
+
+# Similar method exists for SSH.
+def copy_to_tmp(connect_options, filepath, retries=3, retry_delay=CONNECT_RETRY_DELAY, **kwargs):
+    """This method copies the given file to /tmp on remote host and return the output.
+    """
+
+    dest_path = os.path.join("/tmp", os.path.basename(filepath))
+    chmod = kwargs.get('chmod', 0)
+    if chmod == 0:
+        chmod = os.stat(filepath).st_mode
+        kwargs.setdefault('chmod', chmod)
+
+    rc = 1
+    while retries > 0:
+        try:
+            logging.info("[app] Copying local '{}' to remote '{}'".format(
+                filepath, dest_path))
+            client = RemoteShell(connect_options)
+            try:
+                client.put_file(filepath, dest_path, **kwargs)
+                rc = 0
+                break
+            finally:
+                client.close()
+        except Exception as e:
+            logging.error("Error copying file {} to {} - {}".format(filepath, dest_path, e))
+            retries -= 1
+            if (retries > 0):
+                time.sleep(retry_delay)
+
+    return rc
+
+
+def get_connection_type(connect_options):
+    """Returns the connection type.
+    """
+    connection_type = connect_options.get('connection_type')
+    if connection_type is None:
+        return 'ssh'
+    return connection_type
+
+
+def get_host_port_user(connect_options):
+    """Returns the host, port and user for the connection type.
+    """
+    connection_type = get_connection_type(connect_options)
+    connect_options['connection_type'] = connection_type
+    if connection_type == 'ssh':
+        connect_options['host'] = connect_options['ssh_host']
+        connect_options['port'] = connect_options['ssh_port']
+        connect_options['user'] = connect_options['ssh_user']
+    elif connection_type == 'node_agent_rpc':
+        connect_options['host'] = connect_options['node_agent_ip']
+        connect_options['port'] = connect_options['node_agent_port']
+        connect_options['user'] = connect_options['node_agent_user']
+    else:
+        raise YBOpsRuntimeError("Unknown connection_type '{}'".format(connection_type))
+    return connect_options
 
 
 class RemoteShellOutput(object):
@@ -32,20 +129,38 @@ class RemoteShellOutput(object):
 
 class RemoteShell(object):
     """RemoteShell class is used run remote shell commands against nodes using
-    the connection type.
+    the connection type. The connect_options are:
+    For SSH:
+      connection_type - None or set it to ssh to enable SSH.
+      ssh_user - SSH user.
+      ssh_host - SSH host IP.
+      ssh_port - SSH port.
+      private_key_file - Path to SSH private key file.
+      ssh2_enabled - Optional SSH2 enabled flag.
+    For RPC:
+      connection_type - set to either rpc or node_agent_rpc to enable RPC.
+      node_agent_user - Remote user.
+      node_agent_ip - Node agent IP.
+      node_agent_port - Node agent port.
+      node_agent_cert_path - Path to node agent cert.
+      node_agent_auth_token - JWT to authenticate the client.
+
     """
 
-    def __init__(self, options):
-        connection_type = options.get('connection_type')
-        if connection_type is None or connection_type == 'ssh':
-            self.delegate = _SshRemoteShell(options)
-        elif connection_type == 'rpc' or connection_type == 'node_agent_rpc':
-            self.delegate = _RpcRemoteShell(options)
+    def __init__(self, connect_options):
+        connection_type = get_connection_type(connect_options)
+        if connection_type == 'ssh':
+            self.delegate = _SshRemoteShell(connect_options)
+        elif connection_type == 'node_agent_rpc':
+            self.delegate = _RpcRemoteShell(connect_options)
         else:
             raise YBOpsRuntimeError("Unknown connection_type '{}'".format(connection_type))
 
     def close(self):
         self.delegate.close()
+
+    def get_host_port_user(self):
+        return self.delegate.get_host_port_user()
 
     def run_command_raw(self, command, **kwargs):
         return self.delegate.run_command_raw(command, **kwargs)
@@ -73,20 +188,23 @@ class _SshRemoteShell(object):
     """_SshRemoteShell class is used run remote shell commands against nodes using paramiko.
     """
 
-    def __init__(self, options):
-        assert options["ssh_user"] is not None, 'ssh_user is required option'
-        assert options["ssh_host"] is not None, 'ssh_host is required option'
-        assert options["ssh_port"] is not None, 'ssh_port is required option'
-        assert options["private_key_file"] is not None, 'private_key_file is required option'
+    def __init__(self, connect_options):
+        assert connect_options["ssh_user"] is not None, 'ssh_user is required'
+        assert connect_options["ssh_host"] is not None, 'ssh_host is required'
+        assert connect_options["ssh_port"] is not None, 'ssh_port is required'
+        assert connect_options["private_key_file"] is not None, 'private_key_file is required'
 
-        self.ssh_conn = SSHClient(ssh2_enabled=options["ssh2_enabled"])
+        self.ssh_conn = SSHClient(ssh2_enabled=connect_options["ssh2_enabled"])
         self.ssh_conn.connect(
-            options.get("ssh_host"),
-            options.get("ssh_user"),
-            options.get("private_key_file"),
-            options.get("ssh_port")
+            connect_options.get("ssh_host"),
+            connect_options.get("ssh_user"),
+            connect_options.get("private_key_file"),
+            connect_options.get("ssh_port")
         )
         self.connected = True
+
+    def get_host_port_user(self):
+        return get_host_port_user(self.connect_options)
 
     def close(self):
         if self.connected:
@@ -106,7 +224,7 @@ class _SshRemoteShell(object):
         return result
 
     def run_command(self, command, **kwargs):
-        result = self.run_command_raw(command)
+        result = self.run_command_raw(command, **kwargs)
 
         if result.exited:
             cmd = ' '.join(command).encode('utf-8') if isinstance(command, list) else command
@@ -147,16 +265,19 @@ class _RpcRemoteShell(object):
     """_RpcRemoteShell class is used run remote shell commands against nodes using gRPC.
     """
 
-    def __init__(self, options):
-        client_options = {
-            "user": options.get("node_agent_user"),
-            "ip": options.get("node_agent_ip"),
-            "port": options.get("node_agent_port"),
-            "cert_path": options.get("node_agent_cert_path"),
-            "auth_token": options.get("node_agent_auth_token"),
+    def __init__(self, connect_options):
+        client_connect_options = {
+            "user": connect_options.get("node_agent_user"),
+            "ip": connect_options.get("node_agent_ip"),
+            "port": connect_options.get("node_agent_port"),
+            "cert_path": connect_options.get("node_agent_cert_path"),
+            "auth_token": connect_options.get("node_agent_auth_token"),
         }
-        self.client = RpcShellClient(client_options)
+        self.client = RpcShellClient(client_connect_options)
         self.client.connect()
+
+    def get_host_port_user(self):
+        return get_host_port_user(self.connect_options)
 
     def close(self):
         self.client.close()

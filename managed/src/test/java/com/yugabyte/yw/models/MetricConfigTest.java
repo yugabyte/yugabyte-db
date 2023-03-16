@@ -165,6 +165,29 @@ public class MetricConfigTest extends FakeDBApplication {
   }
 
   @Test
+  public void testQuantileMetric() {
+    JsonNode configJson =
+        Json.parse(
+            "{\"metric\": \"rpc_latency\", \"function\": \"quantile_over_time.99|sum\","
+                + "\"range\": true,"
+                + "\"filters\": {\"export_type\": \"tserver_export\","
+                + "\"service_type\": \"TabletServerService\","
+                + "\"service_method\": \"Read|Write\"},"
+                + "\"group_by\": \"service_method\"}");
+    MetricConfig metricConfig = MetricConfig.create("metric", configJson);
+    metricConfig.save();
+    String query = metricConfig.getConfig().getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
+    assertThat(
+        query,
+        allOf(
+            notNullValue(),
+            equalTo(
+                "sum(quantile_over_time(0.99, rpc_latency{export_type=\"tserver_export\", "
+                    + "service_type=\"TabletServerService\", service_method=~\"Read|Write\"}[60s]))"
+                    + " by (service_method)")));
+  }
+
+  @Test
   public void testTopKQuery() {
     JsonNode configJson =
         Json.parse(

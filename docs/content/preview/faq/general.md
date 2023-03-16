@@ -107,36 +107,36 @@ YugabyteDB feature highlights are listed below.
 
 #### Built-in enterprise features
 
-- Starting in [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is the only open-source distributed SQL database to have built-in enterprise features such as Distributed Backups, Data Encryption, and Read Replicas. New features such as [Change Data Capture (CDC)](../../architecture/docdb-replication/change-data-capture/) and [2 Data Center Deployments](../../architecture/docdb-replication/async-replication/) are also included in open source.
+- Starting in [v1.3](https://www.yugabyte.com/blog/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is the only open-source distributed SQL database to have built-in enterprise features such as Distributed Backups, Data Encryption, and Read Replicas. New features such as [Change Data Capture (CDC)](../../architecture/docdb-replication/change-data-capture/) and [2 Data Center Deployments](../../architecture/docdb-replication/async-replication/) are also included in open source.
 
 ### How many major releases YugabyteDB has had so far?
 
 YugabyteDB has had the following major (stable) releases:
 
-- [v2.16]() in December 2022
-- [v2.14](https://blog.yugabyte.com/announcing-yugabytedb-2-14-higher-performance-and-security/) in July 2022.
-- [v2.12](https://blog.yugabyte.com/announcing-yugabytedb-2-12/) in February 2022. (There was no v2.10 release.)
-- [v2.8](https://blog.yugabyte.com/announcing-yugabytedb-2-8/) in November 2021.
-- [v2.6](https://blog.yugabyte.com/announcing-yugabytedb-2-6/) in July 2021.
-- [v2.4](https://blog.yugabyte.com/announcing-yugabytedb-2-4/) in January 2021.
-- [v2.2](https://blog.yugabyte.com/announcing-yugabytedb-2-2-distributed-sql-made-easy/) in July 2020.
-- [v2.1](https://blog.yugabyte.com/yugabytedb-2-1-is-ga-scaling-new-heights-with-distributed-sql/) in February 2020.
-- [v2.0](https://blog.yugabyte.com/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/ ) in September 2019.
-- [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/) in July 2019.
-- [v1.2](https://blog.yugabyte.com/announcing-yugabyte-db-1-2-company-update-jepsen-distributed-sql/) in March 2019.
-- [v1.1](https://blog.yugabyte.com/announcing-yugabyte-db-1-1-and-company-update/) in September 2018.
-- [v1.0](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-%F0%9F%8D%BE-%F0%9F%8E%89/) in May 2018.
-- [v0.9 Beta](https://blog.yugabyte.com/yugabyte-has-arrived/) in November 2017.
+- [v2.16](https://www.yugabyte.com/blog/yugabytedb-216/) in December 2022
+- [v2.14](https://www.yugabyte.com/blog/announcing-yugabytedb-2-14-higher-performance-and-security/) in July 2022.
+- [v2.12](https://www.yugabyte.com/blog/announcing-yugabytedb-2-12/) in February 2022. (There was no v2.10 release.)
+- [v2.8](https://www.yugabyte.com/blog/announcing-yugabytedb-2-8/) in November 2021.
+- [v2.6](https://www.yugabyte.com/blog/announcing-yugabytedb-2-6/) in July 2021.
+- [v2.4](https://www.yugabyte.com/blog/announcing-yugabytedb-2-4/) in January 2021.
+- [v2.2](https://www.yugabyte.com/blog/announcing-yugabytedb-2-2-distributed-sql-made-easy/) in July 2020.
+- [v2.1](https://www.yugabyte.com/blog/yugabytedb-2-1-is-ga-scaling-new-heights-with-distributed-sql/) in February 2020.
+- [v2.0](https://www.yugabyte.com/blog/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/) in September 2019.
+- [v1.3](https://www.yugabyte.com/blog/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/) in July 2019.
+- [v1.2](https://www.yugabyte.com/blog/announcing-yugabyte-db-1-2-company-update-jepsen-distributed-sql/) in March 2019.
+- [v1.1](https://www.yugabyte.com/blog/announcing-yugabyte-db-1-1-and-company-update/) in September 2018.
+- [v1.0](https://www.yugabyte.com/blog/announcing-yugabyte-db-1-0) in May 2018.
+- [v0.9 Beta](https://www.yugabyte.com/blog/yugabyte-has-arrived/) in November 2017.
 
 Releases, including upcoming releases, are outlined on the [Releases Overview](/preview/releases/) page. The roadmap for this release can be found on [GitHub](https://github.com/yugabyte/yugabyte-db#whats-being-worked-on).
 
 ### Is YugabyteDB open source?
 
-Starting with [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is 100% open source. It is licensed under Apache 2.0 and the source is available on [GitHub](https://github.com/yugabyte/yugabyte-db).
+Starting with [v1.3](https://www.yugabyte.com/blog/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is 100% open source. It is licensed under Apache 2.0 and the source is available on [GitHub](https://github.com/yugabyte/yugabyte-db).
 
 ### Can I deploy YugabyteDB to production?
 
-Yes, both YugabyteDB APIs are production ready. [YCQL](https://blog.yugabyte.com/yugabyte-db-1-0-a-peek-under-the-hood/) achieved this status starting with v1.0 in May 2018 while [YSQL](https://blog.yugabyte.com/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/) became production ready starting v2.0 in September 2019.
+Yes, both YugabyteDB APIs are production ready. [YCQL](https://www.yugabyte.com/blog/yugabyte-db-1-0-a-peek-under-the-hood/) achieved this status starting with v1.0 in May 2018 while [YSQL](https://www.yugabyte.com/blog/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/) became production ready starting v2.0 in September 2019.
 
 ### Which companies are currently using YugabyteDB in production?
 
@@ -188,7 +188,7 @@ Examples: Amazon Aurora, Google Cloud Spanner, CockroachDB, TiDB
 
 - None
 
-Learn more: [What is Distributed SQL?](https://blog.yugabyte.com/what-is-distributed-sql/)
+Learn more: [What is Distributed SQL?](https://www.yugabyte.com/blog/what-is-distributed-sql/)
 
 #### Monolithic SQL
 
@@ -204,7 +204,7 @@ Examples: PostgreSQL, MySQL, Oracle, Amazon Aurora.
 
 - Transactions and JOINs can now span multiple nodes, thereby increasing latency.
 
-Learn more: [Distributed PostgreSQL on a Google Spanner Architecture – Query Layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-query-layer/)
+Learn more: [Distributed PostgreSQL on a Google Spanner Architecture – Query Layer](https://www.yugabyte.com/blog/distributed-postgresql-on-a-google-spanner-architecture-query-layer/)
 
 #### Traditional NewSQL
 
@@ -220,7 +220,7 @@ Examples: Vitess, Citus
 
 - None
 
-Learn more: [Rise of Globally Distributed SQL Databases – Redefining Transactional Stores for Cloud Native Era](https://blog.yugabyte.com/rise-of-globally-distributed-sql-databases-redefining-transactional-stores-for-cloud-native-era/)
+Learn more: [Rise of Globally Distributed SQL Databases – Redefining Transactional Stores for Cloud Native Era](https://www.yugabyte.com/blog/rise-of-globally-distributed-sql-databases-redefining-transactional-stores-for-cloud-native-era/)
 
 #### Transactional NoSQL
 
@@ -237,7 +237,7 @@ Examples: MongoDB, Amazon DynamoDB, FoundationDB, Azure Cosmos DB.
 
 - None
 
-Learn more: [Why are NoSQL Databases Becoming Transactional?](https://blog.yugabyte.com/nosql-databases-becoming-transactional-mongodb-dynamodb-faunadb-cosmosdb/)
+Learn more: [Why are NoSQL Databases Becoming Transactional?](https://www.yugabyte.com/blog/nosql-databases-becoming-transactional-mongodb-dynamodb-faunadb-cosmosdb/)
 
 #### Eventually Consistent NoSQL
 
@@ -254,7 +254,7 @@ Examples: Apache Cassandra, Couchbase.
 
 - Extremely short unavailability during the leader election time for all shard leaders lost during a node failure or network partition.
 
-Learn more: [Apache Cassandra: The Truth Behind Tunable Consistency, Lightweight Transactions & Secondary Indexes](https://blog.yugabyte.com/apache-cassandra-lightweight-transactions-secondary-indexes-tunable-consistency/)
+Learn more: [Apache Cassandra: The Truth Behind Tunable Consistency, Lightweight Transactions & Secondary Indexes](https://www.yugabyte.com/blog/apache-cassandra-lightweight-transactions-secondary-indexes-tunable-consistency/)
 
 ### When is YugabyteDB a good fit?
 
@@ -278,11 +278,11 @@ YugabyteDB is not a good fit for traditional Online Analytical Processing (OLAP)
 
 [Netflix Data Benchmark (NDBench)](https://github.com/Netflix/ndbench) is another publicly available, cloud-enabled benchmark tool for data store systems. We ran NDBench against YugabyteDB for 7 days and observed P99 and P995 latencies that were orders of magnitude less than that of Apache Cassandra.
 
-Details for both the above benchmarks are published in [Building a Strongly Consistent Cassandra with Better Performance](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
+Details for both the above benchmarks are published in [Building a Strongly Consistent Cassandra with Better Performance](https://www.yugabyte.com/blog/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
 
 ### What about correctness testing?
 
-[Jepsen](https://jepsen.io/) is a widely used framework to evaluate the behavior of databases under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. YugabyteDB 1.2 passes [formal Jepsen testing](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/).
+[Jepsen](https://jepsen.io/) is a widely used framework to evaluate the behavior of databases under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. YugabyteDB 1.2 passes [formal Jepsen testing](https://www.yugabyte.com/blog/yugabyte-db-1-2-passes-jepsen-testing/).
 
 ### How does YugabyteDB compare to other SQL and NoSQL databases?
 
@@ -297,11 +297,11 @@ See [Compare YugabyteDB to other databases](../comparisons/)
 
 ### How does YugabyteDB's common document store work?
 
-[DocDB](../../architecture/docdb/), YugabyteDB's distributed document store is common across all APIs, and built using a custom integration of Raft replication, distributed ACID transactions, and the RocksDB storage engine. Specifically, DocDB enhances RocksDB by transforming it from a key-value store (with only primitive data types) to a document store (with complex data types). **Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key.** DocDB's [sharding](../../architecture/docdb-sharding/sharding/), [replication/fault-tolerance](../../architecture/docdb-replication/replication/), and [distributed ACID transactions](../../architecture/transactions/distributed-txns/) architecture are all based on the [Google Spanner design](https://research.google.com/archive/spanner-osdi2012.pdf) first published in 2012. [How We Built a High Performance Document Store on RocksDB?](https://blog.yugabyte.com/how-we-built-a-high-performance-document-store-on-rocksdb/) provides an in-depth look into DocDB.
+[DocDB](../../architecture/docdb/), YugabyteDB's distributed document store is common across all APIs, and built using a custom integration of Raft replication, distributed ACID transactions, and the RocksDB storage engine. Specifically, DocDB enhances RocksDB by transforming it from a key-value store (with only primitive data types) to a document store (with complex data types). **Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key.** DocDB's [sharding](../../architecture/docdb-sharding/sharding/), [replication/fault-tolerance](../../architecture/docdb-replication/replication/), and [distributed ACID transactions](../../architecture/transactions/distributed-txns/) architecture are all based on the [Google Spanner design](https://research.google.com/archive/spanner-osdi2012.pdf) first published in 2012. [How We Built a High Performance Document Store on RocksDB?](https://www.yugabyte.com/blog/how-we-built-a-high-performance-document-store-on-rocksdb/) provides an in-depth look into DocDB.
 
 ### How can YugabyteDB be both CP and ensure high availability at the same time?
 
-In terms of the [CAP theorem](https://blog.yugabyte.com/a-for-apple-b-for-ball-c-for-cap-theorem-8e9b78600e6d), YugabyteDB is a consistent and partition-tolerant (CP) database. It ensures high availability (HA) for most practical situations even while remaining strongly consistent. While this may seem to be a violation of the CAP theorem, that is not the case. CAP treats availability as a binary option whereas YugabyteDB treats availability as a percentage that can be tuned to achieve high write availability (reads are always available as long as a single node is available).
+In terms of the [CAP theorem](https://www.yugabyte.com/blog/a-for-apple-b-for-ball-c-for-cap-theorem-8e9b78600e6d), YugabyteDB is a consistent and partition-tolerant (CP) database. It ensures high availability (HA) for most practical situations even while remaining strongly consistent. While this may seem to be a violation of the CAP theorem, that is not the case. CAP treats availability as a binary option whereas YugabyteDB treats availability as a percentage that can be tuned to achieve high write availability (reads are always available as long as a single node is available).
 
 - During network partitions or node failures, the replicas of the impacted tablets (whose leaders got partitioned out or lost) form two groups: a majority partition that can still establish a Raft consensus and a minority partition that cannot establish such a consensus (given the lack of quorum). The replicas in the majority partition elect a new leader among themselves in a matter of seconds and are ready to accept new writes after the leader election completes. For these few seconds till the new leader is elected, the DB is unable to accept new writes given the design choice of prioritizing consistency over availability. All the leader replicas in the minority partition lose their leadership during these few seconds and hence become followers.
 
@@ -311,7 +311,7 @@ In terms of the [CAP theorem](https://blog.yugabyte.com/a-for-apple-b-for-ball-c
 
 On one hand, the YugabyteDB storage and replication architecture is similar to that of [Google Cloud Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html), which is also a CP database with high write availability. While Google Cloud Spanner leverages Google's proprietary network infrastructure, YugabyteDB is designed work on commodity infrastructure used by most enterprise users. On the other hand, YugabyteDB's multi-model, multi-API, and tunable read latency approach is similar to that of [Azure Cosmos DB](https://azure.microsoft.com/en-us/blog/a-technical-overview-of-azure-cosmos-db/).
 
-A post on our blog titled [Practical Tradeoffs in Google Cloud Spanner, Azure Cosmos DB and YugabyteDB](https://blog.yugabyte.com/practical-tradeoffs-in-google-cloud-spanner-azure-cosmos-db-and-yugabyte-db/) goes through the above tradeoffs in more detail.
+A post on our blog titled [Practical Tradeoffs in Google Cloud Spanner, Azure Cosmos DB and YugabyteDB](https://www.yugabyte.com/blog/practical-tradeoffs-in-google-cloud-spanner-azure-cosmos-db-and-yugabyte-db/) goes through the above tradeoffs in more detail.
 
 ### Why is a group of YugabyteDB nodes called a universe instead of the more commonly used term clusters?
 
@@ -327,4 +327,4 @@ A YugabyteDB universe packs a lot more functionality than what people think of w
 
 Users primarily turn to YugabyteDB for scalability reasons. Consistent hash sharding is ideal for massively scalable workloads because it distributes data evenly across all the nodes in the cluster, while retaining ease of adding nodes into the cluster. Most use cases that require scalability do not need to perform range lookups on the primary key, so consistent hash sharding is the default sharding strategy for YugabyteDB. Common applications that do not need hash sharding include user identity (user IDs do not need ordering), product catalog (product IDs are not related to one another), and stock ticker data (one stock symbol is independent of all other stock symbols). For applications that benefit from range sharding, YugabyteDB lets you select that option.
 
-To learn more about sharding strategies and lessons learned, see Karthik's blog on ["Four Data Sharding Strategies We Analyzed in Building a Distributed SQL Database"](https://blog.yugabyte.com/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/).
+To learn more about sharding strategies and lessons learned, see [Four Data Sharding Strategies We Analyzed in Building a Distributed SQL Database](https://www.yugabyte.com/blog/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/).

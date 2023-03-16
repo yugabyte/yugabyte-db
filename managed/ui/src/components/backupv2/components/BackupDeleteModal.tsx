@@ -12,10 +12,10 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useMutation, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import { cancelBackup, deleteBackup, IBackup, Backup_States } from '..';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBModalForm } from '../../common/forms';
 import { YBButton } from '../../common/forms/fields';
-import { FormatUnixTimeStampTimeToTimezone } from '../common/BackupUtils';
 
 interface BackupDeleteProps {
   backupsList: IBackup[];
@@ -79,9 +79,7 @@ export const BackupDeleteModal: FC<BackupDeleteProps> = ({ backupsList, visible,
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="createTime"
-            dataFormat={(_, row: IBackup) => (
-              <FormatUnixTimeStampTimeToTimezone timestamp={row.commonBackupInfo.createTime} />
-            )}
+            dataFormat={(_, row: IBackup) => ybFormatDate(row.commonBackupInfo.createTime)}
           >
             Created At
           </TableHeaderColumn>

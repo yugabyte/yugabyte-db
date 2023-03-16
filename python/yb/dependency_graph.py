@@ -142,15 +142,15 @@ class DependencyGraphBuilder:
                      (datetime.now() - start_time).total_seconds())
 
     def find_proto_files(self) -> None:
-        for src_subtree_root in self.conf.src_dir_paths:
-            logging.info("Finding .proto files in the source tree at '{}'".format(src_subtree_root))
-            source_str = 'proto files in {}'.format(src_subtree_root)
-            for root, dirs, files in os.walk(src_subtree_root):
-                for file_name in files:
-                    if file_name.endswith('.proto'):
-                        self.dep_graph.find_or_create_node(
-                                os.path.join(root, file_name),
-                                source_str=source_str)
+        logging.info("Finding .proto files in the source tree at '{}'".format(
+                self.conf.src_dir_path))
+        source_str = 'proto files in {}'.format(self.conf.src_dir_path)
+        for root, dirs, files in os.walk(self.conf.src_dir_path):
+            for file_name in files:
+                if file_name.endswith('.proto'):
+                    self.dep_graph.find_or_create_node(
+                            os.path.join(root, file_name),
+                            source_str=source_str)
 
     def find_flex_bison_files(self) -> None:
         """

@@ -65,9 +65,7 @@ namespace kv_table_test {
 constexpr const auto kKeyColumn = "key";
 constexpr const auto kValueColumn = "value";
 
-YB_DEFINE_ENUM(Partitioning, (kHash)(kRange))
-
-void BuildSchema(Partitioning partitioning, Schema* schema);
+void BuildSchema(test::Partitioning partitioning, Schema* schema);
 
 Status CreateTable(
     const Schema& schema, int num_tablets, YBClient* client,

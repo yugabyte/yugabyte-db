@@ -206,13 +206,13 @@ Status ProcessUsedReadTime(uint64_t session_id,
     // has been chosen by master. All further reads from catalog must use same read point.
     auto catalog_read_time = op_used_read_time;
 
-    // We set global limit to local limit to avoid read restart errors because they are
+    // We set global limit to read time to avoid read restart errors because they are
     // disruptive to system catalog reads and it is not always possible to handle them there.
     // This might lead to reading slightly outdated state of the system catalog if a recently
     // committed DDL transaction used a transaction status tablet whose leader's clock is skewed
     // and is in the future compared to the master leader's clock.
     // TODO(dmitry) This situation will be handled in context of #7964.
-    catalog_read_time.global_limit = catalog_read_time.local_limit;
+    catalog_read_time.global_limit = catalog_read_time.read;
     catalog_read_time.ToPB(resp->mutable_catalog_read_time());
   }
 
@@ -243,6 +243,16 @@ Status HandleResponse(uint64_t session_id,
     return ProcessUsedReadTime(session_id, op, resp, used_read_time);
   }
 
+  if (response.error_status().size() > 0) {
+    // We do not currently expect more than one status, when we do, we need to decide how to handle
+    // them. Possible options: aggregate multiple statuses into one, discard all but one, etc.
+    DCHECK_EQ(response.error_status().size(), 1) << "Too many error statuses in the response";
+    for (const auto& pb : response.error_status()) {
+      return StatusFromPB(pb);
+    }
+  }
+
+  // Older nodes may still use deprecated fields for status, so keep legacy handling
   auto status = STATUS(
       QLError, response.error_message(), Slice(), PgsqlRequestStatus(response.status()));
 
@@ -280,12 +290,13 @@ Result<PgClientSessionOperations> PrepareOperations(
       session->Abort();
     }
   });
+  const auto read_from_followers = req->options().read_from_followers();
   for (auto& op : *req->mutable_ops()) {
     if (op.has_read()) {
       auto& read = *op.mutable_read();
       RETURN_NOT_OK(GetTable(read.table_id(), table_cache, &table));
       auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, sidecars, &read);
-      if (op.read_from_followers()) {
+      if (read_from_followers) {
         read_op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
       }
       ops.push_back(read_op);
@@ -306,6 +317,18 @@ Result<PgClientSessionOperations> PrepareOperations(
   return ops;
 }
 
+[[nodiscard]] std::vector<RefCntSlice> ExtractRowsSidecar(
+    const PgPerformResponsePB& resp, const rpc::Sidecars& sidecars) {
+  std::vector<RefCntSlice> result;
+  result.reserve(resp.responses_size());
+  for (const auto& r : resp.responses()) {
+    result.push_back(r.has_rows_data_sidecar()
+        ? sidecars.Extract(r.rows_data_sidecar())
+        : RefCntSlice());
+  }
+  return result;
+}
+
 struct PerformData {
   uint64_t session_id;
   PgPerformResponsePB* resp;
@@ -314,6 +337,7 @@ struct PerformData {
   PgTableCache* table_cache;
   PgClientSession::UsedReadTimePtr used_read_time;
   PgResponseCache::Setter cache_setter;
+  HybridTime used_in_txn_limit;
 
   void FlushDone(client::FlushStatus* flush_status) {
     auto status = CombineErrorsToStatus(flush_status->errors, flush_status->status);
@@ -324,13 +348,7 @@ struct PerformData {
       StatusToPB(status, resp->mutable_status());
     }
     if (cache_setter) {
-      std::vector<RefCntSlice> rows_data;
-      rows_data.reserve(ops.size());
-      for (const auto& op : ops) {
-        rows_data.emplace_back(context.sidecars().Extract(op->sidecar_index()));
-      }
-      cache_setter(PgResponseCache::Response{PgPerformResponsePB(*resp), std::move(rows_data)},
-                   IsFailure(!status.ok()));
+      cache_setter({status.ok(), *resp, ExtractRowsSidecar(*resp, context.sidecars())});
     }
     context.RespondSuccess();
   }
@@ -363,6 +381,15 @@ struct PerformData {
       if (op->has_sidecar()) {
         op_resp.set_rows_data_sidecar(narrow_cast<int>(op->sidecar_index()));
       }
+      if (resp->has_catalog_read_time() && op_resp.has_paging_state()) {
+        // Prevent further paging reads from read restart errors.
+        // See the ProcessUsedReadTime(...) function for details.
+        *op_resp.mutable_paging_state()->mutable_read_time() = resp->catalog_read_time();
+      }
+      op_resp.set_partition_list_version(op->table()->GetPartitionListVersion());
+    }
+    if (used_in_txn_limit) {
+      resp->set_used_in_txn_limit_ht(used_in_txn_limit.ToUint64());
     }
 
     return Status::OK();
@@ -375,6 +402,14 @@ client::YBSessionPtr CreateSession(
   result->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
   result->set_allow_local_calls_in_curr_thread(false);
   return result;
+}
+
+HybridTime GetInTxnLimit(const PgPerformOptionsPB& options, ClockBase* clock) {
+  if (!options.has_in_txn_limit_ht()) {
+    return HybridTime();
+  }
+  auto in_txn_limit = HybridTime::FromPB(options.in_txn_limit_ht().value());
+  return in_txn_limit ? in_txn_limit : clock->Now();
 }
 
 } // namespace
@@ -719,17 +754,19 @@ Status PgClientSession::FinishTransaction(
 
 Status PgClientSession::Perform(
     PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
+  VLOG_WITH_PREFIX(5) << "Perform req=" << req->ShortDebugString();
   PgResponseCache::Setter setter;
   auto& options = *req->mutable_options();
   if (options.has_caching_info()) {
-    setter = response_cache_.Get(
-        std::move(*options.mutable_caching_info()->mutable_key()), resp, context);
+    setter = VERIFY_RESULT(response_cache_.Get(options.mutable_caching_info(), resp, context));
     if (!setter) {
       return Status::OK();
     }
   }
 
-  auto session_info = VERIFY_RESULT(SetupSession(*req, context->GetClientDeadline()));
+  const auto in_txn_limit = GetInTxnLimit(options, clock_.get());
+  VLOG_WITH_PREFIX(5) << "using in_txn_limit_ht: " << in_txn_limit;
+  auto session_info = VERIFY_RESULT(SetupSession(*req, context->GetClientDeadline(), in_txn_limit));
   auto* session = session_info.first.session.get();
   auto ops = VERIFY_RESULT(PrepareOperations(req, session, &context->sidecars(), &table_cache_));
   auto ops_count = ops.size();
@@ -740,7 +777,8 @@ Status PgClientSession::Perform(
     .ops = std::move(ops),
     .table_cache = &table_cache_,
     .used_read_time = session_info.second,
-    .cache_setter = std::move(setter)
+    .cache_setter = std::move(setter),
+    .used_in_txn_limit = in_txn_limit
   });
 
   auto transaction = session_info.first.transaction;
@@ -818,10 +856,14 @@ Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
 }
 
 Result<std::pair<PgClientSession::SessionData, PgClientSession::UsedReadTimePtr>>
-PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint deadline) {
+PgClientSession::SetupSession(
+    const PgPerformRequestPB& req, CoarseTimePoint deadline, HybridTime in_txn_limit) {
   const auto& options = req.options();
   PgClientSessionKind kind;
   if (options.use_catalog_session()) {
+    SCHECK(!options.read_from_followers(),
+           InvalidArgument,
+           "Reading catalog from followers is not allowed");
     kind = PgClientSessionKind::kCatalog;
     EnsureSession(kind);
   } else if (options.ddl_mode()) {
@@ -886,12 +928,12 @@ PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint dea
     session->DeferReadPoint();
   }
 
+  // TODO: Reset in_txn_limit which might be on session from past Perform? Not resetting will not
+  // cause any issue, but should we reset for safety?
   if (!options.ddl_mode() && !options.use_catalog_session()) {
     txn_serial_no_ = options.txn_serial_no();
-
-    const auto in_txn_limit = HybridTime::FromPB(options.in_txn_limit_ht());
     if (in_txn_limit) {
-      VLOG_WITH_PREFIX(3) << "In txn limit: " << in_txn_limit;
+      // TODO: Shouldn't the below logic for DDL transactions as well?
       session->SetInTxnLimit(in_txn_limit);
     }
   }
@@ -1126,8 +1168,8 @@ Status PgClientSession::FetchSequenceTuple(
   auto psql_write = client::YBPgsqlWriteOp::NewFetchSequence(table, &context->sidecars());
 
   auto* write_request = psql_write->mutable_request();
-  write_request->set_ysql_catalog_version(req.ysql_catalog_version());
-
+  RETURN_NOT_OK(
+      (SetCatalogVersion<PgFetchSequenceTupleRequestPB, PgsqlWriteRequestPB>(req, write_request)));
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.seq_oid());
 

@@ -8,6 +8,8 @@ import {
   REGISTER_RESPONSE,
   FETCH_PASSWORD_POLICY,
   FETCH_PASSWORD_POLICY_RESPONSE,
+  FETCH_ADMIN_NOTIFICATIONS,
+  FETCH_ADMIN_NOTIFICATIONS_RESPONSE,
   LOGIN,
   LOGIN_RESPONSE,
   INSECURE_LOGIN,
@@ -121,6 +123,7 @@ const INITIAL_STATE = {
   currentUser: getInitialState({}),
   authToken: getInitialState({}),
   apiToken: getInitialState(null),
+  adminNotifications: getInitialState({}),
   tasks: [],
   status: null,
   error: null,
@@ -178,6 +181,11 @@ export default function (state = INITIAL_STATE, action) {
       return { ...state, passwordValidationInfo: {} };
     case FETCH_PASSWORD_POLICY_RESPONSE:
       return { ...state, passwordValidationInfo: action.payload.data };
+
+    case FETCH_ADMIN_NOTIFICATIONS:
+      return setLoadingState(state, 'adminNotifications', {});
+    case FETCH_ADMIN_NOTIFICATIONS_RESPONSE:
+      return setPromiseResponse(state, 'adminNotifications', action);
 
     case LOGIN:
       return setLoadingState(state, 'authToken', {});
@@ -399,9 +407,9 @@ export default function (state = INITIAL_STATE, action) {
     case FETCH_RUNTIME_CONFIGS_RESPONSE:
       return setPromiseResponse(state, 'runtimeConfigs', action);
     case FETCH_RUNTIME_CONFIGS_KEY_INFO:
-      return setLoadingState(state, 'runtimeConfigsKeyInfo', []);
+      return setLoadingState(state, 'runtimeConfigsKeyMetadata', []);
     case FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE:
-      return setPromiseResponse(state, 'runtimeConfigsKeyInfo', action);
+      return setPromiseResponse(state, 'runtimeConfigsKeyMetadata', action);
     case RESET_RUNTIME_CONFIGS:
       return setLoadingState(state, 'runtimeConfigs', []);
     case SET_RUNTIME_CONFIG:

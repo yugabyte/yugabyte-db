@@ -133,11 +133,15 @@ public class AlertDefinition extends Model {
           .getLabels()
           .forEach((label, value) -> putLabel(effectiveLabels, label, value));
     }
+    if (configuration.getLabels() != null) {
+      configuration.getLabels().forEach((label, value) -> putLabel(effectiveLabels, label, value));
+    }
     // Don't allow to override default labels with template settings
     putLabel(
         effectiveLabels, KnownAlertLabels.CONFIGURATION_UUID, configuration.getUuid().toString());
     putLabel(
         effectiveLabels, KnownAlertLabels.CONFIGURATION_TYPE, configuration.getTargetType().name());
+    putLabel(effectiveLabels, KnownAlertLabels.ALERT_TYPE, configuration.getTemplate().name());
     putLabel(effectiveLabels, KnownAlertLabels.DEFINITION_UUID, uuid.toString());
     putLabel(effectiveLabels, KnownAlertLabels.DEFINITION_NAME, configuration.getName());
     putLabel(effectiveLabels, KnownAlertLabels.CUSTOMER_UUID, customerUUID.toString());

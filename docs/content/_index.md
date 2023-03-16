@@ -24,7 +24,7 @@ resources:
     title="Get Started in the Cloud"
     description="Create your first cluster, explore distributed SQL, and build a sample application in 15 minutes. No credit card required."
     buttonText="Get started"
-    buttonUrl="/preview/quick-start-yugabytedb-managed/"
+    buttonUrl="/preview/yugabyte-cloud/cloud-quickstart/"
     imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
   >}}
 

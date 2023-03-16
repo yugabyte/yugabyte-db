@@ -118,7 +118,7 @@ public class Universe extends Model {
   // Tracks when the universe was created.
   @Constraints.Required
   @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   public Date creationDate;
 
   // The universe name.
@@ -739,7 +739,7 @@ public class Universe extends Model {
     UniverseDefinitionTaskParams details = this.getUniverseDetails();
     if (details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt) {
       // This means there must be a root CA associated with it.
-      if (details.rootAndClientRootCASame) {
+      if (details.rootAndClientRootCASame && details.rootCA != null) {
         return CertificateInfo.get(details.rootCA).certificate;
       }
       return CertificateInfo.get(details.getClientRootCA()).certificate;
@@ -929,6 +929,7 @@ public class Universe extends Model {
    * @return the host (private_ip) and port of the current master leader in the universe or null if
    *     not found
    */
+  @JsonIgnore
   public HostAndPort getMasterLeader() {
     final String masterAddresses = getMasterAddresses();
     final String cert = getCertificateNodetoNode();
@@ -948,6 +949,7 @@ public class Universe extends Model {
    *
    * @return NodeDetails of the master leader
    */
+  @JsonIgnore
   public NodeDetails getMasterLeaderNode() {
     return getNodeByPrivateIP(getMasterLeaderHostText());
   }
@@ -958,6 +960,7 @@ public class Universe extends Model {
    * @return a String of the private_ip of the current master leader in the universe or an empty
    *     string if not found
    */
+  @JsonIgnore
   public String getMasterLeaderHostText() {
     final HostAndPort masterLeader = getMasterLeader();
     if (masterLeader == null) return "";
@@ -1077,13 +1080,14 @@ public class Universe extends Model {
     return universe;
   }
 
-  // Allow https when software version given is >= 2.17.1.0-b14.
+  // Allow https when software version given is >= 2.17.1.0-b14 and isNodeUIHttpsEnabled is true.
   // Invalid software versions will not allow https.
   // compareYbVersions() returns 0 if incorrect software version is passed, hence the strictly
   // greater.
   public static boolean shouldEnableHttpsUI(
-      boolean enableNodeToNodeEncrypt, String ybSoftwareVersion) {
-    return enableNodeToNodeEncrypt
+      boolean enableNodeToNodeEncrypt, String ybSoftwareVersion, boolean isNodeUIHttpsEnabled) {
+    return isNodeUIHttpsEnabled
+        && enableNodeToNodeEncrypt
         && (Util.compareYbVersions(ybSoftwareVersion, "2.17.1.0-b13", true) > 0);
   }
 }

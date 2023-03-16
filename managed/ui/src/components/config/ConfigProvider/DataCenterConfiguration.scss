@@ -1,13 +1,26 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../_style/colors.scss';
+@use "sass:color";
+@use '../../../_style/colors.scss';
+@use '../../../_style/mixins.scss';
 
 #config-tab-panel .config-tabs .tab-content {
   min-height: 400px;
   padding-top: 20px;
 
   .tab-pane {
-    padding-bottom: 60px;
+    padding-bottom: 80px;
+  }
+}
+
+#cloud-config-tab-panel.config-tabs.redesign .tab-content {
+  min-height: 400px;
+  padding: 0;
+
+  background-color: colors.$YB_BACKGROUND;
+
+  .tab-pane {
+    padding-bottom: 0px;
   }
 }
 
@@ -42,7 +55,7 @@
 }
 
 .provider-config-container .heading-text {
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
 }
 
 .detail-text {
@@ -111,7 +124,6 @@
       width: max-content;
       padding: 10px 15px;
     }
-
   }
 
   .btn-add-region {
@@ -119,8 +131,8 @@
     width: 100%;
     margin: 0 auto;
     height: 60px;
-    border: 1px dotted desaturate(rgba($YB_VIOLET, 0.35), 20%);
-    color: $YB_ORANGE;
+    border: 1px dotted color.adjust(rgba(colors.$YB_VIOLET, 0.35), $saturation: -20%);
+    color: colors.$YB_ORANGE;
     font-weight: 400;
 
     &:focus {
@@ -128,7 +140,7 @@
     }
 
     &:hover {
-      @include transition(0.3s);
+      @include mixins.transition(0.3s);
       transform: scale(1.01, 1.01);
       background-color: #fff;
       transform-origin: 50% 50%;
@@ -139,7 +151,7 @@
     .btn-icon {
       position: relative;
       display: inline-block;
-      background-color: $YB_ORANGE;
+      background-color: colors.$YB_ORANGE;
       height: 30px;
       width: 30px;
       font-weight: 200;
@@ -161,11 +173,11 @@
     }
 
     &.has-error {
-      border: 1px solid desaturate($YB_ERROR_TEXT_COLOR, 20%);
+      border: 1px solid color.adjust(colors.$YB_ERROR_TEXT_COLOR, $saturation: -20%);
     }
 
     & + .standart-error {
-      color: $YB_ERROR_TEXT_COLOR;
+      color: colors.$YB_ERROR_TEXT_COLOR;
       display: block;
       margin-top: 5px;
       margin-bottom: 10px;
@@ -183,7 +195,7 @@
       display: table-row;
       margin-left: 10px;
       margin-right: 10px;
-      @include transition(0.15s);
+      @include mixins.transition(0.15s);
       border-radius: 7px;
       font-size: 14px;
 
@@ -204,7 +216,7 @@
       }
 
       &:not(:first-child) {
-        background-color: $YB_BACKGROUND;
+        background-color: colors.$YB_BACKGROUND;
 
         div {
           padding-top: 6px;
@@ -213,7 +225,7 @@
 
         & > *:first-child * {
           font-weight: 700;
-          color: $YB_ORANGE !important;
+          color: colors.$YB_ORANGE !important;
         }
       }
 
@@ -222,7 +234,7 @@
         z-index: 2;
         cursor: pointer;
         padding: 0 10px;
-        @include transition(0.3s);
+        @include mixins.transition(0.3s);
         transform: scale(1.01, 1.01);
         background-color: #fff;
         transform-origin: 50% 50%;
@@ -297,7 +309,7 @@
 }
 
 .save-btn {
-  background-color: $YB_ORANGE;
+  background-color: colors.$YB_ORANGE;
   color: white;
   border: none;
   float: right;
@@ -312,21 +324,21 @@
 }
 
 .delete-btn {
-  background-color: $YB_FAIL_COLOR;
+  background-color: colors.$YB_FAIL_COLOR;
   border-color: transparent;
   color: white;
 
   i {
-    color: $YB_FAIL_COLOR_ICON;
+    color: colors.$YB_FAIL_COLOR_ICON;
   }
 
   &:hover {
     color: white;
-    background-color: darken($YB_FAIL_COLOR, 5%) !important;
+    background-color: color.adjust(colors.$YB_FAIL_COLOR, $lightness: -5%) !important;
     border-color: transparent;
 
     i {
-      color: $YB_FAIL_COLOR_DARK;
+      color: colors.$YB_FAIL_COLOR_DARK;
     }
   }
 }
@@ -351,7 +363,7 @@
 .host-current-file-container {
   font-size: 18px;
   font-weight: 500;
-  color: $YB_DARK_GRAY;
+  color: colors.$YB_DARK_GRAY;
   margin-top: 6px;
   padding: 2px 14px;
 }
@@ -488,7 +500,7 @@
     font-size: inherit;
 
     .fa-ban {
-      color: $YB_FAIL_COLOR;
+      color: colors.$YB_FAIL_COLOR;
     }
   }
 

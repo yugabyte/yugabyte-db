@@ -2169,6 +2169,8 @@ check_log_statement(List *stmt_list)
 /*
  * check_log_duration
  *		Determine whether current command's duration should be logged
+ *		We also check if this statement in this transaction must be logged
+ *		(regardless of its duration).
  *
  * Returns:
  *		0 if no logging is needed
@@ -2184,12 +2186,15 @@ check_log_statement(List *stmt_list)
 int
 check_log_duration(char *msec_str, bool was_logged)
 {
-	if (log_duration || log_min_duration_statement >= 0)
+	if (log_duration || log_min_duration_sample >= 0 ||
+		log_min_duration_statement >= 0 || xact_is_sampled)
 	{
 		long		secs;
 		int			usecs;
 		int			msecs;
-		bool		exceeded;
+		bool		exceeded_duration;
+		bool 		exceeded_sample_duration;
+		bool		in_sample = false;
 
 		TimestampDifference(GetCurrentStatementStartTimestamp(),
 							GetCurrentTimestamp(),
@@ -2197,20 +2202,36 @@ check_log_duration(char *msec_str, bool was_logged)
 		msecs = usecs / 1000;
 
 		/*
-		 * This odd-looking test for log_min_duration_statement being exceeded
-		 * is designed to avoid integer overflow with very long durations:
-		 * don't compute secs * 1000 until we've verified it will fit in int.
+		 * This odd-looking test for log_min_duration_* being exceeded is
+		 * designed to avoid integer overflow with very long durations: don't
+		 * compute secs * 1000 until we've verified it will fit in int.
 		 */
-		exceeded = (log_min_duration_statement == 0 ||
-					(log_min_duration_statement > 0 &&
-					 (secs > log_min_duration_statement / 1000 ||
-					  secs * 1000 + msecs >= log_min_duration_statement)));
+		exceeded_duration = (log_min_duration_statement == 0 ||
+							 (log_min_duration_statement > 0 &&
+					 		  (secs > log_min_duration_statement / 1000 ||
+					  		   secs * 1000 + msecs >= log_min_duration_statement)));
 
-		if (exceeded || log_duration)
+		exceeded_sample_duration = (log_min_duration_sample == 0 ||
+									(log_min_duration_sample > 0 &&
+									 (secs > log_min_duration_sample / 1000 ||
+									  secs * 1000 + msecs >= log_min_duration_sample)));
+
+		/*
+		 * Do not log if log_statement_sample_rate = 0. Log a sample if
+		 * log_statement_sample_rate <= 1 and avoid unecessary random() call
+		 * if log_statement_sample_rate = 1.
+		 */
+
+		if (exceeded_sample_duration)
+			in_sample = log_statement_sample_rate != 0 &&
+				(log_statement_sample_rate == 1 ||
+				 random() <= log_statement_sample_rate * MAX_RANDOM_VALUE);
+
+		if (exceeded_duration || in_sample || log_duration || xact_is_sampled)
 		{
 			snprintf(msec_str, 32, "%ld.%03d",
 					 secs * 1000 + msecs, usecs % 1000);
-			if (exceeded && !was_logged)
+			if ((exceeded_duration || in_sample || xact_is_sampled) && !was_logged)
 				return 2;
 			else
 				return 1;
@@ -2682,6 +2703,8 @@ quickdie(SIGNAL_ARGS)
 	 * Ideally this should be ereport(FATAL), but then we'd not get control
 	 * back...
 	 */
+
+#ifndef THREAD_SANITIZER
 	ereport(WARNING,
 			(errcode(ERRCODE_CRASH_SHUTDOWN),
 			 errmsg("terminating connection because of crash of another server process"),
@@ -2691,10 +2714,7 @@ quickdie(SIGNAL_ARGS)
 					   " shared memory."),
 			 errhint("In a moment you should be able to reconnect to the"
 					 " database and repeat your command.")));
-
-	if (IsYugaByteEnabled()) {
-		YBOnPostgresBackendShutdown();
-	}
+#endif
 
 	/*
 	 * We DO NOT want to run proc_exit() or atexit() callbacks -- we're here
@@ -2729,9 +2749,8 @@ die(SIGNAL_ARGS)
 		ProcDiePending = true;
 	}
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
 		YBCInterruptPgGate();
-	}
 
 	/* If we're still here, waken anything waiting on the process latch */
 	SetLatch(MyLatch);
@@ -3675,33 +3694,13 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 #endif
 }
 
-static void
-YbPreloadRelCacheHelper()
-{
-	const uint64_t catalog_master_version =
-		YbGetCatalogCacheVersionForTablePrefetching();
-	YBCPgResetCatalogReadTime();
-	YBCStartSysTablePrefetching(catalog_master_version);
-	PG_TRY();
-	{
-		YBPreloadRelCache();
-	}
-	PG_CATCH();
-	{
-		YBCStopSysTablePrefetching();
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-	YBCStopSysTablePrefetching();
-}
-
 /*
  * Reload the postgres caches and update the cache version.
  * Note: if catalog changes sneaked in since getting the
  * version it is unfortunate but ok. The master version will have
  * changed too (making our version number obsolete) so we will just end
  * up needing to do another cache refresh later.
- * See the comment for yb_catalog_cache_version in 'pg_yb_utils.c' for
+ * See the comment for yb_catalog_cache_version in 'pg_yb_utils.h' for
  * more details.
  */
 static void YBRefreshCache()
@@ -3742,7 +3741,7 @@ static void YBRefreshCache()
 	ResetCatalogCaches();
 	CallSystemCacheCallbacks();
 
-	YbPreloadRelCacheHelper();
+	YBPreloadRelCache();
 
 	/* Also invalidate the pggate cache. */
 	HandleYBStatus(YBCPgInvalidateCache());
@@ -5160,6 +5159,9 @@ PostgresMain(int argc, char *argv[],
 
 				set_ps_display("idle", false);
 				pgstat_report_activity(STATE_IDLE, NULL);
+
+				if (IsYugaByteEnabled())
+					yb_pgstat_set_has_catalog_version(false);
 			}
 
 			ReadyForQuery(whereToSendOutput);
@@ -5217,9 +5219,15 @@ PostgresMain(int argc, char *argv[],
 		if (ignore_till_sync && firstchar != EOF)
 			continue;
 
-		if (IsYugaByteEnabled()) {
+		if (IsYugaByteEnabled())
+		{
+			yb_pgstat_set_has_catalog_version(true);
 			YBCPgResetCatalogReadTime();
 			YBCheckSharedCatalogCacheVersion();
+			yb_run_with_explain_analyze = false;
+			if (IsYsqlUpgrade &&
+				yb_catalog_version_type != CATALOG_VERSION_CATALOG_TABLE)
+				yb_catalog_version_type = CATALOG_VERSION_UNSET;
 		}
 
 		switch (firstchar)

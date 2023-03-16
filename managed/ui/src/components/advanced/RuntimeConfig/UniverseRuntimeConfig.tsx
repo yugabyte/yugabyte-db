@@ -3,20 +3,14 @@ import { MenuItem, Dropdown } from 'react-bootstrap';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
 import { fetchUniversesList } from '../../../actions/xClusterReplication';
-import { RunTimeConfigScope } from '../../../redesign/helpers/dtos';
+import { RunTimeConfigScope, RuntimeConfigScopeProps } from '../../../redesign/utils/dtos';
 import { ConfigData } from '../ConfigData';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 
 import '../AdvancedConfig.scss';
 
-interface UniverseRuntimeConfigProps {
-  fetchRuntimeConfigs: (scope?: string) => void;
-  setRuntimeConfig: (key: string, value: string, scope?: string) => void;
-  deleteRunTimeConfig: (key: string, scope?: string) => void;
-  resetRuntimeConfigs: () => void;
-}
-
-export const UniverseRuntimeConfig: FC<UniverseRuntimeConfigProps> = ({
+export const UniverseRuntimeConfig: FC<RuntimeConfigScopeProps> = ({
+  configTagFilter,
   fetchRuntimeConfigs,
   setRuntimeConfig,
   deleteRunTimeConfig,
@@ -101,6 +95,7 @@ export const UniverseRuntimeConfig: FC<UniverseRuntimeConfigProps> = ({
         deleteRunTimeConfig={deleteRunTimeConfig}
         scope={RunTimeConfigScope.UNIVERSE}
         universeUUID={universeUUID}
+        configTagFilter={configTagFilter}
       />
     </div>
   );

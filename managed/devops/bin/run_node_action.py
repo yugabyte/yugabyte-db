@@ -49,6 +49,8 @@ def add_rpc_subparser(subparsers, command, parent):
                             required=True)
     rpc_parser.add_argument('--node_agent_auth_token', type=str, help='Auth token for rpc',
                             required=True)
+    rpc_parser.add_argument('--node_agent_home', type=str, help='Node agent home path',
+                            required=False)
     return rpc_parser
 
 
@@ -291,7 +293,7 @@ def main():
                      .format(args.ip, args.port, str(e)))
     elif args.node_type == 'rpc':
         rpc_options = {
-            "connection_type": "rpc",
+            "connection_type": "node_agent_rpc",
             "node_agent_user":  YB_USERNAME if args.user is None else args.user,
             "node_agent_ip": args.node_agent_ip,
             "node_agent_port": args.node_agent_port,

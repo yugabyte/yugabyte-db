@@ -9,6 +9,36 @@ type Result struct {
 	Error  error
 }
 
+// MappedResults are results by their status
+type MappedResults struct {
+	Passed   []Result
+	Warning  []Result
+	Critical []Result
+}
+
+// NewMappedResults returns a map results pointer
+func NewMappedResults() *MappedResults {
+	return &MappedResults{
+		Passed:   make([]Result, 0),
+		Warning:  make([]Result, 0),
+		Critical: make([]Result, 0),
+	}
+}
+
+// AddResult will add a new result to its correct status list
+func (mr *MappedResults) AddResult(result Result) {
+	switch result.Status {
+	case StatusPassed:
+		mr.Passed = append(mr.Passed, result)
+	case StatusWarning:
+		mr.Warning = append(mr.Warning, result)
+	case StatusCritical:
+		mr.Critical = append(mr.Critical, result)
+	default:
+		panic("unknown status")
+	}
+}
+
 // Status of a check
 type Status int
 

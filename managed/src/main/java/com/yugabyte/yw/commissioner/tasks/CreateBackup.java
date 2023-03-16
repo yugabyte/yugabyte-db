@@ -21,6 +21,7 @@ import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -55,18 +56,27 @@ import play.libs.Json;
 @Abortable
 public class CreateBackup extends UniverseTaskBase {
 
+  private final CustomerConfigService customerConfigService;
+  private final YbcManager ybcManager;
+
   @Inject
-  protected CreateBackup(BaseTaskDependencies baseTaskDependencies) {
+  protected CreateBackup(
+      BaseTaskDependencies baseTaskDependencies,
+      CustomerConfigService customerConfigService,
+      YbcManager ybcManager) {
     super(baseTaskDependencies);
+    this.customerConfigService = customerConfigService;
+    this.ybcManager = ybcManager;
   }
 
   protected BackupRequestParams params() {
     return (BackupRequestParams) taskParams;
   }
 
-  @Inject CustomerConfigService customerConfigService;
-
-  @Inject YbcManager ybcManager;
+  @Override
+  protected String getExecutorPoolName() {
+    return "backup_task";
+  }
 
   @Override
   public void run() {
@@ -100,8 +110,19 @@ public class CreateBackup extends UniverseTaskBase {
                 .getUniverseDetails()
                 .ybcSoftwareVersion
                 .equals(ybcManager.getStableYbcVersion())) {
-          createUpgradeYbcTask(params().universeUUID, ybcManager.getStableYbcVersion(), true)
-              .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+
+          if (universe
+              .getUniverseDetails()
+              .getPrimaryCluster()
+              .userIntent
+              .providerType
+              .equals(Common.CloudType.kubernetes)) {
+            createUpgradeYbcTaskOnK8s(params().universeUUID, ybcManager.getStableYbcVersion())
+                .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+          } else {
+            createUpgradeYbcTask(params().universeUUID, ybcManager.getStableYbcVersion(), true)
+                .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+          }
         }
 
         Backup backup =
@@ -118,7 +139,7 @@ public class CreateBackup extends UniverseTaskBase {
 
         taskInfo = String.join(",", tablesToBackup);
 
-        getRunnableTask().runSubTasks();
+        getRunnableTask().runSubTasks(true);
         unlockUniverseForUpdate();
         isUniverseLocked = false;
 
@@ -127,9 +148,8 @@ public class CreateBackup extends UniverseTaskBase {
           if (!currentBackup.baseBackupUUID.equals(currentBackup.backupUUID)) {
             Backup baseBackup =
                 Backup.getOrBadRequest(params().customerUUID, currentBackup.baseBackupUUID);
-            baseBackup.onIncrementCompletion(currentBackup.getCreateTime());
-            // Unset expiry time for increment, only the base backup's expiry is what we need.
             currentBackup.onCompletion();
+            baseBackup.onIncrementCompletion(currentBackup.getCreateTime());
           } else {
             currentBackup.onCompletion();
           }

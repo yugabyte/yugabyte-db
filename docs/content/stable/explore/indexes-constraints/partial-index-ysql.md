@@ -98,6 +98,6 @@ northwind=# EXPLAIN SELECT * FROM customers where (country = 'USA' and contact_t
 
 ## Learn more
 
-- [SQL Puzzle: Partial Versus Expression Indexes](https://blog.yugabyte.com/sql-puzzle-partial-versus-expression-indexes/)
-- [The Benefit of Partial Indexes in Distributed SQL Databases](https://blog.yugabyte.com/the-benefit-of-partial-indexes-in-distributed-sql-databases/)
+- [SQL Puzzle: Partial Versus Expression Indexes](https://www.yugabyte.com/blog/sql-puzzle-partial-versus-expression-indexes/)
+- [The Benefit of Partial Indexes in Distributed SQL Databases](https://www.yugabyte.com/blog/the-benefit-of-partial-indexes-in-distributed-sql-databases/)
 - [Indexes on JSON attributes](../../json-support/jsonb-ysql/#6-indexes-on-json-attributes)

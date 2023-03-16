@@ -8,22 +8,24 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
-import os
+import logging
 import shlex
 import time
 import traceback
+import uuid
 
 from ansible.module_utils._text import to_native
 from grpc import secure_channel, ssl_channel_credentials, metadata_call_credentials, \
-    composite_channel_credentials, AuthMetadataPlugin
+    composite_channel_credentials, AuthMetadataPlugin, RpcError, StatusCode
 from ybops.node_agent.server_pb2 import DownloadFileRequest, ExecuteCommandRequest, FileInfo, \
-    PingRequest, UploadFileRequest
+    PingRequest, UploadFileRequest, SubmitTaskRequest, DescribeTaskRequest, AbortTaskRequest
 from ybops.node_agent.server_pb2_grpc import NodeAgentStub
 
 SERVER_READY_RETRY_LIMIT = 60
 PING_TIMEOUT_SEC = 10
 COMMAND_EXECUTION_TIMEOUT_SEC = 300
-FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC = 600
+FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC = 1800
+FILE_UPLOAD_CHUNK_BYTES = 524288
 
 
 class RpcShellOutput(object):
@@ -68,12 +70,14 @@ class RpcShellClient(object):
         :return: None
         """
 
-        root_certs = open(self.cert_path, mode='rb').read()
+        with open(self.cert_path, mode='rb') as file:
+            root_certs = file.read()
         cert_creds = ssl_channel_credentials(root_certificates=root_certs)
         auth_creds = metadata_call_credentials(
                 AuthTokenCallback(self.auth_token), name='auth_creds')
         credentials = composite_channel_credentials(cert_creds, auth_creds)
         self.channel = secure_channel(self.ip + ':' + str(self.port), credentials)
+        self.stub = NodeAgentStub(self.channel)
         self.connected = True
 
     def close(self):
@@ -84,10 +88,21 @@ class RpcShellClient(object):
 
         if self.connected:
             self.channel.close()
+            self.connected = False
 
     def exec_command(self, cmd, **kwargs):
         """
         Run a command on the remote host.
+        Optional 'async' arg can be passed for long running commands.
+        """
+
+        if kwargs.get('async', False):
+            return self.exec_command_async(cmd, **kwargs)
+        return self.exec_command_sync(cmd, **kwargs)
+
+    def exec_command_sync(self, cmd, **kwargs):
+        """
+        Run a sync short running command on the remote host.
         """
 
         output = RpcShellOutput()
@@ -108,8 +123,7 @@ class RpcShellClient(object):
                     cmd_args_list = ["/bin/bash", "-c", cmd_str]
                 else:
                     cmd_args_list = cmd
-            stub = NodeAgentStub(self.channel)
-            for response in stub.ExecuteCommand(
+            for response in self.stub.ExecuteCommand(
                     ExecuteCommandRequest(user=self.user, command=cmd_args_list),
                     timeout=timeout_sec):
                 if response.HasField('error'):
@@ -125,15 +139,75 @@ class RpcShellClient(object):
             output.stderr = str(e)
         return output
 
-    def read_iterfile(self, user, in_path, out_path, chunk_size=1024):
+    def exec_command_async(self, cmd, **kwargs):
+        """
+        Run an async long running command on the remote host.
+        """
+
+        output = RpcShellOutput()
+        task_id = kwargs.get('task_id', str(uuid.uuid4()))
+        try:
+            timeout_sec = kwargs.get('timeout', COMMAND_EXECUTION_TIMEOUT_SEC)
+            bash = kwargs.get('bash', False)
+            if isinstance(cmd, str):
+                if bash:
+                    cmd_args_list = ["/bin/bash", "-c", cmd]
+                else:
+                    cmd_args_list = shlex.split(to_native(cmd, errors='surrogate_or_strict'))
+            else:
+                if bash:
+                    # Need to join with spaces, but surround arguments with spaces
+                    # using "'" character.
+                    cmd_str = ' '.join(
+                        list(map(lambda part: part if ' ' not in part else "'" + part + "'", cmd)))
+                    cmd_args_list = ["/bin/bash", "-c", cmd_str]
+                else:
+                    cmd_args_list = cmd
+            self.stub.SubmitTask(SubmitTaskRequest(user=self.user, taskId=task_id,
+                                                   command=cmd_args_list),
+                                 timeout=timeout_sec)
+            while True:
+                try:
+                    for response in self.stub.DescribeTask(
+                            DescribeTaskRequest(taskId=task_id),
+                            timeout=timeout_sec):
+                        if response.HasField('error'):
+                            output.rc = response.error.code
+                            output.stderr = response.error.message if output.stderr is None \
+                                else output.stderr + response.error.message
+                        else:
+                            output.stdout = response.output if output.stdout is None \
+                                else output.stdout + response.output
+                    break
+                except RpcError as e:
+                    if e.code() == StatusCode.DEADLINE_EXCEEDED:
+                        logging.info("Reconnecting for task {} as client timed out".format(task_id))
+                        continue
+                    raise e
+        except Exception as e:
+            traceback.print_exc()
+            self.abort_task(task_id, **kwargs)
+            output.rc = 1
+            output.stderr = str(e)
+        return output
+
+    def abort_task(self, task_id, **kwargs):
+        try:
+            timeout_sec = kwargs.get('timeout', COMMAND_EXECUTION_TIMEOUT_SEC)
+            self.stub.AbortTask(AbortTaskRequest(taskId=task_id), timeout=timeout_sec)
+        except Exception:
+            # Ignore error.
+            logging.error("Failed to abort remote task {}".format(task_id))
+
+    def read_iterfile(self, user, in_path, out_path, chmod=0, chunk_size=FILE_UPLOAD_CHUNK_BYTES):
         file_info = FileInfo()
         file_info.filename = out_path
-        yield UploadFileRequest(user=user, fileInfo=file_info)
+        yield UploadFileRequest(chmod=chmod, user=user, fileInfo=file_info)
         with open(in_path, mode='rb') as f:
             while True:
                 chunk = f.read(chunk_size)
                 if chunk:
-                    yield UploadFileRequest(user=user, chunkData=chunk)
+                    yield UploadFileRequest(user=user, chmod=chmod, chunkData=chunk)
                 else:
                     return
 
@@ -141,11 +215,10 @@ class RpcShellClient(object):
         """
         Transfer a file from local to the remote node agent.
         """
-
+        chmod = kwargs.get('chmod', 0)
         timeout_sec = kwargs.get('timeout', FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC)
-        stub = NodeAgentStub(self.channel)
-        stub.UploadFile(self.read_iterfile(self.user, local_path, remote_path),
-                        timeout=timeout_sec)
+        self.stub.UploadFile(self.read_iterfile(self.user, local_path, remote_path, chmod),
+                             timeout=timeout_sec)
 
     def fetch_file(self, in_path, out_path, **kwargs):
         """
@@ -153,8 +226,7 @@ class RpcShellClient(object):
         """
 
         timeout_sec = kwargs.get('timeout', FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC)
-        stub = NodeAgentStub(self.channel)
-        for response in stub.DownloadFile(
+        for response in self.stub.DownloadFile(
                 DownloadFileRequest(filename=in_path, user=self.user), timeout=timeout_sec):
             with open(out_path, mode="ab") as f:
                 f.write(response.chunkData)
@@ -182,10 +254,9 @@ class RpcShellClient(object):
             (boolean): Returns true if the server is ready.
         """
 
-        stub = NodeAgentStub(self.channel)
         try:
             timeout_sec = kwargs.get('timeout', PING_TIMEOUT_SEC)
-            stub.Ping(PingRequest(data="connection-test"), timeout=timeout_sec)
+            self.stub.Ping(PingRequest(), timeout=timeout_sec)
             return True
         except Exception as e:
             return False

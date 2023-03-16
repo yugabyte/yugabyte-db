@@ -54,16 +54,21 @@ const SystemdDir string = "/etc/systemd/system"
 
 // GetBaseInstall returns the base install directory, as defined by the user
 func GetBaseInstall() string {
-	return viper.GetString("installRoot")
+	return dm.BaseInstall()
 }
 
 func GetDataRoot() string {
-	return filepath.Join(viper.GetString("installRoot"), "data")
+	return filepath.Join(dm.BaseInstall(), "data")
 }
 
 // GetInstallRoot returns the InstallRoot where YBA is installed.
 func GetSoftwareRoot() string {
 	return dm.WorkingDirectory()
+}
+
+// GetSoftwareDir returns the path to the 'software' directory.
+func GetSoftwareDir() string {
+	return filepath.Join(dm.BaseInstall(), "software")
 }
 
 // GetActiveSymlink will return the symlink file name

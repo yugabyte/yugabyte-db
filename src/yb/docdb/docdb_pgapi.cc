@@ -14,8 +14,7 @@
 
 #include "yb/docdb/docdb_pgapi.h"
 
-#include "postgres/src/include/ybgate/ybgate_api.h"
-
+#include "yb/common/pgsql_error.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/schema.h"
@@ -28,6 +27,7 @@
 
 #include "yb/util/result.h"
 #include "yb/util/logging.h"
+#include "ybgate/ybgate_status.h"
 
 // This file comes from this directory:
 // postgres_build/src/include/catalog
@@ -42,19 +42,49 @@ using yb::pggate::PgValueToPB;
 namespace yb {
 namespace docdb {
 
+// Macro to convert YbgStatus into regular Status.
+// Use it as a reference if you need to create a Status in DocDB to be displayed by Postgres.
+// Basically, STATUS(QLError, "<message>"); makes a good base, it should correctly set location
+// (filename and line number) and error message. The STATUS macro does not support function name.
+// Location is optional, though filename and line number are typically present. If function name is
+// needed, it can be added separately:
+//   s = s.CloneAndAddErrorCode(FuncName(funcname));
+// If error message needs to be translatable template, template arguments should be converted to
+// a vector of strings and added to status this way:
+//   s = s.CloneAndAddErrorCode(PgsqlMessageArgs(args));
+// If needed SQL code may be added to status this way:
+//   s = s.CloneAndAddErrorCode(PgsqlError(sqlerror));
+// It is possible to define more custom codes to send around with a status.
+// They should be handled on the Postgres side, see the HandleYBStatusAtErrorLevel macro in the
+// pg_yb_utils.h for details.
 #define PG_RETURN_NOT_OK(status) \
   do { \
-    if (status.err_code != 0) { \
-      std::string msg; \
-      if (status.err_msg != nullptr) { \
-        msg = std::string(status.err_msg); \
-      } else { \
-        msg = std::string("Unexpected error while evaluating expression"); \
+    YbgStatus status_ = status; \
+    if (YbgStatusIsError(status_)) { \
+      const char *filename = YbgStatusGetFilename(status_); \
+      int lineno = YbgStatusGetLineNumber(status_); \
+      const char *funcname = YbgStatusGetFuncname(status_); \
+      uint32_t sqlerror = YbgStatusGetSqlError(status_); \
+      std::string msg = std::string(YbgStatusGetMessage(status_)); \
+      std::vector<std::string> args; \
+      int32_t s_nargs; \
+      const char **s_args = YbgStatusGetMessageArgs(status_, &s_nargs); \
+      if (s_nargs > 0) { \
+        args.reserve(s_nargs); \
+        for (int i = 0; i < s_nargs; i++) { \
+          args.emplace_back(std::string(s_args[i])); \
+        } \
       } \
-      YbgResetMemoryContext(); \
-      return STATUS(QLError, msg); \
+      YbgStatusDestroy(status_); \
+      Status s = Status(Status::kQLError, filename, lineno, msg); \
+      s = s.CloneAndAddErrorCode(PgsqlError(static_cast<YBPgErrorCode>(sqlerror))); \
+      if (funcname) { \
+        s = s.CloneAndAddErrorCode(FuncName(funcname)); \
+      } \
+      return args.empty() ? s : s.CloneAndAddErrorCode(PgsqlMessageArgs(args)); \
     } \
-  } while(0);
+    YbgStatusDestroy(status_); \
+  } while(0)
 
 #define SET_ELEM_LEN_BYVAL_ALIGN(elemlen, elembyval, elemalign) \
   do { \
@@ -195,10 +225,9 @@ YbgStatus YbgValueFromPB(const YBCPgTypeEntity *type_entity,
   PG_SETUP_ERROR_REPORTING();
   Status s = PgValueFromPB(type_entity, type_attrs, ql_value, datum, is_null);
   if (!s.ok()) {
-    // Error code currently has no special meaning, any non-zero value is an error
-    return PG_STATUS(1, s.message().cdata());
+    return YbgStatusCreateError(s.message().cdata(), __FILE__, __LINE__);
   }
-  return PG_STATUS_OK;
+  PG_STATUS_OK();
 }
 
 Status DocPgPrepareExprCtx(const QLTableRow& table_row,

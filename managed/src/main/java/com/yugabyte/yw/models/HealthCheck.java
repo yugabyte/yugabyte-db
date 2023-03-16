@@ -5,9 +5,16 @@ package com.yugabyte.yw.models;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import com.google.inject.Inject;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.models.common.YBADeprecated;
+
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
+import io.swagger.annotations.ApiModelProperty;
+
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -25,6 +32,7 @@ import play.data.validation.Constraints;
 @Entity
 public class HealthCheck extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(HealthCheck.class);
+  @Inject private static RuntimeConfGetter confGetter;
 
   @Data
   @Accessors(chain = true)
@@ -36,10 +44,7 @@ public class HealthCheck extends Model {
     public static class NodeData {
       private String node;
       private String process;
-
-      @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-      private Date timestamp;
-
+      private Date timestampIso;
       private String nodeName;
       private Boolean hasError = false;
       private Boolean hasWarning = false;
@@ -55,6 +60,28 @@ public class HealthCheck extends Model {
             node,
             (StringUtils.isEmpty(process) ? message : message + " (" + process + ")"),
             String.join("; ", details));
+      }
+
+      @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+      @ApiModelProperty(value = "Deprecated: Use timestampIso instead")
+      @YBADeprecated(sinceDate = "2023-02-17", sinceYBAVersion = "2.17.2.0")
+      public Date getTimestamp() {
+        boolean compatDate = confGetter.getGlobalConf(GlobalConfKeys.backwardCompatibleDate);
+        if (compatDate) {
+          return timestampIso;
+        }
+        return null;
+      }
+
+      @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+      @ApiModelProperty(example = "2022-12-12T13:07:18Z")
+      public Date getTimestampIso() {
+        return timestampIso;
+      }
+
+      public NodeData setTimestampIso(Date timestamp) {
+        this.timestampIso = timestamp;
+        return this;
       }
     }
 
@@ -81,13 +108,33 @@ public class HealthCheck extends Model {
       private String value;
     }
 
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-    private Date timestamp;
-
+    private Date timestampIso;
     private List<NodeData> data = new ArrayList<>();
     private String ybVersion;
     private Boolean hasError = false;
     private Boolean hasWarning = false;
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+    @ApiModelProperty(value = "Deprecated: Use timestampIso instead")
+    @YBADeprecated(sinceDate = "2023-02-17", sinceYBAVersion = "2.17.2.0")
+    public Date getTimestamp() {
+      boolean compatDate = confGetter.getGlobalConf(GlobalConfKeys.backwardCompatibleDate);
+      if (compatDate) {
+        return timestampIso;
+      }
+      return null;
+    }
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+    @ApiModelProperty(example = "2022-12-12T13:07:18Z")
+    public Date getTimestampIso() {
+      return timestampIso;
+    }
+
+    public Details setTimestampIso(Date timestamp) {
+      this.timestampIso = timestamp;
+      return this;
+    }
   }
 
   // The max number of records to keep per universe.

@@ -1,20 +1,39 @@
 package com.yugabyte.yw.cloud.aws;
 
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.mapping;
+import static java.util.stream.Collectors.toSet;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
+import com.amazonaws.AmazonServiceException;
+import com.amazonaws.SdkClientException;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
+import com.amazonaws.services.ec2.model.DescribeImagesRequest;
+import com.amazonaws.services.ec2.model.DescribeImagesResult;
 import com.amazonaws.services.ec2.model.DescribeInstanceTypeOfferingsRequest;
 import com.amazonaws.services.ec2.model.DescribeInstanceTypeOfferingsResult;
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
+import com.amazonaws.services.ec2.model.DescribeSecurityGroupsRequest;
+import com.amazonaws.services.ec2.model.DescribeSecurityGroupsResult;
+import com.amazonaws.services.ec2.model.DescribeSubnetsRequest;
+import com.amazonaws.services.ec2.model.DescribeSubnetsResult;
+import com.amazonaws.services.ec2.model.DescribeVpcsRequest;
+import com.amazonaws.services.ec2.model.DescribeVpcsResult;
 import com.amazonaws.services.ec2.model.DryRunResult;
 import com.amazonaws.services.ec2.model.Filter;
+import com.amazonaws.services.ec2.model.Image;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.ec2.model.InstanceTypeOffering;
 import com.amazonaws.services.ec2.model.LocationType;
 import com.amazonaws.services.ec2.model.Reservation;
+import com.amazonaws.services.ec2.model.SecurityGroup;
+import com.amazonaws.services.ec2.model.Subnet;
+import com.amazonaws.services.ec2.model.Vpc;
 import com.amazonaws.services.elasticloadbalancingv2.AmazonElasticLoadBalancing;
 import com.amazonaws.services.elasticloadbalancingv2.AmazonElasticLoadBalancingClientBuilder;
 import com.amazonaws.services.elasticloadbalancingv2.model.Action;
@@ -43,23 +62,27 @@ import com.amazonaws.services.kms.model.DescribeKeyResult;
 import com.amazonaws.services.kms.model.DisableKeyRequest;
 import com.amazonaws.services.kms.model.ScheduleKeyDeletionRequest;
 import com.amazonaws.services.kms.model.Tag;
+import com.amazonaws.services.route53.AmazonRoute53;
+import com.amazonaws.services.route53.AmazonRoute53ClientBuilder;
+import com.amazonaws.services.route53.model.GetHostedZoneRequest;
+import com.amazonaws.services.route53.model.GetHostedZoneResult;
+import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
+import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
+import com.amazonaws.services.securitytoken.model.GetCallerIdentityRequest;
+import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NodeID;
-import org.apache.commons.collections.CollectionUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-
+import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -68,24 +91,18 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
-import static java.util.stream.Collectors.groupingBy;
-import static java.util.stream.Collectors.mapping;
-import static java.util.stream.Collectors.toSet;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
 
 // TODO - Better handling of UnauthorizedOperation. Ideally we should trigger alert so that
-// site admin knows about it
 public class AWSCloudImpl implements CloudAPI {
   public static final Logger LOG = LoggerFactory.getLogger(AWSCloudImpl.class);
 
   public AmazonElasticLoadBalancing getELBClient(Provider provider, String regionCode) {
-    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
-    return getELBClientInternal(config, regionCode);
-  }
-
-  private AmazonElasticLoadBalancing getELBClientInternal(
-      Map<String, String> config, String regionCode) {
-    AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(config);
+    AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(provider);
     return AmazonElasticLoadBalancingClientBuilder.standard()
         .withRegion(regionCode)
         .withCredentials(credentialsProvider)
@@ -94,27 +111,37 @@ public class AWSCloudImpl implements CloudAPI {
 
   // TODO use aws sdk 2.x and switch to async
   public AmazonEC2 getEC2Client(Provider provider, String regionCode) {
-    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
-    return getEC2ClientInternal(config, regionCode);
-  }
-
-  private AmazonEC2 getEC2ClientInternal(Map<String, String> config, String regionCode) {
-    AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(config);
+    AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(provider);
     return AmazonEC2ClientBuilder.standard()
         .withRegion(regionCode)
         .withCredentials(credentialsProvider)
         .build();
   }
 
-  // TODO: move to some common utils
-  private static AWSCredentialsProvider getCredsOrFallbackToDefault(Map<String, String> config) {
-    String accessKeyId = config.get("AWS_ACCESS_KEY_ID");
-    String secretAccessKey = config.get("AWS_SECRET_ACCESS_KEY");
-    if (!Strings.isNullOrEmpty(accessKeyId) && !Strings.isNullOrEmpty(secretAccessKey)) {
+  public AmazonRoute53 getRoute53Client(Provider provider, String regionCode) {
+    AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(provider);
+    return AmazonRoute53ClientBuilder.standard()
+        .withCredentials(credentialsProvider)
+        .withRegion(regionCode)
+        .build();
+  }
+
+  public AWSSecurityTokenService getStsClient(Provider provider, String regionCode) {
+    AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(provider);
+    return AWSSecurityTokenServiceClientBuilder.standard()
+        .withCredentials(credentialsProvider)
+        .withRegion(regionCode)
+        .build();
+  }
+
+  private AWSCredentialsProvider getCredsOrFallbackToDefault(Provider provider) {
+    String accessKeyId = provider.getProviderDetails().getCloudInfo().getAws().awsAccessKeyID;
+    String secretAccessKey =
+        provider.getProviderDetails().getCloudInfo().getAws().awsAccessKeySecret;
+    if (checkKeysExists(provider)) {
       return new AWSStaticCredentialsProvider(
           new BasicAWSCredentials(accessKeyId, secretAccessKey));
     } else {
-
       // If database creds do not exist we will fallback use default chain.
       return new DefaultAWSCredentialsProviderChain();
     }
@@ -164,20 +191,8 @@ public class AWSCloudImpl implements CloudAPI {
 
   @Override
   public boolean isValidCreds(Provider provider, String region) {
-    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
-    try {
-      AmazonEC2 ec2Client = getEC2ClientInternal(config, region);
-      DryRunResult<DescribeInstancesRequest> dryRunResult =
-          ec2Client.dryRun(new DescribeInstancesRequest());
-      if (!dryRunResult.isSuccessful()) {
-        LOG.error(dryRunResult.getDryRunResponse().getMessage());
-        return false;
-      }
-      return dryRunResult.isSuccessful();
-    } catch (Exception e) {
-      LOG.error(e.getMessage());
-      return false;
-    }
+    // TODO: Remove this function once the validators are added for all cloud provider.
+    return true;
   }
 
   @Override
@@ -231,7 +246,8 @@ public class AWSCloudImpl implements CloudAPI {
                     new Tag().withTagKey("usage").withTagValue("validate-aws-key-authenticity"),
                     new Tag().withTagKey("status").withTagValue("deleted"));
         CreateKeyResult result = kmsClient.createKey(keyReq);
-        // Disable and schedule the key for deletion. The minimum waiting period for deletion is 7
+        // Disable and schedule the key for deletion. The minimum waiting period for
+        // deletion is 7
         // days on AWS.
         String keyArn = result.getKeyMetadata().getArn();
         DisableKeyRequest req = new DisableKeyRequest().withKeyId(keyArn);
@@ -453,6 +469,12 @@ public class AWSCloudImpl implements CloudAPI {
     }
   }
 
+  @Override
+  public void validateInstanceTemplate(Provider provider, String instanceTemplate) {
+    throw new PlatformServiceException(
+        BAD_REQUEST, "Instance templates are currently not supported for AWS");
+  }
+
   /**
    * Check if the target group and the nodes inside the group have the correct protocol/port. Check
    * that the target group only contains the provided list of nodes.
@@ -474,7 +496,8 @@ public class AWSCloudImpl implements CloudAPI {
       TargetGroup targetGroup = getTargetGroup(lbClient, targetGroupArn);
       boolean validProtocol = targetGroup.getProtocol().equals(protocol);
       boolean validPort = targetGroup.getPort() == port;
-      // If protocol or port incorrect then create new target group and update listener
+      // If protocol or port incorrect then create new target group and update
+      // listener
       if (!validProtocol || !validPort) {
         String targetGroupName = targetGroup.getTargetGroupName();
         throw new Exception(
@@ -658,5 +681,117 @@ public class AWSCloudImpl implements CloudAPI {
       if (tag.getKey().equals("node-uuid")) uuid = tag.getValue();
     }
     return new NodeID(name, uuid);
+  }
+
+  public GetCallerIdentityResult getStsClientOrBadRequest(Provider provider, Region region) {
+    try {
+      AWSSecurityTokenService stsClient = getStsClient(provider, region.code);
+      return stsClient.getCallerIdentity(new GetCallerIdentityRequest());
+    } catch (SdkClientException e) {
+      LOG.error("AWS Provider validation failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "AWS access and secret keys validation failed: " + e.getMessage());
+    }
+  }
+
+  public boolean dryRunDescribeInstanceOrBadRequest(Provider provider, String regionCode) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, regionCode);
+      DryRunResult<DescribeInstancesRequest> dryRunResult =
+          ec2Client.dryRun(new DescribeInstancesRequest());
+      if (!dryRunResult.isSuccessful()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, dryRunResult.getDryRunResponse().getMessage());
+      }
+      return true;
+    } catch (AmazonServiceException | PlatformServiceException e) {
+      LOG.error("AWS Provider validation dry run failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Dry run of AWS DescribeInstances failed: " + e.getMessage());
+    }
+  }
+
+  public String getPrivateKeyAlgoOrBadRequest(String privateKeyString) {
+    try {
+      return CertificateHelper.getPrivateKey(privateKeyString).getAlgorithm();
+    } catch (RuntimeException e) {
+      LOG.error("Private key Algorithm extraction failed: ", e);
+      throw new PlatformServiceException(BAD_REQUEST, "Could not fetch private key algorithm");
+    }
+  }
+
+  public GetHostedZoneResult getHostedZoneOrBadRequest(
+      Provider provider, Region region, String hostedZoneId) {
+    try {
+      AmazonRoute53 route53Client = getRoute53Client(provider, region.code);
+      GetHostedZoneRequest request = new GetHostedZoneRequest().withId(hostedZoneId);
+      return route53Client.getHostedZone(request);
+    } catch (AmazonServiceException e) {
+      LOG.error("Hosted Zone validation failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Hosted Zone validation failed: " + e.getMessage());
+    }
+  }
+
+  public Image describeImageOrBadRequest(Provider provider, Region region, String imageId) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, region.code);
+      DescribeImagesRequest request = new DescribeImagesRequest().withImageIds(imageId);
+      DescribeImagesResult result = ec2Client.describeImages(request);
+      return result.getImages().get(0);
+    } catch (AmazonServiceException e) {
+      LOG.error("AMI details extraction failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "AMI details extraction failed: " + e.getMessage());
+    }
+  }
+
+  public SecurityGroup describeSecurityGroupsOrBadRequest(Provider provider, Region region) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, region.code);
+      DescribeSecurityGroupsRequest request =
+          new DescribeSecurityGroupsRequest().withGroupIds(region.getSecurityGroupId());
+      DescribeSecurityGroupsResult result = ec2Client.describeSecurityGroups(request);
+      return result.getSecurityGroups().get(0);
+    } catch (AmazonServiceException e) {
+      LOG.error("Security group details extraction failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Security group extraction failed: " + e.getMessage());
+    }
+  }
+
+  public Vpc describeVpcOrBadRequest(Provider provider, Region region) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, region.code);
+      DescribeVpcsRequest request = new DescribeVpcsRequest().withVpcIds(region.getVnetName());
+      DescribeVpcsResult result = ec2Client.describeVpcs(request);
+      return result.getVpcs().get(0);
+    } catch (AmazonServiceException e) {
+      LOG.error("Vpc details extraction failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Vpc details extraction failed: " + e.getMessage());
+    }
+  }
+
+  public List<Subnet> describeSubnetsOrBadRequest(Provider provider, Region region) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, region.code);
+      DescribeSubnetsRequest request =
+          new DescribeSubnetsRequest()
+              .withSubnetIds(
+                  region.zones.stream().map(zone -> zone.subnet).collect(Collectors.toList()));
+      DescribeSubnetsResult result = ec2Client.describeSubnets(request);
+      return result.getSubnets();
+    } catch (AmazonServiceException e) {
+      LOG.error("Subnet details extraction failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Subnet details extraction failed: " + e.getMessage());
+    }
+  }
+
+  public boolean checkKeysExists(Provider provider) {
+    AWSCloudInfo cloudInfo = provider.getProviderDetails().getCloudInfo().getAws();
+    return !StringUtils.isEmpty(cloudInfo.awsAccessKeyID)
+        && !StringUtils.isEmpty(cloudInfo.awsAccessKeySecret);
   }
 }

@@ -42,11 +42,11 @@ Use the `RESET` statement to restore the value of a run-time parameter to the de
 
 ## Semantics
 
-{{< note Type="Note" >}}
+{{< note title="Note" >}}
 
 Although the values of a parameter can be set, displayed, and reset, the effect of these parameters are not yet supported in Yugabyte. The factory settings or default behaviors will be used for the moment.
 
-{{ /<note> }}
+{{< /note >}}
 
 ### *configuration_parameter*
 

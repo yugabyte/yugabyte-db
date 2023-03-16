@@ -26,14 +26,14 @@ import org.yb.cdc.common.HelperValues;
 import org.yb.cdc.util.CDCSubscriber;
 
 import org.yb.cdc.util.TestUtils;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import static org.yb.AssertionWrappers.*;
 
 import java.util.ArrayList;
 import java.util.List;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestArrayTypes extends CDCBaseClass {
   private final static Logger LOG = LoggerFactory.getLogger(TestArrayTypes.class);
 

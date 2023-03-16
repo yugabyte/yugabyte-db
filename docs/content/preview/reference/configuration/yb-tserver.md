@@ -438,13 +438,13 @@ When YSQL authentication is enabled, you can sign into `ysqlsh` using the defaul
 
 Default: `false`
 
-<!-- ##### --ysql_enable_profile
+##### --ysql_enable_profile
 
 Enables YSQL [login profiles](../../../secure/enable-authentication/ysql-login-profiles/).
 
 When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users.
 
-Default: `false` -->
+Default: `false`
 
 ##### --pgsql_proxy_bind_address
 
@@ -629,6 +629,14 @@ Default: `false`
 Set this flag to `true` to enable audit logging for the universe.
 
 For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql).
+
+##### --ycql_allow_non_authenticated_password_reset
+
+Set this flag to `true` to enable a superuser to reset a password.
+
+Default: `false`
+
+Note that to enable the password reset feature, you must first set the [`use_cassandra_authentication`](#use-cassandra-authentication) flag to false.
 
 ### YEDIS
 
@@ -839,6 +847,40 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 ```sh
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
 ```
+
+## Packed row flags (Beta)
+
+To learn about the packed row feature, see [Packed row format](../../../architecture/docdb/persistence/#packed-row-format-beta) in the architecture section.
+
+##### --ysql_enable_packed_row
+
+Whether packed row is enabled for YSQL.
+
+Default: `false`
+
+##### --ysql_packed_row_size_limit
+
+Packed row size limit for YSQL. The default value is 0 (use block size as limit). For rows that are over this size limit, a greedy approach will be used to pack as many columns as possible, with the remaining columns stored as individual key-value pairs.
+
+Default: `0`
+
+##### --ycql_enable_packed_row
+
+Whether packed row is enabled for YCQL.
+
+Default: `false`
+
+##### --ycql_packed_row_size_limit
+
+Packed row size limit for YCQL. The default value is 0 (use block size as limit). For rows that are over this size limit, a greedy approach will be used to pack as many columns as possible, with the remaining columns stored as individual key-value pairs.
+
+Default: `0`
+
+##### --ysql_enable_packed_row_for_colocated_table
+
+Whether packed row is enabled for colocated tables in YSQL. The colocated table has an additional GFlag to mitigate [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143).
+
+Default: `false`
 
 ## Change data capture (CDC) flags
 

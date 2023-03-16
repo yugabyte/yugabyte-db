@@ -118,16 +118,14 @@ public class XClusterConfig extends Model {
   @ApiModelProperty(value = "Whether this xCluster replication config is paused")
   public boolean paused;
 
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  @ApiModelProperty(
-      value = "Create time of the xCluster config",
-      example = "2022-04-26 15:37:32.610000")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(value = "Create time of the xCluster config", example = "2022-12-12T13:07:18Z")
   public Date createTime;
 
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
       value = "Last modify time of the xCluster config",
-      example = "2022-04-26 15:37:32.610000")
+      example = "2022-12-12T13:07:18Z")
   public Date modifyTime;
 
   @OneToMany(mappedBy = "config", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -263,6 +261,27 @@ public class XClusterConfig extends Model {
   @JsonIgnore
   public Set<String> getTableIdsWithReplicationSetup() {
     return getTableIdsWithReplicationSetup(true /* done */);
+  }
+
+  @JsonIgnore
+  public Set<String> getTableIds(boolean includeMainTables, boolean includeIndexTables) {
+    if (!includeMainTables && !includeIndexTables) {
+      throw new IllegalArgumentException(
+          "Both includeMainTables and includeIndexTables cannot be false");
+    }
+    if (includeMainTables && includeIndexTables) {
+      return this.getTables();
+    }
+    return this.tables
+        .stream()
+        .filter(table -> table.indexTable == includeIndexTables)
+        .map(table -> table.tableId)
+        .collect(Collectors.toSet());
+  }
+
+  @JsonIgnore
+  public Set<String> getTableIdsExcludeIndexTables() {
+    return getTableIds(true /* includeMainTables */, false /* includeIndexTables */);
   }
 
   public void setTables(Set<String> tableIds) {

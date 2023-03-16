@@ -78,7 +78,7 @@ typedef enum {
 // Perform either of the above three conflict management policies as applicable.
 //
 // write_batch - values that would be written as part of transaction.
-// hybrid_time - current hybrid time.
+// intial_resolution_ht - current hybrid time. Used to request status of conflicting transactions.
 // db - db that contains tablet data.
 // status_manager - status manager that should be used during this conflict resolution.
 // conflicts_metric - transaction_conflicts metric to update.
@@ -91,7 +91,7 @@ typedef enum {
 Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    const ConflictManagementPolicy conflict_management_policy,
                                    const LWKeyValueWriteBatchPB& write_batch,
-                                   HybridTime resolution_ht,
+                                   HybridTime intial_resolution_ht,
                                    HybridTime read_time,
                                    const DocDB& doc_db,
                                    PartialRangeKeyIntents partial_range_key_intents,
@@ -110,12 +110,12 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
 // transaction.
 //
 // doc_ops - doc operations that would be applied as part of operation.
-// resolution_ht - current hybrid time. Used to request status of conflicting transactions.
+// intial_resolution_ht - current hybrid time. Used to request status of conflicting transactions.
 // db - db that contains tablet data.
 // status_manager - status manager that should be used during this conflict resolution.
 Status ResolveOperationConflicts(const DocOperations& doc_ops,
                                  const ConflictManagementPolicy conflict_management_policy,
-                                 HybridTime resolution_ht,
+                                 HybridTime intial_resolution_ht,
                                  const DocDB& doc_db,
                                  PartialRangeKeyIntents partial_range_key_intents,
                                  TransactionStatusManager* status_manager,

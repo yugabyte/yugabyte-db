@@ -45,9 +45,9 @@
 
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
 #include "yb/consensus/leader_lease.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_util.h"
@@ -1386,9 +1386,18 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
   for (const auto& id : req->snapshot_schedules()) {
     snapshot_schedules.push_back(VERIFY_RESULT(FullyDecodeSnapshotScheduleId(id)));
   }
+
+  std::unordered_set<StatefulServiceKind> hosted_services;
+  for (auto& service_kind : req->hosted_stateful_services()) {
+    SCHECK(
+        StatefulServiceKind_IsValid(service_kind), InvalidArgument,
+        Format("Invalid stateful service kind: $0", service_kind));
+    hosted_services.insert((StatefulServiceKind)service_kind);
+  }
+
   status = ResultToStatus(server_->tablet_manager()->CreateNewTablet(
-      table_info, req->tablet_id(), partition, req->config(), req->colocated(),
-      snapshot_schedules));
+      table_info, req->tablet_id(), partition, req->config(), req->colocated(), snapshot_schedules,
+      hosted_services));
   if (PREDICT_FALSE(!status.ok())) {
     return status.IsAlreadyPresent()
         ? status.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_ALREADY_EXISTS))
@@ -2459,7 +2468,7 @@ void TabletServiceImpl::GetTserverCatalogVersionInfo(
     const GetTserverCatalogVersionInfoRequestPB* req,
     GetTserverCatalogVersionInfoResponsePB* resp,
     rpc::RpcContext context) {
-  auto status = server_->get_ysql_db_oid_to_cat_version_info_map(req->size_only(), resp);
+  auto status = server_->get_ysql_db_oid_to_cat_version_info_map(*req, resp);
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), status, &context);
     return;
@@ -2476,6 +2485,50 @@ void TabletServiceImpl::ListMasterServers(const ListMasterServersRequestPB* req,
                          TabletServerErrorPB::UNKNOWN_ERROR,
                          &context);
     return;
+  }
+  context.RespondSuccess();
+}
+
+void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
+                                      GetLockStatusResponsePB* resp,
+                                      rpc::RpcContext context) {
+  TransactionId txn_id = TransactionId::Nil();
+  if (req->has_transaction_id() && !req->transaction_id().empty()) {
+    auto id_or_status = FullyDecodeTransactionId(req->transaction_id());
+    if (!id_or_status.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), id_or_status.status(), &context);
+      return;
+    }
+    txn_id = *id_or_status;
+  }
+  if (req->has_tablet_id() && !req->tablet_id().empty()) {
+    PerformAtLeader(req, resp, &context,
+      [req, resp, &txn_id](const LeaderTabletPeer& tablet_peer) -> Status {
+        const auto& tablet = tablet_peer.tablet;
+        return tablet->GetLockStatus(
+            txn_id, req->subtransaction_id(), resp->add_tablet_lock_infos());
+        return Status::OK();
+      });
+    return;
+  }
+
+  auto tablet_peers = server_->tablet_manager()->GetTabletPeers();
+  for (const auto& tablet_peer : tablet_peers) {
+    auto leader_term = tablet_peer->LeaderTerm();
+    if (leader_term != OpId::kUnknownTerm &&
+        tablet_peer->tablet_metadata()->table_type() == PGSQL_TABLE_TYPE) {
+      // TODO(pglocks): https://github.com/yugabyte/yugabyte-db/issues/15647
+      // Include leader_term in response so client may pick only the latest leader if multiple
+      // tablets respond.
+      const auto& tablet = tablet_peer->shared_tablet();
+      auto s = tablet->GetLockStatus(
+          txn_id, req->subtransaction_id(), resp->add_tablet_lock_infos());
+      if (!s.ok()) {
+        resp->Clear();
+        SetupErrorAndRespond(resp->mutable_error(), s, &context);
+        return;
+      }
+    }
   }
   context.RespondSuccess();
 }

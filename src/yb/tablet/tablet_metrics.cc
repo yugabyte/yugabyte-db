@@ -66,6 +66,10 @@ METRIC_DEFINE_coarse_histogram(
     table, write_lock_latency, "Write lock latency", yb::MetricUnit::kMicroseconds,
     "Time taken to acquire key locks for a write operation");
 
+METRIC_DEFINE_coarse_histogram(
+    table, read_time_wait, "Read Time Wait", yb::MetricUnit::kMicroseconds,
+    "Number of microseconds read queries spend waiting for safe time");
+
 METRIC_DEFINE_gauge_uint32(tablet, compact_rs_running,
   "RowSet Compactions Running",
   yb::MetricUnit::kMaintenanceOperations,
@@ -138,6 +142,7 @@ TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& table_entity,
     MINIT(table_entity, ql_read_latency),
     MINIT(table_entity, write_lock_latency),
     MINIT(table_entity, ql_write_latency),
+    MINIT(table_entity, read_time_wait),
     MINIT(tablet_entity, not_leader_rejections),
     MINIT(tablet_entity, leader_memory_pressure_rejections),
     MINIT(tablet_entity, majority_sst_files_rejections),

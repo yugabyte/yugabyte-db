@@ -1,0 +1,25 @@
+/* Copyright (c) YugaByte, Inc. */
+
+.node-details-table-container {
+  .content-panel .container>.body {
+    margin: 0;
+  }
+  .node-type-dropdown {
+    font-family: "Inter";
+
+    &__label {
+      font-weight: 400;
+      font-size: 14px;
+      margin-right: 16px;
+    }
+    &__value {
+      background: #E5E5E9;
+      border-radius: 6px;
+      padding: 8px;
+      height: 30px !important;
+      font-weight: 500;
+      font-size: 12px;
+      margin-right: 8px;
+    }
+  }
+}

@@ -27,7 +27,6 @@ import Alerts from './pages/Alerts';
 import Backups from './pages/Backups';
 import UniverseConsole from './pages/UniverseConsole';
 import Metrics from './pages/Metrics';
-import DataCenterConfiguration from './pages/DataCenterConfiguration';
 import TableDetail from './pages/TableDetail';
 import Help from './pages/Help';
 import Profile from './pages/Profile';
@@ -35,11 +34,11 @@ import YugawareLogs from './pages/YugawareLogs';
 import Importer from './pages/Importer';
 import Releases from './pages/Releases';
 import { isDefinedNotNull, isNullOrEmpty } from './utils/ObjectUtils';
-import { CreateUniverse } from './redesign/universe/CreateUniverse';
-import { EditUniverse } from './redesign/universe/EditUniverse';
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
 import { ReplicationDetails } from './components/xcluster';
+import UniverseNewView from './pages/UniverseNewView';
+import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
 
 /**
  * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
@@ -235,23 +234,20 @@ export default (store) => {
         <Route path="/universes" component={Universes}>
           <IndexRoute component={UniverseConsole} />
           <Route path="/universes/import" component={Importer} />
-          <Route path="/universes/create" component={UniverseDetail} />
+          <Route path="/universes/create" component={UniverseNewView} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
-          <Route path="/universes/:uuid/edit" component={UniverseDetail}>
-            <Route path="/universes/:uuid/edit/:type" component={UniverseDetail} />
-          </Route>
-          <Route path="/universes/:uuid/:tab" component={UniverseDetail} />
+          {/* <Route path="/universes/:uuid/edit" component={UniverseDetail}> */}
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail} />
           <Route
             path="/universes/:uuid/replication/:replicationUUID"
             component={ReplicationDetails}
           />
+          <Route path="/universes/:uuid/:mode/:type" component={UniverseNewView} />
+          {/* </Route> */}
+          <Route path="/universes/:uuid/:tab" component={UniverseDetail} />
         </Route>
 
         {/* ------------------------------------------------------------------------*/}
-        <Route path="/universe/create" component={CreateUniverse} />
-        {/* <Route path="/universe/:universeId/create/async" component={CreateUniverse} /> - create async cluster, not supported at the moment */}
-        <Route path="/universe/:universeId/edit/primary" component={EditUniverse} />
 
         {/* <Route path="/universe/:universeId/edit/primary/:wizardStep" component={EditUniverse} /> - jump to particular step on editing primary cluster, not supported at the moment */}
         {/* <Route path="/universe/:universeId/edit/async" component={EditUniverse} /> - edit the only async cluster, not supported at the moment */}
@@ -265,9 +261,9 @@ export default (store) => {
         </Route>
         <Route path="/metrics" component={Metrics} />
         <Route path="/config" component={DataCenterConfiguration}>
-          <Route path="/config/:tab" component={DataCenterConfiguration} />
-          <Route path="/config/:tab/:section" component={DataCenterConfiguration} />
-          <Route path="/config/:tab/:section/:uuid" component={DataCenterConfiguration} />
+          <Route path=":tab" component={DataCenterConfiguration} />
+          <Route path=":tab/:section" component={DataCenterConfiguration} />
+          <Route path=":tab/:section/:uuid" component={DataCenterConfiguration} />
         </Route>
         <Route path="/alerts" component={Alerts} />
         <Route path="/backups" component={Backups} />

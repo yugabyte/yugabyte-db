@@ -81,6 +81,8 @@ public class CommonUtils {
   public static final int DB_IN_CLAUSE_TO_WARN = 50000;
   public static final int DB_OR_CHAIN_TO_WARN = 100;
 
+  public static final String MIN_PROMOTE_AUTO_FLAG_RELEASE = "2.17.0.0";
+
   private static final Configuration JSONPATH_CONFIG =
       Configuration.builder()
           .jsonProvider(new JacksonJsonNodeJsonProvider())
@@ -101,6 +103,8 @@ public class CommonUtils {
           "AZU_KEY_NAME",
           "AZU_KEY_ALGORITHM",
           "AZU_KEY_SIZE",
+          // Hashicorp KMS fields
+          "HC_VAULT_KEY_NAME",
           "KEYSPACETABLELIST",
           // General API field
           "KEYSPACE");
@@ -117,7 +121,7 @@ public class CommonUtils {
       return true;
     }
 
-    // Needed for GCP KMS UI - more specifically listKMSConfigs()
+    // Needed for KMS UI - more specifically listKMSConfigs()
     // Can add more exclusions if required
     if (excludedFieldNames.contains(ucFieldname)) {
       return false;
@@ -765,5 +769,9 @@ public class CommonUtils {
   /** Get the user sending the API request from the HTTP context. */
   public static Users getUserFromContext(Http.Context ctx) {
     return ((UserWithFeatures) ctx.args.get("user")).getUser();
+  }
+
+  public static boolean isAutoFlagSupported(String dbVersion) {
+    return isReleaseEqualOrAfter(MIN_PROMOTE_AUTO_FLAG_RELEASE, dbVersion);
   }
 }

@@ -11,6 +11,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.NodeAgentClient.NodeAgentUpgradeParam;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.models.Customer;
@@ -69,6 +70,7 @@ public class NodeAgentClientTest extends FakeDBApplication {
     payload.ip = "10.20.30.40";
     payload.osType = OSType.LINUX.name();
     payload.archType = ArchType.AMD64.name();
+    payload.home = "/home/yugabyte/node-agent";
     nodeAgentHandler.enableConnectionValidation(false);
     nodeAgent = nodeAgentHandler.register(customer.uuid, payload);
     nodeAgentImpl =
@@ -134,7 +136,8 @@ public class NodeAgentClientTest extends FakeDBApplication {
     ManagedChannel channel =
         grpcCleanup.register(InProcessChannelBuilder.forName(serverName).directExecutor().build());
 
-    nodeAgentClient = new NodeAgentClient(mock(Config.class), config -> channel);
+    nodeAgentClient =
+        new NodeAgentClient(mock(Config.class), mock(RuntimeConfGetter.class), config -> channel);
   }
 
   static class UploadFileRequestObserver implements StreamObserver<UploadFileRequest> {

@@ -35,6 +35,7 @@ import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
+import play.mvc.Http;
 
 @Api(
     value = "User management",
@@ -49,11 +50,16 @@ public class UsersController extends AuthenticatedController {
 
   private final PasswordPolicyService passwordPolicyService;
   private final UserService userService;
+  private final TokenAuthenticator tokenAuthenticator;
 
   @Inject
-  public UsersController(PasswordPolicyService passwordPolicyService, UserService userService) {
+  public UsersController(
+      PasswordPolicyService passwordPolicyService,
+      UserService userService,
+      TokenAuthenticator tokenAuthenticator) {
     this.passwordPolicyService = passwordPolicyService;
     this.userService = userService;
+    this.tokenAuthenticator = tokenAuthenticator;
   }
 
   /**
@@ -258,6 +264,20 @@ public class UsersController extends AuthenticatedController {
     throw new PlatformServiceException(BAD_REQUEST, "Invalid user credentials.");
   }
 
+  private Users getLoggedInUser(Http.Context ctx) {
+    Users user = tokenAuthenticator.getCurrentAuthenticatedUser(ctx);
+    return user;
+  }
+
+  private boolean checkUpdateProfileAccessForPasswordChange(UUID userUUID, Http.Context ctx) {
+    Users user = getLoggedInUser(ctx);
+
+    if (user == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Unable To Authenticate User");
+    }
+    return userUUID.equals(user.uuid);
+  }
+
   /**
    * PUT endpoint for updating the user profile.
    *
@@ -276,6 +296,7 @@ public class UsersController extends AuthenticatedController {
         paramType = "body")
   })
   public Result updateProfile(UUID customerUUID, UUID userUUID) {
+
     Users user = Users.getOrBadRequest(userUUID);
     checkUserOwnership(customerUUID, userUUID, user);
     Form<UserProfileFormData> form = formFactory.getFormDataOrBadRequest(UserProfileFormData.class);
@@ -286,6 +307,12 @@ public class UsersController extends AuthenticatedController {
       if (UserType.ldap == user.getUserType()) {
         throw new PlatformServiceException(BAD_REQUEST, "Can't change password for LDAP user.");
       }
+
+      if (!checkUpdateProfileAccessForPasswordChange(userUUID, ctx())) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Only the User can change his/her own password.");
+      }
+
       passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
       if (!formData.getPassword().equals(formData.getConfirmPassword())) {
         throw new PlatformServiceException(
@@ -293,6 +320,20 @@ public class UsersController extends AuthenticatedController {
       }
       user.setPassword(formData.getPassword());
     }
+
+    Users loggedInUser = getLoggedInUser(ctx());
+    if ((loggedInUser.getRole() == Role.ReadOnly || loggedInUser.getRole() == Role.BackupAdmin)
+        && formData.getRole() != user.getRole()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "ReadOnly/BackupAdmin users can't change their assigned roles");
+    }
+
+    if ((loggedInUser.getRole() == Role.ReadOnly || loggedInUser.getRole() == Role.BackupAdmin)
+        && !formData.getTimezone().equals(user.getTimezone())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "ReadOnly/BackupAdmin users can't change their timezone");
+    }
+
     if (StringUtils.isNotEmpty(formData.getTimezone())
         && !formData.getTimezone().equals(user.getTimezone())) {
       user.setTimezone(formData.getTimezone());
@@ -300,6 +341,11 @@ public class UsersController extends AuthenticatedController {
     if (formData.getRole() != user.getRole()) {
       if (Role.SuperAdmin == user.getRole()) {
         throw new PlatformServiceException(BAD_REQUEST, "Can't change super admin role.");
+      }
+
+      if (formData.getRole() == Role.SuperAdmin) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Can't Assign the role of " + "SuperAdmin to another user.");
       }
       user.setRole(formData.getRole());
     }

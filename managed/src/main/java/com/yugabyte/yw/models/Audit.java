@@ -5,6 +5,7 @@ package com.yugabyte.yw.models;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
@@ -70,8 +71,14 @@ public class Audit extends Model {
     @EnumValue("Alert Template Settings")
     AlertTemplateSettings,
 
+    @EnumValue("Alert Template Variables")
+    AlertTemplateVariables,
+
     @EnumValue("Alert Channel")
     AlertChannel,
+
+    @EnumValue("Alert Channel Templates")
+    AlertChannelTemplates,
 
     @EnumValue("Alert Destination")
     AlertDestination,
@@ -221,6 +228,9 @@ public class Audit extends Model {
 
     @EnumValue("Login")
     Login,
+
+    @EnumValue("ApiLogin")
+    ApiLogin,
 
     @EnumValue("Promote")
     Promote,
@@ -493,7 +503,16 @@ public class Audit extends Model {
     InstallYbc,
 
     @EnumValue("Set YB-Controller throttle params")
-    SetThrottleParams
+    SetThrottleParams,
+
+    @EnumValue("Export")
+    Export,
+
+    @EnumValue("Delete Universe Metadata")
+    DeleteMetadata,
+
+    @EnumValue("Unlock Universe")
+    Unlock
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.
@@ -536,8 +555,13 @@ public class Audit extends Model {
     return this.customerUUID;
   }
 
-  // The task creation time.
-  @CreatedTimestamp private final Date timestamp;
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value = "The task creation time.",
+      accessMode = READ_ONLY,
+      example = "2022-12-12T13:07:18Z")
+  @CreatedTimestamp
+  private final Date timestamp;
 
   public Date getTimestamp() {
     return this.timestamp;

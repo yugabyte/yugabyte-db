@@ -34,8 +34,11 @@ const mapDispatchToProps = (dispatch: any) => {
       ).then((response: any) => {
         try {
           if (response.payload.isAxiosError || response.payload.status !== 200) {
+            const responseError = response.payload?.response?.data?.error;
             const errorMessage =
-              response.payload?.response?.data?.error ?? 'Could not save config, try again';
+              typeof responseError !== 'string'
+                ? 'Could not save config, try again'
+                : responseError;
             toast.error(errorMessage);
           } else {
             toast.success('Config saved successfully');

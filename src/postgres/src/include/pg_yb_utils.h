@@ -86,11 +86,11 @@ extern uint64_t YbGetCatalogCacheVersionForTablePrefetching();
 extern void YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version);
 
 typedef enum GeolocationDistance {
-    ZONE_LOCAL,
-    REGION_LOCAL,
-    CLOUD_LOCAL,
-    INTER_CLOUD,
-    UNKNOWN_DISTANCE
+	ZONE_LOCAL,
+	REGION_LOCAL,
+	CLOUD_LOCAL,
+	INTER_CLOUD,
+	UNKNOWN_DISTANCE
 } GeolocationDistance;
 
 extern GeolocationDistance get_tablespace_distance (Oid tablespaceoid);
@@ -239,18 +239,6 @@ extern bool YBSavepointsEnabled();
  * Whether the per database catalog version mode is enabled.
  */
 extern bool YBIsDBCatalogVersionMode();
-
-/*
- * Given a status returned by YB C++ code, reports that status as a PG/YSQL
- * ERROR using ereport if it is not OK.
- */
-extern void	HandleYBStatus(YBCStatus status);
-
-/*
- * Generic version of HandleYBStatus that reports the YBCStatus at the
- * specified PG/YSQL error level (e.g. ERROR or WARNING or NOTICE).
- */
-void HandleYBStatusAtErrorLevel(YBCStatus status, int error_level);
 
 /*
  * Since DDL metadata in master DocDB and postgres system tables is not modified
@@ -519,12 +507,13 @@ extern bool yb_test_system_catalogs_creation;
 extern bool yb_test_fail_next_ddl;
 
 /*
- * Block index state changes:
- * - "indisready": indislive to indisready
- * - "getsafetime": indisready to backfill (specifically, the get safe time)
- * - "indisvalid": backfill to indisvalid
+ * Block the given index creation phase.
+ * - "indisready": index state change to indisready
+ *   (not supported for non-concurrent)
+ * - "backfill": index backfill phase
+ * - "postbackfill": post-backfill operations like validation and event triggers
  */
-extern char *yb_test_block_index_state_change;
+extern char *yb_test_block_index_phase;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for
@@ -553,10 +542,10 @@ bool YBIsInitDbAlreadyDone();
 int YBGetDdlNestingLevel();
 void YBIncrementDdlNestingLevel();
 void YBDecrementDdlNestingLevel(bool is_catalog_version_increment,
-                                bool is_breaking_catalog_change);
+								bool is_breaking_catalog_change);
 bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
-                                 bool *is_catalog_version_increment,
-                                 bool *is_breaking_catalog_change);
+								 bool *is_catalog_version_increment,
+								 bool *is_breaking_catalog_change);
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
@@ -754,5 +743,93 @@ void YBUpdateRowLockPolicyForSerializable(
 		int *effectiveWaitPolicy, LockWaitPolicy userLockWaitPolicy);
 
 const char* yb_fetch_current_transaction_priority(void);
+
+void GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YBCStatus s,
+							   const char **msg, size_t *nargs, const char ***args);
+
+#define HandleYBStatus(status) \
+	HandleYBStatusAtErrorLevel(status, ERROR)
+
+/*
+ * Macro to convert DocDB Status to Postgres error.
+ * It is generally based on the ereport macro, it makes a sequence of errxxx()
+ * function calls, where errstart() comes the first and errfinish() the last.
+ *
+ * The error location info (file name, line number, function name) comes from
+ * the status, so we need lower level access, that's why we can not use ereport
+ * here. Also we don't need ereport's flexibility, as we support transfer of
+ * limited subset of Postgres error fields.
+ *
+ * Similar to ereport, we have a version for compilers without support for
+ * __builtin_constant_p, though we may drop it eventually.
+ */
+#ifdef HAVE__BUILTIN_CONSTANT_P
+#define HandleYBStatusAtErrorLevel(status, elevel) \
+	do \
+	{ \
+		AssertMacro(!IsMultiThreadedMode()); \
+		YBCStatus _status = (status); \
+		if (_status) \
+		{ \
+			const uint32_t	pg_err_code = YBCStatusPgsqlError(_status); \
+			const uint16_t	txn_err_code = YBCStatusTransactionError(_status); \
+			const char	   *filename = YBCStatusFilename(_status); \
+			int				lineno = YBCStatusLineNumber(_status); \
+			const char	   *funcname = YBCStatusFuncname(_status); \
+			const char	   *msg_buf = YBCMessageAsCString(_status); \
+			size_t			nargs; \
+			const char	  **args = YBCStatusArguments(_status, &nargs); \
+			GetStatusMsgAndArgumentsByCode(pg_err_code, _status, &msg_buf, \
+										   &nargs, &args); \
+			YBCFreeStatus(_status); \
+			if (errstart(elevel, filename ? filename : __FILE__, \
+						 lineno > 0 ? lineno : __LINE__, \
+						 funcname ? funcname : PG_FUNCNAME_MACRO, TEXTDOMAIN)) \
+			{ \
+				yb_errmsg_from_status_data(msg_buf, nargs, args); \
+				errcode(pg_err_code); \
+				yb_txn_errcode(txn_err_code); \
+				errhidecontext(true); \
+				errfinish(0); \
+				if (__builtin_constant_p(elevel) && (elevel) >= ERROR) \
+					pg_unreachable(); \
+			} \
+		} \
+	} while (0)
+#else							/* !HAVE__BUILTIN_CONSTANT_P */
+#define HandleYBStatusAtErrorLevel(status, elevel) \
+	do \
+	{ \
+		AssertMacro(!IsMultiThreadedMode()); \
+		YBCStatus _status = (status); \
+		if (_status) \
+		{ \
+			const int		elevel_ = (elevel); \
+			const uint32_t	pg_err_code = YBCStatusPgsqlError(_status); \
+			const uint16_t	txn_err_code = YBCStatusTransactionError(_status); \
+			const char	   *filename = YBCStatusFilename(_status); \
+			int				lineno = YBCStatusLineNumber(_status); \
+			const char	   *funcname = YBCStatusFuncname(_status); \
+			const char	   *msg_buf = YBCMessageAsCString(_status); \
+			size_t			nargs; \
+			const char	  **args = YBCStatusArguments(_status, &nargs); \
+			GetStatusMsgAndArgumentsByCode(pg_err_code, _status, &msg_buf, \
+										   &nargs, &args); \
+			YBCFreeStatus(_status); \
+			if (errstart(elevel_, filename ? filename : __FILE__, \
+						 lineno > 0 ? lineno : __LINE__, \
+						 funcname ? funcname : PG_FUNCNAME_MACRO, TEXTDOMAIN)) \
+			{ \
+				yb_errmsg_from_status_data(msg_buf, nargs, args); \
+				errcode(pg_err_code); \
+				yb_txn_errcode(txn_err_code); \
+				errhidecontext(true); \
+				errfinish(0); \
+				if (elevel_ >= ERROR) \
+					pg_unreachable(); \
+			} \
+		} \
+	} while (0)
+#endif
 
 #endif /* PG_YB_UTILS_H */

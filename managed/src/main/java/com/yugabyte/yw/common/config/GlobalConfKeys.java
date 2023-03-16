@@ -34,17 +34,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "To log backup restore script output for debugging issues",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  // TODO: Use Enum type SkipCertValidationType
-  // I traced this to be Using Universe scope
-  public static final ConfKeyInfo<String> tlsSkipCertValidation =
-      new ConfKeyInfo<>(
-          "yb.tls.skip_cert_validation",
-          ScopeType.GLOBAL,
-          "Skip TLS Cert Validation",
-          "Used to skip certificates validation for the configure phase."
-              + "Possible values - ALL, HOSTNAME",
-          ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> useKubectl =
       new ConfKeyInfo<>(
           "yb.use_kubectl",
@@ -432,21 +421,20 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable detailed security logs",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  // TODO:Subham
   public static ConfKeyInfo<Boolean> supressError =
       new ConfKeyInfo<>(
           "yb.fs_stateless.suppress_error",
           ScopeType.GLOBAL,
           "Supress Error",
-          "TODO",
+          "If set, suppresses exceptions to be thrown as part of FS <-> DB sync on YBA startup",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
   public static ConfKeyInfo<Long> maxFileSizeBytes =
       new ConfKeyInfo<>(
           "yb.fs_stateless.max_file_size_bytes",
           ScopeType.GLOBAL,
-          "Max File Size ",
-          "TODO",
+          "Max File Size",
+          "Maximum size of file that can be persisted in DB",
           ConfDataType.BytesType,
           ImmutableList.of(ConfKeyTags.BETA));
   public static ConfKeyInfo<Integer> maxFilesCountPersist =
@@ -454,8 +442,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "yb.fs_stateless.max_files_count_persist",
           ScopeType.GLOBAL,
           "Max Files Persist",
-          "TODO",
+          "Maximum number of files that can be persisted in DB",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static ConfKeyInfo<Boolean> syncDBStateToFS =
+      new ConfKeyInfo<>(
+          "yb.fs_stateless.disable_sync_db_to_fs_startup",
+          ScopeType.GLOBAL,
+          "Sync DB State to FS",
+          "If disables does not syncs the files in DB to FS on every YBA startup",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
   public static ConfKeyInfo<Duration> taskGcCheckInterval =
       new ConfKeyInfo<>(
@@ -482,4 +478,70 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "List of tags to filter which keys are displayed",
           ConfDataType.TagListType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> dataValidationEnabled =
+      new ConfKeyInfo<>(
+          "runtime_config.data_validation.enabled",
+          ScopeType.GLOBAL,
+          "Enable Data Validation",
+          "Enable data validation while setting runtime keys",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> scopeStrictnessEnabled =
+      new ConfKeyInfo<>(
+          "runtime_config.scope_strictness.enabled",
+          ScopeType.GLOBAL,
+          "Enable Scope Strictness",
+          "Enable scope strictness while setting runtime keys",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> ansibleOffloadSupportedVersion =
+      new ConfKeyInfo<>(
+          "yb.node_agent.ansible_offloading.min_supported_version",
+          ScopeType.GLOBAL,
+          "Ansible Offloading Supported Version",
+          "Minimum supported version for ansible offloading",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> nodeAgentPollerInterval =
+      new ConfKeyInfo<>(
+          "yb.node_agent.poller_interval",
+          ScopeType.GLOBAL,
+          "Node Agent Poller Interval",
+          "Node agent poller interval",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> deadNodeAgentRetention =
+      new ConfKeyInfo<>(
+          "yb.node_agent.retention_duration",
+          ScopeType.GLOBAL,
+          "Dead Node Agent Retention Duration",
+          "Retention duration for a dead node agent before deletion",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> maxParallelNodeAgentUpgrades =
+      new ConfKeyInfo<>(
+          "yb.node_agent.max_parallel_upgrades",
+          ScopeType.GLOBAL,
+          "Max Parallel Node Agent Upgrades",
+          "Maximum number of parallel node agent upgrades",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Boolean> backwardCompatibleDate =
+      new ConfKeyInfo<>(
+          "yb.api.backward_compatible_date",
+          ScopeType.GLOBAL,
+          "API support for backward compatible date fields",
+          "Enable when a client to the YBAnywhere API wants to continue using the older date "
+              + " fields in non-ISO format. Default behaviour is to not populate such deprecated "
+              + "API fields and only return newer date fields.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> attachDetachEnabled =
+      new ConfKeyInfo<>(
+          "yb.attach_detach.enabled",
+          ScopeType.GLOBAL,
+          "Allow universes to be detached/attached",
+          "Allow universes to be detached from a source platform and attached to dest platform",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

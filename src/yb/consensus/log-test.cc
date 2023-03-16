@@ -40,6 +40,7 @@
 
 #include <glog/stl_logging.h>
 
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/log.messages.h"
@@ -63,6 +64,9 @@ DECLARE_bool(never_fsync);
 DECLARE_bool(writable_file_use_fsync);
 DECLARE_int32(o_direct_block_alignment_bytes);
 DECLARE_int32(o_direct_block_size_bytes);
+DECLARE_bool(TEST_simulate_abrupt_server_restart);
+DECLARE_bool(TEST_skip_file_close);
+DECLARE_int64(reuse_unclosed_segment_threshold);
 
 namespace yb {
 namespace log {
@@ -160,6 +164,8 @@ class LogTest : public LogTestBase {
   void DoCorruptionTest(CorruptionType type, CorruptionPosition place,
                         Status expected_status, int expected_entries);
 
+  void DoReuseLastSegmentTest(bool durable_wal_write);
+
   Result<std::vector<OpId>> AppendAndCopy(size_t num_batches, size_t num_entries_per_batch);
 
   std::string GetLogCopyPath(size_t copy_idx) {
@@ -209,6 +215,85 @@ class LogTest : public LogTestBase {
       const double commit_probability, const int num_approx_term_changes,
       const int num_approx_term_changes_with_index_rollback);
 };
+
+void LogTest::DoReuseLastSegmentTest(bool durable_wal_write) {
+  // log_->Close() simulates crash now
+  FLAGS_TEST_simulate_abrupt_server_restart = true;
+  FLAGS_TEST_skip_file_close = true;
+  FLAGS_reuse_unclosed_segment_threshold = 512_KB;
+  // Restore value options_.durable_wal_write back later.
+  bool temp = options_.durable_wal_write;
+  options_.durable_wal_write = durable_wal_write;
+
+  uint64_t num_batches = 10;
+  if (AllowSlowTests()) {
+    num_batches = FLAGS_num_batches;
+  }
+  BuildLog();
+  LOG_TIMING(INFO, "Wrote batches to log") {
+    AppendReplicateBatchToLog(num_batches);
+  }
+  // Check number of entries.
+  SegmentSequence segments;
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  uint32_t num_entries = ASSERT_RESULT(GetEntries(segments));
+  ASSERT_EQ(num_entries, num_batches);
+
+  // Simulate crash then insert entries.
+  size_t segment_num_before_crash = segments.size();
+  ASSERT_OK(log_->Close());
+  BuildLog();
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  // Make sure segments number didn't get increase after restart.
+  ASSERT_EQ(segments.size(), segment_num_before_crash);
+  num_entries = ASSERT_RESULT(GetEntries(segments));
+  ASSERT_EQ(num_entries, num_batches);
+  LOG_TIMING(INFO, "Wrote batches to log") {
+    AppendReplicateBatchToLog(num_batches);
+  }
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  num_entries = ASSERT_RESULT(GetEntries(segments));
+  ASSERT_EQ(num_entries, num_batches*2);
+
+  // Close this segment properly and add another segment.
+  FLAGS_TEST_skip_file_close = false;
+  ASSERT_OK(log_->AllocateSegmentAndRollOver());
+  LOG_TIMING(INFO, "Wrote batches to log") {
+    AppendReplicateBatchToLog(num_batches);
+  }
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  num_entries = ASSERT_RESULT(GetEntries(segments));
+  ASSERT_EQ(num_entries, num_batches*3);
+
+  // Simulate log crashs in the middle of writing an entry.
+  FLAGS_TEST_skip_file_close = true;
+  segment_num_before_crash = segments.size();
+  ASSERT_OK(log_->TEST_WriteCorruptedEntryBatchAndSync());
+  ASSERT_OK(log_->Close());
+  BuildLog();
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  // Make sure segments number didn't get increase after restart.
+  ASSERT_EQ(segments.size(), segment_num_before_crash);
+  num_entries = ASSERT_RESULT(GetEntries(segments));
+  ASSERT_EQ(num_entries, num_batches*3);
+
+  // Test log index.
+  int64_t wal_segment_number = ASSERT_RESULT(
+                    log_->GetLogReader()->LookupOpWalSegmentNumber(/*op_index=*/1));
+  ASSERT_EQ(1, wal_segment_number);
+  wal_segment_number = ASSERT_RESULT(
+                    log_->GetLogReader()->LookupOpWalSegmentNumber(/*op_index=*/num_entries));
+  ASSERT_EQ(segments.size(), wal_segment_number);
+  options_.durable_wal_write = temp;
+}
+
+TEST_F(LogTest, TestReuseLastSegment) {
+  DoReuseLastSegmentTest(/*durable_wal_write=*/false);
+}
+
+TEST_F(LogTest, TestReuseLastSegmentWithDirectIO) {
+  DoReuseLastSegmentTest(/*durable_wal_write=*/true);
+}
 
 // If we write more than one entry in a batch, we should be able to
 // read all of those entries back.

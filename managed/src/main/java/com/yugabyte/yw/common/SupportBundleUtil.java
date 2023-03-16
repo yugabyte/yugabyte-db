@@ -16,18 +16,18 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.KubernetesManager.RoleData;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.InstanceType.VolumeDetails;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
-import java.io.IOException;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.Charset;
@@ -50,11 +50,10 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.zip.GZIPInputStream;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.ToString;
-import java.util.zip.GZIPInputStream;
-
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.compress.archivers.ArchiveException;
@@ -63,7 +62,7 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.utils.IOUtils;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang3.ObjectUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.commons.lang3.time.DateUtils;
 import org.joda.time.DateTime;
 
@@ -365,6 +364,22 @@ public class SupportBundleUtil {
     return Files.createDirectories(Paths.get(dirPath));
   }
 
+  /**
+   * Logs error encountered while getting any k8s support bundle file to the local target file
+   * location
+   *
+   * @param errorMessage Error message to be written to the file
+   * @param e Exception which caused the error
+   * @param localFilePath target file to which the error has to be written
+   */
+  public void logK8sError(String errorMessage, Exception e, String localFilePath) {
+    log.error(errorMessage, e);
+
+    String fileErrorMessage =
+        errorMessage + System.lineSeparator() + ExceptionUtils.getStackTrace(e);
+    writeStringToFile(fileErrorMessage, localFilePath);
+  }
+
   public enum KubernetesResourceType {
     PODS,
     CONFIGMAPS,
@@ -458,17 +473,35 @@ public class SupportBundleUtil {
   }
 
   /**
-   * Gets the kubernetes service account name from the provider config object.
+   * Gets the kubernetes service account name from the provider config object. This is a best effort
+   * to parse the service account from the kubeconfig user.
    *
    * @param provider the provider object for the universe cluster.
+   * @param kubernetesManager the k8s manager object (Shell / Native).
+   * @param config tell the k8s manager where kubeconfig is.
    * @return the service account name.
    */
-  public String getServiceAccountName(Provider provider) {
+  public String getServiceAccountName(
+      Provider provider, KubernetesManager kubernetesManager, Map<String, String> config) {
     String serviceAccountName = "";
-    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
-    if (config.containsKey("KUBECONFIG_SERVICE_ACCOUNT")) {
-      serviceAccountName = config.get("KUBECONFIG_SERVICE_ACCOUNT");
+    Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(provider);
+    // If the provider has the KUBECONFIG_SERVICE_ACCOUNT key, we can use it directly. Otherwise,
+    // we will attempt to parse the service account from the kubeconfig. Kubeconfigs generated using
+    // generate_kubeconfig.py will have a user with the format <service account>-<cluster>.
+    if (providerConfig.containsKey("KUBECONFIG_SERVICE_ACCOUNT")) {
+      serviceAccountName = providerConfig.get("KUBECONFIG_SERVICE_ACCOUNT");
+    } else {
+      String username = kubernetesManager.getKubeconfigUser(config);
+      String clusterName = kubernetesManager.getKubeconfigCluster(config);
+
+      // Use regex to get the service account from the pattern (service account name)-(clusterName)
+      Pattern pattern = Pattern.compile(String.format("^(.*)-%s", clusterName));
+      Matcher matcher = pattern.matcher(username);
+      if (matcher.find()) {
+        serviceAccountName = matcher.group(1);
+      }
     }
+
     return serviceAccountName;
   }
 
@@ -484,7 +517,9 @@ public class SupportBundleUtil {
       KubernetesManager kubernetesManager,
       Map<String, String> config,
       String serviceAccountName,
-      String destDir) {
+      String destDir,
+      UUID universeUUID,
+      String universeName) {
     List<RoleData> roleDataList =
         kubernetesManager.getAllRoleDataForServiceAccountName(config, serviceAccountName);
     log.debug(
@@ -497,9 +532,20 @@ public class SupportBundleUtil {
               + String.format(
                   "/get_%s_%s_%s.%s",
                   roleData.kind, roleData.name, roleData.namespace, kubectlOutputFormat);
-      String resourceOutput =
-          kubernetesManager.getServiceAccountPermissions(config, roleData, kubectlOutputFormat);
-      writeStringToFile(resourceOutput, localFilePath);
+      try {
+
+        String resourceOutput =
+            kubernetesManager.getServiceAccountPermissions(config, roleData, kubectlOutputFormat);
+        writeStringToFile(resourceOutput, localFilePath);
+      } catch (Exception e) {
+        logK8sError(
+            String.format(
+                "Error when getting service account permissions for "
+                    + "service account '%s' on universe (%s, %s) : ",
+                serviceAccountName, universeUUID.toString(), universeName),
+            e,
+            localFilePath);
+      }
     }
   }
 

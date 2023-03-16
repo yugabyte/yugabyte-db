@@ -14,7 +14,7 @@ public class Common {
     gcp("gcp", true, true, true, ConfigHelper.ConfigType.GCPRegionMetadata, "centos"),
     azu("azu", true, true, true, ConfigHelper.ConfigType.AZURegionMetadata, "centos"),
     docker("docker", false, false, false, ConfigHelper.ConfigType.DockerRegionMetadata),
-    onprem("onprem", true, false),
+    onprem("onprem", true, false, true, null),
     kubernetes("kubernetes", true, false),
     local("local"),
     other("other");
@@ -98,6 +98,10 @@ public class Common {
 
     public String getSshUser() {
       return defaultSshUser;
+    }
+
+    public boolean enforceInstanceTags() {
+      return this == aws || this == azu || this == gcp;
     }
   }
 }

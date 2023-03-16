@@ -123,6 +123,7 @@ public class CustomerTaskController extends AuthenticatedController {
               ? task.getCustomTypeName()
               : task.getType().getFriendlyName();
       taskData.targetUUID = task.getTargetUUID();
+      taskData.userEmail = task.getUserEmail();
       String correlationId = task.getCorrelationId();
       if (!Strings.isNullOrEmpty(correlationId)) taskData.correlationId = correlationId;
       ObjectNode versionNumbers = Json.newObject();
@@ -281,6 +282,8 @@ public class CustomerTaskController extends AuthenticatedController {
       case DeleteNodeFromUniverse:
       case ReleaseInstanceFromUniverse:
       case RebootNodeInUniverse:
+      case StartNodeInUniverse:
+      case StopNodeInUniverse:
         String nodeName = oldTaskParams.get("nodeName").textValue();
         String universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
         UUID universeUUID = UUID.fromString(universeUUIDStr);
@@ -396,7 +399,6 @@ public class CustomerTaskController extends AuthenticatedController {
       String errMsg = String.format("Invalid task state: Task %s cannot be retried", taskUUID);
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
-    taskParams.firstTry = false;
     taskParams.setPreviousTaskUUID(taskUUID);
     UUID newTaskUUID = commissioner.submit(taskType, taskParams);
     LOG.info(

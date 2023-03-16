@@ -1,0 +1,45 @@
+version: '3'
+
+services:
+  odyssey:
+    build:
+      dockerfile: ./docker/Dockerfile
+      context: .
+    environment:
+      CMAKE_BUILD_TYPE: "${CMAKE_BUILD_TYPE:-Release}"
+    ports:
+      - "6432:6432"
+    volumes:
+      - ./odyssey.conf:/etc/odyssey.conf
+      - ..:/odyssey
+
+  dev:
+    build:
+      dockerfile: ./docker/dev/Dockerfile
+      context: .
+    security_opt: # options needed for gdb debugging
+      - seccomp:unconfined
+      - apparmor:unconfined
+    container_name: odyssey_dev
+    ports:
+      - "7776:22"
+      - "7777:7777"
+    volumes:
+      - .:/code
+  
+  dpkg:
+    build:
+      dockerfile: ./docker/dpkg/Dockerfile
+      context: .
+    container_name: odyssey_dpkg
+    ports:
+      - "7778:22"
+      - "7779:7777"
+    volumes:
+      - .:/dpkg
+
+  openldapr:
+     image: "osixia/openldap:1.5.0"
+     ports:
+      - "389:389"
+      - "636:636"

@@ -1,7 +1,8 @@
 ---
-title: Build a Spark application using Spark SQL with YugabyteDB
+title: Build a Spark application using Spark SQL with YugabyteDB YSQL
+headerTitle: Build a Spark application using Spark SQL and YugabyteDB 
 linkTitle: YSQL
-description: Build a Spark application using Spark SQL with YugabyteDB
+description: Learn how to build a Spark application using Spark SQL with YugabyteDB YSQL
 aliases:
 menu:
   preview_integrations:

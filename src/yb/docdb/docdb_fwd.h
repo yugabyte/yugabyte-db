@@ -37,6 +37,7 @@ class ExternalTxnIntentsState;
 class HistoryRetentionPolicy;
 class IntentAwareIterator;
 class IntentAwareIteratorIf;
+class IntentIterator;
 class KeyBytes;
 class KeyEntryValue;
 class ManualHistoryRetentionPolicy;
@@ -50,6 +51,7 @@ class SchemaPacking;
 class SchemaPackingStorage;
 class SharedLockManager;
 class TransactionStatusCache;
+class WaitQueue;
 class YQLRowwiseIteratorIf;
 class YQLStorageIf;
 

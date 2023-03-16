@@ -18,6 +18,7 @@
 
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/common/ybc-internal.h"
 
 #include "yb/gutil/stringprintf.h"
@@ -49,6 +50,10 @@ bool yb_force_global_transaction = false;
 bool suppress_nonpg_logs = false;
 
 bool yb_binary_restore = false;
+
+bool yb_pushdown_strict_inequality = true;
+
+bool yb_run_with_explain_analyze = false;
 
 // If this is set in the user's session to a positive value, it will supersede the gflag
 // ysql_session_max_batch_size.
@@ -211,6 +216,10 @@ bool YBCStatusIsDuplicateKey(YBCStatus s) {
   return StatusWrapper(s)->IsAlreadyPresent();
 }
 
+bool YBCStatusIsSnapshotTooOld(YBCStatus s) {
+  return FetchErrorCode(s) == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
+}
+
 uint32_t YBCStatusPgsqlError(YBCStatus s) {
   return to_underlying(FetchErrorCode(s));
 }
@@ -223,6 +232,20 @@ void YBCFreeStatus(YBCStatus s) {
   FreeYBCStatus(s);
 }
 
+const char* YBCStatusFilename(YBCStatus s) {
+  return YBCPAllocStdString(StatusWrapper(s)->file_name());
+}
+
+int YBCStatusLineNumber(YBCStatus s) {
+  return StatusWrapper(s)->line_number();
+}
+
+const char* YBCStatusFuncname(YBCStatus s) {
+  const std::string funcname_str =
+    FuncNameTag::Decode(StatusWrapper(s)->ErrorData(FuncNameTag::kCategory));
+  return funcname_str.empty() ? nullptr : YBCPAllocStdString(funcname_str);
+}
+
 size_t YBCStatusMessageLen(YBCStatus s) {
   return StatusWrapper(s)->message().size();
 }
@@ -231,36 +254,33 @@ const char* YBCStatusMessageBegin(YBCStatus s) {
   return StatusWrapper(s)->message().cdata();
 }
 
-const char* YBCStatusCodeAsCString(YBCStatus s) {
-  return StatusWrapper(s)->CodeAsCString();
-}
-
-const char* BuildUniqueViolationMessage(
-    YBCStatus status, GetUniqueConstraintNameFn get_constraint_name) {
-  const auto rel_oid = RelationOidTag::Decode(
-      StatusWrapper(status)->ErrorData(RelationOidTag::kCategory));
-  return YBCPAllocStdString(Format(
-      "duplicate key value violates unique constraint \"$0\"",
-      (*get_constraint_name)(rel_oid)));
-}
-
-const char* BuildYBStatusMessage(YBCStatus status, GetUniqueConstraintNameFn get_constraint_name) {
-  if (FetchErrorCode(status) == YBPgErrorCode::YB_PG_UNIQUE_VIOLATION) {
-    return BuildUniqueViolationMessage(status, get_constraint_name);
-  }
-  const char* const code_as_cstring = YBCStatusCodeAsCString(status);
-  const size_t code_strlen = strlen(code_as_cstring);
-  const size_t status_len = YBCStatusMessageLen(status);
-  size_t sz = code_strlen + status_len + 3;
-  char* const msg_buf = static_cast<char*>(YBCPAlloc(sz));
-  char* pos = msg_buf;
-  memcpy(msg_buf, code_as_cstring, code_strlen);
-  pos += code_strlen;
-  *pos++ = ':';
-  *pos++ = ' ';
-  memcpy(pos, YBCStatusMessageBegin(status), status_len);
-  pos[status_len] = 0;
+const char* YBCMessageAsCString(YBCStatus s) {
+  size_t msg_size = YBCStatusMessageLen(s);
+  char* msg_buf = static_cast<char*>(YBCPAlloc(msg_size + 1));
+  memcpy(msg_buf, YBCStatusMessageBegin(s), msg_size);
+  msg_buf[msg_size] = 0;
   return msg_buf;
+}
+
+unsigned int YBCStatusRelationOid(YBCStatus s) {
+  return RelationOidTag::Decode(StatusWrapper(s)->ErrorData(RelationOidTag::kCategory));
+}
+
+const char** YBCStatusArguments(YBCStatus s, size_t* nargs) {
+  const char** result = nullptr;
+  const std::vector<std::string>& args = PgsqlMessageArgsTag::Decode(
+      StatusWrapper(s)->ErrorData(PgsqlMessageArgsTag::kCategory));
+  if (nargs) {
+    *nargs = args.size();
+  }
+  if (!args.empty()) {
+    size_t i = 0;
+    result = static_cast<const char**>(YBCPAlloc(args.size() * sizeof(const char*)));
+    for (const std::string& arg : args) {
+      result[i++] = YBCPAllocStdString(arg);
+    }
+  }
+  return result;
 }
 
 bool YBCIsRestartReadError(uint16_t txn_errcode) {
@@ -301,10 +321,20 @@ void YBCLogImpl(
     const char* format,
     ...) {
   va_list argptr;
-  va_start(argptr, format); \
+  va_start(argptr, format);
+  YBCLogVA(severity, file, line, with_stack_trace, format, argptr);
+  va_end(argptr);
+}
+
+void YBCLogVA(
+    google::LogSeverity severity,
+    const char* file,
+    int line,
+    bool with_stack_trace,
+    const char* format,
+    va_list argptr) {
   string buf;
   StringAppendV(&buf, format, argptr);
-  va_end(argptr);
   google::LogMessage log_msg(file, line, severity);
   log_msg.stream() << buf;
   if (with_stack_trace) {

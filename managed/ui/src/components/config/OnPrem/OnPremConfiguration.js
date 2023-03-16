@@ -81,11 +81,11 @@ export default class OnPremConfiguration extends Component {
     this.setState({ isEditingProvider: true });
   };
   toggleCreateProviderForm = (flag) => {
-    this.setState({isCreatingProvider: flag});
-  }
+    this.setState({ isCreatingProvider: flag });
+  };
   setSelectedProvider = (providerUUID) => {
-    this.setState({selectedProviderUUID: providerUUID});
-  }
+    this.setState({ selectedProviderUUID: providerUUID });
+  };
   UNSAFE_componentWillReceiveProps(nextProps) {
     const {
       cloudBootstrap: {
@@ -281,7 +281,9 @@ export default class OnPremConfiguration extends Component {
     } = this.props;
     const { selectedProviderUUID } = this.state;
     const self = this;
-    const currentProvider = providers.data.find((provider) => provider.uuid === selectedProviderUUID);
+    const currentProvider = providers.data.find(
+      (provider) => provider.uuid === selectedProviderUUID
+    );
     let totalNumRegions = 0;
     let totalNumInstances = 0;
     let totalNumZones = 0;
@@ -335,7 +337,7 @@ export default class OnPremConfiguration extends Component {
   };
 
   render() {
-    const { configuredProviders, params } = this.props;
+    const { configuredProviders } = this.props;
     const { configJsonVal, isEditingProvider, selectedProviderUUID } = this.state;
     if (
       getPromiseState(configuredProviders).isInit() ||
@@ -369,10 +371,12 @@ export default class OnPremConfiguration extends Component {
             )}
             <OnPremSuccessContainer
               showEditProviderForm={this.showEditProviderForm}
-              setCreateProviderView={()=>{this.toggleCreateProviderForm(true);}}
+              setCreateProviderView={() => {
+                this.toggleCreateProviderForm(true);
+              }}
               selectedProviderUUID={selectedProviderUUID ?? providerFound.uuid}
-              params={params}
               setSelectedProvider={this.setSelectedProvider}
+              isRedesign={this.props.isRedesign}
             />
           </>
         );

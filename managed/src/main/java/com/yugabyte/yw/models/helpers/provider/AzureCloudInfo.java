@@ -95,4 +95,14 @@ public class AzureCloudInfo implements CloudInfoInterface {
   public void withSensitiveDataMasked() {
     this.azuClientSecret = CommonUtils.getMaskedValue(azuClientSecret);
   }
+
+  @JsonIgnore
+  public void mergeMaskedFields(CloudInfoInterface providerCloudInfo) {
+    AzureCloudInfo azureCloudInfo = (AzureCloudInfo) providerCloudInfo;
+    // If the modify request contains masked value, overwrite those using
+    // the existing ebean entity.
+    if (this.azuClientSecret != null && this.azuClientSecret.contains("*")) {
+      this.azuClientSecret = azureCloudInfo.azuClientSecret;
+    }
+  }
 }

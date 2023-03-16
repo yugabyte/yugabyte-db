@@ -1,5 +1,5 @@
 ---
-title: YugabyteDB Quick start
+title: YugabyteDB Quick start for Kubernetes
 headerTitle: Quick start
 linkTitle: Kubernetes
 headcontent: Create a local cluster on a single host
@@ -7,6 +7,7 @@ description: Get started using YugabyteDB in less than five minutes on Kubernete
 aliases:
   - /quick-start-kubernetes/
 type: docs
+unversioned: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

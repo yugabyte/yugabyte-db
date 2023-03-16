@@ -7,6 +7,7 @@ import com.google.api.client.util.Strings;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.logging.LogUtil;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -17,7 +18,6 @@ import io.swagger.annotations.ApiModelProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
-import play.data.validation.Constraints;
 
 import javax.annotation.Nullable;
 import javax.persistence.Column;
@@ -31,8 +31,11 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import play.data.validation.Constraints;
+import play.mvc.Http.Context;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -275,6 +278,9 @@ public class CustomerTask extends Model {
     @EnumValue("InstallYbcSoftware")
     InstallYbcSoftware,
 
+    @EnumValue("InstallYbcSoftwareOnK8s")
+    InstallYbcSoftwareOnK8s,
+
     @EnumValue("UpgradeUniverseYbc")
     UpgradeUniverseYbc,
 
@@ -405,6 +411,8 @@ public class CustomerTask extends Model {
           return completed ? "Ran API Triggered Hooks" : "Running API Triggered Hooks";
         case InstallYbcSoftware:
           return completed ? "Installed Ybc" : "Installing Ybc";
+        case InstallYbcSoftwareOnK8s:
+          return completed ? "Installed Ybc on K8S" : "Installing Ybc on K8S";
         case UpgradeUniverseYbc:
           return completed ? "Upgraded Ybc" : "Upgrading Ybc";
         case DisableYbc:
@@ -520,7 +528,7 @@ public class CustomerTask extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
       value = "Creation time",
       accessMode = READ_ONLY,
@@ -533,7 +541,7 @@ public class CustomerTask extends Model {
   }
 
   @Column
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
       value = "Completion time (present only if a task has completed)",
       accessMode = READ_ONLY,
@@ -568,6 +576,17 @@ public class CustomerTask extends Model {
     return correlationId;
   }
 
+  @Column
+  @ApiModelProperty(
+      value = "User triggering task",
+      accessMode = READ_ONLY,
+      example = "shagarwal@yugabyte.com")
+  private String userEmail;
+
+  public String getUserEmail() {
+    return userEmail;
+  }
+
   public void markAsCompleted() {
     markAsCompleted(new Date());
   }
@@ -600,6 +619,13 @@ public class CustomerTask extends Model {
     th.targetName = targetName;
     th.createTime = new Date();
     th.customTypeName = customTypeName;
+    String emailFromContext = Util.maybeGetEmailFromContext(Context.current.get());
+    if (emailFromContext.equals("Unknown")) {
+      // When task is not created as a part of user action get email of the scheduler.
+      th.userEmail = maybeGetEmailFromSchedule();
+    } else {
+      th.userEmail = emailFromContext;
+    }
     String correlationId = (String) MDC.get(LogUtil.CORRELATION_ID);
     if (!Strings.isNullOrEmpty(correlationId)) th.correlationId = correlationId;
     th.save();
@@ -726,5 +752,14 @@ public class CustomerTask extends Model {
     } else {
       return getTargetName();
     }
+  }
+
+  private static String maybeGetEmailFromSchedule() {
+    return Schedule.getAllActive()
+        .stream()
+        .filter(Schedule::getRunningState)
+        .findAny()
+        .map(Schedule::getUserEmail)
+        .orElse("Unknown");
   }
 }

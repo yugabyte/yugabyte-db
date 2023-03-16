@@ -132,7 +132,7 @@ TEST_F(MasterPathHandlersItest, TestDeadTServers) {
   ASSERT_TRUE(result_str.find(kTserverDead, pos + 1) == string::npos);
 
   // Startup the tserver and wait for heartbeats.
-  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
 
   ASSERT_OK(WaitFor([&]() -> bool {
     TestUrl("/tablet-servers", &result);
@@ -183,7 +183,7 @@ TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
   ASSERT_NOTNULL(leader);
 
   // Restart the server which was previously the leader of the now orphaned tablet.
-  ASSERT_OK(leader->Start());
+  ASSERT_OK(leader->Start(tserver::WaitTabletsBootstrapped::kFalse));
   // Sleep here to give the master's catalog_manager time to receive heartbeat from "leader".
   std::this_thread::sleep_for(std::chrono::milliseconds(6 * FLAGS_heartbeat_interval_ms));
 
@@ -366,8 +366,8 @@ TEST_F_EX(MasterPathHandlersItest, TestTablePlacementInfo, MasterPathHandlersExt
   ASSERT_EQ(result_str.find("live_replicas", pos + 1), string::npos);
 
   // Verify cluster level replication info.
-  auto yb_admin_client_ = std::make_unique<yb::tools::enterprise::ClusterAdminClient>(
-    cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(30));
+  auto yb_admin_client_ = std::make_unique<yb::tools::ClusterAdminClient>(
+      cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(30));
   ASSERT_OK(yb_admin_client_->Init());
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("cloud.region.zone", 3, "table_uuid"));
   TestUrl(url, &result);

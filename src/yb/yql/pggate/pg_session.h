@@ -125,7 +125,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Resets the read point for catalog tables.
   // Next catalog read operation will read the very latest catalog's state.
   void ResetCatalogReadPoint();
-  [[nodiscard]] bool HasCatalogReadPoint() const;
+  [[nodiscard]] const ReadHybridTime& catalog_read_time() const { return catalog_read_time_; }
 
   //------------------------------------------------------------------------------------------------
   // Operations on Session.
@@ -248,17 +248,24 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   }
 
   Result<PerformFuture> RunAsync(
-      const OperationGenerator& generator, uint64_t* in_txn_limit,
+      const OperationGenerator& generator, HybridTime in_txn_limit,
       ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
   Result<PerformFuture> RunAsync(
-      const ReadOperationGenerator& generator, uint64_t* in_txn_limit,
+      const ReadOperationGenerator& generator, HybridTime in_txn_limit,
       ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
-  Result<PerformFuture> RunAsyncCacheable(
-      const ReadOperationGenerator& generator, uint64_t* in_txn_limit, std::string&& cache_key);
+
+  struct CacheOptions {
+    std::string key;
+    std::optional<uint32_t> lifetime_threshold_ms;
+  };
+
+  Result<PerformFuture> RunAsync(const ReadOperationGenerator& generator, CacheOptions&& options);
 
   // Smart driver functions.
   // -------------
   Result<client::TabletServersInfo> ListTabletServers();
+
+  Status GetIndexBackfillProgress(std::vector<PgObjectId> index_ids, uint64_t** backfill_statuses);
 
   //------------------------------------------------------------------------------------------------
   // Access functions.
@@ -327,8 +334,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     return pg_client_;
   }
 
-  bool ShouldUseFollowerReads() const;
-
   Status SetActiveSubTransaction(SubTransactionId id);
   Status RollbackToSubTransaction(SubTransactionId id);
 
@@ -342,6 +347,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   void GetAndResetOperationFlushRpcStats(uint64_t* count, uint64_t* wait_time);
 
  private:
+  Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);
   Result<PerformFuture> FlushOperations(BufferableOperations ops, bool transactional);
 
   class RunHelper;
@@ -349,7 +355,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   struct PerformOptions {
     UseCatalogSession use_catalog_session = UseCatalogSession::kFalse;
     EnsureReadTimeIsSet ensure_read_time_is_set = EnsureReadTimeIsSet::kFalse;
-    std::string cache_key = std::string();
+    std::optional<CacheOptions> cache_options = std::nullopt;
+    HybridTime in_txn_limit = {};
   };
 
   Result<PerformFuture> Perform(BufferableOperations&& ops, PerformOptions&& options);
@@ -361,8 +368,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   template<class Generator>
   Result<PerformFuture> DoRunAsync(
-      const Generator& generator, uint64_t* in_txn_limit,
-      ForceNonBufferable force_non_bufferable, std::string&& cache_key);
+      const Generator& generator, HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable,
+      std::optional<CacheOptions>&& cache_options = std::nullopt);
 
   struct TxnSerialNoPerformInfo {
     TxnSerialNoPerformInfo() : TxnSerialNoPerformInfo(0, ReadHybridTime()) {}

@@ -42,7 +42,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    when(mockAppConfig.getString("yb.metrics.url")).thenReturn("foo://bar");
+    when(mockAppConfig.getString("yb.metrics.url")).thenReturn("foo://bar/api/v1");
 
     JsonNode configJson =
         Json.parse(
@@ -80,7 +80,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
                 + " {\"cpu\":\"system\"},\"value\":[1479278137,\"0.027751899056199826\"]},{\"metric\":\n"
                 + " {\"cpu\":\"system\"}, \"value\":[1479278137,\"0.04329469299783263\"]}]}}");
 
-    when(mockApiHelper.getRequest(eq("foo://bar/query"), anyMap(), anyMap()))
+    when(mockApiHelper.getRequest(eq("foo://bar/api/v1/query"), anyMap(), anyMap()))
         .thenReturn(Json.toJson(responseJson));
 
     JsonNode result = qe.call();
@@ -147,6 +147,35 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCustomExternalMetricUrl() {
+
+    when(mockAppConfig.getString("yb.metrics.external.url")).thenReturn("bar://external");
+    HashMap<String, String> params = new HashMap<>();
+    params.put("start", "1479281737");
+    params.put("queryKey", "valid_range_metric");
+    MetricQueryExecutor qe =
+        new MetricQueryExecutor(
+            metricUrlProvider,
+            mockApiHelper,
+            params,
+            new HashMap<>(),
+            new MetricSettings()
+                .setMetric("valid_range_metric")
+                .setNodeAggregation(NodeAggregation.MAX)
+                .setTimeAggregation(TimeAggregation.MAX),
+            false);
+
+    JsonNode result = qe.call();
+    ArrayNode directUrls = (ArrayNode) result.get("directURLs");
+    assertEquals(directUrls.size(), 1);
+    assertEquals(
+        directUrls.get(0).asText(),
+        "bar://external/graph?g0.expr=max%28max_over_time%28"
+            + "our_valid_range_metric%7Bfilter%3D%22awesome%22%7D%5B0s%5D%29%29&g0.tab=0"
+            + "&g0.range_input=3600s&g0.end_input=");
+  }
+
+  @Test
   public void testTopNodesQuery() {
     HashMap<String, String> params = new HashMap<>();
     params.put("start", "1479281737");
@@ -177,7 +206,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
                 + " {\"cpu\":\"system\",\"exported_instance\":\"instance2\"},"
                 + "\"value\":[1479278137,\"0.04329469299783263\"]}]}}");
 
-    when(mockApiHelper.getRequest(eq("foo://bar/query_range"), anyMap(), anyMap()))
+    when(mockApiHelper.getRequest(eq("foo://bar/api/v1/query_range"), anyMap(), anyMap()))
         .thenReturn(Json.toJson(responseJson));
 
     JsonNode result = qe.call();
@@ -238,7 +267,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
 
     assertThat(
         queryUrl.getValue(),
-        AllOf.allOf(IsNull.notNullValue(), IsEqual.equalTo("foo://bar/query_range")));
+        AllOf.allOf(IsNull.notNullValue(), IsEqual.equalTo("foo://bar/api/v1/query_range")));
 
     assertThat(
         queryParam.getValue(),
@@ -278,7 +307,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
 
     assertThat(
         queryUrl.getValue(),
-        AllOf.allOf(IsNull.notNullValue(), IsEqual.equalTo("foo://bar/query")));
+        AllOf.allOf(IsNull.notNullValue(), IsEqual.equalTo("foo://bar/api/v1/query")));
 
     assertThat(
         queryParam.getValue(),
