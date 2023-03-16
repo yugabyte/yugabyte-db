@@ -1760,8 +1760,20 @@ Status ClusterAdminClient::FlushTablesById(
 }
 
 Status ClusterAdminClient::CompactionStatus(const YBTableName& table_name) {
-  const auto last_request_time = VERIFY_RESULT(yb_client_->GetCompactionStatus(table_name));
-  cout << "Last full compaction request time: " << last_request_time.ToUint64() << endl;
+  const auto compaction_status = VERIFY_RESULT(yb_client_->GetCompactionStatus(table_name));
+  switch (compaction_status.full_compaction_state) {
+    case tablet::FULL_COMPACTION_STATE_UNKNOWN:
+      cout << "Compaction status unavailable. Waiting for heartbeats" << endl;
+      break;
+    case tablet::COMPACTING:
+      cout << "A full compaction is currently ongoing" << endl;
+      break;
+    case tablet::IDLE:
+      cout << "No full compaction taking place" << endl;
+      break;
+  }
+  cout << "Last admin full compaction request time: "
+       << compaction_status.last_request_time.ToUint64() << endl;
   return Status::OK();
 }
 

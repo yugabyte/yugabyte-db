@@ -742,13 +742,23 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // and that compaction has not yet finished.
   Status TriggerFullCompactionIfNeeded(rocksdb::CompactionReason reason);
 
+  // Triggers an admin full compaction on this tablet.
+  Status TriggerAdminFullCompactionIfNeeded();
+  // Triggers an admin full compaction on this tablet with a callback to execute once the compaction
+  // completes.
+  Status TriggerAdminFullCompactionWithCallbackIfNeeded(
+      std::function<void()> on_compaction_completion);
+
   bool HasActiveFullCompaction();
 
   bool HasActiveFullCompactionUnlocked() const REQUIRES(full_compaction_token_mutex_) {
-    // Check if there is an active scheduled full compaction.
-    return full_compaction_task_pool_token_ != nullptr ?
-        !full_compaction_task_pool_token_->WaitFor(MonoDelta::kZero) :
-        false;
+    bool has_active_scheduled = full_compaction_task_pool_token_ != nullptr
+                                    ? !full_compaction_task_pool_token_->WaitFor(MonoDelta::kZero)
+                                    : false;
+    bool has_active_admin = admin_full_compaction_task_pool_token_ != nullptr
+                                ? !admin_full_compaction_task_pool_token_->WaitFor(MonoDelta::kZero)
+                                : false;
+    return has_active_scheduled || has_active_admin;
   }
 
   bool HasActiveTTLFileExpiration();
@@ -913,6 +923,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   template <class PB>
   Result<IsolationLevel> DoGetIsolationLevel(const PB& transaction);
+
+  Status TriggerAdminFullCompactionIfNeededHelper(
+      std::function<void()> on_compaction_completion = []() {});
 
   std::unique_ptr<const Schema> key_schema_;
 
@@ -1108,8 +1121,15 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::unique_ptr<ThreadPoolToken> full_compaction_task_pool_token_
       GUARDED_BY(full_compaction_token_mutex_);
 
+  // Thread pool token for triggering admin full compactions.
+  std::unique_ptr<ThreadPoolToken> admin_full_compaction_task_pool_token_
+      GUARDED_BY(full_compaction_token_mutex_);
+
   // Pointer to shared thread pool in TsTabletManager. Managed by the FullCompactionManager.
   ThreadPool* full_compaction_pool_ = nullptr;
+
+  // Pointer to shared admin triggered thread pool in TsTabletManager.
+  ThreadPool* admin_triggered_compaction_pool_ = nullptr;
 
   // Gauge to monitor post-split compactions that have been started.
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_post_split_compaction_added_;

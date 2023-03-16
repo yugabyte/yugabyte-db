@@ -227,6 +227,7 @@ class BootstrapTest : public LogTestBase {
       .allowed_history_cutoff_provider = {},
       .transaction_manager_provider = nullptr,
       .full_compaction_pool = nullptr,
+      .admin_triggered_compaction_pool = nullptr,
       .post_split_compaction_added = nullptr
     };
     BootstrapTabletData data = {

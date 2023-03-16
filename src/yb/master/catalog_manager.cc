@@ -7700,8 +7700,7 @@ bool CatalogManager::ProcessCommittedConsensusState(
           << " using config reported by " << ts_desc->permanent_uuid()
           << " to that committed in log index " << cstate.config().opid_index()
           << " with leader state from term " << cstate.current_term();
-    ReconcileTabletReplicasInLocalMemoryWithReport(
-      tablet, ts_desc->permanent_uuid(), cstate, report);
+    UpdateTabletReplicasAfterConfigChange(tablet, ts_desc->permanent_uuid(), cstate, report);
 
     // 6d(iv). Update the consensus state. Don't use 'prev_cstate' after this.
     LOG(INFO) << "Tablet: " << tablet->tablet_id() << " reported consensus state change."
@@ -7726,8 +7725,7 @@ bool CatalogManager::ProcessCommittedConsensusState(
       LOG(INFO) << Format("Tablet replica map differs from reported consensus state. Replica map: "
           "$0. Reported consensus state: $1.", *tablet->GetReplicaLocations(),
           cstate.ShortDebugString());
-      ReconcileTabletReplicasInLocalMemoryWithReport(
-          tablet, ts_desc->permanent_uuid(), cstate, report);
+      UpdateTabletReplicasAfterConfigChange(tablet, ts_desc->permanent_uuid(), cstate, report);
     } else {
       UpdateTabletReplicaInLocalMemory(ts_desc, &cstate, report, tablet);
     }
@@ -9950,7 +9948,7 @@ Status CatalogManager::RegisterTsFromRaftConfig(const consensus::RaftPeerPB& pee
                                            RegisteredThroughHeartbeat::kFalse);
 }
 
-void CatalogManager::ReconcileTabletReplicasInLocalMemoryWithReport(
+void CatalogManager::UpdateTabletReplicasAfterConfigChange(
     const scoped_refptr<TabletInfo>& tablet,
     const std::string& sender_uuid,
     const ConsensusStatePB& consensus_state,
@@ -12662,6 +12660,30 @@ void CatalogManager::ProcessTabletMetadata(
   tablet->UpdateReplicaInfo(ts_uuid, drive_info, leader_lease_info);
 }
 
+void CatalogManager::ProcessTabletReplicaFullCompactionStatus(
+    const TabletServerId& ts_uuid, const FullCompactionStatusPB& full_compaction_status) {
+  if (!full_compaction_status.has_tablet_id()) {
+    VLOG(1) << "Tablet id not found";
+    return;
+  }
+
+  const TabletId& tablet_id = full_compaction_status.tablet_id();
+
+  if (!full_compaction_status.has_full_compaction_state()) {
+    VLOG(1) << Format(
+        "Full compaction status not reported for tablet $0 on tserver $1", tablet_id, ts_uuid);
+    return;
+  }
+
+  const auto result = GetTabletInfo(tablet_id);
+  if (!result.ok()) {
+    return;
+  }
+
+  (*result)->UpdateReplicaFullCompactionState(
+      ts_uuid, full_compaction_status.full_compaction_state());
+}
+
 void CatalogManager::CheckTableDeleted(const TableInfoPtr& table) {
   if (!FLAGS_master_drop_table_after_task_response) {
     return;
@@ -13071,8 +13093,28 @@ Status CatalogManager::UpdateLastFullCompactionRequestTime(const TableId& table_
 Status CatalogManager::GetCompactionStatus(
     const GetCompactionStatusRequestPB* req, GetCompactionStatusResponsePB* resp) {
   auto table_info = VERIFY_RESULT(FindTableById(req->table().table_id()));
-  auto lock = table_info->LockForRead();
-  resp->set_last_request_time(lock->pb.last_full_compaction_time());
+  tablet::FullCompactionState table_compaction_state = tablet::IDLE;
+  {
+    auto lock = table_info->LockForRead();
+    resp->set_last_request_time(lock->pb.last_full_compaction_time());
+    const auto tablets = table_info->GetTablets();
+    if (tablets.empty()) {
+      table_compaction_state = tablet::FULL_COMPACTION_STATE_UNKNOWN;
+    }
+    for (const auto& tablet_info : tablets) {
+      const auto replica_locations = tablet_info->GetReplicaLocations();
+      for (const auto& replica : *replica_locations) {
+        if (replica.second.full_compaction_state == tablet::FULL_COMPACTION_STATE_UNKNOWN) {
+          table_compaction_state = tablet::FULL_COMPACTION_STATE_UNKNOWN;
+          break;
+        } else if (replica.second.full_compaction_state == tablet::COMPACTING) {
+          table_compaction_state = tablet::COMPACTING;
+        }
+      }
+    }
+  }
+  resp->set_full_compaction_state(table_compaction_state);
+
   return Status::OK();
 }
 
