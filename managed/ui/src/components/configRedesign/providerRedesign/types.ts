@@ -204,14 +204,16 @@ interface ProviderDetails extends ProviderDetailsBase {
 }
 
 interface AWSCloudInfoBase {
-  awsAccessKeyID: string;
-  awsAccessKeySecret: string;
-  awsHostedZoneId: string;
+  awsAccessKeyID?: string;
+  awsAccessKeySecret?: string;
+  awsHostedZoneId?: string;
 }
 type AWSCloudInfoMutation = AWSCloudInfoBase;
-type AWSCloudInfo = AWSCloudInfoBase & {
+interface AWSCloudInfo extends AWSCloudInfoBase {
+  awsAccessKeyID: string;
+  awsAccessKeySecret: string;
   awsHostedZoneName: string;
-};
+}
 
 interface AZUCloudInfoBase {
   azuClientId: string;
