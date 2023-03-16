@@ -14,7 +14,7 @@ type: docs
 
 ## Overview
 
-Similarly to psql, ysqlsh provides a number of meta-commands that make `ysqlsh` more suitable for administration or scripting. Meta-commands are often called slash or backslash commands. Anything you enter in `ysqlsh` that begins with an unquoted backslash is a meta-command that is processed by `ysqlsh` itself.
+Similarly to psql, ysqlsh provides a number of meta-commands that make ysqlsh more suitable for administration or scripting. Meta-commands are often called slash or backslash commands. Anything you enter in ysqlsh that begins with an unquoted backslash is a meta-command that is processed by ysqlsh itself.
 
 {{< note title="Cloud shell" >}}
 
@@ -22,17 +22,17 @@ For security reasons, the YugabyteDB Managed cloud shell only has access to a su
 
 {{< /note >}}
 
-The format of a `ysqlsh` command is the backslash (`\`), followed immediately by a command verb, then any arguments. The arguments are separated from the command verb and each other by any number of whitespace characters.
+The format of a ysqlsh command is the backslash (`\`), followed immediately by a command verb, then any arguments. The arguments are separated from the command verb and each other by any number of whitespace characters.
 
 To include whitespace in an argument you can quote it with single quotes (`' '`). To include a single quote in an argument, write two single quotes in single-quoted text (`' ... '' ...'`). Anything contained in single quotes is furthermore subject to C-like substitutions for `\n` (new line), `\t` (tab), `\b` (backspace), `\r` (carriage return), `\f` (form feed), `\digits` (octal), and `\xdigits` (hexadecimal). A backslash preceding any other character in single-quoted text quotes that single character, whatever it is.
 
-If an unquoted colon (`:`) followed by a `ysqlsh` variable name appears in an argument, it is replaced by the variable's value, as described in [SQL interpolation](../ysqlsh/#sql-interpolation). The forms `:'variable_name'` and `:"variable_name"` described there work as well.
+If an unquoted colon (`:`) followed by a ysqlsh variable name appears in an argument, it is replaced by the variable's value, as described in [SQL interpolation](../ysqlsh/#sql-interpolation). The forms `:'variable_name'` and `:"variable_name"` described there work as well.
 
-In an argument, text that is enclosed in backquotes is taken as a command line that is passed to the shell. The output of the command (with any trailing newline removed) replaces the backquoted text. In the text enclosed in backquotes, no special quoting or other processing occurs, except that appearances of :variable_name where variable_name is a `ysqlsh` variable name are replaced by the variable's value. Also, appearances of `:'variable_name'` are replaced by the variable's value suitably quoted to become a single shell command argument. (The latter form is almost always preferable, unless you are very sure of what is in the variable.) Because carriage return and line feed characters cannot be safely quoted on all platforms, the `:'variable_name'` form prints an error message and doesn't substitute the variable value when such characters appear in the value.
+In an argument, text that is enclosed in backquotes is taken as a command line that is passed to the shell. The output of the command (with any trailing newline removed) replaces the backquoted text. In the text enclosed in backquotes, no special quoting or other processing occurs, except that appearances of :variable_name where variable_name is a ysqlsh variable name are replaced by the variable's value. Also, appearances of `:'variable_name'` are replaced by the variable's value suitably quoted to become a single shell command argument. (The latter form is almost always preferable, unless you are very sure of what is in the variable.) Because carriage return and line feed characters cannot be safely quoted on all platforms, the `:'variable_name'` form prints an error message and doesn't substitute the variable value when such characters appear in the value.
 
 Some commands take an SQL identifier (such as a table name) as argument. These arguments follow the syntax rules of SQL: Unquoted letters are forced to lowercase, while double quotes (`"`) protect letters from case conversion and allow incorporation of whitespace into the identifier. In double quotes, paired double quotes reduce to a single double quote in the resulting name. For example, `FOO"BAR"BAZ` is interpreted as `fooBARbaz`, and `"A weird"" name"` becomes `A weird" name`.
 
-Parsing for arguments stops at the end of the line, or when another unquoted backslash is found. An unquoted backslash is taken as the beginning of a new meta-command. The special sequence `\\` (two backslashes) marks the end of arguments and continues parsing SQL commands, if any. That way SQL statements and `ysqlsh` commands can be freely mixed on a line. But in any case, the arguments of a meta-command cannot continue beyond the end of the line.
+Parsing for arguments stops at the end of the line, or when another unquoted backslash is found. An unquoted backslash is taken as the beginning of a new meta-command. The special sequence `\\` (two backslashes) marks the end of arguments and continues parsing SQL commands, if any. That way SQL statements and ysqlsh commands can be freely mixed on a line. But in any case, the arguments of a meta-command cannot continue beyond the end of the line.
 
 Many of the meta-commands act on the current query buffer. This buffer holds whatever SQL statement text has been typed but not yet sent to the server for execution. This includes previous input lines as well as any text appearing before the meta-command on the same line.
 
@@ -50,7 +50,7 @@ Establishes a new connection to a YugabyteDB server. The connection parameters t
 
 Where the command omits *dname*, *user*, *host*, or *port*, the new connection can reuse values from the previous connection. By default, values from the previous connection are reused except when processing a *conninfo* string. Passing a first argument of `-reuse-previous=on` or `-reuse-previous=off` overrides that default. When the command neither specifies nor reuses a particular parameter, the `libpq` default is used. Specifying any of *dbname*, *username*, *host*, or *port* as `-` is equivalent to omitting that parameter.
 
-If the new connection is successfully made, the previous connection is closed. If the connection attempt failed (wrong user name, access denied, etc.), the previous connection is only kept if `ysqlsh` is in interactive mode. When executing a non-interactive script, processing immediately stops with an error. This distinction was chosen as a user convenience against typos on the one hand, and a safety mechanism that scripts aren't accidentally acting on the wrong database on the other hand.
+If the new connection is successfully made, the previous connection is closed. If the connection attempt failed (wrong user name, access denied, etc.), the previous connection is only kept if ysqlsh is in interactive mode. When executing a non-interactive script, processing immediately stops with an error. This distinction was chosen as a user convenience against typos on the one hand, and a safety mechanism that scripts aren't accidentally acting on the wrong database on the other hand.
 
 Examples:
 
@@ -80,11 +80,11 @@ Outputs information about the current database connection, including database, u
 
 ##### \copy { *table* [ ( *column_list* ) ] | ( *query* ) } { from | to } { '*filename*' | program '*command*' | stdin | stdout | pstdin | pstdout } [ \[ with \] ( *option* [, ...] ) ]
 
-Performs a frontend (client) copy. This is an operation that runs an SQL `COPY` statement, but instead of the server reading or writing the specified file, `ysqlsh` reads or writes the file and routes the data between the server and the local file system. This means that file accessibility and privileges are those of the local user, not the server, and no SQL superuser privileges are required.
+Performs a frontend (client) copy. This is an operation that runs an SQL `COPY` statement, but instead of the server reading or writing the specified file, ysqlsh reads or writes the file and routes the data between the server and the local file system. This means that file accessibility and privileges are those of the local user, not the server, and no SQL superuser privileges are required.
 
-When program is specified, *command* is executed by `ysqlsh` and the data passed from or to *command* is routed between the server and the client. Again, the execution privileges are those of the local user, not the server, and no SQL superuser privileges are required.
+When program is specified, *command* is executed by ysqlsh and the data passed from or to *command* is routed between the server and the client. Again, the execution privileges are those of the local user, not the server, and no SQL superuser privileges are required.
 
-For `\copy ... from stdin`, data rows are read from the same source that issued the command, continuing until `\.` is read or the stream reaches EOF. This option is useful for populating tables in-line in a SQL script file. For `\copy ... to stdout`, output is sent to the same place as `ysqlsh` command output, and the COPY count command status isn't printed (as it might be confused with a data row). To read or write `ysqlsh`'s standard input or output, regardless of the current command source or `\o` option, write from `pstdin` or to `pstdout`.
+For `\copy ... from stdin`, data rows are read from the same source that issued the command, continuing until `\.` is read or the stream reaches EOF. This option is useful for populating tables in-line in a SQL script file. For `\copy ... to stdout`, output is sent to the same place as ysqlsh command output, and the COPY count command status isn't printed (as it might be confused with a data row). To read or write ysqlsh's standard input or output, regardless of the current command source or `\o` option, write from `pstdin` or to `pstdout`.
 
 The syntax of this command is similar to that of the SQL `COPY` statement. All options other than the data source or destination are as specified for `COPY`. Because of this, special parsing rules apply to the `\copy` meta-command. Unlike most other meta-commands, the entire remainder of the line is always taken to be the arguments of `\copy`, and neither variable interpolation nor backquote expansion are performed in the arguments.
 
@@ -290,9 +290,9 @@ Lists event triggers. If *pattern* is specified, only those event triggers whose
 
 If *filename* is specified, the file is edited; after the editor exits, the file's content is copied into the current query buffer. If no *filename* is given, the current query buffer is copied to a temporary file which is then edited in the same fashion. Or, if the current query buffer is empty, the most recently executed query is copied to a temporary file and edited in the same fashion.
 
-The new contents of the query buffer are then re-parsed according to the normal rules of `ysqlsh`, treating the whole buffer as a single line. Any complete queries are immediately executed; that is, if the query buffer contains or ends with a semicolon, everything up to that point is executed. Whatever remains waits in the query buffer; type semicolon (`;`) or [\g](#g-filename-g-command) to send it, or [\r](#r-reset) to cancel it by clearing the query buffer. Treating the buffer as a single line primarily affects meta-commands: whatever is in the buffer after a meta-command is taken as arguments to the meta-command, even if it spans multiple lines. (Thus, you cannot make scripts using meta-commands this way. Use [\i](#i-filename-include-filename) for that.)
+The new contents of the query buffer are then re-parsed according to the normal rules of ysqlsh, treating the whole buffer as a single line. Any complete queries are immediately executed; that is, if the query buffer contains or ends with a semicolon, everything up to that point is executed. Whatever remains waits in the query buffer; type semicolon (`;`) or [\g](#g-filename-g-command) to send it, or [\r](#r-reset) to cancel it by clearing the query buffer. Treating the buffer as a single line primarily affects meta-commands: whatever is in the buffer after a meta-command is taken as arguments to the meta-command, even if it spans multiple lines. (Thus, you cannot make scripts using meta-commands this way. Use [\i](#i-filename-include-filename) for that.)
 
-If a line number is specified, `ysqlsh` positions the cursor on the specified line of the file or query buffer. Note that if a single all-digits argument is given, `ysqlsh` assumes it is a line number, not a file name.
+If a line number is specified, ysqlsh positions the cursor on the specified line of the file or query buffer. Note that if a single all-digits argument is given, ysqlsh assumes it is a line number, not a file name.
 
 {{< note title="Tip" >}}
 
@@ -325,7 +325,7 @@ The target function can be specified by name alone, or by name and arguments, fo
 
 If no function is specified, a blank `CREATE FUNCTION` template is presented for editing.
 
-If a line number is specified, `ysqlsh` positions the cursor on the specified line of the function body. (Note that the function body typically doesn't begin on the first line of the file.)
+If a line number is specified, ysqlsh positions the cursor on the specified line of the function body. (Note that the function body typically doesn't begin on the first line of the file.)
 
 Unlike most other meta-commands, the entire remainder of the line is always taken to be the arguments of `\ef`, and neither variable interpolation nor backquote expansion are performed in the arguments.
 
@@ -349,7 +349,7 @@ This command fetches and edits the definition of the named view, in the form of 
 
 If no view is specified, a blank `CREATE VIEW` template is presented for editing.
 
-If a line number is specified, `ysqlsh` positions the cursor on the specified line of the view definition.
+If a line number is specified, ysqlsh positions the cursor on the specified line of the view definition.
 
 Unlike most other meta-commands, the entire remainder of the line is always taken to be the arguments of `\ev`, and neither variable interpolation nor backquote expansion are performed in the arguments.
 
@@ -381,13 +381,13 @@ CREATE INDEX
 CREATE INDEX
 ```
 
-The generated queries are executed in the order in which the rows are returned, and left-to-right in each row if there is more than one column. `NULL` fields are ignored. The generated queries are sent literally to the server for processing, so they cannot be `ysqlsh` meta-commands nor contain `ysqlsh` variable references. If any individual query fails, execution of the remaining queries continues unless `ON_ERROR_STOP` is set. Execution of each query is subject to `ECHO` processing. (Setting [`ECHO`](../ysqlsh/#echo) to `all` or `queries` is often advisable when using `\gexec`.) Query logging, single-step mode, timing, and other query execution features apply to each generated query as well.
+The generated queries are executed in the order in which the rows are returned, and left-to-right in each row if there is more than one column. `NULL` fields are ignored. The generated queries are sent literally to the server for processing, so they cannot be ysqlsh meta-commands nor contain ysqlsh variable references. If any individual query fails, execution of the remaining queries continues unless `ON_ERROR_STOP` is set. Execution of each query is subject to `ECHO` processing. (Setting [`ECHO`](../ysqlsh/#echo) to `all` or `queries` is often advisable when using `\gexec`.) Query logging, single-step mode, timing, and other query execution features apply to each generated query as well.
 
 If the current query buffer is empty, the most recently sent query is re-executed instead.
 
 ##### \gset [ prefix ]
 
-Sends the current query buffer to the server and stores the query's output into `ysqlsh` variables (see [Variables](../ysqlsh/#variables)). The query to be executed must return exactly one row. Each column of the row is stored into a separate variable, named the same as the column. For example:
+Sends the current query buffer to the server and stores the query's output into ysqlsh variables (see [Variables](../ysqlsh/#variables)). The query to be executed must return exactly one row. Each column of the row is stored into a separate variable, named the same as the column. For example:
 
 ```plpgsql
 => SELECT 'hello' AS var1, 10 AS var2
@@ -417,7 +417,7 @@ If the current query buffer is empty, the most recently sent query is re-execute
 
 ##### \h or \help [ command ]
 
-Gives syntax help on the specified SQL statement. If command isn't specified, then `ysqlsh` lists all the commands for which syntax help is available. If command is an asterisk (`*`), then syntax help on all SQL statements is shown.
+Gives syntax help on the specified SQL statement. If command isn't specified, then ysqlsh lists all the commands for which syntax help is available. If command is an asterisk (`*`), then syntax help on all SQL statements is shown.
 
 Unlike most other meta-commands, the entire remainder of the line is always taken to be the arguments of `\help`, and neither variable interpolation nor backquote expansion are performed in the arguments.
 
@@ -455,9 +455,9 @@ Expressions that don't properly evaluate to `true` or `false` generate a warning
 
 Lines being skipped are parsed normally to identify queries and backslash commands, but queries aren't sent to the server, and backslash commands other than conditionals (`\if`, `\elif`, `\else`, `\endif`) are ignored. Conditional commands are checked only for valid nesting. Variable references in skipped lines aren't expanded, and backquote expansion isn't performed either.
 
-All the backslash commands of a given conditional block must appear in the same source file. If EOF is reached on the main input file or an `\include`-ed file before all local `\if`-blocks have been closed, then `ysqlsh` raises an error.
+All the backslash commands of a given conditional block must appear in the same source file. If EOF is reached on the main input file or an `\include`-ed file before all local `\if`-blocks have been closed, then ysqlsh raises an error.
 
-Here is an example that checks for the existence of two separate records in the database and stores the results in separate `ysqlsh` variables:
+Here is an example that checks for the existence of two separate records in the database and stores the results in separate ysqlsh variables:
 
 ```sql
 SELECT
@@ -569,7 +569,7 @@ There are various shortcut commands for [`\pset`](#pset-option-value). See `\a`,
 
 ##### \q, \quit
 
-Quits the `ysqlsh` program. In a script file, only execution of that script is terminated.
+Quits ysqlsh. In a script file, only execution of that script is terminated.
 
 ##### \qecho *text* [ ... ]
 
@@ -581,15 +581,15 @@ Resets (clears) the query buffer.
 
 ##### \s [ *filename* ]
 
-Print `ysqlsh`'s command line history to *filename8. If filename is omitted, the history is written to the standard output (using the pager if appropriate). This command isn't available if `ysqlsh` was built without [Readline](../ysqlsh/#command-line-editing) support.
+Print ysqlsh's command line history to *filename8. If filename is omitted, the history is written to the standard output (using the pager if appropriate). This command isn't available if ysqlsh was built without [Readline](../ysqlsh/#command-line-editing) support.
 
 ##### \set [ *name* [ *value* [ ... ] ] ]
 
-Sets the `ysqlsh` variable *name* to *value*, or if more than one value is given, to the concatenation of all of them. If only one argument is given, the variable is set to an empty-string value. To unset a variable, use the `\unset` command.
+Sets the ysqlsh variable *name* to *value*, or if more than one value is given, to the concatenation of all of them. If only one argument is given, the variable is set to an empty-string value. To unset a variable, use the `\unset` command.
 
-`\set` without any arguments displays the names and values of all currently-set `ysqlsh` variables.
+`\set` without any arguments displays the names and values of all currently-set ysqlsh variables.
 
-Valid variable names can contain letters, digits, and underscores. Variable names are case-sensitive. Certain variables are special, in that they control `ysqlsh`'s behavior or are automatically set to reflect connection state.
+Valid variable names can contain letters, digits, and underscores. Variable names are case-sensitive. Certain variables are special, in that they control ysqlsh's behavior or are automatically set to reflect connection state.
 
 These variables are documented in [Variables](../ysqlsh/#variables).
 
@@ -640,9 +640,9 @@ With a parameter, turns displaying of how long each SQL statement takes `on` or 
 
 ##### \unset *name*
 
-Un-sets (deletes) the `ysqlsh` variable *name*.
+Un-sets (deletes) the ysqlsh variable *name*.
 
-Most variables that control `ysqlsh`'s behavior cannot be unset; instead, an `\unset` command is interpreted as setting them to their default values. See [Variables](../ysqlsh/#variables).
+Most variables that control ysqlsh's behavior cannot be unset; instead, an `\unset` command is interpreted as setting them to their default values. See [Variables](../ysqlsh/#variables).
 
 ##### \w | \write *filename* | |*command*
 
@@ -668,13 +668,13 @@ This is an alias for [\dp](#dp-pattern-patterns) ("display privileges").
 
 ##### \\! [ *command* ]
 
-With no argument, escapes to a sub-shell; `ysqlsh` resumes when the sub-shell exits. With an argument, executes the shell command *command*.
+With no argument, escapes to a sub-shell; ysqlsh resumes when the sub-shell exits. With an argument, executes the shell command *command*.
 
 Unlike most other meta-commands, the entire remainder of the line is always taken to be the arguments of `\!`, and neither variable interpolation nor backquote expansion are performed in the arguments. The rest of the line is passed literally to the shell.
 
 ##### \\? [ *topic* ]
 
-Shows help information. The optional *topic* parameter (defaulting to `commands`) selects which part of `ysqlsh` is explained: `commands` describes psql's backslash commands; `options` describes the command-line options that can be passed to psql; and `variables` shows help about `ysqlsh` configuration variables.
+Shows help information. The optional *topic* parameter (defaulting to `commands`) selects which part of ysqlsh is explained: `commands` describes ysqlsh backslash commands; `options` describes the command-line options that can be passed to ysqlsh; and `variables` shows help about ysqlsh configuration variables.
 
 ## Patterns
 
@@ -724,7 +724,7 @@ Sets the output format to one of `unaligned`, `aligned`, `wrapped`, `html`, `asc
 
 `aligned` format is the standard, human-readable, nicely formatted text output; this is the default.
 
-`wrapped` format is like aligned but wraps wide data values across lines to make the output fit in the target column width. The target width is determined as described under the columns option. Note that `ysqlsh` doesn't attempt to wrap column header titles; therefore, `wrapped` format behaves the same as aligned if the total width needed for column headers exceeds the target.
+`wrapped` format is like aligned but wraps wide data values across lines to make the output fit in the target column width. The target width is determined as described under the columns option. Note that ysqlsh doesn't attempt to wrap column header titles; therefore, `wrapped` format behaves the same as aligned if the total width needed for column headers exceeds the target.
 
 The `html`, `asciidoc`, `latex`, `latex-longtable`, and `troff-ms` formats put out tables that are intended to be included in documents using the respective markup language. They aren't complete documents! This might not be necessary in HTML, but in LaTeX you must have a complete document wrapper. `latex-longtable` also requires the LaTeX longtable and booktabs packages.
 
@@ -748,7 +748,7 @@ If *value* is specified, it must be either `on` or `off`, which enables or disab
 
 ### pager
 
-Controls use of a pager program for query and `ysqlsh` help output. If the environment variable [PAGER](../ysqlsh/#pager) is set, the output is piped to the specified program. Otherwise, a platform-dependent default (such as `more`) is used.
+Controls use of a pager program for query and ysqlsh help output. If the environment variable [PAGER](../ysqlsh/#pager) is set, the output is piped to the specified program. Otherwise, a platform-dependent default (such as `more`) is used.
 
 When the `pager` option is `off`, the pager program isn't used. When the `pager` option is `on`, the pager is used when appropriate; that is, when the output is to a terminal and doesn't fit on the screen. The `pager` option can also be set to `always`, which causes the pager to be used for all terminal output regardless of whether it fits on the screen. `\pset pager` without a *value* toggles pager use `on` and `off`.
 
