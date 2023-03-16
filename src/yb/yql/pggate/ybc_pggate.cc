@@ -1435,12 +1435,20 @@ void YBCGetAndResetReadRpcStats(YBCPgStatement handle, uint64_t* reads, uint64_t
   pgapi->GetAndResetReadRpcStats(handle, reads, read_wait, tbl_reads, tbl_read_wait);
 }
 
-YBCStatus YBCStartTraceForQuery() {
-  return ToYBCStatus(pgapi->StartTraceForQuery());
+YBCStatus YBCStartTraceForQuery(int pid, const char* query_string) {
+  return ToYBCStatus(pgapi->StartTraceForQuery(pid, query_string));
 }
 
 YBCStatus YBCStopTraceForQuery() {
   return ToYBCStatus(pgapi->StopTraceForQuery());
+}
+
+YBCStatus YBCStartQueryEvent(const char* event_name) {
+  return ToYBCStatus(pgapi->StartQueryEvent(event_name));
+}
+
+YBCStatus YBCStopQueryEvent(const char *event_name) {
+  return ToYBCStatus(pgapi->StopQueryEvent(event_name));
 }
 
 YBCStatus YBCGetIndexBackfillProgress(YBCPgOid* index_oids, YBCPgOid* database_oids,

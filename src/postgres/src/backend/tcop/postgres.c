@@ -1092,12 +1092,16 @@ exec_simple_query(const char *query_string)
 		 */
 		oldcontext = MemoryContextSwitchTo(MessageContext);
 
+		YBCStartQueryEvent("analyz_and_rewrite");
 		querytree_list = pg_analyze_and_rewrite(parsetree, query_string,
 												NULL, 0, NULL);
 
+		YBCStopQueryEvent("analyz_and_rewrite");
+
+		YBCStartQueryEvent("plan");
 		plantree_list = pg_plan_queries(querytree_list,
 										CURSOR_OPT_PARALLEL_OK, NULL);
-
+		YBCStopQueryEvent("plan");
 		/* Done with the snapshot used for parsing/planning */
 		if (snapshot_set)
 			PopActiveSnapshot();
@@ -1164,6 +1168,7 @@ exec_simple_query(const char *query_string)
 		 */
 		MemoryContextSwitchTo(oldcontext);
 
+		YBCStartQueryEvent("execute");
 		/*
 		 * Run the portal to completion, and then drop it (and the receiver).
 		 */
@@ -1175,6 +1180,7 @@ exec_simple_query(const char *query_string)
 						 receiver,
 						 completionTag);
 
+		YBCStopQueryEvent("execute");
 		receiver->rDestroy(receiver);
 
 		PortalDrop(portal, false);
@@ -4642,7 +4648,7 @@ yb_exec_simple_query_impl(const void* query_string)
 static void
 yb_exec_simple_query(const char* query_string, MemoryContext exec_context)
 {
-	YBCStartTraceForQuery();
+	YBCStartTraceForQuery(MyProc->pid, query_string);
 	YBQueryRestartData restart_data  = {
 		.portal_name  = NULL,
 		.query_string = query_string,

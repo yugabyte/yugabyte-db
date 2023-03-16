@@ -32,6 +32,9 @@
 #include "opentelemetry/sdk/trace/simple_processor_factory.h"
 #include "opentelemetry/sdk/trace/tracer_provider_factory.h"
 #include "opentelemetry/trace/provider.h"
+#include "opentelemetry/trace/span_metadata.h"
+#include "opentelemetry/sdk/resource/semantic_conventions.h"
+#include "opentelemetry/trace/semantic_conventions.h"
 
 #include "yb/client/table_info.h"
 
@@ -445,37 +448,59 @@ Status PgSession::DeleteDBSequences(int64_t db_oid) {
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgSession::StartTraceForQuery() {
-  InitTracer();
+Status PgSession::StartTraceForQuery(int pid, const char* query_string) {
+  InitTracer(pid);
   auto provider = opentelemetry::trace::Provider::GetTracerProvider();
   this->query_tracer_ = provider->GetTracer("pg_session", OPENTELEMETRY_SDK_VERSION);
-  this->query_span_ = this->query_tracer_->StartSpan("Create span : handle request");
-  auto scope = this->query_tracer_->WithActiveSpan(this->query_span_);
-  {
-    auto outer_span = this->query_tracer_->StartSpan("Outer operation");
-    auto outer_scope = this->query_tracer_->WithActiveSpan(outer_span);
-    {
-        auto inner_span = this->query_tracer_->StartSpan("Inner operation");
-        auto inner_scope = this->query_tracer_->WithActiveSpan(inner_span);
-        // ... perform inner operation
-        inner_span->End();
-    }
-    // ... perform outer operation
-    outer_span->End();
-  }
-  {
-    auto sibling_span = this->query_tracer_->StartSpan("Sibling operation");
-    auto sibling_scope = this->query_tracer_->WithActiveSpan(sibling_span);
-    sibling_span->End();
-  }
+  auto span = this->query_tracer_->StartSpan(
+      "Statement",
+      {
+          {opentelemetry::trace::SemanticConventions::kCodeFunction, __FILE_NAME__},
+          {opentelemetry::trace::SemanticConventions::kCodeLineno, __LINE__},
+          {opentelemetry::trace::SemanticConventions::kDbStatement, query_string}
+      }
+      );
+  this->spans_.push(span);
+  this->tokens_.push(opentelemetry::context::RuntimeContext::Attach(
+      opentelemetry::context::RuntimeContext::GetCurrent().SetValue(opentelemetry::trace::kSpanKey, span)));
   return Status::OK();
 }
 
 Status PgSession::StopTraceForQuery() {
-  this->query_span_->End();
+  nostd::shared_ptr<opentelemetry::trace::Span> span = this->spans_.top();
+  span->SetStatus(opentelemetry::trace::StatusCode::kOk);
+  span->End();
+  this->tokens_.pop();
+  this->spans_.pop();
   CleanupTracer();
   return Status::OK();
 }
+
+Status PgSession::StartQueryEvent(const char* event_name) {
+  auto span = this->query_tracer_->StartSpan(
+      event_name,
+      {
+        {opentelemetry::trace::SemanticConventions::kCodeFunction, __FILE_NAME__}, {
+          opentelemetry::trace::SemanticConventions::kCodeLineno, __LINE__
+        }
+      }
+    );
+  this->spans_.push(span);
+  this->tokens_.push(
+      opentelemetry::context::RuntimeContext::Attach(
+          opentelemetry::context::RuntimeContext::GetCurrent().SetValue(opentelemetry::trace::kSpanKey, span)));
+  return Status::OK();
+}
+
+Status PgSession::StopQueryEvent(const char* event_name) {
+  nostd::shared_ptr<opentelemetry::trace::Span> span = this->spans_.top();
+  span->SetStatus(opentelemetry::trace::StatusCode::kOk);
+  span->End();
+  this->tokens_.pop();
+  this->spans_.pop();
+  return Status::OK();
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Status PgSession::DropTable(const PgObjectId& table_id) {
@@ -894,14 +919,17 @@ std::string PgSession::GetTraceFileName() {
   return trace_file_name_base_ + "trace_" + std::to_string(rand()) + ".log";
 }
 
-void PgSession::InitTracer() {
+void PgSession::InitTracer(int pid) {
   trace_file_name_ = GetTraceFileName();
   std::cout << "Starting tracing log file at: " << trace_file_name_ << std::endl;
   trace_file_handle_ = std::make_shared<std::ofstream>(std::ofstream(trace_file_name_.c_str()));
   auto exporter = trace_exporter::OStreamSpanExporterFactory::Create(*trace_file_handle_.get());
   auto processor = sdktrace::SimpleSpanProcessorFactory::Create(std::move(exporter));
+  auto resource = opentelemetry::sdk::resource::Resource::Create(
+    {{opentelemetry::sdk::resource::SemanticConventions::kServiceName, "PG_SERVICE"},
+     {opentelemetry::sdk::resource::SemanticConventions::kProcessPid, std::to_string(pid)}});
   std::shared_ptr<opentelemetry::trace::TracerProvider> provider_ =
-      sdktrace::TracerProviderFactory::Create(std::move(processor));
+      sdktrace::TracerProviderFactory::Create(std::move(processor), resource);
   trace::Provider::SetTracerProvider(provider_);
 }
 

@@ -19,8 +19,10 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <stack>
 
 #include "opentelemetry/trace/provider.h"
+#include "opentelemetry/context/runtime_context.h"
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/tablet_server.h"
@@ -192,8 +194,11 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Operations for a query
   //------------------------------------------------------------------------------------------------
 
-  Status StartTraceForQuery();
+  Status StartTraceForQuery(int pid, const char* query_string);
   Status StopTraceForQuery();
+
+  Status StartQueryEvent(const char*);
+  Status StopQueryEvent(const char*);
 
   //------------------------------------------------------------------------------------------------
   // Operations on Tablegroup.
@@ -360,7 +365,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   void GetAndResetOperationFlushRpcStats(uint64_t* count, uint64_t* wait_time);
 
-  void InitTracer();
+  void InitTracer(int pid);
   void CleanupTracer();
   std::string GetTraceFileName();
 
@@ -433,9 +438,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   std::variant<TxnSerialNoPerformInfo> last_perform_on_txn_serial_no_;
 
   nostd::shared_ptr<opentelemetry::trace::Tracer> query_tracer_;
-  nostd::shared_ptr<opentelemetry::trace::Span> query_span_;
+  std::stack<nostd::shared_ptr<opentelemetry::trace::Span>> spans_;
+  std::stack<nostd::unique_ptr<opentelemetry::context::Token>> tokens_;
 
-  std::string trace_file_name_base_ = "/home/centos/var/logs/tserver/";
+  std::string trace_file_name_base_ = "/home/centos/yugabyte-data/node-1/disk-1/yb-data/tserver/logs/";
   std::string trace_file_name_;
   std::shared_ptr<std::ofstream> trace_file_handle_ = nullptr;
 };
