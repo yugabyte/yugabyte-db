@@ -230,7 +230,7 @@ interface GCPCloudInfoBase {
   ybFirewallTags: string;
 
   gceProject?: string;
-  customGceNetwork?: string;
+  destVpcId?: string;
 }
 interface GCPCloudInfoMutation extends GCPCloudInfoBase {
   gceApplicationCredentials?: {};
