@@ -70,6 +70,9 @@ SELECT hypopg_relation_size(indexrelid) = current_setting('block_size')::bigint 
 FROM hypopg()
 ORDER BY indexrelid;
 
+-- Should detect invalid argument
+SELECT hypopg_relation_size(1);
+
 -- locally disable hypoopg
 SET hypopg.enabled to false;
 

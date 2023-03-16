@@ -1388,6 +1388,7 @@ hypopg_relation_size(PG_FUNCTION_ARGS)
 	double		tuples;
 	Oid			indexid = PG_GETARG_OID(0);
 	ListCell   *lc;
+	bool		found = false;
 
 	pages = 0;
 	tuples = 0;
@@ -1398,8 +1399,13 @@ hypopg_relation_size(PG_FUNCTION_ARGS)
 		if (entry->oid == indexid)
 		{
 			hypo_estimate_index_simple(entry, &pages, &tuples);
+			found = true;
+			break;
 		}
 	}
+
+	if (!found)
+		elog(ERROR, "oid %u is not a hypothetical index", indexid);
 
 	PG_RETURN_INT64(pages * 1.0L * BLCKSZ);
 }
