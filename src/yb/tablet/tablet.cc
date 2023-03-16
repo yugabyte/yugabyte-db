@@ -464,6 +464,7 @@ Tablet::Tablet(const TabletInitData& data)
       retention_policy_(std::make_shared<TabletRetentionPolicy>(
           clock_, data.allowed_history_cutoff_provider, metadata_.get())),
       full_compaction_pool_(data.full_compaction_pool),
+      admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
       ts_post_split_compaction_added_(std::move(data.post_split_compaction_added)) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
@@ -3911,6 +3912,33 @@ Status Tablet::TriggerFullCompactionIfNeeded(rocksdb::CompactionReason compactio
 
   return full_compaction_task_pool_token_->SubmitFunc(
       std::bind(&Tablet::TriggerFullCompactionSync, this, compaction_reason));
+}
+
+Status Tablet::TriggerAdminFullCompactionIfNeededHelper(
+    std::function<void()> on_compaction_completion) {
+  if (!admin_triggered_compaction_pool_ || state_ != State::kOpen) {
+    return STATUS(ServiceUnavailable, "Admin triggered compaction thread pool unavailable.");
+  }
+
+  std::lock_guard<std::mutex> lock(full_compaction_token_mutex_);
+  if (!admin_full_compaction_task_pool_token_) {
+    admin_full_compaction_task_pool_token_ =
+        admin_triggered_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
+  }
+
+  return admin_full_compaction_task_pool_token_->SubmitFunc([this, on_compaction_completion]() {
+    TriggerFullCompactionSync(rocksdb::CompactionReason::kAdminCompaction);
+    on_compaction_completion();
+  });
+}
+
+Status Tablet::TriggerAdminFullCompactionIfNeeded() {
+  return TriggerAdminFullCompactionIfNeededHelper();
+}
+
+Status Tablet::TriggerAdminFullCompactionWithCallbackIfNeeded(
+    std::function<void()> on_compaction_completion) {
+  return TriggerAdminFullCompactionIfNeededHelper(on_compaction_completion);
 }
 
 void Tablet::TriggerFullCompactionSync(rocksdb::CompactionReason reason) {

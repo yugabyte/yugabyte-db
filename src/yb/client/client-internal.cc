@@ -1151,8 +1151,8 @@ Status YBClient::Data::WaitForFlushTableToFinish(YBClient* client,
       std::bind(&YBClient::Data::IsFlushTableInProgress, this, client, flush_id, _1, _2));
 }
 
-Status YBClient::Data::GetCompactionStatus(
-    const YBTableName& table_name, const CoarseTimePoint deadline, MonoTime* last_request_time) {
+Result<TableCompactionStatus> YBClient::Data::GetCompactionStatus(
+    const YBTableName& table_name, const CoarseTimePoint deadline) {
   GetCompactionStatusRequestPB req;
   GetCompactionStatusResponsePB resp;
 
@@ -1167,9 +1167,8 @@ Status YBClient::Data::GetCompactionStatus(
       deadline, req, &resp, "GetCompactionStatus",
       &master::MasterAdminProxy::GetCompactionStatusAsync));
 
-  *last_request_time = MonoTime::FromUint64(resp.last_request_time());
-
-  return Status::OK();
+  return TableCompactionStatus{
+      resp.full_compaction_state(), MonoTime::FromUint64(resp.last_request_time())};
 }
 
 bool YBClient::Data::IsTabletServerLocal(const RemoteTabletServer& rts) const {

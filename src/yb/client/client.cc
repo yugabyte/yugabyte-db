@@ -720,11 +720,9 @@ Status YBClient::FlushTables(const std::vector<YBTableName>& table_names,
                             is_compaction);
 }
 
-Result<MonoTime> YBClient::GetCompactionStatus(const YBTableName& table_name) {
-  const auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  MonoTime last_request_time;
-  RETURN_NOT_OK(data_->GetCompactionStatus(table_name, deadline, &last_request_time));
-  return last_request_time;
+Result<TableCompactionStatus> YBClient::GetCompactionStatus(const YBTableName& table_name) {
+  return data_->GetCompactionStatus(
+      table_name, CoarseMonoClock::Now() + default_admin_operation_timeout());
 }
 
 std::unique_ptr<YBTableAlterer> YBClient::NewTableAlterer(const YBTableName& name) {
