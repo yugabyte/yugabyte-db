@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.models.Universe;
 import io.fabric8.kubernetes.api.model.LoadBalancerIngress;
 import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodCondition;
 import io.fabric8.kubernetes.api.model.PodStatus;
@@ -551,6 +552,20 @@ public abstract class KubernetesManager {
       String helmReleaseName,
       String appName,
       String newDiskSize,
+      boolean newNamingStyle);
+
+  public abstract List<PersistentVolumeClaim> getPVCs(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle);
+
+  public abstract List<Pod> getPods(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
       boolean newNamingStyle);
 
   public abstract void copyFileToPod(
