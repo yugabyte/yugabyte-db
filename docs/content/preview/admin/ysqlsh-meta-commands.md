@@ -254,7 +254,7 @@ Lists collations. If *pattern* is specified, only collations whose names match t
 
 Lists tables, views, and sequences with their associated access privileges. If *pattern* is specified, only tables, views, and sequences whose names match the pattern are listed.
 
-The [GRANT](../../api/ysql/the-sql-language/statements/dcl_grant)](../../api/ysql/the-sql-language/statements/dcl_grant) and [REVOKE](../../api/ysql/the-sql-language/statements/dcl_revoke) statements are used to set access privileges. The meaning of the privilege display is explained under [GRANT](../../api/ysql/the-sql-language/statements/dcl_grant).
+The [GRANT](../../api/ysql/the-sql-language/statements/dcl_grant) and [REVOKE](../../api/ysql/the-sql-language/statements/dcl_revoke) statements are used to set access privileges. The meaning of the privilege display is explained under [GRANT](../../api/ysql/the-sql-language/statements/dcl_grant).
 
 ##### \drds [ *role-pattern* [ *database-pattern* ] ]
 
