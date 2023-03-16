@@ -390,7 +390,7 @@ Examples:
     num_nodes=<num_nodes>,\
     vpc=<vpc_name>,\
     num_replicas=<num_replicas>,\
-    multi_zone=<multi_zone>
+    multi_zone=<bool>
   ```
 
 #### create
@@ -401,15 +401,15 @@ Examples:
 --replica=_arguments_
 : Specifications for the read replica provided as key-value pairs, as follows:
 
-- num_cores - number of vCPUs per node
-- memory_mb - memory (MB) per node
-- disk_size_gb - disk size (GB) per node
+- num_cores - number of vCPUs per node. Default is 2.
+- memory_mb - memory (MB) per node. Default is 4096.
+- disk_size_gb - disk size (GB) per node. Default is 10.
 - code - cloud provider (`AWS` or `GCP`)
 - region - region in which to deploy the read replica
-- num_nodes - number of nodes for the read replica
+- num_nodes - number of nodes for the read replica. Default is 1.
 - vpc_name - name of the VPC in which to deploy the read replica
 - num_replicas - the replication factor
-- multi-zone - whether the read replica is multi-zone.
+- multi-zone - whether the read replica is multi-zone (`true` or `false`). Default is false.
 
 #### delete
 
@@ -429,15 +429,15 @@ Examples:
 --replica=_arguments_
 : Specifications for the read replica provided as key-value pairs, as follows:
 
-- num_cores - number of vCPUs per node
-- memory_mb - memory (MB) per node
-- disk_size_gb - disk size (GB) per node
+- num_cores - number of vCPUs per node. Default is 2.
+- memory_mb - memory (MB) per node. Default is 4096.
+- disk_size_gb - disk size (GB) per node. Default is 10.
 - code - cloud provider (`AWS` or `GCP`)
 - region - region in which to deploy the read replica
-- num_nodes - number of nodes for the read replica
+- num_nodes - number of nodes for the read replica. Default is 1.
 - vpc_name - name of the VPC in which to deploy the read replica
 - num_replicas - the replication factor
-- multi-zone - 
+- multi-zone - whether the read replica is multi-zone (`true` or `false`). Default is false.
 
 -----
 
