@@ -452,4 +452,26 @@ public class NativeKubernetesManager extends KubernetesManager {
     // TODO Auto-generated method stub
     return null;
   }
+
+  @Override
+  public List<PersistentVolumeClaim> getPVCs(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle) {
+    // TODO Auto-generated method stub
+    throw new UnsupportedOperationException("Unimplemented method 'getPVCNames'");
+  }
+
+  @Override
+  public List<Pod> getPods(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle) {
+    // TODO Auto-generated method stub
+    throw new UnsupportedOperationException("Unimplemented method 'getPods'");
+  }
 }
