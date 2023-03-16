@@ -213,7 +213,7 @@ export const getDeviceInfoFromInstance = (
 export const useVolumeControls = (isEditMode: boolean) => {
   const [numVolumesDisable, setNumVolumesDisable] = useState(isEditMode ? true : false);
   const [volumeSizeDisable, setVolumeSizeDisable] = useState(false);
-  const [userTagsDisable, setUserTagsDisable] = useState(isEditMode ? true : false);
+  const [userTagsDisable, setUserTagsDisable] = useState(false);
   const [minVolumeSize, setMinVolumeSize] = useState(1);
   const { setValue } = useFormContext<UniverseFormData>();
 

@@ -134,6 +134,8 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
       numNodes: userIntent.numNodes,
       replicationFactor: userIntent.replicationFactor,
       placements: getPlacementsFromCluster(cluster),
+      defaultRegion: cluster?.placementInfo?.cloudList[0]?.defaultRegion ?? null,
+      mastersInDefaultRegion: universeData.mastersInDefaultRegion,
       masterPlacement: userIntent.dedicatedNodes
         ? MasterPlacementMode.DEDICATED
         : MasterPlacementMode.COLOCATED,
@@ -171,14 +173,24 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
     gFlags: [
       ...transformGFlagToFlagsArray(userIntent.masterGFlags, 'MASTER'),
       ...transformGFlagToFlagsArray(userIntent.tserverGFlags, 'TSERVER')
-    ]
+    ],
+    azOverrides: userIntent.azOverrides,
+    universeOverrides: userIntent.universeOverrides
   };
   return data;
 };
 
 //Transform form data to intent
 export const getUserIntent = ({ formData }: { formData: UniverseFormData }) => {
-  const { cloudConfig, instanceConfig, advancedConfig, instanceTags, gFlags } = formData;
+  const {
+    cloudConfig,
+    instanceConfig,
+    advancedConfig,
+    instanceTags,
+    gFlags,
+    azOverrides,
+    universeOverrides
+  } = formData;
   const { masterGFlags, tserverGFlags } = transformFlagArrayToObject(gFlags);
 
   let intent: UserIntent = {
@@ -212,8 +224,13 @@ export const getUserIntent = ({ formData }: { formData: UniverseFormData }) => {
   if (!_.isEmpty(tserverGFlags)) intent.tserverGFlags = tserverGFlags;
   if (!_.isEmpty(advancedConfig.awsArnString)) intent.awsArnString = advancedConfig.awsArnString;
   if (!_.isEmpty(instanceTags)) intent.instanceTags = transformTagsArrayToObject(instanceTags);
+  if (!_.isEmpty(azOverrides)) intent.azOverrides = azOverrides;
+  if (!_.isEmpty(universeOverrides)) intent.universeOverrides = universeOverrides;
 
-  if (cloudConfig.provider?.code === CloudType.kubernetes && cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
+  if (
+    cloudConfig.provider?.code === CloudType.kubernetes &&
+    cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED
+  ) {
     intent.tserverK8SNodeResourceSpec = instanceConfig.tserverK8SNodeResourceSpec;
     intent.masterK8SNodeResourceSpec = instanceConfig.masterK8SNodeResourceSpec;
   }
