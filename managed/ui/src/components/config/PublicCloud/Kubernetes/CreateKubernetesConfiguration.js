@@ -223,7 +223,7 @@ class CreateKubernetesConfiguration extends Component {
         .required('Config name is Required')
         .matches(ACCEPTABLE_CHARS, 'Config Name cannot contain special characters except - and _'),
 
-      serviceAccount: Yup.string().required('Service Account name is Required'),
+      serviceAccount: Yup.string(),
 
       kubeConfig: Yup.mixed().nullable(),
 
