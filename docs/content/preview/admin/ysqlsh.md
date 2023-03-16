@@ -369,7 +369,7 @@ Show help about `ysqlsh` and exit. The optional *topic* parameter (defaulting to
 
 `ysqlsh` provides variable substitution features similar to common Linux command shells. Variables are name-value pairs, where the value can be any string of any length. The name must consist of letters (including non-Latin letters), digits, and underscores.
 
-To set a variable, use the meta-command [\set](../ysqlsh-meta-commands/#set-name-value). For example,
+To set a variable, use the meta-command [\set](../ysqlsh-meta-commands/#set-name-value). For example:
 
 ```sql
 testdb=> \set foo bar
@@ -738,7 +738,7 @@ $endif
 
 ## Files
 
-##### psqlrc and ~/.psqlrc
+### psqlrc and ~/.psqlrc
 
 Unless it is passed an `-X` option, `ysqlsh` attempts to read and execute commands from the system-wide startup file (`psqlrc`) and then the user's personal startup file (`~/.psqlrc`), after connecting to the database but before accepting normal commands. These files can be used to set up the client and the server to taste, typically with [\set](../ysqlsh-meta-commands/#set-name-value) and `SET` statements.
 
@@ -748,7 +748,7 @@ The user's personal startup file is named `.psqlrc` and is sought in the invokin
 
 Both the system-wide startup file and the user's personal startup file can be made `ysqlsh`-version-specific by appending a dash and the YugabyteDB major or minor release number to the file name, for example `~/.psqlrc-10.2` or `~/.psqlrc-10.2.5`. The most specific version-matching file is read in preference to a non-version-specific file.
 
-##### .psql_history
+### .psql_history
 
 The command-line history is stored in the file `~/.psql_history`.
 
