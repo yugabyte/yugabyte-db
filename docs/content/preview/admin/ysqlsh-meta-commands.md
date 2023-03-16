@@ -3,7 +3,7 @@ title: ysqlsh meta-commands
 headerTitle: ysqlsh meta-commands
 linkTitle: Meta-commands
 description: YSQL shell meta-commands.
-headcontent: Shell for interacting with the YugabyteDB YSQL API
+headcontent: Run commands without querying the database
 menu:
   preview:
     identifier: ysqlsh-meta-commands
