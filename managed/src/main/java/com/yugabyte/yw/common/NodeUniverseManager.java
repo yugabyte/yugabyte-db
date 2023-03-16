@@ -1,3 +1,5 @@
+// Copyright (c) Yugabyte, Inc.
+
 package com.yugabyte.yw.common;
 
 import com.google.inject.Singleton;
@@ -302,7 +304,7 @@ public class NodeUniverseManager extends DevopsBase {
       } else {
         commandArgs.add("ssh");
         commandArgs.add("--port");
-        commandArgs.add(providerDetails.sshPort.toString());
+        commandArgs.add(context.isDefaultSshPort() ? "22" : providerDetails.sshPort.toString());
         commandArgs.add("--ip");
         commandArgs.add(node.cloudInfo.private_ip);
         commandArgs.add("--key");
