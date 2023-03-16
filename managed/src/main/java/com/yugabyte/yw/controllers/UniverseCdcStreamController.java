@@ -15,7 +15,7 @@ import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 
-import java.util.HashSet;
+import io.swagger.annotations.Authorization;
 import java.util.List;
 import java.util.UUID;
 
@@ -28,9 +28,11 @@ import org.yb.master.MasterReplicationOuterClass.IdTypePB;
 import org.yb.util.NetUtil;
 import play.mvc.Result;
 
-import javax.persistence.Table;
-
-@Api
+// Keeping hidden until we have separate internal API publication
+@Api(
+    value = "Universe CDC Management",
+    hidden = true,
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class UniverseCdcStreamController extends AuthenticatedController {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseCdcStreamController.class);
 
