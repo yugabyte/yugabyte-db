@@ -353,7 +353,7 @@ public class TableManager extends DevopsBase {
   }
 
   private String getCertsDir(Region region, Provider provider) {
-    return region.getProviderCloudCode().equals("kubernetes")
+    return region.getProviderCloudCode().equals(CloudType.kubernetes)
         ? K8S_CERT_PATH
         : provider.getYbHome() + VM_CERT_DIR;
   }
