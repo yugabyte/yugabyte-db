@@ -6,11 +6,11 @@
  */
 
 import React from 'react';
+import clsx from 'clsx';
 import { FormHelperText, makeStyles } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
-import clsx from 'clsx';
-import { v4 as uuidv4 } from 'uuid';
 import { array, object, string } from 'yup';
+import { nanoid } from 'nanoid';
 import { yupResolver } from '@hookform/resolvers/yup';
 
 import {
@@ -128,7 +128,7 @@ export const ConfigureRegionModal = ({
     const { regionData, ...region } = data;
     const newRegion =
       regionOperation === RegionOperation.ADD
-        ? { ...region, code: regionData.value.code, fieldId: uuidv4() }
+        ? { ...region, code: regionData.value.code, fieldId: nanoid() }
         : { ...region, code: regionData.value.code };
     if (providerCode === ProviderCode.GCP) {
       newRegion.zones = regionData.value.zoneOptions.map((zoneOption) => ({
