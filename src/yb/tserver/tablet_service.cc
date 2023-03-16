@@ -1599,7 +1599,8 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
       break;
     case FlushTabletsRequestPB::COMPACT:
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-          server_->tablet_manager()->TriggerAdminCompactionAndWait(tablet_ptrs), resp, &context);
+          server_->tablet_manager()->TriggerAdminCompaction(tablet_ptrs, true /* should_wait */),
+          resp, &context);
       break;
     case FlushTabletsRequestPB::LOG_GC:
       for (const auto& tablet : tablet_peers) {

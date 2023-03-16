@@ -1010,6 +1010,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status ProcessTabletReplicationStatus(const TabletReplicationStatusPB& replication_state)
       EXCLUDES(mutex_);
 
+  void ProcessTabletReplicaFullCompactionStatus(
+      const TabletServerId& ts_uuid, const FullCompactionStatusPB& full_compaction_status);
+
   void CheckTableDeleted(const TableInfoPtr& table) override;
 
   Status ShouldSplitValidCandidate(
@@ -1532,7 +1535,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   bool ReplicaMapDiffersFromConsensusState(const scoped_refptr<TabletInfo>& tablet,
                                            const consensus::ConsensusStatePB& consensus_state);
 
-  void ReconcileTabletReplicasInLocalMemoryWithReport(
+  void UpdateTabletReplicasAfterConfigChange(
       const scoped_refptr<TabletInfo>& tablet,
       const std::string& sender_uuid,
       const consensus::ConsensusStatePB& consensus_state,

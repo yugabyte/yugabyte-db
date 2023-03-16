@@ -90,27 +90,28 @@ Result<TabletPtr> TabletHarness::OpenTablet(const TabletId& tablet_id) {
 
 TabletInitData TabletHarness::MakeTabletInitData(const RaftGroupMetadataPtr& metadata) {
   return TabletInitData {
-    .metadata = metadata,
-    .client_future = std::shared_future<client::YBClient*>(),
-    .clock = clock_,
-    .parent_mem_tracker = std::shared_ptr<MemTracker>(),
-    .block_based_table_mem_tracker = std::shared_ptr<MemTracker>(),
-    .metric_registry = metrics_registry_.get(),
-    .log_anchor_registry = new log::LogAnchorRegistry(),
-    .tablet_options = TabletOptions(),
-    .log_prefix_suffix = std::string(),
-    .transaction_participant_context = nullptr,
-    .local_tablet_filter = client::LocalTabletFilter(),
-    .transaction_coordinator_context = nullptr,
-    .txns_enabled = TransactionsEnabled::kFalse,
-    .is_sys_catalog = IsSysCatalogTablet::kFalse,
-    .snapshot_coordinator = nullptr,
-    .tablet_splitter = nullptr,
-    .allowed_history_cutoff_provider = {},
-    .transaction_manager_provider = nullptr,
-    .full_compaction_pool = nullptr,
-    .post_split_compaction_added = nullptr
-  };
+      .metadata = metadata,
+      .client_future = std::shared_future<client::YBClient*>(),
+      .clock = clock_,
+      .parent_mem_tracker = std::shared_ptr<MemTracker>(),
+      .block_based_table_mem_tracker = std::shared_ptr<MemTracker>(),
+      .metric_registry = metrics_registry_.get(),
+      .log_anchor_registry = new log::LogAnchorRegistry(),
+      .tablet_options = TabletOptions(),
+      .log_prefix_suffix = std::string(),
+      .transaction_participant_context = nullptr,
+      .local_tablet_filter = client::LocalTabletFilter(),
+      .transaction_coordinator_context = nullptr,
+      .txns_enabled = TransactionsEnabled::kFalse,
+      .is_sys_catalog = IsSysCatalogTablet::kFalse,
+      .snapshot_coordinator = nullptr,
+      .tablet_splitter = nullptr,
+      .allowed_history_cutoff_provider = {},
+      .transaction_manager_provider = nullptr,
+      .full_compaction_pool = nullptr,
+      .admin_triggered_compaction_pool = nullptr,
+      .post_split_compaction_added = nullptr
+    };
 }
 
 } // namespace tablet

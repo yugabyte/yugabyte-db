@@ -110,6 +110,8 @@ struct TabletReplica {
 
   TabletLeaderLeaseInfo leader_lease_info;
 
+  tablet::FullCompactionState full_compaction_state = tablet::FULL_COMPACTION_STATE_UNKNOWN;
+
   TabletReplica() : time_updated(MonoTime::Now()) {}
 
   void UpdateFrom(const TabletReplica& source);
@@ -306,6 +308,9 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
     bool expected = false;
     return initiated_election_.compare_exchange_strong(expected, true);
   }
+
+  void UpdateReplicaFullCompactionState(
+      const std::string& ts_uuid, const tablet::FullCompactionState full_compaction_state);
 
   // The next five methods are getters and setters for the transient, in memory list of table ids
   // hosted by this tablet. They are only used if the underlying tablet proto's

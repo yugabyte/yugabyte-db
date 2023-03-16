@@ -121,6 +121,10 @@ struct TransactionStatusTablets {
   std::vector<TabletId> placement_local_tablets;
 };
 
+struct TableCompactionStatus {
+  tablet::FullCompactionState full_compaction_state;
+  MonoTime last_request_time;
+};
 
 // Creates a new YBClient with the desired options.
 //
@@ -301,7 +305,7 @@ class YBClient {
                      int timeout_secs,
                      bool is_compaction);
 
-  Result<MonoTime> GetCompactionStatus(const YBTableName& table_name);
+  Result<TableCompactionStatus> GetCompactionStatus(const YBTableName& table_name);
 
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const YBTableName& table_name);
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const std::string id);
