@@ -10,8 +10,10 @@ import lombok.Value;
 @Builder
 public class ShellProcessContext {
   public static final ShellProcessContext DEFAULT = ShellProcessContext.builder().build();
-  // Use the default user or custom user to connect.
+  // Use the default or custom user to connect.
   @Builder.Default boolean customUser = false;
+  // Use the default or the custom SSH port to connect.
+  @Builder.Default boolean defaultSshPort = false;
   // Env vars for this command
   Map<String, String> extraEnvVars;
   // Whether to log stdout&stderr to application.log or not
