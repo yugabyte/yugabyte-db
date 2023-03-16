@@ -637,6 +637,7 @@ export const AWSProviderCreateForm = ({
           providerCode={ProviderCode.AWS}
           regionOperation={regionOperation}
           regionSelection={regionSelection}
+          configuredRegions={regions}
           vpcSetupType={vpcSetupType}
           ybImageType={ybImageType}
         />

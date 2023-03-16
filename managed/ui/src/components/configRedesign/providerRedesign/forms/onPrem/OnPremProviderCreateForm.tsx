@@ -352,6 +352,7 @@ export const OnPremProviderCreateForm = ({
       </FormProvider>
       {isRegionFormModalOpen && (
         <ConfigureOnPremRegionModal
+          configuredRegions={regions}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}

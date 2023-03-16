@@ -41,7 +41,8 @@ const useStyles = makeStyles((theme) => ({
     padding: theme.spacing(1, 2, 1, 2),
     '& i': {
       color: 'white'
-    }
+    },
+    maxHeight: '42px'
   }
 }));
 

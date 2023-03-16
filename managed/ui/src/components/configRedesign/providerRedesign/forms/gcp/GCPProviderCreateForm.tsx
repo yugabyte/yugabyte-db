@@ -523,6 +523,7 @@ export const GCPProviderCreateForm = ({
       </FormProvider>
       {isRegionFormModalOpen && (
         <ConfigureRegionModal
+          configuredRegions={regions}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
