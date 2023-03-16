@@ -1,7 +1,7 @@
 import React, { FC, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useWatch } from 'react-hook-form';
-import { Box, Grid, Typography } from '@material-ui/core';
+import { Box, Typography } from '@material-ui/core';
 import { HelmOverridesField } from '../../fields';
 import { UniverseFormContext } from '../../../UniverseFormContainer';
 import { CloudType, ClusterType, ClusterModes } from '../../../utils/dto';
@@ -23,19 +23,17 @@ export const HelmOverrides: FC = () => {
 
   if (isCreatePrimary && provider?.code === CloudType.kubernetes)
     return (
-      <Box data-testid="helm-overrides-section">
+      <Box data-testid="HelmOverrides-Section">
         <Box mt={2}>
           <Typography className={classes.sectionHeaderFont}>
             {t('universeForm.helmOverrides.title')}
           </Typography>
         </Box>
         <Box>
-          <Grid container lg={6}>
-            <HelmOverridesField
-              disabled={false}
-              universeConfigureTemplate={universeConfigureTemplate}
-            />
-          </Grid>
+          <HelmOverridesField
+            disabled={false}
+            universeConfigureTemplate={universeConfigureTemplate}
+          />
         </Box>
       </Box>
     );

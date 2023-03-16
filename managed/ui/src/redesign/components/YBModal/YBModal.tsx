@@ -14,7 +14,6 @@ import {
 } from '@material-ui/core';
 import type { TransitionProps } from '@material-ui/core/transitions';
 import { YBTooltip, YBButton, YBButtonProps } from '../../components/';
-import { isSubmitting } from 'redux-form';
 
 export interface OverrideButtonProps {
   primary?: YBButtonProps;
