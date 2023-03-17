@@ -72,7 +72,9 @@ export const ConfigureAvailabilityZoneField = ({
         btnClass="btn btn-default"
         btnType="button"
         onClick={addZoneField}
-        disabled={isSubmitting || zoneCodeOptions === undefined}
+        disabled={
+          isSubmitting || zoneCodeOptions === undefined || fields.length >= zoneCodeOptions.length
+        }
         data-testid="ConfigureAvailabilityZonField-AddZoneButton"
       />
       <div className={classes.zonesContainer}>
@@ -86,7 +88,7 @@ export const ConfigureAvailabilityZoneField = ({
             <YBInputField
               control={control}
               name={`zones.${index}.subnet`}
-              placeholder="Enter..."
+              placeholder="Subnet"
               fullWidth
             />
             <YBButton

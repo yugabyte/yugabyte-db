@@ -5,7 +5,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import clsx from 'clsx';
 import { FormHelperText, makeStyles } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
@@ -131,6 +131,13 @@ export const ConfigureRegionModal = ({
     defaultValues: getDefaultFormValue(providerCode, regionSelection),
     resolver: yupResolver(validationSchema)
   });
+  const selectedRegion = formMethods.watch('regionData');
+  const { setValue } = formMethods;
+  const selectedRegionCode = selectedRegion?.value?.code;
+  useEffect(() => {
+    setValue('zones', []);
+  }, [selectedRegionCode, setValue]);
+
   const classes = useStyles();
 
   const configuredRegionCodes = configuredRegions.map((configuredRegion) => configuredRegion.code);
@@ -174,7 +181,6 @@ export const ConfigureRegionModal = ({
     onClose();
   };
 
-  const selectedRegion = formMethods.watch('regionData');
   return (
     <FormProvider {...formMethods}>
       <YBModal
@@ -267,10 +273,7 @@ const getDefaultFormValue = (
 ) => {
   if (regionSelection === undefined) {
     return {
-      zones: [] as {
-        code: { value: string; label: string; isDisabled: boolean };
-        subnet: string;
-      }[]
+      zones: [] as Zones
     };
   }
   const { code: currentRegionCode, zones, ...currentRegion } = regionSelection;
