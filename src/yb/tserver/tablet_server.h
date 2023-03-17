@@ -50,6 +50,7 @@
 #include "yb/master/master_fwd.h"
 #include "yb/server/webserver_options.h"
 #include "yb/tserver/db_server_base.h"
+#include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
@@ -262,6 +263,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   const XClusterSafeTimeMap& GetXClusterSafeTimeMap() const;
 
+  const std::shared_ptr<PgMutationCounter> GetPgNodeLevelMutationCounter();
+
   void UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
 
   Result<bool> XClusterSafeTimeCaughtUpToCommitHt(
@@ -325,6 +328,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Thread responsible for collecting metrics snapshots for native storage.
   std::unique_ptr<MetricsSnapshotter> metrics_snapshotter_;
 
+  // Thread responsible for sending aggregated table mutations to the auto analyzer service
+  std::unique_ptr<TableMutationCountSender> pg_table_mutation_count_sender_;
+
   // Webserver path handlers
   std::unique_ptr<TabletServerPathHandlers> path_handlers_;
 
@@ -380,6 +386,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   HostPort pgsql_proxy_bind_address_;
 
   XClusterSafeTimeMap xcluster_safe_time_map_;
+
+  std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter_;
 
   PgConfigReloader pg_config_reloader_;
 
