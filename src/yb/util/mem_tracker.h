@@ -180,6 +180,14 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
 #endif // YB_GOOGLE_TCMALLOC
   }
 
+  static int64_t GetTCMallocPhysicalBytesUsed() {
+#if defined(YB_GOOGLE_TCMALLOC)
+    return GetTCMallocProperty("generic.physical_memory_used");
+#else
+    return GetTCMallocProperty("generic.total_physical_bytes");
+#endif
+  }
+
   static int64_t GetTCMallocCurrentAllocatedBytes() {
     return GetTCMallocProperty("generic.current_allocated_bytes");
   }
