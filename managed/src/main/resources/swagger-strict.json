@@ -18944,6 +18944,12 @@
           "name" : "includeParentTableInfo",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "excludeColocatedTables",
+          "required" : false,
+          "type" : "boolean"
         } ],
         "responses" : {
           "200" : {
