@@ -19,7 +19,7 @@ This document focuses primarily on metrics and their uses detailing about which 
 {{< note title="Note" >}}
 
 - This page does not contain an exhaustive list of all the metrics exported by YugabyteDB.
-- This page only covers metrics and not query tuning. To learn more about query tuning in YugabyteDB, please visit this page.
+- This page only covers metrics and not query tuning. To learn more about query tuning in YugabyteDB, refer to [Query tuning](../../../explore/query-1-performance/).
 
 {{< /note >}}
 
@@ -31,12 +31,12 @@ A YugabyteDB cluster comprises multiple nodes and services, each emitting metric
 
 The following table includes a brief description of the type of metrics exposed by each endpoint and the URL from which their metrics can be exported.
 
-| End-point name | Description | JSON format | Prometheus format |
+| Endpoint name | Description | JSON format | Prometheus format |
 | :------------ | :---------- | :---------- | :---------------------------------------- |
-| [YB-Master](../../../architecture/concepts/yb-master/) | YB-Master exposes metrics related to the system catalog, cluster-wide metadata (such as the number of tablets and tables), and cluster-wide operations (table creations/drops, and so on.). | `<node-ip>:7000/metrics` | `<node-ip>:7000/prometheus-metrics` |
-| [YB-TServer](../../../architecture/concepts/yb-tserver/) | YB-Tserver exposes metrics related to end-user DML requests (such as table insert), which include tables, tablets, and storage-level metrics (such as Write-Ahead-Logging, and so on.). | `<node-ip>:9000/metrics` | `<node-ip>:9000/prometheus-metrics` |
-| [YSQL](../../../api/ysql/) | This endpoint exposes the YSQL query processing and connection metrics, such as throughput and latencies for the various operations. | `<node-ip>:13000/metrics` | `<node-ip>:13000/prometheus-metrics` |
-| [YCQL](../../../api/ycql/) | This endpoint exposes the YCQL query processing and connection metrics (such as throughput and latencies for various operations). | `<node-ip>:12000/metrics` | `<node-ip>:12000/prometheus-metrics` |
+| [YB-Master](../../../architecture/concepts/yb-master/) | Exposes metrics related to the system catalog, cluster-wide metadata (such as the number of tablets and tables), and cluster-wide operations (table creations/drops, and so on.). | `<node-ip>:7000/metrics` | `<node-ip>:7000/prometheus-metrics` |
+| [YB-TServer](../../../architecture/concepts/yb-tserver/) | Exposes metrics related to end-user DML requests (such as table insert), which include tables, tablets, and storage-level metrics (such as Write-Ahead-Logging, and so on.). | `<node-ip>:9000/metrics` | `<node-ip>:9000/prometheus-metrics` |
+| [YSQL](../../../api/ysql/) | Exposes the YSQL query processing and connection metrics, such as throughput and latencies for the various operations. | `<node-ip>:13000/metrics` | `<node-ip>:13000/prometheus-metrics` |
+| [YCQL](../../../api/ycql/) | Exposes the YCQL query processing and connection metrics (such as throughput and latencies for various operations). | `<node-ip>:12000/metrics` | `<node-ip>:12000/prometheus-metrics` |
 
 {{< note title="Note" >}}
 
@@ -124,7 +124,7 @@ A description of key metrics in this category is listed in the following table:
 | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
 | `handler_latency_yb_tserver_TabletServerService_Read` | microseconds | counter | The time in microseconds to perform WRITE operations at a tablet level |
-| `handler_latency_yb_tserver_TabletServerService_Write` | microseconds | counter | The time in microseconds to perform WRITE operations at a tablet level |
+| `handler_latency_yb_tserver_TabletServerService_Write` | microseconds | counter | The time in microseconds to perform READ operations at a tablet level |
 
 These metrics can be viewed as an aggregate across the whole cluster, per table, and per node by applying the appropriate aggregations.
 
@@ -173,9 +173,9 @@ A description of throughput and latency metrics for the storage (RocksDB) layer 
 | `Rocksdb_number_db_next`  | keys | counter | Whenever a tuple is read/updated from the database, a request is made to RocksDB key. Each database operation will have multiple requests to RocksDB. The number of NEXT operations performed to lookup a key by RocksDB when a tuple is read/updated by the database. |
 | `Rocksdb_number_db_prev`  | keys | counter | The number of PREV operations performed to lookup a key by RocksDB when a tuple is read/updated from the database. |
 | `Rocksdb_number_db_seek`  | keys | counter | The number of SEEK operations performed to lookup a key by the RocksDB when a tuple is read/updated from the database. |
-| `Rocksdb_db_write_micros` | microseconds | counter | The time spent by RocksDB in microseconds to write data |
-| `Rocksdb_db_get_micros` | microseconds | counter | The time spent by RocksDB in microseconds to retrieve data matching a value |
-| `Rocksdb_db_seek_micros`  | microseconds | counter | The time spent by RocksDB in microseconds to retrieve data in a range query |
+| `Rocksdb_db_write_micros` | microseconds | counter | The time spent by RocksDB in microseconds to write data. |
+| `Rocksdb_db_get_micros` | microseconds | counter | The time spent by RocksDB in microseconds to retrieve data matching a value. |
+| `Rocksdb_db_seek_micros`  | microseconds | counter | The time spent by RocksDB in microseconds to retrieve data in a range query. |
 
 These metrics can be aggregated across the entire cluster using appropriate aggregations.
 
@@ -187,9 +187,9 @@ A description of key metrics in this category is listed in the following table:
 
 | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
-| `rocksdb_block_cache_hit` | blocks | counter | The total number of block cache hits (cache index + cache filter + cache data) |
-| `rocksdb_block_cache_miss` | blocks | counter | The total number of block cache misses (cache index + cache filter + cache data) |
-| `block_cache_single_touch_usage` | blocks | counter | Blocks of data cached and read once by the YSQL layer are classified in single touch portion of the cache. The size (in bytes) of the cache usage by blocks having a single touch. |
+| `rocksdb_block_cache_hit` | blocks | counter | The total number of block cache hits (cache index + cache filter + cache data). |
+| `rocksdb_block_cache_miss` | blocks | counter | The total number of block cache misses (cache index + cache filter + cache data). |
+| `block_cache_single_touch_usage` | blocks | counter | Blocks of data cached and read more than once by the YSQL layer are classified in single touch portion of the cache. The size (in bytes) of the cache usage by blocks having a single touch. |
 | `block_cache_multi_touch_usage` | blocks | counter | Blocks of data cached and read once by the YSQL layer are classified in the multi-touch portion of the cache. The size (in bytes) of the cache usage by blocks having multiple touches. |
 
 These metrics can be aggregated across the entire cluster using appropriate aggregations.
@@ -215,8 +215,8 @@ A description of key metrics in this category is listed in the following table:
 
 | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
-| `rocksdb_current_version_sst_files_size` | bytes | counter | The aggregate size of all SST files |
-| `rocksdb_current_version_num_sst_files` | files | counter | The number of SST files |
+| `rocksdb_current_version_sst_files_size` | bytes | counter | The aggregate size of all SST files. |
+| `rocksdb_current_version_num_sst_files` | files | counter | The number of SST files. |
 
 These metrics can be aggregated across the entire cluster using appropriate aggregations.
 
@@ -243,7 +243,7 @@ A description of key metrics in this category is listed in the following table:
 
 | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
-| `rocksdb_memtable_compaction_micros` | microseconds | counter | The total time in microseconds to compact an set of SST files. |
+| `rocksdb_memtable_compaction_micros` | microseconds | counter | The total time in microseconds to compact a set of SST files. |
 | `rocksdb_memtable_hit` | keys | counter | The number of memtable hits. |
 | `rocksdb_memtable_miss` | keys | counter | The number of memtable misses. |
 
@@ -255,7 +255,7 @@ The Write Ahead Log (or WAL) is used to write and persist updates to disk on eac
 
 | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
-| `log_sync_latency` | microseconds | counter | The number of microseconds spent to fsync the WAL entries to disk. |
+| `log_sync_latency` | microseconds | counter | The number of microseconds spent to flush (fsync) the WAL entries to disk. |
 | `log_append_latency` | microseconds | counter | The number of microseconds spent on appending a batch of values to the WAL. |
 | `log_group_commit_latency` | microseconds | counter | The number of microseconds spent on committing an entire group. |
 | `log_bytes_logged`| bytes | counter | The number of bytes written to the WAL after the tablet starts. |
@@ -271,13 +271,13 @@ A description of key metrics in this category is listed in the following table:
 
 | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
-| `handler_latency_yb_master_MasterClient_GetTabletLocations` | microseconds | counter | The number of microseconds spent on fetching the replicas from the master servers. This metric includes the number of times the locations of the replicas from the master server. |
-| `handler_latency_yb_tserver_TabletServerService_Read` | microseconds | counter | The time in microseconds to reads the PostgreSQL system tables (during DDL). This metric includes the count or number of writes. |
-| `handler_latency_yb_tserver_TabletServerService_Write` | microseconds | counter | The time in microseconds to reads the PostgreSQL system tables (during DDL). This metric includes the count or number of writes. |
+| `handler_latency_yb_master_MasterClient_GetTabletLocations` | microseconds | counter | The number of microseconds spent on fetching the replicas from the master servers. This metric includes the number of times the locations of the replicas are fetched from the master server. |
+| `handler_latency_yb_tserver_TabletServerService_Read` | microseconds | counter | The time in microseconds to read the PostgreSQL system tables (during DDL). This metric includes the count or number of reads. |
+| `handler_latency_yb_tserver_TabletServerService_Write` | microseconds | counter | The time in microseconds to write the PostgreSQL system tables (during DDL). This metric includes the count or number of writes. |
 | `handler_latency_yb_master_MasterDdl_CreateTable` | microseconds | counter | The time in microseconds to create a table (during DDL). This metric includes the count of create table operations.|
 | `handler_latency_yb_master_MasterDdl_DeleteTable` | microseconds | counter | The time in microseconds to delete a table (during DDL). This metric includes the count of delete table operations.|
 
-A description of key metrics in this category is listed in the following table:
+These metric can be aggregated for nodes across the entire cluster using appropriate aggregations.
 
 ## Raft and distributed systems
 
@@ -294,7 +294,7 @@ A description of key metrics in this category is listed in the following table:
 | `handler_latency_yb_consensus_ConsensusService_RequestConsensusVotes` | microseconds | counter | The time in microseconds by candidates to gather votes. This metric includes the total count of the RPC method being invoked. |
 | `handler_latency_yb_consensus_ConsensusService_ChangeConfig` | microseconds | counter | The time in microseconds by candidates to add or remove a peer from the Raft group. This metric includes the total count of the RPC method being invoked. |
 
-The throughput (Ops/Sec) can be calculated and aggregated for nodes across the entire cluster using appropriate aggregations
+The throughput (Ops/Sec) can be calculated and aggregated for nodes across the entire cluster using appropriate aggregations.
 
 ### Clock skew
 
