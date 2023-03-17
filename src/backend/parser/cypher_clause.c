@@ -163,7 +163,8 @@ static A_Expr *filter_vertices_on_label_id(cypher_parsestate *cpstate,
                                            Node *id_field, char *label);
 static Node *create_property_constraints(cypher_parsestate *cpstate,
                                          transform_entity *entity,
-                                         Node *property_constraints);
+                                         Node *property_constraints,
+                                         Node *prop_expr);
 static TargetEntry *findTarget(List *targetList, char *resname);
 static transform_entity *transform_VLE_edge_entity(cypher_parsestate *cpstate,
                                                    cypher_relationship *rel,
@@ -3497,33 +3498,43 @@ static A_Expr *filter_vertices_on_label_id(cypher_parsestate *cpstate,
  */
 static Node *create_property_constraints(cypher_parsestate *cpstate,
                                          transform_entity *entity,
-                                         Node *property_constraints)
+                                         Node *property_constraints,
+                                         Node *prop_expr)
 {
     ParseState *pstate = (ParseState *)cpstate;
     char *entity_name;
-    ColumnRef *cr;
-    Node *prop_expr, *const_expr;
+    Node *const_expr;
     RangeTblEntry *rte;
     Node *last_srf = pstate->p_last_srf;
 
-    cr = makeNode(ColumnRef);
-
-    entity_name = get_entity_name(entity);
-
-    cr->fields = list_make2(makeString(entity_name), makeString("properties"));
-
-    // use Postgres to get the properties' transform node
-    if ((rte = find_rte(cpstate, entity_name)))
+    /*
+     * If the prop_expr node wasn't passed in, create it. Otherwise, skip
+     * the creation step.
+     */
+    if (prop_expr == NULL)
     {
-        prop_expr = scanRTEForColumn(pstate, rte, AG_VERTEX_COLNAME_PROPERTIES,
-                                     -1, 0, NULL);
-    }
-    else
-    {
-        prop_expr = transformExpr(pstate, (Node *)cr, EXPR_KIND_WHERE);
+        ColumnRef *cr = NULL;
+
+        cr = makeNode(ColumnRef);
+        entity_name = get_entity_name(entity);
+        cr->fields = list_make2(makeString(entity_name),
+                                makeString("properties"));
+
+        /* use Postgres to get the properties' transform node */
+        rte = find_rte(cpstate, entity_name);
+        if (rte != NULL)
+        {
+            prop_expr = scanRTEForColumn(pstate, rte,
+                                         AG_VERTEX_COLNAME_PROPERTIES, -1, 0,
+                                         NULL);
+        }
+        else
+        {
+            prop_expr = transformExpr(pstate, (Node *)cr, EXPR_KIND_WHERE);
+        }
     }
 
-    // use cypher to get the constraints' transform node
+    /* use cypher to get the constraints' transform node */
     const_expr = transform_cypher_expr(cpstate, property_constraints,
                                        EXPR_KIND_WHERE);
 
@@ -3808,13 +3819,68 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
             entity = make_transform_entity(cpstate, ENT_VERTEX, (Node *)node,
                                            expr);
 
-            /* transform properties if they exist */
+            /* transform the properties if they exist */
             if (node->props)
             {
                 Node *n = NULL;
+                Node *prop_var = NULL;
+                Node *prop_expr = NULL;
+
+                /*
+                 * We need to build a transformed properties(prop_var)
+                 * expression IF the properties variable already exists from a
+                 * previous clause. Please note that the "found" prop_var was
+                 * previously transformed.
+                 */
+
+                /* get the prop_var if it was previously resolved */
+                if (node->name != NULL)
+                {
+                    prop_var = colNameToVar(pstate, node->name, false,
+                                            node->location);
+                }
+
+                /*
+                 * If prop_var exists and is an alias, just pass it through by
+                 * assigning the prop_expr the prop_var.
+                 */
+                if (prop_var != NULL &&
+                    pg_strncasecmp(node->name, AGE_DEFAULT_ALIAS_PREFIX,
+                                   strlen(AGE_DEFAULT_ALIAS_PREFIX)) == 0)
+                {
+                    prop_expr = prop_var;
+                }
+                /*
+                 * Else, if it exists and is not an alias, create the prop_expr
+                 * as a transformed properties(prop_var) function node.
+                 */
+                else if (prop_var != NULL)
+                {
+                    /*
+                     * Remember that prop_var is already transformed. We need
+                     * to built the transform manually.
+                     */
+                    FuncCall *fc = NULL;
+                    List *targs = NIL;
+                    List *fname = NIL;
+
+                    targs = lappend(targs, prop_var);
+                    fname = list_make2(makeString("ag_catalog"),
+                                       makeString("age_properties"));
+                    fc = makeFuncCall(fname, targs, -1);
+
+                    /*
+                     * Hand off to ParseFuncOrColumn to create the function
+                     * expression for properties(prop_var)
+                     */
+                    prop_expr = ParseFuncOrColumn(pstate, fname, targs,
+                                                  pstate->p_last_srf, fc, false,
+                                                  -1);
+                }
 
                 ((cypher_map*)node->props)->keep_null = true;
-                n = create_property_constraints(cpstate, entity, node->props);
+                n = create_property_constraints(cpstate, entity, node->props,
+                                                prop_expr);
 
                 cpstate->property_constraint_quals =
                     lappend(cpstate->property_constraint_quals, n);
@@ -3873,13 +3939,66 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
 
                 if (rel->props)
                 {
-                    Node *n;
+                    Node *r = NULL;
+                    Node *prop_var = NULL;
+                    Node *prop_expr = NULL;
+
+                    /*
+                     * We need to build a transformed properties(prop_var)
+                     * expression IF the properties variable already exists from
+                     * a previous clause. Please note that the "found" prop_var
+                     * was previously transformed.
+                     */
+
+                    /* get the prop_var if it was previously resolved */
+                    if (rel->name != NULL)
+                    {
+                        prop_var = colNameToVar(pstate, rel->name, false,
+                                                rel->location);
+                    }
+
+                    /*
+                     * If prop_var exists and is an alias, just pass it through by
+                     * assigning the prop_expr the prop_var.
+                     */
+                    if (prop_var != NULL &&
+                        pg_strncasecmp(rel->name, AGE_DEFAULT_ALIAS_PREFIX,
+                                       strlen(AGE_DEFAULT_ALIAS_PREFIX)) == 0)
+                    {
+                        prop_expr = prop_var;
+                    }
+                    /*
+                     * Else, if it exists and is not an alias, create the prop_expr
+                     * as a transformed properties(prop_var) function node.
+                     */
+                    else if (prop_var != NULL)
+                    {
+                        /*
+                         * Remember that prop_var is already transformed. We need
+                         * to built the transform manually.
+                         */
+                        FuncCall *fc = NULL;
+                        List *targs = NIL;
+                        List *fname = NIL;
+
+                        targs = lappend(targs, prop_var);
+                        fname = list_make2(makeString("ag_catalog"),
+                                           makeString("age_properties"));
+                        fc = makeFuncCall(fname, targs, -1);
+
+                        /*
+                         * Hand off to ParseFuncOrColumn to create the function
+                         * expression for properties(prop_var)
+                         */
+                        prop_expr = ParseFuncOrColumn(pstate, fname, targs,
+                                                      pstate->p_last_srf, fc,
+                                                      false, -1);
+                    }
 
                     ((cypher_map*)rel->props)->keep_null = true;
-                    n = create_property_constraints(cpstate, entity,
-                                                          rel->props);
+                    r = create_property_constraints(cpstate, entity, rel->props, prop_expr);
                     cpstate->property_constraint_quals =
-                        lappend(cpstate->property_constraint_quals, n);
+                        lappend(cpstate->property_constraint_quals, r);
                 }
 
                 entities = lappend(entities, entity);
