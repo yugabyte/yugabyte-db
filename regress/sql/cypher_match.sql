@@ -735,6 +735,79 @@ SELECT * FROM cypher('cypher_match', $$
 $$) as (n agtype);
 
 --
+-- Regression tests to check previous clause variable refs
+--
+-- set up initial state and show what we're working with
+SELECT * FROM cypher('cypher_match', $$
+    CREATE (a {age: 4}) RETURN a $$) as (a agtype);
+SELECT * FROM cypher('cypher_match', $$
+	CREATE (b {age: 6}) RETURN b $$) as (b agtype);
+
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (a) RETURN a $$) as (a agtype);
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (a) WHERE exists(a.name) RETURN a $$) as (a agtype);
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (a) WHERE exists(a.name) SET a.age = 4 RETURN a $$) as (a agtype);
+
+
+SELECT * FROM cypher('cypher_match', $$
+	MATCH (a),(b) WHERE a.age = 4 AND a.name = "T" AND b.age = 6
+	RETURN a,b $$) as (a agtype, b agtype);
+SELECT * FROM cypher('cypher_match', $$
+	MATCH (a),(b) WHERE a.age = 4 AND a.name = "T" AND b.age = 6 CREATE 
+	(a)-[:knows {relationship: "friends", years: 3}]->(b) $$) as (r agtype);
+SELECT * FROM cypher('cypher_match', $$
+	MATCH (a),(b) WHERE a.age = 4 AND a.name = "orphan" AND b.age = 6 CREATE 
+	(a)-[:knows {relationship: "enemies", years: 4}]->(b) $$) as (r agtype);
+SELECT * FROM cypher('cypher_match', $$
+	MATCH (a)-[r]-(b) RETURN r $$) as (r agtype);
+
+-- check reuse of 'a'
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (a {age:4}) RETURN a $$) as (a agtype);
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (a) MATCH (a {age:4}) RETURN a $$) as (a agtype);
+
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (a {age:4, name: "orphan"}) RETURN a $$) as (a agtype);
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (a) MATCH (a {age:4}) MATCH (a {name: "orphan"}) RETURN a $$) as (a agtype);
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (a {age:4}) MATCH (a {name: "orphan"}) RETURN a $$) as (a agtype);
+
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (a) MATCH (a {age:4}) MATCH (a {name: "orphan"}) SET a.age = 3 RETURN a $$) as (a agtype);
+
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (a) MATCH (a {age:3}) MATCH (a {name: "orphan"}) RETURN a $$) as (a agtype);
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (a {name: "orphan"}) MATCH (a {age:3}) RETURN a $$) as (a agtype);
+
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (a) WHERE exists(a.age) AND exists(a.name) RETURN a $$) as (a agtype);
+
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (a) WHERE exists(a.age) AND NOT exists(a.name) RETURN a $$) as (a agtype);
+
+-- check reuse of 'r'
+SELECT * FROM cypher('cypher_match', $$
+	MATCH ()-[r]-() RETURN r $$) as (r agtype);
+SELECT * FROM cypher('cypher_match', $$
+	MATCH ()-[r]-() MATCH ()-[r {relationship: "friends"}]-() RETURN r $$) as (r agtype);
+SELECT * FROM cypher('cypher_match', $$
+	MATCH ()-[r {years:3, relationship: "friends"}]-() RETURN r $$) as (r agtype);
+SELECT * FROM cypher('cypher_match', $$
+	MATCH ()-[r {years:3}]-() MATCH ()-[r {relationship: "friends"}]-() RETURN r $$) as (r agtype);
+--mismatch year #, should return nothing
+SELECT * FROM cypher('cypher_match', $$
+	MATCH ()-[r {years:2}]-() MATCH ()-[r {relationship: "friends"}]-() RETURN r $$) as (r agtype);
+SELECT * FROM cypher('cypher_match', $$
+	MATCH ()-[r {relationship:"enemies"}]-() MATCH ()-[r {years:4}]-() RETURN r $$) as (r agtype);
+SELECT * FROM cypher('cypher_match', $$
+	MATCH ()-[r {relationship:"enemies"}]-() MATCH ()-[r {relationship:"friends"}]-() RETURN r $$) as (r agtype);
+
+--
 -- Clean up
 --
 SELECT drop_graph('cypher_match', true);
