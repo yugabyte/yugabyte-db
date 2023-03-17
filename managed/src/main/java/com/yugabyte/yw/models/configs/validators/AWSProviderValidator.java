@@ -87,6 +87,10 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
       validateNTPServers(provider.details.ntpServers);
     }
 
+    if (provider.getProviderDetails().sshPort == null) {
+      throwBeanValidatorError("SSH_PORT", "Please provide a valid ssh port value");
+    }
+
     // validate hosted zone id
     if (provider.regions != null && !provider.regions.isEmpty()) {
       for (Region region : provider.regions) {
@@ -186,6 +190,15 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
       if (!StringUtils.isEmpty(region.getSecurityGroupId())) {
         SecurityGroup securityGroup =
             awsCloudImpl.describeSecurityGroupsOrBadRequest(provider, region);
+        if (StringUtils.isEmpty(securityGroup.getVpcId())) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "No vpc is attached to SG: " + region.getSecurityGroupId());
+        }
+        if (!securityGroup.getVpcId().equals(region.getVnetName())) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              region.getSecurityGroupId() + " is not attached to vpc: " + region.getVnetName());
+        }
         Integer sshPort = provider.getProviderDetails().sshPort;
         boolean portOpen = false;
         if (!CollectionUtils.isNullOrEmpty(securityGroup.getIpPermissions())) {
