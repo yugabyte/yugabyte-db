@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"errors"
+
 	"github.com/spf13/cobra"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/yugaware"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
 )
@@ -16,6 +19,12 @@ var installCmd = &cobra.Command{
 				downloaded version of YBA Installer onto the local machine.
         `,
 	Args: cobra.NoArgs,
+	PreRun: func(cmd *cobra.Command, args []string) {
+		_, err := yugaware.InstalledVersionFromMetadata()
+		if !errors.Is(err, yugaware.NotInstalledVersionError) {
+			log.Fatal("YugabyteDB Anywhere already installed, cannot install twice")
+		}
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 
 		// Install the license if it is provided.
@@ -73,7 +82,5 @@ func init() {
 	installCmd.Flags().StringVarP(&licensePath, "license-path", "l", "", "path to license file")
 
 	// Install must be run from directory of yba version
-	if !common.RunFromInstalled() {
-		rootCmd.AddCommand(installCmd)
-	}
+	rootCmd.AddCommand(installCmd)
 }
