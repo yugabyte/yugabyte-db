@@ -553,7 +553,6 @@ components:
                 swamper.rulesPath = /opt/yugabyte/prometheus/rules
                 multiTenant = false
                 docker.release = "/opt/yugabyte/release"
-                thirdparty.packagePath = /opt/third-party
                 helm.packagePath = "/opt/yugabyte/helm"
                 health.check_interval_ms = 300000
                 health.status_interval_ms = 43200000
