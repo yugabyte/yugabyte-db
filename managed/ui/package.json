@@ -109,6 +109,7 @@
     "react-day-picker": "7.4.8",
     "react-dom": "16.13.1",
     "react-dropzone": "14.2.3",
+    "react-dropzone3": "npm:react-dropzone@3.13.4",
     "react-fa": "5.0.0",
     "react-hook-form": "7.40.0",
     "react-i18next": "11.8.15",
