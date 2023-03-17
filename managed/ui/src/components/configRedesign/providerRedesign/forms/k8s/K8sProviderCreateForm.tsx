@@ -177,16 +177,7 @@ export const K8sProviderCreateForm = ({
               name: regionField.regionData.label,
               zones: preprocessedZones,
               details: {
-                cloudInfo: {
-                  [ProviderCode.KUBERNETES]: {
-                    kubeDomain: regionField.kubeDomain,
-                    kubeNamespace: regionField.kubeNamespace,
-                    kubePodAddressTemplate: regionField.kubePodAddressTemplate,
-                    ...(regionField.kubeConfigContent && {
-                      kubeConfigContent: (await readFileAsText(regionField.kubeConfigContent)) ?? ''
-                    })
-                  }
-                }
+                cloudInfo: { [ProviderCode.KUBERNETES]: {} }
               }
             };
             return newRegion;
