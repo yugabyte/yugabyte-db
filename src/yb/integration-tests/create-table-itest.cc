@@ -32,6 +32,7 @@
 
 #include "yb/integration-tests/create-table-itest-base.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -340,7 +341,7 @@ TEST_F(CreateTableITest, LegacyColocatedDBTableColocationRemoteBootstrapTest) {
       }
     }
     ASSERT_FALSE(ns_id.empty());
-    parent_table_id = master::GetColocatedDbParentTableId(ns_id);
+    parent_table_id = GetColocatedDbParentTableId(ns_id);
   }
 
   {
@@ -404,7 +405,7 @@ TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TableColocationRemoteBootstrapT
   res = ASSERT_RESULT(conn.Fetch("SELECT oid FROM pg_yb_tablegroup WHERE grpname = 'default'"));
   uint32 tablegroup_oid = static_cast<uint32>(ASSERT_RESULT(GetInt32(res.get(), 0, 0)));
   TablegroupId tablegroup_id = GetPgsqlTablegroupId(db_oid, tablegroup_oid);
-  parent_table_id = master::GetColocationParentTableId(tablegroup_id);
+  parent_table_id = GetColocationParentTableId(tablegroup_id);
 
   auto exists = ASSERT_RESULT(client_->TablegroupExists(kNamespaceName, tablegroup_id));
   ASSERT_TRUE(exists);
@@ -491,7 +492,7 @@ TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TablegroupRemoteBootstrapTest))
   // Now want to ensure that the newly created tablegroup shows up in the list.
   auto exists = ASSERT_RESULT(client_->TablegroupExists(namespace_name, tablegroup_id));
   ASSERT_TRUE(exists);
-  parent_table_id = master::GetTablegroupParentTableId(tablegroup_id);
+  parent_table_id = GetTablegroupParentTableId(tablegroup_id);
 
   {
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;

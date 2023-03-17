@@ -41,6 +41,7 @@
 
 #include "yb/client/client.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/index.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"

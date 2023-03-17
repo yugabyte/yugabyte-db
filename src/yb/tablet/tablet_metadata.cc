@@ -39,6 +39,7 @@
 #include <boost/optional.hpp>
 #include <glog/logging.h>
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/schema.h"
@@ -226,7 +227,7 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
   return Status::OK();
 }
 
-Status TableInfo::MergeWithRestored(
+Status TableInfo::MergeSchemaPackings(
     const TableInfoPB& pb, docdb::OverwriteSchemaPacking overwrite) {
   // If we are merging in the case of an out of cluster restore,
   // the schema version should already have been incremented to
@@ -369,42 +370,86 @@ Status KvStoreInfo::LoadFromPB(const std::string& tablet_log_prefix,
 }
 
 Status KvStoreInfo::MergeWithRestored(
-    const KvStoreInfoPB& pb, bool colocated, docdb::OverwriteSchemaPacking overwrite) {
-  lower_bound_key = pb.lower_bound_key();
-  upper_bound_key = pb.upper_bound_key();
-  has_been_fully_compacted = pb.has_been_fully_compacted();
-  last_full_compaction_time = pb.last_full_compaction_time();
-  for (const auto& table_pb : pb.tables()) {
-    const auto& table_id = table_pb.table_id();
-    auto table_it = tables.find(table_id);
-    if (table_it == tables.end()) {
-      // TODO(Sanket): In the case of an out of cluster backup/restore,
-      // the table id in the snapshot will be different from the id
-      // created in the restored cluster for the same table. We need
-      // a way to know this old_id -> new_id mapping in order to merge properly.
-      // In the short-term though, for a non-colocated tablet there should only be one
-      // table and thus we merge the two trivially without any regard for the
-      // id but for a colocated tablet, we would need to augment this logic in a future
-      // diff. Also, we should validate the old and new ids even for non-colocated tablet.
-      if (!colocated) {
-        LOG_IF(DFATAL, tables.size() != 1)
-            << tables.size() << " tables present in KvstoreInfo of non-colocated tablet"
-            << ", expected 1";
-        table_it = tables.begin();
-      } else {
-        // Skip tables that are not present in the restored state.
-        LOG(INFO) << "Table with id " << table_id << " found in the snapshot "
-                  << "but not found in restore. Skipping schema packing merge "
-                  << "of the snapshot with the restored table";
-        continue;
-      }
+    const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
+    docdb::OverwriteSchemaPacking overwrite) {
+  lower_bound_key = snapshot_kvstoreinfo.lower_bound_key();
+  upper_bound_key = snapshot_kvstoreinfo.upper_bound_key();
+  has_been_fully_compacted = snapshot_kvstoreinfo.has_been_fully_compacted();
+  last_full_compaction_time = snapshot_kvstoreinfo.last_full_compaction_time();
+  return MergeTableSchemaPackings(snapshot_kvstoreinfo, primary_table_id, colocated, overwrite);
+}
+
+Status KvStoreInfo::MergeTableSchemaPackings(
+    const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
+    docdb::OverwriteSchemaPacking overwrite) {
+  if (!colocated) {
+    SCHECK(
+        snapshot_kvstoreinfo.tables_size() == 1 && tables.size() == 1, Corruption,
+        Format(
+            "Unexpected table counts during schema merge. Snapshot tables and restored tables "
+            "should both be non-colocated (singular). Snapshot table count: $0, restored table "
+            "count: $1",
+            snapshot_kvstoreinfo.tables_size(), tables.size()));
+    return tables.begin()->second->MergeSchemaPackings(snapshot_kvstoreinfo.tables(0), overwrite);
+  }
+
+  for (const auto& snapshot_table_pb : snapshot_kvstoreinfo.tables()) {
+    TableInfo* target_table = VERIFY_RESULT(FindMatchingTable(snapshot_table_pb, primary_table_id));
+    if (target_table != nullptr) {
+      RETURN_NOT_OK(target_table->MergeSchemaPackings(snapshot_table_pb, overwrite));
     }
-    auto new_table_info = std::make_shared<TableInfo>(
-        *table_it->second, std::numeric_limits<SchemaVersion>::max());
-    RETURN_NOT_OK(new_table_info->MergeWithRestored(table_pb, overwrite));
-    table_it->second = new_table_info;
   }
   return Status::OK();
+}
+
+Result<TableInfo*> KvStoreInfo::FindMatchingTable(
+    const TableInfoPB& snapshot_table, const TableId& primary_table_id) {
+  const auto snapshot_table_id = snapshot_table.table_id();
+  if (IsColocationParentTableId(snapshot_table_id)) {
+    auto table_it = tables.find(primary_table_id);
+    SCHECK(
+        table_it != tables.end(), Corruption,
+        Format("Cannot find parent table with id $0 of a colocated tablet", primary_table_id));
+    return table_it->second.get();
+  }
+  const auto& schema = snapshot_table.schema();
+  SCHECK(
+      schema.has_colocated_table_id() && schema.colocated_table_id().has_colocation_id(),
+      Corruption,
+      Format(
+          "Missing colocation id on the colocated table $0 from the snapshot", snapshot_table_id));
+
+  const auto& colocation_id = schema.colocated_table_id().colocation_id();
+  auto table_it = colocation_to_table.find(colocation_id);
+  if (table_it == colocation_to_table.end()) {
+    // Backups made prior to 29681f579760703663cdcbd2abbfe4c9eb6e533c will not include colocation
+    // ids for partitioned tables on colocated tablets in the YSQL dump. To gracefully handle tables
+    // in such backups we need to tolerate failed matches.
+    LOG(WARNING) << Format(
+        "Skipping schema merging for snapshot table $0 with colocation id $1 because a "
+        "matching colocation id cannot be found",
+        snapshot_table.table_name(),
+        snapshot_table.schema().colocated_table_id().colocation_id());
+    return nullptr;
+  }
+  // Sanity check names and schemas. Because colocation ids are chosen at restore time for colocated
+  // partitioned tables in backups made prior to 29681f579760703663cdcbd2abbfe4c9eb6e533c yb-master
+  // may have randomly chosen a colocation id for a partitioned table that matches the colocation id
+  // of a partitioned table in the snapshot with an incompatible schema.
+  auto& local_table = table_it->second;
+  if (local_table->table_name != snapshot_table.table_name() ||
+      (snapshot_table.schema().has_pgschema_name() && local_table->schema().has_pgschema_name() &&
+       snapshot_table.schema().pgschema_name() != local_table->schema().SchemaName())) {
+    LOG(WARNING) << Format(
+        "Skipping schema merging for snapshot table $0.$1 due to mismatch with local "
+        "table names, local table is $2.$3",
+        snapshot_table.schema().pgschema_name(),
+        snapshot_table.table_name(),
+        local_table->schema().SchemaName(),
+        local_table->table_name);
+    return nullptr;
+  }
+  return table_it->second.get();
 }
 
 void KvStoreInfo::ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const {
@@ -909,10 +954,11 @@ Status RaftGroupMetadata::SaveToDiskUnlocked(
 
 Status RaftGroupMetadata::MergeWithRestored(
     const std::string& path, docdb::OverwriteSchemaPacking overwrite) {
-  RaftGroupReplicaSuperBlockPB pb;
-  RETURN_NOT_OK(ReadSuperBlockFromDisk(&pb, path));
+  RaftGroupReplicaSuperBlockPB snapshot_superblock;
+  RETURN_NOT_OK(ReadSuperBlockFromDisk(&snapshot_superblock, path));
   std::lock_guard<MutexType> lock(data_mutex_);
-  return kv_store_.MergeWithRestored(pb.kv_store(), colocated_, overwrite);
+  return kv_store_.MergeWithRestored(
+      snapshot_superblock.kv_store(), primary_table_id_, colocated_, overwrite);
 }
 
 Status RaftGroupMetadata::ReadSuperBlockFromDisk(
