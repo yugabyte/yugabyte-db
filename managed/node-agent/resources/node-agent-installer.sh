@@ -182,6 +182,18 @@ check_sudo_access() {
   set -e
 }
 
+modify_firewall() {
+  set +e
+  if command -v firewall-cmd >/dev/null 2>&1; then
+    is_running=$(sudo firewall-cmd --state 2> /dev/null)
+    if [ "$is_running" = "running" ]; then
+        sudo firewall-cmd --add-port=${NODE_PORT}/tcp --permanent \
+        && sudo systemctl restart firewalld
+    fi
+  fi
+  set -e
+}
+
 modify_selinux() {
   set +e
   if ! command -v semanage >/dev/null 2>&1; then
@@ -207,6 +219,7 @@ modify_selinux() {
 install_systemd_service() {
   if [ "$SE_LINUX_STATUS" = "Enforcing" ]; then
     modify_selinux
+    modify_firewall
   fi
   echo "* Installing Node Agent Systemd Service"
   sudo tee "$SYSTEMD_DIR/$SERVICE_NAME"  <<-EOF

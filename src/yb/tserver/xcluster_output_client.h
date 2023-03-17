@@ -36,7 +36,7 @@ std::shared_ptr<XClusterOutputClientIf> CreateXClusterOutputClient(
     std::function<void(const XClusterOutputClientResponse& response)>
         apply_changes_clbk,
     bool use_local_tserver,
-    client::YBTablePtr global_transaction_status_table,
+    const std::vector<TabletId>& global_transaction_status_tablets,
     bool enable_replicate_transaction_status_table);
 
 } // namespace tserver

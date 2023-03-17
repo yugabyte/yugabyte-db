@@ -263,7 +263,7 @@ class PgSession::RunHelper {
     return pg_session_.pg_txn_manager_->CalculateIsolation(read_only, txn_priority_requirement);
   }
 
-  Result<PerformFuture> Flush(std::string&& cache_key) {
+  Result<PerformFuture> Flush(std::optional<CacheOptions>&& cache_options) {
     if (operations_.empty()) {
       // All operations were buffered, no need to flush.
       return PerformFuture();
@@ -277,7 +277,7 @@ class PgSession::RunHelper {
     return pg_session_.Perform(
         std::move(operations_),
         {.use_catalog_session = IsCatalog(),
-         .cache_key = std::move(cache_key),
+         .cache_options = std::move(cache_options),
          .in_txn_limit = in_txn_limit_
         });
   }
@@ -568,6 +568,11 @@ PgIsolationLevel PgSession::GetIsolationLevel() {
   return pg_txn_manager_->GetPgIsolationLevel();
 }
 
+bool PgSession::IsHashBatchingEnabled() {
+  return yb_enable_hash_batch_in &&
+      GetIsolationLevel() != PgIsolationLevel::SERIALIZABLE;
+}
+
 Result<bool> PgSession::IsInitDbDone() {
   return pg_client_.IsInitDbDone();
 }
@@ -651,8 +656,13 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
   }
 
-  if (!ops_options.cache_key.empty()) {
-    options.mutable_caching_info()->set_key(std::move(ops_options.cache_key));
+  if (ops_options.cache_options) {
+    auto& cache_options = *ops_options.cache_options;
+    auto& caching_info = *options.mutable_caching_info();
+    caching_info.set_key(std::move(cache_options.key));
+    if (cache_options.lifetime_threshold_ms) {
+      caching_info.mutable_lifetime_threshold_ms()->set_value(*cache_options.lifetime_threshold_ms);
+    }
   }
 
   pg_client_.PerformAsync(&options, &ops.operations, [promise](const PerformResult& result) {
@@ -837,7 +847,7 @@ Status PgSession::ValidatePlacement(const std::string& placement_info) {
 template<class Generator>
 Result<PerformFuture> PgSession::DoRunAsync(
     const Generator& generator, HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable,
-    std::string&& cache_key) {
+    std::optional<CacheOptions>&& cache_options) {
   auto table_op = generator();
   SCHECK(!table_op.IsEmpty(), IllegalState, "Operation list must not be empty");
   const auto* table = table_op.table;
@@ -857,27 +867,27 @@ Result<PerformFuture> PgSession::DoRunAsync(
     has_write_ops_in_ddl_mode_ = has_write_ops_in_ddl_mode_ || (ddl_mode && !IsReadOnly(**op));
     RETURN_NOT_OK(runner.Apply(*table, *op, force_non_bufferable));
   }
-  return runner.Flush(std::move(cache_key));
+  return runner.Flush(std::move(cache_options));
 }
 
 Result<PerformFuture> PgSession::RunAsync(const OperationGenerator& generator,
                                           HybridTime in_txn_limit,
                                           ForceNonBufferable force_non_bufferable) {
-  return DoRunAsync(generator, in_txn_limit, force_non_bufferable, std::string() /* cache_key */);
+  return DoRunAsync(generator, in_txn_limit, force_non_bufferable);
 }
 
 Result<PerformFuture> PgSession::RunAsync(const ReadOperationGenerator& generator,
                                           HybridTime in_txn_limit,
                                           ForceNonBufferable force_non_bufferable) {
-  return DoRunAsync(generator, in_txn_limit, force_non_bufferable, std::string() /* cache_key */);
+  return DoRunAsync(generator, in_txn_limit, force_non_bufferable);
 }
 
-Result<PerformFuture> PgSession::RunAsyncCacheable(
-    const ReadOperationGenerator& generator, HybridTime in_txn_limit, std::string&& cache_key) {
-  SCHECK(!cache_key.empty(), InvalidArgument, "Cache key can't be empty");
+Result<PerformFuture> PgSession::RunAsync(
+    const ReadOperationGenerator& generator, CacheOptions&& cache_options) {
+  SCHECK(!cache_options.key.empty(), InvalidArgument, "Cache key can't be empty");
   // Ensure no buffered requests will be added to cached request.
   RETURN_NOT_OK(buffer_.Flush());
-  return DoRunAsync(generator, in_txn_limit, ForceNonBufferable::kFalse, std::move(cache_key));
+  return DoRunAsync(generator, HybridTime(), ForceNonBufferable::kFalse, std::move(cache_options));
 }
 
 Result<bool> PgSession::CheckIfPitrActive() {

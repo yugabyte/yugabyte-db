@@ -199,19 +199,19 @@ public class MaintenanceServiceTest extends FakeDBApplication {
   public void testValidation() {
     testValidation(
         window -> window.setCustomerUUID(null),
-        "errorJson: {\"customerUUID\":[\"may not be null\"]}");
+        "errorJson: {\"customerUUID\":[\"must not be null\"]}");
 
-    testValidation(window -> window.setName(null), "errorJson: {\"name\":[\"may not be null\"]}");
+    testValidation(window -> window.setName(null), "errorJson: {\"name\":[\"must not be null\"]}");
 
     testValidation(
         window -> window.setName(StringUtils.repeat("a", 1001)),
         "errorJson: {\"name\":[\"size must be between 1 and 1000\"]}");
 
     testValidation(
-        window -> window.setStartTime(null), "errorJson: {\"startTime\":[\"may not be null\"]}");
+        window -> window.setStartTime(null), "errorJson: {\"startTime\":[\"must not be null\"]}");
 
     testValidation(
-        window -> window.setEndTime(null), "errorJson: {\"endTime\":[\"may not be null\"]}");
+        window -> window.setEndTime(null), "errorJson: {\"endTime\":[\"must not be null\"]}");
 
     testValidation(
         window -> window.setStartTime(nowPlusWithoutMillis(10, ChronoUnit.HOURS)),
@@ -219,7 +219,7 @@ public class MaintenanceServiceTest extends FakeDBApplication {
 
     testValidation(
         window -> window.setAlertConfigurationFilter(null),
-        "errorJson: {\"alertConfigurationFilter\":[\"may not be null\"]}");
+        "errorJson: {\"alertConfigurationFilter\":[\"must not be null\"]}");
   }
 
   private void testValidation(Consumer<MaintenanceWindow> modifier, String expectedMessage) {

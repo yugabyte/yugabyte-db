@@ -65,23 +65,63 @@ export const ConfigureInstanceTypeModal = ({
       >
         <div className={classes.formField}>
           <Typography variant="body2">Machine Type</Typography>
-          <YBInputField control={formMethods.control} name="instanceTypeCode" fullWidth />
+          <YBInputField
+            control={formMethods.control}
+            name="instanceTypeCode"
+            rules={{ required: 'Machine type is required.' }}
+            fullWidth
+          />
         </div>
         <div className={classes.formField}>
           <Typography variant="body2">Number of Cores</Typography>
-          <YBInputField control={formMethods.control} name="numCores" type="number" fullWidth />
+          <YBInputField
+            control={formMethods.control}
+            name="numCores"
+            type="number"
+            inputProps={{ min: 1 }}
+            rules={{
+              required: 'Number of cores is required',
+              min: { value: 1, message: 'Minimum of 1 core.' }
+            }}
+            fullWidth
+          />
         </div>
         <div className={classes.formField}>
           <Typography variant="body2">Memory Size (GB)</Typography>
-          <YBInputField control={formMethods.control} name="memSizeGB" type="number" fullWidth />
+          <YBInputField
+            control={formMethods.control}
+            name="memSizeGB"
+            type="number"
+            inputProps={{ min: 0 }}
+            rules={{
+              required: 'Memory size is required.',
+              min: { value: 0, message: 'Memory size must be a positive value.' }
+            }}
+            fullWidth
+          />
         </div>
         <div className={classes.formField}>
           <Typography variant="body2">Volume Size (GB)</Typography>
-          <YBInputField control={formMethods.control} name="volumeSizeGB" type="number" fullWidth />
+          <YBInputField
+            control={formMethods.control}
+            name="volumeSizeGB"
+            type="number"
+            inputProps={{ min: 0 }}
+            rules={{
+              required: 'Volume size is required.',
+              min: { value: 0, message: 'Volume size must be a positive value.' }
+            }}
+            fullWidth
+          />
         </div>
         <div className={classes.formField}>
           <Typography variant="body2">Mount Paths (Comma Separated)</Typography>
-          <YBInputField control={formMethods.control} name="mountPaths" fullWidth />
+          <YBInputField
+            control={formMethods.control}
+            name="mountPaths"
+            rules={{ required: 'Mount paths are required.' }}
+            fullWidth
+          />
         </div>
       </YBModal>
     </FormProvider>

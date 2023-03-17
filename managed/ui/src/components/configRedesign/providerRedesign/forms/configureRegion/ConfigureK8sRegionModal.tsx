@@ -9,8 +9,7 @@ import React from 'react';
 import clsx from 'clsx';
 import { FormHelperText, makeStyles } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
-import { array, object } from 'yup';
-import { v4 as uuidv4 } from 'uuid';
+import { array, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 
 import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
@@ -20,8 +19,10 @@ import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { ConfigureK8sAvailabilityZoneField } from './ConfigureK8sAvailabilityZoneField';
 import { K8sCertIssuerType, K8sRegionFieldLabel, RegionOperation } from './constants';
 import { getRegionOptions } from './utils';
+import { generateLowerCaseAlphanumericId } from '../utils';
 
 interface ConfigureK8sRegionModalProps extends YBModalProps {
+  configuredRegions: K8sRegionField[];
   onRegionSubmit: (region: K8sRegionField) => void;
   onClose: () => void;
   providerCode: ProviderCode;
@@ -73,6 +74,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 export const ConfigureK8sRegionModal = ({
+  configuredRegions,
   onRegionSubmit,
   onClose,
   regionOperation,
@@ -83,7 +85,11 @@ export const ConfigureK8sRegionModal = ({
 }: ConfigureK8sRegionModalProps) => {
   const validationSchema = object().shape({
     regionData: object().required(`${K8sRegionFieldLabel.REGION} is required.`),
-    zones: array().min(1, 'Region configurations must contain at least one zone.')
+    zones: array().of(
+      object().shape({
+        code: string().required('Zone code is required.')
+      })
+    )
   });
   const formMethods = useForm<ConfigureK8sRegionFormValues>({
     defaultValues: regionSelection,
@@ -92,17 +98,29 @@ export const ConfigureK8sRegionModal = ({
   const classes = useStyles();
 
   const onSubmit: SubmitHandler<ConfigureK8sRegionFormValues> = async (formValues) => {
+    if (formValues.zones.length <= 0) {
+      formMethods.setError('zones', {
+        type: 'min',
+        message: 'Region configurations must contain at least one zone.'
+      });
+      return;
+    }
     const newRegion = {
       ...formValues,
       code: formValues.regionData.value.code,
-      fieldId: formValues.fieldId ?? uuidv4()
+      fieldId: formValues.fieldId ?? generateLowerCaseAlphanumericId()
     };
     onRegionSubmit(newRegion);
     formMethods.reset();
     onClose();
   };
 
-  const regionOptions = getRegionOptions(providerCode);
+  const configuredRegionCodes = configuredRegions.map((configuredRegion) => configuredRegion.code);
+  const regionOptions = getRegionOptions(providerCode).filter(
+    (regionOption) =>
+      regionSelection?.code === regionOption.value.code ||
+      !configuredRegionCodes.includes(regionOption.value.code)
+  );
   return (
     <FormProvider {...formMethods}>
       <YBModal

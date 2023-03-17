@@ -47,7 +47,6 @@ import {
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
 import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
 import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
-import { PerfAdvisor } from '../../queries/PerfAdvisor.tsx';
 import { XClusterReplication } from '../../xcluster/XClusterReplication';
 import { EncryptionAtRest } from '../../../redesign/features/universe/universe-actions/encryption-at-rest/EncryptionAtRest';
 import './UniverseDetail.scss';
@@ -273,6 +272,9 @@ class UniverseDetail extends Component {
     const isTopKMetricsEnabled =
       runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.metrics.ui.topk.enable')
         ?.value === 'true';
+    const isPerfAdvisorEnabled =
+      runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.ui.feature_flags.perf_advisor')
+        ?.value === 'true';
 
     const type =
       pathname.indexOf('edit') < 0
@@ -413,19 +415,6 @@ class UniverseDetail extends Component {
           </Tab.Pane>
         ),
 
-        isNotHidden(currentCustomer.data.features, 'universes.details.perfadvisor', 'hidden') && (
-          <Tab.Pane
-            eventKey={'perfadvisor'}
-            tabtitle="Performance Advisor"
-            key="perfadvisor-tab"
-            mountOnEnter={true}
-            unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, 'universes.details.perfadvisor')}
-          >
-            <PerfAdvisor />
-          </Tab.Pane>
-        ),
-
         isNotHidden(currentCustomer.data.features, 'universes.details.queries') && (
           <Tab.Pane
             eventKey={'queries'}
@@ -436,7 +425,7 @@ class UniverseDetail extends Component {
             onExit={this.stripQueryParams}
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.queries')}
           >
-            <QueriesViewer />
+            <QueriesViewer isPerfAdvisorEnabled={isPerfAdvisorEnabled} />
           </Tab.Pane>
         ),
 

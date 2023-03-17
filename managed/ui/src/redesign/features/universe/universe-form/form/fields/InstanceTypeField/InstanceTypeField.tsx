@@ -1,16 +1,23 @@
-import React, { ChangeEvent, ReactElement } from 'react';
+import React, { ChangeEvent, ReactElement, useState } from 'react';
 import pluralize from 'pluralize';
 import { useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { Controller, useFormContext, useWatch } from 'react-hook-form';
 import { Box } from '@material-ui/core';
-import { YBLabel, YBAutoComplete, YBHelper, YBHelperVariants } from '../../../../../../components';
+import {
+  YBLabel,
+  YBAutoComplete,
+  YBHelper,
+  YBHelperVariants,
+  YBToggleField
+} from '../../../../../../components';
 import { api, QUERY_KEY } from '../../../utils/api';
 import {
   sortAndGroup,
   getDefaultInstanceType,
-  isEphemeralAwsStorageInstance
+  isEphemeralAwsStorageInstance,
+  canUseSpotInstance
 } from './InstanceTypeFieldHelper';
 import { NodeType } from '../../../../../../utils/dtos';
 import {
@@ -27,7 +34,8 @@ import {
   DEVICE_INFO_FIELD,
   MASTER_INSTANCE_TYPE_FIELD,
   MASTER_DEVICE_INFO_FIELD,
-  MASTER_PLACEMENT_FIELD
+  MASTER_PLACEMENT_FIELD,
+  SPOT_INSTANCE_FIELD
 } from '../../../utils/constants';
 import { useFormFieldStyles } from '../../../universeMainStyle';
 
@@ -134,52 +142,71 @@ export const InstanceTypeField = ({
           deviceInfo?.storageType === StorageType.Scratch;
 
         return (
-          <Box
-            display="flex"
-            width="100%"
-            data-testid={`InstanceTypeField-${nodeTypeTag}-Container`}
-            mt={2}
-          >
-            <YBLabel dataTestId={`InstanceTypeField-${nodeTypeTag}-Label`}>
-              {t('universeForm.instanceConfig.instanceType')}
-            </YBLabel>
+          <>
             <Box
-              flex={1}
-              className={
-                masterPlacement === MasterPlacementMode.COLOCATED
-                  ? classes.defaultTextBox
-                  : classes.instanceConfigTextBox
-              }
+              display="flex"
+              width="100%"
+              data-testid={`InstanceTypeField-${nodeTypeTag}-Container`}
+              mt={2}
             >
-              <YBAutoComplete
-                loading={isLoading}
-                value={(value as unknown) as Record<string, string>}
-                options={(instanceTypes as unknown) as Record<string, string>[]}
-                getOptionLabel={getOptionLabel}
-                renderOption={renderOption}
-                onChange={handleChange}
-                ybInputProps={{
-                  error: !!fieldState.error,
-                  helperText: fieldState.error?.message,
-                  'data-testid': `InstanceTypeField-${nodeTypeTag}-AutoComplete`
-                }}
-                groupBy={
-                  [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code)
-                    ? (option: Record<string, string>) => option.groupName
-                    : undefined
+              <YBLabel dataTestId={`InstanceTypeField-${nodeTypeTag}-Label`}>
+                {t('universeForm.instanceConfig.instanceType')}
+              </YBLabel>
+              <Box
+                flex={1}
+                className={
+                  masterPlacement === MasterPlacementMode.COLOCATED
+                    ? classes.defaultTextBox
+                    : classes.instanceConfigTextBox
                 }
-              />
+              >
+                <YBAutoComplete
+                  loading={isLoading}
+                  value={(value as unknown) as Record<string, string>}
+                  options={(instanceTypes as unknown) as Record<string, string>[]}
+                  getOptionLabel={getOptionLabel}
+                  renderOption={renderOption}
+                  onChange={handleChange}
+                  ybInputProps={{
+                    error: !!fieldState.error,
+                    helperText: fieldState.error?.message,
+                    'data-testid': `InstanceTypeField-${nodeTypeTag}-AutoComplete`
+                  }}
+                  groupBy={
+                    [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code)
+                      ? (option: Record<string, string>) => option.groupName
+                      : undefined
+                  }
+                />
 
-              {(isAWSEphemeralStorage || isGCPEphemeralStorage) && (
-                <YBHelper
-                  dataTestId={`InstanceTypeField-${nodeTypeTag}-Helper`}
-                  variant={YBHelperVariants.warning}
-                >
-                  {t('universeForm.instanceConfig.ephemeralStorage')}
-                </YBHelper>
-              )}
+                {(isAWSEphemeralStorage || isGCPEphemeralStorage) && (
+                  <YBHelper
+                    dataTestId={`InstanceTypeField-${nodeTypeTag}-Helper`}
+                    variant={YBHelperVariants.warning}
+                  >
+                    {t('universeForm.instanceConfig.ephemeralStorage')}
+                  </YBHelper>
+                )}
+              </Box>
             </Box>
-          </Box>
+            {provider?.code == CloudType.aws && canUseSpotInstance(providerRuntimeConfigs) && (
+              <Box display="flex" width="100%" mt={2}>
+                <YBLabel dataTestId={`SpotInstanceField-${nodeTypeTag}-Label`}>
+                  {t('universeForm.instanceConfig.useSpotInstance')}
+                </YBLabel>
+                <Box
+                  flex={1}
+                  className={
+                    masterPlacement === MasterPlacementMode.COLOCATED
+                      ? classes.defaultTextBox
+                      : classes.instanceConfigTextBox
+                  }
+                >
+                  <YBToggleField name={SPOT_INSTANCE_FIELD} control={control} />
+                </Box>
+              </Box>
+            )}
+          </>
         );
       }}
     />

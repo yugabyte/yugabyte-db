@@ -9,8 +9,10 @@ import { RegionMap, YBMapLegend } from '../../../maps';
 import { YBConfirmModal } from '../../../modals';
 import EditProviderFormContainer from './EditProvider/EditProviderFormContainer';
 import { PROVIDER_TYPES } from '../../../../config';
+import { CloudType } from '../../../../redesign/helpers/dtos';
 import { ChangeOrAddProvider } from './ChangeOrAddProvider/ChangeOrAddProvider';
-import { cloudProviders } from '../../../../redesign/universe/wizard/steps/instance/InstanceConfig';
+
+const cloudProviders = new Set([CloudType.aws, CloudType.gcp, CloudType.azu]);
 
 class ProviderResultView extends Component {
   constructor(props) {

@@ -12,7 +12,6 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_CONTENT_CONF_PATH;
 import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_PARAMS_CONF_PATH;
@@ -27,7 +26,6 @@ import static play.test.Helpers.NOT_FOUND;
 import static play.test.Helpers.OK;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
-import static play.test.Helpers.route;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -452,7 +450,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
         fakeRequest("PUT", String.format(KEY, defaultCustomer.uuid, scopeUUID, path))
             .header("X-AUTH-TOKEN", authToken)
             .bodyText(newVal);
-    return route(app, request);
+    return route(request);
   }
 
   @Test

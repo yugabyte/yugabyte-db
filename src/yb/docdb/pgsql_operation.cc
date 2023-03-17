@@ -103,6 +103,9 @@ DEFINE_test_flag(bool, ysql_suppress_ybctid_corruption_details, false,
                  "Whether to show less details on ybctid corruption error status message.  Useful "
                  "during tests that require consistent output.");
 
+DEFINE_RUNTIME_bool(ysql_enable_pack_full_row_update, false,
+                    "Whether to enable packed row for full row update.");
+
 namespace yb {
 namespace docdb {
 
@@ -717,7 +720,8 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
 
     skipped = request_.column_new_values().empty();
     const size_t num_non_key_columns = schema.num_columns() - schema.num_key_columns();
-    if (ShouldYsqlPackRow(schema.is_colocated()) &&
+    if (FLAGS_ysql_enable_pack_full_row_update &&
+        ShouldYsqlPackRow(schema.is_colocated()) &&
         make_unsigned(request_.column_new_values().size()) == num_non_key_columns) {
       RowPackContext pack_context(
           request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));

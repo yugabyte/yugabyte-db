@@ -948,7 +948,7 @@ bool BothNull(const QLValuePB& lhs, const QLValue& rhs) {
 
 std::vector<const QLValuePB*> GetTuplesSortedByOrdering(
     const QLSeqValuePB& options, const Schema& schema, bool is_forward_scan,
-    const std::vector<int>& col_idxs) {
+    const ColumnListVector& col_idxs) {
   std::vector<const QLValuePB*> options_elems;
   options_elems.reserve(options.elems_size());
   for (const auto& value : options.elems()) {
@@ -986,9 +986,12 @@ std::vector<const QLValuePB*> GetTuplesSortedByOrdering(
         }
 
         if (i != tuple1.elems().size()) {
-          auto sorting_type = schema.column(col_idxs[i]).sorting_type();
+          auto sorting_type =
+              col_idxs[i] == kYbHashCodeColId ? SortingType::kAscending
+                                              : schema.column(col_idxs[i]).sorting_type();
           auto is_reverse_order = is_forward_scan ^ (sorting_type == SortingType::kAscending ||
-                                                     sorting_type == kAscendingNullsLast);
+                                                     sorting_type == kAscendingNullsLast ||
+                                                     sorting_type == kNotSpecified);
           cmp ^= is_reverse_order;
         }
         return cmp;

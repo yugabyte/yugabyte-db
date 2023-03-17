@@ -88,7 +88,7 @@ export const CreateUniverse: FC = () => {
     });
   };
 
-  const onCancel = () => browserHistory.goBack();
+  const onCancel = () => browserHistory.push('/universes');
 
   const onSubmit = (primaryData: UniverseFormData, asyncData: UniverseFormData) => {
     const configurePayload: UniverseConfigure = {

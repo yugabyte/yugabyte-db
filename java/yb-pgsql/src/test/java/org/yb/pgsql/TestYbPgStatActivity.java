@@ -133,6 +133,20 @@ public class TestYbPgStatActivity extends BasePgSQLTest {
     }
   }
 
+  private long getAllocatedMemFromPgStatActivity(Statement stmt, int pid) throws Exception {
+    return getSingleRow(stmt, String.format("SELECT allocated_mem_bytes " +
+        " FROM pg_stat_activity WHERE pid = %d;", pid)).getLong(0);
+  }
+
+  private long getRssMemFromPgStatActivity(Statement stmt, int pid) throws Exception {
+    return getSingleRow(stmt, String.format("SELECT rss_mem_bytes " +
+        " FROM pg_stat_activity WHERE pid = %d;", pid)).getLong(0);
+  }
+
+  private int getPgBackendPid(Statement stmt) throws Exception {
+    return getSingleRow(stmt, "SELECT pg_backend_pid()").getInt(0);
+  }
+
   @Test
   public void testMemUsageFuncsReturnValues() throws Exception {
     try (Statement stmt = connection.createStatement()) {
@@ -203,6 +217,57 @@ public class TestYbPgStatActivity extends BasePgSQLTest {
           allocatedMem1, allocatedMem2);
       assertEquals("Rss mem usage changed during explicit transactions.",
           rssMem1, rssMem2);
+    }
+  }
+
+  @Test
+  public void testInitialMemValuesFromPgStatActivity() throws Exception {
+    // Skip test if the current yb instance is a sanitized build.
+    // as the test checks o/p of columns in pg_stat_activity and not the
+    // called function.
+    if (BuildTypeUtil.isSanitizerBuild())
+      return;
+
+    try (Connection connection = getConnectionBuilder().withTServer(0).connect();
+        Statement stmt = connection.createStatement()) {
+      int pid = getPgBackendPid(stmt);
+
+      // Verify that the allocated_mem_bytes and rss_mem_bytes are successfully
+      // retrieved
+      assertNotEquals("pg_stat_activity.allocated_mem_bytes wasn't retrieved.",
+          getAllocatedMemFromPgStatActivity(stmt, pid), 0);
+
+      assertNotEquals("pg_stat_activity.rss_mem_bytes wasn't retrieved or returned " +
+          "incorrect value.", getRssMemFromPgStatActivity(stmt, pid), -1);
+    }
+  }
+
+  @Test
+  public void testMemUsageOfQueryFromPgStatActivity() throws Exception {
+    // Skip test if the current yb instance is a sanitized build.
+    // as the test checks o/p of columns in pg_stat_activity and not the
+    // called function.
+    if (BuildTypeUtil.isSanitizerBuild())
+      return;
+
+    try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
+         Connection connection2 = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt1 = connection1.createStatement();
+         Statement stmt2 = connection2.createStatement();) {
+      int pid = getPgBackendPid(stmt1);
+
+      // Use connection2 to query the memory usage of connection1
+      long c1AllocatedMem1 = getAllocatedMemFromPgStatActivity(stmt2, pid);
+      long c1RssMem1 = getRssMemFromPgStatActivity(stmt2, pid);
+
+      // Verify that after memory consumption in connection1, the functions' return values changed.
+      consumeMem(stmt1);
+      long c1AllocatedMem2 = getAllocatedMemFromPgStatActivity(stmt2, pid);
+      long c1RssMem2 = getRssMemFromPgStatActivity(stmt2, pid);
+
+      assertNotEquals("Allocated mem usage didn't change.",
+          c1AllocatedMem2, c1AllocatedMem1);
+      assertNotEquals("Rss mem usage didn't change.", c1RssMem2, c1RssMem1);
     }
   }
 }

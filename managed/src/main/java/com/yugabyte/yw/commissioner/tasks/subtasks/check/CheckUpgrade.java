@@ -95,6 +95,8 @@ public class CheckUpgrade extends ServerSubTaskBase {
         throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
       }
 
+      // Make sure there are no new auto flags missing from the modified version,
+      // which could occur during a downgrade.
       if (autoFlagConfig != null && autoFlagConfig.getPromotedFlagsList().size() > 0) {
         ProtocolStringList oldMasterAutoFlags = autoFlagConfig.getPromotedFlags(0).getFlagsList();
         ProtocolStringList oldTserverAutoFlags = autoFlagConfig.getPromotedFlags(1).getFlagsList();

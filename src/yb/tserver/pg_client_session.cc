@@ -317,6 +317,18 @@ Result<PgClientSessionOperations> PrepareOperations(
   return ops;
 }
 
+[[nodiscard]] std::vector<RefCntSlice> ExtractRowsSidecar(
+    const PgPerformResponsePB& resp, const rpc::Sidecars& sidecars) {
+  std::vector<RefCntSlice> result;
+  result.reserve(resp.responses_size());
+  for (const auto& r : resp.responses()) {
+    result.push_back(r.has_rows_data_sidecar()
+        ? sidecars.Extract(r.rows_data_sidecar())
+        : RefCntSlice());
+  }
+  return result;
+}
+
 struct PerformData {
   uint64_t session_id;
   PgPerformResponsePB* resp;
@@ -336,14 +348,7 @@ struct PerformData {
       StatusToPB(status, resp->mutable_status());
     }
     if (cache_setter) {
-      std::vector<RefCntSlice> rows_data;
-      rows_data.reserve(ops.size());
-      for (const auto& op : ops) {
-        rows_data.push_back(
-            op->has_sidecar() ? context.sidecars().Extract(op->sidecar_index()) : RefCntSlice());
-      }
-      cache_setter(PgResponseCache::Response{PgPerformResponsePB(*resp), std::move(rows_data)},
-                   IsFailure(!status.ok()));
+      cache_setter({status.ok(), *resp, ExtractRowsSidecar(*resp, context.sidecars())});
     }
     context.RespondSuccess();
   }
@@ -753,8 +758,7 @@ Status PgClientSession::Perform(
   PgResponseCache::Setter setter;
   auto& options = *req->mutable_options();
   if (options.has_caching_info()) {
-    setter = response_cache_.Get(
-        std::move(*options.mutable_caching_info()->mutable_key()), resp, context);
+    setter = VERIFY_RESULT(response_cache_.Get(options.mutable_caching_info(), resp, context));
     if (!setter) {
       return Status::OK();
     }

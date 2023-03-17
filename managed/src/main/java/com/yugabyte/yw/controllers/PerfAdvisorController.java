@@ -61,7 +61,6 @@ import org.yb.perf_advisor.services.db.PerformanceRecommendationService;
 import org.yb.perf_advisor.services.db.StateChangeAuditInfoService;
 import org.yb.perf_advisor.services.db.ValidationException;
 import play.libs.Json;
-import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -179,7 +178,7 @@ public class PerfAdvisorController extends AuthenticatedController {
 
   private Result updateRecommendations(
       UUID customerUUID, Consumer<PerformanceRecommendation> updater) {
-    UserWithFeatures user = (UserWithFeatures) Http.Context.current().args.get("user");
+    UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
     Customer.getOrBadRequest(customerUUID);
 
     PerformanceRecommendationFilter inputFilter =

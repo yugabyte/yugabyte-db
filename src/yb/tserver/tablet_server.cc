@@ -902,6 +902,14 @@ Result<bool> TabletServer::XClusterSafeTimeCaughtUpToCommitHt(
   return VERIFY_RESULT(xcluster_safe_time_map_.GetSafeTime(namespace_id)) > commit_ht;
 }
 
+Result<cdc::XClusterRole> TabletServer::TEST_GetXClusterRole() const {
+  auto xcluster_consumer_ptr = GetXClusterConsumer();
+  if (!xcluster_consumer_ptr) {
+    return STATUS(Uninitialized, "XCluster consumer has not been initialized");
+  }
+  return xcluster_consumer_ptr->TEST_GetXClusterRole();
+}
+
 scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
     TabletServerServiceRpcMethodIndexes metric) {
   auto tablet_server_service = tablet_server_service_.lock();
@@ -971,7 +979,7 @@ Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   return Status::OK();
 }
 
-XClusterConsumer* TabletServer::GetXClusterConsumer() {
+XClusterConsumer* TabletServer::GetXClusterConsumer() const {
   std::lock_guard<decltype(cdc_consumer_mutex_)> l(cdc_consumer_mutex_);
   return xcluster_consumer_.get();
 }

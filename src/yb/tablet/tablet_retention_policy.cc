@@ -63,6 +63,9 @@ DEFINE_UNKNOWN_bool(enable_history_cutoff_propagation, false,
 DEFINE_UNKNOWN_int32(history_cutoff_propagation_interval_ms, 180000,
              "History cutoff propagation interval in milliseconds.");
 
+DEFINE_test_flag(uint64, committed_history_cutoff_initial_value_usec, 0,
+                 "Initial value for committed_history_cutoff_");
+
 namespace yb {
 namespace tablet {
 
@@ -74,6 +77,11 @@ TabletRetentionPolicy::TabletRetentionPolicy(
     RaftGroupMetadata* metadata)
     : clock_(std::move(clock)), allowed_history_cutoff_provider_(allowed_history_cutoff_provider),
       metadata_(*metadata), log_prefix_(metadata->LogPrefix()) {
+    if (PREDICT_FALSE(FLAGS_TEST_committed_history_cutoff_initial_value_usec > 0)) {
+      committed_history_cutoff_ = HybridTime::FromMicros(
+          FLAGS_TEST_committed_history_cutoff_initial_value_usec);
+      LOG(INFO) << "Initial value of committed_history_cutoff_ is " << committed_history_cutoff_;
+    }
 }
 
 HybridTime TabletRetentionPolicy::UpdateCommittedHistoryCutoff(HybridTime value) {

@@ -93,6 +93,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForYbcServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds;
@@ -840,8 +841,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  /** Create a task to promote auto flag on the universe */
-  public SubTaskGroup createPromoteAutoFlagTask(String ybSoftwareVersion) {
+  /** Create a task to promote auto flag on the universe. */
+  public SubTaskGroup createPromoteAutoFlagTask() {
     SubTaskGroup subTaskGroup = createSubTaskGroup("PromoteAutoFlag");
     PromoteAutoFlags task = createTask(PromoteAutoFlags.class);
     PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
@@ -852,7 +853,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  /** Create a task to check memory limit on the universe nodes */
+  /** Create a task to check the software version on the universe node. */
+  public SubTaskGroup createCheckSoftwareVersionTask(
+      Collection<NodeDetails> nodes, String ybSoftwareVersion) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckSoftwareVersion");
+    for (NodeDetails node : nodes) {
+      CheckSoftwareVersion task = createTask(CheckSoftwareVersion.class);
+      CheckSoftwareVersion.Params params = new CheckSoftwareVersion.Params();
+      params.universeUUID = taskParams().universeUUID;
+      params.nodeName = node.nodeName;
+      params.requiredVersion = ybSoftwareVersion;
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Create a task to check memory limit on the universe nodes. */
   public SubTaskGroup createAvailabeMemoryCheck(
       Collection<NodeDetails> nodes, String memoryType, Long memoryLimitKB) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("CheckMemory");
@@ -869,7 +887,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  /** Create a task to preform pre-check for software upgrade */
+  /** Create a task to preform pre-check for software upgrade. */
   public SubTaskGroup createCheckUpgradeTask(String ybSoftwareVersion) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("CheckUpgrade");
     CheckUpgrade task = createTask(CheckUpgrade.class);
@@ -1054,7 +1072,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createInstallNodeAgentTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup(InstallNodeAgent.class.getSimpleName());
     NodeAgentManager nodeAgentManager = application.injector().instanceOf(NodeAgentManager.class);
-    boolean createSubTaskGroup = false;
     Universe universe = getUniverse();
     for (NodeDetails node : nodes) {
       if (node.cloudInfo == null) {
@@ -1063,7 +1080,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Cluster cluster = getUniverse().getCluster(node.placementUuid);
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
       if (nodeAgentManager.isServerToBeInstalled(provider)) {
-        createSubTaskGroup = true;
         if (provider.getCloudCode() == CloudType.onprem) {
           AccessKey accessKey =
               AccessKey.getOrBadRequest(provider.uuid, cluster.userIntent.accessKeyCode);
@@ -1086,10 +1102,27 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         subTaskGroup.addSubTask(task);
       }
     }
-    if (createSubTaskGroup) {
+    if (subTaskGroup.getSubTaskCount() > 0) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
     return subTaskGroup;
+  }
+
+  protected void deleteNodeAgent(NodeDetails nodeDetails) {
+    if (nodeDetails.cloudInfo != null && nodeDetails.cloudInfo.private_ip != null) {
+      NodeAgentManager nodeAgentManager = application.injector().instanceOf(NodeAgentManager.class);
+      Cluster cluster = getUniverse().getCluster(nodeDetails.placementUuid);
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      if (provider.getCloudCode() == CloudType.onprem) {
+        AccessKey accessKey =
+            AccessKey.getOrBadRequest(provider.uuid, cluster.userIntent.accessKeyCode);
+        if (accessKey.getKeyInfo().skipProvisioning) {
+          return;
+        }
+      }
+      NodeAgent.maybeGetByIp(nodeDetails.cloudInfo.private_ip)
+          .ifPresent(n -> nodeAgentManager.purge(n));
+    }
   }
 
   public SubTaskGroup createWaitForNodeAgentTasks(Collection<NodeDetails> nodes) {

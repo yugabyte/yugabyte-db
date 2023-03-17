@@ -10,7 +10,7 @@ import { Box, FormHelperText, useTheme } from '@material-ui/core';
 import Select, { Styles } from 'react-select';
 
 type YBReactSelectFieldProps<T extends FieldValues> = {
-  options: readonly { value: any; label: string }[];
+  options: readonly { value: any; label: string; isDisabled?: boolean }[] | undefined;
   isDisabled?: boolean;
 } & UseControllerProps<T>;
 

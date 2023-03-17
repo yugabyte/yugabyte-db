@@ -41,13 +41,12 @@ import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
 import junitparams.naming.TestCaseName;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import org.apache.commons.lang3.RandomStringUtils;
-import play.mvc.Http.Context;
 
 @RunWith(JUnitParamsRunner.class)
 public class UtilTest extends FakeDBApplication {
@@ -121,7 +120,7 @@ public class UtilTest extends FakeDBApplication {
     for (int i = 0; i < azCount; i++) {
       azUUIDs[i] = UUID.randomUUID();
     }
-    Cluster cluster = new Cluster(ClusterType.PRIMARY, null);
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, new UserIntent());
     Set<NodeDetails> nodeDetailsSet =
         prepareNodes(cluster, azUUIDs, azCount, countsInAZ, mastersInAZ, stoppedInAZ);
 
@@ -471,19 +470,19 @@ public class UtilTest extends FakeDBApplication {
     Users defaultUser = ModelFactory.testUser(defaultCustomer);
     // Case 1: Happy path
     TestUtils.setFakeHttpContext(defaultUser, "sg@yftt.com");
-    String userEmail = Util.maybeGetEmailFromContext(Context.current.get());
+    String userEmail = Util.maybeGetEmailFromContext();
     assertEquals(userEmail, "sg@yftt.com");
     // Case 2: getUser is null
     TestUtils.setFakeHttpContext(null, "ok@g.com");
-    userEmail = Util.maybeGetEmailFromContext(Context.current.get());
+    userEmail = Util.maybeGetEmailFromContext();
     assertEquals(userEmail, "Unknown");
     // Case 3: getEmail is null
     TestUtils.setFakeHttpContext(defaultUser, null);
-    userEmail = Util.maybeGetEmailFromContext(Context.current.get());
+    userEmail = Util.maybeGetEmailFromContext();
     assertEquals(userEmail, "Unknown");
     // Case 4: empty
     TestUtils.setFakeHttpContext(defaultUser, "");
-    userEmail = Util.maybeGetEmailFromContext(Context.current.get());
+    userEmail = Util.maybeGetEmailFromContext();
     assertEquals(userEmail, "");
   }
 }

@@ -144,7 +144,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     String url =
         "/api/customers/" + defaultCustomer.uuid + "/universes/" + universeUUID + "/backups";
 
-    Result r = FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
+    Result r = doRequestWithAuthToken(method, url, authToken);
     assertOk(r);
     return Json.parse(contentAsString(r));
   }
@@ -205,7 +205,7 @@ public class BackupsControllerTest extends FakeDBApplication {
             + "/backups/tasks/"
             + taskUUID;
 
-    Result r = FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
+    Result r = doRequestWithAuthToken(method, url, authToken);
     assertOk(r);
     return Json.parse(contentAsString(r));
   }
@@ -556,7 +556,7 @@ public class BackupsControllerTest extends FakeDBApplication {
             + "/universes/"
             + universeUUID
             + "/backups/restore";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   private Result restoreBackupYb(JsonNode bodyJson, Users user) {
@@ -566,49 +566,49 @@ public class BackupsControllerTest extends FakeDBApplication {
     }
     String method = "POST";
     String url = "/api/customers/" + defaultCustomer.uuid + "/restore";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   private Result deleteBackup(ObjectNode bodyJson, Users user) {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "DELETE";
     String url = "/api/customers/" + defaultCustomer.uuid + "/backups";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   private Result deleteBackupYb(ObjectNode bodyJson, Users user) {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "POST";
     String url = "/api/customers/" + defaultCustomer.uuid + "/backups/delete";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   private Result createBackupYb(ObjectNode bodyJson, Users user) {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "POST";
     String url = "/api/customers/" + defaultCustomer.uuid + "/backups";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   private Result createBackupSchedule(ObjectNode bodyJson, Users user) {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "POST";
     String url = "/api/customers/" + defaultCustomer.uuid + "/create_backup_schedule";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   private Result stopBackup(Users user, UUID backupUUID) {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "POST";
     String url = "/api/customers/" + defaultCustomer.uuid + "/backups/" + backupUUID + "/stop";
-    return FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
+    return doRequestWithAuthToken(method, url, authToken);
   }
 
   private Result editBackup(Users user, ObjectNode bodyJson, UUID backupUUID) {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "PUT";
     String url = "/api/customers/" + defaultCustomer.uuid + "/backups/" + backupUUID;
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   @Test
@@ -1511,7 +1511,7 @@ public class BackupsControllerTest extends FakeDBApplication {
             + "/universes/"
             + universeUUID.toString()
             + "/ybc_throttle_params";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   private Result getThrottleParams(UUID universeUUID) {
@@ -1523,7 +1523,7 @@ public class BackupsControllerTest extends FakeDBApplication {
             + "/universes/"
             + universeUUID.toString()
             + "/ybc_throttle_params";
-    return FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
+    return doRequestWithAuthToken(method, url, authToken);
   }
 
   @Test
@@ -1702,7 +1702,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     String authToken = defaultUser.createAuthToken();
     String method = "POST";
     String url = "/api/customers/" + customerUUID + "/restore/page";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, body);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, body);
   }
 
   @Test

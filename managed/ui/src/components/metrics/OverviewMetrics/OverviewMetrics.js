@@ -163,7 +163,6 @@ class OverviewMetrics extends Component {
   };
 
   componentWillUnmount() {
-    this.props.resetMetrics();
     // eslint-disable-next-line eqeqeq
     if (this.timeout != undefined) {
       clearInterval(this.timeout);

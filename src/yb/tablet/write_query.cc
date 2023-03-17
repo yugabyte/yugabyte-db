@@ -457,7 +457,13 @@ docdb::ConflictManagementPolicy GetConflictManagementPolicy(
   if (!pairs.empty() && write_batch.has_wait_policy()) {
     switch (write_batch.wait_policy()) {
       case WAIT_BLOCK:
-        conflict_management_policy = docdb::WAIT_ON_CONFLICT;
+        if (wait_queue) {
+          conflict_management_policy = docdb::WAIT_ON_CONFLICT;
+        } else {
+          YB_LOG_EVERY_N(WARNING, 100)
+              << "Received WAIT_BLOCK request from query layer but wait queues are not enabled at "
+              << "tserver. Reverting to WAIT_ERROR behavior.";
+        }
         break;
       case WAIT_SKIP:
         conflict_management_policy = docdb::SKIP_ON_CONFLICT;
@@ -501,6 +507,11 @@ Status WriteQuery::DoExecute() {
   TEST_SYNC_POINT("WriteQuery::DoExecute::PreparedDocWriteOps");
 
   auto* transaction_participant = tablet->transaction_participant();
+  docdb::WaitQueue* wait_queue = nullptr;
+
+  if (transaction_participant) {
+    wait_queue = transaction_participant->wait_queue();
+  }
 
   if (!tablet->txns_enabled() || !transactional_table) {
     CompleteExecute();
@@ -509,13 +520,12 @@ Status WriteQuery::DoExecute() {
 
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL) {
     auto now = tablet->clock()->Now();
-    auto conflict_management_policy = GetConflictManagementPolicy(
-        tablet->wait_queue(), write_batch);
+    auto conflict_management_policy = GetConflictManagementPolicy(wait_queue, write_batch);
     return docdb::ResolveOperationConflicts(
         doc_ops_, conflict_management_policy, now, tablet->doc_db(),
         partial_range_key_intents, transaction_participant,
         tablet->metrics()->transaction_conflicts.get(), &prepare_result_.lock_batch,
-        tablet->wait_queue(),
+        wait_queue,
         [this, now](const Result<HybridTime>& result) {
           if (!result.ok()) {
             ExecuteDone(result.status());
@@ -546,8 +556,7 @@ Status WriteQuery::DoExecute() {
     }
   }
 
-  auto conflict_management_policy = GetConflictManagementPolicy(
-      tablet->wait_queue(), write_batch);
+  auto conflict_management_policy = GetConflictManagementPolicy(wait_queue, write_batch);
 
   // TODO(wait-queues): Ensure that wait_queue respects deadline() during conflict resolution.
   return docdb::ResolveTransactionConflicts(
@@ -555,7 +564,7 @@ Status WriteQuery::DoExecute() {
       read_time_ ? read_time_.read : HybridTime::kMax,
       tablet->doc_db(), partial_range_key_intents,
       transaction_participant, tablet->metrics()->transaction_conflicts.get(),
-      &prepare_result_.lock_batch, tablet->wait_queue(),
+      &prepare_result_.lock_batch, wait_queue,
       [this](const Result<HybridTime>& result) {
         if (!result.ok()) {
           ExecuteDone(result.status());

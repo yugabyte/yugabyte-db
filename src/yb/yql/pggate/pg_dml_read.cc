@@ -189,6 +189,8 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
   // Collecting column indexes that are involved in a tuple
   std::vector<size_t> tuple_col_ids;
 
+  bool preceding_key_column_missed = false;
+
   for (size_t index = 0; index != bind_->num_hash_key_columns(); ++index) {
     auto expr = bind_.ColumnForIndex(index).bind_pb();
     auto colid = bind_.ColumnForIndex(index).id();
@@ -204,6 +206,9 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
     }
 
     if (expr && expr->has_condition()) {
+      // Move any range column binds into the 'condition_expr' field if
+      // we are batching hash columns.
+      preceding_key_column_missed = pg_session_->IsHashBatchingEnabled();
       const auto& lhs = *expr->condition().operands().begin();
       if (lhs.has_tuple()) {
         const auto& tuple = lhs.tuple();
@@ -216,8 +221,6 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
 
   SCHECK(!has_partition_columns || !miss_partition_columns, InvalidArgument,
       "Partition key must be fully specified");
-
-  bool preceding_key_column_missed = false;
 
   if (miss_partition_columns) {
     VLOG(1) << "Full scan is needed";

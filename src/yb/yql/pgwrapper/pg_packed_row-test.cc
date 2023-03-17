@@ -39,6 +39,7 @@ DECLARE_uint64(rocksdb_universal_compaction_always_include_size_threshold);
 DECLARE_uint64(ysql_packed_row_size_limit);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 DECLARE_bool(TEST_skip_aborting_active_transactions_during_schema_change);
+DECLARE_bool(ysql_enable_pack_full_row_update);
 
 namespace yb {
 namespace pgwrapper {
@@ -72,6 +73,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
 
 TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Update)) {
   // Test update with and without packed row enabled.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pack_full_row_update) = true;
 
   auto conn = ASSERT_RESULT(Connect());
 
@@ -166,6 +168,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AlterTable)) {
 
 TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(UpdateReturning)) {
   // Test UPDATE...RETURNING with packed row enabled.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pack_full_row_update) = true;
 
   auto conn = ASSERT_RESULT(Connect());
 

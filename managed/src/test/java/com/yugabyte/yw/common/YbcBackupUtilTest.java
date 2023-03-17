@@ -234,7 +234,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
               ybcBackupUtil.parseYbcBackupResponse(success);
             });
     assertEquals(
-        "errorJson: {\"responseCloudStoreSpec.defaultLocation\":\"may not be null\"}",
+        "errorJson: {\"responseCloudStoreSpec.defaultLocation\":\"must not be null\"}",
         e.getMessage());
   }
 

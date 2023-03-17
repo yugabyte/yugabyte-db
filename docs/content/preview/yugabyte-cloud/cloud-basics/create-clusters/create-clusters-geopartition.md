@@ -1,7 +1,7 @@
 ---
 title: Partition by region
 linkTitle: Partition by region
-description: Deploy multi-region synchronous clusters in YugabyteDB Managed.
+description: Deploy geo-partitioned clusters in YugabyteDB Managed.
 headcontent: Use geo-partitioning to pin data to regions
 menu:
   preview_yugabyte-cloud:

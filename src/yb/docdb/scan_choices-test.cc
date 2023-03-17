@@ -231,7 +231,7 @@ void ScanChoicesTest::AdjustForRangeConstraints() {
   EXPECT_FALSE(choices_->FinishedWithScanChoices());
   const auto &cur_target = choices_->current_scan_target_;
   DocKeyDecoder decoder(cur_target);
-  EXPECT_OK(decoder.DecodeToRangeGroup());
+  EXPECT_OK(decoder.DecodeToKeys());
   KeyEntryValue cur_val;
   // The size of the dockey we have found so far that does not need adjustment
   size_t valid_size = 0;

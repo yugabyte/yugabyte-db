@@ -35,6 +35,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -46,6 +47,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+@Singleton
 public class UniverseActionsHandler {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseActionsHandler.class);
 
@@ -119,182 +121,6 @@ public class UniverseActionsHandler {
       LOG.error(errMsg, e);
       throw new PlatformServiceException(Http.Status.BAD_REQUEST, errMsg);
     }
-  }
-
-  public UUID toggleTls(Customer customer, Universe universe, ToggleTlsParams requestParams) {
-    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    UniverseDefinitionTaskParams.UserIntent userIntent =
-        universeDetails.getPrimaryCluster().userIntent;
-
-    LOG.info(
-        "Toggle TLS for universe {} [ {} ] customer {}.",
-        universe.name,
-        universe.universeUUID,
-        customer.uuid);
-
-    requestParams.verifyParams(universeDetails);
-    if (!universeDetails.isUniverseEditable()) {
-      throw new PlatformServiceException(
-          Http.Status.BAD_REQUEST, "Universe UUID " + universe.universeUUID + " cannot be edited.");
-    }
-
-    if (universe.nodesInTransit()) {
-      throw new PlatformServiceException(
-          Http.Status.BAD_REQUEST,
-          "Cannot perform a toggle TLS operation on universe "
-              + universe.universeUUID
-              + " as it has nodes in one of "
-              + NodeDetails.IN_TRANSIT_STATES
-              + " states.");
-    }
-
-    if (!CertificateInfo.isCertificateValid(requestParams.rootCA)) {
-      throw new PlatformServiceException(
-          Http.Status.BAD_REQUEST,
-          String.format(
-              "The certificate %s needs info. Update the cert and retry.",
-              CertificateInfo.get(requestParams.rootCA).label));
-    }
-
-    if (requestParams.rootCA != null
-        && CertificateInfo.get(requestParams.rootCA).certType == CertConfigType.CustomServerCert) {
-      throw new PlatformServiceException(
-          Http.Status.BAD_REQUEST,
-          "CustomServerCert are only supported for Client to Server Communication.");
-    }
-
-    if (requestParams.rootCA != null
-        && CertificateInfo.get(requestParams.rootCA).certType == CertConfigType.CustomCertHostPath
-        && !userIntent.providerType.equals(Common.CloudType.onprem)) {
-      throw new PlatformServiceException(
-          Http.Status.BAD_REQUEST,
-          "CustomCertHostPath certificates are only supported for on-prem providers.");
-    }
-
-    if (requestParams.clientRootCA != null
-        && CertificateInfo.get(requestParams.clientRootCA).certType
-            == CertConfigType.CustomCertHostPath
-        && !userIntent.providerType.equals(Common.CloudType.onprem)) {
-      throw new PlatformServiceException(
-          Http.Status.BAD_REQUEST,
-          "CustomCertHostPath certificates are only supported for on-prem providers.");
-    }
-
-    if (requestParams.rootAndClientRootCASame != null
-        && requestParams.rootAndClientRootCASame
-        && requestParams.enableNodeToNodeEncrypt
-        && requestParams.enableClientToNodeEncrypt
-        && requestParams.rootCA != null
-        && requestParams.clientRootCA != null
-        && requestParams.rootCA != requestParams.clientRootCA) {
-      throw new PlatformServiceException(
-          Http.Status.BAD_REQUEST,
-          "RootCA and ClientRootCA cannot be different when rootAndClientRootCASame is true.");
-    }
-
-    TaskType taskType = TaskType.UpgradeUniverse;
-    UpgradeParams taskParams = new UpgradeParams();
-    taskParams.taskType = UpgradeTaskType.ToggleTls;
-    taskParams.upgradeOption = requestParams.upgradeOption;
-    taskParams.universeUUID = universe.universeUUID;
-    taskParams.expectedUniverseVersion = -1;
-    taskParams.enableNodeToNodeEncrypt = requestParams.enableNodeToNodeEncrypt;
-    taskParams.enableClientToNodeEncrypt = requestParams.enableClientToNodeEncrypt;
-    taskParams.rootAndClientRootCASame =
-        requestParams.rootAndClientRootCASame != null
-            ? requestParams.rootAndClientRootCASame
-            : universeDetails.rootAndClientRootCASame;
-    taskParams.allowInsecure =
-        !(requestParams.enableNodeToNodeEncrypt || requestParams.enableClientToNodeEncrypt);
-
-    if (userIntent.providerType.equals(Common.CloudType.kubernetes)) {
-      throw new PlatformServiceException(
-          Http.Status.BAD_REQUEST, "Kubernetes Upgrade is not supported.");
-    }
-
-    if (requestParams.enableNodeToNodeEncrypt) {
-      // Setting the rootCA to the already existing rootCA as we do not
-      // support root certificate rotation through ToggleTLS.
-      // There is a check for different new and existing root cert already.
-      taskParams.rootCA = universeDetails.rootCA;
-      if (taskParams.rootCA == null) {
-        // create self signed rootCA in case it is not provided by the user
-        LOG.info("creating selfsigned CA for {}", universeDetails.universeUUID.toString());
-        taskParams.rootCA =
-            requestParams.rootCA != null
-                ? requestParams.rootCA
-                : CertificateHelper.createRootCA(
-                    runtimeConfigFactory.staticApplicationConf(),
-                    universeDetails.nodePrefix,
-                    customer.uuid);
-      }
-    }
-
-    if (requestParams.enableClientToNodeEncrypt) {
-      // Setting the ClientRootCA to the already existing clientRootCA as we do not
-      // support root certificate rotation through ToggleTLS.
-      // There is a check for different new and existing root cert already.
-      taskParams.setClientRootCA(universeDetails.getClientRootCA());
-      if (taskParams.getClientRootCA() == null) {
-        if (requestParams.clientRootCA == null) {
-          if (taskParams.rootCA != null && taskParams.rootAndClientRootCASame) {
-            // Setting ClientRootCA to RootCA incase rootAndClientRootCA is true
-            taskParams.setClientRootCA(taskParams.rootCA);
-          } else {
-            // create self signed clientRootCA in case it is not provided by the user
-            // and rootCA and clientRootCA needs to be different
-            taskParams.setClientRootCA(
-                CertificateHelper.createClientRootCA(
-                    runtimeConfigFactory.staticApplicationConf(),
-                    universeDetails.nodePrefix,
-                    customer.uuid));
-          }
-        } else {
-          // Set the ClientRootCA to the user provided ClientRootCA if it exists
-          taskParams.setClientRootCA(requestParams.clientRootCA);
-        }
-      }
-
-      // Setting rootCA to ClientRootCA in case node to node encryption is disabled.
-      // This is necessary to set to ensure backward compatibity as existing parts of
-      // codebase uses rootCA for Client to Node Encryption
-      if (taskParams.rootCA == null && taskParams.rootAndClientRootCASame) {
-        taskParams.rootCA = taskParams.getClientRootCA();
-      }
-
-      // If client encryption is enabled, generate the client cert file for each node.
-      CertificateInfo cert = CertificateInfo.get(taskParams.rootCA);
-      if (taskParams.rootAndClientRootCASame) {
-        if (cert.certType == CertConfigType.SelfSigned
-            || cert.certType == CertConfigType.HashicorpVault) {
-          CertificateHelper.createClientCertificate(
-              runtimeConfigFactory.staticApplicationConf(),
-              customer.uuid,
-              taskParams.getClientRootCA());
-        }
-      }
-    }
-
-    UUID taskUUID = commissioner.submit(taskType, taskParams);
-    LOG.info(
-        "Submitted toggle tls for {} : {}, task uuid = {}.",
-        universe.universeUUID,
-        universe.name,
-        taskUUID);
-
-    CustomerTask.create(
-        customer,
-        universe.universeUUID,
-        taskUUID,
-        CustomerTask.TargetType.Universe,
-        CustomerTask.TaskType.ToggleTls,
-        universe.name);
-    LOG.info(
-        "Saved task uuid {} in customer tasks table for universe {} : {}.",
-        taskUUID,
-        universe.universeUUID,
-        universe.name);
-    return taskUUID;
   }
 
   public void setHelm3Compatible(Universe universe) {

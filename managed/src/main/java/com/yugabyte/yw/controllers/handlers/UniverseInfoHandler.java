@@ -47,6 +47,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.stream.Collectors;
+import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.yb.client.YBClient;
@@ -54,6 +55,7 @@ import play.libs.Json;
 import play.mvc.Http;
 
 @Slf4j
+@Singleton
 public class UniverseInfoHandler {
 
   @Inject private MetricQueryHelper metricQueryHelper;

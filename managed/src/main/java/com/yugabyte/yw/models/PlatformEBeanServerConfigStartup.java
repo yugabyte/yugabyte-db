@@ -12,9 +12,9 @@ package com.yugabyte.yw.models;
 
 import com.yugabyte.yw.common.YbEncryptKeyManager;
 import com.yugabyte.yw.common.YbPgDbEncrypt;
+import com.yugabyte.yw.modules.CustomObjectMapperModule;
 import io.ebean.config.ServerConfig;
 import io.ebean.event.ServerConfigStartup;
-import play.libs.Json;
 
 /**
  * Here we will modify EBean server config at startup. EBeans framework will make sure that this
@@ -26,7 +26,7 @@ public class PlatformEBeanServerConfigStartup implements ServerConfigStartup {
     // Use same object mapper so that play.libs.Json and ebean's json serialization and
     // deserialization yields same results. Specifically FAIL_ON_UNKNOWN_PROPERTIES is
     // set to false by play.
-    serverConfig.setObjectMapper(Json.mapper());
+    serverConfig.setObjectMapper(CustomObjectMapperModule.createDefaultMapper());
     serverConfig.setEncryptKeyManager(new YbEncryptKeyManager());
 
     // See PLAT-5237 - Do not prefetch and cache audit id entries.

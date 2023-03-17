@@ -596,6 +596,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Timeout used for internal universe-level helm operations like install/upgrade in secs",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enablePerfAdvisor =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.perf_advisor",
+          ScopeType.UNIVERSE,
+          "Enable Perf Advisor to view recommendations",
+          "Builds recommendations to help tune our applications accordingly",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> promoteAutoFlag =
       new ConfKeyInfo<>(
           "yb.upgrade.promote_auto_flag",
@@ -610,6 +618,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ScopeType.UNIVERSE,
           "Allow upgrade on transit universe",
           "Allow universe upgrade when nodes are in transit mode",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> promoteAutoFlagsForceFully =
+      new ConfKeyInfo<>(
+          "yb.upgrade.promote_flags_forcefully",
+          ScopeType.UNIVERSE,
+          "Promote AutoFlags Forcefully",
+          "Promote AutoFlags Forcefully during software upgrade",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

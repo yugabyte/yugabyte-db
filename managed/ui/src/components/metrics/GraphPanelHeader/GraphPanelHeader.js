@@ -99,6 +99,7 @@ class GraphPanelHeader extends Component {
     super(props);
     // Reset graph filters when user switches from Metrics view to individual Universe Metrics view
     this.props.resetMetrics();
+    this.props.resetGraphFilter();
     momentLocalizer(moment);
     const defaultFilter = filterTypes[DEFAULT_FILTER_KEY];
     let currentUniverse = MetricConsts.ALL;
