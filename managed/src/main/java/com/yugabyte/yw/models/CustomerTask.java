@@ -169,10 +169,6 @@ public class CustomerTask extends Model {
     @EnumValue("UpdateCert")
     UpdateCert,
 
-    @Deprecated
-    @EnumValue("ToggleTls")
-    ToggleTls,
-
     @EnumValue("UpdateDiskSize")
     UpdateDiskSize,
 
@@ -331,8 +327,6 @@ public class CustomerTask extends Model {
           return completed ? "Updated Disk Size " : "Updating Disk Size ";
         case UpdateCert:
           return completed ? "Updated Cert " : "Updating Cert ";
-        case ToggleTls:
-          return completed ? "Toggled Tls " : "Toggling Tls ";
         case UpgradeGflags:
           return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
         case BulkImportData:
