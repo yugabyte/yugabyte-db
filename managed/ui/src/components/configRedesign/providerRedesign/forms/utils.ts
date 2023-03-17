@@ -6,7 +6,6 @@
  */
 import { AxiosError } from 'axios';
 import { FieldValues, Path, UseFormSetError } from 'react-hook-form';
-import { customAlphabet } from 'nanoid';
 
 import { YBBeanValidationError, YBPError } from '../../../../redesign/helpers/dtos';
 
@@ -83,5 +82,5 @@ export const getCreateProviderErrorMessage = (
     ? `Create provider request failed: ${error.response.data.error as string}`
     : 'Form validation failed.';
 
-const LOWER_CASE_ALPHANUMERIC = '0123456789abcdefghijklmnopqrstuvwxyz';
-export const generateLowerCaseAlphanumericId = customAlphabet(LOWER_CASE_ALPHANUMERIC);
+export const generateLowerCaseAlphanumericId = (stringLength = 14) =>
+  Array.from(Array(stringLength), () => Math.floor(Math.random() * 36).toString(36)).join('');

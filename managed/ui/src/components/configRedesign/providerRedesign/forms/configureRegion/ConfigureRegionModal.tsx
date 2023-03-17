@@ -10,7 +10,6 @@ import clsx from 'clsx';
 import { FormHelperText, makeStyles } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, object, string } from 'yup';
-import { nanoid } from 'nanoid';
 import { yupResolver } from '@hookform/resolvers/yup';
 
 import {
@@ -22,6 +21,7 @@ import { RegionOperation } from './constants';
 import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
 import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
 import { getRegionlabel, getRegionOptions, getZoneOptions } from './utils';
+import { generateLowerCaseAlphanumericId } from '../utils';
 
 interface ConfigureRegionModalProps extends YBModalProps {
   onRegionSubmit: (region: CloudVendorRegionField) => void;
@@ -128,7 +128,7 @@ export const ConfigureRegionModal = ({
     const { regionData, ...region } = data;
     const newRegion =
       regionOperation === RegionOperation.ADD
-        ? { ...region, code: regionData.value.code, fieldId: nanoid() }
+        ? { ...region, code: regionData.value.code, fieldId: generateLowerCaseAlphanumericId() }
         : { ...region, code: regionData.value.code };
     if (providerCode === ProviderCode.GCP) {
       newRegion.zones = regionData.value.zoneOptions.map((zoneOption) => ({
