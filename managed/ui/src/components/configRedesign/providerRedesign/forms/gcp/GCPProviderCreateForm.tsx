@@ -104,7 +104,6 @@ const KEY_PAIR_MANAGEMENT_OPTIONS: OptionProps[] = [
 ];
 
 const YB_VPC_NAME_BASE = 'yb-gcp-network';
-const DEFAULT_ID_SUFFIX_SIZE = 14;
 
 const VALIDATION_SCHEMA = object().shape({
   providerName: string()
@@ -390,9 +389,7 @@ export const GCPProviderCreateForm = ({
                     if (value === VPCSetupType.NEW) {
                       formMethods.setValue(
                         'destVpcId',
-                        `${YB_VPC_NAME_BASE}-${generateLowerCaseAlphanumericId(
-                          DEFAULT_ID_SUFFIX_SIZE
-                        )}`
+                        `${YB_VPC_NAME_BASE}-${generateLowerCaseAlphanumericId()}`
                       );
                     } else {
                       formMethods.setValue('destVpcId', '');

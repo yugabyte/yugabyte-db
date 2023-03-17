@@ -11,7 +11,6 @@ import { FormHelperText, makeStyles } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
-import { nanoid } from 'nanoid';
 
 import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
 import { ProviderCode, VPCSetupType } from '../../constants';
@@ -20,6 +19,7 @@ import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { ConfigureK8sAvailabilityZoneField } from './ConfigureK8sAvailabilityZoneField';
 import { K8sCertIssuerType, K8sRegionFieldLabel, RegionOperation } from './constants';
 import { getRegionOptions } from './utils';
+import { generateLowerCaseAlphanumericId } from '../utils';
 
 interface ConfigureK8sRegionModalProps extends YBModalProps {
   configuredRegions: K8sRegionField[];
@@ -108,7 +108,7 @@ export const ConfigureK8sRegionModal = ({
     const newRegion = {
       ...formValues,
       code: formValues.regionData.value.code,
-      fieldId: formValues.fieldId ?? nanoid()
+      fieldId: formValues.fieldId ?? generateLowerCaseAlphanumericId()
     };
     onRegionSubmit(newRegion);
     formMethods.reset();
