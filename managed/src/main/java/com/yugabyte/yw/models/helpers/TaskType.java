@@ -346,6 +346,8 @@ public enum TaskType {
 
   ReplicateNamespaces(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ReplicateNamespaces.class),
+  CheckXUniverseAutoFlags(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckXUniverseAutoFlags.class),
 
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup(
