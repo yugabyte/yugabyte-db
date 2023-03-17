@@ -323,7 +323,7 @@ Status Master::RegisterServices() {
       std::make_unique<tserver::PgClientServiceImpl>(
           *master_tablet_server_,
           client_future(), clock(), std::bind(&Master::TransactionPool, this), metric_entity(),
-          &messenger()->scheduler(), nullptr /* xcluster_safe_time_map */)));
+          &messenger()->scheduler())));
 
   return Status::OK();
 }
