@@ -89,7 +89,7 @@ DEFINE_RUNTIME_bool(remote_bootstrap_save_downloaded_metadata, false,
 TAG_FLAG(remote_bootstrap_save_downloaded_metadata, advanced);
 TAG_FLAG(remote_bootstrap_save_downloaded_metadata, hidden);
 
-DEFINE_UNKNOWN_int32(committed_config_change_role_timeout_sec, 30,
+DEFINE_RUNTIME_int32(committed_config_change_role_timeout_sec, 30,
              "Number of seconds to wait for the CHANGE_ROLE to be in the committed config before "
              "timing out. ");
 TAG_FLAG(committed_config_change_role_timeout_sec, hidden);
