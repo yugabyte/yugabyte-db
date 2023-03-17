@@ -276,6 +276,12 @@ size_t ArenaBase<Traits>::memory_footprint() const {
   return arena_footprint_;
 }
 
+template <class Traits>
+size_t ArenaBase<Traits>::UsedBytes() {
+  std::lock_guard<mutex_type> lock(component_lock_);
+  return arena_footprint_ - AcquireLoadCurrent()->free_bytes();
+}
+
 // Explicit instantiation.
 template class ArenaBase<ThreadSafeArenaTraits>;
 template class ArenaBase<ArenaTraits>;

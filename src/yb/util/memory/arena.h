@@ -231,6 +231,10 @@ class ArenaBase {
   // bytes allocated out of the arena.
   size_t memory_footprint() const;
 
+  // Returns how many bytes are used by this arena. This excludes any empty space in the last
+  // component.
+  size_t UsedBytes();
+
  private:
   typedef typename Traits::mutex_type mutex_type;
   // Encapsulates a single buffer in the arena.
@@ -383,6 +387,8 @@ class ArenaComponent {
   uint8_t* end() { return end_; }
   size_t size() { return end() - begin(); }
   size_t full_size() { return end() - begin_of_this(); }
+
+  size_t free_bytes() { return end() - position_; }
 
   // Resets used memory of this component, destroys the rest of the component chain.
   // `allocator` should be the same as the one used to allocate memory for this component chain.
