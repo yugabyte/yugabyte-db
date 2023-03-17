@@ -29,7 +29,7 @@ type: docs
 
 </ul>
 
-A transaction is a sequence of operations performed as a single logical unit of work. A transaction has four key properties - **Atomicity**, **Consistency**, **Isolation** and **Durability** - commonly abbreviated as ACID.
+In YugabyteDB, a transaction is a sequence of operations performed as a single logical unit of work. A transaction has four key properties - **Atomicity**, **Consistency**, **Isolation**, and **Durability** - commonly abbreviated as **ACID**.
 
 - **Atomicity** All the work in a transaction is treated as a single atomic unit - either all of it is performed or none of it is.
 
@@ -39,15 +39,15 @@ A transaction is a sequence of operations performed as a single logical unit of 
 
 - **Durability** The results of the transaction are permanently stored in the system. The modifications must persist even in the instance of power loss or system failures.
 
-## Transactions Property
+## Transactions property
 
-Unlike `YSQL` where transactions are available to all tables implcitly, in `YCQL` to execute transactions on a table, the table should be created with the `transactions` property enabled. The statement should look something as follows.
+Unlike `YSQL` where transactions are available to all tables implicitly, in `YCQL` to execute transactions on a table, the table should be created with the `transactions` property enabled. The statement should look something as follows.
 
 ```sql
 CREATE TABLE IF NOT EXISTS <TABLE_NAME> (...) WITH transactions = { 'enabled' : true };
 ```
 
-## Transaction Block
+## Transaction block
 
 You can insert data by performing the sequence of commands inside a `BEGIN TRANSACTION` and `END TRANSACTION` block.
 
@@ -57,7 +57,6 @@ BEGIN TRANSACTION
   statement 2
 END TRANSACTION;
 ```
-
 
 ## Prepare-bind transactions
 
