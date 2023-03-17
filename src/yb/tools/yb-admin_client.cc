@@ -51,6 +51,7 @@
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_info.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/json_util.h"
 #include "yb/common/ql_type_util.h"
 #include "yb/common/redis_constants_common.h"
@@ -3009,7 +3010,7 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(
           cout << "Target imported " << colocated_prefix << "table name: " << table_name.ToString()
                << endl;
         } else if (!keyspace.name.empty()) {
-          if (master::IsColocatedDbParentTableName(meta.name())) {
+          if (IsColocatedDbParentTableName(meta.name())) {
             // Check whether the import_snapshot command is invoked for a colocation migration.
             // And adjust the output message if a colocation migration happens.
             master::GetNamespaceInfoResponsePB ns_resp;
@@ -3033,7 +3034,7 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(
               DCHECK_EQ(resp.tablegroups().size(), 1);
               cout << "Target imported " << colocated_prefix << "table name: "
                    << keyspace.name << "."
-                   << master::GetColocationParentTableName(resp.tablegroups()[0].id()) << endl;
+                   << GetColocationParentTableName(resp.tablegroups()[0].id()) << endl;
             }
           } else {
             cout << "Target imported " << colocated_prefix << "table name: " << keyspace.name << "."

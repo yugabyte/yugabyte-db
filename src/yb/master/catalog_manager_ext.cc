@@ -17,6 +17,8 @@
 #include <unordered_set>
 #include <google/protobuf/util/message_differencer.h>
 
+#include "yb/common/colocated_util.h"
+#include "yb/common/common_fwd.h"
 #include "yb/common/constants.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
