@@ -1222,37 +1222,53 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupChecksumsDisabled))
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-class YBBackupTestWithPackedRows : public YBBackupTest {
+YB_STRONGLY_TYPED_BOOL(SourceDatabaseIsColocated);
+
+class YBBackupTestWithPackedRows : public YBBackupTest,
+                                   public ::testing::WithParamInterface<SourceDatabaseIsColocated> {
+ protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     YBBackupTest::UpdateMiniClusterOptions(options);
     // Add flags to enable packed row feature.
     options->extra_master_flags.push_back("--enable_automatic_tablet_splitting=false");
     options->extra_tserver_flags.push_back("--ysql_enable_packed_row=true");
+    options->extra_tserver_flags.push_back("--ysql_enable_packed_row_for_colocated_table=true");
   }
+
+  void SetUp() override {
+    YBBackupTest::SetUp();
+    if (GetParam()) {
+      ASSERT_NO_FATALS(RunPsqlCommand(
+          Format("CREATE DATABASE $0 WITH COLOCATION=TRUE", backup_db_name), "CREATE DATABASE"));
+      SetDbName(backup_db_name);
+    }
+  }
+
+  const std::string backup_db_name = GetParam() ? "colo_db" : "yugabyte";
+  const std::string restore_db_name = "restored_db";
 };
 
-TEST_F(YBBackupTestWithPackedRows,
+TEST_P(
+    YBBackupTestWithPackedRows,
     YB_DISABLE_TEST_IN_SANITIZERS(YSQLSchemaPackingWithSnapshotGreaterVersionThanRestore)) {
   const std::string table_name = "test1";
   // Create a table.
   ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0(a INT)", table_name)));
 
-  ASSERT_NO_FATALS(InsertRows(
-      Format("INSERT INTO $0 VALUES (1), (2), (3)", table_name), 3));
+  ASSERT_NO_FATALS(InsertRows(Format("INSERT INTO $0 VALUES (1), (2), (3)", table_name), 3));
 
   // Perform a series of Alters.
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      Format("ALTER TABLE $0 ADD COLUMN b INT", table_name), "ALTER TABLE"));
-  ASSERT_NO_FATALS(InsertRows(
-      Format("INSERT INTO $0 VALUES (4,4), (5,5), (6,6)", table_name), 3));
+  ASSERT_NO_FATALS(
+      RunPsqlCommand(Format("ALTER TABLE $0 ADD COLUMN b INT", table_name), "ALTER TABLE"));
+  ASSERT_NO_FATALS(InsertRows(Format("INSERT INTO $0 VALUES (4,4), (5,5), (6,6)", table_name), 3));
 
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      Format("ALTER TABLE $0 ADD COLUMN c INT", table_name), "ALTER TABLE"));
-  ASSERT_NO_FATALS(InsertRows(
-      Format("INSERT INTO $0 VALUES (7,7,7), (8,8,8), (9,9,9)", table_name), 3));
+  ASSERT_NO_FATALS(
+      RunPsqlCommand(Format("ALTER TABLE $0 ADD COLUMN c INT", table_name), "ALTER TABLE"));
+  ASSERT_NO_FATALS(
+      InsertRows(Format("INSERT INTO $0 VALUES (7,7,7), (8,8,8), (9,9,9)", table_name), 3));
 
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      Format("ALTER TABLE $0 RENAME COLUMN b TO d", table_name), "ALTER TABLE"));
+  ASSERT_NO_FATALS(
+      RunPsqlCommand(Format("ALTER TABLE $0 RENAME COLUMN b TO d", table_name), "ALTER TABLE"));
 
   ASSERT_NO_FATALS(RunPsqlCommand(
       Format("SELECT * FROM $0 ORDER BY a", table_name),
@@ -1269,22 +1285,26 @@ TEST_F(YBBackupTestWithPackedRows,
          8 | 8 | 8
          9 | 9 | 9
         (9 rows)
-      )#"
-  ));
+      )#"));
+
+  // Create some additional tables to exercise the colocation logic when mapping tables in the
+  // snapshot to tables in the restored db. Only significant when the database is colocated.
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE extra_table1 (k TEXT, v TEXT)", table_name)));
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE extra_table2 (k TEXT, v TEXT)", table_name)));
 
   const string backup_dir = GetTempDir("backup");
 
   ASSERT_OK(RunBackupCommand(
-      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", backup_db_name),
+       "create"}));
 
-  // Restore into new "ysql.yugabyte2" YSQL DB.
   ASSERT_OK(RunBackupCommand(
-      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte2", "restore"}));
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", restore_db_name),
+       "restore"}));
 
-  SetDbName("yugabyte2");
+  SetDbName(restore_db_name);
 
-  ASSERT_NO_FATALS(InsertRows(
-      Format("INSERT INTO $0 VALUES (0,0,0)", table_name), 1));
+  ASSERT_NO_FATALS(InsertRows(Format("INSERT INTO $0 VALUES (0,0,0)", table_name), 1));
 
   // Check the data.
   ASSERT_NO_FATALS(RunPsqlCommand(
@@ -1303,20 +1323,19 @@ TEST_F(YBBackupTestWithPackedRows,
          8 | 8 | 8
          9 | 9 | 9
         (10 rows)
-      )#"
-  ));
+      )#"));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(YBBackupTestWithPackedRows,
+TEST_P(
+    YBBackupTestWithPackedRows,
     YB_DISABLE_TEST_IN_SANITIZERS(YSQLSchemaPackingWithSnapshotLowerVersionThanRestore)) {
   const std::string table_name = "test1";
   // Create a table.
   ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0(a INT)", table_name)));
 
-  ASSERT_NO_FATALS(InsertRows(
-      Format("INSERT INTO $0 VALUES (1), (2), (3)", table_name), 3));
+  ASSERT_NO_FATALS(InsertRows(Format("INSERT INTO $0 VALUES (1), (2), (3)", table_name), 3));
 
   ASSERT_NO_FATALS(RunPsqlCommand(
       Format("SELECT * FROM $0 ORDER BY a", table_name),
@@ -1327,22 +1346,26 @@ TEST_F(YBBackupTestWithPackedRows,
          2
          3
         (3 rows)
-      )#"
-  ));
+      )#"));
+
+  // Create some additional tables to exercise the colocation logic when mapping tables in the
+  // snapshot to tables in the restored db. Only significant when the database is colocated.
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE extra_table1 (k TEXT, v TEXT)", table_name)));
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE extra_table2 (k TEXT, v TEXT)", table_name)));
 
   const string backup_dir = GetTempDir("backup");
 
   ASSERT_OK(RunBackupCommand(
-      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", backup_db_name),
+       "create"}));
 
-  // Restore into new "ysql.yugabyte2" YSQL DB.
   ASSERT_OK(RunBackupCommand(
-      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte2", "restore"}));
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", restore_db_name),
+       "restore"}));
 
-  SetDbName("yugabyte2");
+  SetDbName(restore_db_name);
 
-  ASSERT_NO_FATALS(InsertRows(
-      Format("INSERT INTO $0 VALUES (4), (5), (6)", table_name), 3));
+  ASSERT_NO_FATALS(InsertRows(Format("INSERT INTO $0 VALUES (4), (5), (6)", table_name), 3));
 
   // Check the data.
   ASSERT_NO_FATALS(RunPsqlCommand(
@@ -1357,11 +1380,14 @@ TEST_F(YBBackupTestWithPackedRows,
          5
          6
         (6 rows)
-      )#"
-  ));
+      )#"));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
+
+INSTANTIATE_TEST_CASE_P(
+    PackedRows, YBBackupTestWithPackedRows,
+    ::testing::Values(SourceDatabaseIsColocated::kFalse, SourceDatabaseIsColocated::kTrue));
 
 }  // namespace tools
 }  // namespace yb

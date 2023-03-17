@@ -135,6 +135,8 @@ struct TableInfo {
       const std::string& tablet_log_prefix, const TableId& primary_table_id, const TableInfoPB& pb);
   void ToPB(TableInfoPB* pb) const;
 
+  Status MergeSchemaPackings(const TableInfoPB& pb, docdb::OverwriteSchemaPacking overwrite);
+
   std::string ToString() const {
     TableInfoPB pb;
     ToPB(&pb);
@@ -147,7 +149,6 @@ struct TableInfo {
 
   const Schema& schema() const;
 
-  Status MergeWithRestored(const TableInfoPB& pb, docdb::OverwriteSchemaPacking overwrite);
 
   const std::string& LogPrefix() const {
     return log_prefix;
@@ -159,6 +160,7 @@ struct TableInfo {
 
   // Should account for every field in TableInfo.
   static bool TEST_Equals(const TableInfo& lhs, const TableInfo& rhs);
+
  private:
   Status DoLoadFromPB(Primary primary, const TableInfoPB& pb);
 };
@@ -181,7 +183,19 @@ struct KvStoreInfo {
                     bool local_superblock);
 
   Status MergeWithRestored(
-      const KvStoreInfoPB& pb, bool colocated, docdb::OverwriteSchemaPacking overwrite);
+      const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
+      docdb::OverwriteSchemaPacking overwrite);
+
+  Status MergeTableSchemaPackings(
+      const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
+      docdb::OverwriteSchemaPacking overwrite);
+
+  // Given the table info from the tablet metadata in a snapshot, return the corresponding live
+  // table.  Used to map tables that existed in the snapshot to tables that are live in the current
+  // cluster when restoring a colocated tablet in order to merge schema packings.
+  // If nullptr is returned, the input table can be ignored.
+  Result<TableInfo*> FindMatchingTable(
+      const TableInfoPB& snapshot_table, const TableId& primary_table_id);
 
   Status LoadTablesFromPB(
       const std::string& tablet_log_prefix,

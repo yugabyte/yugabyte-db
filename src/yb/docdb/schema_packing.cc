@@ -211,12 +211,16 @@ Result<const SchemaPacking&> SchemaPackingStorage::GetPacking(Slice* packed_row)
 }
 
 void SchemaPackingStorage::AddSchema(SchemaVersion version, const Schema& schema) {
-  auto inserted = version_to_schema_packing_.emplace(
-      std::piecewise_construct,
-      std::forward_as_tuple(version),
-      std::forward_as_tuple(table_type_, schema)).second;
-  LOG_IF(DFATAL, !inserted)
-      << "Duplicate schema version: " << version << ", " << AsString(version_to_schema_packing_);
+  AddSchema(table_type_, version, schema, &version_to_schema_packing_);
+}
+
+void SchemaPackingStorage::AddSchema(
+    TableType table_type, SchemaVersion version, const Schema& schema,
+    std::unordered_map<SchemaVersion, SchemaPacking>* out) {
+  auto inserted = out->emplace(std::piecewise_construct,
+                               std::forward_as_tuple(version),
+                               std::forward_as_tuple(table_type, schema)).second;
+  LOG_IF(DFATAL, !inserted) << "Duplicate schema version: " << version << ", " << AsString(*out);
 }
 
 Status SchemaPackingStorage::LoadFromPB(
@@ -229,37 +233,55 @@ Status SchemaPackingStorage::MergeWithRestored(
     SchemaVersion schema_version, const SchemaPB& schema,
     const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas,
     OverwriteSchemaPacking overwrite) {
-  RETURN_NOT_OK(InsertSchemas(schemas, true, overwrite));
+  auto new_packings =
+      VERIFY_RESULT(GetMergedSchemaPackings(schema_version, schema, schemas, overwrite));
+  version_to_schema_packing_ = std::move(new_packings);
+  return Status::OK();
+}
+
+Result<std::unordered_map<SchemaVersion, SchemaPacking>>
+SchemaPackingStorage::GetMergedSchemaPackings(
+    SchemaVersion schema_version, const SchemaPB& schema,
+    const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas,
+    OverwriteSchemaPacking overwrite) const {
+  auto new_packings = version_to_schema_packing_;
+  RETURN_NOT_OK(InsertSchemas(schemas, true, overwrite, &new_packings));
   if (overwrite) {
-    version_to_schema_packing_.erase(schema_version);
+    new_packings.erase(schema_version);
   }
-  if (!version_to_schema_packing_.contains(schema_version)) {
+  if (!new_packings.contains(schema_version)) {
     Schema temp_schema;
     RETURN_NOT_OK(SchemaFromPB(schema, &temp_schema));
-    AddSchema(schema_version, temp_schema);
+    AddSchema(table_type_, schema_version, temp_schema, &new_packings);
   }
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "Schema Packing History after merging with snapshot";
-    for (const auto& [version, packing] : version_to_schema_packing_) {
+    for (const auto& [version, packing] : new_packings) {
       VLOG(2) << version << " : " << packing.ToString();
     }
   }
-  return Status::OK();
+  return new_packings;
 }
 
 Status SchemaPackingStorage::InsertSchemas(
     const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas,
     bool could_present, OverwriteSchemaPacking overwrite) {
+  return InsertSchemas(schemas, could_present, overwrite, &version_to_schema_packing_);
+}
+
+Status SchemaPackingStorage::InsertSchemas(
+    const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas, bool could_present,
+    OverwriteSchemaPacking overwrite, std::unordered_map<SchemaVersion, SchemaPacking>* out) {
   for (const auto& entry : schemas) {
     if (overwrite) {
-      version_to_schema_packing_.erase(entry.schema_version());
+      out->erase(entry.schema_version());
     }
-    auto inserted = version_to_schema_packing_.emplace(
-        std::piecewise_construct,
-        std::forward_as_tuple(entry.schema_version()),
-        std::forward_as_tuple(entry)).second;
-    RSTATUS_DCHECK(could_present || inserted, Corruption,
-                   Format("Duplicate schema version: $0", entry.schema_version()));
+    auto inserted = out->emplace(std::piecewise_construct,
+                                 std::forward_as_tuple(entry.schema_version()),
+                                 std::forward_as_tuple(entry)).second;
+    RSTATUS_DCHECK(
+        could_present || inserted, Corruption,
+        Format("Duplicate schema version: $0", entry.schema_version()));
   }
   return Status::OK();
 }

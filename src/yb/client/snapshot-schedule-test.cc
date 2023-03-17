@@ -17,6 +17,8 @@
 #include "yb/client/table_alterer.h"
 #include "yb/client/txn-test-base.h"
 
+#include "yb/common/colocated_util.h"
+
 #include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_util.h"
@@ -204,7 +206,7 @@ TEST_F(SnapshotScheduleTest, TablegroupGC) {
   // Ensure that the newly created tablegroup shows up in the list.
   auto exist = ASSERT_RESULT(client_->TablegroupExists(namespace_name, tablegroup_id));
   ASSERT_TRUE(exist);
-  TableId parent_table_id = master::GetTablegroupParentTableId(tablegroup_id);
+  TableId parent_table_id = GetTablegroupParentTableId(tablegroup_id);
 
   // When retention matches snapshot interval we expect at most 3 snapshots for schedule.
   ASSERT_RESULT(snapshot_util_->CreateSchedule(

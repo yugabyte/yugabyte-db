@@ -230,66 +230,6 @@ Status SetupError(MasterErrorPB* error, const Status& s) {
   return s;
 }
 
-bool IsColocationParentTableId(const TableId& table_id) {
-  return IsColocatedDbParentTableId(table_id) || IsTablegroupParentTableId(table_id);
-}
-
-bool IsColocatedDbParentTableId(const TableId& table_id) {
-  return table_id.find(kColocatedDbParentTableIdSuffix) == 32 &&
-      boost::algorithm::ends_with(table_id, kColocatedDbParentTableIdSuffix);
-}
-
-bool IsColocatedDbParentTableName(const TableName& table_name) {
-  return table_name.find(kColocatedDbParentTableNameSuffix) == 32 &&
-      boost::algorithm::ends_with(table_name, kColocatedDbParentTableNameSuffix);
-}
-
-TableId GetColocatedDbParentTableId(const NamespaceId& database_id) {
-  DCHECK(IsIdLikeUuid(database_id)) << database_id;
-  return database_id + kColocatedDbParentTableIdSuffix;
-}
-
-TableName GetColocatedDbParentTableName(const NamespaceId& database_id) {
-  DCHECK(IsIdLikeUuid(database_id)) << database_id;
-  return database_id + kColocatedDbParentTableNameSuffix;
-}
-
-bool IsTablegroupParentTableId(const TableId& table_id) {
-  return (table_id.find(kTablegroupParentTableIdSuffix) == 32 &&
-      boost::algorithm::ends_with(table_id, kTablegroupParentTableIdSuffix)) ||
-      IsColocatedDbTablegroupParentTableId(table_id);
-}
-
-TableId GetTablegroupParentTableId(const TablegroupId& tablegroup_id) {
-  DCHECK(IsIdLikeUuid(tablegroup_id)) << tablegroup_id;
-  return tablegroup_id + kTablegroupParentTableIdSuffix;
-}
-
-TableName GetTablegroupParentTableName(const TablegroupId& tablegroup_id) {
-  DCHECK(IsIdLikeUuid(tablegroup_id)) << tablegroup_id;
-  return tablegroup_id + kTablegroupParentTableNameSuffix;
-}
-
-TablegroupId GetTablegroupIdFromParentTableId(const TableId& table_id) {
-  DCHECK(IsTablegroupParentTableId(table_id)) << table_id;
-  return table_id.substr(0, 32);
-}
-
-bool IsColocatedDbTablegroupParentTableId(const TableId& table_id) {
-  return table_id.find(kColocationParentTableIdSuffix) == 32 &&
-      boost::algorithm::ends_with(table_id, kColocationParentTableIdSuffix);
-}
-
-TableId GetColocationParentTableId(const TablegroupId& tablegroup_id) {
-  DCHECK(IsIdLikeUuid(tablegroup_id)) << tablegroup_id;
-  return tablegroup_id + kColocationParentTableIdSuffix;
-}
-
-TableName GetColocationParentTableName(const TablegroupId& tablegroup_id) {
-  DCHECK(IsIdLikeUuid(tablegroup_id)) << tablegroup_id;
-  return tablegroup_id + kColocationParentTableNameSuffix;
-}
-
 bool IsBlacklisted(const ServerRegistrationPB& registration, const BlacklistSet& blacklist) {
   auto predicate = [&blacklist](const HostPortPB& rhs) {
     return blacklist.count(HostPortFromPB(rhs)) > 0;
