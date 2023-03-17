@@ -116,6 +116,8 @@ export type InstanceTypeOperation = typeof InstanceTypeOperation[keyof typeof In
 export const ASYNC_ERROR = 'asyncError';
 
 export const DEFAULT_SSH_PORT = 22;
+export const DEFAULT_NODE_EXPORTER_PORT = 9300;
+export const DEFAULT_NODE_EXPORTER_USER = 'prometheus';
 
 export const AWSValidationKey = {
   ACCESS_KEY_CREDENTIALS: 'KEYS',
