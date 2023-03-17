@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common/shell"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/ybactl"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/yugaware"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
@@ -108,6 +110,18 @@ func createBackupCmd() *cobra.Command {
     createBackup.
     `,
 		Args: cobra.ExactArgs(1),
+		PreRun: func(cmd *cobra.Command, args []string) {
+
+			if !skipVersionChecks {
+				yugawareVersion, err := yugaware.InstalledVersionFromMetadata()
+				if err != nil {
+					log.Fatal("Cannot create a backup: " + err.Error())
+				}
+				if yugawareVersion != ybactl.Version {
+					log.Fatal("yba-ctl version does not match the installed YugabyteDB Anywhere version")
+				}
+			}
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 
 			outputPath := args[0]
@@ -145,6 +159,17 @@ func restoreBackupCmd() *cobra.Command {
 		specify the inputPath to the backup .tar.gz file as the only argument to restoreBackup.
     `,
 		Args: cobra.ExactArgs(1),
+		PreRun: func(cmd *cobra.Command, args []string) {
+			if !skipVersionChecks {
+				yugawareVersion, err := yugaware.InstalledVersionFromMetadata()
+				if err != nil {
+					log.Fatal("Cannot restore from backup: " + err.Error())
+				}
+				if yugawareVersion != ybactl.Version {
+					log.Fatal("yba-ctl version does not match the installed YugabyteDB Anywhere version")
+				}
+			}
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 
 			inputPath := args[0]
@@ -169,8 +194,5 @@ func restoreBackupCmd() *cobra.Command {
 }
 
 func init() {
-	// Backup commands must be run from installed yba-ctl
-	if common.RunFromInstalled() {
-		rootCmd.AddCommand(createBackupCmd(), restoreBackupCmd())
-	}
+	rootCmd.AddCommand(createBackupCmd(), restoreBackupCmd())
 }
