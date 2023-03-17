@@ -493,7 +493,11 @@ class PgDocReadOp : public PgDocOp {
   // - After being queried from inner select, ybctids are used for populate request for outer query.
   void InitializeYbctidOperators();
 
-  bool IsHashBatchingPossible();
+  bool IsHashBatchingEnabled();
+
+  bool IsBatchFlushRequired() const;
+
+  void ResetHashBatches();
 
   // Create operators by partition arguments.
   // - Optimization for statement:
@@ -536,6 +540,8 @@ class PgDocReadOp : public PgDocOp {
       const std::vector<const LWPgsqlExpressionPB*>& range_values);
 
   // These functions are used to iterate over each partition batch and bind them to a request.
+
+  Result<bool> BindBatchesToRequests();
 
   // Returns false if we are done iterating over our partition batches.
   bool HasNextBatch();
@@ -639,6 +645,10 @@ class PgDocReadOp : public PgDocOp {
 
   // Used when iterating over the partition batches in hash_in_conds_.
   size_t next_batch_partition_ = 0;
+
+  // Used to store temporary objects formed during op creation. Relevant
+  // when cloning ops for hash permutations.
+  std::unique_ptr<ThreadSafeArena> hash_key_arena_;
 
   // Template operation, used to fill in pgsql_ops_ by either assigning or cloning.
   PgsqlReadOpPtr read_op_;

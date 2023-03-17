@@ -297,6 +297,7 @@ typedef struct PgExecParameters {
   PgExecOutParam *out_param = NULL;
   bool is_index_backfill = false;
   bool is_select_distinct = false;
+  int work_mem = 4096; // Default work_mem in guc.c
 #else
   uint64_t limit_count;
   uint64_t limit_offset;
@@ -310,6 +311,7 @@ typedef struct PgExecParameters {
   PgExecOutParam *out_param;
   bool is_index_backfill;
   bool is_select_distinct;
+  int work_mem;
 #endif
 } YBCPgExecParameters;
 
