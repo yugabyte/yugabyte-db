@@ -9,7 +9,6 @@ import React from 'react';
 import clsx from 'clsx';
 import { FormHelperText, makeStyles } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
-import { nanoid } from 'nanoid';
 import { array, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 
@@ -22,6 +21,7 @@ import { RegionOperation } from './constants';
 import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
 import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
 import { getRegionlabel, getRegionOptions, getZoneOptions } from './utils';
+import { generateLowerCaseAlphanumericId } from '../utils';
 
 interface ConfigureRegionModalProps extends YBModalProps {
   configuredRegions: CloudVendorRegionField[];
@@ -155,7 +155,7 @@ export const ConfigureRegionModal = ({
             ...region,
             zones: [] as ExposedAZProperties[],
             code: regionData.value.code,
-            fieldId: nanoid()
+            fieldId: generateLowerCaseAlphanumericId()
           }
         : { ...region, zones: [], code: regionData.value.code };
     if (shouldExposeField.zones) {
