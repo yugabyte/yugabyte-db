@@ -31,6 +31,10 @@ export const YBReactSelectField = <T extends FieldValues>({
         fieldState.error ? theme.palette.orange[700] : theme.palette.ybacolors.ybGray
       }`,
       backgroundColor: fieldState.error ? theme.palette.error[100] : baseStyles.backgroundColor
+    }),
+    menu: (baseStyles) => ({
+      ...baseStyles,
+      zIndex: 9999
     })
   };
   return (
