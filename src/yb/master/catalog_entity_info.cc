@@ -241,7 +241,9 @@ void TabletInfo::UpdateReplicaLocations(const TabletReplica& replica) {
   replica_locations_ = std::make_shared<TabletReplicaMap>(*replica_locations_);
   auto it = replica_locations_->find(replica.ts_desc->permanent_uuid());
   if (it == replica_locations_->end()) {
-    replica_locations_->emplace(replica.ts_desc->permanent_uuid(), replica);
+    LOG(INFO) << Format("TS $0 reported replica $1 but it does not exist in the replica map. "
+        "Adding it to the map. Replica map before adding new replica: $2",
+        replica.ts_desc->permanent_uuid(), replica, replica_locations_);
     return;
   }
   it->second.UpdateFrom(replica);
