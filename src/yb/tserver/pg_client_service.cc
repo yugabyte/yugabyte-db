@@ -567,7 +567,9 @@ class PgClientServiceImpl::Impl {
 
   struct CompareExpiration {
     bool operator()(const ExpirationEntry& lhs, const ExpirationEntry& rhs) const {
-      return rhs.first > lhs.first;
+      // Order is reversed, because std::priority_queue keeps track of the largest element.
+      // This comparator is important for the cleanup logic.
+      return rhs.first < lhs.first;
     }
   };
 
