@@ -75,6 +75,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/universe_key_client.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/constants.h"
