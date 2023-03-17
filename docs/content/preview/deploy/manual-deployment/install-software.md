@@ -11,17 +11,13 @@ menu:
 type: docs
 ---
 
-Install YugabyteDB on each of the nodes using the steps shown below.
-
-## Install YugabyteDB
-
 Installing YugabyteDB involves completing prerequisites and downloading the YugabyteDB package.
 
-### Prerequisites
+## Prerequisites
 
 {{% readfile "/preview/quick-start/include-prerequisites-linux.md" %}}
 
-### Download YugabyteDB
+## Download YugabyteDB
 
 YugabyteDB supports both x86 and ARM (aarch64) CPU architectures. Download packages ending in `x86_64.tar.gz` to run on x86, and packages ending in `aarch64.tar.gz` to run on ARM.
 
@@ -53,7 +49,7 @@ Download YugabyteDB as follows:
     tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
     ```
 
-### Configure YugabyteDB
+## Configure YugabyteDB
 
 To configure YugabyteDB, run the following shell script:
 
