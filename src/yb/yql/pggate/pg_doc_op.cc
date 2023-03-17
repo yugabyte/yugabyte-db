@@ -634,7 +634,7 @@ void PgDocReadOp::BindExprsRegular(
     LWPgsqlReadRequestPB* read_req,
     const std::vector<const LWPgsqlExpressionPB*>& hashed_values,
     const std::vector<const LWPgsqlExpressionPB*>& range_values) {
-  DCHECK(!IsHashBatchingPossible());
+  DCHECK(!IsHashBatchingEnabled());
   size_t index = 0;
   // Bind all hash column values.
   for (auto& partition_column : *read_req->mutable_partition_column_values()) {
@@ -669,7 +669,7 @@ void PgDocReadOp::BindExprsToBatch(
 
   // Identify the vector to which the key should be added.
   if (!hash_in_conds_[partition]) {
-    hash_in_conds_[partition] = read_op_->arena().NewArenaObject<LWPgsqlExpressionPB>();
+    hash_in_conds_[partition] = hash_key_arena_->NewArenaObject<LWPgsqlExpressionPB>();
     PrepareInitialHashConditionList(partition);
   }
 
@@ -760,12 +760,24 @@ Result<bool> PgDocReadOp::BindNextBatchToRequest(LWPgsqlReadRequestPB* read_req)
   return false;
 }
 
-bool PgDocReadOp::IsHashBatchingPossible() {
+bool PgDocReadOp::IsHashBatchingEnabled() {
   if (PREDICT_FALSE(!is_hash_batched_.has_value())) {
-    is_hash_batched_ = pg_session_->IsHashBatchingEnabled() &&
-        total_permutation_count_ < FLAGS_ysql_hash_batch_permutation_limit;
+    is_hash_batched_ = pg_session_->IsHashBatchingEnabled();
   }
   return *is_hash_batched_;
+}
+
+bool PgDocReadOp::IsBatchFlushRequired() const {
+  return !hash_in_conds_.empty() &&
+      next_permutation_idx_ > 0 &&
+      exec_params_.work_mem >= 0 &&
+      hash_key_arena_->UsedBytes() > (implicit_cast<size_t>(exec_params_.work_mem) * 1024);
+}
+
+void PgDocReadOp::ResetHashBatches() {
+  hash_key_arena_->Reset(ResetMode::kKeepFirst);
+  hash_in_conds_.clear();
+  next_batch_partition_ = 0;
 }
 
 void PgDocReadOp::BindPermutation(const std::vector<const LWPgsqlExpressionPB*>& exprs,
@@ -790,7 +802,7 @@ void PgDocReadOp::BindPermutation(const std::vector<const LWPgsqlExpressionPB*>&
         // Get the value for this column in the tuple.
         size_t tup_c_idx = lhs_elem.column_id() - table_->schema().first_column_id();
         auto* pgexpr =
-          val_it->arena().NewArenaObject<LWPgsqlExpressionPB>();
+            hash_key_arena_->NewArenaObject<LWPgsqlExpressionPB>();
         *pgexpr->mutable_value() = *val_it;
 
         if (tup_c_idx < hash_column_count) {
@@ -808,7 +820,7 @@ void PgDocReadOp::BindPermutation(const std::vector<const LWPgsqlExpressionPB*>&
     index++;
   }
 
-  if (IsHashBatchingPossible()) {
+  if (IsHashBatchingEnabled()) {
     BindExprsToBatch(hash_exprs, range_exprs);
   } else {
     BindExprsRegular(read_req, hash_exprs, range_exprs);
@@ -824,7 +836,7 @@ Result<bool> PgDocReadOp::PopulateNextHashPermutationOps() {
 
   while (HasNextPermutation()) {
     LWPgsqlReadRequestPB* read_req = nullptr;
-    if (!IsHashBatchingPossible() &&
+    if (!IsHashBatchingEnabled() &&
         (read_req = PrepareReadReq()) == nullptr) {
       return false;
     }
@@ -835,22 +847,44 @@ Result<bool> PgDocReadOp::PopulateNextHashPermutationOps() {
     // bind the permutation to a request yet. We instead want to bind
     // it to one of the batches we are building up.
     BindPermutation(current_permutation, read_req);
+
+    // If we run out of memory and have to flush our currently formed
+    // permutations in batched mode, let us do so.
+    if (IsHashBatchingEnabled() &&
+        IsBatchFlushRequired() &&
+        !VERIFY_RESULT(BindBatchesToRequests())) {
+      // We failed to bind all batches to a request, so we return false.
+      return false;
+    }
   }
 
   // If batching is enabled, we have built up all our batches and now
   // we can bind each batch to a request.
-  if (IsHashBatchingPossible()) {
-    LWPgsqlReadRequestPB* read_req = nullptr;
-    while (HasNextBatch()) {
-      read_req = PrepareReadReq();
-      if (!read_req) {
-        return false;
-      }
-      VERIFY_RESULT(BindNextBatchToRequest(read_req));
+  if (IsHashBatchingEnabled()) {
+    // If we didn't have enough available requests to put our batches into
+    // or we're not done processing all our permutations, return false, signalling
+    // that we are not done creating requests.
+    if (!VERIFY_RESULT(BindBatchesToRequests())) {
+      return false;
     }
   }
 
   MoveInactiveOpsOutside();
+  return true;
+}
+
+Result<bool> PgDocReadOp::BindBatchesToRequests() {
+  DCHECK(IsHashBatchingEnabled());
+  while (HasNextBatch()) {
+    LWPgsqlReadRequestPB* read_req = PrepareReadReq();
+    if (!read_req) {
+      return false;
+    }
+    VERIFY_RESULT(BindNextBatchToRequest(read_req));
+  }
+
+  // Free resources attached to hash batches if we're done binding.
+  ResetHashBatches();
   return true;
 }
 
@@ -944,8 +978,7 @@ void PgDocReadOp::InitializeHashPermutationStates() {
   // at the moment, the number of operators never exceeds the number of tablets except for hash
   // permutation operation, so the work on this GFLAG can be done when it is necessary.
   auto max_op_count =
-      std::min(IsHashBatchingPossible() ?
-               static_cast<int32_t>(table_->GetPartitionListSize()) : total_permutation_count_,
+      std::min(total_permutation_count_,
                implicit_cast<size_t>(FLAGS_ysql_request_limit));
   ClonePgsqlOps(max_op_count);
 
@@ -953,7 +986,7 @@ void PgDocReadOp::InitializeHashPermutationStates() {
   for (size_t op_index = 0; op_index < max_op_count; ++op_index) {
     auto& read_request = GetReadReq(op_index);
     read_request.mutable_partition_column_values()->clear();
-    if (IsHashBatchingPossible()) {
+    if (IsHashBatchingEnabled()) {
       read_request.clear_hash_code();
       read_request.clear_max_hash_code();
     } else {
@@ -967,6 +1000,9 @@ void PgDocReadOp::InitializeHashPermutationStates() {
   // Initialize counters.
   next_permutation_idx_ = 0;
   active_op_count_ = 0;
+  next_batch_partition_ = 0;
+
+  hash_key_arena_ = std::make_unique<ThreadSafeArena>();
 }
 
 Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
