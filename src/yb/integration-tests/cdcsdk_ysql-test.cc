@@ -142,13 +142,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestRecordCountsAfterMultipleTabl
 
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
   ASSERT_OK(WriteRows(1, 200, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, true));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 100, true));
   ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
 
   WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
 
   ASSERT_OK(WriteRows(200, 400, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, true));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 100, true));
   ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_first_split;
@@ -159,7 +159,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestRecordCountsAfterMultipleTabl
   WaitUntilSplitIsSuccesful(tablets_after_first_split.Get(1).tablet_id(), table, 4);
 
   ASSERT_OK(WriteRows(400, 600, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, true));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 100, true));
   ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_third_split;
@@ -169,7 +169,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestRecordCountsAfterMultipleTabl
   WaitUntilSplitIsSuccesful(tablets_after_third_split.Get(1).tablet_id(), table, 5);
 
   ASSERT_OK(WriteRows(600, 1000, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, true));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 100, true));
   ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
 
   const int expected_total_records = 1008;
