@@ -23,17 +23,21 @@ interface OnPremProviderEditFormProps {
 
 interface OnPremProviderEditFormFieldValues {
   dbNodePublicInternetAccess: boolean;
+  installNodeExporter: boolean;
   ntpServers: string[];
   ntpSetupType: NTPSetupType;
   providerCredentialType: ProviderCredentialType;
   providerName: string;
   regions: ConfigureOnPremRegionFormValues[];
+  skipProvisioning: boolean;
   sshKeypairName: string;
   sshPort: number;
   sshPrivateKeyContent: File;
   sshUser: string;
-  ybFirewallTags: string;
-  ybHomeDir: string;
+
+  nodeExporterPort?: number;
+  nodeExporterUser?: string;
+  ybHomeDir?: string;
 }
 
 const ProviderCredentialType = {
@@ -53,6 +57,10 @@ export const OnPremProviderEditForm = ({ providerConfig }: OnPremProviderEditFor
     sshKeypairName: providerConfig.allAccessKeys?.[0]?.keyInfo.keyPairName,
     dbNodePublicInternetAccess: !providerConfig.details.airGapInstall,
     ntpSetupType: getNtpSetupType(providerConfig),
+    installNodeExporter: providerConfig.details.installNodeExporter,
+    skipProvisioning: providerConfig.details.skipProvisioning,
+    nodeExporterUser: providerConfig.details.nodeExporterUser,
+    nodeExporterPort: providerConfig.details.nodeExporterPort,
     ...(providerConfig.code === ProviderCode.ON_PREM && {
       regions: providerConfig.regions,
       sshUser: providerConfig.details.sshUser,
@@ -81,6 +89,10 @@ export const OnPremProviderEditForm = ({ providerConfig }: OnPremProviderEditFor
   };
 
   const regions = formMethods.watch('regions');
+  const installNodeExporter = formMethods.watch(
+    'installNodeExporter',
+    defaultValues.installNodeExporter
+  );
 
   return (
     <Box display="flex" justifyContent="center">
@@ -153,10 +165,60 @@ export const OnPremProviderEditForm = ({ providerConfig }: OnPremProviderEditFor
             </FieldGroup>
             <FieldGroup heading="Advanced">
               <FormField>
-                <FieldLabel>DB Nodes have public internet access?</FieldLabel>
+                <FieldLabel infoContent="If yes, YBA will install some software packages on the DB nodes by downloading from the public internet. If not, all installation of software on the nodes will download from only this YBA instance.">
+                  DB Nodes have public internet access?
+                </FieldLabel>
                 <YBToggleField
                   name="dbNodePublicInternetAccess"
                   control={formMethods.control}
+                  disabled={true}
+                />
+              </FormField>
+              <FormField>
+                <FieldLabel infoContent="If enabled, node provisioning will not be done when the universe is created. A pre-provision script will be provided to be run manually instead.">
+                  Manually Provision Nodes
+                </FieldLabel>
+                <YBToggleField
+                  name="skipProvisioning"
+                  control={formMethods.control}
+                  disabled={true}
+                />
+              </FormField>
+              <FormField>
+                <FieldLabel>YB Nodes Home Directory (Optional)</FieldLabel>
+                <YBInputField
+                  control={formMethods.control}
+                  name="ybHomeDir"
+                  fullWidth
+                  disabled={true}
+                />
+              </FormField>
+              <FormField>
+                <FieldLabel>Install Node Exporter</FieldLabel>
+                <YBToggleField
+                  name="installNodeExporter"
+                  control={formMethods.control}
+                  disabled={true}
+                />
+              </FormField>
+              {installNodeExporter && (
+                <FormField>
+                  <FieldLabel>Node Exporter User</FieldLabel>
+                  <YBInputField
+                    control={formMethods.control}
+                    name="nodeExporterUser"
+                    fullWidth
+                    disabled={true}
+                  />
+                </FormField>
+              )}
+              <FormField>
+                <FieldLabel>Node Exporter Port</FieldLabel>
+                <YBInputField
+                  control={formMethods.control}
+                  name="nodeExporterPort"
+                  type="number"
+                  fullWidth
                   disabled={true}
                 />
               </FormField>
