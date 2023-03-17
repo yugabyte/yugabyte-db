@@ -848,7 +848,6 @@ run_java_tests=false
 save_log=false
 make_targets=()
 no_tcmalloc=false
-use_google_tcmalloc=false
 cxx_test_name=""
 test_existence_check=true
 object_files_to_delete=()
@@ -1029,6 +1028,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --no-tcmalloc)
       no_tcmalloc=true
+    ;;
+    --no-google-tcmalloc)
+      use_google_tcmalloc=false
     ;;
     --use-google-tcmalloc)
       use_google_tcmalloc=true
@@ -1474,6 +1476,15 @@ handle_predefined_build_root
 # Setting CMake options.
 cmake_opts=()
 set_cmake_build_type_and_compiler_type
+
+if [[ -z "${use_google_tcmalloc:-}" ]]; then
+  # Enable Google TCMalloc in fastdebug for getting long term stability results.
+  if [[ $build_type == "fastdebug" &&  ${is_linux} == "true" ]]; then
+    use_google_tcmalloc=true
+  else
+    use_google_tcmalloc=false
+  fi
+fi
 
 if [[ -n ${cxx_test_filter_regex} ]]; then
   if [[ ${reset_cxx_test_filter} == "true" ]]; then
