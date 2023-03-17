@@ -44,13 +44,13 @@ In YugabyteDB, a transaction is a sequence of operations performed as a single l
 
 ## Types of transactions
 
-YugabytedDB provides strong [ACID](#ACID) guarantees on three categories of transactions:
+YugabytedDB provides strong ACID guarantees on three categories of transactions:
 
-1. [**Single-row**](../../../architecture/transactions/single-row-transactions/) transactions are transactions where all operations impact a single row (that is, a key). Single-row ACID is easier to achieve as, in most distributed databases, the data for a single row doesn’t cross into other nodes.
+1. [Single-row](../../../architecture/transactions/single-row-transactions/) transactions are transactions where all operations impact a single row (that is, a key). Single-row ACID is easier to achieve as, in most distributed databases, the data for a single row doesn't cross into other nodes.
 
-1. [**Single-shard**](../../../architecture/transactions/single-row-transactions/) transactions occur when all rows involved in the transaction's operations exist in a single shard (which lies in a single node) of a distributed database.
+1. [Single-shard](../../../architecture/transactions/single-row-transactions/) transactions occur when all rows involved in the transaction's operations exist in a single shard (which lies in a single node) of a distributed database.
 
-1. [**Distributed**](../../../architecture/transactions/distributed-txns/) transactions impact a set of rows distributed across shards that are themselves spread across multiple nodes distributed across a data center, region or globally.
+1. [Distributed](../../../architecture/transactions/distributed-txns/) transactions impact a set of rows distributed across shards that are themselves spread across multiple nodes distributed across a data center, region or globally.
 
 YugabyteDB has separate optimizations for each to make them faster.
 
@@ -118,7 +118,7 @@ YugabyteDB supports the following types of explicit row locks:
 
 ## Transaction error codes
 
-Due to the strong [ACID](#ACID) guarantees, failures during transactions are inevitable. You need to design your applications to take appropriate actions on the failed statements to ensure they are highly available. YugabyteDB returns various [error codes](#transaction-error-codes) for errors that occur during transaction processing.
+Due to the strong ACID guarantees, failures during transactions are inevitable. You need to design your applications to take appropriate actions on the failed statements to ensure they are highly available. YugabyteDB returns various [error codes](#transaction-error-codes) for errors that occur during transaction processing.
 
 The following error codes typically occur during transaction processing.
 
@@ -356,7 +356,9 @@ except psycopg2.errors.InFailedSqlTransaction as e:
   cursor.execute("ROLLBACK")
 ```
 
-The `INVALID TXN STATEMENT` would throw a `SyntaxError` exception. The code (in-correctly) catches this and ignores it. The next `update` statement, even though valid, will fail with an `InFailedSqlTransaction` exception. This could be avoided by handling the actual error and issuing a `ROLLBACK`. In this case, a retry would not help as it is a SyntaxError, but there might be scenarios, where the transaction would succeed when retried. Another way would be to rollback to a checkpoint before the failed statement and proceed further as decribed in [using savepoints](#using-savepoints) section.
+The `INVALID TXN STATEMENT` would throw a `SyntaxError` exception. The code (in-correctly) catches this and ignores it. The next `update` statement, even though valid, will fail with an `InFailedSqlTransaction` exception. This could be avoided by handling the actual error and issuing a `ROLLBACK`. In this case, a retry would not help as it is a SyntaxError, but there might be scenarios where the transaction would succeed when retried.
+
+Another way would be to rollback to a checkpoint before the failed statement and proceed further as described in [Use savepoints](#use-savepoints).
 
 ### Use savepoints
 
@@ -390,7 +392,7 @@ except Exception as e:
   cursor.execute("ROLLBACK")
 ```
 
-If the row `[k=1]` already exists in the table, the `insert` would result in a UniqueViolation exception. Technically, the transaction would be in an error state and further statements would result in a [25P02: In failed sql transaction](#25P02-in-failed-sql-transaction) error. You have to catch the exception and rollback. But instead of rolling back the entire transaction, you can rollback to the previously declared savepoint, `before_insert` and update the value of the row with `k=1`. Then you can continue with other statements in the transaction.
+If the row `[k=1]` already exists in the table, the `INSERT` would result in a UniqueViolation exception. Technically, the transaction would be in an error state and further statements would result in a [25P02: In failed SQL transaction](#25P02-in-failed-sql-transaction) error. You have to catch the exception and rollback. But instead of rolling back the entire transaction, you can rollback to the previously declared savepoint `before_insert`, and update the value of the row with `k=1`. Then you can continue with other statements in the transaction.
 
 ## Non-retriable errors
 
