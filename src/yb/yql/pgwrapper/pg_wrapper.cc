@@ -572,7 +572,12 @@ Status PgWrapper::UpdateAndReloadConfig() {
 }
 
 void PgWrapper::Kill() {
-  WARN_NOT_OK(pg_proc_->Kill(SIGINT), "Kill PostgreSQL server failed");
+  int signal = SIGINT;
+  // TODO(fizaa): Use SIGQUIT in asan build until GH #15168 is fixed.
+#ifdef ADDRESS_SANITIZER
+  signal = SIGQUIT;
+#endif
+  WARN_NOT_OK(pg_proc_->Kill(signal), "Kill PostgreSQL server failed");
 }
 
 Status PgWrapper::InitDb(bool yb_enabled) {
