@@ -48,10 +48,11 @@ var validateLicenseCmd = &cobra.Command{
 }
 
 var addLicenseCmd = &cobra.Command{
-	Use:   "add -l license_file",
-	Short: "Add a license for YugabyteDB Anywhere.",
-	Long:  "Add a license for YugabyteDB Anywhere. This can also overwrite an existing license.",
-	Args:  cobra.NoArgs,
+	Use:     "add -l license_file",
+	Short:   "Add a license for YugabyteDB Anywhere.",
+	Long:    "Add a license for YugabyteDB Anywhere. This can also overwrite an existing license.",
+	Aliases: []string{"update"},
+	Args:    cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		if _, err := os.Stat(licensePath); err != nil {
 			log.Fatal("Invalid license path given. Please provide a valid license with --license-path")

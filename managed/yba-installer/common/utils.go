@@ -513,21 +513,3 @@ func GetValidParent(dir string) (string, error) {
 	}
 	return curDir, curError
 }
-
-// RunFromInstalled will return if yba-ctl is an "installed" yba-ctl, or one from a new release.
-func RunFromInstalled() bool {
-	path, err := os.Executable()
-	if err != nil {
-		panic("unable to determine executable path: " + err.Error())
-	}
-
-	// Regex for "installed paths" of yba-ctl
-	matcher, err := regexp.Compile("(?:/opt/yba-ctl/yba-ctl)|(?:/usr/bin/yba-ctl)|" +
-		"(?:.*/yugabyte/software/.*/yba_installer/yba-ctl)")
-	if err != nil {
-		panic("bad regex: " + err.Error())
-	}
-
-	// If we have a match, we are running from the installed yba-ctl.
-	return matcher.MatchString(path)
-}
