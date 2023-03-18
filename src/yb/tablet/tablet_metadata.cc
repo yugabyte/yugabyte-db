@@ -77,7 +77,10 @@
 #include "yb/util/trace.h"
 
 DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
-DECLARE_bool(TEST_invalidate_last_change_metadata_op);
+
+DEFINE_test_flag(bool, invalidate_last_change_metadata_op, false,
+                 "Used in tests to update last_change_metadata_op_id to -1.-1 to simulate "
+                 "behavior of old code");
 
 using std::shared_ptr;
 using std::string;
@@ -687,7 +690,7 @@ Status RaftGroupMetadata::DeleteSuperBlock() {
                    tablet_data_state_));
   }
 
-  string path = VERIFY_RESULT(fs_manager_->GetRaftGroupMetadataPath(raft_group_id_));
+  string path = VERIFY_RESULT(FilePath());
   RETURN_NOT_OK_PREPEND(fs_manager_->env()->DeleteFile(path),
                         "Unable to delete superblock for Raft group " + raft_group_id_);
   return Status::OK();
@@ -727,14 +730,14 @@ RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager, const RaftGroupId& r
       log_prefix_(consensus::MakeTabletLogPrefix(raft_group_id_, fs_manager_->uuid())) {
 }
 
-Status RaftGroupMetadata::LoadFromDisk() {
+Status RaftGroupMetadata::LoadFromDisk(const std::string& path) {
   TRACE_EVENT1("raft_group", "RaftGroupMetadata::LoadFromDisk",
                "raft_group_id", raft_group_id_);
 
   CHECK_EQ(state_, kNotLoadedYet);
 
   RaftGroupReplicaSuperBlockPB superblock;
-  RETURN_NOT_OK(ReadSuperBlockFromDisk(&superblock));
+  RETURN_NOT_OK(ReadSuperBlockFromDisk(&superblock, path));
   RETURN_NOT_OK_PREPEND(LoadFromSuperBlock(superblock, /* local_superblock = */ true),
                         "Failed to load data from superblock protobuf");
   state_ = kInitialized;
@@ -885,12 +888,15 @@ Status RaftGroupMetadata::ReplaceSuperBlock(const RaftGroupReplicaSuperBlockPB &
   return Status::OK();
 }
 
+Result<std::string> RaftGroupMetadata::FilePath() const {
+  return fs_manager_->GetRaftGroupMetadataPath(raft_group_id_);
+}
+
 Status RaftGroupMetadata::SaveToDiskUnlocked(
     const RaftGroupReplicaSuperBlockPB &pb, const std::string& path) {
   if (path.empty()) {
     flush_lock_.AssertAcquired();
-    return SaveToDiskUnlocked(
-        pb, VERIFY_RESULT(fs_manager_->GetRaftGroupMetadataPath(raft_group_id_)));
+    return SaveToDiskUnlocked(pb, VERIFY_RESULT(FilePath()));
   }
 
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
@@ -912,12 +918,16 @@ Status RaftGroupMetadata::MergeWithRestored(
 Status RaftGroupMetadata::ReadSuperBlockFromDisk(
     RaftGroupReplicaSuperBlockPB* superblock, const std::string& path) const {
   if (path.empty()) {
-    return ReadSuperBlockFromDisk(
-        superblock, VERIFY_RESULT(fs_manager_->GetRaftGroupMetadataPath(raft_group_id_)));
+    return ReadSuperBlockFromDisk(superblock, VERIFY_RESULT(FilePath()));
   }
 
+  return ReadSuperBlockFromDisk(fs_manager_->env(), path, superblock);
+}
+
+Status RaftGroupMetadata::ReadSuperBlockFromDisk(
+    Env* env, const std::string& path, RaftGroupReplicaSuperBlockPB* superblock) {
   RETURN_NOT_OK_PREPEND(
-      pb_util::ReadPBContainerFromPath(fs_manager_->env(), path, superblock),
+      pb_util::ReadPBContainerFromPath(env, path, superblock),
       Substitute("Could not load Raft group metadata from $0", path));
   // Migration for backward compatibility with versions which don't have separate
   // TableType::TRANSACTION_STATUS_TABLE_TYPE.
