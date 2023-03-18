@@ -6,7 +6,6 @@ description: xCluster replication between multiple YugabyteDB universes.
 headContent: Asynchronous replication between independent YugabyteDB universes
 aliases:
   - /preview/architecture/docdb/2dc-deployments/
-  - /preview/architecture/2dc-deployments/
 menu:
   preview:
     identifier: architecture-docdb-async-replication
@@ -89,7 +88,7 @@ Because 2DC replication is done asynchronously and by replicating the WAL (and t
 
 There is a number of limitations in the current xCluster implementation.
 
-#### Transactional semantics 
+#### Transactional semantics
 
 - Transactions from the source are not applied atomically on the target. That is, some changes in a transaction may be visible before others.
 - Transactions from the source might not respect global ordering on the target. While transactions affecting the same shards are guaranteed to be timeline consistent even on the target, transactions affecting different shards might end up being visible on the target in a different order than they were committed on the source.
@@ -134,7 +133,7 @@ A number of interactions across features is supported.
 
 - Tablegroups are not supported, as per [#11157](https://github.com/yugabyte/yugabyte-db/issues/11157).
 - Tablet splitting is disabled for tables involved in replication, as per [#10175](https://github.com/yugabyte/yugabyte-db/issues/10175).
-- [Savepoints](../../../explore/ysql-language-features/advanced-features/savepoints/) are not supported, as per [#14308](https://github.com/yugabyte/yugabyte-db/issues/14308). 
+- [Savepoints](../../../explore/ysql-language-features/advanced-features/savepoints/) are not supported, as per [#14308](https://github.com/yugabyte/yugabyte-db/issues/14308).
 
 ## Transactional guarantees
 

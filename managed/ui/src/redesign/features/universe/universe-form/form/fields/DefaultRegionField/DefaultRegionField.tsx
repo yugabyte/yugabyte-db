@@ -60,7 +60,7 @@ export const DefaultRegionField = ({ disabled }: DefaultRegionsFieldProps): Reac
         </Box>
       </Box>
 
-      <Box display="flex" width="100%" mt={1}>
+      <Box display="flex" width="100%" mt={2}>
         <YBLabel dataTestId="DefaultRegionField-MastersLabel">
           {t('universeForm.cloudConfig.mastersInDefaultRegion')}
         </YBLabel>

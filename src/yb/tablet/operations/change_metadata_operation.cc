@@ -58,11 +58,7 @@ DEFINE_test_flag(bool, ignore_apply_change_metadata_on_followers, false,
                  "Used in tests to ignore applying change metadata operation"
                  " on followers.");
 
-using std::string;
-
-DEFINE_test_flag(bool, invalidate_last_change_metadata_op, false,
-                 "Used in tests to update last_change_metadata_op_id to -1.-1 to simulate "
-                 "behavior of old code");
+DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 
 namespace yb {
 namespace tablet {
@@ -97,7 +93,7 @@ void ChangeMetadataOperation::SetIndexes(const RepeatedPtrField<IndexInfoPB>& in
   index_map_.FromPB(indexes);
 }
 
-string ChangeMetadataOperation::ToString() const {
+std::string ChangeMetadataOperation::ToString() const {
   return Format("ChangeMetadataOperation { hybrid_time: $0 schema: $1 request: $2 }",
                 hybrid_time_even_if_unset(), schema_, request());
 }

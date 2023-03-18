@@ -185,7 +185,8 @@ Status QLRocksDBStorage::GetIterator(
       projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time,
       /*pending_op_counter=*/nullptr, end_referenced_key_column_index);
 
-  if (range_components.size() == schema.num_range_key_columns()) {
+  if (range_components.size() == schema.num_range_key_columns() &&
+      hashed_components.size() == schema.num_hash_key_columns()) {
     // Construct the scan spec basing on the RANGE condition as all range columns are specified.
     RETURN_NOT_OK(doc_iter->Init(DocPgsqlScanSpec(
         schema,

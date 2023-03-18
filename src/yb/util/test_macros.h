@@ -39,8 +39,10 @@
 
 #include <gtest/gtest.h> // For SUCCEED/FAIL
 
-#include "yb/util/tostring.h"
 #include "yb/gutil/stl_util.h"  // For VectorToSet
+
+#include "yb/util/string_trim.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace util {

@@ -67,6 +67,17 @@ message CompactSysCatalogResponsePB{
   optional MasterErrorPB error = 1;
 }
 
+message GetCompactionStatusRequestPB {
+  optional TableIdentifierPB table = 1;
+}
+
+message GetCompactionStatusResponsePB {
+  optional MasterErrorPB error = 1;
+
+  // Time when a full compaction was last requested by the user.
+  optional fixed64 last_request_time = 2;
+}
+
 message IsInitDbDoneRequestPB {
 }
 
@@ -157,6 +168,8 @@ service MasterAdmin {
 
   rpc FlushSysCatalog(FlushSysCatalogRequestPB) returns (FlushSysCatalogResponsePB);
   rpc CompactSysCatalog(CompactSysCatalogRequestPB) returns (CompactSysCatalogResponsePB);
+
+  rpc GetCompactionStatus(GetCompactionStatusRequestPB) returns (GetCompactionStatusResponsePB);
 
   rpc IsInitDbDone(IsInitDbDoneRequestPB) returns (IsInitDbDoneResponsePB);
 

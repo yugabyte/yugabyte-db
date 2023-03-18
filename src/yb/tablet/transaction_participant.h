@@ -115,6 +115,10 @@ class TransactionParticipant : public TransactionStatusManager {
       const scoped_refptr<MetricEntity>& entity, const std::shared_ptr<MemTracker>& parent);
   virtual ~TransactionParticipant();
 
+  void SetWaitQueue(std::unique_ptr<docdb::WaitQueue> wait_queue);
+
+  docdb::WaitQueue* wait_queue() const;
+
   // Notify participant that this context is ready and it could start performing its requests.
   void Start();
 
@@ -231,8 +235,6 @@ class TransactionParticipant : public TransactionStatusManager {
   OpId GetLatestCheckPoint() const;
 
   const TabletId& tablet_id() const override;
-
-  void RegisterStatusListener(TransactionStatusListener* txn_status_listener) override;
 
   size_t TEST_GetNumRunningTransactions() const;
 

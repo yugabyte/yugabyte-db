@@ -4,8 +4,6 @@ headerTitle: Build a Python application
 linkTitle: Python
 description: Build a simple Python application using the Python psycopg2 driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 headContent: "Client driver: psycopg2"
-aliases:
-  - /preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/
 menu:
   preview:
     parent: build-apps

@@ -70,7 +70,7 @@ class DocQLScanSpec : public QLScanSpec {
     return query_id_;
   }
 
-  const std::shared_ptr<std::vector<OptionList>>& range_options() const { return range_options_; }
+  const std::shared_ptr<std::vector<OptionList>>& options() const { return options_; }
 
   bool include_static_columns() const {
     return include_static_columns_;
@@ -80,18 +80,16 @@ class DocQLScanSpec : public QLScanSpec {
     return range_bounds_.get();
   }
 
-  const Schema* schema() const override { return &schema_; }
-
-  const std::vector<ColumnId> range_options_indexes() const {
-    return range_options_indexes_;
+  const std::vector<ColumnId> options_indexes() const {
+    return options_col_ids_;
   }
 
   const std::vector<ColumnId> range_bounds_indexes() const {
     return range_bounds_indexes_;
   }
 
-  const ColGroupHolder range_options_groups() const {
-    return range_options_groups_;
+  const ColGroupHolder options_groups() const {
+    return options_groups_;
   }
 
   const size_t prefix_length() const {
@@ -104,10 +102,10 @@ class DocQLScanSpec : public QLScanSpec {
   // Return inclusive lower/upper range doc key considering the start_doc_key.
   Result<KeyBytes> Bound(const bool lower_bound) const;
 
-  // Initialize range_options_ if hashed_components_ is set and all range columns have one or more
-  // options (i.e. using EQ/IN conditions). Otherwise range_options_ will stay null and we will
-  // only use the range_bounds for scanning.
-  void InitRangeOptions(const QLConditionPB& condition);
+  // Initialize options_ if range columns have one or more options (i.e. using EQ/IN
+  // conditions). Otherwise options_ will stay null and we will only use the range_bounds for
+  // scanning.
+  void InitOptions(const QLConditionPB& condition);
 
   // Returns the lower/upper doc key based on the range components.
   KeyBytes bound_key(const bool lower_bound) const;
@@ -123,9 +121,6 @@ class DocQLScanSpec : public QLScanSpec {
   // Ids of columns that have range bounds such as c2 < 4 AND c2 >= 1.
   std::vector<ColumnId> range_bounds_indexes_;
 
-  // Schema of the columns to scan.
-  const Schema& schema_;
-
   // Hash code to scan at (interpreted as lower bound if hashed_components_ are empty)
   // hash values are positive int16_t.
   const boost::optional<int32_t> hash_code_;
@@ -137,18 +132,18 @@ class DocQLScanSpec : public QLScanSpec {
   // The hashed_components are owned by the caller of QLScanSpec.
   const std::vector<KeyEntryValue>* hashed_components_;
 
-  // The range value options if set. (possibly more than one due to IN conditions).
-  std::shared_ptr<std::vector<OptionList>> range_options_;
+  // The range/hash value options if set (possibly more than one due to IN conditions).
+  std::shared_ptr<std::vector<OptionList>> options_;
 
-  // Ids of columns that have range option filters such as c2 IN (1, 5, 6, 9).
-  std::vector<ColumnId> range_options_indexes_;
+  // Ids of key columns that have filters such as h1 IN (1, 5, 6, 9) or r1 IN (5, 6, 7)
+  std::vector<ColumnId> options_col_ids_;
 
-  // Groups of range column indexes found from the filters.
+  // Groups of column indexes found from the filters.
   // Eg: If we had an incoming filter of the form (r1, r3, r4) IN ((1,2,5), (5,4,3), ...)
   // AND r2 <= 5
   // where (r1,r2,r3,r4) is the primary key of this table, then
-  // range_options_groups_ would contain the groups {0,2,3} and {1}.
-  ColGroupHolder range_options_groups_;
+  // options_groups_ would contain the groups {0,2,3} and {1}.
+  ColGroupHolder options_groups_;
 
   // Does the scan include static columns also?
   const bool include_static_columns_;

@@ -221,7 +221,7 @@ export const HelmOverridesModal = ({
           control={control}
           fullWidth
           multiline
-          rows={8}
+          minRows={8}
           maxRows={8}
           placeholder={UNIVERSE_OVERRIDE_SAMPLE}
           inputProps={{
@@ -249,7 +249,7 @@ export const HelmOverridesModal = ({
                   control={control}
                   fullWidth
                   multiline
-                  rows={5}
+                  minRows={5}
                   maxRows={5}
                   placeholder={AZ_OVERRIDE_SAMPLE}
                   inputProps={{

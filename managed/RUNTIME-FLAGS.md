@@ -61,6 +61,7 @@
 | "Enable Detailed Logs" | "yb.security.enable_detailed_logs" | "GLOBAL" | "Enable detailed security logs" | "Boolean" |
 | "Task Garbage Collector Check Interval" | "yb.taskGC.gc_check_interval" | "GLOBAL" | "How frequently do we check for completed tasks in database" | "Duration" |
 | "API support for backward compatible date fields" | "yb.api.backward_compatible_date" | "GLOBAL" | "Enable when a client to the YBAnywhere API wants to continue using the older date  fields in non-ISO format. Default behaviour is to not populate such deprecated API fields and only return newer date fields." | "Boolean" |
+| "Allow universes to be detached/attached" | "yb.attach_detach.enabled" | "GLOBAL" | "Allow universes to be detached from a source platform and attached to dest platform" | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
@@ -121,3 +122,4 @@
 | "Enable Perf Advisor to view recommendations" | "yb.ui.feature_flags.perf_advisor" | "UNIVERSE" | "Builds recommendations to help tune our applications accordingly" | "Boolean" |
 | "Promote AutoFlags" | "yb.upgrade.promote_auto_flag" | "UNIVERSE" | "Promotes Auto flags while upgrading YB-DB" | "Boolean" |
 | "Allow upgrade on transit universe" | "yb.upgrade.allow_upgrade_on_transit_universe" | "UNIVERSE" | "Allow universe upgrade when nodes are in transit mode" | "Boolean" |
+| "Promote AutoFlags Forcefully" | "yb.upgrade.promote_flags_forcefully" | "UNIVERSE" | "Promote AutoFlags Forcefully during software upgrade" | "Boolean" |

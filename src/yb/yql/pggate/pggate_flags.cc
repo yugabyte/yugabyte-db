@@ -39,6 +39,9 @@ DEFINE_UNKNOWN_int32(pggate_tserver_shm_fd, -1,
 DEFINE_test_flag(bool, pggate_ignore_tserver_shm, false,
               "Ignore the shared memory of the local tablet server.");
 
+DEFINE_UNKNOWN_uint64(ysql_hash_batch_permutation_limit, 100000,
+             "Maximum number of hash permutations allowed in hash batching mode.");
+
 DEFINE_UNKNOWN_int32(ysql_request_limit, 1024,
              "Maximum number of requests to be sent at once");
 

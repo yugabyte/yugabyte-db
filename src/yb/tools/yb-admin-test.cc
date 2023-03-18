@@ -1251,5 +1251,23 @@ TEST_F(AdminCliTest, PrintArgumentExpressions) {
   ASSERT_EQ(status.ToString().find(index_expression), std::string::npos);
 }
 
+TEST_F(AdminCliTest, TestCompactionStatus) {
+  BuildAndStart();
+  const string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+
+  ASSERT_OK(CallAdmin("compact_table", kTableName.namespace_name(), kTableName.table_name()));
+
+  const auto output = ASSERT_RESULT(
+      CallAdmin("compaction_status", kTableName.namespace_name(), kTableName.table_name()));
+
+  std::smatch match;
+  const std::regex regex("Last full compaction request time: *([0-9]+)");
+  std::regex_search(output, match, regex);
+  ASSERT_FALSE(match.empty());
+  const int64 last_request_time = stol(match[1].str());
+  ASSERT_NE(last_request_time, 0);
+}
+
 }  // namespace tools
 }  // namespace yb

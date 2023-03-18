@@ -3,8 +3,6 @@ title: Transaction isolation levels
 headerTitle: Transaction isolation levels
 linkTitle: Transaction isolation levels
 description: Learn how YugabyteDB supports two transaction isolation levels Snapshot Isolation and Serializable.
-aliases:
-  - /architecture/transactions/isolation-levels/
 menu:
   preview:
     identifier: architecture-isolation-levels
@@ -15,7 +13,7 @@ type: docs
 
 Transaction isolation is foundational to handling concurrent transactions in databases. The SQL-92 standard defines four levels of transaction isolation (in decreasing order of strictness): Serializable, Repeatable Read, Read Committed, and Read Uncommitted.
 
-YugabyteDB supports the following three strictest transaction isolation levels: 
+YugabyteDB supports the following three strictest transaction isolation levels:
 
 1. Read Committed<sup>$</sup>, which maps to the SQL isolation level of the same name. This isolation level guarantees that each statement sees all data that has been committed before it is issued (this implicitly also means that the statement sees a consistent snapshot). In addition, this isolation level internally handles read restart and conflict errors. In other words, the client does not see read restart and conflict errors (barring an exception).
 2. Serializable, which maps to the SQL isolation level of the same name. This isolation level guarantees that transactions run in a way equivalent to a serial (sequential) schedule.

@@ -52,8 +52,6 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -106,8 +104,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
       ImmutableList.of("region1", "region2");
 
   @Mock Config mockConfig;
-  @Mock ConfigHelper mockConfigHelper;
-  @Mock private play.Configuration appConfig;
 
   Customer customer;
   Users user;
@@ -126,12 +122,12 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   private Result listProviders() {
-    return FakeApiHelper.doRequestWithAuthToken(
+    return doRequestWithAuthToken(
         "GET", "/api/customers/" + customer.uuid + "/providers", user.createAuthToken());
   }
 
   private Result createProvider(JsonNode bodyJson) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+    return doRequestWithAuthTokenAndBody(
         "POST",
         "/api/customers/" + customer.uuid + "/providers?validate=true",
         user.createAuthToken(),
@@ -139,7 +135,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   private Result createKubernetesProvider(JsonNode bodyJson) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+    return doRequestWithAuthTokenAndBody(
         "POST",
         "/api/customers/" + customer.uuid + "/providers/kubernetes",
         user.createAuthToken(),
@@ -147,28 +143,28 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   private Result getKubernetesSuggestedConfig() {
-    return FakeApiHelper.doRequestWithAuthToken(
+    return doRequestWithAuthToken(
         "GET",
         "/api/customers/" + customer.uuid + "/providers/suggested_kubernetes_config",
         user.createAuthToken());
   }
 
   private Result getProvider(UUID providerUUID) {
-    return FakeApiHelper.doRequestWithAuthToken(
+    return doRequestWithAuthToken(
         "GET",
         "/api/customers/" + customer.uuid + "/providers/" + providerUUID,
         user.createAuthToken());
   }
 
   private Result deleteProvider(UUID providerUUID) {
-    return FakeApiHelper.doRequestWithAuthToken(
+    return doRequestWithAuthToken(
         "DELETE",
         "/api/customers/" + customer.uuid + "/providers/" + providerUUID,
         user.createAuthToken());
   }
 
   private Result editProvider(JsonNode bodyJson, UUID providerUUID) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+    return doRequestWithAuthTokenAndBody(
         "PUT",
         "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/edit?validate=true",
         user.createAuthToken(),
@@ -176,7 +172,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   private Result bootstrapProviderXX(JsonNode bodyJson, Provider provider) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+    return doRequestWithAuthTokenAndBody(
         "POST",
         "/api/customers/" + customer.uuid + "/providers/" + provider.uuid + "/bootstrap",
         user.createAuthToken(),
@@ -516,8 +512,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   public void testDeleteProviderWithInstanceType() {
     Provider p = ModelFactory.onpremProvider(customer);
 
-    when(mockConfigHelper.getAWSInstancePrefixesSupported())
-        .thenReturn(ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3."));
     ObjectNode metaData = Json.newObject();
     metaData.put("numCores", 4);
     metaData.put("memSizeGB", 300);
@@ -536,7 +530,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     Result result = deleteProvider(p.uuid);
     assertYBPSuccess(result, "Deleted provider: " + p.uuid);
 
-    assertEquals(0, InstanceType.findByProvider(p, mockConfig, mockConfigHelper).size());
+    assertEquals(0, InstanceType.findByProvider(p, mockConfig).size());
     assertNull(Provider.get(p.uuid));
   }
 
@@ -696,7 +690,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
                 + "\"version\": %d}",
             provider.getVersion());
     when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
-        .thenReturn(getTestSecurityGroup(21, 24));
+        .thenReturn(getTestSecurityGroup(21, 24, "vpc-foo"));
     Result result = editProvider(Json.parse(jsonString), provider.uuid);
     assertOk(result);
   }
@@ -729,7 +723,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     image.setPlatformDetails("linux/UNIX");
     when(mockAWSCloudImpl.describeImageOrBadRequest(any(), any(), any())).thenReturn(image);
     when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
-        .thenReturn(getTestSecurityGroup(21, 24));
+        .thenReturn(getTestSecurityGroup(21, 24, "vpc-foo"));
     Result result =
         assertPlatformException(() -> editProvider(Json.parse(jsonString), provider.uuid));
     assertBadRequest(result, "No changes to be made for provider type: aws");
@@ -939,13 +933,25 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
         .thenThrow(
             new PlatformServiceException(
                 BAD_REQUEST, "Security group extraction failed: Invalid SG ID"))
-        .thenReturn(getTestSecurityGroup(24, 24));
+        .thenReturn(getTestSecurityGroup(21, 24, null))
+        .thenReturn(getTestSecurityGroup(21, 24, "vpc_id_new"))
+        .thenReturn(getTestSecurityGroup(24, 24, "vpc_id"));
     // Test SG exists or not
     result = assertPlatformException(() -> createProvider(bodyJson));
     assertBadRequest(
         result,
         "{\"data.REGION.us-west-2.SECURITY_GROUP\":"
             + "[\"Security group extraction failed: Invalid SG ID\"]}");
+    // Test Vpc association
+    result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(
+        result,
+        "{\"data.REGION.us-west-2.SECURITY_GROUP\":" + "[\"No vpc is attached to SG: sg_id\"]}");
+    result = assertPlatformException(() -> createProvider(bodyJson));
+    assertBadRequest(
+        result,
+        "{\"data.REGION.us-west-2.SECURITY_GROUP\":"
+            + "[\"sg_id is not attached to vpc: vpc_id\"]}");
     // Test SG ports
     result = assertPlatformException(() -> createProvider(bodyJson));
     assertBadRequest(
@@ -963,7 +969,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
             Collections.singletonList(
                 getTestSubnet("0.0.0.0/24", "subnet-a", "vpc_id_incorrect", "us-west-2a")));
     when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
-        .thenReturn(getTestSecurityGroup(21, 24));
+        .thenReturn(getTestSecurityGroup(21, 24, "vpc_id"));
     // Test subnet exists or not
     result = assertPlatformException(() -> createProvider(bodyJson));
     assertBadRequest(
@@ -1012,12 +1018,13 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     assertAuditEntry(1, customer.uuid);
   }
 
-  private SecurityGroup getTestSecurityGroup(int fromPort, int toPort) {
+  private SecurityGroup getTestSecurityGroup(int fromPort, int toPort, String vpcId) {
     SecurityGroup sg = new SecurityGroup();
     IpPermission ipPermission = new IpPermission();
     ipPermission.setFromPort(fromPort);
     ipPermission.setToPort(toPort);
     sg.setIpPermissions(Collections.singletonList(ipPermission));
+    sg.setVpcId(vpcId);
     return sg;
   }
 

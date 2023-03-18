@@ -1,26 +1,28 @@
+// Copyright (c) Yugabyte, Inc.
+
 package com.yugabyte.yw.common.supportbundle;
 
-import com.typesafe.config.Config;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.SupportBundleUtil;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.util.List;
-import java.util.stream.Collectors;
-import java.util.ArrayList;
-import java.util.Arrays;
+import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.io.File;
-import java.io.IOException;
-import java.util.Date;
-import java.text.SimpleDateFormat;
 import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.List;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 
@@ -41,12 +43,7 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
   @Override
   public void downloadComponent(
       Customer customer, Universe universe, Path bundlePath, NodeDetails node) throws IOException {
-    String appHomeDir =
-        config.hasPath("application.home") ? config.getString("application.home") : ".";
-    String logDir =
-        config.hasPath("log.override.path")
-            ? config.getString("log.override.path")
-            : String.format("%s/logs", appHomeDir);
+    String logDir = config.getString("log.override.path");
     String destDir = bundlePath.toString() + "/" + "application_logs";
     Path destPath = Paths.get(destDir);
     Files.createDirectories(destPath);
@@ -67,13 +64,9 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
       throws IOException, ParseException {
 
     // Get application configured locations
-    String appHomeDir =
-        config.hasPath("application.home") ? config.getString("application.home") : ".";
+    String appHomeDir = config.getString("application.home");
     log.info("[ApplicationLogsComponent] appHomeDir = '{}'", appHomeDir);
-    String logDir =
-        config.hasPath("log.override.path")
-            ? config.getString("log.override.path")
-            : String.format("%s/logs", appHomeDir);
+    String logDir = config.getString("log.override.path");
     Path logPath = Paths.get(logDir);
     String logDirAbsolute = logPath.toAbsolutePath().toString();
     log.info("[ApplicationLogsComponent] logDir = '{}'", logDir);
@@ -86,7 +79,7 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
     File dest = new File(destDir);
 
     // Get all the log file names present in source directory
-    List<String> logFiles = new ArrayList<String>();
+    List<String> logFiles = new ArrayList<>();
     File[] sourceFiles = source.listFiles();
     if (sourceFiles == null) {
       log.info("[ApplicationLogsComponent] sourceFiles = null");
@@ -94,15 +87,15 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
       log.info(
           "[ApplicationLogsComponent] sourceFiles.length = '{}'",
           String.valueOf(sourceFiles.length));
-    }
-    for (File sourceFile : sourceFiles) {
-      if (sourceFile.isFile()) {
-        logFiles.add(sourceFile.getName());
+      for (File sourceFile : sourceFiles) {
+        if (sourceFile.isFile()) {
+          logFiles.add(sourceFile.getName());
+        }
       }
     }
 
     // All the logs file names that we want to keep after filtering within start and end date
-    List<String> filteredLogFiles = new ArrayList<String>();
+    List<String> filteredLogFiles = new ArrayList<>();
 
     // "application.log" is the latest log file that is being updated at the moment
     Date dateToday = supportBundleUtil.getTodaysDate();
@@ -123,11 +116,12 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
             .map(Path::toString)
             .collect(Collectors.toList());
 
+    String applicationLogsSdfPattern =
+        config.getString("yb.support_bundle.application_logs_sdf_pattern");
+    SimpleDateFormat sdf = new SimpleDateFormat(applicationLogsSdfPattern);
     // Filters the log files whether it is between startDate and endDate
     for (String logFile : logFiles) {
-      String applicationLogsSdfPattern =
-          config.getString("yb.support_bundle.application_logs_sdf_pattern");
-      Date fileDate = new SimpleDateFormat(applicationLogsSdfPattern).parse(logFile);
+      Date fileDate = sdf.parse(logFile);
       if (supportBundleUtil.checkDateBetweenDates(fileDate, startDate, endDate)) {
         filteredLogFiles.add(logFile);
       }

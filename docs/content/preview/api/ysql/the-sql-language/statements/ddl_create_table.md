@@ -7,8 +7,6 @@ menu:
   preview:
     identifier: ddl_create_table
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/ddl_create_table/
 type: docs
 ---
 

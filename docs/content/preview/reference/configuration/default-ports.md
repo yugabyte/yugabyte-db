@@ -8,8 +8,6 @@ menu:
     identifier: default-ports
     parent: configuration
     weight: 2740
-aliases:
-  - /preview/reference/default-ports
 type: docs
 ---
 

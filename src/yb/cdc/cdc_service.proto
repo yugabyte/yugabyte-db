@@ -51,8 +51,6 @@ service CDCService {
   rpc ListTablets (ListTabletsRequestPB) returns (ListTabletsResponsePB);
   rpc GetChanges (GetChangesRequestPB) returns (GetChangesResponsePB);
   rpc GetCheckpoint (GetCheckpointRequestPB) returns (GetCheckpointResponsePB);
-  rpc GetCheckpointForColocatedTable (GetCheckpointForColocatedTableRequestPB)
-      returns (GetCheckpointForColocatedTableResponsePB);
   rpc UpdateCdcReplicatedIndex (UpdateCdcReplicatedIndexRequestPB)
       returns (UpdateCdcReplicatedIndexResponsePB);
   rpc BootstrapProducer (BootstrapProducerRequestPB) returns (BootstrapProducerResponsePB);
@@ -411,6 +409,8 @@ message GetChangesResponsePB {
 message GetCheckpointRequestPB {
   optional bytes stream_id = 1;
   optional bytes tablet_id = 2;
+  // The table_id will be required in case of colocated tables.
+  optional bytes table_id = 3;
 }
 
 message GetCheckpointResponsePB {
@@ -419,21 +419,6 @@ message GetCheckpointResponsePB {
   // The snapshot_key and snapshot_time will be used for CDCSDK snapshot purposes.
   optional bytes snapshot_key = 3;
   optional uint64 snapshot_time = 4;
-}
-
-message GetCheckpointForColocatedTableRequestPB {
-  optional bytes stream_id = 1;
-  optional bytes tablet_id = 2;
-}
-
-message TableCheckpointInfoPB {
-  optional bytes table_id = 1;
-  optional CDCSDKCheckpointPB checkpoint = 2;
-}
-
-message GetCheckpointForColocatedTableResponsePB {
-  optional CDCErrorPB error = 1;
-  repeated TableCheckpointInfoPB table_checkpoint_details = 2;
 }
 
 message UpdateCdcReplicatedIndexRequestPB {

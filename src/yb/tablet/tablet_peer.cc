@@ -112,10 +112,6 @@ DEFINE_UNKNOWN_int32(cdc_min_replicated_index_considered_stale_secs, 900,
 DEFINE_UNKNOWN_bool(propagate_safe_time, true,
     "Propagate safe time to read from leader to followers");
 
-DEFINE_UNKNOWN_int32(wait_queue_poll_interval_ms, 1000,
-    "The interval duration between wait queue polls to fetch transaction statuses of "
-    "active blockers.");
-
 DEFINE_RUNTIME_bool(abort_active_txns_during_xcluster_bootstrap, true,
     "Abort active transactions during bootstrapping.");
 
@@ -233,18 +229,6 @@ Status TabletPeer::InitTabletPeer(
     service_thread_pool_ = &messenger->ThreadPool();
     strand_.reset(new rpc::Strand(&messenger->ThreadPool()));
     messenger_ = messenger;
-    if (tablet_->wait_queue()) {
-      std::weak_ptr<TabletPeer> weak_self = shared_from(this);
-      wait_queue_heartbeater_ = rpc::PeriodicTimer::Create(
-          messenger_,
-          [weak_self]() {
-            if (auto shared_self = weak_self.lock()) {
-              shared_self->PollWaitQueue();
-            }
-          },
-          FLAGS_wait_queue_poll_interval_ms * 1ms);
-      wait_queue_heartbeater_->Start();
-    }
 
     tablet->SetMemTableFlushFilterFactory([log] {
       auto largest_log_op_index = log->GetLatestEntryOpId().index;
@@ -463,10 +447,6 @@ consensus::RaftConfigPB TabletPeer::RaftConfig() const {
 
 bool TabletPeer::StartShutdown() {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
-
-  if (wait_queue_heartbeater_) {
-    wait_queue_heartbeater_->Stop();
-  }
 
   {
     std::lock_guard<decltype(lock_)> lock(lock_);
@@ -1634,14 +1614,6 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
   return STATUS(
       IllegalState,
       Substitute("Unable to find peer $0 in config for tablet $1", requestor_uuid, tablet_id()));
-}
-
-void TabletPeer::PollWaitQueue() const {
-  auto tablet = shared_tablet();
-  if (tablet) {
-    DCHECK_NOTNULL(tablet->wait_queue());
-    tablet->wait_queue()->Poll(clock_->Now());
-  }
 }
 
 }  // namespace tablet
