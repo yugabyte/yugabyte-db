@@ -22,20 +22,25 @@ import org.yb.util.Pair;
 public class GetCheckpointRequest extends YRpc<GetCheckpointResponse>{
   private String streamId;
   private String tabletId;
+  private String tableId;
 
   public GetCheckpointRequest(YBTable table, String streamId, String tabletId) {
     super(table);
     this.streamId = streamId;
     this.tabletId = tabletId;
+    this.tableId = table.getTableId();
   }
 
   @Override
   ByteBuf serialize(Message header) {
     assert header.isInitialized();
-    final CdcService.GetCheckpointRequestPB.Builder builder = CdcService
-    .GetCheckpointRequestPB.newBuilder();
+    final CdcService.GetCheckpointRequestPB.Builder builder =
+      CdcService.GetCheckpointRequestPB.newBuilder();
     builder.setStreamId(ByteString.copyFromUtf8(this.streamId));
     builder.setTabletId(ByteString.copyFromUtf8(this.tabletId));
+    if (this.tableId != null && this.tableId.length() != 0) {
+      builder.setTableId(ByteString.copyFromUtf8(this.tableId));
+    }
 
     return toChannelBuffer(header, builder.build());
   }
