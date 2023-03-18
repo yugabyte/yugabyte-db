@@ -3,8 +3,6 @@ title: Grafana dashboard
 headerTitle: Grafana dashboard
 linkTitle: Grafana dashboard
 description: Learn about setting up the community dashboards with Prometheus data source using Grafana.
-aliases:
-  - /preview/explore/observability/grafana-dashboard/macos/
 menu:
   preview:
     identifier: observability-2-macos

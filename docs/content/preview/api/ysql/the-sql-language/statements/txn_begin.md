@@ -7,8 +7,6 @@ menu:
   preview:
     identifier: txn_begin
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/txn_begin/
 type: docs
 ---
 

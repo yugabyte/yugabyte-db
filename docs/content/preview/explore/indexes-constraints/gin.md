@@ -8,8 +8,6 @@ menu:
     identifier: indexes-constraints-gin
     parent: explore-indexes-constraints
     weight: 260
-aliases:
-  - /preview/explore/ysql-language-features/gin/
 type: docs
 ---
 

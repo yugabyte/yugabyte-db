@@ -7,7 +7,6 @@ aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/aws
   - /preview/deploy/enterprise-edition/configure-cloud-providers/aws
   - /preview/yugabyte-platform/deploy/configure-cloud-providers/aws
-  - /preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/
 menu:
   preview_yugabyte-platform:
     identifier: set-up-cloud-provider-1-aws

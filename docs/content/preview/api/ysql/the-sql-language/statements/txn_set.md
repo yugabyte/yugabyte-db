@@ -8,8 +8,6 @@ menu:
   preview:
     identifier: txn_set
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/txn_set/
 type: docs
 ---
 

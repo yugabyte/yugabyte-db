@@ -8,8 +8,6 @@ menu:
   preview:
     identifier: ddl_drop_extension
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/ddl_drop_extension/
 type: docs
 ---
 

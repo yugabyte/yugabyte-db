@@ -7,8 +7,6 @@ menu:
   preview:
     identifier: dcl_grant
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/dcl_grant/
 type: docs
 ---
 
