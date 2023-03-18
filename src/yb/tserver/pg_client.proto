@@ -387,9 +387,20 @@ enum ReadTimeManipulation {
   RESTART = 2;
 }
 
+// TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
+// 'optional' in proto3
+message OptionalFixed64PB {
+  fixed64 value = 1;
+}
+
+message OptionalUint32PB {
+  uint32 value = 1;
+}
+
 message PgPerformOptionsPB {
-  message CachingInfo {
+  message CachingInfoPB {
     bytes key = 1;
+    OptionalUint32PB lifetime_threshold_ms = 2;
   }
 
   // Cannot use IsolationLevel enum, since we cannot use proto2 enum in proto3 messages.
@@ -397,7 +408,9 @@ message PgPerformOptionsPB {
   uint32 isolation = 2;
   bool ddl_mode = 3;
   uint64 txn_serial_no = 4;
-  fixed64 in_txn_limit_ht = 5;
+
+  // See ReadHybridTimePB for information about in_txn_limit_ht.
+  OptionalFixed64PB in_txn_limit_ht = 5;
   bool use_existing_priority = 6;
   fixed64 priority = 7;
   bool restart_transaction = 8;
@@ -409,7 +422,7 @@ message PgPerformOptionsPB {
   string namespace_id = 14;
   bool use_xcluster_database_consistency = 15;
   uint32 active_sub_transaction_id = 16;
-  CachingInfo caching_info = 17;
+  CachingInfoPB caching_info = 17;
   bool read_from_followers = 18;
 }
 
@@ -424,6 +437,7 @@ message PgPerformResponsePB {
   AppStatusPB status = 1;
   repeated PgsqlResponsePB responses = 2;
   ReadHybridTimePB catalog_read_time = 3;
+  fixed64 used_in_txn_limit_ht = 4;
 }
 
 message PgReserveOidsRequestPB {

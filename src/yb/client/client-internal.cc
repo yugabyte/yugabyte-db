@@ -57,7 +57,7 @@
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/placement_info.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_wire_protocol.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
@@ -247,6 +247,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteNamespaceDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsFlushTablesDone);
+YB_CLIENT_SPECIALIZE_SIMPLE(GetCompactionStatus);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsTruncateTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListNamespaces);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListTablegroups);
@@ -654,15 +655,14 @@ Status YBClient::Data::IsDeleteTableInProgress(YBClient* client,
   IsDeleteTableDoneResponsePB resp;
   req.set_table_id(table_id);
 
-  auto status = SyncLeaderMasterRpc(
-      deadline, req, &resp, "IsDeleteTableDone",
-      &master::MasterDdlProxy::IsDeleteTableDoneAsync);
+  const auto status = SyncLeaderMasterRpc(
+      deadline, req, &resp, "IsDeleteTableDone", &master::MasterDdlProxy::IsDeleteTableDoneAsync);
   if (resp.has_error()) {
-    if (resp.error().code() == MasterErrorPB::OBJECT_NOT_FOUND) {
-      *delete_in_progress = false;
-      return Status::OK();
-    }
+    // Set 'retry' variable in 'RetryFunc()' function into FALSE to stop the retry loop.
+    // 'RetryFunc()' is called from 'WaitForDeleteTableToFinish()'.
+    *delete_in_progress = false; // Do not retry on error.
   }
+
   RETURN_NOT_OK(status);
   *delete_in_progress = !resp.done();
   return Status::OK();
@@ -1143,6 +1143,27 @@ Status YBClient::Data::WaitForFlushTableToFinish(YBClient* client,
   return RetryFunc(
       deadline, "Waiting for FlushTables to be completed", "Timed out waiting for FlushTables",
       std::bind(&YBClient::Data::IsFlushTableInProgress, this, client, flush_id, _1, _2));
+}
+
+Status YBClient::Data::GetCompactionStatus(
+    const YBTableName& table_name, const CoarseTimePoint deadline, MonoTime* last_request_time) {
+  GetCompactionStatusRequestPB req;
+  GetCompactionStatusResponsePB resp;
+
+  if (!table_name.has_table()) {
+    const string msg = "Could not get the compaction status without the table name" +
+                       (table_name.has_table_id() ? " for table id: " + table_name.table_id() : "");
+    return STATUS(InvalidArgument, msg);
+  }
+  table_name.SetIntoTableIdentifierPB(req.mutable_table());
+
+  RETURN_NOT_OK(SyncLeaderMasterRpc(
+      deadline, req, &resp, "GetCompactionStatus",
+      &master::MasterAdminProxy::GetCompactionStatusAsync));
+
+  *last_request_time = MonoTime::FromUint64(resp.last_request_time());
+
+  return Status::OK();
 }
 
 bool YBClient::Data::IsTabletServerLocal(const RemoteTabletServer& rts) const {

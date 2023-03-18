@@ -1531,7 +1531,7 @@ TEST_F_EX(QLTransactionTest, RemoteBootstrap, RemoteBootstrapTest) {
 
   // Start all servers. Cluster verifier should check that all tablets are synchronized.
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Start(tserver::WaitTabletsBootstrapped::kFalse));
   }
 
   ASSERT_OK(WaitFor([this] { return CheckAllTabletsRunning(); }, 20s * kTimeMultiplier,

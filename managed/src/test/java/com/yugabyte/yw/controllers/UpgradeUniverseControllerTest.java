@@ -7,7 +7,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
@@ -96,7 +95,6 @@ import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
-import play.test.WithApplication;
 
 @RunWith(JUnitParamsRunner.class)
 public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseTest {
@@ -442,7 +440,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
             + universe.universeUUID
             + "/upgrade/gflags";
     JsonNode masterGFlags = Json.parse("{ \"master-flag\": \"123\"}");
-    JsonNode tserverGFlags = Json.parse("{ \"tserver-flag\": \"456\"}]");
+    JsonNode tserverGFlags = Json.parse("{ \"tserver-flag\": \"456\"}");
     ObjectNode bodyJson = Json.newObject().put("upgradeOption", "Non-Rolling");
     bodyJson.set("masterGFlags", masterGFlags);
     bodyJson.set("tserverGFlags", tserverGFlags);
@@ -482,7 +480,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
             + universe.universeUUID
             + "/upgrade/gflags";
     JsonNode masterGFlags = Json.parse("{ \"master-flag\": \"123\"}");
-    JsonNode tserverGFlags = Json.parse("{ \"tserver-flag2\": \"456\"}]");
+    JsonNode tserverGFlags = Json.parse("{ \"tserver-flag2\": \"456\"}");
     ObjectNode bodyJson = Json.newObject().put("upgradeOption", "Non-Restart");
     bodyJson.set("masterGFlags", masterGFlags);
     bodyJson.set("tserverGFlags", tserverGFlags);
@@ -530,7 +528,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/gflags";
     JsonNode masterGFlags = Json.parse("{ \"master-flag\": \"123\"}");
-    JsonNode tserverGFlags = Json.parse("{ \"tserver-flag\": \"456\"}]");
+    JsonNode tserverGFlags = Json.parse("{ \"tserver-flag\": \"456\"}");
     ObjectNode bodyJson = Json.newObject();
     bodyJson.set("masterGFlags", masterGFlags);
     bodyJson.set("tserverGFlags", tserverGFlags);
@@ -572,7 +570,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/gflags";
     JsonNode masterGFlags = Json.parse("{ \"master-flag\": \" 123 \"}");
-    JsonNode tserverGFlags = Json.parse("{ \"tserver-flag\": \" 456 \"}]");
+    JsonNode tserverGFlags = Json.parse("{ \"tserver-flag\": \" 456 \"}");
     ObjectNode bodyJson = Json.newObject();
     bodyJson.set("masterGFlags", masterGFlags);
     bodyJson.set("tserverGFlags", tserverGFlags);
@@ -608,7 +606,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/gflags";
     JsonNode masterGFlags = Json.parse("{ \"master-flag\": \"123\"}");
-    JsonNode tserverGFlags = Json.parse("{ \"tserver-flag\": \"456\"}]");
+    JsonNode tserverGFlags = Json.parse("{ \"tserver-flag\": \"456\"}");
     ObjectNode bodyJson = Json.newObject().put("upgradeOption", "Non-Rolling");
     bodyJson.set("masterGFlags", masterGFlags);
     bodyJson.set("tserverGFlags", tserverGFlags);
@@ -653,7 +651,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
             + universe.universeUUID
             + "/upgrade/gflags";
     JsonNode masterGFlags = Json.parse("{ \"master-flag\": \"123\"}");
-    JsonNode tserverGFlags = Json.parse("{ \"tserver-flag\": \"456\"}]");
+    JsonNode tserverGFlags = Json.parse("{ \"tserver-flag\": \"456\"}");
     ObjectNode bodyJson = Json.newObject();
     bodyJson.set("masterGFlags", masterGFlags);
     bodyJson.set("tserverGFlags", tserverGFlags);

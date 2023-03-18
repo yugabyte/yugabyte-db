@@ -1719,7 +1719,9 @@ pg_stat_activity| SELECT s.datid,
     s.backend_xmin,
     s.query,
     s.backend_type,
-    yb_pg_stat_get_backend_catalog_version(b.beid) AS catalog_version
+    yb_pg_stat_get_backend_catalog_version(b.beid) AS catalog_version,
+    yb_pg_stat_get_backend_allocated_mem_bytes(b.beid) AS allocated_mem_bytes,
+    yb_pg_stat_get_backend_rss_mem_bytes(b.beid) AS rss_mem_bytes
    FROM (((pg_stat_get_activity(NULL::integer) s(datid, pid, usesysid, application_name, state, query, wait_event_type, wait_event, xact_start, query_start, backend_start, state_change, client_addr, client_hostname, client_port, backend_xid, backend_xmin, backend_type, ssl, sslversion, sslcipher, sslbits, sslcompression, sslclientdn)
      LEFT JOIN pg_database d ON ((s.datid = d.oid)))
      LEFT JOIN pg_authid u ON ((s.usesysid = u.oid)))
@@ -2399,6 +2401,14 @@ shoelace_obsolete| SELECT shoelace.sl_name,
   WHERE (NOT (EXISTS ( SELECT shoe.shoename
            FROM shoe
           WHERE (shoe.slcolor = shoelace.sl_color))));
+yb_terminated_queries| SELECT d.datname AS databasename,
+    s.backend_pid,
+    s.query_text,
+    s.termination_reason,
+    s.query_start AS query_start_time,
+    s.query_end AS query_end_time
+   FROM (yb_pg_stat_get_queries(NULL::oid) s(db_oid, backend_pid, query_text, termination_reason, query_start, query_end)
+     LEFT JOIN pg_database d ON ((s.db_oid = d.oid)));
 SELECT tablename, rulename, definition FROM pg_rules
 	ORDER BY tablename, rulename;
 pg_settings|pg_settings_n|CREATE RULE pg_settings_n AS

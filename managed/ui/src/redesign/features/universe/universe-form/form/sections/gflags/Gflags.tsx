@@ -26,11 +26,9 @@ export const GFlags: FC = () => {
   if (!isPrimary || (isEditPrimary && _.isEmpty(getValues(GFLAGS_FIELD)))) return null;
 
   return (
-    <Box className={classes.sectionContainer} data-testid="gflags-section">
-      <Typography className={classes.sectionHeaderFont}>
-        {t('universeForm.gFlags.title')}
-      </Typography>
-      <Box display="flex" width="100%" mt={2}>
+    <Box className={classes.sectionContainer} flexDirection="column" data-testid="Gflags-Section">
+      <Typography variant="h4">{t('universeForm.gFlags.title')}</Typography>
+      <Box display="flex" width="1200px" mt={4}>
         <GFlagsField
           control={control}
           dbVersion={dbVersion}

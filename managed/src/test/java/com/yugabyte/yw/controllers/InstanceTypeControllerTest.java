@@ -4,9 +4,9 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
-import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.core.IsNull.notNullValue;
@@ -32,7 +32,6 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -85,7 +84,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       UUID providerUUID, int status, String... zones) {
     String zoneParams = Arrays.stream(zones).collect(Collectors.joining("&zone=", "?zone=", ""));
     Result result =
-        FakeApiHelper.doRequest(
+        doRequest(
             "GET",
             "/api/customers/"
                 + customer.uuid
@@ -99,7 +98,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
 
   private JsonNode doCreateInstanceTypeAndVerify(UUID providerUUID, JsonNode bodyJson, int status) {
     Result result =
-        FakeApiHelper.doRequestWithBody(
+        doRequestWithBody(
             "POST",
             "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/instance_types",
             bodyJson);
@@ -111,7 +110,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   private JsonNode doGetInstanceTypeAndVerify(
       UUID providerUUID, String instanceTypeCode, int status) {
     Result result =
-        FakeApiHelper.doRequest(
+        doRequest(
             "GET",
             "/api/customers/"
                 + customer.uuid
@@ -126,7 +125,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   private JsonNode doDeleteInstanceTypeAndVerify(
       UUID providerUUID, String instanceTypeCode, int status) {
     Result result =
-        FakeApiHelper.doRequest(
+        doRequest(
             "DELETE",
             "/api/customers/"
                 + customer.uuid
@@ -352,6 +351,49 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     assertValue(machineDetailsNode, "volumeType", "EBS");
     assertValue(machineDetailsNode, "mountPath", "/mnt/d0");
     assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testCreateInstanceTypeWithSoftDeletedKeyCollision() {
+    String sharedInstanceTypeCode = "test-i1";
+    // Setup a soft deleted instance type
+    InstanceType it =
+        InstanceType.upsert(
+            awsProvider.uuid,
+            sharedInstanceTypeCode,
+            3,
+            5.0,
+            new InstanceType.InstanceTypeDetails());
+    JsonNode json = doDeleteInstanceTypeAndVerify(awsProvider.uuid, it.getInstanceTypeCode(), OK);
+    it = InstanceType.get(awsProvider.uuid, it.getInstanceTypeCode());
+    assertTrue(json.get("success").asBoolean());
+    assertFalse(it.isActive());
+
+    // Create and verify an instance type with the same instanceTypeCode `sharedInstanceTypeCode`.
+    InstanceType.InstanceTypeDetails details = new InstanceType.InstanceTypeDetails();
+    InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
+    volumeDetails.volumeType = InstanceType.VolumeType.EBS;
+    volumeDetails.volumeSizeGB = 10;
+    details.volumeDetailsList.add(volumeDetails);
+    details.setDefaultMountPaths();
+    ObjectNode instanceTypeJson = Json.newObject();
+    ObjectNode idKey = Json.newObject();
+    idKey.put("instanceTypeCode", sharedInstanceTypeCode);
+    instanceTypeJson.set("idKey", idKey);
+    instanceTypeJson.put("memSizeGB", 11.9);
+    instanceTypeJson.put("numCores", 4);
+    instanceTypeJson.set("instanceTypeDetails", Json.toJson(details));
+    json = doCreateInstanceTypeAndVerify(awsProvider.uuid, instanceTypeJson, OK);
+    assertValue(json, "instanceTypeCode", sharedInstanceTypeCode);
+    assertValue(json, "memSizeGB", "11.9");
+    assertValue(json, "numCores", "4.0");
+    assertValue(json, "active", "true");
+    JsonNode machineDetailsNode = json.get("instanceTypeDetails").get("volumeDetailsList").get(0);
+    assertThat(machineDetailsNode, notNullValue());
+    assertValue(machineDetailsNode, "volumeSizeGB", "10");
+    assertValue(machineDetailsNode, "volumeType", "EBS");
+    assertValue(machineDetailsNode, "mountPath", "/mnt/d0");
+    assertAuditEntry(2, customer.uuid);
   }
 
   @Test

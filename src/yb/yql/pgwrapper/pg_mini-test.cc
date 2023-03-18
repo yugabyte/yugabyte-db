@@ -66,6 +66,7 @@ using namespace std::literals;
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(enable_pg_savepoints);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(rocksdb_use_logging_iterator);
 
@@ -98,9 +99,13 @@ DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 
+DECLARE_bool(rocksdb_disable_compactions);
+
 namespace yb {
 namespace pgwrapper {
 namespace {
+
+YB_STRONGLY_TYPED_BOOL(WaitForTS);
 
 template<IsolationLevel level>
 class TxnHelper {
@@ -229,7 +234,7 @@ class PgMiniSingleTServerTest : public PgMiniTest {
 class PgMiniMasterFailoverTest : public PgMiniTest {
  protected:
   void ElectNewLeaderAfterShutdown();
-
+  void TestNonRespondingMaster(WaitForTS wait_for_ts);
  public:
   size_t NumMasters() override {
     return 3;
@@ -872,6 +877,45 @@ class PgMiniSmallWriteBufferTest : public PgMiniTest {
     PgMiniTest::SetUp();
   }
 };
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TruncateColocatedBigTable)) {
+  // Simulate truncating a big colocated table with multiple sst files flushed to disk.
+  // To repro issue https://github.com/yugabyte/yugabyte-db/issues/15206
+  // When using bloom filter, it might fail to find the table tombstone because it's stored in
+  // a different sst file than the key is currently seeking.
+
+  FLAGS_rocksdb_disable_compactions = true;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("create tablegroup tg1"));
+  ASSERT_OK(conn.Execute("create table t1(k int primary key) tablegroup tg1"));
+  const auto& peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+  tablet::TabletPeerPtr tablet_peer = nullptr;
+  for (auto peer : peers) {
+    if (peer->shared_tablet()->doc_db().regular) {
+      tablet_peer = peer;
+      break;
+    }
+  }
+  ASSERT_NE(tablet_peer, nullptr);
+
+  // Insert 2 rows, and flush.
+  ASSERT_OK(conn.Execute("insert into t1 values (1)"));
+  ASSERT_OK(conn.Execute("insert into t1 values (2)"));
+  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+
+  // Truncate the table, and flush. Tabletombstone should be in a seperate sst file.
+  ASSERT_OK(conn.Execute("TRUNCATE t1"));
+  SleepFor(1s);
+  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+
+  // Check if the row still visible.
+  auto res = conn.FetchValue<int>("select k from t1 where k = 1");
+  ASSERT_NOK(res);
+  ASSERT_TRUE(res.status().message().Contains("Fetched 0 rows, while 1 expected"));
+
+  // Check if hit dup key error.
+  ASSERT_OK(conn.Execute("insert into t1 values (1)"));
+}
 
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallWriteBufferTest) {
   const std::string kTableName = "key_value";
@@ -2977,10 +3021,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
   ASSERT_LE(new_file_size, base_file_size + 100_KB);
 }
 
-// Use special mode when non leader master times out all rpcs.
-// Then step down master leader and perform backup.
-TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMaster),
-          PgMiniMasterFailoverTest) {
+void PgMiniMasterFailoverTest::TestNonRespondingMaster(WaitForTS wait_for_ts) {
   FLAGS_TEST_timeout_non_leader_master_rpcs = true;
   tools::TmpDirProvider tmp_dir;
 
@@ -3001,10 +3042,12 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMaster),
     return false;
   }, 10s, "Wait leader change"));
 
-  master::TSManager& ts_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->ts_manager();
-  ASSERT_OK(WaitFor([this, &ts_manager]() -> Result<bool> {
-    return ts_manager.GetAllDescriptors().size() == NumTabletServers();
-  }, 10s, "Wait all TServers to be registered"));
+  if (wait_for_ts) {
+    master::TSManager& ts_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->ts_manager();
+    ASSERT_OK(WaitFor([this, &ts_manager]() -> Result<bool> {
+      return ts_manager.GetAllDescriptors().size() == NumTabletServers();
+    }, 10s, "Wait all TServers to be registered"));
+  }
 
   ASSERT_OK(tools::RunBackupCommand(
       pg_host_port(), cluster_->GetMasterAddresses(), cluster_->GetTserverHTTPAddresses(),
@@ -3012,6 +3055,17 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMaster),
        "create"}));
 }
 
+// Use special mode when non leader master times out all rpcs.
+// Then step down master leader and perform backup.
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMaster),
+          PgMiniMasterFailoverTest) {
+  TestNonRespondingMaster(WaitForTS::kFalse);
+}
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMasterWithTSWaiting),
+          PgMiniMasterFailoverTest) {
+  TestNonRespondingMaster(WaitForTS::kTrue);
+}
 
 // The test checks that YSQL doesn't wait for sent RPC response in case of process termination.
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoWaitForRPCOnTermination)) {
@@ -3131,6 +3185,20 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST(PerfScanG7RangePK100Columns), PgMiniRf1Pac
     s.stop();
     LOG(INFO) << kNumScansPerIteration << " scan(s) took: " << AsString(s.elapsed());
   }
+}
+
+class PgMiniTestNoSavePoints : public PgMiniTest {
+ public:
+  void SetUp() override {
+    FLAGS_enable_pg_savepoints = 0;
+    PgMiniTest::SetUp();
+  }
+};
+
+TEST_F(PgMiniTestNoSavePoints, YB_DISABLE_TEST_IN_TSAN(TestSavePointCanBeDisabled)) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_NOK(conn1.Execute("SAVEPOINT A"))
+      << "setting FLAGS_enable_pg_savepoints to false should have made SAVEPOINT produce an error";
 }
 
 } // namespace pgwrapper

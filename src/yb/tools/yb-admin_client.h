@@ -50,6 +50,7 @@
 #include "yb/util/type_traits.h"
 #include "yb/common/entity_ids.h"
 #include "yb/consensus/consensus_types.pb.h"
+#include "yb/common/snapshot.h"
 
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
@@ -71,6 +72,14 @@ class YBClient;
 }
 
 namespace tools {
+
+// Flags for list_snapshot command.
+YB_DEFINE_ENUM(ListSnapshotsFlag, (SHOW_DETAILS)(NOT_SHOW_RESTORED)(SHOW_DELETED)(JSON));
+using ListSnapshotsFlags = EnumBitSet<ListSnapshotsFlag>;
+
+// Constants for disabling tablet splitting during PITR restores.
+static constexpr double kPitrSplitDisableDurationSecs = 600;
+static constexpr double kPitrSplitDisableCheckFreqMs = 500;
 
 struct TypedNamespaceName {
   YQLDatabase db_type = YQL_DATABASE_UNKNOWN;
@@ -235,6 +244,8 @@ class ClusterAdminClient {
                          int timeout_secs,
                          bool is_compaction);
 
+  Status CompactionStatus(const client::YBTableName& table_name);
+
   Status FlushSysCatalog();
 
   Status CompactSysCatalog();
@@ -309,6 +320,116 @@ class ClusterAdminClient {
       const std::string& max_flag_class, const bool promote_non_runtime_flags, const bool force);
 
   Status ListAllNamespaces();
+
+  // Snapshot operations.
+  Result<master::ListSnapshotsResponsePB> ListSnapshots(const ListSnapshotsFlags& flags);
+  Status CreateSnapshot(const std::vector<client::YBTableName>& tables,
+                        const bool add_indexes = true,
+                        const int flush_timeout_secs = 0);
+  Status CreateNamespaceSnapshot(const TypedNamespaceName& ns);
+  Result<master::ListSnapshotRestorationsResponsePB> ListSnapshotRestorations(
+      const TxnSnapshotRestorationId& restoration_id);
+  Result<rapidjson::Document> CreateSnapshotSchedule(const client::YBTableName& keyspace,
+                                                     MonoDelta interval, MonoDelta retention);
+  Result<rapidjson::Document> ListSnapshotSchedules(const SnapshotScheduleId& schedule_id);
+  Result<rapidjson::Document> DeleteSnapshotSchedule(const SnapshotScheduleId& schedule_id);
+  Result<rapidjson::Document> RestoreSnapshotSchedule(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at);
+  Status RestoreSnapshot(const std::string& snapshot_id, HybridTime timestamp);
+
+  Result<rapidjson::Document> EditSnapshotSchedule(
+      const SnapshotScheduleId& schedule_id,
+      std::optional<MonoDelta> new_interval,
+      std::optional<MonoDelta> new_retention);
+
+  Status DeleteSnapshot(const std::string& snapshot_id);
+
+  Status CreateSnapshotMetaFile(const std::string& snapshot_id,
+                                const std::string& file_name);
+  Status ImportSnapshotMetaFile(const std::string& file_name,
+                                const TypedNamespaceName& keyspace,
+                                const std::vector<client::YBTableName>& tables);
+  Status ListReplicaTypeCounts(const client::YBTableName& table_name);
+
+  Status SetPreferredZones(const std::vector<std::string>& preferred_zones);
+
+  Status RotateUniverseKey(const std::string& key_path);
+
+  Status DisableEncryption();
+
+  Status IsEncryptionEnabled();
+
+  Status AddUniverseKeyToAllMasters(
+      const std::string& key_id, const std::string& universe_key);
+
+  Status AllMastersHaveUniverseKeyInMemory(const std::string& key_id);
+
+  Status RotateUniverseKeyInMemory(const std::string& key_id);
+
+  Status DisableEncryptionInMemory();
+
+  Status WriteUniverseKeyToFile(const std::string& key_id, const std::string& file_name);
+
+  Status CreateCDCStream(const TableId& table_id);
+
+  Status CreateCDCSDKDBStream(
+      const TypedNamespaceName& ns, const std::string& CheckPointType,
+      const std::string& RecordType);
+
+  Status DeleteCDCStream(const std::string& stream_id, bool force_delete = false);
+
+  Status DeleteCDCSDKDBStream(const std::string& db_stream_id);
+
+  Status ListCDCStreams(const TableId& table_id);
+
+  Status ListCDCSDKStreams(const std::string& namespace_name);
+
+  Status GetCDCDBStreamInfo(const std::string& db_stream_id);
+
+  Status SetupUniverseReplication(const std::string& producer_uuid,
+                                  const std::vector<std::string>& producer_addresses,
+                                  const std::vector<TableId>& tables,
+                                  const std::vector<std::string>& producer_bootstrap_ids);
+
+  Status DeleteUniverseReplication(const std::string& producer_id,
+                                   bool ignore_errors = false);
+
+  Status AlterUniverseReplication(
+      const std::string& producer_uuid,
+      const std::vector<std::string>& producer_addresses,
+      const std::vector<TableId>& add_tables,
+      const std::vector<TableId>& remove_tables,
+      const std::vector<std::string>& producer_bootstrap_ids_to_add,
+      const std::string& new_producer_universe_id,
+      bool remove_table_ignore_errors = false);
+
+  Status RenameUniverseReplication(const std::string& old_universe_name,
+                                   const std::string& new_universe_name);
+
+  Status WaitForSetupUniverseReplicationToFinish(const std::string& producer_uuid);
+
+  Status ChangeXClusterRole(cdc::XClusterRole role);
+
+  Status SetUniverseReplicationEnabled(const std::string& producer_id,
+                                       bool is_enabled);
+
+  Status PauseResumeXClusterProducerStreams(
+      const std::vector<std::string>& stream_ids, bool is_paused);
+
+  Status BootstrapProducer(const std::vector<TableId>& table_id);
+
+  Status WaitForReplicationDrain(const std::vector<CDCStreamId>& stream_ids,
+                                 const std::string& target_time);
+
+  Status SetupNSUniverseReplication(const std::string& producer_uuid,
+                                    const std::vector<std::string>& producer_addresses,
+                                    const TypedNamespaceName& producer_namespace);
+
+  Status GetReplicationInfo(const std::string& universe_uuid);
+
+  Result<rapidjson::Document> GetXClusterEstimatedDataLoss();
+
+  Result<rapidjson::Document> GetXClusterSafeTime();
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
@@ -436,9 +557,29 @@ class ClusterAdminClient {
       const Object& obj, const Request& req, const char* error_message = nullptr,
       const MonoDelta timeout = MonoDelta());
 
- private:
   using NamespaceMap = std::unordered_map<NamespaceId, client::NamespaceInfo>;
   Result<const NamespaceMap&> GetNamespaceMap();
+
+  Result<TxnSnapshotId> SuitableSnapshotId(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at, CoarseTimePoint deadline);
+
+  Status SendEncryptionRequest(const std::string& key_path, bool enable_encryption);
+
+  Result<HostPort> GetFirstRpcAddressForTS();
+
+  void CleanupEnvironmentOnSetupUniverseReplicationFailure(
+    const std::string& producer_uuid, const Status& failure_status);
+
+  Status DisableTabletSplitsDuringRestore(CoarseTimePoint deadline);
+
+  Result<rapidjson::Document> RestoreSnapshotScheduleDeprecated(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at);
+
+  std::string GetDBTypeName(const master::SysNamespaceEntryPB& pb);
+  // Map: Old name -> New name.
+  typedef std::unordered_map<NamespaceName, NamespaceName> NSNameToNameMap;
+  Status UpdateUDTypes(
+      QLTypePB* pb_type, bool* update_meta, const NSNameToNameMap& ns_name_to_name);
 
   NamespaceMap namespace_map_;
 

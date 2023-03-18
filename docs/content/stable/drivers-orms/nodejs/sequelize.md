@@ -20,7 +20,7 @@ type: docs
     </a>
   </li>
   <li >
-    <a href="/preview/drivers-orms/nodejs/prisma/" class="nav-link ">
+    <a href="../prisma/" class="nav-link ">
       <i class="fa-brands fa-node-js" aria-hidden="true"></i>
       Prisma
     </a>

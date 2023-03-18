@@ -11,13 +11,14 @@
 // under the License.
 //
 #include "yb/common/partition.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_wire_protocol.h"
 
 #include "yb/master/catalog_manager_util.h"
 
 #include "yb/master/catalog_entity_info.h"
 
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/ysql_tablespace_manager.h"
 #include "yb/util/flags.h"
 #include "yb/util/math_util.h"
 #include "yb/util/string_util.h"
@@ -68,94 +69,88 @@ Status CatalogManagerUtil::IsLoadBalanced(const master::TSDescriptorVector& ts_d
   return Status::OK();
 }
 
-Status CatalogManagerUtil::AreLeadersOnPreferredOnly(
-    const TSDescriptorVector& ts_descs,
-    const ReplicationInfoPB& replication_info,
-    const vector<scoped_refptr<TableInfo>>& tables) {
-  if (PREDICT_FALSE(ts_descs.empty())) {
-    return Status::OK();
-  }
-
-  // Variables for checking transaction leader spread.
-  auto num_servers = ts_descs.size();
-  std::map<std::string, int> txn_map;
-  int num_txn_tablets = 0;
-  int max_txn_leaders_per_node = 0;
-  int min_txn_leaders_per_node = 0;
-
-  if (!FLAGS_transaction_tables_use_preferred_zones) {
-    CalculateTxnLeaderMap(&txn_map, &num_txn_tablets, tables);
-    max_txn_leaders_per_node = num_txn_tablets / num_servers;
-    min_txn_leaders_per_node = max_txn_leaders_per_node;
-    if (num_txn_tablets % num_servers) {
-      ++max_txn_leaders_per_node;
+ReplicationInfoPB CatalogManagerUtil::GetTableReplicationInfo(
+    const scoped_refptr<const TableInfo>& table,
+    const std::shared_ptr<const YsqlTablespaceManager>
+        tablespace_manager,
+    const ReplicationInfoPB& cluster_replication_info) {
+  {
+    auto table_lock = table->LockForRead();
+    // Check that the replication info is present and is valid (could be set to invalid null value
+    // due to restore issue, see #15698).
+    if (IsReplicationInfoSet(table_lock->pb.replication_info())) {
+      return table_lock->pb.replication_info();
     }
   }
 
-  // If transaction_tables_use_preferred_zones = true, don't check for transaction leader spread.
-  // This results in txn_map being empty, num_txn_tablets = 0, max_txn_leaders_per_node = 0, and
-  // system_tablets_leaders = 0.
-  // Thus all comparisons for transaction leader spread will be ignored (all 0 < 0, etc).
-
-  for (const auto& ts_desc : ts_descs) {
-    auto tserver = txn_map.find(ts_desc->permanent_uuid());
-    int system_tablets_leaders = 0;
-    if (!(tserver == txn_map.end())) {
-      system_tablets_leaders = tserver->second;
+  if (tablespace_manager) {
+    auto result = tablespace_manager->GetTableReplicationInfo(table);
+    if (!result.ok()) {
+      LOG(WARNING) << result.status();
+      return cluster_replication_info;
     }
 
-    // If enabled, check if transaction tablet leaders are evenly spread.
-    if (system_tablets_leaders > max_txn_leaders_per_node) {
-      return STATUS(
-          IllegalState,
-          Substitute("Too many txn status leaders found on tserver $0. Found $1, Expected $2.",
-                      ts_desc->permanent_uuid(),
-                      system_tablets_leaders,
-                      max_txn_leaders_per_node));
-    }
-    if (system_tablets_leaders < min_txn_leaders_per_node) {
-      return STATUS(
-          IllegalState,
-          Substitute("Tserver $0 expected to have at least $1 txn status leader(s), but has $2.",
-                      ts_desc->permanent_uuid(),
-                      min_txn_leaders_per_node,
-                      system_tablets_leaders));
-    }
-
-    // Check that leaders are on preferred ts only.
-    // If transaction tables follow preferred nodes, then we verify that there are 0 leaders.
-    // Otherwise, we need to check that there are 0 non-txn leaders on the ts.
-    if (!ts_desc->IsAcceptingLeaderLoad(replication_info) &&
-        ts_desc->leader_count() > system_tablets_leaders) {
-      // This is a ts that shouldn't have leader load (asides from txn leaders) but does.
-      return STATUS(
-          IllegalState,
-          Substitute("Expected no leader load on tserver $0, found $1.",
-                     ts_desc->permanent_uuid(), ts_desc->leader_count() - system_tablets_leaders));
+    if (*result) {
+      return **result;
     }
   }
-  return Status::OK();
+
+  return cluster_replication_info;
 }
 
-void CatalogManagerUtil::CalculateTxnLeaderMap(std::map<std::string, int>* txn_map,
-                                               int* num_txn_tablets,
-                                               vector<scoped_refptr<TableInfo>> tables) {
+Status CatalogManagerUtil::AreLeadersOnPreferredOnly(
+    const TSDescriptorVector& ts_descs,
+    const ReplicationInfoPB& cluster_replication_info,
+    const std::shared_ptr<const YsqlTablespaceManager>
+        tablespace_manager,
+    const vector<scoped_refptr<TableInfo>>& tables) {
+  const auto find_tservers_accepting_load =
+      [](std::unordered_set<std::string>& accepting_leader_load,
+         const TSDescriptorVector& ts_descs,
+         const ReplicationInfoPB& replication_info) {
+        for (const auto& ts_desc : ts_descs) {
+          if (ts_desc->IsAcceptingLeaderLoad(replication_info)) {
+            accepting_leader_load.insert(ts_desc->permanent_uuid());
+          }
+        }
+      };
+
   for (const auto& table : tables) {
-    bool is_txn_table = table->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE;
-    if (!is_txn_table) {
+    auto table_lock = table->LockForRead();
+
+    if (table_lock->table_type() == TRANSACTION_STATUS_TABLE_TYPE &&
+        !FLAGS_transaction_tables_use_preferred_zones) {
       continue;
     }
-    TabletInfos tablets = table->GetTablets();
-    (*num_txn_tablets) += tablets.size();
-    for (const auto& tablet : tablets) {
-      auto replication_locations = tablet->GetReplicaLocations();
+
+    const auto replication_info =
+        GetTableReplicationInfo(table, tablespace_manager, cluster_replication_info);
+
+    std::unordered_set<std::string> accepting_leader_load;
+
+    find_tservers_accepting_load(accepting_leader_load,
+        ts_descs,
+        replication_info);
+
+    for (const auto& tablet : table->GetTablets()) {
+      auto tablet_lock = tablet->LockForRead();
+      const auto replication_locations = tablet->GetReplicaLocations();
       for (const auto& replica : *replication_locations) {
-        if (replica.second.role == PeerRole::LEADER) {
-          (*txn_map)[replica.first]++;
+        if (replica.second.role != PeerRole::LEADER) {
+          continue;
+        }
+
+        if (!accepting_leader_load.contains(replica.first)) {
+          return STATUS(
+              IllegalState,
+              Substitute("Tserver $0 not expected to have leader of tablet $1",
+                  replica.first, tablet->id()));
         }
       }
     }
   }
+
+  return Status::OK();
 }
 
 Status CatalogManagerUtil::GetPerZoneTSDesc(const TSDescriptorVector& ts_descs,

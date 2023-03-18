@@ -117,16 +117,14 @@ Status QLRocksDBStorage::CreateIterator(
   return Status::OK();
 }
 
-Status QLRocksDBStorage::InitIterator(YQLRowwiseIteratorIf* iter,
+Status QLRocksDBStorage::InitIterator(DocRowwiseIterator* iter,
                                       const PgsqlReadRequestPB& request,
                                       const Schema& schema,
                                       const QLValuePB& ybctid) const {
   // Populate dockey from ybctid.
   DocKey range_doc_key(schema);
   RETURN_NOT_OK(range_doc_key.DecodeFrom(ybctid.binary_value()));
-  DocRowwiseIterator *doc_iter = static_cast<DocRowwiseIterator*>(iter);
-  RETURN_NOT_OK(doc_iter->Init(DocPgsqlScanSpec(schema, request.stmt_id(), range_doc_key)));
-  return Status::OK();
+  return iter->Init(DocPgsqlScanSpec(schema, request.stmt_id(), range_doc_key));
 }
 
 Status QLRocksDBStorage::GetIterator(
@@ -173,7 +171,8 @@ Status QLRocksDBStorage::GetIterator(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     const DocKey& start_doc_key,
-    YQLRowwiseIteratorIf::UniPtr* iter) const {
+    YQLRowwiseIteratorIf::UniPtr* iter,
+    boost::optional<size_t> end_referenced_key_column_index) const {
   const auto& schema = doc_read_context.get().schema;
   // Populate dockey from QL key columns.
   auto hashed_components = VERIFY_RESULT(InitKeyColumnPrimitiveValues(
@@ -183,9 +182,11 @@ Status QLRocksDBStorage::GetIterator(
       request.range_column_values(), schema, schema.num_hash_key_columns()));
 
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
-      projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time);
+      projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time,
+      /*pending_op_counter=*/nullptr, end_referenced_key_column_index);
 
-  if (range_components.size() == schema.num_range_key_columns()) {
+  if (range_components.size() == schema.num_range_key_columns() &&
+      hashed_components.size() == schema.num_hash_key_columns()) {
     // Construct the scan spec basing on the RANGE condition as all range columns are specified.
     RETURN_NOT_OK(doc_iter->Init(DocPgsqlScanSpec(
         schema,

@@ -21,6 +21,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSync;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -219,8 +220,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   protected SubTaskGroup createXClusterConfigSetupTask(Set<String> tableIds) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("XClusterConfigSetup", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterConfigSetup");
     XClusterConfigSetup.Params xClusterConfigParams = new XClusterConfigSetup.Params();
     xClusterConfigParams.universeUUID = taskParams().getXClusterConfig().targetUniverseUUID;
     xClusterConfigParams.xClusterConfig = taskParams().getXClusterConfig();
@@ -241,8 +241,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    *     subtask
    */
   protected SubTaskGroup createXClusterConfigSetStatusTask(XClusterConfigStatusType desiredStatus) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("XClusterConfigSetStatus", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterConfigSetStatus");
     XClusterConfigSetStatus.Params setStatusParams = new XClusterConfigSetStatus.Params();
     setStatusParams.universeUUID = taskParams().getXClusterConfig().targetUniverseUUID;
     setStatusParams.xClusterConfig = taskParams().getXClusterConfig();
@@ -257,8 +256,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
   protected SubTaskGroup createXClusterConfigSetStatusForTablesTask(
       Set<String> tableIds, XClusterTableConfig.Status desiredStatus) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("XClusterConfigSetStatusForTables", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterConfigSetStatusForTables");
     XClusterConfigSetStatusForTables.Params setStatusForTablesParams =
         new XClusterConfigSetStatusForTables.Params();
     setStatusForTablesParams.universeUUID = taskParams().getXClusterConfig().targetUniverseUUID;
@@ -280,8 +278,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @return The created subtask group
    */
   protected SubTaskGroup createSetReplicationPausedTask(boolean pause) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("SetReplicationPaused", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("SetReplicationPaused");
     SetReplicationPaused.Params setReplicationPausedParams = new SetReplicationPaused.Params();
     setReplicationPausedParams.universeUUID = taskParams().getXClusterConfig().targetUniverseUUID;
     setReplicationPausedParams.xClusterConfig = taskParams().getXClusterConfig();
@@ -300,8 +297,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
   protected SubTaskGroup createXClusterConfigModifyTablesTask(
       Set<String> tables, XClusterConfigModifyTables.Params.Action action) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("XClusterConfigModifyTables", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterConfigModifyTables");
     XClusterConfigModifyTables.Params modifyTablesParams = new XClusterConfigModifyTables.Params();
     modifyTablesParams.universeUUID = taskParams().getXClusterConfig().targetUniverseUUID;
     modifyTablesParams.xClusterConfig = taskParams().getXClusterConfig();
@@ -316,8 +312,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   protected SubTaskGroup createXClusterConfigRenameTask(String newName) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("XClusterConfigRename", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterConfigRename");
     XClusterConfigRename.Params xClusterConfigRenameParams = new XClusterConfigRename.Params();
     xClusterConfigRenameParams.universeUUID = taskParams().getXClusterConfig().targetUniverseUUID;
     xClusterConfigRenameParams.xClusterConfig = taskParams().getXClusterConfig();
@@ -351,8 +346,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   protected SubTaskGroup createXClusterConfigSyncTask() {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("XClusterConfigSync", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterConfigSync");
     XClusterConfigSync task = createTask(XClusterConfigSync.class);
     task.initialize(taskParams());
     subTaskGroup.addSubTask(task);
@@ -462,8 +456,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @return The created subtask group
    */
   protected SubTaskGroup createCheckBootstrapRequiredTask(Set<String> tableIds) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("CheckBootstrapRequired", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckBootstrapRequired");
     for (String tableId : tableIds) {
       CheckBootstrapRequired.Params bootstrapRequiredParams = new CheckBootstrapRequired.Params();
       bootstrapRequiredParams.universeUUID = taskParams().getXClusterConfig().sourceUniverseUUID;
@@ -585,7 +578,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @param tableIds The ids of the tables to be bootstrapped
    */
   protected SubTaskGroup createBootstrapProducerTask(Collection<String> tableIds) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("BootstrapProducer", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("BootstrapProducer");
     BootstrapProducer.Params bootstrapProducerParams = new BootstrapProducer.Params();
     bootstrapProducerParams.universeUUID = taskParams().getXClusterConfig().sourceUniverseUUID;
     bootstrapProducerParams.xClusterConfig = taskParams().getXClusterConfig();
@@ -607,8 +600,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    *     happened for them
    */
   protected SubTaskGroup createSetRestoreTimeTask(Set<String> tableIds) {
-    TaskExecutor.SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("SetBootstrapBackup", executor);
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("SetBootstrapBackup");
     SetRestoreTime.Params setRestoreTimeParams = new SetRestoreTime.Params();
     setRestoreTimeParams.universeUUID = taskParams().getXClusterConfig().sourceUniverseUUID;
     setRestoreTimeParams.xClusterConfig = taskParams().getXClusterConfig();
@@ -1412,21 +1404,27 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
   public static boolean isTransactionalReplication(
       @Nullable Universe sourceUniverse, Universe targetUniverse) {
-    UniverseDefinitionTaskParams.UserIntent targetUniverseUserIntent =
-        targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
+    Map<String, String> targetMasterGFlags =
+        GFlagsUtil.getBaseGFlags(
+            ServerType.MASTER,
+            targetUniverse.getUniverseDetails().getPrimaryCluster(),
+            targetUniverse.getUniverseDetails().clusters);
     String gflagValueOnTarget =
-        targetUniverseUserIntent.masterGFlags.get(ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_GFLAG);
+        targetMasterGFlags.get(ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_GFLAG);
     Boolean gflagValueOnTargetBoolean =
         gflagValueOnTarget != null ? Boolean.valueOf(gflagValueOnTarget) : null;
 
     if (sourceUniverse != null) {
+      Map<String, String> sourceMasterGFlags =
+          GFlagsUtil.getBaseGFlags(
+              ServerType.MASTER,
+              sourceUniverse.getUniverseDetails().getPrimaryCluster(),
+              sourceUniverse.getUniverseDetails().clusters);
+
       // Replication between a universe with the gflag `enable_replicate_transaction_status_table`
       // and a universe without it is not allowed.
-      UniverseDefinitionTaskParams.UserIntent sourceUniverseUserIntent =
-          sourceUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
       String gflagValueOnSource =
-          sourceUniverseUserIntent.masterGFlags.get(
-              ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_GFLAG);
+          sourceMasterGFlags.get(ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_GFLAG);
       Boolean gflagValueOnSourceBoolean =
           gflagValueOnSource != null ? Boolean.valueOf(gflagValueOnSource) : null;
       if (!Objects.equals(gflagValueOnSourceBoolean, gflagValueOnTargetBoolean)) {

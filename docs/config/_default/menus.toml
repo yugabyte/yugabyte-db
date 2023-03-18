@@ -209,6 +209,16 @@
     excludeVersion = true
     imageUrl = "/icons/cloud.svg"
 
+[[main]]
+  name = "YugabyteDB Voyager"
+  weight = 3
+  identifier = "yugabytedb-voyager-releases"
+  parent = "releases"
+  url = "/preview/migrate/release-notes/"
+  [main.params]
+    excludeVersion = true
+    imageUrl = "/images/migrate/migration-icon.svg"
+
 ########## Bottom menu for left navigation
 
 [[leftbottom]]

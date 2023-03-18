@@ -63,7 +63,7 @@ export default class CpuUsagePanel extends Component {
           (masterUsage.system + (masterUsage.user !== undefined ? masterUsage.user : 0)) * 10
         ) / 1000
       : 0;
-    const customClassName = isDedicatedNodes ? 'dedicated' : null;
+    const customClassName = isDedicatedNodes ? 'dedicated' : 'colocated';
 
     return (
       <div className={`metrics-padded-panel cpu-usage-panel ${customClassName}-mode-panel`}>
@@ -93,8 +93,7 @@ export default class CpuUsagePanel extends Component {
               size={Math.round(value * 1000) / 10}
               kind="% used"
               inline={true}
-              label={NodeType.TServer}
-              isDedicatedNodes={isDedicatedNodes}
+              label={isDedicatedNodes ? NodeType.TServer : null}
             />
             <Graph value={value} />
             {isDedicatedNodes && (
@@ -103,8 +102,7 @@ export default class CpuUsagePanel extends Component {
                   size={Math.round(masterValue * 1000) / 10}
                   kind="% used"
                   inline={true}
-                  label={NodeType.Master}
-                  isDedicatedNodes={isDedicatedNodes}
+                  label={isDedicatedNodes ? NodeType.Master : null}
                 />
                 <Graph value={masterValue} />
               </>

@@ -32,6 +32,7 @@
 
 #include "yb/tools/ysck_remote.h"
 
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 

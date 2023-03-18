@@ -9,11 +9,13 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
-import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.ArrayList;
@@ -36,9 +38,13 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
   private final Map<UUID, List<String>> replacementRootVolumes = new ConcurrentHashMap<>();
 
+  private final RuntimeConfGetter confGetter;
+
   @Inject
-  protected VMImageUpgrade(BaseTaskDependencies baseTaskDependencies) {
+  protected VMImageUpgrade(
+      BaseTaskDependencies baseTaskDependencies, RuntimeConfGetter confGetter) {
     super(baseTaskDependencies);
+    this.confGetter = confGetter;
   }
 
   @Override
@@ -64,13 +70,25 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           // Verify the request params and fail if invalid
           taskParams().verifyParams(getUniverse());
 
+          String newVersion = taskParams().ybSoftwareVersion;
+          if (taskParams().isSoftwareUpdateViaVm) {
+            createCheckUpgradeTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
+          }
+
           // Create task sequence for VM Image upgrade
           createVMImageUpgradeTasks(nodeSet);
 
           if (taskParams().isSoftwareUpdateViaVm) {
+            // Promote Auto flags on compatible versions.
+            if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.promoteAutoFlag)
+                && CommonUtils.isAutoFlagSupported(newVersion)) {
+              createCheckSoftwareVersionTask(nodeSet, newVersion)
+                  .setSubTaskGroupType(getTaskSubGroupType());
+              createPromoteAutoFlagTask().setSubTaskGroupType(getTaskSubGroupType());
+            }
+
             // Update software version in the universe metadata.
-            createUpdateSoftwareVersionTask(
-                    taskParams().ybSoftwareVersion, true /*isSoftwareUpdateViaVm*/)
+            createUpdateSoftwareVersionTask(newVersion, true /*isSoftwareUpdateViaVm*/)
                 .setSubTaskGroupType(getTaskSubGroupType());
           }
 
@@ -107,8 +125,6 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                   .setSubTaskGroupType(getTaskSubGroupType()));
 
       createRootVolumeReplacementTask(node).setSubTaskGroupType(getTaskSubGroupType());
-
-      Cluster cluster = taskParams().getClusterByUuid(node.placementUuid);
 
       node.machineImage = machineImage;
       if (StringUtils.isNotBlank(sshUserOverride)) {
@@ -165,7 +181,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   private SubTaskGroup createRootVolumeCreationTasks(Collection<NodeDetails> nodes) {
     Map<UUID, List<NodeDetails>> rootVolumesPerAZ =
         nodes.stream().collect(Collectors.groupingBy(n -> n.azUuid));
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("CreateRootVolumes", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CreateRootVolumes");
 
     rootVolumesPerAZ.forEach(
         (key, value) -> {
@@ -212,7 +228,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   }
 
   private SubTaskGroup createRootVolumeReplacementTask(NodeDetails node) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("ReplaceRootVolume", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("ReplaceRootVolume");
     ReplaceRootVolume.Params replaceParams = new ReplaceRootVolume.Params();
     replaceParams.nodeName = node.nodeName;
     replaceParams.azUuid = node.azUuid;

@@ -1,7 +1,8 @@
 ---
-title: C# Drivers
+title: PostgreSQL Npgsql Driver
+headerTitle: C# Drivers
 linkTitle: C# Drivers
-description: C# Drivers for YSQL
+description: C# PostgreSQL Npgsql Driver for YSQL
 headcontent: C# Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
@@ -9,16 +10,23 @@ menu:
     name: C# Drivers
     identifier: ref-postgres-npgsql-driver
     parent: drivers
-    weight: 600
+    weight: 620
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
+    <a href="../yb-npgsql-reference/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YugabyteDB Npgsql Smart Driver
+    </a>
+  </li>
+
+  <li >
     <a href="../postgres-npgsql-reference/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PostgreSQL Npgsql
+      PostgreSQL Npgsql Driver
     </a>
   </li>
 

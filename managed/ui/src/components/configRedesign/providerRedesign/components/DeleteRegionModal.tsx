@@ -1,16 +1,15 @@
 import React from 'react';
 import { YBModal, YBModalProps } from '../../../../redesign/components';
-import { K8sRegionField } from '../forms/configureRegion/ConfigureK8sRegionModal';
-import { CloudVendorRegionField } from '../forms/configureRegion/ConfigureRegionModal';
 
-interface DeleteModalProps<RegionFieldType extends CloudVendorRegionField | K8sRegionField>
-  extends YBModalProps {
+import { SupportedRegionField } from '../forms/configureRegion/types';
+
+interface DeleteModalProps<RegionFieldType extends SupportedRegionField> extends YBModalProps {
   deleteRegion: (region: RegionFieldType) => void;
   onClose: () => void;
   region: RegionFieldType | undefined;
 }
 
-export const DeleteRegionModal = <RegionFieldType extends CloudVendorRegionField | K8sRegionField>({
+export const DeleteRegionModal = <RegionFieldType extends SupportedRegionField>({
   deleteRegion,
   onClose,
   region,

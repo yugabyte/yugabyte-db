@@ -140,22 +140,6 @@ body {
                 z-index: 999;
               }
             }
-
-            input[type="reset"] {
-              display: none;
-              background: url(/icons/input-reset-btn.svg) center no-repeat #fff;
-              font-size: 0;
-              border: 0;
-              outline: none;
-              width: 24px;
-              height: 24px;
-              margin-left: -25px;
-              z-index: 99;
-            }
-
-            &.active-input input[type="reset"] {
-              display: block;
-            }
           }
 
           &.right-nav {

@@ -1,9 +1,5 @@
 package com.yugabyte.yw.models.helpers.provider;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -16,9 +12,11 @@ import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import lombok.Data;
 
 @Data
@@ -30,7 +28,7 @@ public class GCPCloudInfo implements CloudInfoInterface {
       ImmutableMap.of(
           "gceProject", "project_id",
           "gceApplicationCredentialsPath", "GOOGLE_APPLICATION_CREDENTIALS",
-          "customGceNetwork", "network",
+          "destVpcId", "network",
           "ybFirewallTags", CloudProviderHandler.YB_FIREWALL_TAGS,
           "useHostVPC", "use_host_vpc");
 
@@ -56,31 +54,34 @@ public class GCPCloudInfo implements CloudInfoInterface {
 
   @JsonAlias({"host_project_id", "project_id", GCPCloudImpl.GCE_PROJECT_PROPERTY})
   @ApiModelProperty
-  public String gceProject;
+  private String gceProject;
 
   @JsonAlias({"config_file_path", GCPCloudImpl.GOOGLE_APPLICATION_CREDENTIALS_PROPERTY})
   @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
-  public String gceApplicationCredentialsPath;
+  private String gceApplicationCredentialsPath;
 
   @JsonAlias("config_file_contents")
   @ApiModelProperty
-  public JsonNode gceApplicationCredentials;
+  private JsonNode gceApplicationCredentials;
 
   @JsonAlias({"network", GCPCloudImpl.CUSTOM_GCE_NETWORK_PROPERTY})
   @ApiModelProperty
-  public String customGceNetwork;
+  private String destVpcId;
 
   @JsonAlias(CloudProviderHandler.YB_FIREWALL_TAGS)
   @ApiModelProperty
-  public String ybFirewallTags;
+  private String ybFirewallTags;
 
   @JsonAlias("use_host_vpc")
   @ApiModelProperty
-  public Boolean useHostVPC;
+  private Boolean useHostVPC;
 
   @JsonAlias("use_host_credentials")
   @ApiModelProperty
-  public Boolean useHostCredentials;
+  private Boolean useHostCredentials;
+
+  @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
+  private String hostVpcId;
 
   @JsonIgnore
   public Map<String, String> getEnvVars() {
@@ -96,8 +97,8 @@ public class GCPCloudInfo implements CloudInfoInterface {
       envVars.put(
           GCPCloudImpl.GOOGLE_APPLICATION_CREDENTIALS_PROPERTY, gceApplicationCredentialsPath);
     }
-    if (customGceNetwork != null) {
-      envVars.put(GCPCloudImpl.CUSTOM_GCE_NETWORK_PROPERTY, customGceNetwork);
+    if (destVpcId != null) {
+      envVars.put("destVpcId", destVpcId);
     }
 
     return envVars;

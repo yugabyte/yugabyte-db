@@ -6,7 +6,6 @@ import { Row, Col } from 'react-bootstrap';
 import moment from 'moment';
 import pluralize from 'pluralize';
 import PropTypes from 'prop-types';
-
 import { FormattedDate, FormattedRelative } from 'react-intl';
 import { ClusterInfoPanelContainer, YBWidget } from '../../panels';
 import {
@@ -604,7 +603,7 @@ export default class UniverseOverviewNew extends Component {
     // For kubernetes the disk usage would be in container tab, rest it would be server tab.
     const isKubernetes = isKubernetesUniverse(universeInfo);
     const isDedicatedNodes = isDedicatedNodePlacement(universeInfo);
-    const metricTabPath = this.props.enableTopKMetrics ? 'tab' : 'subtab';
+    const metricTabPath = this.props.isTopKMetricsEnabled ? 'tab' : 'subtab';
     const subTab = isKubernetes ? 'container' : 'server';
     const metricKey = isKubernetes ? 'container_volume_stats' : 'disk_usage';
     const secondaryMetric = isKubernetes
@@ -656,7 +655,7 @@ export default class UniverseOverviewNew extends Component {
     const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
     const isDedicatedNodes = isDedicatedNodePlacement(universeInfo);
     const subTab = isItKubernetesUniverse ? 'container' : 'server';
-    const metricTabPath = this.props.enableTopKMetrics ? 'tab' : 'subtab';
+    const metricTabPath = this.props.isTopKMetricsEnabled ? 'tab' : 'subtab';
 
     return (
       <Col lg={isDedicatedNodes ? 2 : 4} md={4} sm={4} xs={6}>

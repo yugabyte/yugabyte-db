@@ -8,6 +8,7 @@ import {
   QUERY_METRICS_FAILURE,
   SELECTED_METRIC_TYPE_TAB,
   RESET_METRICS,
+  RESET_GRAPH_FILTER,
   TOGGLE_PROMETHEUS_QUERY
 } from '../actions/graph';
 import { DEFAULT_GRAPH_FILTER } from '../components/metrics/index';
@@ -29,9 +30,9 @@ export default function (state = INITIAL_STATE, action) {
       const filters = { ...action.payload };
       return { ...state, graphFilter: filters };
     }
-    case RESET_GRAPH_QUERY_PERIOD: 
+    case RESET_GRAPH_QUERY_PERIOD:
       return { ...state, graphFilter: null };
-    case QUERY_METRICS: 
+    case QUERY_METRICS:
       return { ...state, loading: true };
     case QUERY_METRICS_SUCCESS: {
       const metricData = state.metrics;
@@ -68,13 +69,17 @@ export default function (state = INITIAL_STATE, action) {
       return responseData;
     }
     case RESET_METRICS:
-      // Graph Filter needs to be reset when user jumps to metrics view in different places
       return {
         ...state,
         metrics: {},
         masterMetrics: {},
         loading: false,
-        panelType: null,
+        panelType: null
+      };
+    case RESET_GRAPH_FILTER:
+      // Graph Filter needs to be reset when user jumps to metrics view in different places
+      return {
+        ...state,
         graphFilter: DEFAULT_GRAPH_FILTER
       };
     case TOGGLE_PROMETHEUS_QUERY: {

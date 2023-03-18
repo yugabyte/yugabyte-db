@@ -76,10 +76,11 @@ class YQLStorageIf {
       const ReadHybridTime& read_time,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
-  virtual Status InitIterator(YQLRowwiseIteratorIf* doc_iter,
-                                      const PgsqlReadRequestPB& request,
-                                      const Schema& schema,
-                                      const QLValuePB& ybctid) const = 0;
+  virtual Status InitIterator(
+      DocRowwiseIterator* doc_iter,
+      const PgsqlReadRequestPB& request,
+      const Schema& schema,
+      const QLValuePB& ybctid) const = 0;
 
   // Create iterator for querying by partition and range key.
   virtual Status GetIterator(
@@ -90,7 +91,8 @@ class YQLStorageIf {
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const DocKey& start_doc_key,
-      std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
+      std::unique_ptr<YQLRowwiseIteratorIf>* iter,
+      boost::optional<size_t> end_referenced_key_column_index = boost::none) const = 0;
 
   // Create iterator for querying by ybctid.
   virtual Status GetIterator(

@@ -18,10 +18,11 @@ import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.controllers.RequestContext;
+import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedResponse;
@@ -80,6 +81,8 @@ public class CommonUtils {
   public static final int DB_MAX_IN_CLAUSE_ITEMS = 1000;
   public static final int DB_IN_CLAUSE_TO_WARN = 50000;
   public static final int DB_OR_CHAIN_TO_WARN = 100;
+
+  public static final String MIN_PROMOTE_AUTO_FLAG_RELEASE = "2.17.0.0";
 
   private static final Configuration JSONPATH_CONFIG =
       Configuration.builder()
@@ -766,6 +769,10 @@ public class CommonUtils {
 
   /** Get the user sending the API request from the HTTP context. */
   public static Users getUserFromContext(Http.Context ctx) {
-    return ((UserWithFeatures) ctx.args.get("user")).getUser();
+    return RequestContext.get(TokenAuthenticator.USER).getUser();
+  }
+
+  public static boolean isAutoFlagSupported(String dbVersion) {
+    return isReleaseEqualOrAfter(MIN_PROMOTE_AUTO_FLAG_RELEASE, dbVersion);
   }
 }

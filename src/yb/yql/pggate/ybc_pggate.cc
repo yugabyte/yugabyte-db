@@ -41,6 +41,8 @@
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
 
+#include "yb/server/skewed_clock.h"
+
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_memctx.h"
@@ -154,6 +156,11 @@ inline std::optional<Bound> MakeBound(YBCPgBoundType type, uint64_t value) {
 
 void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks,
                      PgApiContext* context) {
+  // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
+  // However, this is added to allow simulating and testing of some known bugs until we remove
+  // HybridClock usage.
+  server::SkewedClock::Register();
+
   InitThreading();
 
   CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
@@ -1471,8 +1478,23 @@ void* YBCPgGetThreadLocalErrStatus() {
 }
 
 void YBCStartSysTablePrefetching(
-    uint64_t latest_known_ysql_catalog_version, bool should_use_cache) {
-  pgapi->StartSysTablePrefetching(latest_known_ysql_catalog_version, should_use_cache);
+  uint64_t latest_known_ysql_catalog_version, YBCPgSysTablePrefetcherCacheMode cache_mode) {
+  PrefetchingCacheMode mode = PrefetchingCacheMode::NO_CACHE;
+  switch (cache_mode) {
+    case YB_YQL_PREFETCHER_TRUST_CACHE:
+      mode = PrefetchingCacheMode::TRUST_CACHE;
+      break;
+    case YB_YQL_PREFETCHER_RENEW_CACHE_SOFT:
+      mode = PrefetchingCacheMode::RENEW_CACHE_SOFT;
+      break;
+    case YB_YQL_PREFETCHER_RENEW_CACHE_HARD:
+      LOG(DFATAL) << "Emergency fallback prefetching cache mode is used";
+      mode = PrefetchingCacheMode::RENEW_CACHE_HARD;
+      break;
+    default:
+      break;
+  }
+  pgapi->StartSysTablePrefetching(PrefetcherOptions{latest_known_ysql_catalog_version, mode});
 }
 
 void YBCStopSysTablePrefetching() {
@@ -1488,6 +1510,10 @@ void YBCRegisterSysTableForPrefetching(
   pgapi->RegisterSysTableForPrefetching(
       PgObjectId(database_oid, table_oid),
       index_oid == kPgInvalidOid ? PgObjectId() : PgObjectId(database_oid, index_oid));
+}
+
+YBCStatus YBCPrefetchRegisteredSysTables() {
+  return ToYBCStatus(pgapi->PrefetchRegisteredSysTables());
 }
 
 YBCStatus YBCPgCheckIfPitrActive(bool* is_active) {

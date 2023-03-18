@@ -41,7 +41,6 @@ import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.AlertTemplateSettings;
-import com.yugabyte.yw.models.AlertTemplateVariable;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -61,6 +60,7 @@ import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
@@ -258,6 +258,27 @@ public class ModelFactory {
     }
     params.upsertPrimaryCluster(userIntent, pi);
     return Universe.create(params, customerId);
+  }
+
+  public static Universe addNodesToUniverse(UUID universeUUID, int numNodesToAdd) {
+    return Universe.saveDetails(
+        universeUUID,
+        new UniverseUpdater() {
+          @Override
+          public void run(Universe universe) {
+            UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+            for (int i = 1; i <= numNodesToAdd; i++) {
+              NodeDetails node = new NodeDetails();
+              node.cloudInfo = new CloudSpecificInfo();
+              node.state = NodeState.Live;
+              node.placementUuid = params.getPrimaryCluster().uuid;
+              node.cloudInfo.private_ip = "127.0.0." + Integer.toString(i);
+              params.nodeDetailsSet.add(node);
+            }
+            universe.setUniverseDetails(params);
+          }
+        },
+        false);
   }
 
   public static CustomerConfig createS3StorageConfig(Customer customer, String configName) {

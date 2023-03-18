@@ -5,12 +5,13 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 import React, { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { MutateOptions, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
-import axios, { AxiosError } from 'axios';
+import { AxiosError } from 'axios';
+import { isFunction } from 'lodash';
 
 import { api, providerQueryKey } from '../../../redesign/helpers/api';
-import { assertUnreachableCase } from '../../../utils/ErrorUtils';
+import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import {
   KubernetesProviderType,
@@ -20,16 +21,17 @@ import {
 } from './constants';
 import { ProviderListView } from './ProviderListView';
 import { fetchTaskUntilItCompletes } from '../../../actions/xClusterReplication';
-import { ProviderCreateView } from './ProviderCreateView';
+import { ProviderCreateView } from './forms/ProviderCreateView';
+import { useCreateProvider, UseCreateProviderParams } from '../../../redesign/helpers/hooks';
 
 import { YBProviderMutation } from './types';
-import { ResourceCreationResponse } from '../../../redesign/helpers/dtos';
+import { YBBeanValidationError, YBPError, YBPTask } from '../../../redesign/helpers/dtos';
 
 import styles from './InfraProvider.module.scss';
 
 type InfraProviderProps =
   | {
-      providerCode: typeof CloudVendorProviders[number];
+      providerCode: typeof CloudVendorProviders[number] | typeof ProviderCode.ON_PREM;
     }
   | {
       providerCode: typeof ProviderCode.KUBERNETES;
@@ -39,11 +41,14 @@ type InfraProviderProps =
 export type CreateInfraProvider = (
   values: YBProviderMutation,
   options?: {
-    onSettled?: (data: ResourceCreationResponse | undefined) => void;
-    onSuccess?: (data: ResourceCreationResponse) => void;
-    onError?: (error: Error | AxiosError) => void;
+    shouldValidate?: boolean;
+    mutateOptions?: MutateOptions<
+      YBPTask,
+      Error | AxiosError<YBBeanValidationError | YBPError>,
+      UseCreateProviderParams
+    >;
   }
-) => void;
+) => Promise<YBPTask>;
 
 export const ProviderDashboardView = {
   LIST: 'list',
@@ -59,9 +64,8 @@ export const InfraProvider = (props: InfraProviderProps) => {
 
   const queryClient = useQueryClient();
   const providerListQuery = useQuery(providerQueryKey.ALL, () => api.fetchProviderList());
-  const providerMutation = useMutation((values: YBProviderMutation) => api.createProvider(values), {
+  const createProviderMutation = useCreateProvider(queryClient, {
     onSuccess: (response) => {
-      setCurrentView(ProviderDashboardView.LIST);
       queryClient.invalidateQueries(providerQueryKey.ALL);
 
       fetchTaskUntilItCompletes(response.taskUUID, (error: boolean) => {
@@ -78,13 +82,6 @@ export const InfraProvider = (props: InfraProviderProps) => {
         }
         queryClient.invalidateQueries(providerQueryKey.ALL);
       });
-    },
-    onError: (error: Error | AxiosError) => {
-      if (axios.isAxiosError(error)) {
-        toast.error(error.response?.data?.error?.message ?? error.message);
-      } else {
-        toast.error(error.message);
-      }
     }
   });
 
@@ -96,15 +93,20 @@ export const InfraProvider = (props: InfraProviderProps) => {
     return <YBErrorIndicator customErrorMessage="Error fetching provider list" />;
   }
 
-  const createInfraProvider = async (
-    values: YBProviderMutation,
-    options?: {
-      onSettled?: (data: ResourceCreationResponse | undefined) => void;
-      onSuccess?: (data: ResourceCreationResponse) => void;
-      onError?: (error: Error | AxiosError) => void;
-    }
-  ) => {
-    providerMutation.mutate(values, options);
+  const createInfraProvider: CreateInfraProvider = async (values, options) => {
+    const { shouldValidate = false, mutateOptions } = options ?? {};
+    return createProviderMutation.mutateAsync(
+      { values: values, shouldValidate: shouldValidate },
+      {
+        ...mutateOptions,
+        onSuccess: (response, variables, context) => {
+          if (isFunction(mutateOptions?.onSuccess)) {
+            mutateOptions?.onSuccess(response, variables, context);
+          }
+          setCurrentView(ProviderDashboardView.LIST);
+        }
+      }
+    );
   };
   const handleOnBack = () => {
     setCurrentView(DEFAULT_VIEW);

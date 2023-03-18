@@ -5,7 +5,7 @@ import { toast } from 'react-toastify';
 
 import { api } from '../../../../redesign/helpers/api';
 import { TableType, TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/dtos';
-import { assertUnreachableCase } from '../../../../utils/ErrorUtils';
+import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
 import { YBButton, YBModal } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { isYbcEnabledUniverse } from '../../../../utils/UniverseUtils';

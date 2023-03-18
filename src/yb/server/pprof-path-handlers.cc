@@ -60,9 +60,11 @@
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
+#include "yb/server/pprof-path-handlers_util.h"
 #include "yb/server/webserver.h"
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/spinlock_profiling.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
@@ -108,24 +110,24 @@ static void PprofCmdLineHandler(const Webserver::WebRequest& req,
 static void PprofHeapHandler(const Webserver::WebRequest& req,
                               Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-#if !defined(YB_TCMALLOC_ENABLED) || defined(YB_GOOGLE_TCMALLOC)
-  (*output) << "Heap profiling is not available without gpertools tcmalloc.";
+#if !defined(YB_TCMALLOC_ENABLED)
+  (*output) << "Heap profiling is only available if tcmalloc is enabled.";
 #else
-  // Remote (on-demand) profiling is disabled if the process is already being profiled.
+  int seconds = ParseLeadingInt32Value(
+      FindWithDefault(req.parsed_args, "seconds", ""), PPROF_DEFAULT_SAMPLE_SECS);
+
+#if defined(YB_GPERFTOOLS_TCMALLOC)
+  LOG(INFO) << "Starting a heap profile:"
+            << " seconds=" << seconds
+            << " path prefix=" << FLAGS_heap_profile_path;
+
+  // Remote (on-demand) profiling is disabled for gperftools tcmalloc if the process is already
+  // being profiled.
   if (FLAGS_enable_process_lifetime_heap_profiling) {
-    (*output) << "Heap profiling is running for the process lifetime.";
+    (*output) << "Heap profiling is running for the process lifetime. Not starting on-demand "
+              << "profile.";
     return;
   }
-
-  auto it = req.parsed_args.find("seconds");
-  int seconds = PPROF_DEFAULT_SAMPLE_SECS;
-  if (it != req.parsed_args.end()) {
-    seconds = atoi(it->second.c_str());
-  }
-
-  LOG(INFO) << "Starting a heap profile:"
-            << " path prefix=" << FLAGS_heap_profile_path
-            << " seconds=" << seconds;
 
   HeapProfilerStart(FLAGS_heap_profile_path.c_str());
   // Sleep to allow for some samples to be collected.
@@ -134,6 +136,44 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
   HeapProfilerStop();
   (*output) << profile;
   delete profile;
+#elif defined(YB_GOOGLE_TCMALLOC)
+  // Whether to only report allocations that do not have a corresponding deallocation.
+  bool only_growth = ParseLeadingBoolValue(
+      FindWithDefault(req.parsed_args, "only_growth", ""), false);
+  // Set the sample frequency to this value for the duration of the sample.
+  int64_t sample_freq_bytes = ParseLeadingInt64Value(
+      FindWithDefault(req.parsed_args, "sample_freq_bytes", ""), 4_KB);
+  LOG(INFO) << "Starting a heap profile:"
+            << " seconds=" << seconds
+            << " only_growth=" << only_growth
+            << " sample_freq_bytes=" << sample_freq_bytes;
+
+  const string title = only_growth ? "In use profile" : "Allocation profile";
+
+  auto profile = GetAllocationProfile(seconds, sample_freq_bytes);
+  auto samples = AggregateAndSortProfile(profile, only_growth);
+  GenerateTable(output, samples, title, 1000 /* max_call_stacks*/);
+#endif // defined(YB_GPERFTOOLS_TCMALLOC)
+#endif // defined(YB_TCMALLOC_ENABLED)
+}
+
+static void PprofHeapSnapshotHandler(const Webserver::WebRequest& req,
+                                     Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+#if !defined(YB_GOOGLE_TCMALLOC)
+  (*output) << "Heap snapshot is only available with google tcmalloc.";
+#else
+  if (!FLAGS_enable_process_lifetime_heap_profiling) {
+    (*output) << "FLAGS_enable_process_lifetime_heap_profiling must be set to true to for heap "
+              << "snapshot to work.";
+    return;
+  }
+
+  bool peak_heap = ParseLeadingBoolValue(FindWithDefault(req.parsed_args, "peak_heap", ""), false);
+  string title = peak_heap ? "Peak heap snapshot" : "Current heap snapshot";
+  auto profile = GetHeapSnapshot(peak_heap);
+  auto samples = AggregateAndSortProfile(profile, false /* only_growth */);
+  GenerateTable(output, samples, title, 1000 /* max_call_stacks */);
 #endif
 }
 
@@ -143,14 +183,11 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
 static void PprofCpuProfileHandler(const Webserver::WebRequest& req,
                                   Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-#if !defined(YB_TCMALLOC_ENABLED) || defined(YB_GOOGLE_TCMALLOC)
+#if !defined(YB_GPERFTOOLS_TCMALLOC)
   (*output) << "CPU profiling is not available without gperftools tcmalloc.";
 #else
-  auto it = req.parsed_args.find("seconds");
-  int seconds = PPROF_DEFAULT_SAMPLE_SECS;
-  if (it != req.parsed_args.end()) {
-    seconds = atoi(it->second.c_str());
-  }
+  string secs_str = FindWithDefault(req.parsed_args, "seconds", "");
+  int32_t seconds = ParseLeadingInt32Value(secs_str.c_str(), PPROF_DEFAULT_SAMPLE_SECS);
   // Build a temporary file name that is hopefully unique.
   string tmp_prof_file_name = strings::Substitute("/tmp/yb_cpu_profile.$0.$1", getpid(), rand());
 
@@ -176,8 +213,8 @@ static void PprofCpuProfileHandler(const Webserver::WebRequest& req,
 // MallocExtension::instance()->GetHeapGrowthStacks(&output);
 static void PprofGrowthHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-#if !defined(YB_TCMALLOC_ENABLED) || defined(YB_GOOGLE_TCMALLOC)
-  (*output) << "Growth profiling is not available without gperftools tcmalloc.";
+#if !defined(YB_GPERFTOOLS_TCMALLOC)
+  (*output) << "Growth profiling is only available with gperftools tcmalloc.";
 #else
   string heap_growth_stack;
   MallocExtension::instance()->GetHeapGrowthStacks(&heap_growth_stack);
@@ -274,12 +311,25 @@ static void PprofSymbolHandler(const Webserver::WebRequest& req,
 void AddPprofPathHandlers(Webserver* webserver) {
   // Path handlers for remote pprof profiling. For information see:
   // https://gperftools.googlecode.com/svn/trunk/doc/pprof_remote_servers.html
-  webserver->RegisterPathHandler("/pprof/cmdline", "", PprofCmdLineHandler, false, false);
-  webserver->RegisterPathHandler("/pprof/heap", "", PprofHeapHandler, false, false);
-  webserver->RegisterPathHandler("/pprof/growth", "", PprofGrowthHandler, false, false);
-  webserver->RegisterPathHandler("/pprof/profile", "", PprofCpuProfileHandler, false, false);
-  webserver->RegisterPathHandler("/pprof/symbol", "", PprofSymbolHandler, false, false);
-  webserver->RegisterPathHandler("/pprof/contention", "", PprofContentionHandler, false, false);
+  webserver->RegisterPathHandler("/pprof/cmdline", "", PprofCmdLineHandler, false /* is_styled */,
+      false /* is_on_nav_bar */);
+  #ifdef YB_GOOGLE_TCMALLOC
+  webserver->RegisterPathHandler("/pprof/heap", "", PprofHeapHandler, true /* is_styled */,
+      false /* is_on_nav_bar */);
+  #else
+  webserver->RegisterPathHandler("/pprof/heap", "", PprofHeapHandler, false /* is_styled */,
+      false /* is_on_nav_bar */);
+  #endif
+  webserver->RegisterPathHandler("/pprof/growth", "", PprofGrowthHandler, false /* is_styled */,
+      false /* is_on_nav_bar */);
+  webserver->RegisterPathHandler("/pprof/profile", "", PprofCpuProfileHandler,
+      false /* is_styled */, false /* is_on_nav_bar */);
+  webserver->RegisterPathHandler("/pprof/symbol", "", PprofSymbolHandler, false /* is_styled */,
+      false /* is_on_nav_bar */);
+  webserver->RegisterPathHandler("/pprof/contention", "", PprofContentionHandler,
+      false /* is_styled */, false /* is_on_nav_bar */);
+  webserver->RegisterPathHandler("/pprof/heap_snapshot", "", PprofHeapSnapshotHandler,
+      true /* is_styled */, false /* is_on_nav_bar */);
 }
 
 } // namespace yb

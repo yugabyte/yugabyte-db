@@ -7,7 +7,6 @@
 import React from 'react';
 import { Tab } from 'react-bootstrap';
 import { useSelector } from 'react-redux';
-import { Box } from '@material-ui/core';
 
 import SecurityConfiguration from '../config/Security/SecurityConfiguration';
 import awsLogo from '../config/ConfigProvider/images/aws.svg';
@@ -25,11 +24,11 @@ import {
 } from './providerRedesign/constants';
 import { LocationShape } from 'react-router/lib/PropTypes';
 import { NewStorageConfiguration } from '../config/Storage/StorageConfigurationNew';
-import { OnPremConfigurationContainer, StorageConfigurationContainer } from '../config';
-import { ProviderDetails } from './providerRedesign/providerDetail/ProviderDetails';
+import { ProviderView } from './providerRedesign/providerView/ProviderView';
+import { StorageConfigurationContainer } from '../config';
 import { YBErrorIndicator } from '../common/indicators';
 import { YBTabsPanel, YBTabsWithLinksPanel } from '../panels';
-import { assertUnreachableCase } from '../../utils/ErrorUtils';
+import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { isAvailable, showOrRedirect } from '../../utils/LayoutUtils';
 
 interface ReactRouterProps {
@@ -63,7 +62,7 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
         defaultTab={defaultTab}
         activeTab={activeTab}
         routePrefix={`/${CONFIG_ROUTE_PREFIX}/`}
-        id="config-tab-panel-redesign"
+        id="config-tab-panel"
         className="universe-detail data-center-config-tab"
       >
         {isAvailable(currentCustomer.data.features, 'config.infra') && (
@@ -72,7 +71,7 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
               defaultTab={ProviderCode.AWS}
               activeTab={params.section}
               id="cloud-config-tab-panel"
-              className="config-tabs"
+              className="config-tabs redesign"
               routePrefix={`/${CONFIG_ROUTE_PREFIX}/${ConfigTabKey.INFRA}/`}
             >
               <Tab
@@ -84,7 +83,7 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
                 {params.uuid === undefined ? (
                   <InfraProvider providerCode={ProviderCode.AWS} />
                 ) : (
-                  <ProviderDetails providerUUID={params.uuid} />
+                  <ProviderView providerUUID={params.uuid} />
                 )}
               </Tab>
               <Tab
@@ -96,7 +95,7 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
                 {params.uuid === undefined ? (
                   <InfraProvider providerCode={ProviderCode.GCP} />
                 ) : (
-                  <ProviderDetails providerUUID={params.uuid} />
+                  <ProviderView providerUUID={params.uuid} />
                 )}
               </Tab>
               <Tab
@@ -108,7 +107,7 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
                 {params.uuid === undefined ? (
                   <InfraProvider providerCode={ProviderCode.AZU} />
                 ) : (
-                  <ProviderDetails providerUUID={params.uuid} />
+                  <ProviderView providerUUID={params.uuid} />
                 )}
               </Tab>
               <Tab
@@ -123,7 +122,7 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
                     kubernetesProviderType={KubernetesProviderType.TANZU}
                   />
                 ) : (
-                  <ProviderDetails providerUUID={params.uuid} />
+                  <ProviderView providerUUID={params.uuid} />
                 )}
               </Tab>
               <Tab
@@ -138,7 +137,7 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
                     kubernetesProviderType={KubernetesProviderType.OPEN_SHIFT}
                   />
                 ) : (
-                  <ProviderDetails providerUUID={params.uuid} />
+                  <ProviderView providerUUID={params.uuid} />
                 )}
               </Tab>
               <Tab
@@ -153,7 +152,7 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
                     kubernetesProviderType={KubernetesProviderType.MANAGED_SERVICE}
                   />
                 ) : (
-                  <ProviderDetails providerUUID={params.uuid} />
+                  <ProviderView providerUUID={params.uuid} />
                 )}
               </Tab>
               <Tab
@@ -163,11 +162,9 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
                 unmountOnExit={true}
               >
                 {params.uuid === undefined ? (
-                  <Box padding="25px" minHeight="400px" bgcolor="white">
-                    <OnPremConfigurationContainer isRedesign={true} />
-                  </Box>
+                  <InfraProvider providerCode={ProviderCode.ON_PREM} />
                 ) : (
-                  <ProviderDetails providerUUID={params.uuid} />
+                  <ProviderView providerUUID={params.uuid} />
                 )}
               </Tab>
             </YBTabsPanel>

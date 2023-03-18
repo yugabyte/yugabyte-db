@@ -34,6 +34,7 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
 
@@ -51,6 +52,9 @@ DECLARE_uint64(rpc_connection_timeout_ms);
 DECLARE_uint64(transactions_status_poll_interval_ms);
 DECLARE_int32(TEST_sleep_amidst_iterating_blockers_ms);
 DECLARE_int32(ysql_max_write_restart_attempts);
+DECLARE_uint64(refresh_waiter_timeout_ms);
+DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(ysql_enable_pack_full_row_update);
 
 using namespace std::literals;
 
@@ -74,6 +78,18 @@ class PgWaitQueuesTest : public PgMiniTestBase {
 
   CoarseTimePoint GetDeadlockDetectedDeadline() {
     return CoarseMonoClock::Now() + (kClientStatementTimeoutSeconds * 1s) / 2;
+  }
+
+  Result<std::future<Status>> ExpectBlockedAsync(
+      pgwrapper::PGConn* conn, const std::string& query) {
+    auto status = std::async(std::launch::async, [&conn, query]() {
+      return conn->Execute(query);
+    });
+
+    RETURN_NOT_OK(WaitFor([&conn] () {
+      return conn->IsBusy();
+    }, 1s * kTimeMultiplier, "Wait for blocking request to be submitted to the query layer"));
+    return status;
   }
 };
 
@@ -893,6 +909,85 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDelayedProbeAnalysis)) {
   }
 
   thread_holder.WaitAndStop(25s * kTimeMultiplier);
+}
+
+TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestWaiterTxnReRunConflictResolution)) {
+  // In the current implementation of the wait queue, we don't update the blocker info for
+  // waiter transactions waiting in the queue with the new incoming transaction requests
+  // (than don't enter the wait-queue). Since the waiter dependency is not up to date, we
+  // might miss detecting true deadlock scenarios. As a workaround, we re-run conflict
+  // resolution for each waiter txn after FLAGS_refresh_waiter_timeout_ms.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 5000;
+  auto setup_conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v1 INT, v2 INT)"));
+  ASSERT_OK(setup_conn.Execute("insert into foo VALUES (1, 1, 1), (2, 2, 2)"));
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto conn3 = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn3.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+
+  ASSERT_OK(conn1.Execute("UPDATE foo SET v1=v1+10 WHERE k=1"));
+
+  ASSERT_OK(conn2.Execute("UPDATE foo SET v2=v2+100 WHERE k=2"));
+
+  // txn2 blocks on txn1.
+  auto status_future =
+      ASSERT_RESULT(ExpectBlockedAsync(&conn2, "UPDATE foo SET v1=v1+100, v2=v2+100 WHERE k=1"));
+
+  // txn3 acquires exclusive column level lock on key 1. Note that txn2 wouldn't have registered
+  // this dependency. txn3 then blocks on txn2. This leads to a deadlock. If the waiter txn(s) don't
+  // re-run conflict resolution periodically, this deadlock wouldn't be detected in the current
+  // implementation.
+  ASSERT_OK(conn3.Execute("UPDATE foo SET v2=v2+1000 WHERE k=1"));
+  ASSERT_FALSE(
+      conn3.Execute("UPDATE foo SET v2=v2+1000 WHERE k=2").ok() && status_future.get().ok());
+}
+
+class PgWaitQueuePackedRowTest : public PgWaitQueuesTest {
+  void SetUp() override {
+    FLAGS_ysql_enable_packed_row = true;
+    PgWaitQueuesTest::SetUp();
+  }
+
+  size_t NumTabletServers() override {
+    return 1;
+  }
+};
+
+TEST_F(PgWaitQueuePackedRowTest, YB_DISABLE_TEST_IN_TSAN(TestKeyShareAndUpdate)) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE foo (key INT, value INT, PRIMARY KEY (key) INCLUDE (value))"));
+  ASSERT_OK(conn.Execute("INSERT INTO foo VALUES (1, 1);"));
+
+  // txn1: update a non-key column.
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION"));
+  ASSERT_OK(conn.Execute("UPDATE foo SET value = 2 WHERE key = 1"));
+
+  std::atomic<bool> txn_finished = false;
+  // txn2: do select-for-keyshare on the same row, should be able to lock and get the value.
+  std::thread th([&] {
+    auto conn2 = ASSERT_RESULT(Connect());
+    auto value = conn2.FetchValue<int>(
+        "select value from foo where key = 1 for key share");
+    ASSERT_OK(value);
+    ASSERT_EQ(value.get(), 1);
+    txn_finished.store(true);
+  });
+
+  ASSERT_OK(WaitFor([&] {
+    return txn_finished.load();
+  }, 5s * kTimeMultiplier, "txn doing select-for-share to be committed"));
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  th.join();
 }
 
 } // namespace pgwrapper

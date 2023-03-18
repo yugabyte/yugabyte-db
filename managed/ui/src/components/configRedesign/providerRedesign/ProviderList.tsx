@@ -27,9 +27,9 @@ import { RegionsCell } from './RegionsCell';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
 import { DeleteProviderConfigModal } from './DeleteProviderConfigModal';
-import { UniverseItem } from './providerDetail/UniverseTable';
+import { UniverseItem } from './providerView/providerDetails/UniverseTable';
+import { getLinkedUniverses, usePillStyles } from './utils';
 
-import { Universe } from '../../../redesign/helpers/dtos';
 import { YBProvider, YBRegion } from './types';
 
 import styles from './ProviderList.module.scss';
@@ -37,19 +37,22 @@ import styles from './ProviderList.module.scss';
 interface ProviderListCommonProps {
   setCurrentView: (newView: ProviderDashboardView) => void;
 }
-interface CloudVendorProviderListProps extends ProviderListCommonProps {
-  providerCode: typeof CloudVendorProviders[number];
+interface GenericProviderListProps extends ProviderListCommonProps {
+  providerCode: typeof CloudVendorProviders[number] | typeof ProviderCode.ON_PREM;
 }
 interface K8sProviderListProps extends ProviderListCommonProps {
   providerCode: typeof ProviderCode.KUBERNETES;
   kubernetesProviderType: KubernetesProviderType;
 }
-type ProviderListProps = CloudVendorProviderListProps | K8sProviderListProps;
-
+type ProviderListProps = GenericProviderListProps | K8sProviderListProps;
+type ProviderListItem = YBProvider & {
+  linkedUniverses: UniverseItem[];
+};
 export const ProviderList = (props: ProviderListProps) => {
   const { providerCode, setCurrentView } = props;
   const [isDeleteProviderModalOpen, setIsDeleteProviderModalOpen] = useState<boolean>(false);
   const [deleteProviderConfigSelection, setDeleteProviderConfigSelection] = useState<YBProvider>();
+  const classes = usePillStyles();
   const {
     data: providerList,
     isLoading: isProviderListQueryLoading,
@@ -84,7 +87,7 @@ export const ProviderList = (props: ProviderListProps) => {
   const hideDeleteProviderModal = () => {
     setIsDeleteProviderModalOpen(false);
   };
-  const handleDeleteProviderConfig = (providerConfig: YBProvider) => {
+  const handleDeleteProviderConfig = (providerConfig: ProviderListItem) => {
     setDeleteProviderConfigSelection(providerConfig);
     showDeleteProviderModal();
   };
@@ -92,7 +95,7 @@ export const ProviderList = (props: ProviderListProps) => {
     setCurrentView(ProviderDashboardView.CREATE);
   };
 
-  const formatProviderName = (providerName: string, row: YBProvider) => {
+  const formatProviderName = (providerName: string, row: ProviderListItem) => {
     return (
       <Link
         to={`/${PROVIDER_ROUTE_PREFIX}/${
@@ -104,52 +107,56 @@ export const ProviderList = (props: ProviderListProps) => {
     );
   };
   const formatRegions = (regions: YBRegion[]) => <RegionsCell regions={regions} />;
-  const formatProviderActions = (_: unknown, row: YBProvider) => (
-    <Dropdown id="table-actions-dropdown" pullRight>
-      <Dropdown.Toggle noCaret>
-        <img src={ellipsisIcon} alt="more" className="ellipsis-icon" />
-      </Dropdown.Toggle>
-      <Dropdown.Menu>
-        <MenuItem eventKey="1" onClick={() => handleDeleteProviderConfig(row)}>
-          <YBLabelWithIcon icon="fa fa-trash">Delete Configuration</YBLabelWithIcon>
-        </MenuItem>
-      </Dropdown.Menu>
-    </Dropdown>
-  );
+  const formatProviderActions = (_: unknown, row: ProviderListItem) => {
+    return (
+      <Dropdown id="table-actions-dropdown" pullRight>
+        <Dropdown.Toggle noCaret>
+          <img src={ellipsisIcon} alt="more" className="ellipsis-icon" />
+        </Dropdown.Toggle>
+        <Dropdown.Menu>
+          <MenuItem
+            eventKey="1"
+            onClick={() => handleDeleteProviderConfig(row)}
+            data-testid="DeleteConfiguration-button"
+            disabled={row.linkedUniverses.length > 0}
+          >
+            <YBLabelWithIcon icon="fa fa-trash">Delete Configuration</YBLabelWithIcon>
+          </MenuItem>
+        </Dropdown.Menu>
+      </Dropdown>
+    );
+  };
 
-  const formatUsage = (_: unknown, row: YBProvider) => {
-    const linkedUniverses = getLinkedUniverses(row.uuid, universeList);
-    return linkedUniverses.length ? (
+  const formatUsage = (_: unknown, row: ProviderListItem) => {
+    return row.linkedUniverses.length ? (
       <Box display="flex" gridGap="5px">
         <div>In Use</div>
-        <Box
-          height="fit-content"
-          padding="4px 6px"
-          fontSize="10px"
-          borderRadius="6px"
-          bgcolor="#e9eef2"
-        >
-          {linkedUniverses.length}
-        </Box>
+        <div className={classes.pill}>{row.linkedUniverses.length}</div>
       </Box>
     ) : (
       'Not in Use'
     );
   };
 
-  const filteredProviderList = providerList.filter((provider) =>
-    providerCode === ProviderCode.KUBERNETES
-      ? provider.code === providerCode &&
-        (KUBERNETES_PROVIDERS_MAP[props.kubernetesProviderType] as readonly string[]).includes(
-          provider.details.cloudInfo.kubernetes.kubernetesProvider
-        )
-      : provider.code === providerCode
-  );
+  const filteredProviderList: ProviderListItem[] = providerList
+    .filter((provider) =>
+      providerCode === ProviderCode.KUBERNETES
+        ? provider.code === providerCode &&
+          (KUBERNETES_PROVIDERS_MAP[props.kubernetesProviderType] as readonly string[]).includes(
+            provider.details.cloudInfo.kubernetes.kubernetesProvider
+          )
+        : provider.code === providerCode
+    )
+    .map((provider) => {
+      const linkedUniverses = getLinkedUniverses(provider.uuid, universeList);
+      return { ...provider, linkedUniverses: linkedUniverses };
+    });
   return filteredProviderList.length === 0 ? (
     <EmptyListPlaceholder
       actionButtonText={`Create ${ProviderLabel[providerCode]} Config`}
       descriptionText={`No ${ProviderLabel[providerCode]} config to show`}
       onActionButtonClick={handleCreateProviderAction}
+      dataTestIdPrefix="ProviderEmptyList"
     />
   ) : (
     <>
@@ -182,17 +189,3 @@ export const ProviderList = (props: ProviderListProps) => {
     </>
   );
 };
-
-const getLinkedUniverses = (providerUUID: string, universes: Universe[]) =>
-  universes.reduce((linkedUniverses: UniverseItem[], universe) => {
-    const linkedClusters = universe.universeDetails.clusters.filter(
-      (cluster) => cluster.userIntent.provider === providerUUID
-    );
-    if (linkedClusters.length) {
-      linkedUniverses.push({
-        ...universe,
-        linkedClusters: linkedClusters
-      });
-    }
-    return linkedUniverses;
-  }, []);

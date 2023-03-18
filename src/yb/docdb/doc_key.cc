@@ -16,6 +16,7 @@
 #include <memory>
 #include <sstream>
 
+#include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_kv_util.h"
@@ -412,6 +413,53 @@ Result<DocKeySizes> DocKey::EncodedHashPartAndDocKeySizes(
     .hash_part_size = static_cast<size_t>(callback.range_group_start() - initial_begin),
     .doc_key_size = static_cast<size_t>(decoder.left_input().data() - initial_begin),
   };
+}
+
+yb::DocKeyOffsets DocKey::ComputeKeyColumnOffsets(const Schema& schema) {
+  constexpr size_t key_entry_type_size = 1;
+  size_t offset = 0;
+
+  // Handle ColocationID or CotableID.
+  if (schema.has_colocation_id()) {
+    offset += key_entry_type_size + sizeof(ColocationId);
+  } else if (schema.has_cotable_id()) {
+    // Note: cotable id in key are not stored as string, where as key columns
+    // are stored as encoded string with additional padding.
+    offset += key_entry_type_size + kUuidSize;
+  }
+
+  DocKeyOffsets result;
+  result.key_offsets.reserve(schema.num_key_columns());
+
+  if (schema.num_hash_key_columns() != 0) {
+    offset += key_entry_type_size;  // kUInt16Hash.
+    offset += sizeof(DocKeyHash);
+
+    for (size_t i = 0; i < schema.num_hash_key_columns(); i++) {
+      result.key_offsets.push_back(offset);
+      const auto encoded_size =
+          KeyEntryValue::GetEncodedKeyEntryValueSize(schema.column(i).type()->main());
+      LOG_IF(DFATAL, encoded_size == 0)
+          << "Encountered a varlength column when computing Key offsets. Column "
+          << schema.column(i).name();
+      offset += encoded_size;
+    }
+
+    offset += key_entry_type_size;  // Hash group end.
+  }
+
+  result.hash_part_size = offset;
+
+  if (schema.num_range_key_columns() > 0) {
+    for (size_t i = schema.num_hash_key_columns(); i < schema.num_key_columns(); i++) {
+      result.key_offsets.push_back(offset);
+      offset += KeyEntryValue::GetEncodedKeyEntryValueSize(schema.column(i).type()->main());
+    }
+  }
+  offset += key_entry_type_size;  // Range group end.
+  result.doc_key_size = offset;
+
+  return result;
 }
 
 class DocKey::DecodeFromCallback {
@@ -1235,15 +1283,9 @@ Result<bool> DocKeyDecoder::HasPrimitiveValue(AllowSpecial allow_special) {
   return docdb::HasPrimitiveValue(&input_, allow_special);
 }
 
-Status DocKeyDecoder::DecodeToRangeGroup() {
+Status DocKeyDecoder::DecodeToKeys() {
   RETURN_NOT_OK(DecodeCotableId());
   RETURN_NOT_OK(DecodeColocationId());
-  if (VERIFY_RESULT(DecodeHashCode())) {
-    while (VERIFY_RESULT(HasPrimitiveValue())) {
-      RETURN_NOT_OK(DecodeKeyEntryValue());
-    }
-  }
-
   return Status::OK();
 }
 
@@ -1340,6 +1382,19 @@ bool DocKeyBelongsTo(Slice doc_key, const Schema& schema) {
     BigEndian::Store32(buf, schema.colocation_id());
     return doc_key.starts_with(Slice(buf, sizeof(ColocationId)));
   }
+}
+
+Result<bool> IsColocatedTableTombstoneKey(Slice doc_key) {
+  DocKeyDecoder decoder(doc_key);
+  if (VERIFY_RESULT(decoder.DecodeColocationId())) {
+    RETURN_NOT_OK(decoder.ConsumeGroupEnd());
+
+    if (decoder.left_input().size() == 0) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 Result<boost::optional<DocKeyHash>> DecodeDocKeyHash(const Slice& encoded_key) {

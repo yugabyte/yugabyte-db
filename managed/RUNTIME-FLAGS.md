@@ -9,6 +9,7 @@
 | "Show costs in UI" | "yb.ui.show_cost" | "CUSTOMER" | "Option to enable/disable costs in UI" | "Boolean" |
 | "Helm chart http download timeout" | "yb.releases.download_helm_chart_http_timeout" | "CUSTOMER" | "The timeout for downloading the Helm chart while importing a release using HTTP" | "Duration" |
 | "Use Redesigned Provider UI" | "yb.ui.feature_flags.provider_redesign" | "CUSTOMER" | "The redesigned provider UI adds a provider list view, a provider details view and improves the provider creation form for AWS, AZU, GCP, and K8s" | "Boolean" |
+| "Use K8 custom resources" | "yb.ui.feature_flags.k8s_custom_resources" | "CUSTOMER" | "Allows user to select custom K8 memory(GB) and cpu cores" | "Boolean" |
 | "Enforce User Tags" | "yb.universe.user_tags.is_enforced" | "CUSTOMER" | "Prevents universe creation when the enforced tags are not provided." | "Boolean" |
 | "Enforced User Tags List" | "yb.universe.user_tags.enforced_tags" | "CUSTOMER" | "A list of enforced user tag and accepted value pairs during universe creation. Pass '*' to accept all values for a tag. Ex: [\"yb_task:dev\",\"yb_task:test\",\"yb_owner:*\",\"yb_dept:eng\",\"yb_dept:qa\", \"yb_dept:product\", \"yb_dept:sales\"]" | "Key Value SetMultimap" |
 | "Allow Unsupported Instances" | "yb.internal.allow_unsupported_instances" | "PROVIDER" | "Enabling removes supported instance type filtering on AWS providers." | "Boolean" |
@@ -24,9 +25,17 @@
 | "Default AWS Volume Size" | "yb.aws.default_volume_size_gb" | "PROVIDER" | "Default AWS Volume Size" | "Integer" |
 | "Default GCP Volume Size" | "yb.gcp.default_volume_size_gb" | "PROVIDER" | "Default GCP Volume Size" | "Integer" |
 | "Default Azure Volume Size" | "yb.azure.default_volume_size_gb" | "PROVIDER" | "Default Azure Volume Size" | "Integer" |
+| "Default Kubernetes Volume Count" | "yb.kubernetes.default_volume_count" | "PROVIDER" | "Default Kubernetes Volume Count" | "Integer" |
 | "Default Kubernetes Volume Size" | "yb.kubernetes.default_volume_size_gb" | "PROVIDER" | "Default Kubernetes Volume Size" | "Integer" |
+| "Default Kubernetes CPU cores" | "yb.kubernetes.default_cpu_cores" | "PROVIDER" | "Default Kubernetes CPU cores" | "Integer" |
+| "Minimum Kubernetes CPU cores" | "yb.kubernetes.min_cpu_cores" | "PROVIDER" | "Minimum Kubernetes CPU cores" | "Integer" |
+| "Maximum Kubernetes CPU cores" | "yb.kubernetes.max_cpu_cores" | "PROVIDER" | "Maximum Kubernetes CPU cores" | "Integer" |
+| "Default Kubernetes Memory Size" | "yb.kubernetes.default_memory_size_gb" | "PROVIDER" | "Default Kubernetes Memory Size" | "Integer" |
+| "Minimum Kubernetes Memory Size" | "yb.kubernetes.min_memory_size_gb" | "PROVIDER" | "Minimum Kubernetes Memory Size" | "Integer" |
+| "Maximum Kubernetes Memory Size" | "yb.kubernetes.max_memory_size_gb" | "PROVIDER" | "Maximum Kubernetes Memory Size" | "Integer" |
 | "Enable Node Agent Client" | "yb.node_agent.client.enabled" | "PROVIDER" | "Enable node agent client for communication to DB nodes." | "Boolean" |
 | "Install Node Agent Server" | "yb.node_agent.server.install" | "PROVIDER" | "Install node agent server on DB nodes." | "Boolean" |
+| "Enable Ansible Offloading" | "yb.node_agent.ansible_offloading.enabled" | "PROVIDER" | "Offload ansible tasks to the DB nodes." | "Boolean" |
 | "Max Number of Parallel Node Checks" | "yb.health.max_num_parallel_node_checks" | "GLOBAL" | "Number of parallel node checks, spawned as part of universes health check process" | "Integer" |
 | "Log Script Output For YBA HA Feature" | "yb.ha.logScriptOutput" | "GLOBAL" | "To log backup restore script output for debugging issues" | "Boolean" |
 | "Use Kubectl" | "yb.use_kubectl" | "GLOBAL" | "Use java library instead of spinning up kubectl process." | "Boolean" |
@@ -51,6 +60,8 @@
 | "KMS Refresh Interval" | "yb.kms.refresh_interval" | "GLOBAL" | "Default refresh interval for the KMS providers." | "Duration" |
 | "Enable Detailed Logs" | "yb.security.enable_detailed_logs" | "GLOBAL" | "Enable detailed security logs" | "Boolean" |
 | "Task Garbage Collector Check Interval" | "yb.taskGC.gc_check_interval" | "GLOBAL" | "How frequently do we check for completed tasks in database" | "Duration" |
+| "API support for backward compatible date fields" | "yb.api.backward_compatible_date" | "GLOBAL" | "Enable when a client to the YBAnywhere API wants to continue using the older date  fields in non-ISO format. Default behaviour is to not populate such deprecated API fields and only return newer date fields." | "Boolean" |
+| "Allow universes to be detached/attached" | "yb.attach_detach.enabled" | "GLOBAL" | "Allow universes to be detached from a source platform and attached to dest platform" | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
@@ -108,3 +119,7 @@
 | "Clean Orphan snapshots" | "yb.snapshot_cleanup.delete_orphan_on_startup" | "UNIVERSE" | "Clean orphan(non-scheduled) snapshots on Yugaware startup/restart" | "Boolean" |
 | "Enable https on Master/TServer UI" | "yb.node_ui.https.enabled" | "UNIVERSE" | "Allow https on Master/TServer UI for a universe" | "Boolean" |
 | "Helm Timeout in Seconds" | "yb.helm.timeout_secs" | "UNIVERSE" | "Timeout used for internal universe-level helm operations like install/upgrade in secs" | "Long" |
+| "Enable Perf Advisor to view recommendations" | "yb.ui.feature_flags.perf_advisor" | "UNIVERSE" | "Builds recommendations to help tune our applications accordingly" | "Boolean" |
+| "Promote AutoFlags" | "yb.upgrade.promote_auto_flag" | "UNIVERSE" | "Promotes Auto flags while upgrading YB-DB" | "Boolean" |
+| "Allow upgrade on transit universe" | "yb.upgrade.allow_upgrade_on_transit_universe" | "UNIVERSE" | "Allow universe upgrade when nodes are in transit mode" | "Boolean" |
+| "Promote AutoFlags Forcefully" | "yb.upgrade.promote_flags_forcefully" | "UNIVERSE" | "Promote AutoFlags Forcefully during software upgrade" | "Boolean" |

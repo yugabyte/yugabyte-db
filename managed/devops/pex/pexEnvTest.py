@@ -1,7 +1,12 @@
 import pkg_resources
+import argparse
 from pkg_resources import DistributionNotFound, VersionConflict
 
-modules = open('../python3_requirements_frozen.txt', 'r').readlines()
+parser = argparse.ArgumentParser()
+parser.add_argument("-r", "--requirements", help="Source Python file", required=True)
+args = parser.parse_args()
+
+modules = open(args.requirements, 'r').readlines()
 
 for module in modules:
     try:

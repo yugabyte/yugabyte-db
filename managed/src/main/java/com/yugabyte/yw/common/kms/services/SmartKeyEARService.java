@@ -11,6 +11,7 @@
 package com.yugabyte.yw.common.kms.services;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
@@ -166,5 +167,19 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
     if (errors != null) throw new RuntimeException(errors.toString());
     keyVal = Base64.getDecoder().decode(response.get("value").asText());
     return keyVal;
+  }
+
+  @Override
+  public ObjectNode getKeyMetadata(UUID configUUID) {
+    ObjectNode keyMetadata = new ObjectMapper().createObjectNode();
+
+    // Add key_provider field.
+    keyMetadata.put("key_provider", KeyProvider.SMARTKEY.name());
+    return keyMetadata;
+  }
+
+  public byte[] encryptKeyWithService(UUID configUUID, byte[] universeKey) {
+    // KMS is deprecated. No more new functionality.
+    return null;
   }
 }

@@ -164,13 +164,11 @@ Result<bool> GetPgIndexStatus(
 
   const auto idx_oid = VERIFY_RESULT(GetPgsqlTableOid(idx_id));
 
-  auto iter = VERIFY_RESULT(catalog_tablet->NewRowIterator(projection.CopyWithoutColumnIds(),
-                                                           {} /* read_hybrid_time */,
-                                                           pg_index_id));
+  auto iter = VERIFY_RESULT(catalog_tablet->NewUninitializedDocRowIterator(
+      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_index_id));
 
   // Filtering by 'indexrelid' == idx_oid.
   {
-    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
     PgsqlConditionPB cond;
     cond.add_operands()->set_column_id(indexrelid_col_id);
     cond.set_op(QL_OP_EQUAL);
@@ -184,7 +182,7 @@ Result<bool> GetPgIndexStatus(
                                  boost::none /* hash_code */,
                                  boost::none /* max_hash_code */,
                                  nullptr /* where_expr */);
-    RETURN_NOT_OK(doc_iter->Init(spec));
+    RETURN_NOT_OK(iter->Init(spec));
   }
 
   // Expecting one row at most.
@@ -608,6 +606,7 @@ MonitoredTaskState BackfillTableJob::AbortAndReturnPrevState(const Status& statu
   while (!IsStateTerminal(old_state)) {
     if (state_.compare_exchange_strong(old_state,
                                        MonitoredTaskState::kAborted)) {
+      MarkDone();
       return old_state;
     }
     old_state = state();
@@ -623,6 +622,15 @@ void BackfillTableJob::SetState(MonitoredTaskState new_state) {
     }
   }
 }
+
+void BackfillTableJob::MarkDone() {
+  completion_timestamp_ = MonoTime::Now();
+  if (backfill_table_) {
+    backfill_table_->table()->RemoveTask(shared_from_this());
+    backfill_table_.reset();
+  }
+}
+
 // -----------------------------------------------------------------------------------------------
 // BackfillTable
 // -----------------------------------------------------------------------------------------------
@@ -720,6 +728,7 @@ const std::unordered_set<TableId> BackfillTable::indexes_to_build() const {
 Status BackfillTable::Launch() {
   backfill_job_ = std::make_shared<BackfillTableJob>(shared_from_this());
   backfill_job_->SetState(MonitoredTaskState::kRunning);
+  table()->AddTask(backfill_job_);
   master_->catalog_manager_impl()->jobs_tracker_->AddTask(backfill_job_);
 
   {

@@ -11,14 +11,13 @@ import DataCenterConfigurationContainer from '../components/config/ConfigProvide
 import { DataCenterConfigRedesign } from '../components/configRedesign/DataCenterConfigRedesign';
 import { YBErrorIndicator, YBLoading } from '../components/common/indicators';
 import { api, runtimeConfigQueryKey } from '../redesign/helpers/api';
-
-const PROVIDER_REDESIGN_FEATURE_FLAG_KEY = 'yb.ui.feature_flags.provider_redesign';
+import { RuntimeConfigKey } from '../redesign/helpers/constants';
 
 export const DataCenterConfiguration = (props: any) => {
   const customerUUID = localStorage.getItem('customerId') ?? '';
   const customerRuntimeConfigQuery = useQuery(
     runtimeConfigQueryKey.customerScope(customerUUID),
-    () => api.fetchRuntimeConfigs(customerUUID)
+    () => api.fetchRuntimeConfigs(customerUUID, true)
   );
 
   if (customerRuntimeConfigQuery.isLoading || customerRuntimeConfigQuery.isIdle) {
@@ -31,7 +30,8 @@ export const DataCenterConfiguration = (props: any) => {
   }
   const runtimeConfigEntries = customerRuntimeConfigQuery.data.configEntries ?? [];
   const shouldShowRedesignedUI = runtimeConfigEntries.some(
-    (config: any) => config.key === PROVIDER_REDESIGN_FEATURE_FLAG_KEY && config.value === 'true'
+    (config: any) =>
+      config.key === RuntimeConfigKey.PROVIDER_REDESIGN_FEATURE_FLAG && config.value === 'true'
   );
 
   return (

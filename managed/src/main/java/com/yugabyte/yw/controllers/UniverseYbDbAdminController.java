@@ -167,16 +167,6 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
 
   @VisibleForTesting static final String DEPRECATED = "Deprecated.";
 
-  // TODO: should this be tagged as deprecated?
-  // @Deprecated
-  @ApiOperation(
-      value = "Run a shell command",
-      notes = "This operation is no longer supported, for security reasons.",
-      response = YBPError.class)
-  public Result runInShell(UUID customerUUID, UUID universeUUID) {
-    throw new PlatformServiceException(BAD_REQUEST, DEPRECATED);
-  }
-
   @ApiOperation(
       value = "Run a YSQL query in a universe",
       notes = "Runs a YSQL query. Only valid when the platform is running in `OSS` mode.",
@@ -201,7 +191,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.RunYsqlQuery,
-            Json.toJson(formData.data()));
+            Json.toJson(formData.get()));
     return PlatformResults.withRawData(queryResult);
   }
 }

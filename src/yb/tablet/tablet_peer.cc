@@ -112,10 +112,6 @@ DEFINE_UNKNOWN_int32(cdc_min_replicated_index_considered_stale_secs, 900,
 DEFINE_UNKNOWN_bool(propagate_safe_time, true,
     "Propagate safe time to read from leader to followers");
 
-DEFINE_UNKNOWN_int32(wait_queue_poll_interval_ms, 1000,
-    "The interval duration between wait queue polls to fetch transaction statuses of "
-    "active blockers.");
-
 DEFINE_RUNTIME_bool(abort_active_txns_during_xcluster_bootstrap, true,
     "Abort active transactions during bootstrapping.");
 
@@ -233,18 +229,6 @@ Status TabletPeer::InitTabletPeer(
     service_thread_pool_ = &messenger->ThreadPool();
     strand_.reset(new rpc::Strand(&messenger->ThreadPool()));
     messenger_ = messenger;
-    if (tablet_->wait_queue()) {
-      std::weak_ptr<TabletPeer> weak_self = shared_from(this);
-      wait_queue_heartbeater_ = rpc::PeriodicTimer::Create(
-          messenger_,
-          [weak_self]() {
-            if (auto shared_self = weak_self.lock()) {
-              shared_self->PollWaitQueue();
-            }
-          },
-          FLAGS_wait_queue_poll_interval_ms * 1ms);
-      wait_queue_heartbeater_->Start();
-    }
 
     tablet->SetMemTableFlushFilterFactory([log] {
       auto largest_log_op_index = log->GetLatestEntryOpId().index;
@@ -463,10 +447,6 @@ consensus::RaftConfigPB TabletPeer::RaftConfig() const {
 
 bool TabletPeer::StartShutdown() {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
-
-  if (wait_queue_heartbeater_) {
-    wait_queue_heartbeater_->Stop();
-  }
 
   {
     std::lock_guard<decltype(lock_)> lock(lock_);
@@ -1074,7 +1054,7 @@ yb::OpId TabletPeer::GetLatestLogEntryOpId() const {
 }
 
 Status TabletPeer::set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index) {
-  LOG_WITH_PREFIX(INFO) << "Setting cdc min replicated index to " << cdc_min_replicated_index;
+  VLOG(1) << "Setting cdc min replicated index to " << cdc_min_replicated_index;
   RETURN_NOT_OK(meta_->set_cdc_min_replicated_index(cdc_min_replicated_index));
   Log* log = log_atomic_.load(std::memory_order_acquire);
   if (log) {
@@ -1107,14 +1087,13 @@ int64_t TabletPeer::get_cdc_min_replicated_index() {
 }
 
 Status TabletPeer::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_checkpoint_op_id) {
-  LOG_WITH_PREFIX(INFO) << "Setting CDCSDK min checkpoint opId to "
-                        << cdc_sdk_min_checkpoint_op_id.ToString();
+  VLOG(1) << "Setting CDCSDK min checkpoint opId to " << cdc_sdk_min_checkpoint_op_id.ToString();
   RETURN_NOT_OK(meta_->set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_min_checkpoint_op_id));
   return Status::OK();
 }
 
 Status TabletPeer::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time) {
-  LOG_WITH_PREFIX(INFO) << "Setting CDCSDK safe time to " << cdc_sdk_safe_time;
+  VLOG(1) << "Setting CDCSDK safe time to " << cdc_sdk_safe_time;
   RETURN_NOT_OK(meta_->set_cdc_sdk_safe_time(cdc_sdk_safe_time));
   return Status::OK();
 }
@@ -1137,6 +1116,10 @@ CoarseTimePoint TabletPeer::cdc_sdk_min_checkpoint_op_id_expiration() {
   }
 
   return CoarseTimePoint();
+}
+
+bool TabletPeer::is_under_cdc_sdk_replication() {
+  return meta_->is_under_cdc_sdk_replication();
 }
 
 OpId TabletPeer::GetLatestCheckPoint() {
@@ -1631,14 +1614,6 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
   return STATUS(
       IllegalState,
       Substitute("Unable to find peer $0 in config for tablet $1", requestor_uuid, tablet_id()));
-}
-
-void TabletPeer::PollWaitQueue() const {
-  auto tablet = shared_tablet();
-  if (tablet) {
-    DCHECK_NOTNULL(tablet->wait_queue());
-    tablet->wait_queue()->Poll(clock_->Now());
-  }
 }
 
 }  // namespace tablet

@@ -31,6 +31,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -43,6 +44,7 @@ import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.AlertingData;
@@ -98,7 +100,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
-import play.Configuration;
 import play.Environment;
 import play.inject.ApplicationLifecycle;
 import play.libs.Json;
@@ -123,7 +124,7 @@ public class HealthChecker {
 
   private final Environment environment;
 
-  private final play.Configuration config;
+  private final Config config;
 
   // Last time we sent a status update email per customer.
   private final Map<UUID, Long> lastStatusUpdateTimeMap = new HashMap<>();
@@ -164,7 +165,7 @@ public class HealthChecker {
   @Inject
   public HealthChecker(
       Environment environment,
-      Configuration config,
+      Config config,
       PlatformExecutorFactory platformExecutorFactory,
       PlatformScheduler platformScheduler,
       HealthCheckerReport healthCheckerReport,
@@ -191,7 +192,7 @@ public class HealthChecker {
 
   HealthChecker(
       Environment environment,
-      Configuration config,
+      Config config,
       PlatformScheduler platformScheduler,
       HealthCheckerReport healthCheckerReport,
       EmailHelper emailHelper,
@@ -714,8 +715,11 @@ public class HealthChecker {
         if (providerCode.equals(Common.CloudType.kubernetes.toString())) {
           nodeInfo.setK8s(true);
         }
-        if (userIntent.tserverGFlags.containsKey("ssl_protocols")) {
-          nodeInfo.setSslProtocol(cluster.userIntent.tserverGFlags.get("ssl_protocols"));
+        Map<String, String> tserverGflags =
+            GFlagsUtil.getGFlagsForNode(
+                nodeDetails, UniverseTaskBase.ServerType.TSERVER, cluster, details.clusters);
+        if (tserverGflags.containsKey("ssl_protocols")) {
+          nodeInfo.setSslProtocol(tserverGflags.get("ssl_protocols"));
         }
         if (nodeInfo.enableYSQL && nodeDetails.isYsqlServer) {
           nodeInfo.setYsqlPort(nodeDetails.ysqlServerRpcPort);
@@ -757,7 +761,7 @@ public class HealthChecker {
 
     Details fullReport =
         new Details()
-            .setTimestamp(startTime)
+            .setTimestampIso(startTime)
             .setYbVersion(details.getPrimaryCluster().userIntent.ybSoftwareVersion)
             .setData(nodeReports)
             .setHasError(nodeReports.stream().anyMatch(NodeData::getHasError))
@@ -841,7 +845,7 @@ public class HealthChecker {
               .setNode(nodeInfo.nodeHost)
               .setNodeName(nodeInfo.nodeName)
               .setMessage("Node")
-              .setTimestamp(new Date());
+              .setTimestampIso(new Date());
       try {
         CompletableFuture<Details> future = nodeChecks.get(nodeInfo.getNodeName());
         result.addAll(future.get().getData());
@@ -1061,7 +1065,7 @@ public class HealthChecker {
             .filter(data -> !data.getMetricsOnly())
             .collect(Collectors.toList());
     return new Details()
-        .setTimestamp(details.getTimestamp())
+        .setTimestampIso(details.getTimestampIso())
         .setYbVersion(details.getYbVersion())
         .setData(nodeReports)
         .setHasError(nodeReports.stream().anyMatch(NodeData::getHasError))

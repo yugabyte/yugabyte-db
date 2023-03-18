@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
@@ -63,32 +64,32 @@ public class RegionControllerTest extends FakeDBApplication {
   private Result listRegions(UUID providerUUID) {
     String uri =
         String.format("/api/customers/%s/providers/%s/regions", customer.uuid, providerUUID);
-    return FakeApiHelper.doRequest("GET", uri);
+    return doRequest("GET", uri);
   }
 
   private Result listAllRegions() {
     String uri = String.format("/api/customers/%s/regions", customer.uuid);
-    return FakeApiHelper.doRequest("GET", uri);
+    return doRequest("GET", uri);
   }
 
   private Result createRegion(UUID providerUUID, JsonNode body) {
     String uri =
         String.format("/api/customers/%s/providers/%s/regions", customer.uuid, providerUUID);
-    return FakeApiHelper.doRequestWithBody("POST", uri, body);
+    return doRequestWithBody("POST", uri, body);
   }
 
   private Result deleteRegion(UUID providerUUID, UUID regionUUID) {
     String uri =
         String.format(
             "/api/customers/%s/providers/%s/regions/%s", customer.uuid, providerUUID, regionUUID);
-    return FakeApiHelper.doRequest("DELETE", uri);
+    return doRequest("DELETE", uri);
   }
 
   private Result editRegion(UUID providerUUID, UUID regionUUID, JsonNode body) {
     String uri =
         String.format(
             "/api/customers/%s/providers/%s/regions/%s", customer.uuid, providerUUID, regionUUID);
-    return FakeApiHelper.doRequestWithBody("PUT", uri, body);
+    return doRequestWithBody("PUT", uri, body);
   }
 
   @Test
@@ -326,10 +327,7 @@ public class RegionControllerTest extends FakeDBApplication {
     Result result = deleteRegion(provider.uuid, r.uuid);
     assertEquals(OK, result.status());
 
-    JsonNode json = Json.parse(contentAsString(result));
-    assertTrue(json.get("success").asBoolean());
-
-    assertNull(Region.get(r.uuid));
+    assertFalse(Region.get(r.uuid).isActive());
   }
 
   @Test

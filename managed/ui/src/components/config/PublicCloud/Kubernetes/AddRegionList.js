@@ -179,10 +179,10 @@ class AddRegionList extends Component {
     const { regionIndex, showZoneForm } = this.state;
     const { regionList } = formik.values;
     const currentRegion = regionList[regionIndex];
-    const zoneIndex = currentRegion?.zoneList?.length ? currentRegion.zoneList.length - 1 : 0;
-    const nonEditingZones = currentRegion?.zoneList
-      ? currentRegion.zoneList?.slice(0, zoneIndex)
-      : [];
+    const zoneIndex =
+      currentRegion?.zoneList?.length ? currentRegion.zoneList.length - 1 : 0;
+    const nonEditingZones =
+      currentRegion?.zoneList ? currentRegion.zoneList?.slice(0, zoneIndex) : [];
     const regionOptions = REGION_METADATA.map((region) => ({
       value: region.code,
       label: region.name
@@ -435,7 +435,6 @@ class AddRegionList extends Component {
                                         <Field
                                           name={`regionList[${regionIndex}].zoneList[${zoneIndex}].zoneKubeConfig`}
                                           component={YBFormDropZone}
-                                          className="upload-file-button"
                                           title={'Upload Kube Config file'}
                                         />
                                       </Col>

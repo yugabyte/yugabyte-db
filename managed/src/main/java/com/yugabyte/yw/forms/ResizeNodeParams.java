@@ -6,7 +6,6 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -301,7 +300,6 @@ public class ResizeNodeParams extends UpgradeTaskParams {
           InstanceType.findByProvider(
               Provider.getOrBadRequest(UUID.fromString(provider)),
               Play.current().injector().instanceOf(Config.class),
-              Play.current().injector().instanceOf(ConfigHelper.class),
               allowUnsupportedInstances);
       InstanceType newInstanceType =
           instanceTypes

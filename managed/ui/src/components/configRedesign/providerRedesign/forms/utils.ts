@@ -4,8 +4,10 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import axios, { AxiosError } from 'axios';
+import { AxiosError } from 'axios';
 import { FieldValues, Path, UseFormSetError } from 'react-hook-form';
+
+import { YBBeanValidationError, YBPError } from '../../../../redesign/helpers/dtos';
 
 export const readFileAsText = (sshKeyFile: File) => {
   const reader = new FileReader();
@@ -58,13 +60,27 @@ export const deleteItem = <TFieldItem extends FieldItem>(
   }
 };
 
-export const handleAsyncError = <TFieldValues extends FieldValues>(
-  error: Error | AxiosError,
+/**
+ * Handle server errors on the form component.
+ */
+export const handleFormServerError = <TFieldValues extends FieldValues, TFormError>(
+  error: Error | AxiosError<TFormError>,
   asyncErrorField: Path<TFieldValues>,
   setError: UseFormSetError<TFieldValues>
 ) => {
-  const errorMessage = axios.isAxiosError(error)
-    ? error.response?.data?.error?.message ?? error.message
-    : error.message;
-  setError(asyncErrorField, errorMessage);
+  // Currently we handle server errors by setting an error on a form field
+  // provided by the caller. This will cause the form submission to fail since a field
+  // has an error.
+  // It is the responsisbility of the caller to clear this error when they wish to resubmit.
+  setError(asyncErrorField, { type: 'server', message: error.message });
 };
+
+export const getCreateProviderErrorMessage = (
+  error: AxiosError<YBBeanValidationError | YBPError>
+) =>
+  typeof error.response?.data.error === 'string' || error.response?.data.error instanceof String
+    ? `Create provider request failed: ${error.response.data.error as string}`
+    : 'Form validation failed.';
+
+export const generateLowerCaseAlphanumericId = (stringLength = 14) =>
+  Array.from(Array(stringLength), () => Math.floor(Math.random() * 36).toString(36)).join('');

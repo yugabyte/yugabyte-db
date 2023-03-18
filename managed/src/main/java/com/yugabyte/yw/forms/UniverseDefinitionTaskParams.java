@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.forms;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -19,6 +21,7 @@ import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -29,12 +32,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.ApiModelProperty;
-import lombok.ToString;
-import org.apache.commons.lang3.StringUtils;
-import play.data.validation.Constraints;
-
-import javax.annotation.Nullable;
-import javax.validation.constraints.Size;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -47,8 +44,11 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
+import javax.annotation.Nullable;
+import javax.validation.constraints.Size;
+import lombok.ToString;
+import org.apache.commons.lang3.StringUtils;
+import play.data.validation.Constraints;
 
 /**
  * This class captures the user intent for creation of the universe. Note some nuances in the way
@@ -300,11 +300,24 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     public void validate(boolean validateGFlagsConsistency, boolean isAuthEnforced) {
+      if (uuid == null) {
+        throw new IllegalStateException("Cluster uuid should not be null");
+      }
+      if (placementInfo == null) {
+        throw new IllegalStateException("Placement should be provided");
+      }
       checkDeviceInfo();
       checkStorageType();
       validateAuth(isAuthEnforced);
       if (validateGFlagsConsistency) {
         GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
+      }
+      if (userIntent.specificGFlags != null) {
+        if (clusterType == ClusterType.PRIMARY
+            && userIntent.specificGFlags.isInheritFromPrimary()) {
+          throw new IllegalStateException("Cannot inherit gflags for primary cluster");
+        }
+        userIntent.specificGFlags.validateConsistency();
       }
     }
 
@@ -462,6 +475,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty(value = "Whether to assign static public IP")
     public boolean assignStaticPublicIP = false;
 
+    @ApiModelProperty(notes = "default: false")
+    public boolean useSpotInstance = false;
+
+    @ApiModelProperty(notes = "Max price we are willing to pay for spot instance")
+    public Double spotPrice = 0.0;
+
     @ApiModelProperty() public boolean useTimeSync = false;
 
     @ApiModelProperty() public boolean enableYCQL = true;
@@ -529,6 +548,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Device info for dedicated master nodes.
     @Nullable @ApiModelProperty public DeviceInfo masterDeviceInfo;
 
+    // New version of gflags. If present - replaces old masterGFlags/tserverGFlags thing
+    @ApiModelProperty public SpecificGFlags specificGFlags;
+
     @Override
     public String toString() {
       return "UserIntent "
@@ -536,6 +558,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           + universeName
           + " type="
           + instanceType
+          + ", spotInstance="
+          + useSpotInstance
+          + ", spotPrice="
+          + spotPrice
           + ", numNodes="
           + numNodes
           + ", prov="
@@ -581,7 +607,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.useSystemd = useSystemd;
       newUserIntent.accessKeyCode = accessKeyCode;
       newUserIntent.assignPublicIP = assignPublicIP;
+      newUserIntent.useSpotInstance = useSpotInstance;
+      newUserIntent.spotPrice = spotPrice;
       newUserIntent.assignStaticPublicIP = assignStaticPublicIP;
+      newUserIntent.specificGFlags = specificGFlags == null ? null : specificGFlags.clone();
       newUserIntent.masterGFlags = new HashMap<>(masterGFlags);
       newUserIntent.tserverGFlags = new HashMap<>(tserverGFlags);
       newUserIntent.useTimeSync = useTimeSync;
@@ -642,6 +671,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && ybSoftwareVersion.equals(other.ybSoftwareVersion)
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
+          && useSpotInstance == other.useSpotInstance
+          && spotPrice == other.spotPrice
           && assignStaticPublicIP == other.assignStaticPublicIP
           && useTimeSync == other.useTimeSync
           && useSystemd == other.useSystemd
@@ -664,6 +695,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && ybSoftwareVersion.equals(other.ybSoftwareVersion)
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
+          && useSpotInstance == other.useSpotInstance
+          && spotPrice == other.spotPrice
           && assignStaticPublicIP == other.assignStaticPublicIP
           && useTimeSync == other.useTimeSync
           && dedicatedNodes == other.dedicatedNodes
@@ -1026,11 +1059,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    */
   @JsonIgnore
   public File getSourceRootCertDirPath() {
-    UniverseDefinitionTaskParams.UserIntent userIntent = getPrimaryCluster().userIntent;
+    Map<String, String> masterGflags =
+        GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, getPrimaryCluster(), clusters);
+    Map<String, String> tserverGflags =
+        GFlagsUtil.getBaseGFlags(
+            UniverseTaskBase.ServerType.TSERVER, getPrimaryCluster(), clusters);
     String gflagValueOnMasters =
-        userIntent.masterGFlags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+        masterGflags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
     String gflagValueOnTServers =
-        userIntent.tserverGFlags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+        tserverGflags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
     if (gflagValueOnMasters != null || gflagValueOnTServers != null) {
       if (!Objects.equals(gflagValueOnMasters, gflagValueOnTServers)) {
         throw new IllegalStateException(

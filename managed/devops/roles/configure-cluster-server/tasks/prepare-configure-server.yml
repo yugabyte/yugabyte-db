@@ -16,6 +16,11 @@
     mount_cores_dir: "{{ _mount_points[0] }}/cores"
   tags: always
 
+- set_fact:
+    systemd_unit_dir: "/usr/lib/systemd/system"
+  when: ansible_distribution == "SLES"
+  tags: always
+
 - name: Configure | Add yb server ctl script
   vars:
     mount_paths: "{{ _mount_points | join(' ') }}"
@@ -190,7 +195,7 @@
     # Necessary for yb-master/tserver to be accessible. 'After' in service file.
     - name: Link network-online.target
       shell:
-        cmd: "systemctl --user link /usr/lib/systemd/system/network-online.target"
+        cmd: "systemctl --user link {{ systemd_unit_dir }}/network-online.target"
 
     - name: Start network-online.target
       systemd:

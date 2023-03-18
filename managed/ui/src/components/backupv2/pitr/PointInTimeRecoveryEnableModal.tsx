@@ -115,6 +115,8 @@ export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalPr
       onFormSubmit={handleSubmit}
       showCancelButton
       dialogClassName="pitr-enable-modal"
+      submitTestId="EnablePitrSubmitBtn"
+      cancelTestId="EnablePitrCancelBtn"
       initialValues={initialValues}
       validationSchema={validationSchema}
       render={({ values, setFieldValue, errors }: FormikProps<Form_Values>) => {
@@ -144,6 +146,7 @@ export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalPr
                   components={{
                     IndicatorSeparator: null
                   }}
+                  id="PitrApiTypeSelector"
                 />
               </Col>
             </Row>
@@ -160,6 +163,7 @@ export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalPr
                   components={{
                     IndicatorSeparator: null
                   }}
+                  id="PitrDBNameSelector"
                 />
               </Col>
             </Row>
@@ -173,7 +177,8 @@ export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalPr
                       component={YBNumericInput}
                       input={{
                         onChange: (val: number) => setFieldValue('retention_interval', val),
-                        value: values['retention_interval']
+                        value: values['retention_interval'],
+                        id: 'PitrRetentionPeriodInput'
                       }}
                       minVal={2}
                     />

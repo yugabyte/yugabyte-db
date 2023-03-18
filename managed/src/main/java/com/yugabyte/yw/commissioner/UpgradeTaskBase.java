@@ -542,10 +542,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     }
   }
 
-  protected TaskExecutor.SubTaskGroup createNodeDetailsUpdateTask(
+  protected SubTaskGroup createNodeDetailsUpdateTask(
       NodeDetails node, boolean updateCustomImageUsage) {
-    TaskExecutor.SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("UpdateNodeDetails", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateNodeDetails");
     UpdateNodeDetails.Params updateNodeDetailsParams = new UpdateNodeDetails.Params();
     updateNodeDetailsParams.universeUUID = taskParams().universeUUID;
     updateNodeDetailsParams.azUuid = node.azUuid;
@@ -576,11 +575,22 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
+      ServerType processType = getSingle(processTypes);
+      Map<String, String> oldGflags;
+      Map<String, String> newGflags;
+      if (processType == ServerType.MASTER) {
+        newGflags = masterGflags;
+        oldGflags = getUserIntent().masterGFlags;
+      } else if (processType == ServerType.TSERVER) {
+        newGflags = tserverGflags;
+        oldGflags = getUserIntent().tserverGFlags;
+      } else {
+        throw new IllegalStateException("Unknown process type for updating gflags " + processType);
+      }
       subTaskGroup.addSubTask(
-          getAnsibleConfigureServerTask(
-              userIntent, node, getSingle(processTypes), masterGflags, tserverGflags));
+          getAnsibleConfigureServerTask(userIntent, node, processType, oldGflags, newGflags));
     }
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -590,20 +600,13 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       UniverseDefinitionTaskParams.UserIntent userIntent,
       NodeDetails node,
       ServerType processType,
-      Map<String, String> masterGflags,
-      Map<String, String> tserverGflags) {
+      Map<String, String> oldGflags,
+      Map<String, String> newGflags) {
     AnsibleConfigureServers.Params params =
         getAnsibleConfigureServerParams(
             userIntent, node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None);
-    if (processType.equals(ServerType.MASTER)) {
-      params.gflags = masterGflags;
-      params.gflagsToRemove =
-          GFlagsUtil.getDeletedGFlags(getUserIntent().masterGFlags, masterGflags);
-    } else {
-      params.gflags = tserverGflags;
-      params.gflagsToRemove =
-          GFlagsUtil.getDeletedGFlags(getUserIntent().tserverGFlags, tserverGflags);
-    }
+    params.gflags = newGflags;
+    params.gflagsToRemove = GFlagsUtil.getDeletedGFlags(oldGflags, newGflags);
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);

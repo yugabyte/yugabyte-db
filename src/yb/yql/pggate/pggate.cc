@@ -67,7 +67,6 @@
 #include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
-#include "yb/yql/pggate/pg_sys_table_prefetcher.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_truncate_colocated.h"
@@ -180,21 +179,22 @@ class PrecastRequestSender {
  public:
   Result<PgDocResponse> Send(
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t in_txn_limit, ForceNonBufferable force_non_bufferable) {
+      HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable) {
     if (!collecting_mode_) {
       auto future = VERIFY_RESULT(session->RunAsync(
-          ops, ops_count, table, &in_txn_limit, force_non_bufferable));
-      return PgDocResponse(std::move(future), in_txn_limit);
+          ops, ops_count, table, in_txn_limit, force_non_bufferable));
+      return PgDocResponse(std::move(future));
     }
-    // For now PrecastRequestSender can work with zero in txn limit only.
-    // Zero read time means that current time should be used as in txn limit.
-    RSTATUS_DCHECK(!in_txn_limit, IllegalState, "Only zero read time is expected");
+    // For now PrecastRequestSender can work only with a new in txn limit set to the current time
+    // for each batch of ops. It doesn't use a single in txn limit for all read ops in a statement.
+    // TODO: Expalin why is this the case because it differs from requirement 1 in
+    // src/yb/yql/pggate/README
+    RSTATUS_DCHECK(!in_txn_limit, IllegalState, "Only zero is expected");
     for (auto end = ops + ops_count; ops != end; ++ops) {
       ops_.emplace_back(*ops, table);
     }
     if (!provider_state_) {
-      provider_state_ = std::make_shared<ResponseProvider::State>(
-          rpc::CallResponsePtr(), 0 /* in_txn_limit */);
+      provider_state_ = std::make_shared<ResponseProvider::State>();
     }
     return PgDocResponse(std::make_unique<ResponseProvider>(provider_state_));
   }
@@ -222,8 +222,8 @@ class PrecastRequestSender {
           }
           auto& info = *i++;
           return TO{.operation = &info.operation, .table = info.table};
-        }), &provider_state_->in_txn_limit));
-    provider_state_->response = VERIFY_RESULT(perform_future.Get());
+        }), HybridTime()));
+    *provider_state_ = VERIFY_RESULT(perform_future.Get());
     return Status::OK();
   }
 
@@ -247,8 +247,9 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
   boost::container::small_vector<std::unique_ptr<PgDocReadOp>, 16> doc_ops;
   auto request_sender = [&precast_sender](
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t in_txn_limit, ForceNonBufferable force_non_bufferable) {
-    return precast_sender.Send(session, ops, ops_count, table, in_txn_limit, force_non_bufferable);
+      HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable) {
+    return precast_sender.Send(
+        session, ops, ops_count, table, in_txn_limit, force_non_bufferable);
   };
   // Start all the doc_ops to read from docdb in parallel, one doc_op per table ID.
   // Each doc_op will use request_sender to send all the requests with single perform RPC.
@@ -1523,12 +1524,12 @@ Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_p
   auto& dml_read = *down_cast<PgDmlRead*>(handle);
   if (pg_sys_table_prefetcher_ && dml_read.IsReadFromYsqlCatalog() && dml_read.read_req()) {
     // In case of sys tables prefething is enabled all reads from sys table must use cached data.
-    auto data = VERIFY_RESULT(pg_sys_table_prefetcher_->GetData(
-        pg_session_.get(), *dml_read.read_req(), dml_read.IsIndexOrderedScan()));
+    auto data = pg_sys_table_prefetcher_->GetData(
+        *dml_read.read_req(), dml_read.IsIndexOrderedScan());
     if (!data) {
-      // DLOG(FATAL) is used instead of SCHECK to let user on release build proceed by reading
+      // LOG(DFATAL) is used instead of SCHECK to let user on release build proceed by reading
       // data from a master in a non efficient way (by using separate RPC).
-      DLOG(FATAL) << "Data was not prefetched for request "
+      LOG(DFATAL) << "Data was not prefetched for request "
                   << dml_read.read_req()->ShortDebugString();
     } else {
       dml_read.UpgradeDocOp(MakeDocReadOpWithData(pg_session_, std::move(data)));
@@ -1686,10 +1687,7 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
                status.IsTimedOut() ? ", there may be too many databases or "
                "the database might have been dropped" : ""));
 
-    // For correctness return 0 because any loaded catalog cache prior to this call may
-    // be older than the current catalog version and needs to be refreshed.
     CHECK(catalog_version_db_index_);
-    return 0;
   }
   if (catalog_version_db_index_->first != *db_oid) {
     return STATUS_FORMAT(
@@ -1880,20 +1878,18 @@ Status PgApiImpl::ValidatePlacement(const char *placement_info) {
   return pg_session_->ValidatePlacement(placement_info);
 }
 
-void PgApiImpl::StartSysTablePrefetching(
-    uint64_t latest_known_ysql_catalog_version, bool should_use_cache) {
+void PgApiImpl::StartSysTablePrefetching(const PrefetcherOptions& options) {
   if (pg_sys_table_prefetcher_) {
-    DLOG(FATAL) << "Sys table prefetching was started already";
+    LOG(DFATAL) << "Sys table prefetching was started already";
   }
 
   CHECK(!pg_session_->catalog_read_time());
-  pg_sys_table_prefetcher_.reset(new PgSysTablePrefetcher(
-      latest_known_ysql_catalog_version,  should_use_cache));
+  pg_sys_table_prefetcher_.emplace(options);
 }
 
 void PgApiImpl::StopSysTablePrefetching() {
   if (!pg_sys_table_prefetcher_) {
-    DLOG(FATAL) << "Sys table prefetching was not started yet";
+    LOG(DFATAL) << "Sys table prefetching was not started yet";
   } else {
     pg_sys_table_prefetcher_.reset();
   }
@@ -1903,10 +1899,15 @@ bool PgApiImpl::IsSysTablePrefetchingStarted() const {
   return static_cast<bool>(pg_sys_table_prefetcher_);
 }
 
+Status PgApiImpl::PrefetchRegisteredSysTables() {
+  SCHECK(pg_sys_table_prefetcher_, IllegalState, "Sys table prefetching has not been started");
+  return pg_sys_table_prefetcher_->Prefetch(pg_session_.get());
+}
+
 void PgApiImpl::RegisterSysTableForPrefetching(
   const PgObjectId& table_id, const PgObjectId& index_id) {
   if (!pg_sys_table_prefetcher_) {
-    DLOG(FATAL) << "Sys table prefetching was not started yet";
+    LOG(DFATAL) << "Sys table prefetching was not started yet";
   } else {
     pg_sys_table_prefetcher_->Register(table_id, index_id);
   }

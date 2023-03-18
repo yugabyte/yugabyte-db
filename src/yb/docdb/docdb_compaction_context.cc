@@ -774,9 +774,12 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   //
   // TODO: When more merge records are supported, isTtlRow should be redefined appropriately.
   bool is_ttl_row = IsMergeRecord(value);
+  bool skip = encoded_doc_ht < prev_overwrite_ht && !is_ttl_row;
   VLOG_WITH_FUNC(4) << "Ht: " << encoded_doc_ht.ToString()
-                    << ", prev_overwrite_ht: " << prev_overwrite_ht.ToString();
-  if (encoded_doc_ht < prev_overwrite_ht && !is_ttl_row) {
+                    << ", prev_overwrite_ht: " << prev_overwrite_ht.ToString()
+                    << ", is_ttl_row: " << is_ttl_row
+                    << ", skip: " << skip;
+  if (skip) {
     return Status::OK();
   }
 
@@ -835,7 +838,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     // Column ID is the first subkey in every row.
     auto doc_key_size = sub_key_ends_[1];
     auto key_type = DecodeKeyEntryType(key[doc_key_size]);
-    VLOG(4) << "First subkey type: " << key_type;
+    VLOG_WITH_FUNC(4) << "First subkey type: " << key_type;
     if (key_type == KeyEntryType::kColumnId || key_type == KeyEntryType::kSystemColumnId) {
       Slice column_id_slice = key.WithoutPrefix(doc_key_size + 1);
       auto column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(&column_id_slice));
@@ -846,14 +849,21 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
         return Status::OK();
       }
 
-      VLOG(4) << "Packed row active: " << packed_row_.active();
-      // TODO(packed_row) remove control fields from value
-      if (!packed_row_.active() &&
+      bool start_packing =
+          !packed_row_.active() &&
           packed_row_.can_start_packing() &&
+          !value_slice.starts_with(ValueEntryTypeAsChar::kTombstone) &&
           // Don't start packing if we already passed columns for this key.
           // Could happen because of history retention.
           doc_key_serial_ != last_passed_doc_key_serial_ &&
-          !CanHaveOtherDataBefore(encoded_doc_ht)) {
+          !CanHaveOtherDataBefore(encoded_doc_ht);
+      VLOG_WITH_FUNC(4)
+          << "Packed row active: " << packed_row_.active() << ", can start packing: "
+          << packed_row_.can_start_packing() << ", doc_key_serial: " << doc_key_serial_
+          << ", last_passed_doc_key_serial: " << last_passed_doc_key_serial_
+          << ", can have other data before: " << CanHaveOtherDataBefore(encoded_doc_ht)
+          << ", start packing: " << start_packing;
+      if (start_packing) {
         packed_row_.StartPacking(internal_key, doc_key_size, encoded_doc_ht, doc_key_serial_);
         AssignPrevSubDocKey(key.cdata(), same_bytes);
       }
@@ -910,13 +920,6 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     return Status::OK();
   }
 
-  // TODO(packed_row) combine non packed columns into packed row
-  if (value_type == ValueEntryType::kPackedRow) {
-    return packed_row_.ProcessPackedRow(
-        internal_key, sub_key_ends_.back(), value, value_slice.data() - value.data(),
-        encoded_doc_ht, doc_key_serial_);
-  }
-
   // If the entry has the TTL flag, delete the entry.
   if (is_ttl_row) {
     within_merge_block_ = true;
@@ -960,6 +963,10 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     new_value_buffer_.Append(value_slice);
     new_value = new_value_buffer_.AsSlice();
     within_merge_block_ = false;
+  } else if (value_type == ValueEntryType::kPackedRow) {
+    return packed_row_.ProcessPackedRow(
+        internal_key, sub_key_ends_.back(), value, value_slice.data() - value.data(),
+        encoded_doc_ht, doc_key_serial_);
   } else if (control_fields.intent_doc_ht.is_valid()) {
     // Cleanup intent doc hybrid time when we don't need it anymore.
     // See https://github.com/yugabyte/yugabyte-db/issues/4535 for details.

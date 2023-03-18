@@ -1,7 +1,8 @@
 ---
-title: Go Drivers
+title: PQ Driver
+headerTitle: Go Drivers
 linkTitle: Go Drivers
-description: Go Drivers for YSQL
+description: Go PQ Driver for YSQL
 headcontent: Go Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:

@@ -1,5 +1,5 @@
 ---
-title: YugabyteDB Quick Start
+title: YugabyteDB Quick start for macOS
 headerTitle: Quick start
 linkTitle: Quick start
 headcontent: Create a local cluster on a single host
@@ -12,6 +12,7 @@ layout: single
 type: docs
 rightNav:
   hideH4: true
+unversioned: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

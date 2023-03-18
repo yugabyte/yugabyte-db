@@ -23,10 +23,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomWsClientFactory;
-import com.yugabyte.yw.common.LdapUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
@@ -44,11 +44,11 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SetSecurityFormData;
 import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
-import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
@@ -68,6 +68,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.text.ParseException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -82,11 +83,9 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.input.ReversedLinesFileReader;
-import org.apache.directory.api.ldap.model.exception.LdapException;
 import org.pac4j.play.java.Secure;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.Configuration;
 import play.Environment;
 import play.data.Form;
 import play.libs.Json;
@@ -107,7 +106,7 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private ValidatingFormFactory formFactory;
 
-  @Inject private Configuration appConfig;
+  @Inject private Config appConfig;
 
   @Inject private ConfigHelper configHelper;
 
@@ -125,9 +124,9 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private UserService userService;
 
-  @Inject private LdapUtil ldapUtil;
-
   @Inject private TokenAuthenticator tokenAuthenticator;
+
+  @Inject private LoginHandler loginHandler;
 
   private final ApiHelper apiHelper;
 
@@ -209,8 +208,7 @@ public class SessionController extends AbstractPlatformController {
   @ApiOperation(value = "getLogs", response = LogData.class)
   @With(TokenAuthenticator.class)
   public Result getLogs(Integer maxLines) {
-    String appHomeDir = appConfig.getString("application.home", ".");
-    String logDir = appConfig.getString("log.override.path", String.format("%s/logs", appHomeDir));
+    String logDir = appConfig.getString("log.override.path");
     File file = new File(String.format("%s/application.log", logDir));
     // TODO(bogdan): This is not really pagination friendly as it re-reads everything all the time.
     // TODO(bogdan): Need to figure out if there's a rotation-friendly log-reader..
@@ -298,43 +296,8 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result login() {
-    boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
-    boolean useLdap =
-        runtimeConfigFactory
-            .globalRuntimeConf()
-            .getString("yb.security.ldap.use_ldap")
-            .equals("true");
-
-    CustomerLoginFormData data =
-        formFactory.getFormDataOrBadRequest(CustomerLoginFormData.class).get();
-
-    Users user = null;
-    Users existingUser =
-        Users.find.query().where().eq("email", data.getEmail().toLowerCase()).findOne();
-    if (existingUser != null) {
-      if (existingUser.userType == null || !existingUser.userType.equals(UserType.ldap)) {
-        user = Users.authWithPassword(data.getEmail().toLowerCase(), data.getPassword());
-        if (user == null) {
-          throw new PlatformServiceException(UNAUTHORIZED, "Invalid User Credentials.");
-        }
-      }
-    }
-    if (useLdap && user == null) {
-      try {
-        user = ldapUtil.loginWithLdap(data);
-      } catch (LdapException e) {
-        LOG.error("LDAP error {} authenticating user {}", e.getMessage(), data.getEmail());
-      }
-    }
-
-    if (user == null) {
-      throw new PlatformServiceException(UNAUTHORIZED, "Invalid User Credentials.");
-    }
-
-    if (useOAuth && !user.getRole().equals(Role.SuperAdmin)) {
-      throw new PlatformServiceException(
-          UNAUTHORIZED, "Only SuperAdmin access permitted via normal login when SSO is enabled.");
-    }
+    Users user =
+        loginHandler.login(formFactory.getFormDataOrBadRequest(CustomerLoginFormData.class).get());
 
     Customer cust = Customer.get(user.customerUUID);
 
@@ -363,6 +326,34 @@ public class SessionController extends AbstractPlatformController {
         Audit.TargetType.User,
         user.uuid.toString(),
         Audit.ActionType.Login,
+        null,
+        null,
+        null,
+        request().remoteAddress());
+    return withData(sessionInfo);
+  }
+
+  @ApiOperation(value = "Authenticate user and return api token", response = SessionInfo.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "CustomerLoginFormData",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.CustomerLoginFormData",
+          required = true))
+  public Result apiLogin() {
+    Users user =
+        loginHandler.login(formFactory.getFormDataOrBadRequest(CustomerLoginFormData.class).get());
+    Customer cust = Customer.get(user.customerUUID);
+
+    SessionInfo sessionInfo = new SessionInfo(null, user.getApiToken(), cust.uuid, user.uuid);
+    ctx().args.put("isAudited", true);
+    Audit.create(
+        user,
+        request().path(),
+        request().method(),
+        Audit.TargetType.User,
+        user.uuid.toString(),
+        ActionType.ApiLogin,
         null,
         null,
         null,
@@ -504,7 +495,7 @@ public class SessionController extends AbstractPlatformController {
         .setCookie(
             Http.Cookie.builder(API_TOKEN, apiToken)
                 .withSecure(ctx().request().secure())
-                .withMaxAge(FOREVER)
+                .withMaxAge(Duration.ofHours(FOREVER))
                 .build());
     auditService()
         .createAuditEntryWithReqBody(
@@ -531,7 +522,7 @@ public class SessionController extends AbstractPlatformController {
   public Result register(Boolean generateApiToken) {
     CustomerRegisterFormData data =
         formFactory.getFormDataOrBadRequest(CustomerRegisterFormData.class).get();
-    boolean multiTenant = appConfig.getBoolean("yb.multiTenant", false);
+    boolean multiTenant = appConfig.getBoolean("yb.multiTenant");
     boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     int customerCount = Customer.getAll().size();
     if (!multiTenant && customerCount >= 1) {
@@ -586,7 +577,8 @@ public class SessionController extends AbstractPlatformController {
                 .build());
     // When there is no authenticated user in context; we just pretend that the user
     // created himself for auditing purpose.
-    ctx().args.putIfAbsent("user", userService.getUserWithFeatures(cust, user));
+    RequestContext.putIfAbsent(
+        TokenAuthenticator.USER, userService.getUserWithFeatures(cust, user));
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -737,7 +729,7 @@ public class SessionController extends AbstractPlatformController {
   }
 
   private Users getCurrentUser() {
-    UserWithFeatures userWithFeatures = (UserWithFeatures) Http.Context.current().args.get("user");
+    UserWithFeatures userWithFeatures = RequestContext.get(TokenAuthenticator.USER);
     return userWithFeatures.getUser();
   }
 }

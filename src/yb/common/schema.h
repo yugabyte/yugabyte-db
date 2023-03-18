@@ -78,6 +78,7 @@ namespace yb {
 class DeletedColumnPB;
 
 static const int kNoDefaultTtl = -1;
+static const int kYbHashCodeColId = std::numeric_limits<int16_t>::max() - 1;
 
 // Struct for storing information about deleted columns for cleanup.
 struct DeletedColumn {
@@ -489,6 +490,17 @@ class TableProperties {
 
 typedef std::string PgSchemaName;
 
+// Used to store the offsets of components of a row key (DocKey).
+// hash_part_size - size of the hash part of the key.
+// doc_key_size - size of the hash part + range part of the key.
+// key_offsets[num_of_key_cols] - each element contains the start offset of corresponding key
+// column.
+struct DocKeyOffsets {
+  size_t hash_part_size;
+  size_t doc_key_size;
+  std::vector<size_t> key_offsets;
+};
+
 // The schema for a set of rows.
 //
 // A Schema is simply a set of columns, along with information about
@@ -571,6 +583,11 @@ class Schema {
                const ColocationId colocation_id = kColocationIdNotSet,
                const PgSchemaName pgschema_name = "");
 
+  // Recompute the dockey offsets if they were already set. This is used
+  // from set_colocation_id and set_cotable_id which are the only methods which
+  // can change the encoded dockey format after Schema is created.
+  void UpdateDocKeyOffsets();
+
   // Return the number of bytes needed to represent a single row of this schema.
   //
   // This size does not include any indirected (variable length) data (eg strings)
@@ -603,6 +620,11 @@ class Schema {
   size_t column_offset(size_t col_idx) const {
     DCHECK_LT(col_idx, cols_.size());
     return col_offsets_[col_idx];
+  }
+
+  // Return optional dockey offset.
+  const std::optional<DocKeyOffsets>& doc_key_offsets() const {
+    return doc_key_offsets_;
   }
 
   // Return the ColumnSchema corresponding to the given column index.
@@ -773,6 +795,19 @@ class Schema {
       DCHECK_EQ(colocation_id_, kColocationIdNotSet);
     }
     cotable_id_ = cotable_id;
+    UpdateDocKeyOffsets();
+  }
+
+  bool has_yb_hash_code() const {
+    return num_hash_key_columns() > 0;
+  }
+
+  size_t num_dockey_components() const {
+    return num_key_columns() + has_yb_hash_code();
+  }
+
+  size_t get_dockey_component_idx(size_t col_idx) const {
+    return col_idx == kYbHashCodeColId ? 0 : col_idx + has_yb_hash_code();
   }
 
   // Gets the colocation ID of the non-primary table this schema belongs to in a
@@ -790,6 +825,7 @@ class Schema {
       DCHECK(cotable_id_.IsNil());
     }
     colocation_id_ = colocation_id;
+    UpdateDocKeyOffsets();
   }
 
   bool is_colocated() const {
@@ -1046,6 +1082,7 @@ class Schema {
   ColumnId max_col_id_;
   std::vector<ColumnId> col_ids_;
   std::vector<size_t> col_offsets_;
+  std::optional<DocKeyOffsets> doc_key_offsets_;
 
   // The keys of this map are GStringPiece references to the actual name members of the
   // ColumnSchema objects inside cols_. This avoids an extra copy of those strings,

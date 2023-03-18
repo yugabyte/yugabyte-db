@@ -207,6 +207,7 @@ TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(MultipleFKConstraintRPCCount)) {
   // Warmup catalog cache to load info related for triggers before estimating RPC count.
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES(1, 11, 21, 31)", kFKTable));
   ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kFKTable));
+  ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", kFKTable));
   const auto insert_fk_rpc_count = ASSERT_RESULT(perform_rpc_watcher_->Delta([&conn]() {
     return conn.ExecuteFormat(
       "INSERT INTO $0 VALUES(1, 11, 21, 31), (2, 12, 22, 32), (3, 13, 23, 33)", kFKTable);

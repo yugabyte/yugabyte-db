@@ -5,96 +5,64 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 import React from 'react';
-import Select, { Styles, ValueType } from 'react-select';
 import clsx from 'clsx';
-import { makeStyles, useTheme } from '@material-ui/core';
+import { makeStyles } from '@material-ui/core';
+import { useFieldArray, useFormContext } from 'react-hook-form';
 
 import { YBButton } from '../../../../common/forms/fields';
-import { YBInput } from '../../../../../redesign/components';
+import { YBInputField } from '../../../../../redesign/components';
+import { ConfigureRegionFormValues } from './ConfigureRegionModal';
+import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
 
 import { CloudVendorAvailabilityZoneMutation } from '../../types';
 
 interface ConfigureAvailabilityZoneFieldProps {
   isSubmitting: boolean;
-  selectedZones: ExposedAZProperties[];
-  setSelectedZones: (zones: ExposedAZProperties[]) => void;
   zoneCodeOptions: string[] | undefined;
   className?: string;
 }
 
 export type ExposedAZProperties = Pick<CloudVendorAvailabilityZoneMutation, 'code' | 'subnet'>;
 
-const useStyles = makeStyles(() => ({
+const useStyles = makeStyles((theme) => ({
   zonesContainer: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '10px',
+    gap: theme.spacing(1),
 
-    marginTop: '10px'
+    marginTop: theme.spacing(1)
   },
   zoneConfigContainer: {
     display: 'flex',
-    gap: '10px'
+    gap: theme.spacing(1)
+  },
+  removeZoneButton: {
+    backgroundColor: 'red',
+    padding: theme.spacing(1, 2, 1, 2),
+    '& i': {
+      color: 'white'
+    },
+    maxHeight: '42px'
   }
 }));
 
 export const ConfigureAvailabilityZoneField = ({
   isSubmitting,
-  selectedZones,
-  setSelectedZones,
   zoneCodeOptions,
   className
 }: ConfigureAvailabilityZoneFieldProps) => {
   const classes = useStyles();
-  const theme = useTheme();
-
-  const zoneSelectStyles: Partial<Styles> = {
-    container: (provided: any) => ({
-      ...provided,
-      width: 250,
-      minWidth: 250
-    }),
-    control: (provided: any) => ({
-      ...provided,
-      height: 42,
-      borderRadius: 8,
-      border: `1px solid ${theme.palette.ybacolors.ybGray}`
-    })
+  const { control, watch } = useFormContext<ConfigureRegionFormValues>();
+  const { fields, append, remove } = useFieldArray({ control, name: 'zones' });
+  const addZoneField = () => {
+    append({ code: { value: '', label: '', isDisabled: true }, subnet: '' });
   };
 
-  const addZone = () => {
-    setSelectedZones([...selectedZones, { code: '', subnet: '' }]);
-  };
-  const handleZoneCodeChange = (
-    option: ValueType<{ value: string; label: string; isDisabled?: boolean }>,
-    zoneIndex: number
-  ) => {
-    const selectedZonesCopy = Array.from(selectedZones);
-
-    // The below cast is needed to resolve a Typescript error when accessing 'value'.
-    // Context on the workaround: https://github.com/JedWatson/react-select/issues/2902
-    selectedZonesCopy[zoneIndex].code = (option as {
-      value: string;
-      label: string;
-      isDisabled?: boolean;
-    })?.value;
-    setSelectedZones(selectedZonesCopy);
-  };
-  const handleSubnetChange = (subnet: string, zoneIndex: number) => {
-    const selectedZonesCopy = Array.from(selectedZones);
-    selectedZonesCopy[zoneIndex].subnet = subnet;
-    setSelectedZones(selectedZonesCopy);
-  };
-  const handleZoneDelete = (zoneIndex: number) => {
-    const selectedZonesCopy = Array.from(selectedZones);
-    selectedZonesCopy.splice(zoneIndex, 1);
-    setSelectedZones(selectedZonesCopy);
-  };
-
+  const zones = watch('zones');
   const selectZoneCodeOptions = zoneCodeOptions?.map((zoneCode) => ({
     value: zoneCode,
     label: zoneCode,
-    isDisabled: selectedZones?.find((zone) => zone.code === zoneCode) !== undefined
+    isDisabled: zones?.find((zone) => zone.code.value === zoneCode) !== undefined
   }));
   return (
     <div className={clsx(className)}>
@@ -103,39 +71,29 @@ export const ConfigureAvailabilityZoneField = ({
         btnText="Add Zone"
         btnClass="btn btn-default"
         btnType="button"
-        onClick={addZone}
+        onClick={addZoneField}
         disabled={isSubmitting || zoneCodeOptions === undefined}
-        data-testId="ConfigureAvailabilityZonField-AddZoneButton"
+        data-testid="ConfigureAvailabilityZonField-AddZoneButton"
       />
       <div className={classes.zonesContainer}>
-        {selectedZones.map((zone, index) => (
-          <div className={classes.zoneConfigContainer} key={zone.code || index}>
-            <div data-testId="ConfigureAvailabilityZonField-ZoneDropdown">
-              <Select
-                styles={zoneSelectStyles}
-                options={selectZoneCodeOptions}
-                onChange={(option) => {
-                  handleZoneCodeChange(option, index);
-                }}
-                value={{ value: zone.code, label: zone.code, isDisabled: true }}
-              />
-            </div>
-            <YBInput
-              name="subnet"
+        {fields.map((zone, index) => (
+          <div key={zone.id} className={classes.zoneConfigContainer}>
+            <YBReactSelectField
+              control={control}
+              name={`zones.${index}.code`}
+              options={selectZoneCodeOptions}
+            />
+            <YBInputField
+              control={control}
+              name={`zones.${index}.subnet`}
               placeholder="Enter..."
-              value={zone.subnet}
-              onChange={(e) => handleSubnetChange(e.target.value, index)}
               fullWidth
-              data-testId="ConfigureAvailabilityZonField-SubnetInput"
             />
             <YBButton
+              className={classes.removeZoneButton}
               btnIcon="fa fa-trash-o"
               btnType="button"
-              onClick={(e: any) => {
-                handleZoneDelete(index);
-                e.currentTarget.blur();
-              }}
-              data-testId="ConfigureAvailabilityZonField-DeleteZoneButton"
+              onClick={() => remove(index)}
             />
           </div>
         ))}

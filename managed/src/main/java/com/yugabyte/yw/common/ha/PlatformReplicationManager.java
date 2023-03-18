@@ -18,10 +18,12 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
@@ -62,18 +64,22 @@ public class PlatformReplicationManager {
 
   private final ConfigHelper configHelper;
 
-  private final play.Configuration appConfig;
+  private final Config appConfig;
+
+  private final FileDataService fileDataService;
 
   @Inject
   public PlatformReplicationManager(
       PlatformScheduler platformScheduler,
       PlatformReplicationHelper replicationHelper,
       ConfigHelper configHelper,
-      play.Configuration appConfig) {
+      Config appConfig,
+      FileDataService fileDataService) {
     this.platformScheduler = platformScheduler;
     this.replicationHelper = replicationHelper;
     this.configHelper = configHelper;
     this.appConfig = appConfig;
+    this.fileDataService = fileDataService;
     this.schedule = new AtomicReference<>(null);
   }
 
@@ -369,6 +375,9 @@ public class PlatformReplicationManager {
 
     // The addr that the prometheus server is running on.
     private final String prometheusHost;
+
+    // The port that the prometheus server is running on.
+    private final int prometheusPort;
     // The username that YW uses to connect to it's DB.
     private final String dbUsername;
     // The password that YW uses to authenticate connections to it's DB.
@@ -380,6 +389,7 @@ public class PlatformReplicationManager {
 
     protected PlatformBackupParams() {
       this.prometheusHost = replicationHelper.getPrometheusHost();
+      this.prometheusPort = replicationHelper.getPrometheusPort();
       this.dbUsername = replicationHelper.getDBUser();
       this.dbPassword = replicationHelper.getDBPassword();
       this.dbHost = replicationHelper.getDBHost();
@@ -400,6 +410,8 @@ public class PlatformReplicationManager {
       commandArgs.add(Integer.toString(dbPort));
       commandArgs.add("--prometheus_host");
       commandArgs.add(prometheusHost);
+      commandArgs.add("--prometheus_port");
+      commandArgs.add(String.valueOf(prometheusPort));
       commandArgs.add("--verbose");
       commandArgs.add("--skip_restart");
 
@@ -506,7 +518,7 @@ public class PlatformReplicationManager {
       log.error("Restore failed: " + response.message);
     } else {
       // Sync the files stored in DB to FS in case restore is successful.
-      configHelper.syncFileData(appConfig.getString(STORAGE_PATH), true);
+      fileDataService.syncFileData(appConfig.getString(STORAGE_PATH), true);
     }
 
     return response.code == 0;

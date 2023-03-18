@@ -292,7 +292,7 @@ typedef struct PgExecParameters {
   int wait_policy = 2; // Cast to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
   char *bfinstr = NULL;
   uint64_t backfill_read_time = 0;
-  uint64_t* statement_in_txn_limit = NULL;
+  uint64_t* stmt_in_txn_limit_ht_for_reads = NULL;
   char *partition_key = NULL;
   PgExecOutParam *out_param = NULL;
   bool is_index_backfill = false;
@@ -305,7 +305,7 @@ typedef struct PgExecParameters {
   int wait_policy; // Cast to LockWaitPolicy for C use
   char *bfinstr;
   uint64_t backfill_read_time;
-  uint64_t* statement_in_txn_limit;
+  uint64_t* stmt_in_txn_limit_ht_for_reads;
   char *partition_key;
   PgExecOutParam *out_param;
   bool is_index_backfill;
@@ -416,6 +416,13 @@ typedef struct YbTcmallocStats {
 // In per database catalog version mode, this puts a limit on the maximum
 // number of databases that can exist in a cluster.
 static const int32_t kYBCMaxNumDbCatalogVersions = 10000;
+
+typedef enum PgSysTablePrefetcherCacheMode {
+  YB_YQL_PREFETCHER_TRUST_CACHE,
+  YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
+  YB_YQL_PREFETCHER_RENEW_CACHE_HARD,
+  YB_YQL_PREFETCHER_NO_CACHE
+} YBCPgSysTablePrefetcherCacheMode;
 
 #ifdef __cplusplus
 }  // extern "C"

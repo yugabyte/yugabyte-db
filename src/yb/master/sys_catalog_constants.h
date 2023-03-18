@@ -50,7 +50,7 @@ static const char* const kLastBreakingVersionColumnName = "last_breaking_version
 static const char* const kDefaultCassandraUsername = "cassandra";
 static const char* const kDefaultCassandraPassword = "cassandra";
 
-constexpr uint32_t kSysCatalogSchemaVersion = 1;
+constexpr uint32_t kSysCatalogSchemaVersion = 0;
 
 }  // namespace master
 }  // namespace yb

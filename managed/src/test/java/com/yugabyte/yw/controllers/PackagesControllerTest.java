@@ -69,7 +69,7 @@ public class PackagesControllerTest extends PlatformGuiceApplicationBaseTest {
 
   private Result fetchPackage(ObjectNode body) {
     String uri = "/api/fetch_package";
-    return FakeApiHelper.doRequestWithBodyAndWithoutAuthToken("POST", uri, body);
+    return doRequestWithBodyAndWithoutAuthToken("POST", uri, body);
   }
 
   @Test

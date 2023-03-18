@@ -17,6 +17,8 @@ import com.jayway.jsonpath.DocumentContext;
 import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
+import com.yugabyte.yw.controllers.RequestContext;
+import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import java.util.List;
@@ -81,7 +83,8 @@ public class AuditService {
           "$..smtpPassword",
           // Hashicorp token
           "$..HC_VAULT_TOKEN",
-          "$..vaultToken");
+          "$..vaultToken",
+          "$..token");
 
   public static final List<JsonPath> SECRET_JSON_PATHS =
       SECRET_PATHS.stream().map(JsonPath::compile).collect(Collectors.toList());
@@ -222,7 +225,7 @@ public class AuditService {
       JsonNode params,
       UUID taskUUID,
       JsonNode additionalDetails) {
-    UserWithFeatures user = (UserWithFeatures) ctx.args.get("user");
+    UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
     ctx.args.put("isAudited", true);
     String method = request.method();
     String path = request.path();

@@ -30,6 +30,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -42,6 +43,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
@@ -53,7 +55,9 @@ import org.slf4j.LoggerFactory;
 public class GFlagsUtil {
   private static final Logger LOG = LoggerFactory.getLogger(GFlagsUtil.class);
 
-  public static final String YSQL_CGROUP_PATH = "/sys/fs/cgroup/memory/ysql";
+  // This is not the full path to the cgroup. That is determined by ansible, allowing seamless
+  // handling of both cgroup v1 and v2.
+  public static final String YSQL_CGROUP_PATH = "ysql";
 
   private static final int DEFAULT_MAX_MEMORY_USAGE_PCT_FOR_DEDICATED = 90;
 
@@ -108,6 +112,13 @@ public class GFlagsUtil {
   public static final String WEBSERVER_CA_CERTIFICATE_FILE = "webserver_ca_certificate_file";
 
   public static final String YBC_LOG_SUBDIR = "/controller/logs";
+  public static final String CORES_DIR_PATH = "/cores";
+
+  public static final String K8S_MNT_PATH = "/mnt/disk0";
+  public static final String K8S_YBC_DATA = "/ybc-data";
+  public static final String K8S_YBC_LOG_SUBDIR = K8S_MNT_PATH + K8S_YBC_DATA + YBC_LOG_SUBDIR;
+  public static final String K8S_YBC_CORES_DIR = K8S_MNT_PATH + CORES_DIR_PATH;
+
   public static final String TSERVER_DIR = "/tserver";
   public static final String POSTGRES_BIN_DIR = "/postgres/bin";
   public static final String TSERVER_BIN_DIR = TSERVER_DIR + "/bin";
@@ -119,7 +130,6 @@ public class GFlagsUtil {
   public static final String YSQLSH_PATH = TSERVER_POSTGRES_BIN_DIR + "/ysqlsh";
   public static final String YCQLSH_PATH = TSERVER_BIN_DIR + "/ycqlsh";
   public static final String REDIS_CLI_PATH = TSERVER_BIN_DIR + "/redis-cli";
-  public static final String CORES_DIR_PATH = "/cores";
   public static final String YBC_MAX_CONCURRENT_UPLOADS = "max_concurrent_uploads";
   public static final String YBC_MAX_CONCURRENT_DOWNLOADS = "max_concurrent_downloads";
   public static final String YBC_PER_UPLOAD_OBJECTS = "per_upload_num_objects";
@@ -220,6 +230,15 @@ public class GFlagsUtil {
     if (processType == null) {
       extra_gflags.put(MASTER_ADDRESSES, "");
     } else if (processType.equals(UniverseTaskBase.ServerType.TSERVER.name())) {
+      boolean configCgroup = config.getInt(NodeManager.POSTGRES_MAX_MEM_MB) > 0;
+
+      // If the cluster is a read replica, use the read replica max mem value if its >= 0. -1 means
+      // to use the primary cluster value instead.
+      if (universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid).clusterType
+              == UniverseDefinitionTaskParams.ClusterType.ASYNC
+          && config.getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) >= 0) {
+        configCgroup = config.getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) > 0;
+      }
       extra_gflags.putAll(
           getTServerDefaultGflags(
               taskParam,
@@ -228,7 +247,7 @@ public class GFlagsUtil {
               useHostname,
               useSecondaryIp,
               isDualNet,
-              config.getInt(NodeManager.POSTGRES_MAX_MEM_MB) > 0));
+              configCgroup));
     } else {
       extra_gflags.putAll(
           getMasterDefaultGFlags(taskParam, universe, useHostname, useSecondaryIp, isDualNet));
@@ -301,6 +320,40 @@ public class GFlagsUtil {
       String ybHomeDir = getYbHomeDir(providerUUID);
       String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
       ybcFlags.put("certs_dir_name", certsNodeDir);
+    }
+    return ybcFlags;
+  }
+
+  /** Return the map of ybc flags which will be passed to the db nodes. */
+  public static Map<String, String> getYbcFlagsForK8s(UUID universeUUID, String nodeName) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    NodeDetails node = universe.getNode(nodeName);
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
+    String providerUUID = userIntent.provider;
+    Map<String, String> ybcFlags = new TreeMap<>();
+    ybcFlags.put("server_address", node.cloudInfo.private_ip);
+    ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
+    ybcFlags.put("log_dir", K8S_YBC_LOG_SUBDIR);
+    ybcFlags.put("cores_dir", K8S_YBC_CORES_DIR);
+
+    ybcFlags.put("yb_master_address", node.cloudInfo.private_ip);
+    ybcFlags.put("yb_master_webserver_port", Integer.toString(node.masterHttpPort));
+    ybcFlags.put("yb_tserver_webserver_port", Integer.toString(node.tserverHttpPort));
+    ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);
+    ybcFlags.put("redis_cli", getYbHomeDir(providerUUID) + REDIS_CLI_PATH);
+    ybcFlags.put("yb_admin", getYbHomeDir(providerUUID) + YB_ADMIN_PATH);
+    ybcFlags.put("yb_ctl", getYbHomeDir(providerUUID) + YB_CTL_PATH);
+    ybcFlags.put("ysql_dump", getYbHomeDir(providerUUID) + YSQL_DUMP_PATH);
+    ybcFlags.put("ysql_dumpall", getYbHomeDir(providerUUID) + YSQL_DUMPALL_PATH);
+    ybcFlags.put("ysqlsh", getYbHomeDir(providerUUID) + YSQLSH_PATH);
+    ybcFlags.put("ycqlsh", getYbHomeDir(providerUUID) + YCQLSH_PATH);
+
+    if (MapUtils.isNotEmpty(userIntent.ybcFlags)) {
+      ybcFlags.putAll(userIntent.ybcFlags);
+    }
+    if (EncryptionInTransitUtil.isRootCARequired(universeDetails)) {
+      ybcFlags.put("certs_dir_name", "/opt/certs/yugabyte");
     }
     return ybcFlags;
   }
@@ -527,8 +580,23 @@ public class GFlagsUtil {
    */
   public static void checkGflagsAndIntentConsistency(
       UniverseDefinitionTaskParams.UserIntent userIntent) {
-    for (Map<String, String> gflags :
-        Arrays.asList(userIntent.masterGFlags, userIntent.tserverGFlags)) {
+    List<Map<String, String>> masterAndTserverGFlags =
+        Arrays.asList(userIntent.masterGFlags, userIntent.tserverGFlags);
+    if (userIntent.specificGFlags != null) {
+      masterAndTserverGFlags =
+          Arrays.asList(
+              userIntent
+                  .specificGFlags
+                  .getPerProcessFlags()
+                  .value
+                  .getOrDefault(UniverseTaskBase.ServerType.MASTER, new HashMap<>()),
+              userIntent
+                  .specificGFlags
+                  .getPerProcessFlags()
+                  .value
+                  .getOrDefault(UniverseTaskBase.ServerType.TSERVER, new HashMap<>()));
+    }
+    for (Map<String, String> gflags : masterAndTserverGFlags) {
       GFLAG_TO_INTENT_ACCESSOR.forEach(
           (gflagKey, accessor) -> {
             if (gflags.containsKey(gflagKey)) {
@@ -631,6 +699,43 @@ public class GFlagsUtil {
           }
         });
     return result.get();
+  }
+
+  public static Map<String, String> getBaseGFlags(
+      UniverseTaskBase.ServerType serverType,
+      UniverseDefinitionTaskParams.Cluster cluster,
+      Collection<UniverseDefinitionTaskParams.Cluster> allClusters) {
+    return getGFlagsForNode(null, serverType, cluster, allClusters);
+  }
+
+  public static Map<String, String> getGFlagsForNode(
+      @Nullable NodeDetails node,
+      UniverseTaskBase.ServerType serverType,
+      UniverseDefinitionTaskParams.Cluster cluster,
+      Collection<UniverseDefinitionTaskParams.Cluster> allClusters) {
+    UserIntent userIntent = cluster.userIntent;
+    UniverseDefinitionTaskParams.Cluster primary =
+        allClusters
+            .stream()
+            .filter(c -> c.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY)
+            .findFirst()
+            .orElse(null);
+    if (userIntent.specificGFlags != null) {
+      if (userIntent.specificGFlags.isInheritFromPrimary()) {
+        if (cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY) {
+          throw new IllegalStateException("Primary cluster has inherit gflags");
+        }
+        return getGFlagsForNode(node, serverType, primary, allClusters);
+      }
+      return userIntent.specificGFlags.getGFlags(node, serverType);
+    } else {
+      if (cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC) {
+        return getGFlagsForNode(node, serverType, primary, allClusters);
+      }
+      return serverType == UniverseTaskBase.ServerType.MASTER
+          ? userIntent.masterGFlags
+          : userIntent.tserverGFlags;
+    }
   }
 
   private static String getMountPoints(AnsibleConfigureServers.Params taskParam) {
@@ -759,6 +864,26 @@ public class GFlagsUtil {
       }
     }
     return null;
+  }
+
+  public static void removeGFlag(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      String gflagKey,
+      UniverseTaskBase.ServerType... serverTypes) {
+    if (userIntent.specificGFlags != null) {
+      userIntent.specificGFlags.removeGFlag(gflagKey, serverTypes);
+    } else {
+      for (UniverseTaskBase.ServerType serverType : serverTypes) {
+        switch (serverType) {
+          case MASTER:
+            userIntent.masterGFlags.remove(gflagKey);
+            break;
+          case TSERVER:
+            userIntent.tserverGFlags.remove(gflagKey);
+            break;
+        }
+      }
+    }
   }
 
   private interface StringIntentAccessor {

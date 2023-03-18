@@ -15,34 +15,12 @@ SELECT 'bob' FROM generate_series(0, 1000000);
 -- statistics.
 SELECT pg_sleep(1);
 
-CREATE view yb_terminated_queries AS
-    SELECT
-            D.datname AS databasename,
-            S.backend_pid AS backend_pid,
-            S.query_text AS query_text,
-            S.termination_reason AS termination_reason,
-            S.query_start AS query_start_time,
-            S.query_end AS query_end_time
-    FROM yb_pg_stat_get_queries(null) AS S
-    LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);
-
 \d yb_terminated_queries
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries WHERE databasename = 'yugabyte';
 
 CREATE DATABASE db2;
 \c db2
-
-CREATE view yb_terminated_queries AS
-    SELECT
-            D.datname AS databasename,
-            S.backend_pid AS backend_pid,
-            S.query_text AS query_text,
-            S.termination_reason AS termination_reason,
-            S.query_start AS query_start_time,
-            S.query_end AS query_end_time
-    FROM yb_pg_stat_get_queries(null) AS S
-    LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);
 
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
 
@@ -105,17 +83,6 @@ ALTER ROLE test_user WITH createdb;
 \c yugabyte test_user
 CREATE DATABASE test_user_database;
 \c test_user_database test_user
-
-CREATE view yb_terminated_queries AS
-    SELECT
-            D.datname AS databasename,
-            S.backend_pid AS backend_pid,
-            S.query_text AS query_text,
-            S.termination_reason AS termination_reason,
-            S.query_start AS query_start_time,
-            S.query_end AS query_end_time
-    FROM yb_pg_stat_get_queries(null) AS S
-    LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);
 
 SET work_mem TO 128;
 

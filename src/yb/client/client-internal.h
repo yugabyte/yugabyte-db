@@ -43,7 +43,6 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/transaction.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_admin.fwd.h"
@@ -232,6 +231,9 @@ class YBClient::Data {
   Status WaitForFlushTableToFinish(YBClient* client,
                                    const FlushRequestId& flush_id,
                                    const CoarseTimePoint deadline);
+
+  Status GetCompactionStatus(
+      const YBTableName& table_name, const CoarseTimePoint deadline, MonoTime* last_request_time);
 
   Status GetTableSchema(YBClient* client,
                         const YBTableName& table_name,

@@ -117,7 +117,7 @@ YugabyteDB Managed clusters support 10 simultaneous connections per vCPU. So a c
 | 3x8 | 240 |
 | 6x2 | 120 |
 | 6x4 | 240 |
-| 6x8 | 360 |
+| 6x8 | 480 |
 
 During an update, one node is always offline. When sizing your cluster to your workload, ensure you have enough additional capacity to support rolling updates with minimal impact on application performance. You can also mitigate the effect of updates on performance by [scheduling them](../../cloud-clusters/cloud-maintenance/) during periods of lower traffic.
 

@@ -18,6 +18,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -41,6 +42,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Marker;
 import org.slf4j.MarkerFactory;
 import play.libs.Json;
+import com.typesafe.config.Config;
 
 @Singleton
 @Slf4j
@@ -48,7 +50,7 @@ public class ShellProcessHandler {
 
   private static final Duration DESTROY_GRACE_TIMEOUT = Duration.ofMinutes(5);
 
-  private final play.Configuration appConfig;
+  private final Config appConfig;
   private final boolean cloudLoggingEnabled;
   private final ShellLogsManager shellLogsManager;
 
@@ -64,7 +66,7 @@ public class ShellProcessHandler {
   static final String YB_LOGS_MAX_MSG_SIZE = "yb.logs.max_msg_size";
 
   @Inject
-  public ShellProcessHandler(play.Configuration appConfig, ShellLogsManager shellLogsManager) {
+  public ShellProcessHandler(Config appConfig, ShellLogsManager shellLogsManager) {
     this.appConfig = appConfig;
     this.cloudLoggingEnabled = appConfig.getBoolean("yb.cloud.enabled");
     this.shellLogsManager = shellLogsManager;
@@ -125,7 +127,7 @@ public class ShellProcessHandler {
     Map<String, String> envVars = pb.environment();
     Map<String, String> extraEnvVars = context.getExtraEnvVars();
     if (MapUtils.isNotEmpty(extraEnvVars)) {
-      envVars.putAll(context.getExtraEnvVars());
+      envVars.putAll(extraEnvVars);
     }
     String devopsHome = appConfig.getString("yb.devops.home");
     if (devopsHome != null) {
@@ -159,7 +161,7 @@ public class ShellProcessHandler {
         log.info(logMsg);
       }
       String fullCommand = "'" + String.join("' '", redactedCommand) + "'";
-      if (appConfig.getBoolean("yb.log.logEnvVars", false) && extraEnvVars != null) {
+      if (appConfig.getBoolean("yb.log.logEnvVars") && extraEnvVars != null) {
         fullCommand = Joiner.on(" ").withKeyValueSeparator("=").join(extraEnvVars) + fullCommand;
       }
       logMsg =
@@ -365,7 +367,8 @@ public class ShellProcessHandler {
     // with the process output being appended to this file but for the purposes
     // of logging, it is ok to log partial lines.
     while ((line = br.readLine()) != null) {
-      if (line.contains("[app]")) {
+      line = line.trim();
+      if (line.startsWith("[app]")) {
         log.info(line);
       }
       count++;

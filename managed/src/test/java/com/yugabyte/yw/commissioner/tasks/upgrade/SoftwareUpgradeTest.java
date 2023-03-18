@@ -181,7 +181,11 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
       }
       commonNodeTasks.addAll(
           ImmutableList.of(
-              TaskType.UpdateSoftwareVersion, TaskType.RunHooks, TaskType.UniverseUpdateSucceeded));
+              TaskType.CheckSoftwareVersion,
+              TaskType.PromoteAutoFlags,
+              TaskType.UpdateSoftwareVersion,
+              TaskType.RunHooks,
+              TaskType.UniverseUpdateSucceeded));
     }
     for (TaskType commonNodeTask : commonNodeTasks) {
       assertTaskType(subTasksByPosition.get(position), commonNodeTask);
@@ -221,7 +225,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
                 new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
 
             if (taskType.equals(TaskType.AnsibleConfigureServers)) {
-              String version = "new-version";
+              String version = "2.17.0.0-b1";
               String taskSubType =
                   subTaskGroupType.equals(DownloadingSoftware) ? "Download" : "Install";
               assertValues.putAll(
@@ -263,7 +267,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           Map<String, Object> assertValues =
               new HashMap<>(ImmutableMap.of("nodeNames", nodes, "nodeCount", nodes.size()));
           if (taskType.equals(TaskType.AnsibleConfigureServers)) {
-            String version = "new-version";
+            String version = "2.17.0.0-b1";
             assertValues.putAll(
                 ImmutableMap.of(
                     "ybSoftwareVersion", version, "processType", serverType.toString()));
@@ -310,7 +314,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     updateDefaultUniverseTo5Nodes(true);
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "new-version";
+    taskParams.ybSoftwareVersion = "2.17.0.0-b1";
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.version);
     verify(mockNodeManager, times(71)).nodeCommand(any(), any());
@@ -322,6 +326,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
     // XCluster gflag set up.
     assertTaskType(subTasksByPosition.get(position++), TaskType.XClusterInfoPersist);
@@ -338,7 +343,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true);
-    assertEquals(122, position);
+    assertEquals(123, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -348,7 +353,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     updateDefaultUniverseTo5Nodes(true);
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "new-version";
+    taskParams.ybSoftwareVersion = "2.17.0.0-b1";
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     taskParams.upgradeSystemCatalog = false;
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.version);
@@ -361,6 +366,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
     // XCluster gflag set up.
     assertTaskType(subTasksByPosition.get(position++), TaskType.XClusterInfoPersist);
@@ -413,7 +419,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
             ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "new-version";
+    taskParams.ybSoftwareVersion = "2.17.0.0-b1";
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.version);
     verify(mockNodeManager, times(95)).nodeCommand(any(), any());
@@ -437,6 +443,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
     // XCluster gflag set up.
     assertTaskType(subTasksByPosition.get(position++), TaskType.XClusterInfoPersist);
@@ -453,7 +460,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true);
-    assertEquals(164, position);
+    assertEquals(165, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -463,7 +470,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     updateDefaultUniverseTo5Nodes(true);
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "new-version";
+    taskParams.ybSoftwareVersion = "2.17.0.0-b1";
     taskParams.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
 
@@ -477,6 +484,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
     // XCluster gflag set up.
     assertTaskType(subTasksByPosition.get(position++), TaskType.XClusterInfoPersist);
@@ -490,7 +498,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     position = assertSequence(subTasksByPosition, MASTER, position, false, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, false, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE, true, true);
-    assertEquals(22, position);
+    assertEquals(23, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }

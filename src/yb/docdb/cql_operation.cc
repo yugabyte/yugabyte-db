@@ -68,7 +68,14 @@ DEFINE_UNKNOWN_bool(ycql_disable_index_updating_optimization, false,
             "the index data.");
 TAG_FLAG(ycql_disable_index_updating_optimization, advanced);
 
-DEFINE_UNKNOWN_bool(ycql_enable_packed_row, false, "Whether packed row is enabled for YCQL.");
+#ifdef NDEBUG
+constexpr bool kYcqlPackedRowEnabled = false;
+#else
+constexpr bool kYcqlPackedRowEnabled = true;
+#endif
+
+DEFINE_RUNTIME_bool(ycql_enable_packed_row, kYcqlPackedRowEnabled,
+                    "Whether packed row is enabled for YCQL.");
 
 DEFINE_UNKNOWN_uint64(
     ycql_packed_row_size_limit, 0,
@@ -260,13 +267,22 @@ Status CheckUserTimestampForCollections(const UserTimeMicros user_timestamp) {
 
 } // namespace
 
+struct QLWriteOperation::ApplyContext {
+  const DocOperationApplyData* data;
+  ValueControlFields control_fields;
+  ValueBuffer column_control_fields;
+  RowPacker* row_packer = nullptr;
+};
+
 QLWriteOperation::QLWriteOperation(
     std::reference_wrapper<const QLWriteRequestPB> request,
+    SchemaVersion schema_version,
     DocReadContextPtr doc_read_context,
     std::shared_ptr<IndexMap> index_map,
     const Schema* unique_index_key_schema,
     const TransactionOperationContext& txn_op_context)
     : DocOperationBase(request),
+      schema_version_(schema_version),
       doc_read_context_(std::move(doc_read_context)),
       index_map_holder_(std::move(index_map)),
       index_map_(*index_map_holder_),
@@ -276,11 +292,13 @@ QLWriteOperation::QLWriteOperation(
 
 QLWriteOperation::QLWriteOperation(
     std::reference_wrapper<const QLWriteRequestPB> request,
+    SchemaVersion schema_version,
     DocReadContextPtr doc_read_context,
     std::reference_wrapper<const IndexMap> index_map,
     const Schema* unique_index_key_schema,
     const TransactionOperationContext& txn_op_context)
     : DocOperationBase(request),
+      schema_version_(schema_version),
       doc_read_context_(std::move(doc_read_context)),
       index_map_(index_map),
       unique_index_key_schema_(unique_index_key_schema),
@@ -545,7 +563,7 @@ Status QLWriteOperation::PopulateStatusRow(const DocOperationApplyData& data,
 // Check if a duplicate value is inserted into a unique index.
 Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(const DocOperationApplyData& data) {
   VLOG(3) << "Looking for collisions in\n" << docdb::DocDBDebugDumpToStr(
-      data.doc_write_batch->doc_db(), SchemaPackingStorage());
+      data.doc_write_batch->doc_db(), SchemaPackingStorage(TableType::YQL_TABLE_TYPE));
   // We need to check backwards only for backfilled entries.
   bool ret =
       VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kForward)) ||
@@ -624,7 +642,7 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
                 << " vs New: " << yb::ToString(new_value)
                 << "\nUsed read time as " << yb::ToString(data.read_time);
         DVLOG(3) << "DocDB is now:\n" << docdb::DocDBDebugDumpToStr(
-            data.doc_write_batch->doc_db(), SchemaPackingStorage());
+            data.doc_write_batch->doc_db(), SchemaPackingStorage(TableType::YQL_TABLE_TYPE));
         return true;
       }
     }
@@ -658,17 +676,15 @@ Status QLWriteOperation::ApplyForJsonOperators(
     const ColumnSchema& column_schema,
     const ColumnId col_id,
     const JsonColumnMap& col_map,
-    const DocOperationApplyData& data,
-    const ValueControlFields& control_fields,
+    const ApplyContext& context,
     IsInsert is_insert,
-    QLTableRow* existing_row,
-    RowPacker* row_packer) {
+    QLTableRow* existing_row) {
   using common::Jsonb;
   rapidjson::Document document;
   QLValue qlv;
   bool read_needed = true;
-  for (int idx : col_map.find(col_id)->second) {
-    const auto& column_value = request_.column_values(idx);
+  for (const auto& column_value_ptr : col_map.find(col_id)->second) {
+    const auto& column_value = *column_value_ptr;
     if (column_value.column_id() != col_id) continue;
     if (read_needed) {
       // Read the json column value in order to perform a read modify write.
@@ -745,40 +761,38 @@ Status QLWriteOperation::ApplyForJsonOperators(
   existing_row->AllocColumn(col_id).value = qlv.value();
 
   return InsertScalar(
-      data, column_schema, col_id, control_fields, qlv.value(), bfql::TSOpcode::kScalarInsert,
-      row_packer);
+      context, column_schema, col_id, qlv.value(), bfql::TSOpcode::kScalarInsert);
 }
 
 Status QLWriteOperation::InsertScalar(
-    const DocOperationApplyData& data,
+    const ApplyContext& context,
     const ColumnSchema& column_schema,
     ColumnId column_id,
-    const ValueControlFields& control_fields,
     const QLValuePB& value,
-    bfql::TSOpcode op_code,
-    RowPacker* row_packer) {
+    bfql::TSOpcode op_code) {
   ValueRef value_ref(value, column_schema.sorting_type(), op_code);
-  if (row_packer && value_ref.IsTombstoneOrPrimitive() &&
-      VERIFY_RESULT(row_packer->AddValue(column_id, value))) {
+  if (context.row_packer && value_ref.IsTombstoneOrPrimitive() && !column_schema.is_static() &&
+      VERIFY_RESULT(context.row_packer->AddValue(
+          column_id, context.column_control_fields.AsSlice(), value))) {
     return Status::OK();
   }
 
-  return data.doc_write_batch->InsertSubDocument(
-      MakeSubPath(column_schema, column_id), value_ref, data.read_time, data.deadline,
-      request_.query_id(), control_fields.ttl, control_fields.timestamp);
+  return context.data->doc_write_batch->InsertSubDocument(
+      MakeSubPath(column_schema, column_id), value_ref, context.data->read_time,
+      context.data->deadline, request_.query_id(), context.control_fields.ttl,
+      context.control_fields.timestamp);
 }
 
 Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_value,
                                                const QLTableRow& existing_row,
-                                               const DocOperationApplyData& data,
-                                               const ValueControlFields& control_fields,
+                                               const ApplyContext& context,
                                                const ColumnSchema& column,
                                                ColumnId column_id) {
   QLExprResult expr_result;
   RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, expr_result.Writer()));
   ValueRef value(
       expr_result.Value(), column.sorting_type(), GetTSWriteInstruction(column_value.expr()));
-  RETURN_NOT_OK(CheckUserTimestampForCollections(control_fields.timestamp));
+  RETURN_NOT_OK(CheckUserTimestampForCollections(context.control_fields.timestamp));
 
   // Setting the value for a sub-column
   // Currently we only support two cases here: `map['key'] = v` and `list[index] = v`)
@@ -791,9 +805,9 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
     case MAP: {
       sub_path.AddSubKey(KeyEntryValue::FromQLValuePB(
           column_value.subscript_args(0).value(), SortingType::kNotSpecified));
-      RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-          sub_path, value, data.read_time, data.deadline,
-          request_.query_id(), control_fields.ttl, control_fields.timestamp));
+      RETURN_NOT_OK(context.data->doc_write_batch->InsertSubDocument(
+          sub_path, value, context.data->read_time, context.data->deadline,
+          request_.query_id(), context.control_fields.ttl, context.control_fields.timestamp));
       break;
     }
     case LIST: {
@@ -803,9 +817,9 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
           MonoDelta::kMax;
 
       int target_cql_index = column_value.subscript_args(0).value().int32_value();
-      RETURN_NOT_OK(data.doc_write_batch->ReplaceCqlInList(
-          sub_path, target_cql_index, value, data.read_time, data.deadline, request_.query_id(),
-          default_ttl, control_fields.ttl));
+      RETURN_NOT_OK(context.data->doc_write_batch->ReplaceCqlInList(
+          sub_path, target_cql_index, value, context.data->read_time, context.data->deadline,
+          request_.query_id(), default_ttl, context.control_fields.ttl));
       break;
     }
     default: {
@@ -818,12 +832,10 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
 
 Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_value,
                                                 const QLTableRow& existing_row,
-                                                const DocOperationApplyData& data,
-                                                const ValueControlFields& control_fields,
+                                                const ApplyContext& context,
                                                 const ColumnSchema& column,
                                                 ColumnId column_id,
-                                                QLTableRow* new_row,
-                                                RowPacker* row_packer) {
+                                                QLTableRow* new_row) {
   using bfql::TSOpcode;
 
   // Typical case, setting a columns value
@@ -835,36 +847,35 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
     case TSOpcode::kToJson: FALLTHROUGH_INTENDED;
     case TSOpcode::kScalarInsert:
       RETURN_NOT_OK(InsertScalar(
-          data, column, column_id, control_fields, expr_result.Value(), write_instruction,
-          row_packer));
+          context, column, column_id, expr_result.Value(), write_instruction));
       break;
     case TSOpcode::kMapExtend:
     case TSOpcode::kSetExtend:
     case TSOpcode::kMapRemove:
     case TSOpcode::kSetRemove:
-      RETURN_NOT_OK(CheckUserTimestampForCollections(control_fields.timestamp));
-      RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
-        MakeSubPath(column, column_id), value, data.read_time, data.deadline, request_.query_id(),
-        control_fields.ttl));
+      RETURN_NOT_OK(CheckUserTimestampForCollections(context.control_fields.timestamp));
+      RETURN_NOT_OK(context.data->doc_write_batch->ExtendSubDocument(
+        MakeSubPath(column, column_id), value, context.data->read_time, context.data->deadline,
+        request_.query_id(), context.control_fields.ttl));
       break;
     case TSOpcode::kListPrepend:
       value.set_list_extend_order(ListExtendOrder::PREPEND_BLOCK);
       FALLTHROUGH_INTENDED;
     case TSOpcode::kListAppend:
-      RETURN_NOT_OK(CheckUserTimestampForCollections(control_fields.timestamp));
-      RETURN_NOT_OK(data.doc_write_batch->ExtendList(
-          MakeSubPath(column, column_id), value, data.read_time, data.deadline, request_.query_id(),
-          control_fields.ttl));
+      RETURN_NOT_OK(CheckUserTimestampForCollections(context.control_fields.timestamp));
+      RETURN_NOT_OK(context.data->doc_write_batch->ExtendList(
+          MakeSubPath(column, column_id), value, context.data->read_time, context.data->deadline,
+          request_.query_id(), context.control_fields.ttl));
       break;
     case TSOpcode::kListRemove:
       // TODO(akashnil or mihnea) this should call RemoveFromList once thats implemented
       // Currently list subtraction is computed in memory using builtin call so this
       // case should never be reached. Once it is implemented the corresponding case
       // from EvalQLExpressionPB should be uncommented to enable this optimization.
-      RETURN_NOT_OK(CheckUserTimestampForCollections(control_fields.timestamp));
-      RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-          MakeSubPath(column, column_id), value, data.read_time, data.deadline,
-          request_.query_id(), control_fields.ttl, control_fields.timestamp));
+      RETURN_NOT_OK(CheckUserTimestampForCollections(context.control_fields.timestamp));
+      RETURN_NOT_OK(context.data->doc_write_batch->InsertSubDocument(
+          MakeSubPath(column, column_id), value, context.data->read_time, context.data->deadline,
+          request_.query_id(), context.control_fields.ttl, context.control_fields.timestamp));
       break;
     default:
       LOG(FATAL) << "Unsupported operation: " << static_cast<int>(write_instruction);
@@ -878,6 +889,8 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
 }
 
 Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
+  data.doc_write_batch->SetDocReadContext(doc_read_context_);
+
   QLTableRow existing_row;
   if (request_.has_if_expr()) {
     // Check if the if-condition is satisfied.
@@ -970,9 +983,13 @@ DocPath QLWriteOperation::MakeSubPath(const ColumnSchema& column_schema, ColumnI
 
 Status QLWriteOperation::ApplyUpsert(
     const DocOperationApplyData& data, const QLTableRow& existing_row, QLTableRow* new_row) {
-  const auto control_fields = ValueControlFields {
-    .ttl = request_ttl(),
-    .timestamp = user_timestamp(),
+  ApplyContext context = {
+    .data = &data,
+    .control_fields = ValueControlFields {
+      .ttl = request_ttl(),
+      .timestamp = user_timestamp(),
+    },
+    .column_control_fields = {},
   };
 
   // Add the appropriate liveness column only for inserts.
@@ -981,27 +998,46 @@ Status QLWriteOperation::ApplyUpsert(
   IsInsert is_insert(request_.type() == QLWriteRequestPB::QL_STMT_INSERT);
 
   std::optional<RowPacker> row_packer;
-  IntraTxnWriteId packed_row_write_id = 0;
+  std::optional<IntraTxnWriteId> packed_row_write_id;
+
+  auto se = ScopeExit([&packed_row_write_id, doc_write_batch = data.doc_write_batch]() {
+    if (packed_row_write_id) {
+      doc_write_batch->RollbackReservedWriteId();
+    }
+  });
 
   if (is_insert && encoded_pk_doc_key_) {
-    if (FLAGS_ycql_enable_packed_row) {
+    bool pack_row = FLAGS_ycql_enable_packed_row;
+    if (pack_row) {
       const SchemaPacking& schema_packing = VERIFY_RESULT(
-          doc_read_context_->schema_packing_storage.GetPacking(request_.schema_version()));
-      row_packer.emplace(
-          request_.schema_version(), schema_packing, FLAGS_ycql_packed_row_size_limit,
-          control_fields);
-      packed_row_write_id = data.doc_write_batch->ReserveWriteId();
-    } else {
+          doc_read_context_->schema_packing_storage.GetPacking(schema_version_));
+      // In YCQL user could specify timestamp that is used by inserted row.
+      // As result there could be more recent data.
+      // Disable packed row when user specified timestamp.
+      pack_row = !context.control_fields.has_timestamp() &&
+                 schema_packing.CouldPack(request_.column_values());
+      if (pack_row) {
+        row_packer.emplace(
+            schema_version_, schema_packing, FLAGS_ycql_packed_row_size_limit,
+            context.control_fields);
+        packed_row_write_id = data.doc_write_batch->ReserveWriteId();
+        context.row_packer = &row_packer.value();
+        ValueControlFields column_control_fields;
+        column_control_fields.ttl = context.control_fields.ttl;
+        column_control_fields.AppendEncoded(&context.column_control_fields);
+      }
+    }
+
+    if (!pack_row) {
       const DocPath sub_path(encoded_pk_doc_key_.as_slice(), KeyEntryValue::kLivenessColumn);
       RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
-          sub_path, control_fields, ValueRef(ValueEntryType::kNullLow),
+          sub_path, context.control_fields, ValueRef(ValueEntryType::kNullLow),
           data.read_time, data.deadline, request_.query_id()));
     }
   }
 
   JsonColumnMap col_map;
-  for (int idx = 0; idx < request_.column_values_size(); idx++) {
-    const auto& column_value = request_.column_values(idx);
+  auto process_column = [&](const QLColumnValuePB& column_value) -> Status {
     if (!column_value.has_column_id()) {
       return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
                            column_value.DebugString());
@@ -1012,29 +1048,48 @@ Status QLWriteOperation::ApplyUpsert(
 
     QLValue expr_result;
     if (!column_value.json_args().empty()) {
-      col_map[column_id].emplace_back(idx);
+      col_map[column_id].emplace_back(&column_value);
     } else if (!column_value.subscript_args().empty()) {
       RETURN_NOT_OK(ApplyForSubscriptArgs(
-          column_value, existing_row, data, control_fields, column_schema, column_id));
+          column_value, existing_row, context, column_schema, column_id));
     } else {
       RETURN_NOT_OK(ApplyForRegularColumns(
-          column_value, existing_row, data, control_fields, column_schema, column_id, new_row,
-          OptionalToPointer(&row_packer)));
+          column_value, existing_row, context, column_schema, column_id, new_row));
+    }
+
+    return Status::OK();
+  };
+
+  const auto& column_values = request_.column_values();
+  auto cmp_column_id = [](const QLColumnValuePB& lhs, const QLColumnValuePB& rhs) {
+    return lhs.column_id() < rhs.column_id();
+  };
+  if (!row_packer || std::is_sorted(column_values.begin(), column_values.end(), cmp_column_id)) {
+    for (const auto& column_value : column_values) {
+      RETURN_NOT_OK(process_column(column_value));
+    }
+  } else {
+    boost::container::small_vector<std::reference_wrapper<const QLColumnValuePB>, 0x10> refs(
+        column_values.begin(), column_values.end());
+    std::sort(refs.begin(), refs.end(), cmp_column_id);
+    for (const auto& column_value : refs) {
+      RETURN_NOT_OK(process_column(column_value));
     }
   }
+
   for (const auto& [column_id, _] : col_map) {
     const ColumnSchema& column_schema = VERIFY_RESULT(
         doc_read_context_->schema.column_by_id(column_id));
     RETURN_NOT_OK(ApplyForJsonOperators(
-        column_schema, column_id, col_map, data, control_fields, is_insert, new_row,
-        OptionalToPointer(&row_packer)));
+        column_schema, column_id, col_map, context, is_insert, new_row));
   }
 
   if (row_packer) {
     auto encoded_value = VERIFY_RESULT(row_packer->Complete());
     RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
-        DocPath(encoded_pk_doc_key_.as_slice()), control_fields, ValueRef(encoded_value),
-        data.read_time, data.deadline, request_.query_id(), packed_row_write_id));
+        DocPath(encoded_pk_doc_key_.as_slice()), context.control_fields, ValueRef(encoded_value),
+        data.read_time, data.deadline, request_.query_id(), *packed_row_write_id));
+    packed_row_write_id.reset();
   }
 
   if (update_indexes_) {
@@ -1815,7 +1870,7 @@ Status QLReadOperation::PopulateResultSet(const std::unique_ptr<QLScanSpec>& spe
   int rscol_index = 0;
   for (const QLExpressionPB& expr : request_.selected_exprs()) {
     QLExprResult value;
-    RETURN_NOT_OK(EvalExpr(expr, table_row, value.Writer(), spec->schema()));
+    RETURN_NOT_OK(EvalExpr(expr, table_row, value.Writer(), &spec->schema()));
     resultset->AppendColumn(rscol_index, value.Value());
     rscol_index++;
   }

@@ -1,3 +1,5 @@
+// Copyright (c) Yugabyte, Inc.
+
 package com.yugabyte.yw.common;
 
 import com.google.inject.Singleton;
@@ -262,6 +264,15 @@ public class NodeUniverseManager extends DevopsBase {
     return provider.getYbHome();
   }
 
+  /**
+   * Placeholder method to get tmp directory for node
+   *
+   * @return tmp directory
+   */
+  public String getYbTmpDir() {
+    return "/tmp";
+  }
+
   private void addConnectionParams(
       Universe universe, NodeDetails node, ShellProcessContext context, List<String> commandArgs) {
     UniverseDefinitionTaskParams.Cluster cluster =
@@ -286,14 +297,14 @@ public class NodeUniverseManager extends DevopsBase {
       AccessKey accessKey =
           AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
       Optional<NodeAgent> optional =
-          getNodeAgentClient().maybeGetNodeAgentClient(node.cloudInfo.private_ip, provider);
+          getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider);
       if (optional.isPresent()) {
         commandArgs.add("rpc");
         NodeAgentClient.addNodeAgentClientParams(optional.get(), commandArgs);
       } else {
         commandArgs.add("ssh");
         commandArgs.add("--port");
-        commandArgs.add(providerDetails.sshPort.toString());
+        commandArgs.add(context.isDefaultSshPort() ? "22" : providerDetails.sshPort.toString());
         commandArgs.add("--ip");
         commandArgs.add(node.cloudInfo.private_ip);
         commandArgs.add("--key");

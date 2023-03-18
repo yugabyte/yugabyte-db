@@ -44,6 +44,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.Scanner;
 import java.util.Set;
 import java.util.TreeMap;
@@ -119,6 +121,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   // Postgres flags.
   private static final String MASTERS_FLAG = "FLAGS_pggate_master_addresses";
   private static final String YB_ENABLED_IN_PG_ENV_VAR_NAME = "YB_ENABLED_IN_POSTGRES";
+
+  // Error message templates
+  private static final String UNEXPECTED_ERR_MESSAGE = "Unexpected Error Message. Got: '%s', "
+      + "Expected to contain one of the error messages: %s.";
 
   // Metric names.
   protected static final String METRIC_PREFIX = "handler_latency_yb_ysqlserver_SQLProcessor_";
@@ -1778,13 +1784,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
           return;
         }
       }
-      String faillMessage = "Unexpected Error Message. Got: '" + e.getMessage() +
-          "', Expected to contain one of the error messages: ";
-      for (int i = 0; i < errorSubstrings.length-1; i++) {
-        faillMessage.concat("'").concat(errorSubstrings[i]).concat("', ");
-      }
-      faillMessage.concat("'").concat(errorSubstrings[errorSubstrings.length-1]).concat("'.");
-      fail(faillMessage);
+
+      final String expectedErrMsg = Arrays.asList(errorSubstrings).stream().map(i -> "'" + i + "'")
+          .collect(Collectors.joining(", "));
+      final String failMessage = String.format(UNEXPECTED_ERR_MESSAGE, e.getMessage(),
+          expectedErrMsg);
+      fail(failMessage);
     }
   }
 
@@ -2127,6 +2132,22 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       }
       return sb.toString().trim();
     }
+  }
+
+  static final Pattern roundtrips_pattern = Pattern.compile("Storage Read Requests: (\\d+)\\s*$");
+
+  protected Long getNumStorageRoundtrips(Statement stmt, String query) throws Exception {
+    try (ResultSet rs = stmt.executeQuery(
+        "EXPLAIN (ANALYZE, DIST, COSTS OFF, TIMING OFF) " + query)) {
+      while (rs.next()) {
+        String line = rs.getString(1);
+        Matcher m = roundtrips_pattern.matcher(line);
+        if (m.find()) {
+          return Long.parseLong(m.group(1));
+        }
+      }
+    }
+    return null;
   }
 
   protected Long getNumDocdbRequests(Statement stmt, String query) throws Exception {

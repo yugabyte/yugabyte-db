@@ -13,13 +13,13 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="{{< relref "./ysql-sequelize.md" >}}" class="nav-link active">
+    <a href="../ysql-sequelize/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       Sequelize ORM
     </a>
   </li>
   <li>
-    <a href="{{< relref "./ysql-prisma.md" >}}" class="nav-link ">
+    <a href="../ysql-prisma/" class="nav-link ">
       <i class="icon-postgres" aria-hidden="true"></i>
       Prisma ORM
     </a>

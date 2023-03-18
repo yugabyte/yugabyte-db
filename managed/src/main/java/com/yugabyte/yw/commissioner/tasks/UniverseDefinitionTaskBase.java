@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HookInserter;
@@ -28,6 +29,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -75,7 +77,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
-import play.Configuration;
 import play.libs.Json;
 
 /**
@@ -101,8 +102,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     HTTP,
     RPC
   }
-
-  private Configuration appConfig;
 
   // Constants needed for parsing a templated node name tag (for AWS).
   public static final String NODE_NAME_KEY = "Name";
@@ -566,16 +565,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     PlacementInfoUtil.selectNumMastersAZ(pi, numTotalMasters);
   }
 
-  /**
-   * Return map of primary cluster gflags based on serverType
-   *
-   * @param taskType
-   */
-  public Map<String, String> getPrimaryClusterGFlags(ServerType taskType, Universe universe) {
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    return taskType.equals(ServerType.MASTER) ? userIntent.masterGFlags : userIntent.tserverGFlags;
-  }
-
   // Utility method so that the same tasks can be executed in StopNodeInUniverse.java
   // part of the automatic restart process of a master, if applicable, as well as in
   // StartMasterOnNode.java for any user-specified master starts.
@@ -660,28 +649,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Collection<NodeDetails> nodes,
       ServerType serverType,
       Consumer<AnsibleConfigureServers.Params> paramsCustomizer) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("AnsibleConfigureServersGFlags", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleConfigureServersGFlags");
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
 
-    // Read gflags from taskPrams primary cluster. If it is null, read it from the universe.
-    Map<String, String> gflags;
-    Cluster primaryClusterInTaskParams = taskParams().getPrimaryCluster();
-    if (primaryClusterInTaskParams != null) {
-      UserIntent userIntent = primaryClusterInTaskParams.userIntent;
-      gflags =
-          serverType.equals(ServerType.MASTER) ? userIntent.masterGFlags : userIntent.tserverGFlags;
-      log.debug(
-          "gflags in taskParams: {}, gflags in universeDetails: {}",
-          gflags,
-          getPrimaryClusterGFlags(serverType, universe));
-    } else {
-      gflags = getPrimaryClusterGFlags(serverType, universe);
-      log.debug("gflags gathered from the UniverseDetails : {}", gflags);
-    }
-
     for (NodeDetails node : nodes) {
-      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
+      Cluster cluster = taskParams().getClusterByUuid(node.placementUuid);
+      UserIntent userIntent = cluster.userIntent;
+
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = userIntent.getDeviceInfoForNode(node);
@@ -724,7 +698,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Add task type
       params.type = UpgradeTaskParams.UpgradeTaskType.GFlags;
       params.setProperty("processType", serverType.toString());
-      params.gflags = gflags;
+      params.gflags =
+          GFlagsUtil.getGFlagsForNode(
+              node, serverType, cluster, universe.getUniverseDetails().clusters);
       params.useSystemd = userIntent.useSystemd;
       paramsCustomizer.accept(params);
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
@@ -749,7 +725,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public void createUpdateInstanceTagsTasks(
       Collection<NodeDetails> nodes, Map<String, String> tagsToSet, String deleteTags) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("InstanceActions", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("InstanceActions");
     for (NodeDetails node : nodes) {
       InstanceActions.Params params = new InstanceActions.Params();
       params.type = NodeManager.NodeCommandType.Tags;
@@ -787,7 +763,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createUpdateDiskSizeTasks(
       Collection<NodeDetails> nodes, boolean isForceResizeNode) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("InstanceActions", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("InstanceActions");
     for (NodeDetails node : nodes) {
       InstanceActions.Params params = new InstanceActions.Params();
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
@@ -830,8 +806,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes : a collection of nodes that need to be created
    */
   public SubTaskGroup createStartTServersTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
@@ -865,8 +840,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes : a collection of nodes that need to be created
    */
   public SubTaskGroup createStartYbcTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
@@ -895,8 +869,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   @Override
   public SubTaskGroup createWaitForMasterLeaderTask() {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("WaitForMasterLeader", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForMasterLeader");
     WaitForMasterLeader task = createTask(WaitForMasterLeader.class);
     WaitForMasterLeader.Params params = new WaitForMasterLeader.Params();
     params.universeUUID = taskParams().universeUUID;
@@ -923,7 +896,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createFailedPrecheckTask(
       Map<String, String> failedNodes, boolean reserveNodes) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("PrecheckNode", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("PrecheckNode");
     PrecheckNode.Params params = new PrecheckNode.Params();
     params.failedNodeNamesToError = failedNodes;
     params.reserveNodes = reserveNodes;
@@ -987,6 +960,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.machineImage = node.machineImage;
     params.cmkArn = taskParams().cmkArn;
     params.ipArnString = userIntent.awsArnString;
+    params.useSpotInstance = userIntent.useSpotInstance;
+    params.spotPrice = userIntent.spotPrice;
   }
 
   /**
@@ -999,8 +974,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Create preprovision hooks
     HookInserter.addHookTrigger(TriggerType.PreNodeProvision, this, taskParams(), nodes);
 
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("AnsibleSetupServer", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleSetupServer");
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
@@ -1033,8 +1007,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes : a collection of nodes that need to be created
    */
   public SubTaskGroup createCreateServerTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("AnsibleCreateServer", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleCreateServer");
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
@@ -1062,10 +1035,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createConfigureServerTasks(
       Collection<NodeDetails> nodes, Consumer<AnsibleConfigureServers.Params> paramsCustomizer) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("AnsibleConfigureServers", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleConfigureServers");
     for (NodeDetails node : nodes) {
-      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
+      Cluster cluster = taskParams().getClusterByUuid(node.placementUuid);
+      UserIntent userIntent = cluster.userIntent;
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = userIntent.getDeviceInfoForNode(node);
@@ -1113,10 +1086,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         params.type = UpgradeTaskParams.UpgradeTaskType.GFlags;
         if (params.isMaster) {
           params.setProperty("processType", ServerType.MASTER.toString());
-          params.gflags = getPrimaryClusterGFlags(ServerType.MASTER, universe);
+          params.gflags =
+              GFlagsUtil.getGFlagsForNode(
+                  node,
+                  ServerType.MASTER,
+                  universe.getUniverseDetails().getClusterByUuid(cluster.uuid),
+                  universe.getUniverseDetails().clusters);
         } else {
           params.setProperty("processType", ServerType.TSERVER.toString());
-          params.gflags = getPrimaryClusterGFlags(ServerType.TSERVER, universe);
+          params.gflags =
+              GFlagsUtil.getGFlagsForNode(
+                  node,
+                  ServerType.TSERVER,
+                  universe.getUniverseDetails().getClusterByUuid(cluster.uuid),
+                  universe.getUniverseDetails().clusters);
         }
       }
       // Create the Ansible task to get the server info.
@@ -1138,8 +1121,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @return subtask group
    */
   public SubTaskGroup createServerInfoTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("AnsibleUpdateNodeInfo", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleUpdateNodeInfo");
     for (NodeDetails node : nodes) {
       NodeTaskParams params = new NodeTaskParams();
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
@@ -1311,7 +1293,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s", subTaskGroupType, taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
     UserIntent userIntent = getUserIntent();
 
     for (NodeDetails node : nodes) {
@@ -1332,7 +1314,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s", subTaskGroupType, taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
     UserIntent userIntent = getUserIntent();
 
     for (NodeDetails node : nodes) {
@@ -1352,7 +1334,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s", subTaskGroupType, taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
     UserIntent userIntent = getUserIntent();
 
     for (NodeDetails node : nodes) {
@@ -1395,8 +1377,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   protected void createUniverseSetTlsParamsTask(SubTaskGroupType subTaskGroupType) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("UniverseSetTlsParams", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseSetTlsParams");
     UniverseSetTlsParams.Params params = createSetTlsParams(subTaskGroupType);
 
     UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
@@ -1695,7 +1676,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (onPremClusters.isEmpty()) {
       return;
     }
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("SetNodeStatus", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("SetNodeStatus");
     for (Cluster cluster : onPremClusters) {
       Set<NodeDetails> nodesToProvision =
           PlacementInfoUtil.getNodesToProvision(taskParams().getNodesInCluster(cluster.uuid));
@@ -2051,8 +2032,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param clusterUUID uuid of the read-only cluster to be removed.
    */
   public SubTaskGroup createDeleteClusterFromUniverseTask(UUID clusterUUID) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("DeleteClusterFromUniverse", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("DeleteClusterFromUniverse");
     DeleteClusterFromUniverse.Params params = new DeleteClusterFromUniverse.Params();
     // Add the universe uuid.
     params.universeUUID = taskParams().universeUUID;
@@ -2089,7 +2069,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.InstallingSoftware, taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
       subTaskGroup.addSubTask(
           getAnsibleConfigureServerTask(
@@ -2111,7 +2091,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.InstallingSoftware, taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
       subTaskGroup.addSubTask(
           getAnsibleConfigureServerTask(
@@ -2127,8 +2107,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   public SubTaskGroup createInstanceExistsCheckTasks(
       UUID universeUuid, Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("InstanceExistsCheck", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("InstanceExistsCheck");
     for (NodeDetails node : nodes) {
       if (node.placementUuid == null) {
         String errMsg = String.format("Node %s does not have placement.", node.nodeName);
@@ -2204,7 +2183,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       UpgradeTaskSubType taskSubType) {
     AnsibleConfigureServers.Params params =
         getBaseAnsibleServerTaskParams(userIntent, node, processType, type, taskSubType);
-    Map<String, String> gflags = getPrimaryClusterGFlags(processType, getUniverse());
+    Universe universe = getUniverse();
+    Map<String, String> gflags =
+        GFlagsUtil.getGFlagsForNode(
+            node,
+            processType,
+            universe.getCluster(node.placementUuid),
+            universe.getUniverseDetails().clusters);
     // Add the universe uuid.
     params.universeUUID = taskParams().universeUUID;
 
@@ -2218,7 +2203,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.allowInsecure = taskParams().allowInsecure;
     params.setTxnTableWaitCountFlag = taskParams().setTxnTableWaitCountFlag;
 
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     UUID custUUID = Customer.get(universe.customerId).uuid;
     params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
     params.rootCA = universe.getUniverseDetails().rootCA;
@@ -2234,7 +2218,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   protected SubTaskGroup createUpdateUniverseTagsTask(
       Cluster cluster, Map<String, String> instanceTags) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("InstanceActions", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("InstanceActions");
     UpdateUniverseTags.Params params = new UpdateUniverseTags.Params();
     params.universeUUID = taskParams().universeUUID;
     params.clusterUUID = cluster.uuid;

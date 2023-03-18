@@ -27,7 +27,7 @@ The following table describes the YugabyteDB features you can explore, along wit
 | :--- | :--- | :--- |
 | [SQL features](ysql-language-features/) | Learn about YugabyteDB's compatibility with PostgreSQL, including data types, queries, expressions, operators, extensions, and more. | Single-node<br/>local/cloud |
 | [Going beyond SQL](ysql-language-features/going-beyond-sql/) | Learn about reducing read latency via follower reads and moving data closer to users using tablespaces. | Multi-node<br/>local |
-| [Continuous availability](fault-tolerance/macos/) | Learn how YugabyteDB achieves high availability when a node fails. | Multi-node<br/>local |
+| [Continuous availability](fault-tolerance/) | Learn how YugabyteDB achieves high availability when a node fails. | Multi-node<br/>local |
 | [Horizontal scalability](linear-scalability/) | See how YugabyteDB handles loads while dynamically adding or removing nodes. | Multi-node<br/>local |
 | [Transactions](transactions/) | Understand how distributed transactions and isolation levels work in YugabyteDB. | Single-node<br/>local/cloud |
 | [Indexes and constraints](indexes-constraints/) | Explore indexes in YugabyteDB, including primary and foreign keys, secondary, unique, partial, and expression indexes, and more. | Single-node<br/>local/cloud |
@@ -73,14 +73,17 @@ You can run examples using a universe set up on your local machine or in a cloud
 <div class="tab-content">
   <div id="local" class="tab-pane fade show active" role="tabpanel" aria-labelledby="local-tab">
 
-
 To run the examples, you need to create a single- or multi-node universe.
 
-For testing and learning YugabyteDB on your computer, use the [yugabyted](../reference/configuration/yugabyted/) utility to create and manage universes.
+For testing and learning YugabyteDB, use the [yugabyted](../reference/configuration/yugabyted/) utility to create and manage universes.
+
+The following instructions show how to _simulate_ a single- or multi-node universe on a single computer. To deploy an actual multi-zone universe using yugabyted, follow the instructions in [Create a multi-zone cluster](../reference/configuration/yugabyted/#create-a-multi-zone-cluster).
 
 {{< tabpane text=true >}}
 
   {{% tab header="Single-node universe" lang="Single-node universe" %}}
+
+If a local universe is currently running, first [destroy it](../reference/configuration/yugabyted/#destroy-a-local-cluster).
 
 You can create a single-node local universe with a replication factor (RF) of 1 by running the following command:
 
@@ -97,23 +100,11 @@ Or, if you are running macOS Monterey, use the following command:
 
 For more information, refer to [Quick Start](../quick-start/linux/#create-a-local-cluster).
 
-To stop a single-node universe, execute the following:
-
-```sh
-./bin/yugabyted destroy
-```
-
   {{% /tab %}}
 
   {{% tab header="Multi-node universe" lang="Multi-node universe" %}}
 
-The following instructions show how to simulate a multi-node universe on a single computer. To deploy a true multi-node universe, follow the instructions in [Deploy](../deploy/).
-
-If a single-node universe is currently running, first destroy it, as follows:
-
-```sh
-./bin/yugabyted destroy
-```
+If a local universe is currently running, first [destroy it](../reference/configuration/yugabyted/#destroy-a-local-cluster).
 
 Start a local three-node universe with an RF of `3` by first creating a single node universe, as follows:
 
@@ -152,18 +143,10 @@ Next, join two more nodes with the previous node. yugabyted automatically applie
 After starting the yugabyted processes on all the nodes, configure the data placement constraint of the universe, as follows:
 
 ```sh
-./bin/yugabyted configure --fault_tolerance=zone --base_dir=/tmp/ybd1
+./bin/yugabyted configure data_placement --fault_tolerance=zone --base_dir=/tmp/ybd1
 ```
 
 This command can be executed on any node where you already started YugabyteDB.
-
-To destroy the multi-node universe, execute the following:
-
-```sh
-./bin/yugabyted destroy --base_dir=/tmp/ybd1
-./bin/yugabyted destroy --base_dir=/tmp/ybd2
-./bin/yugabyted destroy --base_dir=/tmp/ybd3
-```
 
   {{% /tab %}}
 
@@ -236,7 +219,7 @@ You can run Explore exercises in YugabyteDB Managed using the [Cloud Shell](../y
 1. Click **Launch Cloud Shell**.
 1. Enter the user name from the cluster credentials you downloaded when you created the cluster.
 1. Select the API to use (YSQL or YCQL) and click **Confirm**.
-   The shell displays in a separate browser page. Cloud Shell can take up to 30 seconds to be ready.
+    The shell displays in a separate browser page. Cloud Shell can take up to 30 seconds to be ready.
 1. Enter the password from the cluster credentials you downloaded when you created the cluster.
 
 Note that if your Cloud Shell session is idle for more than 5 minutes, your browser may disconnect you. To resume, close the browser tab and connect again.

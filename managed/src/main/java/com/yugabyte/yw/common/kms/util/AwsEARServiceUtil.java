@@ -61,21 +61,23 @@ import play.api.Play;
 public class AwsEARServiceUtil {
   private static final String CMK_POLICY = "default_cmk_policy.json";
 
-  // All fields in authConfig object sent from UI
+  // All fields in AWS KMS authConfig object sent from UI
   public enum AwsKmsAuthConfigField {
-    ACCESS_KEY_ID("AWS_ACCESS_KEY_ID", true),
-    SECRET_ACCESS_KEY("AWS_SECRET_ACCESS_KEY", true),
-    ENDPOINT("AWS_KMS_ENDPOINT", true),
-    CMK_POLICY("cmk_policy", true),
-    REGION("AWS_REGION", false),
-    CMK_ID("cmk_id", false);
+    ACCESS_KEY_ID("AWS_ACCESS_KEY_ID", true, false),
+    SECRET_ACCESS_KEY("AWS_SECRET_ACCESS_KEY", true, false),
+    ENDPOINT("AWS_KMS_ENDPOINT", true, false),
+    CMK_POLICY("cmk_policy", true, false),
+    REGION("AWS_REGION", false, true),
+    CMK_ID("cmk_id", false, true);
 
     public final String fieldName;
     public final boolean isEditable;
+    public final boolean isMetadata;
 
-    AwsKmsAuthConfigField(String fieldName, boolean isEditable) {
+    AwsKmsAuthConfigField(String fieldName, boolean isEditable, boolean isMetadata) {
       this.fieldName = fieldName;
       this.isEditable = isEditable;
+      this.isMetadata = isMetadata;
     }
 
     public static List<String> getEditableFields() {
@@ -90,6 +92,14 @@ public class AwsEARServiceUtil {
       return Arrays.asList(values())
           .stream()
           .filter(configField -> !configField.isEditable)
+          .map(configField -> configField.fieldName)
+          .collect(Collectors.toList());
+    }
+
+    public static List<String> getMetadataFields() {
+      return Arrays.asList(values())
+          .stream()
+          .filter(configField -> configField.isMetadata)
           .map(configField -> configField.fieldName)
           .collect(Collectors.toList());
     }
@@ -183,7 +193,7 @@ public class AwsEARServiceUtil {
     try {
       ObjectMapper mapper = new ObjectMapper();
       Application application = Play.current().injector().instanceOf(Application.class);
-      policy = (ObjectNode) mapper.readTree(application.resourceAsStream(CMK_POLICY));
+      policy = (ObjectNode) mapper.readTree(application.environment().resourceAsStream(CMK_POLICY));
     } catch (Exception e) {
       String errMsg = "Error occurred retrieving default cmk policy base";
       LOG.error(errMsg, e);

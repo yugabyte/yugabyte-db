@@ -193,7 +193,7 @@ import algoliasearch from 'algoliasearch';
       perPageCount = 10;
     }
 
-    const client = algoliasearch('UMBCUJCBE8', 'a879f0ab89b677264d0c6e087b714fd8');
+    const client = algoliasearch('UMBCUJCBE8', 'e2f160cd7efe96b0ada15fd27f297d66');
     const index = client.initIndex('yugabyte_docs');
     const pageItems = searchURLParameter('page');
     const searchpagerparent = document.querySelector('#pagination-docs');
@@ -321,4 +321,3 @@ import algoliasearch from 'algoliasearch';
     }
   });
 })();
-

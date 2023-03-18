@@ -260,7 +260,16 @@ public class BackupsController extends AuthenticatedController {
               taskParams.universeUUID.toString()));
     }
 
+    if ((universe.getLiveTServersInPrimaryCluster().size() < taskParams.parallelDBBackups)
+        || taskParams.parallelDBBackups <= 0) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "invalid parallel backups value provided for universe %s", universe.universeUUID));
+    }
+
     if (taskParams.keyspaceTableList != null) {
+      backupUtil.validateKeyspaces(taskParams.keyspaceTableList);
       for (BackupRequestParams.KeyspaceTable keyspaceTable : taskParams.keyspaceTableList) {
         if (keyspaceTable.tableUUIDList == null) {
           keyspaceTable.tableUUIDList = new ArrayList<UUID>();
@@ -669,6 +678,13 @@ public class BackupsController extends AuthenticatedController {
       value = "Delete backups V2",
       response = YBPTasks.class,
       nickname = "deleteBackupsV2")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "deleteBackup",
+          value = "Parameters of the backup to be deleted",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.DeleteBackupParams",
+          required = true))
   public Result deleteYb(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DeleteBackupParams deleteBackupParams = parseJsonAndValidate(DeleteBackupParams.class);
@@ -791,11 +807,11 @@ public class BackupsController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
     EditBackupParams taskParams = parseJsonAndValidate(EditBackupParams.class);
-    if (taskParams.timeBeforeDeleteFromPresentInMillis <= 0L
+    if (taskParams.timeBeforeDeleteFromPresentInMillis < 0L
         && taskParams.storageConfigUUID == null) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Please provide either a positive expiry time or storage config to edit backup");
+          "Please provide either a non negative expiry time or storage config to edit backup");
     } else if (Backup.IN_PROGRESS_STATES.contains(backup.state)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot edit a backup that is in progress state");
@@ -806,6 +822,7 @@ public class BackupsController extends AuthenticatedController {
     } else if (!backup.backupUUID.equals(backup.baseBackupUUID)) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot edit an incremental backup");
     }
+
     if (taskParams.storageConfigUUID != null) {
       updateBackupStorageConfig(customerUUID, backupUUID, taskParams);
       LOG.info(
@@ -818,6 +835,9 @@ public class BackupsController extends AuthenticatedController {
           "Updated Backup {} expiry time before delete to {} ms",
           backupUUID,
           taskParams.timeBeforeDeleteFromPresentInMillis);
+    } else if (taskParams.timeBeforeDeleteFromPresentInMillis == 0L) {
+      backup.unsetExpiry();
+      LOG.info("Updated Backup {} expiry to never expire", backupUUID);
     }
     auditService()
         .createAuditEntryWithReqBody(
@@ -850,7 +870,7 @@ public class BackupsController extends AuthenticatedController {
             Customer.get(customerUUID).getFeatures(), "universes.details.backups.storageLocation");
     boolean isStorageLocMasked = custStorageLoc != null && custStorageLoc.asText().equals("hidden");
     if (!isStorageLocMasked) {
-      UserWithFeatures user = (UserWithFeatures) ctx().args.get("user");
+      UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
       JsonNode userStorageLoc =
           CommonUtils.getNodeProperty(
               user.getFeatures(), "universes.details.backups.storageLocation");

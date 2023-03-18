@@ -8,9 +8,9 @@ import React, { ReactNode } from 'react';
 import clsx from 'clsx';
 
 import { YBLabel } from '../../../../../redesign/components';
+import YBInfoTip from '../../../../common/descriptors/YBInfoTip';
 
 import styles from './FieldLabel.module.scss';
-import YBInfoTip from '../../../../common/descriptors/YBInfoTip';
 
 interface FieldLabelProps {
   children?: ReactNode;

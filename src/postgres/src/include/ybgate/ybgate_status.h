@@ -108,7 +108,7 @@ typedef struct YbgStatusData *YbgStatus;
 
 YbgStatus YbgStatusErrorReportingError();
 YbgStatus YbgStatusCreate();
-YbgStatus YbgStatusCreateError(const char *msg);
+YbgStatus YbgStatusCreateError(const char *msg, const char *filename, int line);
 void YbgStatusDestroy(YbgStatus status);
 void *YbgStatusGetContext(YbgStatus status);
 void YbgStatusSetLevel(YbgStatus status, int32_t elevel);

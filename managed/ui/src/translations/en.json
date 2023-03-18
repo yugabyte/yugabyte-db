@@ -1,6 +1,7 @@
 {
   "translation": {
     "common": {
+      "apply": "Apply",
       "cancel": "Cancel",
       "confirm": "Confirm",
       "create": "Create",
@@ -10,7 +11,43 @@
       "requiredField": "Required field",
       "save": "Save",
       "validateAndSave": "Validate and Save",
-      "yes": "Yes"
+      "yes": "Yes",
+      "close": "Close",
+      "saving": "Saving",
+      "select": "Select",
+      "active": "Active",
+      "none": "None"
+    },
+    "universeActions": {
+      "encryptionAtRest": {
+        "title": "Manage encryption at-Rest",
+        "enableEAR": "Enable encryption at-Rest for this Universe",
+        "kmsConfig": "Key management service config",
+        "selectKMSConfig": "Select key management service config",
+        "rotateKMSConfig": "Rotate key management service config",
+        "universeKey": "Universe Key",
+        "rotateUniverseKey": "Rotate Universe key",
+        "rotateBothWarning": "Rotating Master key and Universe key should be performed at different times.",
+        "earEnabledSuccess": "Encryption-at-rest is enabled successfully.",
+        "earDisabedSuccess": "Encryption-at-rest is disabled.",
+        "universeKeyRotationSuccess": "Successfully rotated universe key.",
+        "masterKeyRotationSuccess": "Successfully rotated master key.",
+        "lastRotatedLabel": "Last rotated: ",
+        "lastActiveKMSLabel": "Last active KMS: "
+      }
+    },
+    "commonErrors": {
+      "pageNotExist": "Seems like this Page does not exist",
+      "pageNotFound": "Page not found"
+    },
+    "config": {
+      "security": {
+        "encryptionAtRest": {
+          "deleteKmsConfig": "Delete Configuration",
+          "deleteConfigConfirmText": "Are you sure you want to delete <0>{{configName}}</0> configuration?",
+          "deleteConfigWarning": "Before deleting this configuration make sure it's not being used by any backups. Note that in order to restore a backup with deleted KMS config <0></0> you'll need to create a new KMS config with the same master key details."
+        }
+      }
     },
     "universeForm": {
       "master": "Master",
@@ -83,6 +120,8 @@
         "numReadReplicas": "Number of Read Replicas",
         "regionsField": "Regions",
         "replicationField": "Replication Factor",
+        "maxRFvalue": "Maximum supported replication factor is {{rfValue}}",
+        "minRFValue": "Minimum supported replication factor is {{rfValue}}",
         "title": "Cloud Configuration",
         "totalNodesField": "Total Nodes",
         "totalPodsField": "Total Pods",
@@ -93,7 +132,12 @@
         "masterNumNodesHelper": "Number of nodes dedicated to Masters is equal to the Universe’s replication factor and can not be modified.",
         "whenToUseDedicatedHelper": "When to use this setting?",
         "masterPlacementHelper": "Select this option if you plan to use this universe for multi-tenancy use cases -or- you expect to create Databases with a very large number of tables",
-        "resetAZLabel": "Reset Config"
+        "resetAZLabel": "Reset Config",
+        "placeholder": {
+          "enterUniverseName": "Enter Universe name",
+          "selectProvider": "Select Provider",
+          "selectRegions": "Select Regions"
+        }
       },
       "deleteClusterModal": {
         "deleteRRMessage": "Are you sure you want to delete this read replica cluster ?",
@@ -143,6 +187,9 @@
         "ebs": "EBS Type",
         "ephemeralStorage": "! Selected instance type is with ephemeral storage, If you will pause this universe your data will get lost.",
         "instanceType": "Instance Type",
+        "k8NumCores": "Number of Cores",
+        "k8Memory": "Memory (GB)",
+        "useSpotInstance": "Use Spot Instances",
         "kmsConfig": "Key Management Service Config",
         "kmsConfigPlaceHolder": "Select Configuration",
         "provisionedIops": "Provisioned IOPS",
@@ -187,11 +234,19 @@
           "enableNodeToNodeTLSHelper": "Enable Node-to-Node encryption to use TLS enabled connections for communication between different Universe nodes.",
           "rootCertificate": "Root Certificate",
           "rootCertificatePlaceHolder": "Create New Certificate"
+        },
+        "placeholder": {
+          "enterYSQLPassword": "Enter YSQL auth password",
+          "confirmYSQLPassword": "Confirm YSQL auth password",
+          "enterYCQLPassword": "Enter YCQL auth password",
+          "confirmYCQLPassword": "Confirm YCQL auth password"
         }
       },
       "userTags": {
-        "addRow": "Add Row",
-        "title": "User Tags"
+        "addRow": "Add Tag",
+        "title": "User Tags",
+        "tagName": "Tag Name",
+        "tagValue": "Value"
       },
       "resizeNodeModal": {
         "confirmResizeCheckbox": "Confirm Resize Nodes",
@@ -224,6 +279,7 @@
           "Recommendation": "Recommendation",
           "Separator": ": ",
           "NoPerformanceIssues": "Performance Advisor didn't find any performance issues",
+          "FailedToLoad": "Failed to load. Try again later",
           "ReviewLoadBalancing": "If you are load balancing in your application or client, review your implementation.",
           "RebalanceAndTroubleshoot": "Rebalance and troubleshoot the cluster. ",
           "LearnPerformanceAdvisor": "Learn more about Performance Advisor",
@@ -246,7 +302,8 @@
           "ConnectionSkew": "CONNECTION SKEW",
           "QueryLoadSkew": "QUERY LOAD SKEW",
           "CpuSkew": "CPU SKEW",
-          "CpuUsage": "CPU USAGE"
+          "CpuUsage": "CPU USAGE",
+          "HotShard": "HOT SHARD"
         },
         "suggestionTypes": {
           "All": "All recommendation types",
@@ -255,7 +312,8 @@
           "SchemaSuggestion": "Schema Suggestion",
           "ConnectionSkew": "Connection Skew",
           "QueryLoadSkew": "Query Load Skew",
-          "IndexSuggestion": "Index Suggestion"
+          "IndexSuggestion": "Index Suggestion",
+          "HotShard": "Hot Shard"
         },
         "chartTitle": {
           "CpuUsagePercentage": "CPU Usage (Percentage)",
@@ -291,6 +349,39 @@
           "LongTooltipMessage": "Example: 716800",
           "StringTooltipMessage": "Example: total_time",
           "StringListTooltipMessage": "['foo', 'bar']"
+        }
+      }
+    },
+    "alertCustomTemplates": {
+      "customVariables": {
+        "addNewVariableText": "Create your own variables with <bold> customized value </bold> to use in the notification templates.",
+        "createNewVariableButton": "Create Custom Variable",
+        "systemVariables": "System Variables",
+        "assignVariablesButton": "Assign Variable Value to Alert Policies",
+        "customVariableContextMenu": {
+          "editVariable": "Edit Variable",
+          "variableDetails": "Variable Details",
+          "deleteVariable": "Delete Variable"
+        },
+        "variableText": "Variable",
+        "deleteSuccess": "Successfully deleted custom variable <u>{{variable_name}}</u>",
+        "createSuccess": "Successfully created custom variable <u>{{variable_name}}</u>",
+        "editSuccess": "Successfully edited custom variable <u>{{variable_name}}</u>",
+        "createNewVariableModal": {
+          "title": "Create Custom Variable",
+          "editTitle": "Edit Custom Variable",
+          "name": "Name",
+          "values": "Values",
+          "default": "Default",
+          "addValuesButton": "Add Values",
+          "valuesHelpText": "Define the possible values for the variable. Set one of the values as the <bold>default</bold> to use for all alerts that use the notification template. You can choose a value when configuring the alert policy."
+        },
+        "assignCustomVariableValueModal": {
+          "title": "Assign Variable Value to Alert Policies",
+          "searchHelpText": "For each alert policy, choose the variable value to display in alert notifications.",
+          "searchInputPlaceHolder": "Filter by alert policy name",
+          "menuDefault": "(default)",
+          "tablePolicyHeader": "Alert Policies"
         }
       }
     }

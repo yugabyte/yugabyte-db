@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.RotateAccessKeyParams;
@@ -43,12 +44,13 @@ import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 
 @Singleton
 @Slf4j
 public class AccessManager extends DevopsBase {
 
-  private final play.Configuration appConfig;
+  private final Config appConfig;
   private final Commissioner commissioner;
 
   private static final String YB_CLOUD_COMMAND_TYPE = "access";
@@ -58,7 +60,7 @@ public class AccessManager extends DevopsBase {
   public static final String STORAGE_PATH = "yb.storage.path";
 
   @Inject
-  public AccessManager(play.Configuration appConfig, Commissioner commissioner) {
+  public AccessManager(Config appConfig, Commissioner commissioner) {
     this.appConfig = appConfig;
     this.commissioner = commissioner;
   }
@@ -396,7 +398,13 @@ public class AccessManager extends DevopsBase {
       commandArgs.add(privateKeyFilePath);
     }
 
-    JsonNode response = execAndParseCommandRegion(regionUUID, "add-key", commandArgs);
+    JsonNode response =
+        execAndParseShellResponse(
+            DevopsCommand.builder()
+                .regionUUID(regionUUID)
+                .command("add-key")
+                .commandArgs(commandArgs)
+                .build());
     if (response.has("error")) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
@@ -425,11 +433,11 @@ public class AccessManager extends DevopsBase {
       if (sshUser != null) {
         region.provider.details.sshUser = sshUser;
       } else {
-        switch (Common.CloudType.valueOf(region.provider.code)) {
+        switch (region.getProviderCloudCode()) {
           case aws:
           case azu:
           case gcp:
-            String defaultSshUser = Common.CloudType.valueOf(region.provider.code).getSshUser();
+            String defaultSshUser = region.getProviderCloudCode().getSshUser();
             if (defaultSshUser != null && !defaultSshUser.isEmpty()) {
               region.provider.details.sshUser = defaultSshUser;
             }
@@ -465,11 +473,21 @@ public class AccessManager extends DevopsBase {
     }
     commandArgs.add("--private_key_file");
     commandArgs.add(privateKeyFile);
-    return execAndParseCommandRegion(regionUUID, "create-vault", commandArgs);
+    return execAndParseShellResponse(
+        DevopsCommand.builder()
+            .regionUUID(regionUUID)
+            .command("create-vault")
+            .commandArgs(commandArgs)
+            .build());
   }
 
   public JsonNode listKeys(UUID regionUUID) {
-    return execAndParseCommandRegion(regionUUID, "list-keys", Collections.emptyList());
+    return execAndParseShellResponse(
+        DevopsCommand.builder()
+            .regionUUID(regionUUID)
+            .command("list-keys")
+            .commandArgs(Collections.emptyList())
+            .build());
   }
 
   public JsonNode deleteKey(UUID regionUUID, String keyCode) {
@@ -496,8 +514,7 @@ public class AccessManager extends DevopsBase {
     }
 
     if (Common.CloudType.valueOf(provider.code) == Common.CloudType.aws) {
-      ObjectMapper mapper = play.libs.Json.newDefaultMapper();
-      ArrayNode ret = mapper.getNodeFactory().arrayNode();
+      ArrayNode ret = Json.mapper().getNodeFactory().arrayNode();
       regions
           .stream()
           .map(r -> deleteKey(provider.uuid, r.uuid, keyCode, deleteRemote))
@@ -526,7 +543,13 @@ public class AccessManager extends DevopsBase {
       commandArgs.add("--delete_remote");
     }
     commandArgs.add("--ignore_auth_failure");
-    JsonNode response = execAndParseCommandRegion(regionUUID, "delete-key", commandArgs);
+    JsonNode response =
+        execAndParseShellResponse(
+            DevopsCommand.builder()
+                .regionUUID(regionUUID)
+                .command("delete-key")
+                .commandArgs(commandArgs)
+                .build());
     if (response.has("error")) {
       throw new RuntimeException(response.get("error").asText());
     }

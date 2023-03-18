@@ -26,9 +26,11 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/intent.h"
+#include "yb/docdb/key_entry_value.h"
 #include "yb/docdb/value_type.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
@@ -503,6 +505,59 @@ void KeyEntryValue::AppendToKey(KeyBytes* key_bytes) const {
     IGNORE_SPECIAL_KEY_ENTRY_TYPES;
   }
   FATAL_INVALID_ENUM_VALUE(KeyEntryType, type_);
+}
+
+size_t KeyEntryValue::GetEncodedKeyEntryValueSize(const DataType& data_type) {
+  constexpr size_t key_entry_type_size = 1;
+  switch (data_type) {
+    case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
+    case BOOL:
+      return key_entry_type_size;
+    case INT8: FALLTHROUGH_INTENDED;
+    case INT16: FALLTHROUGH_INTENDED;
+    case INT32: FALLTHROUGH_INTENDED;
+    case FLOAT:
+      return key_entry_type_size + sizeof(int32_t);
+
+    case UINT32: FALLTHROUGH_INTENDED;
+    case DATE:
+      return key_entry_type_size + sizeof(uint32_t);
+
+    case INT64: FALLTHROUGH_INTENDED;
+    case DOUBLE: FALLTHROUGH_INTENDED;
+    case TIME:
+      return key_entry_type_size + sizeof(int64_t);
+
+    case UINT64:
+      return key_entry_type_size + sizeof(uint64_t);
+
+    case TIMESTAMP:
+      return key_entry_type_size + sizeof(Timestamp);
+
+    case UUID: FALLTHROUGH_INTENDED;
+    case TIMEUUID: FALLTHROUGH_INTENDED;
+    case STRING: FALLTHROUGH_INTENDED;
+    case BINARY: FALLTHROUGH_INTENDED;
+    case DECIMAL: FALLTHROUGH_INTENDED;
+    case VARINT: FALLTHROUGH_INTENDED;
+    case INET: FALLTHROUGH_INTENDED;
+    case LIST: FALLTHROUGH_INTENDED;
+    case MAP: FALLTHROUGH_INTENDED;
+    case SET: FALLTHROUGH_INTENDED;
+    case TUPLE: FALLTHROUGH_INTENDED;
+    case TYPEARGS: FALLTHROUGH_INTENDED;
+    case USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
+    case FROZEN: FALLTHROUGH_INTENDED;
+    case JSONB: FALLTHROUGH_INTENDED;
+    case UINT8: FALLTHROUGH_INTENDED;
+    case UINT16: FALLTHROUGH_INTENDED;
+    case GIN_NULL: FALLTHROUGH_INTENDED;
+    case UNKNOWN_DATA:
+      return 0;
+  }
+
+  LOG(FATAL) << "GetEncodedKeyEntryValueSize: unsupported ql_type: "
+             << QLType::ToCQLString(data_type);
 }
 
 namespace {
@@ -2809,7 +2864,7 @@ double KeyEntryValue::GetDouble() const {
 }
 
 bool KeyEntryValue::IsColumnId() const {
-  return type_ == KeyEntryType::kColumnId || type_ == KeyEntryType::kSystemColumnId;
+  return docdb::IsColumnId(type_);
 }
 
 ColumnId KeyEntryValue::GetColumnId() const {
@@ -2824,6 +2879,15 @@ uint8_t KeyEntryValue::GetGinNull() const {
 
 bool KeyEntryValue::IsInt32() const {
   return KeyEntryType::kInt32 == type_ || KeyEntryType::kInt32Descending == type_;
+}
+
+bool KeyEntryValue::IsUInt16Hash() const {
+  return type_ == KeyEntryType::kUInt16Hash;
+}
+
+uint16_t KeyEntryValue::GetUInt16Hash() const {
+  DCHECK(IsUInt16Hash());
+  return uint16_val_;
 }
 
 int32_t KeyEntryValue::GetInt32() const {

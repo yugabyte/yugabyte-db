@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 
 public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
@@ -31,10 +32,12 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   public void run() {
     runUpgrade(
         () -> {
+          // TODO: support specific gflags
           Cluster cluster = getUniverse().getUniverseDetails().getPrimaryCluster();
           UserIntent userIntent = cluster.userIntent;
+          Universe universe = getUniverse();
           // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse());
+          taskParams().verifyParams(universe);
           // Update the list of parameter key/values in the universe with the new ones.
           updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
               .setSubTaskGroupType(getTaskSubGroupType());
@@ -43,7 +46,9 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
               getUniverse(),
               userIntent.ybSoftwareVersion,
               !taskParams().masterGFlags.equals(userIntent.masterGFlags),
-              !taskParams().tserverGFlags.equals(userIntent.tserverGFlags));
+              !taskParams().tserverGFlags.equals(userIntent.tserverGFlags),
+              universe.isYbcEnabled(),
+              universe.getUniverseDetails().ybcSoftwareVersion);
         });
   }
 }

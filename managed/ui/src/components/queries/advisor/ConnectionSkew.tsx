@@ -4,7 +4,7 @@ import { usePrevious } from 'react-use';
 import _ from 'lodash';
 
 import lightBulbIcon from '../images/lightbulb.svg';
-import { CONST_VAR } from '../helpers/const';
+import { EXTERNAL_LINKS, CONST_VAR } from '../helpers/const';
 import { CpuMeasureRecommendation } from '../../../redesign/utils/dtos';
 import './styles.scss';
 
@@ -63,7 +63,15 @@ export const ConnectionSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) 
           <span className="learnPerfAdvisorText">
             {t('clusterDetail.performance.advisor.Recommendation')}
             {t('clusterDetail.performance.advisor.Separator')}
-            {t('clusterDetail.performance.advisor.ReviewLoadBalancing')}
+            {data.suggestion}
+            <a
+              target="_blank"
+              rel="noopener noreferrer"
+              className="learnSchemaSuggestion"
+              href={EXTERNAL_LINKS.CONNECTION_SKEW}
+            >
+              {t('clusterDetail.performance.advisor.LearnHow')}
+            </a>
           </span>
         </div>
       </div>

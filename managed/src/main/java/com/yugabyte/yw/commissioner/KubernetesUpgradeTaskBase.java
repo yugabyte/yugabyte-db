@@ -17,8 +17,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
@@ -106,8 +108,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       String softwareVersion,
       boolean isMasterChanged,
       boolean isTServerChanged) {
-    createUpgradeTask(
-        universe, softwareVersion, isMasterChanged, isTServerChanged, CommandType.HELM_UPGRADE);
+    createUpgradeTask(universe, softwareVersion, isMasterChanged, isTServerChanged, false, null);
   }
 
   public void createUpgradeTask(
@@ -115,7 +116,26 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       String softwareVersion,
       boolean isMasterChanged,
       boolean isTServerChanged,
-      CommandType commandType) {
+      boolean enableYbc,
+      String ybcSoftwareVersion) {
+    createUpgradeTask(
+        universe,
+        softwareVersion,
+        isMasterChanged,
+        isTServerChanged,
+        CommandType.HELM_UPGRADE,
+        enableYbc,
+        ybcSoftwareVersion);
+  }
+
+  public void createUpgradeTask(
+      Universe universe,
+      String softwareVersion,
+      boolean isMasterChanged,
+      boolean isTServerChanged,
+      CommandType commandType,
+      boolean enableYbc,
+      String ybcSoftwareVersion) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     Cluster primaryCluster = universeDetails.getPrimaryCluster();
     PlacementInfo placementInfo = primaryCluster.placementInfo;
@@ -181,7 +201,17 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           isTServerChanged,
           newNamingStyle,
           /*isReadOnlyCluster*/ false,
-          commandType);
+          commandType,
+          enableYbc,
+          ybcSoftwareVersion);
+
+      if (enableYbc) {
+        Set<NodeDetails> primaryTservers =
+            new HashSet<NodeDetails>(universe.getTServersInPrimaryCluster());
+        installYbcOnThePods(universe.name, primaryTservers, false, ybcSoftwareVersion);
+        performYbcAction(primaryTservers, false, "stop");
+        createWaitForYbcServerTask(primaryTservers);
+      }
 
       // Handle read cluster upgrade.
       if (universeDetails.getReadOnlyClusters().size() != 0) {
@@ -210,7 +240,19 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             isTServerChanged,
             newNamingStyle,
             /*isReadOnlyCluster*/ true,
-            commandType);
+            commandType,
+            enableYbc,
+            ybcSoftwareVersion);
+
+        if (enableYbc) {
+          Set<NodeDetails> replicaTservers =
+              new HashSet<NodeDetails>(
+                  universe.getNodesInCluster(
+                      universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid));
+          installYbcOnThePods(universe.name, replicaTservers, true, ybcSoftwareVersion);
+          performYbcAction(replicaTservers, true, "stop");
+          createWaitForYbcServerTask(replicaTservers);
+        }
       }
       createLoadBalancerStateChangeTask(true).setSubTaskGroupType(getTaskSubGroupType());
     }

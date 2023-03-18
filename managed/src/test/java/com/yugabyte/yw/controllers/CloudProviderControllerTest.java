@@ -10,7 +10,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValueAtPath;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
-import static com.yugabyte.yw.common.AssertHelper.assertYBPSuccess;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static junit.framework.TestCase.assertNull;
@@ -43,7 +42,6 @@ import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
@@ -52,7 +50,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.AvailabilityZoneDetails;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
@@ -60,14 +58,18 @@ import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
-import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeList;
+import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Secret;
+import io.fabric8.kubernetes.client.utils.Serialization;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URLEncoder;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -80,13 +82,13 @@ import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yaml.snakeyaml.Yaml;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -95,9 +97,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderControllerTest.class);
 
   @Mock Config mockConfig;
-  @Mock ConfigHelper mockConfigHelper;
-
-  @Mock private play.Configuration appConfig;
 
   Customer customer;
   Users user;
@@ -116,12 +115,12 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   private Result listProviders() {
-    return FakeApiHelper.doRequestWithAuthToken(
+    return doRequestWithAuthToken(
         "GET", "/api/customers/" + customer.uuid + "/providers", user.createAuthToken());
   }
 
   private Result createProvider(JsonNode bodyJson) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+    return doRequestWithAuthTokenAndBody(
         "POST",
         "/api/customers/" + customer.uuid + "/providers/ui",
         user.createAuthToken(),
@@ -129,7 +128,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   private Result createKubernetesProvider(JsonNode bodyJson) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+    return doRequestWithAuthTokenAndBody(
         "POST",
         "/api/customers/" + customer.uuid + "/providers/kubernetes",
         user.createAuthToken(),
@@ -137,21 +136,21 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   private Result getKubernetesSuggestedConfig() {
-    return FakeApiHelper.doRequestWithAuthToken(
+    return doRequestWithAuthToken(
         "GET",
         "/api/customers/" + customer.uuid + "/providers/suggested_kubernetes_config",
         user.createAuthToken());
   }
 
   private Result deleteProvider(UUID providerUUID) {
-    return FakeApiHelper.doRequestWithAuthToken(
+    return doRequestWithAuthToken(
         "DELETE",
         "/api/customers/" + customer.uuid + "/providers/" + providerUUID,
         user.createAuthToken());
   }
 
   private Result editProvider(JsonNode bodyJson, UUID providerUUID) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+    return doRequestWithAuthTokenAndBody(
         "PUT",
         "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/edit",
         user.createAuthToken(),
@@ -159,7 +158,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   private Result bootstrapProvider(JsonNode bodyJson, Provider provider) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+    return doRequestWithAuthTokenAndBody(
         "POST",
         "/api/customers/" + customer.uuid + "/providers/" + provider.uuid + "/bootstrap",
         user.createAuthToken(),
@@ -167,7 +166,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   private Result getProvider(UUID providerUUID) {
-    return FakeApiHelper.doRequestWithAuthToken(
+    return doRequestWithAuthToken(
         "GET",
         "/api/customers/" + customer.uuid + "/providers/" + providerUUID,
         user.createAuthToken());
@@ -245,7 +244,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     if (!code.equals("null")) {
       findUrl += "&providerCode=" + URLEncoder.encode(code);
     }
-    Result result = FakeApiHelper.doRequestWithAuthToken("GET", findUrl, user.createAuthToken());
+    Result result = doRequestWithAuthToken("GET", findUrl, user.createAuthToken());
 
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.isArray());
@@ -489,6 +488,15 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   private void testGetK8sSuggestedConfigBase(boolean noPullSecret) {
+    Pod testPod = null;
+    try {
+      File jsonFile = new File("src/test/resources/testYugaware.json");
+      InputStream jsonStream = new FileInputStream(jsonFile);
+
+      testPod = Serialization.unmarshal(jsonStream, Pod.class);
+      when(mockKubernetesManager.getPodObject(any(), any(), any())).thenReturn(testPod);
+    } catch (Exception e) {
+    }
     String pullSecretName = "pull-sec";
     String storageClassName = "ssd-class";
     // Was not able to get this working after trying various
@@ -541,18 +549,13 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     if (noPullSecret) {
       assertTrue(Json.fromJson(json.path("config"), Map.class).isEmpty());
     } else {
-      String parsedSecretString =
-          "{\"metadata\":{"
-              + "\"annotations\":{},"
-              + "\"name\":\""
-              + pullSecretName
-              + "\"},"
-              + "\"data\":{\".dockerconfigjson\":\"sec-key\"}}";
-      Secret parsedSecret = TestUtils.deserialize(parsedSecretString, Secret.class);
-
       assertValueAtPath(json, "/config/KUBECONFIG_IMAGE_PULL_SECRET_NAME", pullSecretName);
       assertValueAtPath(json, "/config/KUBECONFIG_PULL_SECRET_NAME", pullSecretName);
-      assertValueAtPath(json, "/config/KUBECONFIG_PULL_SECRET_CONTENT", parsedSecret.toString());
+      Yaml ya = new Yaml();
+      String one = ya.dump(ya.load(json.at("/config/KUBECONFIG_PULL_SECRET_CONTENT").toString()));
+      assertTrue(one.trim().endsWith("\".dockerconfigjson\": \"sec-key\""));
+      String registryPath = "quay.io/yugabyte/yugabyte-itest";
+      assertValueAtPath(json, "/config/KUBECONFIG_IMAGE_REGISTRY", registryPath);
     }
 
     assertValues(
@@ -637,7 +640,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
       assertNull(e.getMessage());
     }
 
-    assertEquals(0, InstanceType.findByProvider(p, mockConfig, mockConfigHelper).size());
+    assertEquals(0, InstanceType.findByProvider(p, mockConfig).size());
     assertNull(Provider.get(p.uuid));
   }
 
@@ -812,6 +815,71 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     p.refresh();
     assertEquals("1234", p.details.cloudInfo.aws.getAwsHostedZoneId());
     assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testEditProviderModifyAZs() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
+    Result providerRes = getProvider(p.uuid);
+    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    ArrayNode regions = (ArrayNode) bodyJson.get("regions");
+    ObjectNode regionNode = (ObjectNode) regions.get(0);
+    ArrayNode zones = (ArrayNode) regionNode.get("zones");
+    ((ObjectNode) zones.get(0)).put("active", false);
+    ((ObjectNode) zones.get(1)).put("subnet", "subnet-changed");
+    AvailabilityZone newZone = new AvailabilityZone();
+    newZone.name = "New zone";
+    newZone.code = "az-new";
+    newZone.subnet = "subnet-311";
+    newZone.secondarySubnet = "sec-sub111";
+    newZone.setAvailabilityZoneDetails(new AvailabilityZoneDetails());
+    newZone.region = r;
+    ObjectNode newZoneJson = (ObjectNode) Json.toJson(newZone);
+    zones.add(newZoneJson);
+    Result result = editProvider(bodyJson, p.uuid);
+    assertOk(result);
+    assertFalse(
+        "Zone is deleted", AvailabilityZone.maybeGetByCode(p, az1.code).isPresent()); // Deleted
+    AvailabilityZone az2changed = AvailabilityZone.getByCode(p, az2.code);
+    assertEquals("subnet-changed", az2changed.subnet);
+    AvailabilityZone azNew = AvailabilityZone.getByCode(p, newZone.code);
+    assertNotNull(azNew);
+    assertEquals(newZone.name, azNew.name);
+    assertEquals(newZone.subnet, azNew.subnet);
+    assertEquals(newZone.secondarySubnet, azNew.secondarySubnet);
+  }
+
+  @Test
+  public void testEditProviderDeleteRegion() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    Result providerRes = getProvider(p.uuid);
+    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    ArrayNode regions = (ArrayNode) bodyJson.get("regions");
+    ObjectNode regionNode = (ObjectNode) regions.get(0);
+    regionNode.put("active", false);
+    Result result = editProvider(bodyJson, p.uuid);
+    assertOk(result);
+    assertFalse("Region is deleted", Region.get(r.uuid).isActive());
+  }
+
+  @Test
+  public void testEditProviderTryUnDeleteRegion() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    r.setActiveFlag(false);
+    r.update();
+    Result providerRes = getProvider(p.uuid);
+    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    ArrayNode regions = (ArrayNode) bodyJson.get("regions");
+    ObjectNode regionNode = (ObjectNode) regions.get(0);
+    regionNode.put("active", true);
+    Result result = assertPlatformException(() -> editProvider(bodyJson, p.uuid));
+    assertBadRequest(result, "No changes to be made for provider type: aws");
   }
 
   @Test

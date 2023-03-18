@@ -95,7 +95,7 @@ class MasterServiceBase {
       const char* function_name,
       HoldCatalogLock hold_catalog_lock);
 
-  enterprise::CatalogManager* handler(CatalogManager*);
+  CatalogManager* handler(CatalogManager*);
   FlushManager* handler(FlushManager*);
   PermissionsManager* handler(PermissionsManager*);
   EncryptionManager* handler(EncryptionManager*);

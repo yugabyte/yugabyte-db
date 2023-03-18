@@ -17,6 +17,7 @@ package yb.master;
 option java_package = "org.yb.master";
 
 import "yb/cdc/cdc_consumer.proto";
+import "yb/cdc/xcluster_producer.proto";
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
@@ -205,6 +206,9 @@ message SysTablesEntryPB {
   optional TransactionMetadataPB transaction = 29;
 
   repeated StatefulServiceKind hosted_stateful_services = 39;
+
+  // Time when a full compaction was last requested by the user.
+  optional fixed64 last_full_compaction_time = 41;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -347,6 +351,11 @@ message SysClusterConfigEntryPB {
   optional BlacklistPB leader_blacklist = 7;
   optional EncryptionInfoPB encryption_info = 5;
   optional cdc.ConsumerRegistryPB consumer_registry = 6;
+}
+
+message SysXClusterConfigEntryPB {
+  optional uint32 version = 1;
+  optional xcluster.ProducerRegistryPB xcluster_producer_registry = 2;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for Redis Config.

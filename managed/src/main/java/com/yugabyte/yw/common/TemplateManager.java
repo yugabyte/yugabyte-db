@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -20,7 +21,7 @@ public class TemplateManager extends DevopsBase {
   private static final String COMMAND_TYPE = "instance";
   public static final String PROVISION_SCRIPT = "provision_instance.py";
 
-  @Inject play.Configuration appConfig;
+  @Inject Config appConfig;
 
   @Override
   protected String getCommandType() {
@@ -107,7 +108,12 @@ public class TemplateManager extends DevopsBase {
     }
 
     JsonNode result =
-        execAndParseCommandCloud(accessKey.getProviderUUID(), "template", commandArgs);
+        execAndParseShellResponse(
+            DevopsCommand.builder()
+                .providerUUID(accessKey.getProviderUUID())
+                .command("template")
+                .commandArgs(commandArgs)
+                .build());
 
     if (result.get("error") == null) {
       details.passwordlessSudoAccess = passwordlessSudoAccess;

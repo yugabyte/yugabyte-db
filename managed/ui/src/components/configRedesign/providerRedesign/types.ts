@@ -85,7 +85,9 @@ interface ProviderBase {
   keyPairName?: string;
   sshPrivateKeyContent?: string;
 }
-type ProviderMutationBase = ProviderBase;
+interface ProviderMutationBase extends ProviderBase {
+  allAccessKeys?: AccessKeyMutation[];
+}
 interface Provider extends ProviderBase {
   active: boolean;
   allAccessKeys: AccessKey[];
@@ -157,19 +159,26 @@ export interface OnPremProvider extends Provider {
 // ---------------------------------------------------------------------------
 // Access Keys
 // ---------------------------------------------------------------------------
+interface IdKey {
+  keyCode: string;
+  providerUUID: string;
+}
+interface KeyInfo {
+  keyPairName: string;
+  publicKey: string;
+  privateKey: string;
+  sshPrivateKeyContent: string;
+  vaultPasswordFile: string;
+  vaultFile: string;
+}
+
+export interface AccessKeyMutation {
+  IdKey?: Partial<IdKey>;
+  keyInfo?: Partial<KeyInfo>;
+}
 export interface AccessKey {
-  idKey: {
-    keyCode: string;
-    providerUUID: string;
-  };
-  keyInfo: {
-    keyPairName: string;
-    publicKey: string;
-    privateKey: string;
-    sshPrivateKeyContent: string;
-    vaultPasswordFile: string;
-    vaultFile: string;
-  };
+  idKey: IdKey;
+  keyInfo: KeyInfo;
 }
 
 // ---------------------------------------------------------------------------
@@ -195,14 +204,16 @@ interface ProviderDetails extends ProviderDetailsBase {
 }
 
 interface AWSCloudInfoBase {
-  awsAccessKeyID: string;
-  awsAccessKeySecret: string;
-  awsHostedZoneId: string;
+  awsAccessKeyID?: string;
+  awsAccessKeySecret?: string;
+  awsHostedZoneId?: string;
 }
 type AWSCloudInfoMutation = AWSCloudInfoBase;
-type AWSCloudInfo = AWSCloudInfoBase & {
+interface AWSCloudInfo extends AWSCloudInfoBase {
+  awsAccessKeyID: string;
+  awsAccessKeySecret: string;
   awsHostedZoneName: string;
-};
+}
 
 interface AZUCloudInfoBase {
   azuClientId: string;
@@ -221,7 +232,7 @@ interface GCPCloudInfoBase {
   ybFirewallTags: string;
 
   gceProject?: string;
-  customGceNetwork?: string;
+  destVpcId?: string;
 }
 interface GCPCloudInfoMutation extends GCPCloudInfoBase {
   gceApplicationCredentials?: {};
@@ -252,7 +263,7 @@ interface K8sCloudInfo extends K8sCloudInfoBase {
 }
 
 interface OnPremCloudInfoBase {
-  ybHomeDir: string;
+  ybHomeDir?: string;
 }
 type OnPremCloudInfoMutation = OnPremCloudInfoBase;
 type OnPremCloudInfo = OnPremCloudInfoBase;
@@ -352,7 +363,8 @@ export interface K8sRegion extends Region {
 }
 
 export interface OnPremRegionMutation extends RegionMutation {
-  details: { cloudInfo: Record<string, never> };
+  name: string; // This is required because the `name` field is not derived on the backend before inserting into the db
+  details?: { cloudInfo: Record<string, never> };
   zones: OnPremAvailabilityZoneMutation[];
 }
 export interface OnPremRegion extends Region {
@@ -365,9 +377,9 @@ export interface OnPremRegion extends Region {
 // ---------------------------------------------------------------------------
 
 interface AWSRegionCloudInfoBase {
+  arch?: ArchitectureType;
   securityGroupId?: string;
   vnet?: string;
-
   ybImage?: string;
 }
 type AWSRegionCloudInfoMutation = AWSRegionCloudInfoBase;
@@ -375,6 +387,7 @@ interface AWSRegionCloudInfo extends AWSRegionCloudInfoBase {
   arch: ArchitectureType;
   securityGroupId: string;
   vnet: string;
+  ybImage?: string;
 }
 
 interface AZURegionCloudInfoBase {
@@ -443,15 +456,17 @@ export interface K8sAvailabilityZoneMutation extends Omit<AvailabilityZoneMutati
   name: string;
   details?: { cloudInfo: { [ProviderCode.KUBERNETES]: K8sAvailabilityZoneCloudInfoMutation } };
 }
-export type OnPremAvailabilityZoneMutation = AvailabilityZoneMutation;
+export interface OnPremAvailabilityZoneMutation extends Omit<AvailabilityZoneMutation, 'subnet'> {
+  name: string;
+}
 
 export type AWSAvailabilityZone = AvailabilityZone;
 export type AZUAvailabilityZone = AvailabilityZone;
 export type GCPAvailabilityZone = AvailabilityZone;
-export interface K8sAvailabilityZone extends AvailabilityZone {
+export interface K8sAvailabilityZone extends Omit<AvailabilityZone, 'subnet'> {
   details?: { cloudInfo: { [ProviderCode.KUBERNETES]: K8sAvailabilityZoneCloudInfo } };
 }
-export type OnPremAvailabilityZone = AvailabilityZone;
+export type OnPremAvailabilityZone = Omit<AvailabilityZone, 'subnet'>;
 
 // ---------------------------------------------------------------------------
 // Availability Zone Cloud Info
@@ -479,4 +494,22 @@ export interface K8sPullSecretFile {
     '.dockerconfigjson': string;
   };
   type: string;
+}
+
+// ---------------------------------------------------------------------------
+// On Prem Instance Type
+// ---------------------------------------------------------------------------
+// TODO: Double check these types
+export interface InstanceTypeDetailsMutation {
+  volumeDetailsList: { mountPath: string; volumeSizeGB: number; volumeType: string }[];
+}
+
+export interface InstanceTypeMutation {
+  idKey: {
+    providerCode: ProviderCode;
+    instanceTypeCode: string;
+  };
+  numCores: number;
+  memSizeGB: number;
+  instanceTypeDetails: InstanceTypeDetailsMutation;
 }

@@ -41,12 +41,12 @@ type: indexpage
   <li>
     <a href="nodejs/yugabyte-pg-reference/" class="orange">
       <i class="fa-brands fa-node-js"></i>
-      NodeJS
+      Node.js
     </a>
   </li>
 
   <li>
-    <a href="csharp/postgres-npgsql-reference/" class="orange">
+    <a href="csharp/yb-npgsql-reference/" class="orange">
       <i class="icon-csharp"></i>
       C#
     </a>

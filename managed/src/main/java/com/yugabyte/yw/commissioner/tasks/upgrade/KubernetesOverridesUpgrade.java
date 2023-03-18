@@ -47,13 +47,14 @@ public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
               cluster.userIntent.ybSoftwareVersion,
               // We don't know which overrides can affect masters or tservers so set both to true.
               /* isMasterChanged */ true,
-              /* isTServerChanged */ true);
+              /* isTServerChanged */ true,
+              universe.isYbcEnabled(),
+              universe.getUniverseDetails().ybcSoftwareVersion);
         });
   }
 
   private SubTaskGroup addPersistKubernetesOverridesTask() {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("UpdateAndPersistKubernetesOverrides", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateAndPersistKubernetesOverrides");
     UpdateAndPersistKubernetesOverrides.Params params =
         new UpdateAndPersistKubernetesOverrides.Params();
     params.universeUUID = taskParams().universeUUID;

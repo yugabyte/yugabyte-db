@@ -36,6 +36,7 @@
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/env.h"
+#include "yb/util/flags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
@@ -57,6 +58,8 @@ using yb::FormatBytesAsStr;
 using yb::util::TrimStr;
 using yb::util::LeftShiftTextBlock;
 using yb::util::TrimCppComments;
+
+DECLARE_bool(ycql_enable_packed_row);
 
 namespace yb {
 namespace docdb {
@@ -103,10 +106,6 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
 
   void FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override {
-    Fail();
-  }
-
-  void FillStatusTablets(std::vector<BlockingTransactionData>* inout) override {
     Fail();
   }
 
@@ -345,7 +344,8 @@ void LogicalRocksDBDebugSnapshot::Capture(rocksdb::DB* rocksdb) {
   }
   // Save the DocDB debug dump as a string so we can check that we've properly restored the snapshot
   // in RestoreTo.
-  docdb_debug_dump_str = DocDBDebugDumpToStr(rocksdb, SchemaPackingStorage());
+  docdb_debug_dump_str = DocDBDebugDumpToStr(
+      rocksdb, SchemaPackingStorage(TableType::YQL_TABLE_TYPE));
 }
 
 void LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB *rocksdb) const {
@@ -361,7 +361,8 @@ void LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB *rocksdb) const {
     ASSERT_OK(rocksdb->Put(write_options, kv.first, kv.second));
   }
   ASSERT_OK(FullyCompactDB(rocksdb));
-  ASSERT_EQ(docdb_debug_dump_str, DocDBDebugDumpToStr(rocksdb, SchemaPackingStorage()));
+  ASSERT_EQ(docdb_debug_dump_str,
+            DocDBDebugDumpToStr(rocksdb, SchemaPackingStorage(TableType::YQL_TABLE_TYPE)));
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -455,7 +456,8 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
     ASSERT_OK(in_mem_docdb_.SetPrimitive(doc_path, pv));
     const auto set_primitive_status = dwb.SetPrimitive(doc_path, value);
     if (!set_primitive_status.ok()) {
-      DocDBDebugDump(rocksdb(), std::cerr, SchemaPackingStorage(), StorageDbType::kRegular);
+      DocDBDebugDump(rocksdb(), std::cerr, SchemaPackingStorage(TableType::YQL_TABLE_TYPE),
+                     StorageDbType::kRegular);
       LOG(INFO) << "doc_path=" << doc_path.ToString();
     }
     ASSERT_OK(set_primitive_status);
@@ -639,7 +641,10 @@ TransactionOperationContext DocDBLoadGenerator::GetReadOperationTransactionConte
 
 // ------------------------------------------------------------------------------------------------
 
-void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(const string &expected) {
+void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(
+    const std::string &pre_expected, const std::string& packed_row_expected) {
+  const auto& expected = !packed_row_expected.empty() && YcqlPackedRowEnabled()
+      ? packed_row_expected : pre_expected;
   const string debug_dump_str = TrimDocDbDebugDumpStr(DocDBDebugDumpToStr());
   const string expected_str = TrimDocDbDebugDumpStr(expected);
   if (expected_str != debug_dump_str) {
@@ -812,6 +817,14 @@ Status DocDBRocksDBFixture::InitRocksDBOptions() {
 
 string TrimDocDbDebugDumpStr(const string& debug_dump_str) {
   return TrimStr(ApplyEagerLineContinuation(LeftShiftTextBlock(TrimCppComments(debug_dump_str))));
+}
+
+void DisableYcqlPackedRow() {
+  ASSERT_OK(SET_FLAG(ycql_enable_packed_row, false));
+}
+
+bool YcqlPackedRowEnabled() {
+  return FLAGS_ycql_enable_packed_row;
 }
 
 }  // namespace docdb

@@ -88,7 +88,7 @@ export const CreateUniverse: FC = () => {
     });
   };
 
-  const onCancel = () => browserHistory.goBack();
+  const onCancel = () => browserHistory.push('/universes');
 
   const onSubmit = (primaryData: UniverseFormData, asyncData: UniverseFormData) => {
     const configurePayload: UniverseConfigure = {
@@ -123,7 +123,9 @@ export const CreateUniverse: FC = () => {
     if (asyncData) {
       configurePayload.clusters?.push({
         clusterType: ClusterType.ASYNC,
-        userIntent: getUserIntent({ formData: asyncData }),
+        userIntent: getUserIntent({
+          formData: { ...asyncData, ...getPrimaryInheritedValues(primaryData) } //copy primary field values (inherited fields) to RR during fresh Universe+RR creation
+        }),
         placementInfo: {
           cloudList: [
             {

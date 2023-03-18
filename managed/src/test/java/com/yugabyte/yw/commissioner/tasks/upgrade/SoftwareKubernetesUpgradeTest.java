@@ -48,6 +48,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
   private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.CheckUpgrade,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
@@ -85,6 +86,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
           TaskType.ModifyBlackList,
           TaskType.LoadBalancerStateChange,
           TaskType.RunYsqlUpgrade,
+          TaskType.PromoteAutoFlags,
           TaskType.UpdateSoftwareVersion,
           TaskType.UniverseUpdateSucceeded,
           TaskType.ModifyBlackList);
@@ -105,6 +107,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   private static List<JsonNode> createUpgradeResult(boolean isSingleAZ) {
     String namespace = isSingleAZ ? "demo-universe" : "demo-universe-az-2";
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesCommandExecutor.CommandType.POD_INFO.name())),
         Json.toJson(
@@ -176,6 +179,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 "new-version")),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),

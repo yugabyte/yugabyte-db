@@ -1,9 +1,9 @@
 ---
-title: Synchronous replication (3+ regions)
-headerTitle: Synchronous replication (3+ regions)
+title: Synchronous multi region (3+ regions) in YugabyteDB Anywhere
+headerTitle: Synchronous multi region (3+ regions)
 linkTitle: Synchronous (3+ regions)
-description: Global data distributed using synchronous replication across regions.
-headcontent: Distribute data across regions
+description: Global data distributed using synchronous replication across regions using YugabyteDB Anywhere.
+headcontent: Distribute data synchronously across regions
 menu:
   preview:
     identifier: explore-multi-region-deployments-sync-replication-2-yba
@@ -42,7 +42,7 @@ This deployment provides the following advantages:
 
 ## Create a synchronized multi-region universe
 
-Before you can [create a multi-region universe in YugabyteDB Anywhere](../../../yugabyte-platform/create-deployments/create-universe-multi-region/), you need to [install](../yugabyte-platform/install-yugabyte-platform/) YugabyteDB Anywhere and [configure](../yugabyte-platform/configure-yugabyte-platform/) it to run in AWS.
+Before you can [create a multi-region universe in YugabyteDB Anywhere](../../../yugabyte-platform/create-deployments/create-universe-multi-region/), you need to [install](../../../yugabyte-platform/install-yugabyte-platform/) YugabyteDB Anywhere and [configure](../../../yugabyte-platform/configure-yugabyte-platform/) it to run in AWS.
 
 ## Start a workload
 

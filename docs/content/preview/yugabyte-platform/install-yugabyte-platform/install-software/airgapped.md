@@ -1,5 +1,5 @@
 ---
-title: Install YugabyteDB Anywhere software - Airgapped
+title: Install YugabyteDB Anywhere software for Airgapped environments
 headerTitle: Install YugabyteDB Anywhere software - Airgapped
 linkTitle: Install software
 description: Install YugabyteDB Anywhere software in your on-premises, airgapped environment.

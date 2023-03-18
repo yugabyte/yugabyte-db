@@ -66,7 +66,7 @@
   - name: Provision | Create core dump kernel pattern
     sysctl:
       name: kernel.core_pattern
-      value: "{{ yb_home_dir }}/cores/core_%e.%p"
+      value: "{{ yb_home_dir }}/cores/core_%p_%t_%E"
       state: present
     tags: yb-prebuilt-ami
 
@@ -86,10 +86,6 @@
     group: "{{ user_name }}"
     recurse: yes
   with_items: "{{ mount_points.split(',') }}"
-
-- name: setup-postgres-cgroups
-  include_role:
-    name: setup-cgroup
 
 # Give yugabyte user sudo access to start/stop/restart master and tserver
 - name: Add yugabyte sudo user without password for metric collection operations
@@ -211,6 +207,10 @@
         state: present
         validate: "/usr/sbin/visudo -cf %s"
       when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7'
+
+  - name: setup-postgres-cgroups
+    include_role:
+      name: setup-cgroup
 
   # Adding systemd service files for yb-master and yb-tserver
   - name: Add yb-master.service

@@ -33,7 +33,7 @@ class DocDBKVFormatterImpl : public rocksdb::DocDBKVFormatter {
     return docdb::EntryToString(rocksdb::ExtractUserKey(key), value, schema_packing_storage_, type);
   }
 
-  docdb::SchemaPackingStorage schema_packing_storage_;
+  docdb::SchemaPackingStorage schema_packing_storage_{TableType::YQL_TABLE_TYPE};
 };
 
 }  // namespace

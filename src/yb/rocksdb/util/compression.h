@@ -34,7 +34,7 @@
 #include <snappy.h>
 #endif
 
-#ifdef ZLIB
+#ifdef YB_ZLIB
 #include <zlib.h>
 #endif
 
@@ -61,7 +61,7 @@ inline bool Snappy_Supported() {
 }
 
 inline bool Zlib_Supported() {
-#ifdef ZLIB
+#ifdef YB_ZLIB
   return true;
 #endif
   return false;
@@ -199,7 +199,7 @@ inline bool Zlib_Compress(const CompressionOptions& opts,
                           uint32_t compress_format_version,
                           const char* input, size_t length,
                           ::std::string* output) {
-#ifdef ZLIB
+#ifdef YB_ZLIB
   if (length > std::numeric_limits<uint32_t>::max()) {
     // Can't compress more than 4GB
     return false;
@@ -229,7 +229,7 @@ inline bool Zlib_Compress(const CompressionOptions& opts,
   }
 
   // Compress the input, and put compressed data in output.
-  _stream.next_in = (Bytef *)input;
+  _stream.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(input));
   _stream.avail_in = static_cast<unsigned int>(length);
 
   // Initialize the output size.
@@ -269,7 +269,7 @@ inline char* Zlib_Uncompress(const char* input_data, size_t input_length,
                              int* decompress_size,
                              uint32_t compress_format_version,
                              int windowBits = -14) {
-#ifdef ZLIB
+#ifdef YB_ZLIB
   uint32_t output_len = 0;
   if (compress_format_version == 2) {
     if (!compression::GetDecompressedSizeInfo(&input_data, &input_length,
@@ -297,12 +297,12 @@ inline char* Zlib_Uncompress(const char* input_data, size_t input_length,
     return nullptr;
   }
 
-  _stream.next_in = (Bytef *)input_data;
+  _stream.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(input_data));
   _stream.avail_in = static_cast<unsigned int>(input_length);
 
   char* output = new char[output_len];
 
-  _stream.next_out = (Bytef *)output;
+  _stream.next_out = reinterpret_cast<Bytef*>(output);
   _stream.avail_out = static_cast<unsigned int>(output_len);
 
   bool done = false;
@@ -326,7 +326,7 @@ inline char* Zlib_Uncompress(const char* input_data, size_t input_length,
         output = tmp;
 
         // Set more output.
-        _stream.next_out = (Bytef *)(output + old_sz);
+        _stream.next_out = reinterpret_cast<Bytef*>(output + old_sz);
         _stream.avail_out = static_cast<unsigned int>(output_len - old_sz);
         break;
       }
@@ -383,7 +383,7 @@ inline bool BZip2_Compress(const CompressionOptions& opts,
   }
 
   // Compress the input, and put compressed data in output.
-  _stream.next_in = (char *)input;
+  _stream.next_in = const_cast<char*>(input);
   _stream.avail_in = static_cast<unsigned int>(length);
 
   // Initialize the output size.
@@ -444,12 +444,12 @@ inline char* BZip2_Uncompress(const char* input_data, size_t input_length,
     return nullptr;
   }
 
-  _stream.next_in = (char *)input_data;
+  _stream.next_in = const_cast<char*>(input_data);
   _stream.avail_in = static_cast<unsigned int>(input_length);
 
   char* output = new char[output_len];
 
-  _stream.next_out = (char *)output;
+  _stream.next_out = const_cast<char*>(output);
   _stream.avail_out = static_cast<unsigned int>(output_len);
 
   bool done = false;
@@ -472,7 +472,7 @@ inline char* BZip2_Uncompress(const char* input_data, size_t input_length,
         output = tmp;
 
         // Set more output.
-        _stream.next_out = (char *)(output + old_sz);
+        _stream.next_out = const_cast<char*>(output + old_sz);
         _stream.avail_out = static_cast<unsigned int>(output_len - old_sz);
         break;
       }

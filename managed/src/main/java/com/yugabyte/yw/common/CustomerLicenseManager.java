@@ -5,7 +5,7 @@ package com.yugabyte.yw.common;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.inject.Inject;
-import com.yugabyte.yw.forms.CustomerLicenseFormData;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.models.CustomerLicense;
 import java.io.File;
 import java.io.IOException;
@@ -25,7 +25,7 @@ public class CustomerLicenseManager {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerLicenseManager.class);
 
-  @Inject play.Configuration appConfig;
+  @Inject Config appConfig;
 
   private String getOrCreateLicenseFilePath(UUID customerUUID) {
     String customerLicensePath = "/licenses/" + customerUUID.toString();

@@ -496,10 +496,7 @@ public class PlacementInfoUtil {
     LOG.info("Set of nodes after node configure: {}.", taskParams.nodeDetailsSet);
     setPerAZRF(cluster.placementInfo, cluster.userIntent.replicationFactor, defaultRegionUUID);
     LOG.info("Final Placement info: {}.", cluster.placementInfo);
-    finalSanityCheckConfigure(
-        cluster,
-        taskParams.getNodesInCluster(cluster.uuid),
-        taskParams.resetAZConfig || taskParams.userAZSelected);
+    finalSanityCheckConfigure(cluster, taskParams.getNodesInCluster(cluster.uuid));
   }
 
   /**
@@ -695,6 +692,10 @@ public class PlacementInfoUtil {
     }
     if (taskParams.universeUUID == null) {
       taskParams.universeUUID = UUID.randomUUID();
+    }
+    if (cluster.placementInfo != null && CollectionUtils.isEmpty(cluster.placementInfo.cloudList)) {
+      // Erasing empty placement.
+      cluster.placementInfo = null;
     }
     // Compose a default prefix for the nodes. This can be overwritten by instance tags (on AWS).
     String universeName =
@@ -1032,19 +1033,6 @@ public class PlacementInfoUtil {
 
   private static int sumByAZs(PlacementInfo info, Function<PlacementAZ, Integer> extractor) {
     return info.azStream().map(extractor).reduce(0, Integer::sum);
-  }
-
-  // Helper API to get keys of map in ascending order of its values and natural order.
-  private static LinkedHashSet<UUID> sortKeysByValuesAndOriginalOrder(
-      Map<UUID, Integer> map, Collection<UUID> originalOrder) {
-    List<UUID> order = new ArrayList<>(originalOrder);
-    return map.entrySet()
-        .stream()
-        .sorted(
-            Comparator.<Map.Entry<UUID, Integer>>comparingInt(Entry::getValue)
-                .thenComparingInt(e -> order.indexOf(e.getKey())))
-        .map(Entry::getKey)
-        .collect(Collectors.toCollection(LinkedHashSet::new));
   }
 
   public enum Action {
@@ -1442,10 +1430,8 @@ public class PlacementInfoUtil {
    * @param cluster The cluster whose placement is checked.
    * @param nodes The nodes in this cluster.
    */
-  private static void finalSanityCheckConfigure(
-      Cluster cluster, Collection<NodeDetails> nodes, boolean resetConfig) {
+  public static void finalSanityCheckConfigure(Cluster cluster, Collection<NodeDetails> nodes) {
     PlacementInfo placementInfo = cluster.placementInfo;
-    CloudType cloudType = cluster.userIntent.providerType;
     Map<UUID, Integer> placementAZToNodeMap = getAzUuidToNumNodes(placementInfo);
     Map<UUID, Integer> nodesAZToNodeMap = getAzUuidToNumNodes(nodes, true);
     if (!nodesAZToNodeMap.equals(placementAZToNodeMap)) {
@@ -1457,7 +1443,9 @@ public class PlacementInfoUtil {
     for (NodeDetails node : nodes) {
       String nodeType = node.cloudInfo.instance_type;
       String instanceType = cluster.userIntent.getInstanceTypeForNode(node);
-      if (node.state != NodeDetails.NodeState.ToBeRemoved && !instanceType.equals(nodeType)) {
+      if (instanceType != null
+          && node.state != NodeDetails.NodeState.ToBeRemoved
+          && !instanceType.equals(nodeType)) {
         String msg =
             "Instance type "
                 + instanceType
@@ -1474,6 +1462,9 @@ public class PlacementInfoUtil {
 
   private static void applyDedicatedModeChanges(
       Universe universe, Cluster cluster, UniverseDefinitionTaskParams taskParams) {
+    if (cluster.clusterType != PRIMARY) {
+      return;
+    }
     Set<NodeDetails> clusterNodes =
         taskParams
             .nodeDetailsSet
@@ -2356,7 +2347,9 @@ public class PlacementInfoUtil {
    */
   public static UUID getDefaultRegion(UniverseDefinitionTaskParams taskParams) {
     for (Cluster cluster : taskParams.clusters) {
-      if ((cluster.clusterType == ClusterType.PRIMARY) && (cluster.placementInfo != null)) {
+      if (cluster.clusterType == ClusterType.PRIMARY
+          && cluster.placementInfo != null
+          && !CollectionUtils.isEmpty(cluster.placementInfo.cloudList)) {
         return cluster.placementInfo.cloudList.get(0).defaultRegion;
       }
     }

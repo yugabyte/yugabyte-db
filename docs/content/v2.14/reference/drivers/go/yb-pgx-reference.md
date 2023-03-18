@@ -15,21 +15,21 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
    <li >
-    <a href="/preview/reference/drivers/go/yb-pgx-reference/" class="nav-link active">
+    <a href="../yb-pgx-reference/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
        YugabyteDB PGX Driver
     </a>
   </li>
 
   <li >
-    <a href="/preview/reference/drivers/go/pgx-reference/" class="nav-link">
+    <a href="../pgx-reference/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PGX Driver
     </a>
   </li>
 
   <li >
-    <a href="/preview/reference/drivers/go/pq-reference/" class="nav-link">
+    <a href="../pq-reference/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PQ Driver
     </a>
@@ -37,9 +37,10 @@ type: docs
 
 </ul>
 
-[YugabyteDB PGX driver](https://github.com/yugabyte/pgjdbc) is a Go driver for [YSQL](/preview/api/ysql/) based on [PGX driver](https://github.com/jackc/pgx/).
+[YugabyteDB PGX driver](https://github.com/yugabyte/pgjdbc) is a Go driver for [YSQL](../../../../api/ysql/) based on [PGX driver](https://github.com/jackc/pgx/).
 
 Although the upstream PGX driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers.
+
 The driver has the following features:
 
 - It is **cluster-aware**, which eliminates the need for an external load balancer.
