@@ -2241,6 +2241,14 @@ activate_virtualenv() {
       if is_mac && [[ ${YB_TARGET_ARCH:-} == "arm64" ]]; then
         python3_interpreter=/opt/homebrew/bin/python3
       fi
+
+      # Require Python version at least 3.7.
+      local python3_version
+      python3_version=$("$python3_interpreter" -V)
+      if [ "$(echo "$python3_version" | cut -d. -f2)" -lt 7 ]; then
+        fatal "Python version too low: $python3_version"
+      fi
+
       set -x
       "$python3_interpreter" -m venv "${virtualenv_dir##*/}"
     )
