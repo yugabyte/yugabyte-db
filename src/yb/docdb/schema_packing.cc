@@ -22,6 +22,10 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/fast_varint.h"
+#include "yb/util/flag_tags.h"
+
+DEFINE_test_flag(bool, dcheck_for_missing_schema_packing, true,
+                 "Whether we use check failure for missing schema packing in debug builds");
 
 namespace yb {
 namespace docdb {
@@ -169,8 +173,17 @@ SchemaPackingStorage::SchemaPackingStorage(
 
 Result<const SchemaPacking&> SchemaPackingStorage::GetPacking(SchemaVersion schema_version) const {
   auto it = version_to_schema_packing_.find(schema_version);
+  auto get_first = [](const auto& pair) { return pair.first; };
   if (it == version_to_schema_packing_.end()) {
-    return STATUS_FORMAT(NotFound, "Schema packing not found: $0", schema_version);
+    auto status = STATUS_FORMAT(
+        NotFound, "Schema packing not found: $0, available_versions: $1",
+        schema_version, CollectionToString(version_to_schema_packing_, get_first));
+#ifndef NDEBUG
+    if (FLAGS_TEST_dcheck_for_missing_schema_packing) {
+      CHECK_OK(status);
+    }
+#endif
+    return status;
   }
   return it->second;
 }

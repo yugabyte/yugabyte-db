@@ -51,7 +51,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 
-using std::string;
+DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 
 namespace yb {
 namespace tablet {
@@ -86,7 +86,7 @@ void ChangeMetadataOperation::SetIndexes(const RepeatedPtrField<IndexInfoPB>& in
   index_map_.FromPB(indexes);
 }
 
-string ChangeMetadataOperation::ToString() const {
+std::string ChangeMetadataOperation::ToString() const {
   return Format("ChangeMetadataOperation { hybrid_time: $0 schema: $1 request: $2 }",
                 hybrid_time_even_if_unset(), schema_, request());
 }

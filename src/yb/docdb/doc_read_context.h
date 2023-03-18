@@ -15,6 +15,7 @@
 #define YB_DOCDB_DOC_READ_CONTEXT_H
 
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/schema_packing.h"
 
