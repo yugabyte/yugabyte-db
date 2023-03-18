@@ -9,7 +9,6 @@ menu:
     parent: api-cassandra
     weight: 1225
 aliases:
-  - /preview/api/cassandra/ddl_create_index
   - /preview/api/ycql/ddl_create_index
 type: docs
 ---

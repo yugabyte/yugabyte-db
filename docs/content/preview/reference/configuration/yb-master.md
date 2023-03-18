@@ -8,9 +8,6 @@ menu:
     identifier: yb-master
     parent: configuration
     weight: 2450
-aliases:
-  - /preview/admin/yb-master
-  - /preview/deploy/reference/configuration/yb-master
 type: docs
 ---
 

@@ -8,8 +8,6 @@ menu:
     identifier: read-path
     parent: core-functions
     weight: 1188
-aliases:
-  - /architecture/core-functions/read-path/
 type: docs
 ---
 

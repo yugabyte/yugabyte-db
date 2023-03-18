@@ -8,8 +8,6 @@ menu:
     identifier: advanced-features-savepoints
     parent: advanced-features
     weight: 235
-aliases:
-  - /preview/explore/ysql-language-features/savepoints/
 type: docs
 ---
 

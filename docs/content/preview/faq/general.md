@@ -8,10 +8,6 @@ aliases:
   - /preview/faq/product/
   - /preview/introduction/overview/
   - /preview/introduction/benefits/
-  - /preview/introduction/core-features/
-  - /preview/introduction/
-  - /preview/faq/architecture/
-  - /preview/faq
 menu:
   preview_faq:
     identifier: faq-general

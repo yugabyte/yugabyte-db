@@ -7,7 +7,6 @@ headcontent: Shell for interacting with the YugabyteDB YCQL API
 aliases:
   - /develop/tools/cqlsh/
   - /preview/develop/tools/cqlsh/
-  - /preview/admin/cqlsh/
 menu:
   preview:
     identifier: ycqlsh
