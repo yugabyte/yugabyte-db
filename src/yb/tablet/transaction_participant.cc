@@ -15,6 +15,7 @@
 
 #include "yb/tablet/transaction_participant.h"
 
+#include <ctime>
 #include <queue>
 
 #include <boost/multi_index/hashed_index.hpp>
@@ -95,6 +96,10 @@ DEFINE_UNKNOWN_uint64(transactions_status_poll_interval_ms, 500 * yb::kTimeMulti
 DEFINE_UNKNOWN_bool(transactions_poll_check_aborted, true,
     "Check aborted transactions during poll.");
 
+DEFINE_NON_RUNTIME_int32(wait_queue_poll_interval_ms, 100,
+    "The interval duration between wait queue polls to fetch transaction statuses of "
+    "active blockers.");
+
 DECLARE_int64(transaction_abort_check_timeout_ms);
 
 DECLARE_int64(cdc_intent_retention_ms);
@@ -140,7 +145,8 @@ class TransactionParticipant::Impl
       : RunningTransactionContext(context, applier),
         log_prefix_(context->LogPrefix()),
         loader_(this, entity),
-        poller_(log_prefix_, std::bind(&Impl::Poll, this)) {
+        poller_(log_prefix_, std::bind(&Impl::Poll, this)),
+        wait_queue_poller_(log_prefix_, std::bind(&Impl::PollWaitQueue, this)) {
     LOG_WITH_PREFIX(INFO) << "Create";
     metric_transactions_running_ = METRIC_transactions_running.Instantiate(entity, 0);
     metric_transaction_not_found_ = METRIC_transaction_not_found.Instantiate(entity);
@@ -161,10 +167,23 @@ class TransactionParticipant::Impl
     }
   }
 
+  void SetWaitQueue(std::unique_ptr<docdb::WaitQueue> wait_queue) {
+    wait_queue_ = std::move(wait_queue);
+  }
+
+  docdb::WaitQueue* wait_queue() const {
+    return wait_queue_.get();
+  }
+
   bool StartShutdown() {
     bool expected = false;
     if (!closing_.compare_exchange_strong(expected, true)) {
       return false;
+    }
+
+    wait_queue_poller_.Shutdown();
+    if (wait_queue_) {
+      wait_queue_->StartShutdown();
     }
 
     if (start_latch_.count()) {
@@ -181,6 +200,10 @@ class TransactionParticipant::Impl
 
   void CompleteShutdown() {
     LOG_IF_WITH_PREFIX(DFATAL, !Closing()) << __func__ << " w/o StartShutdown";
+
+    if (wait_queue_) {
+      wait_queue_->CompleteShutdown();
+    }
 
     decltype(status_resolvers_) status_resolvers;
     {
@@ -646,7 +669,7 @@ class TransactionParticipant::Impl
       return Status::OK();
     }
 
-    bool was_applied = false;
+    bool was_previously_committed = false;
 
     {
       // It is our last chance to load transaction metadata, if missing.
@@ -668,7 +691,7 @@ class TransactionParticipant::Impl
 
       auto existing_commit_ht = lock_and_iterator.transaction().local_commit_time();
       if (existing_commit_ht) {
-        was_applied = true;
+        was_previously_committed = true;
         LOG_WITH_PREFIX(INFO) << "Transaction already applied: " << data.transaction_id;
         LOG_IF_WITH_PREFIX(DFATAL, data.commit_ht != existing_commit_ht)
             << "Transaction was previously applied with another commit ht: " << existing_commit_ht
@@ -685,7 +708,16 @@ class TransactionParticipant::Impl
       }
     }
 
-    if (!was_applied) {
+    if (!was_previously_committed) {
+      if (wait_queue_) {
+        // We signal this commit to the wait queue if it is newly committed. It's important to do so
+        // *after* the local running transaction's metadata is updated to indicate that this was
+        // committed. Otherwise, the wait queue will resume any waiters blocked on this transaction,
+        // and they may re-run conflict resolution and not find that the transaction is committed,
+        // forcing them to re-enter the wait queue.
+        // TODO(wait-queues): Consider signaling before replicating the transaction update.
+        wait_queue_->SignalCommitted(data.transaction_id, data.commit_ht);
+      }
       auto apply_state = CHECK_RESULT(applier_.ApplyIntents(data));
 
       VLOG_WITH_PREFIX(4) << "TXN: " << data.transaction_id << ": apply state: "
@@ -1126,11 +1158,8 @@ class TransactionParticipant::Impl
           transaction->last_known_aborted_subtxn_set(), new_status_tablet};
     }
 
-    // Closing() check is necessary to prevent accessing a bad pointer as the wait-queue is
-    // destroyed before the transaction participant. Since tablet shutdown happens in two phases,
-    // the wait-queue would only be destroyed after setting closing_ in the txn participant.
-    if (txn_status_listener_ && !Closing()) {
-      txn_status_listener_->SignalPromoted(transaction_id, std::move(txn_status_res));
+    if (wait_queue_) {
+      wait_queue_->SignalPromoted(transaction_id, std::move(txn_status_res));
     }
     return std::move(metadata);
   }
@@ -1144,10 +1173,6 @@ class TransactionParticipant::Impl
       return STATUS(NotFound, Format("Unknown transaction $0", transaction_id));
     }
     return lock_and_iterator.transaction().external_transaction();
-  }
-
-  void RegisterStatusListener(TransactionStatusListener* txn_status_listener) {
-    txn_status_listener_ = txn_status_listener;
   }
 
  private:
@@ -1241,6 +1266,11 @@ class TransactionParticipant::Impl
 
     poller_.Start(
         &participant_context_.scheduler(), 1ms * FLAGS_transactions_status_poll_interval_ms);
+
+    if (wait_queue_) {
+      wait_queue_poller_.Start(
+        &participant_context_.scheduler(), 1ms * FLAGS_wait_queue_poll_interval_ms);
+    }
   }
 
   void TransactionsModifiedUnlocked(MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) {
@@ -1583,6 +1613,10 @@ class TransactionParticipant::Impl
       operation->CompleteWithStatus(id.status());
       return;
     }
+    if (operation->request()->status() == TransactionStatus::IMMEDIATE_CLEANUP && wait_queue_) {
+      // We should only receive IMMEDIATE_CLEANUP from the client in case of certain txn abort.
+      wait_queue_->SignalAborted(*id);
+    }
 
     TransactionApplyData data = {
         .leader_term = term,
@@ -1664,6 +1698,10 @@ class TransactionParticipant::Impl
       CheckForAbortedTransactions();
     }
     CleanupStatusResolvers();
+  }
+
+  void PollWaitQueue() {
+    DCHECK_NOTNULL(wait_queue_)->Poll(participant_context_.Now());
   }
 
   void CheckForAbortedTransactions() EXCLUDES(mutex_) {
@@ -1818,14 +1856,14 @@ class TransactionParticipant::Impl
 
   rpc::Poller poller_;
 
+  rpc::Poller wait_queue_poller_;
+
   OpId cdc_sdk_min_checkpoint_op_id_ = OpId::Invalid();
   CoarseTimePoint cdc_sdk_min_checkpoint_op_id_expiration_ = CoarseTimePoint::min();
 
   std::condition_variable requests_completed_cond_;
 
-  // Pointer to the corresponding wait-queue instance. Used for signaling
-  // transaction commits/aborts/promotions.
-  TransactionStatusListener* txn_status_listener_ = nullptr;
+  std::unique_ptr<docdb::WaitQueue> wait_queue_;
 
   std::shared_ptr<MemTracker> mem_tracker_ GUARDED_BY(mutex_);
 };
@@ -1975,6 +2013,14 @@ std::string TransactionParticipant::ReplicatedData::ToString() const {
   return YB_STRUCT_TO_STRING(leader_term, state, op_id, hybrid_time, already_applied_to_regular_db);
 }
 
+void TransactionParticipant::SetWaitQueue(std::unique_ptr<docdb::WaitQueue> wait_queue) {
+  return impl_->SetWaitQueue(std::move(wait_queue));
+}
+
+docdb::WaitQueue* TransactionParticipant::wait_queue() const {
+  return impl_->wait_queue();
+}
+
 void TransactionParticipant::StartShutdown() {
   impl_->StartShutdown();
 }
@@ -2033,11 +2079,6 @@ CoarseTimePoint TransactionParticipant::GetCheckpointExpirationTime() const {
 
 OpId TransactionParticipant::GetLatestCheckPoint() const {
   return impl_->GetLatestCheckPointUnlocked();
-}
-
-void TransactionParticipant::RegisterStatusListener(
-    TransactionStatusListener* txn_status_listener) {
-  return impl_->RegisterStatusListener(txn_status_listener);
 }
 
 }  // namespace tablet

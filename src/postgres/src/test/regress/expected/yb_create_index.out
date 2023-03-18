@@ -1161,6 +1161,7 @@ SELECT * FROM test_method WHERE h2 = 258;
   2 | 258 |  1 |  2 | 10 | 20
 (1 row)
 
+DROP TABLE test_method;
 -- Test more HASH key cases in PRIMARY KEY
 CREATE TABLE test_hash (
   h1 int, h2 int, r1 int, r2 int, v1 int, v2 int);

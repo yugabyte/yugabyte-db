@@ -7,8 +7,6 @@ menu:
   preview:
     identifier: perf_prepare
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/perf_prepare/
 type: docs
 ---
 

@@ -4,7 +4,6 @@ headerTitle: YugabyteDB Managed
 linkTitle: YugabyteDB Managed
 headcontent: Fully managed YugabyteDB-as-a-Service
 aliases:
-  - /preview/yugabyte-cloud/cloud-overview
   - /preview/deploy/yugabyte-cloud/
 menu:
   preview_yugabyte-cloud:

@@ -26,9 +26,11 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/intent.h"
+#include "yb/docdb/key_entry_value.h"
 #include "yb/docdb/value_type.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
@@ -2877,6 +2879,15 @@ uint8_t KeyEntryValue::GetGinNull() const {
 
 bool KeyEntryValue::IsInt32() const {
   return KeyEntryType::kInt32 == type_ || KeyEntryType::kInt32Descending == type_;
+}
+
+bool KeyEntryValue::IsUInt16Hash() const {
+  return type_ == KeyEntryType::kUInt16Hash;
+}
+
+uint16_t KeyEntryValue::GetUInt16Hash() const {
+  DCHECK(IsUInt16Hash());
+  return uint16_val_;
 }
 
 int32_t KeyEntryValue::GetInt32() const {

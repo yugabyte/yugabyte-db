@@ -8,7 +8,6 @@ menu:
     parent: api-cassandra
     weight: 1470
 aliases:
-  - /preview/api/cassandra/type_jsonb
   - /preview/api/ycql/type_jsonb
 type: docs
 ---

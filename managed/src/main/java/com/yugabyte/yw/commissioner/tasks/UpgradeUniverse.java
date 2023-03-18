@@ -17,7 +17,6 @@ import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateGFlags;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpgradeSoftware;
 
 import com.google.common.collect.ImmutableList;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
@@ -28,7 +27,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
-import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -64,7 +62,6 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
-import play.api.Play;
 
 /** @deprecated Use separate tasks based on UpgradeTaskBase */
 @Deprecated
@@ -137,9 +134,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
         List<InstanceType> instanceTypes =
             InstanceType.findByProvider(
-                Provider.getOrBadRequest(UUID.fromString(provider)),
-                Play.current().injector().instanceOf(Config.class),
-                Play.current().injector().instanceOf(ConfigHelper.class));
+                Provider.getOrBadRequest(UUID.fromString(provider)), config);
         log.info(instanceTypes.toString());
         InstanceType newInstanceType =
             instanceTypes

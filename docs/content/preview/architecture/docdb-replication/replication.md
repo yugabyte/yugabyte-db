@@ -5,8 +5,6 @@ linkTitle: Synchronous
 description: Learn how YugabyteDB uses the Raft consensus in DocDB to replicate data across multiple independent fault domains like nodes, zones, regions and clouds.
 headContent: Synchronous replication using the Raft consensus protocol
 aliases:
-  - /preview/architecture/docdb/replication/
-  - /preview/architecture/concepts/replication/
   - /preview/architecture/concepts/docdb/replication/
 menu:
   preview:
@@ -62,7 +60,7 @@ Once the Raft log is replicated to a majority of tablet-peers and successfully p
 
 ## Replication in a cluster
 
-The replicas of data can be placed across multiple fault domains. The following examples of a multi-zone deployment with three zones and the replication factor assumed to be 3 demonstrate how replication across fault domains is performed in a cluster. 
+The replicas of data can be placed across multiple fault domains. The following examples of a multi-zone deployment with three zones and the replication factor assumed to be 3 demonstrate how replication across fault domains is performed in a cluster.
 
 ### Multi-zone deployment
 

@@ -2103,7 +2103,16 @@ static struct config_bool ConfigureNamesBool[] =
 		true,
 		NULL, NULL, NULL
 	},
-
+	{
+		{"yb_enable_hash_batch_in", PGC_USERSET, QUERY_TUNING_METHOD,
+		gettext_noop("GUC variable that enables batching RPCs of generated for IN queries on hash "
+					 "keys issued to the same tablets."),
+		NULL
+		},
+		&yb_enable_hash_batch_in,
+		true,
+		NULL, NULL, NULL
+	},
 	{
 		{"yb_bypass_cond_recheck", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("If true then condition rechecking is bypassed at YSQL if the condition is bound to DocDB."),

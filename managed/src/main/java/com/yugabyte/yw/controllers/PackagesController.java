@@ -13,6 +13,7 @@ import java.io.File;
 import java.util.StringJoiner;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import play.mvc.Http.HeaderNames;
 import play.mvc.Result;
 import play.mvc.Results;
 
@@ -53,7 +54,7 @@ public class PackagesController extends AbstractPlatformController {
             + "/"
             + joiner.toString()
             + fileExt;
-    response().setContentType("application/gzip");
+    response().setHeader(HeaderNames.CONTENT_TYPE, "application/gzip");
     return Results.ok(new File(fileLoc));
   }
 }

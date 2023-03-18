@@ -10,14 +10,15 @@ import clsx from 'clsx';
 import { FormHelperText, makeStyles } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, object, string } from 'yup';
-import { v4 as uuidv4 } from 'uuid';
 import { yupResolver } from '@hookform/resolvers/yup';
 
 import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
 import { OnPremRegionFieldLabel } from './constants';
 import { ConfigureOnPremAvailabilityZoneField } from './ConfigureOnPremAvailabilityZoneField';
+import { generateLowerCaseAlphanumericId } from '../utils';
 
 interface ConfigureOnPremRegionModalProps extends YBModalProps {
+  configuredRegions: ConfigureOnPremRegionFormValues[];
   onRegionSubmit: (region: ConfigureOnPremRegionFormValues) => void;
   onClose: () => void;
 
@@ -46,14 +47,28 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 export const ConfigureOnPremRegionModal = ({
+  configuredRegions,
   onRegionSubmit,
   onClose,
   regionSelection,
   ...modalProps
 }: ConfigureOnPremRegionModalProps) => {
+  const configuredRegionCodes = configuredRegions.map((configuredRegion) => configuredRegion.code);
   const validationSchema = object().shape({
-    code: string().required(`${OnPremRegionFieldLabel.CODE} is required.`),
-    zones: array().min(1, 'Region configurations must contain at least one zone.')
+    code: string()
+      .required(`${OnPremRegionFieldLabel.CODE} is required.`)
+      .test(
+        'is-unique',
+        (testMessageParam) =>
+          `${testMessageParam.value} has been previously configured. Please edit or delete that configuration first.`,
+        (code) =>
+          code ? regionSelection?.code === code || !configuredRegionCodes.includes(code) : false
+      ),
+    zones: array().of(
+      object().shape({
+        code: string().required('Zone code is required.')
+      })
+    )
   });
   const formMethods = useForm<ConfigureOnPremRegionFormValues>({
     defaultValues: regionSelection,
@@ -62,9 +77,16 @@ export const ConfigureOnPremRegionModal = ({
   const classes = useStyles();
 
   const onSubmit: SubmitHandler<ConfigureOnPremRegionFormValues> = (formValues) => {
+    if (formValues.zones.length <= 0) {
+      formMethods.setError('zones', {
+        type: 'min',
+        message: 'Region configurations must contain at least one zone.'
+      });
+      return;
+    }
     const newRegion = {
       ...formValues,
-      fieldId: formValues.fieldId ?? uuidv4()
+      fieldId: formValues.fieldId ?? generateLowerCaseAlphanumericId()
     };
     onRegionSubmit(newRegion);
     formMethods.reset();

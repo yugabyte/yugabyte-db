@@ -128,7 +128,7 @@ public class NodeManager extends DevopsBase {
 
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
-  @Inject play.Configuration appConfig;
+  @Inject Config appConfig;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
@@ -227,8 +227,6 @@ public class NodeManager extends DevopsBase {
     if (params.universeUUID == null) {
       throw new RuntimeException("NodeTaskParams missing Universe UUID.");
     }
-    Universe universe = Universe.getOrBadRequest(params.universeUUID);
-    NodeDetails node = universe.getNode(params.nodeName);
     UserIntent userIntent = getUserIntentFromParams(params);
     final String defaultAccessKeyCode = appConfig.getString("yb.security.default.access.key");
 
@@ -1137,6 +1135,8 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("Invalid taskSubType property: " + subType);
           }
         }
+        break;
+      default:
         break;
     }
 
@@ -2054,6 +2054,8 @@ public class NodeManager extends DevopsBase {
           commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
           break;
         }
+      default:
+        break;
     }
     addNodeAgentCommandArgs(universe, nodeTaskParam, commandArgs, sensitiveData);
     commandArgs.add(nodeTaskParam.nodeName);

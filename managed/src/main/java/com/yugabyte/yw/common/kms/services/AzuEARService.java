@@ -197,6 +197,27 @@ public class AzuEARService extends EncryptionAtRestService<AzuAlgorithm> {
   }
 
   @Override
+  public byte[] encryptKeyWithService(UUID configUUID, byte[] universeKey) {
+    this.azuEARServiceUtil = getAzuEarServiceUtil();
+    byte[] encryptedUniverseKey = null;
+    try {
+      ObjectNode authConfig = getAuthConfig(configUUID);
+      encryptedUniverseKey = azuEARServiceUtil.wrapKey(authConfig, universeKey);
+      if (encryptedUniverseKey == null) {
+        throw new RuntimeException("Encrypted universe key is null.");
+      }
+    } catch (Exception e) {
+      final String errMsg =
+          String.format(
+              "Error occurred encrypting universe key in AZU KMS with config UUID '%s'.",
+              configUUID);
+      LOG.error(errMsg, e);
+      throw new RuntimeException(errMsg, e);
+    }
+    return encryptedUniverseKey;
+  }
+
+  @Override
   protected void cleanupWithService(UUID universeUUID, UUID configUUID) {
     // Do nothing to KMS when deleting universe with EAR enabled
   }

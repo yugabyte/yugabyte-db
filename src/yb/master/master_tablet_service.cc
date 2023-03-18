@@ -79,7 +79,7 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
   }
 
   bool log_versions = false;
-  std::optional<uint32_t> db_oid;
+  std::unordered_set<uint32_t> db_oids;
   for (const auto& pg_req : req->pgsql_write_batch()) {
     if (pg_req.is_ysql_catalog_change_using_protobuf()) {
       const auto &res = master_->catalog_manager()->IncrementYsqlCatalogVersion();
@@ -103,11 +103,17 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
           context.RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION,
               STATUS(InternalError, "Failed to get db oid"));
         }
-
-        // We do not expect to see more than one write ops that write to the table
-        // kPgYbCatalogVersionTableId.
-        DCHECK(!db_oid);
-        db_oid = doc_key.range_group()[0].GetUInt32();
+        const uint32_t db_oid = doc_key.range_group()[0].GetUInt32();
+        // In per-db catalog version mode, one can run a SQL script to prepare the
+        // pg_yb_catalog_version table to have one row per-database, there can be
+        // multiple write ops that write to the table pg_yb_catalog_version for
+        // different rows.
+        // We do not expect multiple write ops that write to the same db_oid because
+        // db_oid is the primary key and duplicate key error should be reported.
+        if (!db_oids.insert(db_oid).second) {
+          LOG(DFATAL) << "Unexpected multiple writes to db_oid "
+                      << db_oid << ", req: " << req->ShortDebugString();
+        }
       }
     }
   }
@@ -120,15 +126,17 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
     // The above Write is async, so delay a bit to hopefully read the newly written values.  If the
     // delay was not sufficient, it's not a big deal since this is just for logging.
     SleepFor(100ms);
-    if (db_oid) {
-      if (!master_->catalog_manager()->GetYsqlDBCatalogVersion(*db_oid, &catalog_version,
-                                                               &last_breaking_version).ok()) {
-        LOG_WITH_FUNC(ERROR) << "failed to get db catalog version for "
-                             << *db_oid << ", ignoring";
-      } else {
-        LOG_WITH_FUNC(INFO) << "db catalog version for " << *db_oid << ": "
-                            << catalog_version << ", breaking version: "
-                            << last_breaking_version;
+    if (!db_oids.empty()) {
+      for (const auto db_oid : db_oids) {
+        if (!master_->catalog_manager()->GetYsqlDBCatalogVersion(db_oid, &catalog_version,
+                                                                 &last_breaking_version).ok()) {
+          LOG_WITH_FUNC(ERROR) << "failed to get db catalog version for "
+                               << db_oid << ", ignoring";
+        } else {
+          LOG_WITH_FUNC(INFO) << "db catalog version for " << db_oid << ": "
+                              << catalog_version << ", breaking version: "
+                              << last_breaking_version;
+        }
       }
     } else {
       if (!master_->catalog_manager()->GetYsqlCatalogVersion(&catalog_version,

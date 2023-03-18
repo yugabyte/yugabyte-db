@@ -22,6 +22,7 @@ import { useFormFieldStyles } from '../../../universeMainStyle';
 interface PlacementsFieldProps {
   disabled: boolean;
   isPrimary: boolean;
+  isEditMode: boolean;
 }
 
 // Override MuiFormControl style to ensure flexDirection is inherited
@@ -57,10 +58,9 @@ const useStyles = makeStyles((theme) => ({
 export type PlacementWithId = Placement & { id: any };
 
 const DEFAULT_MIN_NUM_NODE = 1;
-export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): ReactElement => {
+export const PlacementsField = ({ isPrimary, isEditMode }: PlacementsFieldProps): ReactElement => {
   const { control, setValue, getValues } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
-  const classes = useFormFieldStyles();
   const helperClasses = useStyles();
 
   //watchers
@@ -111,12 +111,14 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
     update(index, updateAz);
   };
 
+  const getTotalNodesinAZ = () => {
+    const initialCount = 0;
+    return fields.reduce((prev, cur) => prev + cur.numNodesInAZ, initialCount);
+  };
+
   //get Minimum AZ count to update before making universe_configure call
   const getMinCountAZ = (index: number) => {
-    const initialCount = 0;
-    const totalNodesinAz = fields
-      .map((e) => e.numNodesInAZ)
-      .reduce((prev, cur) => prev + cur, initialCount);
+    const totalNodesinAz = getTotalNodesinAZ();
     const min = fields[index].numNodesInAZ - (totalNodesinAz - getValues(REPLICATION_FACTOR_FIELD));
     return min > 0 ? min : DEFAULT_MIN_NUM_NODE;
   };
@@ -137,6 +139,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
               }}
               onChange={(e) => {
                 handleAZChange(field, e.target.value, index);
+                setValue(USER_AZSELECTED_FIELD, true);
               }}
             >
               {[field, ...unUsedZones].map((az) => (
@@ -160,6 +163,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
                     if (!e.target.value || Number(e.target.value) < getMinCountAZ(index))
                       onChange(getMinCountAZ(index));
                     else onChange(Number(e.target.value));
+                    setValue(USER_AZSELECTED_FIELD, true);
                   }}
                   {...rest}
                   inputProps={{
@@ -175,6 +179,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
                 name={prefferedAZField}
                 onChange={(e) => {
                   setValue(prefferedAZField, e.target.checked);
+                  setValue(USER_AZSELECTED_FIELD, true);
                 }}
                 defaultChecked={field.isAffinitized}
                 value={field.isAffinitized}
@@ -190,6 +195,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
             <IconButton
               color="default"
               size="medium"
+              disabled={isLoading || getTotalNodesinAZ() - field.numNodesInAZ < replicationFactor}
               data-testid={`PlacementsField-RemoveButton${index}`}
               onClick={() => {
                 remove(index);
@@ -230,14 +236,10 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
               disabled={isLoading}
               data-testid="PlacementsField-AddAZButton"
               onClick={() => {
-                const initialCount = 0;
-                const totalNodesinAz = fields
-                  .map((e) => e.numNodesInAZ)
-                  .reduce((prev, cur) => prev + cur, initialCount);
-                const remainingAZ = getValues(REPLICATION_FACTOR_FIELD) - totalNodesinAz;
+                const remainingAZ = getValues(REPLICATION_FACTOR_FIELD) - getTotalNodesinAZ();
                 append({
                   ...unUsedZones[0],
-                  numNodesInAZ: remainingAZ || 0,
+                  numNodesInAZ: remainingAZ > 0 || isEditMode ? 1 : 0,
                   replicationFactor: 1,
                   isAffinitized: true
                 });

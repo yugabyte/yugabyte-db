@@ -6,10 +6,9 @@
  */
 
 import React from 'react';
+import clsx from 'clsx';
 import { FormHelperText, makeStyles } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
-import clsx from 'clsx';
-import { v4 as uuidv4 } from 'uuid';
 import { array, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 
@@ -22,8 +21,10 @@ import { RegionOperation } from './constants';
 import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
 import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
 import { getRegionlabel, getRegionOptions, getZoneOptions } from './utils';
+import { generateLowerCaseAlphanumericId } from '../utils';
 
 interface ConfigureRegionModalProps extends YBModalProps {
+  configuredRegions: CloudVendorRegionField[];
   onRegionSubmit: (region: CloudVendorRegionField) => void;
   onClose: () => void;
   providerCode: ProviderCode;
@@ -34,20 +35,24 @@ interface ConfigureRegionModalProps extends YBModalProps {
   vpcSetupType?: VPCSetupType;
 }
 
-interface ConfigureRegionFormValues {
+type ZoneCode = { value: string; label: string; isDisabled: boolean };
+type Zones = {
+  code: ZoneCode;
+  subnet: string;
+}[];
+export interface ConfigureRegionFormValues {
   fieldId: string;
   regionData: { value: { code: string; zoneOptions: string[] }; label: string };
-  zones: ExposedAZProperties[];
-
+  zones: Zones;
   securityGroupId?: string;
   vnet?: string;
   ybImage?: string;
   sharedSubnet?: string;
 }
-type Region = Omit<ConfigureRegionFormValues, 'regionData'> & { code: string };
-export interface CloudVendorRegionField extends Region {
-  fieldId: string;
-}
+export type CloudVendorRegionField = Omit<ConfigureRegionFormValues, 'regionData' | 'zones'> & {
+  code: string;
+  zones: ExposedAZProperties[];
+};
 
 const useStyles = makeStyles((theme) => ({
   titleIcon: {
@@ -65,13 +70,14 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 export const ConfigureRegionModal = ({
-  ybImageType,
+  configuredRegions,
   onClose,
   onRegionSubmit,
   providerCode,
   regionOperation,
   regionSelection,
   vpcSetupType,
+  ybImageType,
   ...modalProps
 }: ConfigureRegionModalProps) => {
   const fieldLabel = {
@@ -113,7 +119,12 @@ export const ConfigureRegionModal = ({
     }),
     zones: array().when([], {
       is: () => shouldExposeField.zones,
-      then: array().min(1, 'Region configurations must contain at least one zone.')
+      then: array().of(
+        object().shape({
+          code: object(),
+          subnet: string().required('Zone subnet is required.')
+        })
+      )
     })
   });
   const formMethods = useForm<ConfigureRegionFormValues>({
@@ -122,15 +133,37 @@ export const ConfigureRegionModal = ({
   });
   const classes = useStyles();
 
-  const regionOptions = getRegionOptions(providerCode);
+  const configuredRegionCodes = configuredRegions.map((configuredRegion) => configuredRegion.code);
+  const regionOptions = getRegionOptions(providerCode).filter(
+    (regionOption) =>
+      regionSelection?.code === regionOption.value.code ||
+      !configuredRegionCodes.includes(regionOption.value.code)
+  );
 
-  const onSubmit: SubmitHandler<ConfigureRegionFormValues> = (data) => {
-    const { regionData, ...region } = data;
+  const onSubmit: SubmitHandler<ConfigureRegionFormValues> = (formValues) => {
+    if (shouldExposeField.zones && formValues.zones.length <= 0) {
+      formMethods.setError('zones', {
+        type: 'min',
+        message: 'Region configurations must contain at least one zone.'
+      });
+      return;
+    }
+    const { regionData, zones, ...region } = formValues;
     const newRegion =
       regionOperation === RegionOperation.ADD
-        ? { ...region, code: regionData.value.code, fieldId: uuidv4() }
-        : { ...region, code: regionData.value.code };
-    if (providerCode === ProviderCode.GCP) {
+        ? {
+            ...region,
+            zones: [] as ExposedAZProperties[],
+            code: regionData.value.code,
+            fieldId: generateLowerCaseAlphanumericId()
+          }
+        : { ...region, zones: [], code: regionData.value.code };
+    if (shouldExposeField.zones) {
+      newRegion.zones = zones.map((zone) => ({
+        code: zone.code.value,
+        subnet: zone.subnet
+      }));
+    } else if (providerCode === ProviderCode.GCP) {
       newRegion.zones = regionData.value.zoneOptions.map((zoneOption) => ({
         code: zoneOption,
         subnet: ''
@@ -142,11 +175,6 @@ export const ConfigureRegionModal = ({
   };
 
   const selectedRegion = formMethods.watch('regionData');
-  const selectedZones = formMethods.watch('zones');
-  const setSelectedZones = (zones: ExposedAZProperties[]) => {
-    formMethods.setValue('zones', zones);
-  };
-
   return (
     <FormProvider {...formMethods}>
       <YBModal
@@ -218,8 +246,6 @@ export const ConfigureRegionModal = ({
           <div>
             <ConfigureAvailabilityZoneField
               className={classes.manageAvailabilityZoneField}
-              setSelectedZones={setSelectedZones}
-              selectedZones={selectedZones ?? []}
               zoneCodeOptions={selectedRegion?.value?.zoneOptions}
               isSubmitting={formMethods.formState.isSubmitting}
             />
@@ -240,9 +266,14 @@ const getDefaultFormValue = (
   regionSelection: CloudVendorRegionField | undefined
 ) => {
   if (regionSelection === undefined) {
-    return { zones: [] };
+    return {
+      zones: [] as {
+        code: { value: string; label: string; isDisabled: boolean };
+        subnet: string;
+      }[]
+    };
   }
-  const { code: currentRegionCode, ...currentRegion } = regionSelection;
+  const { code: currentRegionCode, zones, ...currentRegion } = regionSelection;
   return {
     ...currentRegion,
     regionData: {
@@ -251,6 +282,10 @@ const getDefaultFormValue = (
         zoneOptions: getZoneOptions(providerCode, currentRegionCode)
       },
       label: getRegionlabel(providerCode, currentRegionCode)
-    }
+    },
+    zones: zones.map((zone) => ({
+      code: { value: zone.code, label: zone.code, isDiabled: false },
+      subnet: zone.subnet
+    }))
   };
 };

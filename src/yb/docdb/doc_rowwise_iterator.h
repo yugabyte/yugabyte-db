@@ -152,6 +152,11 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // Read next row into a value map using the specified projection.
   Status DoNextRow(boost::optional<const Schema&> projection, QLTableRow* table_row) override;
 
+  Result<DocHybridTime> GetTableTombstoneTime(const Slice& root_doc_key) const {
+    return docdb::GetTableTombstoneTime(
+        root_doc_key, doc_db_, txn_op_context_, deadline_, read_time_);
+  }
+
   bool is_initialized_ = false;
 
   const std::unique_ptr<Schema> projection_owner_;

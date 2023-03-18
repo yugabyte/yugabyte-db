@@ -1,5 +1,5 @@
 ---
-title: Read replicas
+title: Read replicas in YugabyteDB
 headerTitle: Read replicas
 linkTitle: Read replicas
 description: Learn about read replicas in YugabyteDB.

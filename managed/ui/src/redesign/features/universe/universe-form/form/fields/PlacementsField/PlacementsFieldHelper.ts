@@ -272,6 +272,17 @@ export const useNodePlacements = () => {
     }
   );
 
+  useEffect(() => {
+    // On page load make an initial universe configure call if placementInfo is not set
+    //Add RR && Create New Universe + RR flow
+    if (clusterType === ClusterType.ASYNC) {
+      const asyncCluster = universeConfigureTemplate.clusters.find(
+        (cluster: Cluster) => cluster.clusterType === clusterType
+      );
+      !asyncCluster?.placementInfo && setNeedPlacement(true);
+    }
+  }, [clusterType]);
+
   useUpdateEffect(() => {
     const propsCombination = {
       instanceType,

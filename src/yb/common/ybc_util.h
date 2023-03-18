@@ -82,6 +82,12 @@ extern bool yb_binary_restore;
 extern bool yb_run_with_explain_analyze;
 
 /*
+ * GUC variable that enables batching RPCs of generated for IN queries
+ * on hash keys issued to the same tablets.
+ */
+extern bool yb_enable_hash_batch_in;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0
@@ -97,6 +103,7 @@ typedef struct YBCStatusStruct* YBCStatus;
 
 bool YBCStatusIsNotFound(YBCStatus s);
 bool YBCStatusIsDuplicateKey(YBCStatus s);
+bool YBCStatusIsSnapshotTooOld(YBCStatus s);
 uint32_t YBCStatusPgsqlError(YBCStatus s);
 uint16_t YBCStatusTransactionError(YBCStatus s);
 void YBCFreeStatus(YBCStatus s);

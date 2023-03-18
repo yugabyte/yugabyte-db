@@ -5,8 +5,6 @@ linkTitle: Core functions
 description: Learn about the internals of YugabyteDB in the context of the core database functions.
 image: /images/section_icons/architecture/core_functions.png
 headcontent: Learn about the internals of YugabyteDB in the context of the core database functions.
-aliases:
-  - /architecture/core-functions/
 menu:
   preview:
     identifier: core-functions

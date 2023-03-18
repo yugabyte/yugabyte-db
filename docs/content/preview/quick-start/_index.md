@@ -5,13 +5,13 @@ linkTitle: Quick start
 headcontent: Create a local cluster on a single host
 description: Get started using YugabyteDB in less than five minutes on macOS.
 aliases:
-  - /quick-start/
   - /preview/quick-start/create-local-cluster/
   - /preview/quick-start/install/
 layout: single
 type: docs
 rightNav:
   hideH4: true
+unversioned: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

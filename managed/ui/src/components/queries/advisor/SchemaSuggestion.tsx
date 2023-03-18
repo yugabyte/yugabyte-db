@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 
 import lightBulbIcon from '../images/lightbulb.svg';
-import arrowRightIcon from '../images/arrow-right-alt.svg';
 import { EXTERNAL_LINKS } from '../helpers/const';
 import { IndexSchemaRecommendation } from '../../../redesign/utils/dtos';
 import './styles.scss';
@@ -13,6 +12,18 @@ export const SchemaSuggestion: FC<IndexSchemaRecommendation> = ({ data, summary 
   if (!data?.length) {
     return null;
   }
+
+  const getIndexName = function (cell: any, row: any) {
+    return <>{row.recommendationInfo.index_name}</>;
+  };
+
+  const getTableName = function (cell: any, row: any) {
+    return <>{row.recommendationInfo.table_name}</>;
+  };
+
+  const getIndexCommand = function (cell: any, row: any) {
+    return <>{row.recommendationInfo.index_command}</>;
+  };
 
   return (
     <div>
@@ -32,12 +43,11 @@ export const SchemaSuggestion: FC<IndexSchemaRecommendation> = ({ data, summary 
             <a
               target="_blank"
               className="learnSchemaSuggestion"
-              href={EXTERNAL_LINKS.PERF_ADVISOR_DOCS_LINK}
+              href={EXTERNAL_LINKS.RANGE_SHARDING}
               rel="noopener noreferrer"
             >
               {t('clusterDetail.performance.advisor.LearnHow')}
             </a>
-            <img alt="more" src={arrowRightIcon} />
           </li>
         </ul>
       </div>
@@ -45,6 +55,7 @@ export const SchemaSuggestion: FC<IndexSchemaRecommendation> = ({ data, summary 
         <BootstrapTable data={data} pagination={data?.length > 10}>
           <TableHeaderColumn
             dataField="index_name"
+            dataFormat={getIndexName}
             isKey={true}
             width="17%"
             tdStyle={{ whiteSpace: 'normal', wordWrap: 'break-word' }}
@@ -54,6 +65,7 @@ export const SchemaSuggestion: FC<IndexSchemaRecommendation> = ({ data, summary 
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="table_name"
+            dataFormat={getTableName}
             width="13%"
             tdStyle={{ whiteSpace: 'normal', wordWrap: 'break-word' }}
             columnClassName="no-border"
@@ -62,6 +74,7 @@ export const SchemaSuggestion: FC<IndexSchemaRecommendation> = ({ data, summary 
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="index_command"
+            dataFormat={getIndexCommand}
             width="70%"
             tdStyle={{ whiteSpace: 'normal', wordWrap: 'break-word' }}
             columnClassName="no-border"

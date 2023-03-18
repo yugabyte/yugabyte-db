@@ -144,7 +144,7 @@ public class CustomerController extends AuthenticatedController {
     responseJson.put(
         "callhomeLevel", CustomerConfig.getOrCreateCallhomeLevel(customerUUID).toString());
 
-    UserWithFeatures user = (UserWithFeatures) ctx().args.get("user");
+    UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
     if (customer.getFeatures().size() != 0 && user.getFeatures().size() != 0) {
       JsonNode featureSet = user.getFeatures();
       CommonUtils.deepMerge(featureSet, customer.getFeatures());

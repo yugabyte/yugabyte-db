@@ -248,6 +248,7 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
         if not host_info:
             logging.error("Host {} does not exist.".format(args.search_pattern))
             return
+        self.update_ansible_vars_with_args(args)
         server_ports = self.get_server_ports_to_check(args)
         self.cloud.start_instance(host_info, server_ports)
 
@@ -274,6 +275,7 @@ class AwsHardRebootInstancesMethod(AbstractInstancesMethod):
             logging.info("Stopping instance {}".format(args.search_pattern))
             self.cloud.stop_instance(host_info)
         logging.info("Starting instance {}".format(args.search_pattern))
+        self.update_ansible_vars_with_args(args)
         server_ports = self.get_server_ports_to_check(args)
         self.cloud.start_instance(host_info, server_ports)
 

@@ -13,8 +13,6 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
@@ -36,6 +34,7 @@ import java.util.Collections;
 import java.util.UUID;
 import java.util.function.Consumer;
 import junitparams.JUnitParamsRunner;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import play.libs.Json;
@@ -44,9 +43,8 @@ import play.mvc.Result;
 @RunWith(JUnitParamsRunner.class)
 public class UniverseClustersControllerTest extends UniverseCreateControllerTestBase {
 
-  @Override
-  public void setUp() {
-    super.setUp();
+  @Before
+  public void setUpTest() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);

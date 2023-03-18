@@ -1531,5 +1531,26 @@ TEST_F_EX(
   ExpirationWhenReplicated(false);
 }
 
+class AsyncUserTriggeredCompactionTest : public CompactionTest {};
+
+TEST_F(AsyncUserTriggeredCompactionTest, CheckLastRequestTimePersistence) {
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  auto table_info = ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
+
+  ASSERT_EQ(table_info->LockForRead()->pb.last_full_compaction_time(), 0);
+
+  ASSERT_OK(ExecuteManualCompaction());
+  const auto last_request_time = table_info->LockForRead()->pb.last_full_compaction_time();
+  ASSERT_NE(last_request_time, 0);
+
+  ASSERT_OK(cluster_->RestartSync());
+  table_info = ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
+  ASSERT_EQ(table_info->LockForRead()->pb.last_full_compaction_time(), last_request_time);
+
+  SleepFor(MonoDelta::FromSeconds(1));
+  ASSERT_OK(ExecuteManualCompaction());
+  ASSERT_GT(table_info->LockForRead()->pb.last_full_compaction_time(), last_request_time);
+}
+
 } // namespace tserver
 } // namespace yb

@@ -496,10 +496,10 @@ Tablet::Tablet(const TabletInitData& data)
         data.transaction_participant_context, this, DCHECK_NOTNULL(tablet_metrics_entity_),
         data.parent_mem_tracker);
     if (data.waiting_txn_registry) {
-      wait_queue_ = std::make_unique<docdb::WaitQueue>(
+      transaction_participant_->SetWaitQueue(std::make_unique<docdb::WaitQueue>(
         transaction_participant_.get(), metadata_->fs_manager()->uuid(), data.waiting_txn_registry,
         client_future_, clock(), DCHECK_NOTNULL(tablet_metrics_entity_),
-        DCHECK_NOTNULL(data.wait_queue_pool)->NewToken(ThreadPool::ExecutionMode::SERIAL));
+        DCHECK_NOTNULL(data.wait_queue_pool)->NewToken(ThreadPool::ExecutionMode::SERIAL)));
     }
   }
 
@@ -1025,10 +1025,6 @@ bool Tablet::StartShutdown() {
     return false;
   }
 
-  if (wait_queue_) {
-    wait_queue_->StartShutdown();
-  }
-
   if (transaction_participant_) {
     transaction_participant_->StartShutdown();
   }
@@ -1051,10 +1047,6 @@ void Tablet::CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown) 
 
   if (transaction_coordinator_) {
     transaction_coordinator_->Shutdown();
-  }
-
-  if (wait_queue_) {
-    wait_queue_->CompleteShutdown();
   }
 
   if (transaction_participant_) {

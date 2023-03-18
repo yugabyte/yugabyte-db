@@ -902,8 +902,11 @@ _copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
 	 * copy remainder of node
 	 */
 	COPY_SCALAR_FIELD(num_hashClauseInfos);
-	COPY_POINTER_FIELD(hashClauseInfos,
-					  from->num_hashClauseInfos * sizeof(YbBNLHashClauseInfo));
+
+	if (from->num_hashClauseInfos > 0)
+		COPY_POINTER_FIELD(
+			hashClauseInfos,
+			from->num_hashClauseInfos * sizeof(YbBNLHashClauseInfo));
 	
 	for (int i = 0; i < from->num_hashClauseInfos; i++)
 	{

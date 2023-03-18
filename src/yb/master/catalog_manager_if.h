@@ -150,7 +150,7 @@ class CatalogManagerIf {
   virtual std::vector<std::shared_ptr<server::MonitoredTask>> GetRecentTasks() = 0;
 
   virtual Result<boost::optional<TablespaceId>> GetTablespaceForTable(
-      const scoped_refptr<TableInfo>& table) = 0;
+      const scoped_refptr<TableInfo>& table) const = 0;
 
   virtual bool IsLoadBalancerEnabled() = 0;
 
@@ -228,6 +228,9 @@ class CatalogManagerIf {
 
   virtual scoped_refptr<TableInfo> NewTableInfo(TableId id, bool colocated) = 0;
 
+  virtual Status AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
+                                   AreLeadersOnPreferredOnlyResponsePB* resp) = 0;
+
   // If is_manual_split is true, we will not call ShouldSplitValidCandidate.
   virtual Status SplitTablet(const TabletId& tablet_id, ManualSplit is_manual_split) = 0;
 
@@ -261,6 +264,11 @@ class CatalogManagerIf {
   virtual intptr_t tablet_locations_version() const = 0;
 
   virtual tablet::SnapshotCoordinator& snapshot_coordinator() = 0;
+
+  virtual Status UpdateLastFullCompactionRequestTime(const TableId& table_id) = 0;
+
+  virtual Status GetCompactionStatus(
+      const GetCompactionStatusRequestPB* req, GetCompactionStatusResponsePB* resp) = 0;
 
   virtual ~CatalogManagerIf() = default;
 };

@@ -91,8 +91,6 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
     return IsExternalTransaction::kFalse;
   }
 
-  void RegisterStatusListener(TransactionStatusListener* txn_status_listener) override {}
-
  private:
   std::unordered_map<TransactionId, HybridTime, TransactionIdHash> txn_commit_time_;
 };
