@@ -4,9 +4,7 @@ linkTitle: Continuous availability
 description: Simulate fault tolerance and resilience in a local YugabyteDB database universe.
 headcontent: Highly available and fault tolerant
 aliases:
-  - /explore/fault-tolerance/
   - /preview/explore/fault-tolerance/
-  - /preview/explore/cloud-native/fault-tolerance/
   - /preview/explore/postgresql/fault-tolerance/
   - /preview/explore/fault-tolerance-macos/
 image: /images/section_icons/explore/fault_tolerance.png

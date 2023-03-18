@@ -8,12 +8,10 @@ menu:
     identifier: write-path
     parent: core-functions
     weight: 1186
-aliases:
-  - /architecture/core-functions/write-path/
 type: docs
 ---
 
-The write I/O path can be illustrated by an example of a single key write that involves the write operations being processed by the YQL layer and prepared for replication by the tablet leader. 
+The write I/O path can be illustrated by an example of a single key write that involves the write operations being processed by the YQL layer and prepared for replication by the tablet leader.
 
 For information on more complex cases, such as distributed transactions with multiple keys requiring atomical updates, see [Distributed transactions](../../transactions/distributed-txns/).
 
@@ -63,6 +61,6 @@ Suppose there is a requirement to insert values `k` and `v` into a table `T1` th
 
 ![write_path_io](/images/architecture/write_path_io.png)
 
-Note that the preceding case has been simplified by assuming that the user application sends the write query to a random YugabyteDB server, which then routes the request appropriately. 
+Note that the preceding case has been simplified by assuming that the user application sends the write query to a random YugabyteDB server, which then routes the request appropriately.
 
 Specifically for YCQL, using the YugabyteDB smart client would allow you to avoid the extra network hop.

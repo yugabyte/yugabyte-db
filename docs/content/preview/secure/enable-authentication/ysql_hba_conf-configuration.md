@@ -3,8 +3,6 @@ title: Configure client authentication in YSQL
 headerTitle: Configure client authentication in YSQL
 linkTitle: Configure client authentication
 description: Use the ysql_hba_conf_csv flag to configure client authentication in YSQL.
-aliases:
-  - /preview/secure/authentication/client-authentication/
 menu:
   preview:
     identifier: ysql_hba_conf-configuration
