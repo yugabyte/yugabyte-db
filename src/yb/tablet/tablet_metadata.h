@@ -254,6 +254,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   // Load existing metadata from disk.
   static Result<RaftGroupMetadataPtr> Load(FsManager* fs_manager, const RaftGroupId& raft_group_id);
+  static Result<RaftGroupMetadataPtr> LoadFromPath(FsManager* fs_manager, const std::string& path);
 
   // Try to load an existing Raft group. If it does not exist, create it.
   // If it already existed, verifies that the schema of the Raft group matches the
@@ -512,6 +513,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Status ReadSuperBlockFromDisk(
       RaftGroupReplicaSuperBlockPB* superblock, const std::string& path = std::string()) const;
 
+  static Status ReadSuperBlockFromDisk(
+      Env* env, const std::string& path, RaftGroupReplicaSuperBlockPB* superblock);
+
   // Sets *superblock to the serialized form of the current metadata.
   void ToSuperBlock(RaftGroupReplicaSuperBlockPB* superblock) const;
 
@@ -581,6 +585,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   std::unordered_set<StatefulServiceKind> GetHostedServiceList() const;
 
+  Result<std::string> FilePath() const;
+
   const KvStoreInfo& TEST_kv_store() const {
     return kv_store_;
   }
@@ -607,7 +613,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Constructor for loading an existing Raft group.
   RaftGroupMetadata(FsManager* fs_manager, const RaftGroupId& raft_group_id);
 
-  Status LoadFromDisk();
+  Status LoadFromDisk(const std::string& path = "");
 
   // Update state of metadata to that of the given superblock PB.
   Status LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB& superblock,
