@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-Use the `region` resource to query cloud region information.
+Use the `region` resource to query [cloud provider region](../../release-notes/#cloud-provider-regions) information.
 
 ## Syntax
 
@@ -21,13 +21,21 @@ Use the `region` resource to query cloud region information.
 Usage: ybm region [command] [flags]
 ```
 
-## Example
+## Examples
 
 List AWS regions:
 
 ```sh
 ybm region list \
   --cloud-provider=AWS
+```
+
+List AWS instance types in us-west-2:
+
+```sh
+ybm region instance list \
+  --cloud-provider=AWS \
+  --region=us-west-2
 ```
 
 ## Commands

@@ -9,7 +9,7 @@ menu:
   preview_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: managed-automation
-    weight: 600
+    weight: 550
 type: indexpage
 ---
 

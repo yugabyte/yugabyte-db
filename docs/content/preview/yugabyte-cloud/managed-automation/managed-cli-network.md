@@ -15,7 +15,7 @@ type: docs
 
 Use the `cluster network` resource to manage cluster network resources, including:
 
-- add IP allow lists to clusters
+- add [IP allow lists](../../cloud-secure-clusters/add-connections/) to clusters
 - list cluster endpoints
 
 ## Syntax
@@ -30,8 +30,8 @@ Assign an allow list:
 
 ```sh
 ybm cluster network allow-list assign \
-  --cluster-name=<cluster_name>,\
-  network-allow-list=<allow_list_name>
+  --cluster-name=<cluster_name> \
+  --network-allow-list=<allow_list_name>
 ```
 
 ## Commands

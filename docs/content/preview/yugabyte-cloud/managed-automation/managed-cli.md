@@ -23,22 +23,20 @@ You can install ybm CLI using Homebrew:
 brew install yugabyte/yugabytedb/ybm
 ```
 
-## Get started
-
 If you don't have a YugabyteDB Managed account yet, you can use the following command to bring up the sign up page:
 
 ```sh
 ybm signup
 ```
 
-## Global configuration
+## Configure ybm
 
-Using ybm CLI requires providing, at minimum, an [API key](../managed-apikeys/) and the host address.
+Using ybm CLI requires providing, at minimum, an [API key](../managed-apikeys/) and the host address of your cluster.
 
 You can pass these values as flags when running ybm commands. For example:
 
 ```sh
-ybm --apikey "eyJ..." cluster list
+ybm --apikey "eyJ..." --host cloud.yugabyte.com cluster list
 ```
 
 For convenience, you can configure ybm with default values for these flags as follows:
@@ -51,12 +49,32 @@ For convenience, you can configure ybm with default values for these flags as fo
 
   By default, this writes the values to the file `.ybm-cli.yaml` under your `$HOME` directory.
 
+  You can create multiple configuration files, and switch between them using the [--config](#global-flags) flag.
+
 - Using [environment variables](#environment-variables). Environment variables must begin with `YBM_`. For example:
 
   ```sh
   export YBM_APIKEY=AWERDFSSS
   ybm cluster list
   ```
+
+### Environment variables
+
+In the case of multi-node deployments, all nodes should have similar environment variables.
+
+You can set the following environment variables:
+
+- `YBM_APIKEY`
+
+  The API key to use to authenticate to your YugabyteDB Managed account.
+
+- `YBM_HOST`
+
+  The host address of the cluster you are managing. By default, https is added to the host if no scheme is provided.
+
+- `YBM_CI`
+
+  Set to `true` to avoid outputting unnecessary log lines.
 
 ### Autocompletion
 
@@ -75,9 +93,7 @@ This generates an autocompletion script for the specified shell. Available optio
 
 #### Bash
 
-ybm CLI autocompletion depends on the 'bash-completion' package.
-
-If not already installed, install it using your operating system's package manager.
+ybm CLI autocompletion depends on the 'bash-completion' package. If not already installed, install it using your operating system's package manager.
 
 To load completions in your current shell session, enter the following command:
 
@@ -221,7 +237,7 @@ If you are using ybm with the `--wait` flag in your CI system, you can set the e
 
 ## Resources
 
-The following resources can be managed using the CLI:
+You can manage the following resources using the CLI:
 
 - [backup](../managed-cli-backup/)
 - [cluster](managed-cli-cluster/)
@@ -235,58 +251,3 @@ The following resources can be managed using the CLI:
 <!--
 - [cdc-sink](managed-cli-cdc-sink/)
 - [cdc-stream](managed-cli-cdc-stream/) -->
-
-## Environment variables
-
-In the case of multi-node deployments, all nodes should have similar environment variables.
-
-The following are combinations of environment variables and their uses:
-
-- `YBM_APIKEY`
-
-  The API key to use to authenticate to your YugabyteDB Managed account.
-
-- `YBM_CI`
-
-  Set to `true` to avoid outputting unnecessary log lines.
-
-## Examples
-
-### Create a single-node cluster
-
-```sh
-ybm cluster create \
-  --cluster-name=test-cluster \
-  --credentials=username=admin,password=password123
-```
-
-### Create a multi-node cluster
-
-```sh
-ybm cluster create \
-  --cluster-name=test-cluster \
-  --credentials=username=admin,password=password123 \
-  --cloud-provider=GCP \
-  --node-config=num-cores=2,disk-size-gb=300 \
-  --region-info=region=aws.us-east-2.us-east-2a,vpc=aws-us-east-2 \
-  --region-info=region=aws.us-east-2.us-east-2b,vpc=aws-us-east-2 \
-  --region-info=region=aws.us-east-2.us-east-2c,vpc=aws-us-east-2 \
-  --fault-tolerance=zone
-```
-
-### Create an IP allow list and add your computer
-
-```sh
-ybm network-allow-list create \
-  --ip-addr=$(curl ifconfig.me) \
-  --name="my computer" \
-  --description="Access the cluster from the CLI"
-```
-
-### Assign an IP allow list to a cluster
-
-```sh
-ybm cluster network allow-list assign \
-  --cluster-name=test-cluster\
-  --network-allow-list="my computer"
-```

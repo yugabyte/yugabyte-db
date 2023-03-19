@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-Use the `network-allow-list` resource to perform operations on allow lists, including the following:
+Use the `network-allow-list` resource to perform operations on [allow lists](../../cloud-secure-clusters/add-connections/), including the following:
 
 - create and delete allow lists
 - get information about an IP allow list
@@ -30,9 +30,9 @@ Create a single address allow list:
 
 ```sh
 ybm network-allow-list create \
-    --name=test-cluster \
+    --name=my-computer \
     --description="my IP address" \
-    --ip_addr=0.0.0.0/0
+    --ip_addr=$(curl ifconfig.me)
 ```
 
 ## Commands
