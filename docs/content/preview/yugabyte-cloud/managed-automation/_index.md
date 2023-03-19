@@ -86,7 +86,7 @@ These identifiers can also be found in the URL when you access a cluster using t
         <div class="title">Command Line Interface</div>
       </div>
       <div class="body">
-        Access your account and clusters from the command line.
+        Manage your account and clusters from the command line.
       </div>
     </a>
   </div>
