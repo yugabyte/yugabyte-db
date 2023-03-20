@@ -8033,6 +8033,9 @@
           "description" : "Node exporter user",
           "type" : "string"
         },
+        "nodeIp" : {
+          "type" : "string"
+        },
         "parallelism" : {
           "description" : "Number of concurrent commands to run on nodes over SSH",
           "format" : "int32",
@@ -8108,7 +8111,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "currentIdx", "currentYbcTaskId", "platformUrl", "platformVersion", "prefixUUID", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeUUID" ],
+      "required" : [ "creatingUser", "currentIdx", "currentYbcTaskId", "nodeIp", "platformUrl", "platformVersion", "prefixUUID", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeUUID" ],
       "type" : "object"
     },
     "RestoreKeyspace" : {
