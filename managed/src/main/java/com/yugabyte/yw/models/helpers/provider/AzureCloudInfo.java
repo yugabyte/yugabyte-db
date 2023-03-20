@@ -13,6 +13,7 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiParam;
+import io.swagger.annotations.ApiModelProperty.AccessMode;
 import lombok.Data;
 
 @Data
@@ -58,6 +59,11 @@ public class AzureCloudInfo implements CloudInfoInterface {
   @JsonAlias("HOSTED_ZONE_NAME")
   @ApiModelProperty(hidden = true)
   public String azuHostedZoneName;
+
+  @ApiModelProperty(
+      value = "New/Existing VPC for provider creation",
+      accessMode = AccessMode.READ_ONLY)
+  private VPCType vpcType = VPCType.EXISTING;
 
   @JsonIgnore
   public Map<String, String> getEnvVars() {

@@ -274,6 +274,20 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateGCPProviderCreateNewVPC() {
+    when(mockCloudQueryHelper.getCurrentHostInfo(eq(CloudType.gcp)))
+        .thenReturn(Json.newObject().put("network", "234234").put("host_project", "PROJ"));
+    Provider provider = buildProviderReq("gcp", "Google");
+    Map<String, String> reqConfig = new HashMap<>();
+    reqConfig.put("use_host_vpc", "false");
+    reqConfig.put("use_host_credentials", "false");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(provider, reqConfig);
+    provider = createProviderTest(provider, ImmutableList.of("region1"), UUID.randomUUID());
+    GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
+    assertEquals(CloudInfoInterface.VPCType.NEW, gcpCloudInfo.getVpcType());
+  }
+
+  @Test
   public void testCreateAWSProviderHostVPC() {
     when(mockCloudQueryHelper.getCurrentHostInfo(eq(CloudType.aws)))
         .thenReturn(Json.newObject().put("vpc-id", "234234").put("region", "VPCreg"));
