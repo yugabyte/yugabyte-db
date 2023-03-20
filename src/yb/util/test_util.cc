@@ -110,11 +110,12 @@ YBTest::~YBTest() {
 }
 
 void YBTest::SetUp() {
+  FLAGS_TEST_running_test = true;
+
   InitSpinLockContentionProfiling();
   InitGoogleLoggingSafeBasic("yb_test");
   FLAGS_enable_tracing = true;
   FLAGS_memory_limit_hard_bytes = 8 * 1024 * 1024 * 1024L;
-  FLAGS_TEST_running_test = true;
   FLAGS_never_fsync = true;
   // Certain dynamically registered callbacks like ReloadPgConfig in pg_supervisor use constant
   // string name as they are expected to be singleton per process. But in MiniClusterTests multiple
