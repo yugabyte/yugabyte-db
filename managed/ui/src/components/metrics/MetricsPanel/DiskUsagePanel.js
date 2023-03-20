@@ -129,7 +129,7 @@ export default class DiskUsagePanel extends Component {
                       className={`gray-text metric-left-subtitle ${customClassName}-mode-space`}
                     >
                       <span className={'metric-left-subtitle__label'}>{NodeType.Master}</span>
-                      {(value * 100).toFixed(1)}%
+                      {(masterValue * 100).toFixed(1)}%
                     </span>
                   )}
                   <span className="gray-text metric-right-subtitle">

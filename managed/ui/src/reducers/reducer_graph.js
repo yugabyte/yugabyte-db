@@ -6,6 +6,8 @@ import {
   QUERY_METRICS,
   QUERY_METRICS_SUCCESS,
   QUERY_METRICS_FAILURE,
+  QUERY_MASTER_METRICS_SUCCESS,
+  QUERY_MASTER_METRICS_FAILURE,
   SELECTED_METRIC_TYPE_TAB,
   RESET_METRICS,
   TOGGLE_PROMETHEUS_QUERY
@@ -43,11 +45,20 @@ export default function (state = INITIAL_STATE, action) {
         ...state,
         loading: false
       };
-      if (!action.isMasterMetrics) {
-        responseData.metrics = metricData;
-      } else {
-        responseData.masterMetrics = metricData;
-      }
+      responseData.metrics = metricData;
+      return responseData;
+    }
+    case QUERY_MASTER_METRICS_SUCCESS: {
+      const metricData = state?.masterMetrics;
+      metricData[action.panelType] = {
+        ...metricData[action.panelType],
+        ...action.payload.data
+      };
+      const responseData = {
+        ...state,
+        loading: false
+      };
+      responseData.masterMetrics = metricData;
       return responseData;
     }
     case SELECTED_METRIC_TYPE_TAB:
@@ -60,11 +71,18 @@ export default function (state = INITIAL_STATE, action) {
         error: action.payload.response,
         loading: false
       };
-      if (!action.isMasterMetrics) {
-        responseData.metrics = metricData;
-      } else {
-        responseData.masterMetrics = metricData;
-      }
+      responseData.metrics = metricData;
+      return responseData;
+    }
+    case QUERY_MASTER_METRICS_FAILURE: {
+      const metricData = state.metrics;
+      metricData[action.panelType] = { error: true };
+      const responseData = {
+        ...state,
+        error: action.payload.response,
+        loading: false
+      };
+      responseData.masterMetrics = metricData;
       return responseData;
     }
     case RESET_METRICS:
