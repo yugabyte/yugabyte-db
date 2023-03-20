@@ -16,24 +16,32 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class DestroyKubernetesUniverse extends DestroyUniverse {
 
+  private final XClusterUniverseService xClusterUniverseService;
+
   @Inject
-  public DestroyKubernetesUniverse(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
+  public DestroyKubernetesUniverse(
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+    super(baseTaskDependencies, xClusterUniverseService);
+    this.xClusterUniverseService = xClusterUniverseService;
   }
 
   @Override
@@ -52,6 +60,14 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       // Delete xCluster configs involving this universe and put the locked universes to
       // lockedUniversesUuidList.
       createDeleteXClusterConfigSubtasksAndLockOtherUniverses();
+
+      // Promote auto flags on all universes which were blocked due to the xCluster config.
+      // No need to pass excludeXClusterConfigSet as they are updated with status DeletedUniverse.
+      createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
+          lockedXClusterUniversesUuidSet,
+          Stream.of(universe.getUniverseUUID()).collect(Collectors.toSet()),
+          xClusterUniverseService,
+          new HashSet<>() /* excludeXClusterConfigSet */);
 
       preTaskActions();
 
