@@ -13,7 +13,7 @@ menu:
     weight: 9000
 ---
 
-This page demonstrates styles and widgets used for the YugabyteDB Documentation site.
+This page demonstrates styles and widgets used for the YugabyteDB Documentation site. To view the source for the file, click **Contribute** and choose **Edit this page**.
 
 ## Tab widgets
 
