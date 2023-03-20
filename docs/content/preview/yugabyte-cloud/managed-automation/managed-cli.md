@@ -20,7 +20,7 @@ The [YugabyteDB Managed Command Line Interface](https://github.com/yugabyte/ybm-
 You can install ybm CLI using Homebrew:
 
 ```sh
-brew install yugabyte/yugabytedb/ybm
+brew install yugabyte/tap/ybm
 ```
 
 If you don't have a YugabyteDB Managed account yet, you can use the following command to bring up the sign up page:
