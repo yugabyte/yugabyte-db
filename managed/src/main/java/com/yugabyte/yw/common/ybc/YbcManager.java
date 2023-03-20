@@ -1,10 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.common;
+package com.yugabyte.yw.common.ybc;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.google.protobuf.Descriptors.FieldDescriptor;
+import com.yugabyte.yw.common.BackupUtil;
+import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -25,9 +29,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Random;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
+
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -49,6 +56,8 @@ import org.yb.ybc.BackupServiceTaskThrottleParametersSetRequest;
 import org.yb.ybc.BackupServiceTaskThrottleParametersSetResponse;
 import org.yb.ybc.ControllerObjectTaskThrottleParameters;
 import org.yb.ybc.ControllerStatus;
+import org.yb.ybc.PingRequest;
+import org.yb.ybc.PingResponse;
 
 @Singleton
 public class YbcManager {
@@ -57,7 +66,6 @@ public class YbcManager {
 
   private final YbcClientService ybcClientService;
   private final CustomerConfigService customerConfigService;
-  private final YbcBackupUtil ybcBackupUtil;
   private final BackupUtil backupUtil;
   private final RuntimeConfGetter confGetter;
   private final ReleaseManager releaseManager;
@@ -71,14 +79,12 @@ public class YbcManager {
   public YbcManager(
       YbcClientService ybcClientService,
       CustomerConfigService customerConfigService,
-      YbcBackupUtil ybcBackupUtil,
       BackupUtil backupUtil,
       RuntimeConfGetter confGetter,
       ReleaseManager releaseManager,
       NodeManager nodeManager) {
     this.ybcClientService = ybcClientService;
     this.customerConfigService = customerConfigService;
-    this.ybcBackupUtil = ybcBackupUtil;
     this.backupUtil = backupUtil;
     this.confGetter = confGetter;
     this.releaseManager = releaseManager;
@@ -88,7 +94,7 @@ public class YbcManager {
   public boolean deleteNfsDirectory(Backup backup) {
     YbcClient ybcClient = null;
     try {
-      ybcClient = ybcBackupUtil.getYbcClient(backup.universeUUID);
+      ybcClient = getYbcClient(backup.universeUUID);
       CustomerConfigStorageNFSData configData =
           (CustomerConfigStorageNFSData)
               customerConfigService
@@ -203,7 +209,7 @@ public class YbcManager {
     YbcClient ybcClient = null;
     String successMarker = null;
     try {
-      ybcClient = ybcBackupUtil.getYbcClient(universeUUID);
+      ybcClient = getYbcClient(universeUUID);
       BackupServiceTaskCreateResponse downloadSuccessMarkerResponse =
           ybcClient.restoreNamespace(downloadSuccessMarkerRequest);
       if (!downloadSuccessMarkerResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
@@ -422,7 +428,7 @@ public class YbcManager {
   public Map<FieldDescriptor, Object> getThrottleParamsAsFieldDescriptor(UUID universeUUID) {
     YbcClient ybcClient = null;
     try {
-      ybcClient = ybcBackupUtil.getYbcClient(universeUUID);
+      ybcClient = getYbcClient(universeUUID);
       BackupServiceTaskThrottleParametersGetRequest throttleParametersGetRequest =
           BackupServiceTaskThrottleParametersGetRequest.getDefaultInstance();
       BackupServiceTaskThrottleParametersGetResponse throttleParametersGetResponse =
@@ -448,6 +454,86 @@ public class YbcManager {
         ybcClientService.closeClient(ybcClient);
       }
     }
+  }
+
+  // Ping check for YbcClient.
+  public boolean ybcPingCheck(String nodeIp, String certDir, int port) {
+    YbcClient ybcClient = null;
+    try {
+      ybcClient = ybcClientService.getNewClient(nodeIp, port, certDir);
+      return ybcPingCheck(ybcClient);
+    } finally {
+      try {
+        ybcClientService.closeClient(ybcClient);
+      } catch (Exception e) {
+      }
+    }
+  }
+
+  public boolean ybcPingCheck(YbcClient ybcClient) {
+    if (ybcClient == null) {
+      return false;
+    }
+    try {
+      long pingSeq = new Random().nextInt();
+      PingResponse pingResponse =
+          ybcClient.ping(PingRequest.newBuilder().setSequence(pingSeq).build());
+      if (pingResponse != null && pingResponse.getSequence() == pingSeq) {
+        return true;
+      }
+      return false;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  /**
+   * Returns a YbcClient <-> node-ip pair if available, after doing a ping check. If nodeIp provided
+   * in params is non-null, will attempt to create client with only that node-ip. Throws
+   * RuntimeException if client creation fails.
+   *
+   * @param nodeIp
+   * @param universeUUID
+   */
+  public Pair<YbcClient, String> getAvailableYbcClientIpPair(UUID universeUUID, String nodeIp) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    String certFile = universe.getCertificateNodetoNode();
+    int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
+    List<String> nodeIPs = new ArrayList<>();
+    if (StringUtils.isNotBlank(nodeIp)) {
+      nodeIPs.add(nodeIp);
+    } else {
+      nodeIPs.addAll(
+          universe
+              .getLiveTServersInPrimaryCluster()
+              .parallelStream()
+              .map(nD -> nD.cloudInfo.private_ip)
+              .collect(Collectors.toList()));
+    }
+    Optional<Pair<YbcClient, String>> clientIpPair =
+        nodeIPs
+            .parallelStream()
+            .map(
+                ip -> {
+                  YbcClient ybcClient = ybcClientService.getNewClient(ip, ybcPort, certFile);
+                  return ybcPingCheck(ybcClient)
+                      ? new Pair<YbcClient, String>(ybcClient, ip)
+                      : null;
+                })
+            .filter(Objects::nonNull)
+            .findAny();
+    if (!clientIpPair.isPresent()) {
+      throw new RuntimeException("YB-Controller server unavailable");
+    }
+    return clientIpPair.get();
+  }
+
+  public YbcClient getYbcClient(UUID universeUUID) {
+    return getYbcClient(universeUUID, null);
+  }
+
+  public YbcClient getYbcClient(UUID universeUUID, String nodeIp) {
+    return getAvailableYbcClientIpPair(universeUUID, nodeIp).getFirst();
   }
 
   private Region getFirstRegion(Universe universe, Cluster cluster) {

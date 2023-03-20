@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.common;
+package com.yugabyte.yw.common.ybc;
 
 import static java.util.stream.Collectors.joining;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -20,11 +20,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation;
-import com.yugabyte.yw.common.YbcBackupUtil.YbcBackupResponse.SnapshotObjectDetails.TableData;
+import com.yugabyte.yw.common.BackupUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.StorageUtil;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.BackupUtil.RegionLocations;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YbcClientService;
+import com.yugabyte.yw.common.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation;
+import com.yugabyte.yw.common.ybc.YbcBackupUtil.YbcBackupResponse.SnapshotObjectDetails.TableData;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
@@ -709,29 +714,5 @@ public class YbcBackupUtil {
           keyspaceToParamsMap.put(ImmutablePair.of(bL.backupType, bL.getKeyspace()), bL);
         });
     return keyspaceToParamsMap;
-  }
-
-  /**
-   * Get YB-Controller client
-   *
-   * @param universeUUID
-   */
-  public YbcClient getYbcClient(UUID universeUUID) throws PlatformServiceException {
-    return getYbcClient(universeUUID, null);
-  }
-
-  public YbcClient getYbcClient(UUID universeUUID, String nodeIp) {
-    Universe universe = Universe.getOrBadRequest(universeUUID);
-    if (StringUtils.isBlank(nodeIp)) {
-      nodeIp = Util.getYbcNodeIp(universe);
-    }
-    String certificate = universe.getCertificateNodetoNode();
-    Integer ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
-    YbcClient ybcClient = ybcService.getNewClient(nodeIp, ybcPort, certificate);
-    if (ybcClient == null) {
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Could not create Yb-controller client.");
-    }
-    return ybcClient;
   }
 }
