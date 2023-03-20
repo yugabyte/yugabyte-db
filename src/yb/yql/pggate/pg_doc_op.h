@@ -586,8 +586,6 @@ class PgDocReadOp : public PgDocOp {
   // Set the read_time for our backfill's read request based on our exec control parameter.
   void SetReadTimeForBackfill();
 
-  void SetDistinctScan();
-
   // Set bounds on the request so it only affect specified partition
   // Returns false if current bounds fully exclude the partition
   Result<bool> SetLowerUpperBound(LWPgsqlReadRequestPB* request, size_t partition);
