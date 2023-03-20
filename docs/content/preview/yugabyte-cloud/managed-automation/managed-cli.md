@@ -235,19 +235,29 @@ ybm cluster delete \
 
 If you are using ybm with the `--wait` flag in your CI system, you can set the environment variable `YBM_CI` to `true` to avoid generating unnecessary log lines.
 
-## Resources
+## Commands
 
-You can manage the following resources using the CLI:
+You can manage the following resources using ybm:
 
-- [backup](../managed-cli-backup/)
-- [cluster](managed-cli-cluster/)
-  - [network](managed-cli-network/)
-  - [read-replica](managed-cli-read-replica/)
-- [network-allow-list](managed-cli-network-allow-list/)
-- [vpc](managed-cli-vpc/)
-  - [peering](managed-cli-peering/)
-- [region](managed-cli-region/)
+| Resource | Commands |
+| :--- | :--- |
+| [backup](../managed-cli-backup/) | create, delete, list, restore |
+| [cluster](../managed-cli-cluster/) | create, delete, list, describe, update, pause, resume, cert download |
+| [cluster network](../managed-cli-network/) | allow-list assign, allow-list unassign, endpoint list |
+| [cluster read-replica](../managed-cli-read-replica/) | create, delete, list, update |
+| [network-allow-list](../managed-cli-network-allow-list/) | create, delete, list |
+| [vpc](../managed-cli-vpc/) | create, delete, list |
+| [vpc peering](../managed-cli-peering/) | create, delete, list |
+| [region](../managed-cli-region/) | list, instance list |
 
 <!--
 - [cdc-sink](managed-cli-cdc-sink/)
 - [cdc-stream](managed-cli-cdc-stream/) -->
+
+Use the following commands to configure ybm:
+
+| Resource | Description |
+| :--- | :--- |
+| [auth](#configure-ybm) | Write API key and host address to a configuration file. |
+| [completion](#autocompletion) | Configure autocompletion for Bash, Fish, PowerShell, and Zsh |
+| [signup](#configure-ybm) | Navigate to the YugabyteDB Managed signup page. |
