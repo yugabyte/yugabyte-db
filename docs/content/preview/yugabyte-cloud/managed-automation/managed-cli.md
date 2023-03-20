@@ -207,7 +207,7 @@ The following flags can be passed in with any command:
 : YugabyteDB Managed account API Key.
 
 --config string
-: Configuration file (default is $HOME/.ybm-cli.yaml).
+: Configuration file (default is `$HOME/.ybm-cli.yaml`).
 
 --debug
 : Use debug mode, same as `--logLevel debug`.
