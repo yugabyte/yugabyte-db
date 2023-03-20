@@ -321,6 +321,17 @@ RESET SESSION AUTHORIZATION;
 -- The default tablegroup cannot be used explicitly
 CREATE TABLE invalid_tbl (k int) TABLEGROUP "default";
 
+-- Test distinct pushdown for colocated table
+CREATE TABLE tbl_colo(r1 INT, r2 INT, r3 INT, r4 INT, r5 INT) WITH (colocation = TRUE);
+CREATE INDEX ON tbl_colo(r1 asc, r3 asc, r5 asc);
+INSERT INTO tbl_colo (SELECT 1, i, i, i, i FROM generate_series(1, 100) AS i);
+INSERT INTO tbl_colo (SELECT 2, i, i, i, i FROM generate_series(1, 100) AS i);
+INSERT INTO tbl_colo (SELECT 3, i, i, i, i FROM generate_series(1, 100) AS i);
+EXPLAIN (COSTS OFF) SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
+SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
+/*+Set(enable_hashagg false)*/ EXPLAIN (COSTS OFF) SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
+/*+Set(enable_hashagg false)*/ SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
+
 -- Drop database
 \c yugabyte
 DROP DATABASE colocation_test;
