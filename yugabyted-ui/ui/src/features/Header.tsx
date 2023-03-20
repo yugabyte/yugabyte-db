@@ -145,7 +145,7 @@ export const Header: FC = () => {
         </Switch>
         <VersionBadge/> */}
         <Box className={classes.iconContainer}>
-          <Badge badgeContent={deadNodes.length >= 0 ?
+          <Badge badgeContent={deadNodes.length > 0 ?
             <Link component={RouterLink} to="/cluster/tabNodes?filter=down">
               <AlertGreenIcon />
             </Link> : undefined}>
