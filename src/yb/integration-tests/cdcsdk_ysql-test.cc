@@ -7493,8 +7493,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnStreamedColoca
   ASSERT_FALSE(checkpoint_resp.has_snapshot_key());
 }
 
-// TODO Adithya: This test is flaky while adding table
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestGetCheckpointOnAddedColocatedTable)) {
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnAddedColocatedTable)) {
   FLAGS_enable_update_local_peer_min_index = false;
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
@@ -7550,6 +7549,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestGetCheckpointOnAddedColocatedTable)) 
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test2(id1 int primary key, value_2 int, value_3 int);"));
   auto added_table_id = GetColocatedTableId("test2");
+
+  // Wait until the newly added table is added to the stream's metadata.
   ASSERT_OK(WaitFor(
       [&]() {
         auto result = GetCDCStreamTableIds(stream_id);
@@ -7557,7 +7558,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestGetCheckpointOnAddedColocatedTable)) 
           return false;
         }
         const auto& table_ids = result.get();
-        return std::find(table_ids.begin(), table_ids.end(), added_table_id) == table_ids.end();
+        return std::find(table_ids.begin(), table_ids.end(), added_table_id) != table_ids.end();
       },
       MonoDelta::FromSeconds(180), "New table not added to stream"));
 
@@ -7613,8 +7614,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestGetCheckpointOnAddedColocatedTable)) 
       OpId::FromPB(streaming_checkpoint_resp.checkpoint().op_id()));
 }
 
-// TODO Adithya: This test is flaky while adding table
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestGetCheckpointOnAddedColocatedTableWithNoSnapshot)) {
+TEST_F(
+    CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnAddedColocatedTableWithNoSnapshot)) {
   FLAGS_enable_update_local_peer_min_index = false;
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
@@ -7666,7 +7667,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestGetCheckpointOnAddedColocatedTableWit
       ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream_id, tablets[0].tablet_id(), req_table_id));
   ASSERT_FALSE(streaming_checkpoint_resp.has_snapshot_key());
 
-  // Create a new table and wait for the table to be added to the stream.
+  // Wait until the newly added table is added to the stream's metadata.
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test2(id1 int primary key, value_2 int, value_3 int);"));
   auto added_table_id = GetColocatedTableId("test2");
@@ -7677,9 +7678,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestGetCheckpointOnAddedColocatedTableWit
           return false;
         }
         const auto& table_ids = result.get();
-        return std::find(table_ids.begin(), table_ids.end(), added_table_id) == table_ids.end();
+        return std::find(table_ids.begin(), table_ids.end(), added_table_id) != table_ids.end();
       },
-      MonoDelta::FromSeconds(180), "New table not added to stream"));
+      MonoDelta::FromSeconds(kRpcTimeout), "New table not added to stream"));
 
   auto added_table_checkpoint_resp =
       ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream_id, tablets[0].tablet_id(), added_table_id));
