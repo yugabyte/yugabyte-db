@@ -134,15 +134,15 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, s3.amazonaws.com, true",
     // location - correct, aws_host_base(for S3 compatible storage) - incorrect -> disallowed
     "S3, BACKUP_LOCATION, s3://false, AWS_HOST_BASE, http://fake-localhost:9000, false",
-    // location - correct, aws_host_base - correct -> allowed
-    "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, s3.amazonaws.com:443, true",
+    // location - correct, aws_host_base - incorrect(443 port not allowed) -> disallowed
+    "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, s3.amazonaws.com:443, false",
     // location - correct, aws_host_base - correct -> allowed
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, minio.rmn.local:30000, true",
     // location - correct, aws_host_base - correct -> allowed
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, https://s3.amazonaws.com, true",
-    // location - correct, aws_host_base - correct -> allowed
+    // location - correct, aws_host_base - incorrect(443 port not allowed) -> disallowed
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, "
-        + " AWS_HOST_BASE, https://s3.amazonaws.com:443, true",
+        + " AWS_HOST_BASE, https://s3.amazonaws.com:443, false",
     // location - correct, aws_host_base(negative port value) - incorrect -> disallowed
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, "
         + " AWS_HOST_BASE, http://s3.amazonaws.com:-443, false",

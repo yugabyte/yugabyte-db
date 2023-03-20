@@ -2412,7 +2412,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       int parallelDBBackups) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("BackupTableYbc");
     YbcBackupNodeRetriever nodeRetriever =
-        new YbcBackupNodeRetriever(backupParams.universeUUID, parallelDBBackups, backupStates);
+        new YbcBackupNodeRetriever(backupParams.universeUUID, parallelDBBackups);
+    nodeRetriever.initializeNodePoolForBackups(backupStates);
     backupParams
         .backupList
         .stream()
@@ -2447,8 +2448,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     RestoreBackupYbc.Params restoreParams = new RestoreBackupYbc.Params(taskParams);
     // Giving node-ip as subtask param, so that leader changes does not
     // affect polling.
-    restoreParams.nodeIp =
-        restoreParams.nodeIp != null ? restoreParams.nodeIp : Util.getYbcNodeIp(getUniverse(false));
+    restoreParams.nodeIp = restoreParams.nodeIp;
     task.initialize(restoreParams);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);

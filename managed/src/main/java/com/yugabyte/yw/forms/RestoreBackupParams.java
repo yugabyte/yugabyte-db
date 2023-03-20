@@ -46,6 +46,8 @@ public class RestoreBackupParams extends UniverseTaskParams {
 
   public String currentYbcTaskId;
 
+  public String nodeIp;
+
   // Should backup script enable verbose logging.
   @ApiModelProperty(value = "Is verbose logging enabled")
   public boolean enableVerboseLogs = false;
