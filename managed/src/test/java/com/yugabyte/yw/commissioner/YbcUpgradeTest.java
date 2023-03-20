@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -14,6 +15,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
@@ -74,6 +76,8 @@ public class YbcUpgradeTest extends FakeDBApplication {
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockAppConfig);
     when(mockRuntimeConfigFactory.forUniverse(any())).thenReturn(mockAppConfig);
     when(mockYbcManager.getStableYbcVersion()).thenReturn(NEW_YBC_VERSION);
+    ShellResponse response = new ShellResponse();
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any())).thenReturn(response);
     mockYbcClient = mock(YbcClient.class);
     mockYbcClient2 = mock(YbcClient.class);
     ybcUpgrade =
