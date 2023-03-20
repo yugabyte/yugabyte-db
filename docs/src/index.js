@@ -343,7 +343,7 @@ $(document).ready(() => {
     const header = document.querySelector('.scrolltop-btn');
     const scrollChange = 50;
 
-    document.addEventListener('click', () => {
+    header.addEventListener('click', () => {
       window.scrollTo(0, 0);
     });
 
