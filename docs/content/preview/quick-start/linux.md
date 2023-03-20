@@ -62,47 +62,17 @@ Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [d
 
 ### Prerequisites
 
-Before installing YugabyteDB, ensure that you have the following available:
+{{% readfile "include-prerequisites-linux.md" %}}
 
-1. One of the following operating systems:
+#### ulimits
 
-    - <i class="icon-centos"></i> CentOS 7 or later
-
-    - <i class="icon-ubuntu"></i> Ubuntu 16.04 or later
-
-1. Python 3. To check the version, execute the following command:
-
-    ```sh
-    python --version
-    ```
-
-    ```output
-    Python 3.7.3
-    ```
-
-    By default, CentOS 8 does not have an unversioned system-wide `python` command. To fix this, set `python3` as the alternative for `python` by running `sudo alternatives --set python /usr/bin/python3`.
-
-    Starting from Ubuntu 20.04, `python` is no longer available. To fix this, run `sudo apt install python-is-python3`.
-
-1. `wget` or `curl`.
-
-    The instructions use the `wget` command to download files. If you prefer to use `curl`, you can replace `wget` with `curl -O`.
-
-    To install `wget`:
-
-    - On CentOS, run `yum install wget`
-    - On Ubuntu, run `apt install wget`
-
-    To install `curl`:
-
-    - On CentOS, run `yum install curl`
-    - On Ubuntu, run `apt install curl`
-
-1. Because each tablet maps to its own file, you can create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. You need to [configure ulimit values](../../deploy/manual-deployment/system-config/#ulimits).
+Because each tablet maps to its own file, you can create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. You need to [configure ulimit values](../../deploy/manual-deployment/system-config/#ulimits).
 
 ### Download YugabyteDB
 
 YugabyteDB supports both x86 and ARM (aarch64) CPU architectures. Download packages ending in `x86_64.tar.gz` to run on x86, and packages ending in `aarch64.tar.gz` to run on ARM.
+
+The following instructions are for downloading the Preview release of YugabyteDB, which is recommended for development and testing only. For other versions, see [Releases](../../releases/).
 
 Download YugabyteDB as follows:
 
