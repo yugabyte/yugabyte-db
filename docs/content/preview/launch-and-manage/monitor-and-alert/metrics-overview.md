@@ -14,7 +14,7 @@ type: docs
 
 YugabyteDB provides nearly two thousand metrics for monitoring, performance-tuning, and troubleshooting system, table, and tablet issues.
 
-This document focuses primarily on metrics and their uses detailing about which metrics are the most important ones, how to consume the metrics in practice, and how to use them to monitor and manage clusters, troubleshoot performance issues, and identify bottlenecks.
+The following sections focus primarily on metrics and their uses, including how to consume the metrics in practice, and how to use them to monitor and manage clusters, troubleshoot performance issues, and identify bottlenecks.
 
 {{< note title="Note" >}}
 
@@ -25,9 +25,9 @@ This document focuses primarily on metrics and their uses detailing about which 
 
 ## Overview
 
-A YugabyteDB cluster comprises multiple nodes and services, each emitting metrics. These metrics are applicable at different levels: cluster-wide, per-node, per-table, and per-tablet. These metrics are exported through various endpoints in JSON, HTML, and Prometheus formats. You can aggregate these metrics appropriately to get a cluster-wide, per-database, per-table, or per-node view. The following diagram shows the various endpoints in a cluster.
+A YugabyteDB cluster comprises multiple nodes and services, each emitting metrics. These metrics are applicable at different levels: cluster-wide, per-node, per-table, and per-tablet. The metrics are exported through various endpoints in JSON, HTML, and Prometheus formats. You can aggregate metrics appropriately to get a cluster-wide, per-database, per-table, or per-node view. The following diagram shows the various endpoints in a cluster.
 
-<!-- ### Logical architecture components -->
+![Metrics endpoints](/images/manage/monitor/metrics-endpoints.png)
 
 The following table includes a brief description of the type of metrics exposed by each endpoint and the URL from which their metrics can be exported.
 
