@@ -33,7 +33,7 @@ type: docs
   <li>
     <a href="../azure/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
-      &nbsp;&nbsp; Azure
+      Azure
     </a>
   </li>
 
@@ -53,7 +53,9 @@ type: docs
 
   <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fa-brands fa-redhat" aria-hidden="true"></i>OpenShift</a>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>
+      OpenShift
+    </a>
   </li>
 
   <li>
@@ -65,7 +67,7 @@ type: docs
 
 </ul>
 
-<br>You can configure Amazon Web Services (AWS) for YugabyteDB using YugabyteDB Anywhere. If no cloud providers have been configured yet, the main **Dashboard** page prompts you to configure at least one cloud provider.
+You can configure Amazon Web Services (AWS) for YugabyteDB using YugabyteDB Anywhere. If no cloud providers have been configured yet, the main **Dashboard** page prompts you to configure at least one cloud provider.
 
 ## Prerequisites
 
@@ -116,7 +118,7 @@ You can customize the Network Time Protocol server, as follows:
 
 - Select **Use provider’s NTP server** to enable cluster nodes to connect to the AWS internal time servers. For more information, consult the AWS documentation such as [Keeping time with Amazon time sync service](https://aws.amazon.com/blogs/aws/keeping-time-with-amazon-time-sync-service/).
 - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
-- Select **Don’t set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
+- Select **Don't set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
 ## Global deployment
 
@@ -177,4 +179,4 @@ If that is the case, click **Accept Terms** and wait for the page to switch to a
 
 ![Marketplace success](/images/ee/aws-setup/marketplace-success-almalinux.png)
 
-<br>Now you are ready to create a YugabyteDB universe on AWS.
+Now you are ready to create a YugabyteDB universe on AWS.

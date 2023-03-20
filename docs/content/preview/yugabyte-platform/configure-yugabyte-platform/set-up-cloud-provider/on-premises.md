@@ -51,7 +51,9 @@ type: docs
 
   <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fa-brands fa-redhat" aria-hidden="true"></i>OpenShift</a>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>
+      OpenShift
+    </a>
   </li>
 
   <li>
@@ -63,7 +65,7 @@ type: docs
 
 </ul>
 
-<br>You can configure the on-premises cloud provider for YugabyteDB using YugabyteDB Anywhere. If no cloud providers are configured, the main **Dashboard** prompts you to configure at least one cloud provider.
+You can configure the on-premises cloud provider for YugabyteDB using YugabyteDB Anywhere. If no cloud providers are configured, the main **Dashboard** prompts you to configure at least one cloud provider.
 
 ## Configure the on-premises provider
 
@@ -571,7 +573,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    /bin/systemctl daemon-reload
    ```
 
-2. Ensure that you have root access and add the following service and timer files to the `/etc/systemd/system` directory (set their ownerships to the `yugabyte` user and 0644 permissions):<br><br>
+2. Ensure that you have root access and add the following service and timer files to the `/etc/systemd/system` directory (set their ownerships to the `yugabyte` user and 0644 permissions):
 
    `yb-master.service`
 
@@ -808,9 +810,9 @@ You can install a node agent as follows:
    curl https://<yugabytedb_anywhere_address>/api/v1/node_agents/download --header 'X-AUTH-YW-API-TOKEN: <api_token>' > installer.sh && chmod +x installer.sh
    ```
 
-3. Verify that the installer file contains the script.
+1. Verify that the installer file contains the script.
 
-3. Run the following command to download the node agent's `.tgz` file which installs and starts the interactive configuration:
+1. Run the following command to download the node agent's `.tgz` file which installs and starts the interactive configuration:
 
    ```sh
    ./installer.sh -t install -u https://<yugabytedb_anywhere_address> -at <api_token>
@@ -846,7 +848,7 @@ You can install a node agent as follows:
    You can install a systemd service on linux machines by running node-agent-installer.sh -t install-service (Requires sudo access).
    ```
 
-4. Run the following command to enable the node agent as a systemd service, which is required for self-upgrade and other functions:
+1. Run the following command to enable the node agent as a systemd service, which is required for self-upgrade and other functions:
 
    ```sh
    sudo node-agent-installer.sh -t install-service
