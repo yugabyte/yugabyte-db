@@ -14,10 +14,11 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.YbcTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.YbcBackupUtil;
-import com.yugabyte.yw.common.YbcManager;
-import com.yugabyte.yw.common.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.services.YbcClientService;
+import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.common.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.ybc.YbcManager;
+import com.yugabyte.yw.common.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.TaskInfo;
@@ -54,9 +55,6 @@ public class RestoreBackupYbc extends YbcTaskBase {
   }
 
   public static class Params extends RestoreBackupParams {
-    // Node-ip to use as co-ordinator for the restore.
-    public String nodeIp = null;
-
     public int index;
 
     public Params(RestoreBackupParams params) {
@@ -72,7 +70,10 @@ public class RestoreBackupYbc extends YbcTaskBase {
   @Override
   public void run() {
     try {
-      ybcClient = ybcBackupUtil.getYbcClient(taskParams().universeUUID, taskParams().nodeIp);
+      Pair<YbcClient, String> clientIPPair =
+          ybcManager.getAvailableYbcClientIpPair(taskParams().universeUUID, taskParams().nodeIp);
+      ybcClient = clientIPPair.getFirst();
+      taskParams().nodeIp = clientIPPair.getSecond();
     } catch (PlatformServiceException e) {
       log.error("Could not generate YB-Controller client, error: %s", e.getMessage());
       Throwables.propagate(e);
@@ -171,6 +172,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
       if (isResumable) {
         restoreBackupParams.currentYbcTaskId = taskId;
         restoreBackupParams.currentIdx = taskParams().index;
+        restoreBackupParams.nodeIp = taskParams().nodeIp;
         restoreParams = Json.toJson(restoreBackupParams);
         getRunnableTask().setTaskDetails(restoreParams);
       }
