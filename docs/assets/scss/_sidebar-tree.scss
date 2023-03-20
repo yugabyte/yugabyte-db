@@ -31,6 +31,11 @@
     background: #fff;
     max-height: calc(100vh - 114px);
 
+    @media (max-width: 991px) {
+      top: 80px;
+      max-height: calc(100vh - 80px);
+    }
+
     .left-sidebar-wrap {
       height: 100%;
       position: sticky;
@@ -38,11 +43,6 @@
       top: 0;
       transition: width 100ms ease-in-out;
       max-width: 100%;
-
-      @media (max-width: 991px) {
-        height: calc(100vh - 75px);
-        top: 75px;
-      }
     }
 
     .left-sidebar-wrap-inner {
@@ -51,10 +51,6 @@
       display: flex;
       flex-flow: column;
       overflow-x: hidden;
-
-      @media (max-width: 991px) {
-        height: calc(100vh - 75px);
-      }
     }
 
     .side-nav-collapse-toggle-2 {
