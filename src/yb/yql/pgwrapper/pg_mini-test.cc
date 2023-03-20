@@ -97,6 +97,8 @@ DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 
 DECLARE_uint64(max_clock_skew_usec);
 
+DECLARE_string(time_source);
+
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 
@@ -656,6 +658,8 @@ void PgMiniTest::TestReadRestart(const bool deferrable) {
 class PgMiniLargeClockSkewTest : public PgMiniTest {
  public:
   void SetUp() override {
+    server::SkewedClock::Register();
+    FLAGS_time_source = server::SkewedClock::kName;
     SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
     PgMiniTestBase::SetUp();
   }
