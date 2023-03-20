@@ -139,7 +139,9 @@ public class CheckXUniverseAutoFlags extends ServerSubTaskBase {
             .collect(Collectors.toMap(flagDetails -> flagDetails.name, Function.identity()));
     Map<String, String> promotedAutoFlagsWithValues = new HashMap<>();
     for (String flag : promotedAutoFlagsList) {
-      promotedAutoFlagsWithValues.put(flag, autoFlagsMetadataMap.get(flag).target);
+      if (autoFlagsMetadataMap.containsKey(flag)) {
+        promotedAutoFlagsWithValues.put(flag, autoFlagsMetadataMap.get(flag).target);
+      }
     }
     for (Map.Entry<String, String> entry :
         GFlagsUtil.getBaseGFlags(

@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -20,6 +21,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.io.File;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -40,9 +42,13 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
           .processInactiveMaster(true)
           .build();
 
+  private final XClusterUniverseService xClusterUniverseService;
+
   @Inject
-  protected SoftwareUpgrade(BaseTaskDependencies baseTaskDependencies) {
+  protected SoftwareUpgrade(
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
     super(baseTaskDependencies);
+    this.xClusterUniverseService = xClusterUniverseService;
   }
 
   @Override
@@ -73,7 +79,7 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
           String newVersion = taskParams().ybSoftwareVersion;
 
           // Preliminary checks for upgrades.
-          createCheckUpgradeTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
+          createCheckUpgradeTask(newVersion).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
 
           // PreCheck for Available Memory on tserver nodes.
           long memAvailableLimit =
@@ -130,11 +136,14 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
 
           // Promote Auto flags on compatible versions.
           if (confGetter.getConfForScope(universe, UniverseConfKeys.promoteAutoFlag)
-              && CommonUtils.isAutoFlagSupported(newVersion)
-              && !XClusterConfig.isUniverseXClusterParticipant(universe.getUniverseUUID())) {
+              && CommonUtils.isAutoFlagSupported(newVersion)) {
             createCheckSoftwareVersionTask(allNodes, newVersion)
                 .setSubTaskGroupType(getTaskSubGroupType());
-            createPromoteAutoFlagTask().setSubTaskGroupType(getTaskSubGroupType());
+            createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
+                Collections.singleton(universe.getUniverseUUID()),
+                Collections.singleton(universe.getUniverseUUID()),
+                xClusterUniverseService,
+                new HashSet<>());
           }
 
           // Update software version in the universe metadata.
