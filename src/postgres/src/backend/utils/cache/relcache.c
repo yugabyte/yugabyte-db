@@ -2228,6 +2228,7 @@ YbRunWithPrefetcher(
 			HandleYBStatus(status);
 			return;
 		}
+		YBCFreeStatus(status);
 		// Reset catalog caches before next attempt
 		ResetCatalogCaches();
 	}
