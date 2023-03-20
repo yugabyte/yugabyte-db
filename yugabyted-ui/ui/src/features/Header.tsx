@@ -8,16 +8,20 @@ import {
   Divider,
   Typography,
   IconButton,
-  Link as MUILink
+  Link as MUILink,
+  Badge,
+  Link
 } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
+import { Link as RouterLink } from 'react-router-dom';
 
 import { YBDropdown } from '@app/components';
 import HelpIcon from '@app/assets/help.svg';
 import FileIcon from '@app/assets/file.svg';
 import SlackIcon from '@app/assets/slack.svg';
 import HeartCheckIcon from '@app/assets/heart-check.svg';
-import { useGetClusterQuery } from '@app/api/src';
+import AlertGreenIcon from '@app/assets/alert-green.svg';
+import { useGetClusterNodesQuery, useGetClusterQuery } from '@app/api/src';
 
 const useStyles = makeStyles((theme) => ({
   divider: {
@@ -25,6 +29,9 @@ const useStyles = makeStyles((theme) => ({
     marginLeft: 0,
   },
   iconContainer: {
+    '& span.MuiBadge-badge': {
+      transform: 'translate(100%, -100%)'
+    },
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -70,6 +77,10 @@ export const Header: FC = () => {
   const { data: clusterData } = useGetClusterQuery();
 
   const clusterName = clusterData?.data?.spec.name || t('common.cluster');
+
+  // Get nodes
+  const { data: nodesResponse } = useGetClusterNodesQuery();
+  const deadNodes = nodesResponse?.data?.filter(node => !node.is_node_up) ?? [];
 
   return (
     <AppBar position="static" color="transparent">
@@ -134,7 +145,12 @@ export const Header: FC = () => {
         </Switch>
         <VersionBadge/> */}
         <Box className={classes.iconContainer}>
-          <HeartCheckIcon />
+          <Badge badgeContent={deadNodes.length >= 0 ?
+            <Link component={RouterLink} to="/cluster/tabNodes?filter=down">
+              <AlertGreenIcon />
+            </Link> : undefined}>
+            <HeartCheckIcon />
+          </Badge>
         </Box>
         <Typography variant="h4" color="inherit">
           {clusterName}
@@ -142,7 +158,7 @@ export const Header: FC = () => {
         <div className={classes.toRight}>
           <Box display="flex">
             <MUILink className={classes.sendFeedback} href={LINK_SLACK} target="_blank">
-              <SlackIcon  className={classes.menuIcon} />
+              <SlackIcon className={classes.menuIcon} />
               <Typography variant="body2">{t('common.joinSlack')}</Typography>
             </MUILink>
           </Box>
