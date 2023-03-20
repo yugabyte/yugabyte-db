@@ -18,7 +18,6 @@ import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.contextComponents;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -588,8 +587,6 @@ public class PitrControllerTest extends FakeDBApplication {
                     + scheduleUUID3)
             .method("DELETE")
             .build();
-    Http.Context context = new Http.Context(request, contextComponents());
-    Http.Context.current.set(context);
     RequestContext.put(TokenAuthenticator.USER, new UserWithFeatures().setUser(defaultUser));
 
     when(mockListSnapshotSchedulesResponse.getSnapshotScheduleInfoList())
@@ -599,7 +596,7 @@ public class PitrControllerTest extends FakeDBApplication {
         .thenReturn(mockDeleteSnapshotScheduleResponse);
     Result r =
         pitrController.deletePitrConfig(
-            defaultCustomer.getUuid(), defaultUniverse.getUniverseUUID(), scheduleUUID3);
+            defaultCustomer.getUuid(), defaultUniverse.getUniverseUUID(), scheduleUUID3, request);
     JsonNode json = Json.parse(contentAsString(r));
     assertAuditEntry(1, defaultCustomer.getUuid());
     assertEquals(OK, r.status());
@@ -636,7 +633,10 @@ public class PitrControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 pitrController.deletePitrConfig(
-                    defaultCustomer.getUuid(), defaultUniverse.getUniverseUUID(), scheduleUUID3));
+                    defaultCustomer.getUuid(),
+                    defaultUniverse.getUniverseUUID(),
+                    scheduleUUID3,
+                    fakeRequest));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertEquals(BAD_REQUEST, r.status());
     verify(mockCommissioner, times(0)).submit(any(), any());
@@ -665,7 +665,10 @@ public class PitrControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 pitrController.deletePitrConfig(
-                    defaultCustomer.getUuid(), defaultUniverse.getUniverseUUID(), scheduleUUID3));
+                    defaultCustomer.getUuid(),
+                    defaultUniverse.getUniverseUUID(),
+                    scheduleUUID3,
+                    fakeRequest));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertBadRequest(r, "Cannot delete PITR config when the universe is in locked state");
     verify(mockCommissioner, times(0)).submit(any(), any());
@@ -682,7 +685,10 @@ public class PitrControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 pitrController.deletePitrConfig(
-                    defaultCustomer.getUuid(), defaultUniverse.getUniverseUUID(), scheduleUUID3));
+                    defaultCustomer.getUuid(),
+                    defaultUniverse.getUniverseUUID(),
+                    scheduleUUID3,
+                    fakeRequest));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertEquals(BAD_REQUEST, r.status());
     verify(mockCommissioner, times(0)).submit(any(), any());

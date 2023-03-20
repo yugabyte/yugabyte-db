@@ -16,17 +16,14 @@
           "type" : "string"
         },
         "hostVpcId" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "hostVpcRegion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "vpcType" : {
           "description" : "New/Existing VPC for provider creation",
           "enum" : [ "EXISTING", "NEW" ],
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -66,7 +63,6 @@
           "description" : "Creation date of key",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "expirationDate" : {
@@ -122,12 +118,10 @@
       "properties" : {
         "code" : {
           "description" : "Notification code",
-          "readOnly" : true,
           "type" : "string"
         },
         "htmlMessage" : {
           "description" : "Notification message with HTML markup",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -140,38 +134,32 @@
           "description" : "Timestamp at which the alert was acknowledged",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "configurationType" : {
           "description" : "Alert configuration type",
           "enum" : [ "PLATFORM", "UNIVERSE" ],
-          "readOnly" : true,
           "type" : "string"
         },
         "configurationUuid" : {
           "description" : "Alert configuration UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "createTime" : {
           "description" : "Alert creation timestamp",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "definitionUuid" : {
           "description" : "Alert definition UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "labels" : {
@@ -184,53 +172,45 @@
           "description" : "The alert's message text",
           "maxLength" : 2147483647,
           "minLength" : 1,
-          "readOnly" : true,
           "type" : "string"
         },
         "name" : {
           "description" : "The alert's name",
           "maxLength" : 1000,
           "minLength" : 1,
-          "readOnly" : true,
           "type" : "string"
         },
         "nextNotificationTime" : {
           "description" : "Time of the next notification attempt",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "notificationAttemptTime" : {
           "description" : "Time of the last notification attempt",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "notificationsFailed" : {
           "description" : "Count of failures to send a notification",
           "format" : "int32",
-          "readOnly" : true,
           "type" : "integer"
         },
         "notifiedState" : {
           "description" : "Alert state in the last-sent notification",
           "enum" : [ "ACTIVE", "ACKNOWLEDGED", "SUSPENDED", "RESOLVED" ],
-          "readOnly" : true,
           "type" : "string"
         },
         "resolvedTime" : {
           "description" : "Timestamp at which the alert was resolved",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "severity" : {
           "description" : "Alert configuration severity",
           "enum" : [ "SEVERE", "WARNING" ],
-          "readOnly" : true,
           "type" : "string"
         },
         "severityIndex" : {
@@ -239,19 +219,16 @@
         },
         "sourceName" : {
           "description" : "The source of the alert",
-          "readOnly" : true,
           "type" : "string"
         },
         "sourceUUID" : {
           "description" : "The sourceUUID of the alert",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "state" : {
           "description" : "The alert's state",
           "enum" : [ "ACTIVE", "ACKNOWLEDGED", "SUSPENDED", "RESOLVED" ],
-          "readOnly" : true,
           "type" : "string"
         },
         "stateIndex" : {
@@ -261,7 +238,6 @@
         "uuid" : {
           "description" : "Alert UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -273,7 +249,6 @@
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "defaultTextTemplate" : {
@@ -360,7 +335,6 @@
         "customer_uuid" : {
           "description" : "Customer UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "name" : {
@@ -376,7 +350,6 @@
         "uuid" : {
           "description" : "Channel UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -494,7 +467,6 @@
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "textTemplate" : {
@@ -547,13 +519,11 @@
           "description" : "Creation time",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "defaultDestination" : {
@@ -588,7 +558,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
@@ -627,7 +596,6 @@
         "uuid" : {
           "description" : "Configuration UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -761,13 +729,11 @@
           "description" : "Creation time",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "defaultDestination" : {
@@ -802,7 +768,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
@@ -828,29 +793,24 @@
         },
         "thresholdConditionReadOnly" : {
           "description" : "Is alert threshold condition read-only or configurable",
-          "readOnly" : true,
           "type" : "boolean"
         },
         "thresholdInteger" : {
           "description" : "Is alert threshold integer or floating point",
-          "readOnly" : true,
           "type" : "boolean"
         },
         "thresholdMaxValue" : {
           "description" : "Alert threshold maximal value",
           "format" : "double",
-          "readOnly" : true,
           "type" : "number"
         },
         "thresholdMinValue" : {
           "description" : "Alert threshold minimal value",
           "format" : "double",
-          "readOnly" : true,
           "type" : "number"
         },
         "thresholdReadOnly" : {
           "description" : "Is alert threshold read-only or configurable",
-          "readOnly" : true,
           "type" : "boolean"
         },
         "thresholdUnit" : {
@@ -860,7 +820,6 @@
         },
         "thresholdUnitName" : {
           "description" : "Threshold unit name",
-          "readOnly" : true,
           "type" : "string"
         },
         "thresholds" : {
@@ -873,7 +832,6 @@
         "uuid" : {
           "description" : "Configuration UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -972,7 +930,6 @@
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "defaultDestination" : {
@@ -988,7 +945,6 @@
         "uuid" : {
           "description" : "Destination UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -1108,13 +1064,11 @@
           "description" : "Creation time",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "labels" : {
@@ -1158,7 +1112,6 @@
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "defaultValue" : {
@@ -1186,7 +1139,6 @@
         "uuid" : {
           "description" : "Variable UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -1267,82 +1219,68 @@
           "description" : "Action",
           "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "Validate", "Acknowledge", "SyncXClusterConfig", "Login", "ApiLogin", "Promote", "Bootstrap", "Configure", "UpdateOptions", "UpdateLoadBalancerConfig", "RefreshPricing", "UpgradeSoftware", "UpgradeGFlags", "UpgradeKubernetesOverrides", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "RebootUniverse", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "CreateRestrictedUserInDB", "DropUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateBackup", "RestoreBackup", "CreateSingleTableBackup", "CreateMultiTableBackup", "CreateBackupSchedule", "CreatePitrConfig", "RestoreSnapshotSchedule", "DeletePitrConfig", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType", "GetUniverseResources", "ThirdpartySoftwareUpgrade", "CreateTableSpaces", "CreateHook", "DeleteHook", "UpdateHook", "CreateHookScope", "DeleteHookScope", "AddHook", "RemoveHook", "RotateAccessKey", "CreateAndRotateAccessKey", "RunHook", "RunApiTriggeredHooks", "AddNodeAgent", "UpdateNodeAgent", "DeleteNodeAgent", "DisableYbc", "UpgradeYbc", "InstallYbc", "SetThrottleParams", "Export", "DeleteMetadata", "Unlock" ],
           "example" : "Create User",
-          "readOnly" : true,
           "type" : "string"
         },
         "additionalDetails" : {
           "description" : "Additional Details",
-          "readOnly" : true,
           "type" : "object"
         },
         "apiCall" : {
           "description" : "API call",
           "example" : "/api/v1/customers/<496fdea8-df25-11eb-ba80-0242ac130004>/providers",
-          "readOnly" : true,
           "type" : "string"
         },
         "apiMethod" : {
           "description" : "API method",
           "example" : "GET",
-          "readOnly" : true,
           "type" : "string"
         },
         "auditID" : {
           "description" : "Audit UID",
           "format" : "int64",
-          "readOnly" : true,
           "type" : "integer"
         },
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "payload" : {
           "description" : "Audit UUID",
-          "readOnly" : true,
           "type" : "object"
         },
         "target" : {
           "description" : "Target",
           "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun" ],
           "example" : "User",
-          "readOnly" : true,
           "type" : "string"
         },
         "targetID" : {
           "description" : "Target ID",
-          "readOnly" : true,
           "type" : "string"
         },
         "taskUUID" : {
           "description" : "Task UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "timestamp" : {
           "description" : "The task creation time.",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "userAddress" : {
           "description" : "User IP Address",
-          "readOnly" : true,
           "type" : "string"
         },
         "userEmail" : {
           "description" : "User Email",
-          "readOnly" : true,
           "type" : "string"
         },
         "userUUID" : {
           "description" : "User UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -1380,7 +1318,6 @@
       "properties" : {
         "active" : {
           "description" : "AZ status. This value is `true` for an active AZ.",
-          "readOnly" : true,
           "type" : "boolean"
         },
         "code" : {
@@ -1400,7 +1337,6 @@
         },
         "kubeconfigPath" : {
           "description" : "Path to Kubernetes configuration file",
-          "readOnly" : true,
           "type" : "string"
         },
         "name" : {
@@ -1421,7 +1357,6 @@
         "uuid" : {
           "description" : "AZ UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -1509,7 +1444,6 @@
         "vpcType" : {
           "description" : "New/Existing VPC for provider creation",
           "enum" : [ "EXISTING", "NEW" ],
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -1540,13 +1474,11 @@
         "backupUUID" : {
           "description" : "Backup UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "baseBackupUUID" : {
           "description" : "Base backup UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "category" : {
@@ -1558,7 +1490,6 @@
           "description" : "Backup completion time",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "createTime" : {
@@ -1602,7 +1533,6 @@
           "description" : "State of the backup",
           "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopping", "Stopped", "QueuedForDeletion", "DeleteInProgress" ],
           "example" : "DELETED",
-          "readOnly" : true,
           "type" : "string"
         },
         "storageConfigUUID" : {
@@ -1613,7 +1543,6 @@
         "taskUUID" : {
           "description" : "Backup UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "universeName" : {
@@ -1948,7 +1877,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "sse" : {
@@ -1966,7 +1894,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "timeBeforeDelete" : {
@@ -2326,7 +2253,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "sse" : {
@@ -2377,7 +2303,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "timeBeforeDelete" : {
@@ -2561,7 +2486,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "sse" : {
@@ -2583,7 +2507,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "universeUUID" : {
@@ -2645,7 +2568,6 @@
         },
         "checksum" : {
           "description" : "The certificate file's checksum",
-          "readOnly" : true,
           "type" : "string"
         },
         "customCertPathParams" : {
@@ -2670,7 +2592,6 @@
         },
         "inUse" : {
           "description" : "Indicates whether the certificate is in use. This value is `true` if the universe contains a reference to the certificate.",
-          "readOnly" : true,
           "type" : "boolean"
         },
         "label" : {
@@ -2700,13 +2621,11 @@
           "items" : {
             "$ref" : "#/definitions/UniverseDetailSubset"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "uuid" : {
           "description" : "Certificate UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -2894,7 +2813,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "sshUserOverride" : {
@@ -2906,7 +2824,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "universePaused" : {
@@ -2951,8 +2868,7 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe",
-          "readOnly" : true
+          "description" : "XCluster related states in this universe"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -3104,7 +3020,6 @@
           "items" : {
             "$ref" : "#/definitions/Region"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "userIntent" : {
@@ -3451,7 +3366,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "targetXClusterConfigs" : {
@@ -3460,7 +3374,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "ybPrevSoftwareVersion" : {
@@ -3499,7 +3412,6 @@
           "items" : {
             "$ref" : "#/definitions/Admin notification"
           },
-          "readOnly" : true,
           "type" : "array"
         }
       },
@@ -3562,14 +3474,12 @@
           "description" : "Creation time",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "customerId" : {
           "description" : "Customer ID",
           "example" : 1,
           "format" : "int64",
-          "readOnly" : true,
           "type" : "integer"
         },
         "name" : {
@@ -3580,7 +3490,6 @@
         "uuid" : {
           "description" : "Customer UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -3647,13 +3556,11 @@
         "configUUID" : {
           "description" : "Config UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "data" : {
@@ -3671,7 +3578,6 @@
         "state" : {
           "description" : "state of the customerConfig. Possible values are Active, QueuedForDeletion.",
           "enum" : [ "Active", "QueuedForDeletion" ],
-          "readOnly" : true,
           "type" : "string"
         },
         "type" : {
@@ -3700,13 +3606,11 @@
         "configUUID" : {
           "description" : "Config UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "data" : {
@@ -3716,7 +3620,6 @@
         },
         "inUse" : {
           "description" : "True if there is an in use reference to the object",
-          "readOnly" : true,
           "type" : "boolean"
         },
         "name" : {
@@ -3729,7 +3632,6 @@
         "state" : {
           "description" : "state of the customerConfig. Possible values are Active, QueuedForDeletion.",
           "enum" : [ "Active", "QueuedForDeletion" ],
-          "readOnly" : true,
           "type" : "string"
         },
         "type" : {
@@ -3765,13 +3667,11 @@
       "properties" : {
         "alertingData" : {
           "$ref" : "#/definitions/AlertingData",
-          "description" : "Alerts",
-          "readOnly" : true
+          "description" : "Alerts"
         },
         "callhomeLevel" : {
           "description" : "Call-home level",
           "example" : "MEDIUM",
-          "readOnly" : true,
           "type" : "string"
         },
         "code" : {
@@ -3783,13 +3683,11 @@
           "description" : "Creation timestamp",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "customerId" : {
           "description" : "Customer ID",
           "format" : "int32",
-          "readOnly" : true,
           "type" : "integer"
         },
         "name" : {
@@ -3799,8 +3697,7 @@
         },
         "smtpData" : {
           "$ref" : "#/definitions/SmtpData",
-          "description" : "SMTP",
-          "readOnly" : true
+          "description" : "SMTP"
         },
         "universeUUIDs" : {
           "description" : "Associated universe IDs",
@@ -3809,12 +3706,10 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "uuid" : {
           "description" : "User UUID",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -3828,7 +3723,6 @@
           "description" : "Creation date of license",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "customerUUID" : {
@@ -3847,7 +3741,6 @@
         "licenseUUID" : {
           "description" : "License UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -3954,7 +3847,6 @@
         },
         "userEmail" : {
           "description" : "Customer Email",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -4220,14 +4112,12 @@
           "type" : "string"
         },
         "gceApplicationCredentialsPath" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "gceProject" : {
           "type" : "string"
         },
         "hostVpcId" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "useHostCredentials" : {
@@ -4239,7 +4129,6 @@
         "vpcType" : {
           "description" : "New/Existing VPC for provider creation",
           "enum" : [ "EXISTING", "NEW" ],
-          "readOnly" : true,
           "type" : "string"
         },
         "ybFirewallTags" : {
@@ -4415,7 +4304,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "sshUserOverride" : {
@@ -4427,7 +4315,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "tserverGFlags" : {
@@ -4478,8 +4365,7 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe",
-          "readOnly" : true
+          "description" : "XCluster related states in this universe"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -4621,7 +4507,6 @@
       "properties" : {
         "active" : {
           "description" : "True if the instance is active",
-          "readOnly" : true,
           "type" : "boolean"
         },
         "idKey" : {
@@ -4629,7 +4514,6 @@
         },
         "instanceTypeCode" : {
           "description" : "Instance type code",
-          "readOnly" : true,
           "type" : "string"
         },
         "instanceTypeDetails" : {
@@ -4684,7 +4568,6 @@
       "properties" : {
         "active" : {
           "description" : "True if the instance is active",
-          "readOnly" : true,
           "type" : "boolean"
         },
         "idKey" : {
@@ -4692,7 +4575,6 @@
         },
         "instanceTypeCode" : {
           "description" : "Instance type code",
-          "readOnly" : true,
           "type" : "string"
         },
         "instanceTypeDetails" : {
@@ -4711,13 +4593,11 @@
         },
         "providerCode" : {
           "description" : "Cloud provider code",
-          "readOnly" : true,
           "type" : "string"
         },
         "providerUuid" : {
           "description" : "Provider UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -4741,7 +4621,6 @@
         "managementState" : {
           "description" : "Key Management state",
           "enum" : [ "YBAManaged", "SelfManaged", "Unknown" ],
-          "readOnly" : true,
           "type" : "string"
         },
         "nodeExporterPort" : {
@@ -5061,7 +4940,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "sshUserOverride" : {
@@ -5073,7 +4951,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "universeOverrides" : {
@@ -5121,8 +4998,7 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe",
-          "readOnly" : true
+          "description" : "XCluster related states in this universe"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -5214,13 +5090,11 @@
           "description" : "Creation time",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "description" : {
@@ -5250,13 +5124,11 @@
         "state" : {
           "description" : "State",
           "enum" : [ "FINISHED", "ACTIVE", "PENDING" ],
-          "readOnly" : true,
           "type" : "string"
         },
         "uuid" : {
           "description" : "Maintenance window UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -5747,7 +5619,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "sse" : {
@@ -5798,7 +5669,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "timeBeforeDelete" : {
@@ -5847,7 +5717,6 @@
         "namespaceUUID" : {
           "description" : "Namespace UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "tableType" : {
@@ -6098,7 +5967,6 @@
             "enum" : [ "ADD", "REMOVE", "START", "STOP", "DELETE", "QUERY", "RELEASE", "REBOOT", "START_MASTER", "PRECHECK_DETACHED", "HARD_REBOOT" ],
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
@@ -6287,13 +6155,11 @@
         "nodeName" : {
           "description" : "The node's name",
           "example" : "India node",
-          "readOnly" : true,
           "type" : "string"
         },
         "nodeUuid" : {
           "description" : "The node's UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "zoneUuid" : {
@@ -6791,7 +6657,6 @@
           "description" : "Create time of the PITR config",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "customerUUID" : {
@@ -6997,7 +6862,6 @@
       "properties" : {
         "active" : {
           "description" : "Provider active status",
-          "readOnly" : true,
           "type" : "boolean"
         },
         "allAccessKeys" : {
@@ -7013,7 +6877,6 @@
         "customerUUID" : {
           "description" : "Customer uuid",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "destVpcId" : {
@@ -7041,13 +6904,11 @@
         "uuid" : {
           "description" : "Provider uuid",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "version" : {
           "description" : "Provider version",
           "format" : "int64",
-          "readOnly" : true,
           "type" : "integer"
         }
       },
@@ -7134,7 +6995,6 @@
       "description" : "Region within a given provider. Typically, this maps to a single cloud provider region.",
       "properties" : {
         "active" : {
-          "readOnly" : true,
           "type" : "boolean"
         },
         "code" : {
@@ -7155,26 +7015,22 @@
           "description" : "The region's latitude",
           "example" : 37.22,
           "format" : "double",
-          "readOnly" : true,
           "type" : "number"
         },
         "longitude" : {
           "description" : "The region's longitude",
           "example" : -120.01,
           "format" : "double",
-          "readOnly" : true,
           "type" : "number"
         },
         "name" : {
           "description" : "Cloud provider region name",
           "example" : "US West (Oregon)",
-          "readOnly" : true,
           "type" : "string"
         },
         "uuid" : {
           "description" : "Region UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "zones" : {
@@ -7497,7 +7353,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "sshUserOverride" : {
@@ -7509,7 +7364,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "tserverGFlags" : {
@@ -7560,8 +7414,7 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe",
-          "readOnly" : true
+          "description" : "XCluster related states in this universe"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -7727,7 +7580,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "sshUserOverride" : {
@@ -7739,7 +7591,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "universePaused" : {
@@ -7784,8 +7635,7 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe",
-          "readOnly" : true
+          "description" : "XCluster related states in this universe"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -8003,7 +7853,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "storageConfigUUID" : {
@@ -8017,7 +7866,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "universeUUID" : {
@@ -8065,40 +7913,33 @@
         "restoreUUID" : {
           "description" : "Universe-level Restore UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "sourceKeyspace" : {
           "description" : "Source keyspace name",
-          "readOnly" : true,
           "type" : "string"
         },
         "state" : {
           "description" : "State of the keyspace restore",
           "enum" : [ "Created", "InProgress", "Completed", "Failed", "Aborted" ],
-          "readOnly" : true,
           "type" : "string"
         },
         "storageLocation" : {
           "description" : "Storage location name",
-          "readOnly" : true,
           "type" : "string"
         },
         "targetKeyspace" : {
           "description" : "Target keyspace name",
-          "readOnly" : true,
           "type" : "string"
         },
         "taskUUID" : {
           "description" : "Restore Keyspace task UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "uuid" : {
           "description" : "Restore keyspace UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -8300,7 +8141,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "targetXClusterConfigs" : {
@@ -8309,7 +8149,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "universeUUID" : {
@@ -8374,7 +8213,6 @@
       "properties" : {
         "backlogStatus" : {
           "description" : "Backlog status of schedule arose due to conflicts",
-          "readOnly" : true,
           "type" : "boolean"
         },
         "cronExpression" : {
@@ -8384,13 +8222,11 @@
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "failureCount" : {
           "description" : "Number of failed backup attempts",
           "format" : "int32",
-          "readOnly" : true,
           "type" : "integer"
         },
         "frequency" : {
@@ -8407,13 +8243,11 @@
           "description" : "Time on which schedule is expected to run",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "ownerUUID" : {
           "description" : "Owner UUID for the schedule",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "runningState" : {
@@ -8422,19 +8256,16 @@
         },
         "scheduleName" : {
           "description" : "Name of the schedule",
-          "readOnly" : true,
           "type" : "string"
         },
         "scheduleUUID" : {
           "description" : "Schedule UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "status" : {
           "description" : "Status of the task. Possible values are _Active_, _Paused_, or _Stopped_.",
           "enum" : [ "Active", "Paused", "Stopped" ],
-          "readOnly" : true,
           "type" : "string"
         },
         "taskType" : {
@@ -8444,7 +8275,6 @@
         },
         "userEmail" : {
           "description" : "User who created the schedule policy",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -8762,7 +8592,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "sshUserOverride" : {
@@ -8774,7 +8603,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "universePaused" : {
@@ -8822,8 +8650,7 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe",
-          "readOnly" : true
+          "description" : "XCluster related states in this universe"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -9191,7 +9018,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "sshUserOverride" : {
@@ -9203,7 +9029,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "universePaused" : {
@@ -9248,8 +9073,7 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe",
-          "readOnly" : true
+          "description" : "XCluster related states in this universe"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -9342,7 +9166,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "tableDetails" : {
@@ -9362,7 +9185,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "universeUUID" : {
@@ -9446,7 +9268,6 @@
         "sizeBytes" : {
           "description" : "SST size in bytes",
           "format" : "double",
-          "readOnly" : true,
           "type" : "number"
         },
         "tableName" : {
@@ -9465,13 +9286,11 @@
         "tableUUID" : {
           "description" : "Table UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "walSizeBytes" : {
           "description" : "WAL size in bytes",
           "format" : "double",
-          "readOnly" : true,
           "type" : "number"
         }
       },
@@ -9647,7 +9466,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "sshUserOverride" : {
@@ -9659,7 +9477,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "universePaused" : {
@@ -9704,8 +9521,7 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe",
-          "readOnly" : true
+          "description" : "XCluster related states in this universe"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -9866,7 +9682,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "sshUserOverride" : {
@@ -9878,7 +9693,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "universePaused" : {
@@ -9923,8 +9737,7 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe",
-          "readOnly" : true
+          "description" : "XCluster related states in this universe"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -10115,7 +9928,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "sshUserOverride" : {
@@ -10127,7 +9939,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "universePaused" : {
@@ -10168,8 +9979,7 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe",
-          "readOnly" : true
+          "description" : "XCluster related states in this universe"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -10321,7 +10131,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "sshUserOverride" : {
@@ -10333,7 +10142,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "universePaused" : {
@@ -10374,8 +10182,7 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe",
-          "readOnly" : true
+          "description" : "XCluster related states in this universe"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -10472,7 +10279,6 @@
           "items" : {
             "$ref" : "#/definitions/NodeDetailsResp"
           },
-          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
@@ -10527,7 +10333,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "sshUserOverride" : {
@@ -10539,7 +10344,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "universePaused" : {
@@ -10580,8 +10384,7 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe",
-          "readOnly" : true
+          "description" : "XCluster related states in this universe"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -10925,7 +10728,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "sshUserOverride" : {
@@ -10937,7 +10739,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "universePaused" : {
@@ -10982,8 +10783,7 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe",
-          "readOnly" : true
+          "description" : "XCluster related states in this universe"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -11231,20 +11031,17 @@
           "description" : "UI session token creation date",
           "example" : "2021-06-17T15:00:05Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "creationDate" : {
           "description" : "User creation date",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "email" : {
@@ -11277,7 +11074,6 @@
         "uuid" : {
           "description" : "User UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -11291,20 +11087,17 @@
           "description" : "UI session token creation date",
           "example" : "2021-06-17T15:00:05Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "creationDate" : {
           "description" : "User creation date",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
-          "readOnly" : true,
           "type" : "string"
         },
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "email" : {
@@ -11337,7 +11130,6 @@
         "uuid" : {
           "description" : "User UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -11494,7 +11286,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "sshUserOverride" : {
@@ -11514,7 +11305,6 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array"
         },
         "universePaused" : {
@@ -11559,8 +11349,7 @@
         },
         "xclusterInfo" : {
           "$ref" : "#/definitions/XClusterInfo",
-          "description" : "XCluster related states in this universe",
-          "readOnly" : true
+          "description" : "XCluster related states in this universe"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -11677,7 +11466,6 @@
           "items" : {
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
@@ -11691,8 +11479,7 @@
           "type" : "string"
         },
         "txnTableDetails" : {
-          "$ref" : "#/definitions/XClusterTableConfig",
-          "readOnly" : true
+          "$ref" : "#/definitions/XClusterTableConfig"
         },
         "txnTableReplicationGroupName" : {
           "description" : "Replication group name that replicates the transaction status table",
@@ -11860,7 +11647,6 @@
           "items" : {
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
@@ -11874,8 +11660,7 @@
           "type" : "string"
         },
         "txnTableDetails" : {
-          "$ref" : "#/definitions/XClusterTableConfig",
-          "readOnly" : true
+          "$ref" : "#/definitions/XClusterTableConfig"
         },
         "txnTableReplicationGroupName" : {
           "description" : "Replication group name that replicates the transaction status table",
@@ -12030,12 +11815,10 @@
       "properties" : {
         "message" : {
           "description" : "API response message.",
-          "readOnly" : true,
           "type" : "string"
         },
         "success" : {
           "description" : "API operation status. A value of true indicates the operation was successful.",
-          "readOnly" : true,
           "type" : "boolean"
         }
       },
@@ -12046,13 +11829,11 @@
         "resourceUUID" : {
           "description" : "UUID of the resource being modified by the task",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "taskUUID" : {
           "description" : "Task UUID",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -12115,6 +11896,10 @@
         "description" : "",
         "operationId" : "apiLogin",
         "parameters" : [ {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "CustomerLoginFormData",
           "required" : true,
@@ -12159,6 +11944,10 @@
         "description" : "",
         "operationId" : "setAuditLoggingSettings",
         "parameters" : [ {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Audit Logging config to be updated",
           "in" : "body",
           "name" : "Audit Logging Config",
@@ -12203,7 +11992,11 @@
       "get" : {
         "description" : "",
         "operationId" : "ListOfCustomers",
-        "parameters" : [ ],
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
@@ -12232,6 +12025,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -12280,6 +12077,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Customer data to be updated",
           "in" : "body",
@@ -12400,6 +12201,10 @@
           "name" : "acType",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -12458,6 +12263,10 @@
           "name" : "acType",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "SetAlertChannelTemplatesRequest",
@@ -12519,6 +12328,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "CreateAlertChannelRequest",
           "required" : true,
@@ -12557,6 +12370,10 @@
           "name" : "acUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -12618,6 +12435,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "UpdateAlertChannelRequest",
           "required" : true,
@@ -12651,6 +12472,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "CreateAlertConfigurationRequest",
           "required" : true,
@@ -12683,6 +12508,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "ListAlertConfigurationsRequest",
@@ -12719,6 +12548,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "PageAlertConfigurationsRequest",
@@ -12758,6 +12591,10 @@
           "name" : "configurationUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -12818,6 +12655,10 @@
           "name" : "configurationUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "UpdateAlertConfigurationRequest",
@@ -12911,6 +12752,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "CreateAlertDestinationRequest",
           "required" : true,
@@ -12949,6 +12794,10 @@
           "name" : "adUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -13010,6 +12859,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "UpdateAlertDestinationRequest",
           "required" : true,
@@ -13070,6 +12923,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "EditAlertTemplateSettingsRequest",
           "required" : true,
@@ -13111,6 +12968,10 @@
           "name" : "settingsUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -13162,6 +13023,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "EditAlertTemplateVariablesRequest",
           "required" : true,
@@ -13203,6 +13068,10 @@
           "name" : "variableUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -13229,6 +13098,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "ListTemplatesRequest",
@@ -13295,6 +13168,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "AcknowledgeAlertsRequest",
           "required" : true,
@@ -13360,6 +13237,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "CountAlertsRequest",
           "required" : true,
@@ -13393,6 +13274,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "PageAlertsRequest",
@@ -13464,6 +13349,10 @@
           "name" : "alertUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -13490,6 +13379,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -13514,6 +13407,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Backup data to be created",
           "in" : "body",
@@ -13549,6 +13446,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Parameters of the backup to be deleted",
           "in" : "body",
           "name" : "deleteBackup",
@@ -13582,6 +13483,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "PageBackupsRequest",
@@ -13651,6 +13556,10 @@
           "name" : "backupUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Parameters of the backup to be edited",
           "in" : "body",
@@ -13726,6 +13635,10 @@
           "name" : "backupUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -13786,6 +13699,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "certificate params of the backup to be restored",
           "in" : "body",
           "name" : "certificate",
@@ -13820,6 +13737,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "certificate label",
           "in" : "body",
@@ -13893,6 +13814,10 @@
           "name" : "rUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -13923,6 +13848,10 @@
           "name" : "rUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "post certificate info",
           "in" : "body",
@@ -13963,6 +13892,10 @@
           "name" : "rUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -13995,6 +13928,10 @@
           "name" : "rUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14027,6 +13964,10 @@
           "name" : "rUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14058,6 +13999,10 @@
           "name" : "cloud",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Credentials to list buckets",
           "in" : "body",
@@ -14120,6 +14065,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Configuration data to be created",
           "in" : "body",
           "name" : "Config",
@@ -14165,6 +14114,10 @@
           "name" : "isDeleteBackups",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14195,6 +14148,10 @@
           "name" : "configUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Configuration data to be updated",
           "in" : "body",
@@ -14241,6 +14198,10 @@
           "name" : "isDeleteBackups",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14273,6 +14234,10 @@
           "name" : "configUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Configuration data to be updated",
           "in" : "body",
@@ -14336,6 +14301,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Parameters of the backup to be restored",
           "in" : "body",
@@ -14434,6 +14403,10 @@
           "name" : "configUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14499,6 +14472,10 @@
           "name" : "configUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "KMS config to be edited",
           "in" : "body",
@@ -14577,6 +14554,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "KMS config to be created",
           "in" : "body",
           "name" : "KMS config",
@@ -14610,6 +14591,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14642,6 +14627,10 @@
           "name" : "lUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14668,6 +14657,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "CreateMaintenanceWindowRequest",
@@ -14701,6 +14694,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14730,6 +14727,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "PageMaintenanceWindowsRequest",
@@ -14769,6 +14770,10 @@
           "name" : "windowUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14830,6 +14835,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "UpdateMaintenanceWindowRequest",
           "required" : true,
@@ -14862,6 +14871,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Metrics to be added",
           "in" : "body",
@@ -14938,6 +14951,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "PageStateChangeAuditInfoRequest",
           "required" : true,
@@ -14970,6 +14987,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "DeletePerformanceRecommendationsRequest",
@@ -15004,6 +15025,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "HidePerformanceRecommendationsRequest",
           "required" : true,
@@ -15037,6 +15062,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "PagePerformanceRecommendationRequest",
           "required" : true,
@@ -15069,6 +15098,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "ResolvePerformanceRecommendationsRequest",
@@ -15180,6 +15213,10 @@
           "required" : false,
           "type" : "boolean"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "CreateProviderRequest",
           "required" : true,
@@ -15218,6 +15255,10 @@
           "name" : "pUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -15280,6 +15321,10 @@
           "name" : "pUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -15345,6 +15390,10 @@
           "name" : "pUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -15383,6 +15432,10 @@
           "name" : "sUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "body",
@@ -15456,6 +15509,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "AccessKeyFormData",
           "required" : true,
@@ -15499,6 +15556,10 @@
           "name" : "keyCode",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -15570,6 +15631,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "access key edit form data",
           "in" : "body",
           "name" : "accesskey",
@@ -15615,6 +15680,10 @@
           "name" : "validate",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "edit provider form data",
           "in" : "body",
@@ -15705,6 +15774,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Instance type data of the instance to be stored",
           "in" : "body",
           "name" : "Instance type",
@@ -15749,6 +15822,10 @@
           "name" : "code",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -15821,6 +15898,10 @@
           "name" : "instanceIP",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -15856,6 +15937,10 @@
           "name" : "instanceIP",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -15923,6 +16008,10 @@
           "name" : "pUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -15995,6 +16084,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "region form data for new region to be created",
           "in" : "body",
           "name" : "region",
@@ -16040,6 +16133,10 @@
           "name" : "rUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -16076,6 +16173,10 @@
           "name" : "rUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "region edit form data",
           "in" : "body",
@@ -16162,6 +16263,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Availability zone form data",
           "in" : "body",
           "name" : "azFormData",
@@ -16216,6 +16321,10 @@
           "name" : "azUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -16258,6 +16367,10 @@
           "name" : "azUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Availability zone edit form data",
           "in" : "body",
@@ -16396,6 +16509,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Release data for remote downloading to be created",
           "in" : "body",
           "name" : "Release",
@@ -16427,6 +16544,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -16458,6 +16579,10 @@
           "name" : "name",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -16487,6 +16612,10 @@
           "name" : "name",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Release data to be updated",
           "in" : "body",
@@ -16522,6 +16651,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Parameters of the backup to be restored",
           "in" : "body",
           "name" : "backup",
@@ -16556,6 +16689,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "PageRestoresRequest",
           "required" : true,
@@ -16588,6 +16725,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -16626,6 +16767,10 @@
           "name" : "includeInherited",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -16663,6 +16808,10 @@
           "name" : "key",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -16698,6 +16847,10 @@
           "name" : "key",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "produces" : [ "text/plain" ],
         "responses" : {
@@ -16735,6 +16888,10 @@
           "name" : "key",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "New value for config key",
           "in" : "body",
@@ -16799,6 +16956,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "PageScheduleRequest",
           "required" : true,
@@ -16837,6 +16998,10 @@
           "name" : "sUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -16898,6 +17063,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "body",
           "required" : true,
@@ -16936,6 +17105,10 @@
           "name" : "sUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -17030,6 +17203,10 @@
           "name" : "tUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -17161,6 +17338,10 @@
           "name" : "tUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -17259,6 +17440,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "UniverseConfigureTaskParams",
           "required" : true,
@@ -17291,6 +17476,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -17341,6 +17530,10 @@
           "name" : "isDeleteAssociatedCerts",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -17445,6 +17638,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Parameters of the backup to be restored",
           "in" : "body",
           "name" : "backup",
@@ -17532,6 +17729,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "UniverseConfigureTaskParams",
           "required" : true,
@@ -17571,6 +17772,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "UniverseConfigureTaskParams",
           "required" : true,
@@ -17607,6 +17812,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "UniverseConfigureTaskParams",
@@ -17658,6 +17867,10 @@
           "name" : "isForceDelete",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -17690,6 +17903,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -17754,6 +17971,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "The database user to create",
           "in" : "body",
@@ -17837,6 +18058,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "post pitr config",
           "in" : "body",
           "name" : "pitrConfig",
@@ -17876,6 +18101,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -17939,6 +18168,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18105,6 +18338,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18169,6 +18406,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Table backup data to be created",
           "in" : "body",
@@ -18257,6 +18498,10 @@
           "required" : false,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "XCluster Need Bootstrap Form Data",
           "in" : "body",
           "name" : "xcluster_need_bootstrap_form_data",
@@ -18299,6 +18544,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18331,6 +18580,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18361,6 +18614,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "PerformanceAdvisorSettingsRequest",
@@ -18400,6 +18657,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "perform PITR",
           "in" : "body",
@@ -18481,6 +18742,10 @@
           "name" : "pUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18609,6 +18874,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18641,6 +18910,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "RunQueryFormData",
@@ -18680,6 +18953,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18712,6 +18989,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18744,6 +19025,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18806,6 +19091,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18907,6 +19196,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "post support bundle info",
           "in" : "body",
           "name" : "supportBundle",
@@ -18952,6 +19245,10 @@
           "name" : "sbUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -19105,6 +19402,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Table definition to be created",
           "in" : "body",
           "name" : "Table",
@@ -19150,6 +19451,10 @@
           "name" : "tableUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -19222,6 +19527,10 @@
           "name" : "tableUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -19263,6 +19572,10 @@
           "name" : "tableUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Bulk data to be imported",
           "in" : "body",
@@ -19309,6 +19622,10 @@
           "name" : "tableUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Backup data to be created",
           "in" : "body",
@@ -19382,6 +19699,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "CreateTableSpacesRequest",
@@ -19525,6 +19846,10 @@
           "name" : "markActive",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -19557,6 +19882,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "The database credentials",
           "in" : "body",
@@ -19597,6 +19926,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -19629,6 +19962,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Certs Rotate Params",
           "in" : "body",
@@ -19670,6 +20007,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "GFlags Upgrade Params",
           "in" : "body",
           "name" : "gflags_upgrade_params",
@@ -19709,6 +20050,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Kubernetes Override Upgrade Params",
           "in" : "body",
@@ -19750,6 +20095,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Upgrade Task Params",
           "in" : "body",
           "name" : "upgrade_task_params",
@@ -19789,6 +20138,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Resize Node Params",
           "in" : "body",
@@ -19830,6 +20183,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Restart Task Params",
           "in" : "body",
           "name" : "restart_task_params",
@@ -19869,6 +20226,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Software Upgrade Params",
           "in" : "body",
@@ -19910,6 +20271,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Systemd Upgrade Params",
           "in" : "body",
           "name" : "systemd_upgrade_params",
@@ -19949,6 +20314,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Thirdparty Software Upgrade Params",
           "in" : "body",
@@ -19990,6 +20359,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "TLS Toggle Params",
           "in" : "body",
           "name" : "tls_toggle_params",
@@ -20030,6 +20403,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "VM Image Upgrade Params",
           "in" : "body",
           "name" : "vmimage_upgrade_params",
@@ -20068,6 +20445,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "default" : {
@@ -20100,6 +20481,10 @@
           "name" : "ybcVersion",
           "required" : false,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "default" : {
@@ -20132,6 +20517,10 @@
           "name" : "ybcVersion",
           "required" : false,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "default" : {
@@ -20193,6 +20582,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Parameters for YB-Controller throttling",
           "in" : "body",
@@ -20341,6 +20734,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Node action data to be updated",
           "in" : "body",
           "name" : "Node action",
@@ -20439,6 +20836,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Details of the new user",
           "in" : "body",
           "name" : "User",
@@ -20478,6 +20879,10 @@
           "name" : "uUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -20543,6 +20948,10 @@
           "name" : "role",
           "required" : false,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -20611,6 +21020,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "User data containing the new password",
           "in" : "body",
           "name" : "Users",
@@ -20651,6 +21064,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "User data in profile to be updated",
           "in" : "body",
           "name" : "Users",
@@ -20685,6 +21102,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "UniverseConfigureTaskParams",
           "required" : true,
@@ -20717,6 +21138,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "XCluster Replication Create Form Data",
           "in" : "body",
@@ -20758,6 +21183,10 @@
           "name" : "targetUniverseUUID",
           "required" : false,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -20796,6 +21225,10 @@
           "name" : "isForceDelete",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -20863,6 +21296,10 @@
           "required" : false,
           "type" : "boolean"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "XCluster Replication Restart Form Data",
           "in" : "body",
           "name" : "xcluster_replication_restart_form_data",
@@ -20900,6 +21337,10 @@
           "name" : "xccUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "XCluster Replication Edit Form Data",
           "in" : "body",
@@ -20940,6 +21381,10 @@
           "name" : "xccUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "XCluster Need Bootstrap Form Data",
           "in" : "body",
@@ -20983,6 +21428,10 @@
           "name" : "azUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Node instance data to be created",
           "in" : "body",
@@ -21061,6 +21510,10 @@
           "name" : "azUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -21085,6 +21538,10 @@
         "description" : "",
         "operationId" : "fetchPackage",
         "parameters" : [ {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Package to be imported",
           "in" : "body",
           "name" : "Package",
@@ -21131,6 +21588,10 @@
         "description" : "",
         "operationId" : "setLoggingSettings",
         "parameters" : [ {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Logging config to be updated",
           "in" : "body",
           "name" : "Logging Config",
@@ -21353,6 +21814,10 @@
           "required" : false,
           "type" : "boolean"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "CustomerRegisterFormData",
           "required" : true,
@@ -21422,7 +21887,11 @@
       "get" : {
         "description" : "",
         "operationId" : "getSessionInfo",
-        "parameters" : [ ],
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
         "responses" : {
           "200" : {
             "description" : "successful operation",

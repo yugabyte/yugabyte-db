@@ -90,7 +90,7 @@ public class Scheduler {
     Schedule.getAll()
         .forEach(
             (schedule) -> {
-              if (schedule.getRunningState()) {
+              if (schedule.isRunningState()) {
                 schedule.setRunningState(false);
                 schedule.save();
                 log.debug(

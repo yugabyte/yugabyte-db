@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.EntityOperation;
+import io.ebean.DB;
 import io.ebean.annotation.Transactional;
 import java.util.Collections;
 import java.util.List;
@@ -79,12 +80,12 @@ public class AlertDefinitionService {
     if (toCreateAndUpdate.containsKey(CREATE)) {
       List<AlertDefinition> toCreate = toCreateAndUpdate.get(CREATE);
       toCreate.forEach(AlertDefinition::generateUUID);
-      AlertDefinition.db().saveAll(toCreate);
+      DB.getDefault().saveAll(toCreate);
     }
 
     if (toCreateAndUpdate.containsKey(UPDATE)) {
       List<AlertDefinition> toUpdate = toCreateAndUpdate.get(UPDATE);
-      AlertDefinition.db().updateAll(toUpdate);
+      DB.getDefault().updateAll(toUpdate);
     }
 
     log.debug("{} alert definitions saved", definitions.size());

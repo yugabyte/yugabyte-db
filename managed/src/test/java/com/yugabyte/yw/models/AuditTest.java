@@ -8,7 +8,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
-import static play.test.Helpers.contextComponents;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -33,7 +32,6 @@ public class AuditTest extends FakeDBApplication {
   Users user;
   Customer customer;
   Http.Request request;
-  Http.Context context;
 
   AuditService auditService;
 
@@ -45,8 +43,6 @@ public class AuditTest extends FakeDBApplication {
     user = ModelFactory.testUser(customer);
     request =
         new Http.RequestBuilder().method("PUT").path("/api/customer/test/universe/test").build();
-    context = new Http.Context(request, contextComponents());
-    Http.Context.current.set(context);
     RequestContext.put(TokenAuthenticator.USER, new UserWithFeatures().setUser(user));
   }
 
@@ -70,7 +66,7 @@ public class AuditTest extends FakeDBApplication {
 
   @Test
   public void testCreateAuditEntry() {
-    auditService.createAuditEntry(context, request);
+    auditService.createAuditEntry(request);
     List<Audit> entries = Audit.getAll(customer.getUuid());
     assertEquals(entries.size(), 1);
     assertEquals(entries.get(0).getUserUUID(), user.getUuid());
@@ -89,7 +85,7 @@ public class AuditTest extends FakeDBApplication {
   @Test
   public void testCreateAuditEntryWithTaskUUID() {
     UUID randUUID = UUID.randomUUID();
-    auditService.createAuditEntry(context, request, randUUID);
+    auditService.createAuditEntry(request, randUUID);
     List<Audit> entries = Audit.getAll(customer.getUuid());
     assertEquals(entries.size(), 1);
     assertEquals(entries.get(0).getUserUUID(), user.getUuid());
@@ -110,7 +106,7 @@ public class AuditTest extends FakeDBApplication {
     Audit.TargetType target = Audit.TargetType.Universe;
     String targetID = "Test TargetID";
     Audit.ActionType action = Audit.ActionType.Create;
-    auditService.createAuditEntry(context, request, target, targetID, action);
+    auditService.createAuditEntry(request, target, targetID, action);
     List<Audit> entries = Audit.getAll(customer.getUuid());
     assertEquals(entries.size(), 1);
     assertEquals(entries.get(0).getUserUUID(), user.getUuid());
@@ -138,7 +134,7 @@ public class AuditTest extends FakeDBApplication {
     JsonNode expectedPayload =
         basePayload.deepCopy().put("password", SECRET_REPLACEMENT).set("child", expectedChildNode);
 
-    auditService.createAuditEntry(context, request, testPayload);
+    auditService.createAuditEntry(request, testPayload);
     List<Audit> entries = Audit.getAll(customer.getUuid());
     assertEquals(entries.size(), 1);
     assertEquals(entries.get(0).getUserUUID(), user.getUuid());
@@ -158,7 +154,7 @@ public class AuditTest extends FakeDBApplication {
   public void testCreateAuditEntryWithPayloadAndTaskUUID() {
     UUID randUUID = UUID.randomUUID();
     ObjectNode testPayload = Json.newObject().put("foo", "bar").put("abc", "xyz");
-    auditService.createAuditEntry(context, request, testPayload, randUUID);
+    auditService.createAuditEntry(request, testPayload, randUUID);
     List<Audit> entries = Audit.getAll(customer.getUuid());
     assertEquals(entries.size(), 1);
     assertEquals(entries.get(0).getUserUUID(), user.getUuid());
@@ -180,7 +176,7 @@ public class AuditTest extends FakeDBApplication {
     Audit.TargetType target = Audit.TargetType.Universe;
     String targetID = "Test TargetID";
     Audit.ActionType action = Audit.ActionType.Create;
-    auditService.createAuditEntry(context, request, target, targetID, action, testPayload);
+    auditService.createAuditEntry(request, target, targetID, action, testPayload);
     List<Audit> entries = Audit.getAll(customer.getUuid());
     assertEquals(entries.size(), 1);
     assertEquals(entries.get(0).getUserUUID(), user.getUuid());
@@ -205,7 +201,7 @@ public class AuditTest extends FakeDBApplication {
     Audit.ActionType action = Audit.ActionType.Create;
     ObjectNode testAdditionalDetails = Json.newObject().put("fizz", "buzz").put("123", "321");
     auditService.createAuditEntry(
-        context, request, target, targetID, action, testPayload, taskUUID, testAdditionalDetails);
+        request, target, targetID, action, testPayload, taskUUID, testAdditionalDetails);
     List<Audit> entries = Audit.getAll(customer.getUuid());
     assertEquals(entries.size(), 1);
     assertEquals(entries.get(0).getUserUUID(), user.getUuid());

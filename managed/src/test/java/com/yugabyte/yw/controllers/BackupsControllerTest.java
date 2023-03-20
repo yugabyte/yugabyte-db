@@ -1219,7 +1219,7 @@ public class BackupsControllerTest extends FakeDBApplication {
         assertThrows(
                 PlatformServiceException.class,
                 () -> stopBackup(null, defaultBackup.getBackupUUID()))
-            .buildResult();
+            .buildResult(fakeRequest);
     assertEquals(400, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(json.get("error").asText(), "The process you want to stop is not in progress.");
@@ -1243,7 +1243,7 @@ public class BackupsControllerTest extends FakeDBApplication {
         assertThrows(
                 PlatformServiceException.class,
                 () -> stopBackup(null, defaultBackup.getBackupUUID()))
-            .buildResult();
+            .buildResult(fakeRequest);
     taskInfo.save();
 
     assertEquals(400, result.status());

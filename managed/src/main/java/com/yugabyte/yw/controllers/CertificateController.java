@@ -6,6 +6,7 @@ import com.google.api.client.util.Strings;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
@@ -16,7 +17,6 @@ import com.yugabyte.yw.forms.ClientCertParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -34,6 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -45,7 +46,7 @@ public class CertificateController extends AuthenticatedController {
 
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
-  @Inject private Config appConfig;
+  @Inject private Config config;
 
   @ApiOperation(value = "Restore a certificate from backup", response = UUID.class)
   @ApiImplicitParams(
@@ -55,9 +56,10 @@ public class CertificateController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.CertificateParams",
           required = true))
-  public Result upload(UUID customerUUID) {
+  public Result upload(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
-    Form<CertificateParams> formData = formFactory.getFormDataOrBadRequest(CertificateParams.class);
+    Form<CertificateParams> formData =
+        formFactory.getFormDataOrBadRequest(request, CertificateParams.class);
 
     Date certStart = new Date(formData.get().certStart);
     Date certExpiry = new Date(formData.get().certExpiry);
@@ -118,11 +120,10 @@ public class CertificateController extends AuthenticatedController {
                     hcVaultParams);
             auditService()
                 .createAuditEntryWithReqBody(
-                    ctx(),
+                    request,
                     Audit.TargetType.Certificate,
                     certUUID.toString(),
-                    Audit.ActionType.Create,
-                    Json.toJson(formData.rawData()));
+                    Audit.ActionType.Create);
             return PlatformResults.withData(certUUID);
 
           } catch (Exception e) {
@@ -159,11 +160,7 @@ public class CertificateController extends AuthenticatedController {
             customServerCertData);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.Certificate,
-            certUUID.toString(),
-            Audit.ActionType.Create,
-            Json.toJson(formData.rawData()));
+            request, Audit.TargetType.Certificate, certUUID.toString(), Audit.ActionType.Create);
     return PlatformResults.withData(certUUID);
   }
 
@@ -175,8 +172,8 @@ public class CertificateController extends AuthenticatedController {
           paramType = "body",
           dataType = "java.lang.String",
           required = true))
-  public Result createSelfSignedCert(UUID customerUUID) {
-    ObjectNode formData = (ObjectNode) request().body().asJson();
+  public Result createSelfSignedCert(UUID customerUUID, Http.Request request) {
+    ObjectNode formData = (ObjectNode) request.body().asJson();
     JsonNode jsonData = formData.get("label");
     if (jsonData == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Certificate label can't be null");
@@ -193,11 +190,10 @@ public class CertificateController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Certificate,
             certUUID.toString(),
-            Audit.ActionType.CreateSelfSignedCert,
-            Json.toJson(formData));
+            Audit.ActionType.CreateSelfSignedCert);
     return PlatformResults.withData(certUUID);
   }
 
@@ -209,8 +205,9 @@ public class CertificateController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.ClientCertParams",
           required = true))
-  public Result getClientCert(UUID customerUUID, UUID rootCA) {
-    Form<ClientCertParams> formData = formFactory.getFormDataOrBadRequest(ClientCertParams.class);
+  public Result getClientCert(UUID customerUUID, UUID rootCA, Http.Request request) {
+    Form<ClientCertParams> formData =
+        formFactory.getFormDataOrBadRequest(request, ClientCertParams.class);
     Customer.getOrBadRequest(customerUUID);
     long certTimeMillis = formData.get().certStart;
     long certExpiryMillis = formData.get().certExpiry;
@@ -228,17 +225,16 @@ public class CertificateController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Certificate,
             rootCA.toString(),
-            Audit.ActionType.AddClientCertificate,
-            Json.toJson(formData.rawData()));
+            Audit.ActionType.AddClientCertificate);
     return PlatformResults.withData(result);
   }
 
   // TODO: cleanup raw json
   @ApiOperation(value = "Get a customer's root certificate", response = Object.class)
-  public Result getRootCert(UUID customerUUID, UUID rootCA) {
+  public Result getRootCert(UUID customerUUID, UUID rootCA, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     CertificateInfo.getOrBadRequest(rootCA, customerUUID);
 
@@ -253,11 +249,10 @@ public class CertificateController extends AuthenticatedController {
       String certContents = CertificateHelper.getCertPEMFileContents(rootCA);
       auditService()
           .createAuditEntryWithReqBody(
-              ctx(),
+              request,
               Audit.TargetType.Certificate,
               rootCA.toString(),
-              Audit.ActionType.GetRootCertificate,
-              request().body().asJson());
+              Audit.ActionType.GetRootCertificate);
       ObjectNode result = Json.newObject();
       result.put(CertificateHelper.ROOT_CERT, certContents);
       return PlatformResults.withRawData(result);
@@ -294,11 +289,11 @@ public class CertificateController extends AuthenticatedController {
       value = "Delete a certificate",
       response = YBPSuccess.class,
       nickname = "deleteCertificate")
-  public Result delete(UUID customerUUID, UUID reqCertUUID) {
+  public Result delete(UUID customerUUID, UUID reqCertUUID, Http.Request request) {
     CertificateInfo.delete(reqCertUUID, customerUUID);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Certificate, reqCertUUID.toString(), Audit.ActionType.Delete);
+        .createAuditEntry(
+            request, Audit.TargetType.Certificate, reqCertUUID.toString(), Audit.ActionType.Delete);
     LOG.info("Successfully deleted the certificate:" + reqCertUUID);
     return YBPSuccess.empty();
   }
@@ -307,9 +302,10 @@ public class CertificateController extends AuthenticatedController {
       value = "Edit TLS certificate config details",
       response = YBPSuccess.class,
       nickname = "editCertificate")
-  public Result edit(UUID customerUUID, UUID reqCertUUID) {
+  public Result edit(UUID customerUUID, UUID reqCertUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
-    Form<CertificateParams> formData = formFactory.getFormDataOrBadRequest(CertificateParams.class);
+    Form<CertificateParams> formData =
+        formFactory.getFormDataOrBadRequest(request, CertificateParams.class);
 
     CertConfigType certType = formData.get().certType;
     CertificateInfo info = CertificateInfo.get(reqCertUUID);
@@ -346,22 +342,23 @@ public class CertificateController extends AuthenticatedController {
           formParams);
     }
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Certificate, reqCertUUID.toString(), Audit.ActionType.Edit);
+        .createAuditEntry(
+            request, Audit.TargetType.Certificate, reqCertUUID.toString(), Audit.ActionType.Edit);
     LOG.info("Successfully edited the certificate information:" + reqCertUUID);
     return YBPSuccess.empty();
   }
 
   @ApiOperation(value = "Update an empty certificate", response = CertificateInfo.class)
-  public Result updateEmptyCustomCert(UUID customerUUID, UUID rootCA) {
-    Form<CertificateParams> formData = formFactory.getFormDataOrBadRequest(CertificateParams.class);
+  public Result updateEmptyCustomCert(UUID customerUUID, UUID rootCA, Http.Request request) {
+    Form<CertificateParams> formData =
+        formFactory.getFormDataOrBadRequest(request, CertificateParams.class);
     Customer.getOrBadRequest(customerUUID);
     CertificateInfo certificate = CertificateInfo.getOrBadRequest(rootCA, customerUUID);
     CertificateParams.CustomCertInfo customCertInfo = formData.get().customCertInfo;
     certificate.updateCustomCertPathParams(customCertInfo, rootCA, customerUUID);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.Certificate,
             Objects.toString(certificate.getUuid(), null),
             Audit.ActionType.UpdateEmptyCustomerCertificate);

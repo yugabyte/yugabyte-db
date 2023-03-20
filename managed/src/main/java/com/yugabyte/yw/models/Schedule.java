@@ -250,14 +250,6 @@ public class Schedule extends Model {
   @ApiModelProperty(value = "Running state of the schedule")
   private boolean runningState = false;
 
-  public boolean getRunningState() {
-    return this.runningState;
-  }
-
-  public void setRunningState(boolean state) {
-    this.runningState = state;
-  }
-
   public void updateIncrementalBackupFrequencyAndTimeUnit(
       long incrementalBackupFrequency, TimeUnit incrementalBackupFrequencyTimeUnit) {
     ObjectMapper mapper = new ObjectMapper();
@@ -511,10 +503,9 @@ public class Schedule extends Model {
 
     JsonNode scheduleTaskParams = schedule.taskParams;
     if (!schedule.taskType.equals(TaskType.ExternalScript)) {
-      ObjectMapper mapper = new ObjectMapper();
       if (Util.canConvertJsonNode(scheduleTaskParams, BackupRequestParams.class)) {
         BackupRequestParams params =
-            mapper.convertValue(scheduleTaskParams, BackupRequestParams.class);
+            Json.mapper().convertValue(scheduleTaskParams, BackupRequestParams.class);
         builder.backupInfo(getV2ScheduleBackupInfo(params));
         builder.incrementalBackupFrequency(params.incrementalBackupFrequency);
         builder.incrementalBackupFrequencyTimeUnit(params.incrementalBackupFrequencyTimeUnit);
@@ -535,7 +526,7 @@ public class Schedule extends Model {
         }
       } else if (Util.canConvertJsonNode(scheduleTaskParams, MultiTableBackup.Params.class)) {
         MultiTableBackup.Params params =
-            mapper.convertValue(scheduleTaskParams, MultiTableBackup.Params.class);
+            Json.mapper().convertValue(scheduleTaskParams, MultiTableBackup.Params.class);
         builder.backupInfo(getV1ScheduleBackupInfo(params));
       } else {
         LOG.error(

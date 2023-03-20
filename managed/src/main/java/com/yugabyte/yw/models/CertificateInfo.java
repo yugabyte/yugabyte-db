@@ -140,8 +140,6 @@ public class CertificateInfo extends Model {
   @ApiModelProperty(
       value = "The certificate's expiry date. Deprecated: Use expirtyDateIso instead",
       accessMode = READ_WRITE)
-  // @Constraints.Required
-  @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   @YBADeprecated(sinceDate = "2023-02-17", sinceYBAVersion = "2.17.2.0")
   public Date getExpiryDate() {

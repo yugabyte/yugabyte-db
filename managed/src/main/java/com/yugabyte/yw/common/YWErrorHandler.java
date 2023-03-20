@@ -76,7 +76,7 @@ public final class YWErrorHandler extends DefaultHttpErrorHandler {
           new PlatformServiceException(
                   INTERNAL_SERVER_ERROR,
                   "HTTP Server Error. This exception has been logged with id " + exception)
-              .buildResult());
+              .buildResult(request));
     }
     return super.onProdServerError(request, exception);
   }
@@ -88,7 +88,7 @@ public final class YWErrorHandler extends DefaultHttpErrorHandler {
       return CompletableFuture.completedFuture(
           new PlatformServiceException(
                   INTERNAL_SERVER_ERROR, "HTTP Server Error", Json.toJson(exception))
-              .buildResult());
+              .buildResult(request));
     }
     return super.onProdServerError(request, exception);
   }
@@ -98,7 +98,8 @@ public final class YWErrorHandler extends DefaultHttpErrorHandler {
       RequestHeader request, int statusCode, String message) {
     LOG.trace("Json formatting client error {}: {}", statusCode, message);
     return CompletableFuture.completedFuture(
-        new PlatformServiceException(statusCode, "HTTP Client Error: " + message).buildResult());
+        new PlatformServiceException(statusCode, "HTTP Client Error: " + message)
+            .buildResult(request));
   }
 
   @Override
@@ -106,7 +107,7 @@ public final class YWErrorHandler extends DefaultHttpErrorHandler {
     if (request.accepts("application/json")) {
       // keep it same since we will have too many tests depending on this behaviour
       return CompletableFuture.completedFuture(
-          new PlatformServiceException(BAD_REQUEST, message).buildResult());
+          new PlatformServiceException(BAD_REQUEST, message).buildResult(request));
     }
     return super.onBadRequest(request, message);
   }

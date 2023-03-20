@@ -21,15 +21,17 @@ public class SetUniverseKeyTest extends FakeDBApplication {
   Customer customer1;
   Customer customer2;
 
+  SetUniverseKey task;
+
   @Before
   public void setUp() {
     customer1 = ModelFactory.testCustomer();
     customer2 = ModelFactory.testCustomer("tc2", "test2@customer.com");
+    task = app.injector().instanceOf(SetUniverseKey.class);
   }
 
   @Test
   public void testCustomerError() {
-    SetUniverseKey task = app.injector().instanceOf(SetUniverseKey.class);
     Exception customerTaskException = new RuntimeException();
     Mockito.doThrow(customerTaskException).when(task).setCustomerUniverseKeys(any());
     Mockito.doCallRealMethod().when(task).scheduleRunner();

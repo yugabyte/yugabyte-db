@@ -11,10 +11,9 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
-import io.ebean.Query;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -329,7 +328,7 @@ public class AccessKey extends Model {
     return getLatestAccessKeyQuery(providerUUID).findOne();
   }
 
-  public static Query<AccessKey> getLatestAccessKeyQuery(UUID providerUUID) {
+  public static ExpressionList<AccessKey> getLatestAccessKeyQuery(UUID providerUUID) {
     return find.query()
         .where()
         .eq("provider_uuid", providerUUID)

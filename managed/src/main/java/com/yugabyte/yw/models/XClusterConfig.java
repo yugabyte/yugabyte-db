@@ -147,7 +147,7 @@ public class XClusterConfig extends Model {
   @Where(clause = "(t0.txn_table_id IS NULL OR t0.txn_table_id <> t1.table_id)")
   @ApiModelProperty(value = "Tables participating in this xCluster config")
   @JsonProperty("tableDetails")
-  private Set<XClusterTableConfig> tables;
+  private Set<XClusterTableConfig> tables = new HashSet<>();
 
   @OneToOne(cascade = CascadeType.ALL, orphanRemoval = true)
   @JoinColumns({
@@ -412,7 +412,7 @@ public class XClusterConfig extends Model {
 
   @Transactional
   public void updateTables(Set<String> tableIds, Set<String> tableIdsNeedBootstrap) {
-    this.setTables(new HashSet<>());
+    this.getTables().clear();
     addTables(tableIds, tableIdsNeedBootstrap);
   }
 
@@ -428,9 +428,6 @@ public class XClusterConfig extends Model {
               "The set of tables in tableIdsNeedBootstrap (%s) is not a subset of tableIds (%s)",
               tableIdsNeedBootstrap, tableIds);
       throw new IllegalArgumentException(errMsg);
-    }
-    if (this.getTables() == null) {
-      this.setTables(new HashSet<>());
     }
     tableIds.forEach(
         tableId -> {
@@ -490,9 +487,6 @@ public class XClusterConfig extends Model {
 
   @Transactional
   public void addTables(Map<String, String> tableIdsStreamIdsMap) {
-    if (this.getTables() == null) {
-      this.setTables(new HashSet<>());
-    }
     tableIdsStreamIdsMap.forEach(
         (tableId, streamId) -> {
           XClusterTableConfig tableConfig = new XClusterTableConfig(this, tableId);

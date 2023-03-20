@@ -43,7 +43,7 @@ import play.mvc.Http;
 public class UniverseControllerRequestBinder {
 
   static <T extends UniverseDefinitionTaskParams> T bindFormDataToTaskParams(
-      Http.Context ctx, Http.Request request, Class<T> paramType) {
+      Http.Request request, Class<T> paramType) {
     ObjectMapper mapper = Json.mapper();
     // Notes about code deleted from here:
     // 1 communicationPorts and expectedUniverseVersion - See UniverseTaskParams.BaseConverter
@@ -56,7 +56,7 @@ public class UniverseControllerRequestBinder {
       List<UniverseDefinitionTaskParams.Cluster> clusters = mapClustersInParams(formData, true);
       T taskParams = Json.mapper().treeToValue(formData, paramType);
       taskParams.clusters = clusters;
-      taskParams.creatingUser = CommonUtils.getUserFromContext(ctx);
+      taskParams.creatingUser = CommonUtils.getUserFromContext();
       taskParams.platformUrl = request.host();
       return taskParams;
     } catch (JsonProcessingException exception) {
@@ -66,7 +66,7 @@ public class UniverseControllerRequestBinder {
   }
 
   static <T extends UpgradeTaskParams> T bindFormDataToUpgradeTaskParams(
-      Http.Context ctx, Http.Request request, Class<T> paramType, Universe universe) {
+      Http.Request request, Class<T> paramType, Universe universe) {
     try {
       ObjectNode formData = (ObjectNode) request.body().asJson();
       ArrayNode clustersJson = (ArrayNode) formData.get("clusters");
@@ -131,7 +131,7 @@ public class UniverseControllerRequestBinder {
       }
       T taskParams = mergeWithUniverse(formData, universe, paramType);
       taskParams.clusters = clusters;
-      taskParams.creatingUser = CommonUtils.getUserFromContext(ctx);
+      taskParams.creatingUser = CommonUtils.getUserFromContext();
 
       return taskParams;
     } catch (JsonProcessingException exception) {

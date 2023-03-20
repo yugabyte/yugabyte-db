@@ -11,6 +11,7 @@ package com.yugabyte.yw.controllers;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import play.libs.typedmap.TypedKey;
 
 public class RequestContext {
@@ -62,7 +63,11 @@ public class RequestContext {
     return value;
   }
 
-  public static void clean() {
-    context.remove();
+  public static void clean(Set<TypedKey<?>> keys) {
+    Map<TypedKey<?>, Object> current = context.get();
+    if (current == null) {
+      return;
+    }
+    keys.forEach(current::remove);
   }
 }

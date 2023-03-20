@@ -46,6 +46,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -78,17 +79,16 @@ public class CloudProviderApiController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Delete a cloud provider", response = YBPSuccess.class)
-  public Result delete(UUID customerUUID, UUID providerUUID) {
+  public Result delete(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     UUID taskUUID = cloudProviderHandler.delete(customer, providerUUID);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.CloudProvider,
             providerUUID.toString(),
             Audit.ActionType.Delete,
-            null,
             taskUUID);
     return new YBPTask(taskUUID, providerUUID).asResult();
   }
@@ -97,12 +97,12 @@ public class CloudProviderApiController extends AuthenticatedController {
       value = "Refresh pricing",
       notes = "Refresh provider pricing info",
       response = YBPSuccess.class)
-  public Result refreshPricing(UUID customerUUID, UUID providerUUID) {
+  public Result refreshPricing(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     cloudProviderHandler.refreshPricing(customerUUID, provider);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.CloudProvider,
             providerUUID.toString(),
             Audit.ActionType.RefreshPricing);
@@ -117,7 +117,7 @@ public class CloudProviderApiController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.models.Provider",
           required = true,
           paramType = "body"))
-  public Result edit(UUID customerUUID, UUID providerUUID, boolean validate) {
+  public Result edit(UUID customerUUID, UUID providerUUID, boolean validate, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
 
@@ -133,18 +133,17 @@ public class CloudProviderApiController extends AuthenticatedController {
                 universeCount > 1 ? "are" : "is", universeCount, universeCount > 1 ? "s" : ""));
       }
     }
+    JsonNode requestBody = mayBeMassageRequest(request.body().asJson(), true);
 
-    JsonNode requestBody = mayBeMassageRequest(request().body().asJson(), true);
     Provider editProviderReq = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
     UUID taskUUID =
         cloudProviderHandler.editProvider(customer, provider, editProviderReq, validate);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.CloudProvider,
             providerUUID.toString(),
-            Audit.ActionType.Update,
-            Json.toJson(editProviderReq));
+            Audit.ActionType.Update);
     return new YBPTask(taskUUID, providerUUID).asResult();
   }
 
@@ -155,10 +154,10 @@ public class CloudProviderApiController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.Provider",
           required = true))
-  public Result create(UUID customerUUID, boolean validate) {
-    JsonNode requestBody = mayBeMassageRequest(request().body().asJson(), false);
+  public Result create(UUID customerUUID, boolean validate, Http.Request request) {
+    JsonNode requestBody = mayBeMassageRequest(request.body().asJson(), false);
     Provider reqProvider =
-        formFactory.getFormDataOrBadRequest(request().body().asJson(), Provider.class);
+        formFactory.getFormDataOrBadRequest(request.body().asJson(), Provider.class);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     reqProvider.setCustomerUUID(customerUUID);
     CloudType providerCode = CloudType.valueOf(reqProvider.getCode());
@@ -180,7 +179,7 @@ public class CloudProviderApiController extends AuthenticatedController {
         taskUUID = cloudProviderHandler.bootstrap(customer, providerEbean, taskParams);
         auditService()
             .createAuditEntryWithReqBody(
-                ctx(),
+                request,
                 Audit.TargetType.CloudProvider,
                 Objects.toString(providerEbean.getUuid(), null),
                 Audit.ActionType.Create,
@@ -195,7 +194,7 @@ public class CloudProviderApiController extends AuthenticatedController {
     } else {
       auditService()
           .createAuditEntryWithReqBody(
-              ctx(),
+              request,
               Audit.TargetType.CloudProvider,
               Objects.toString(providerEbean.getUuid(), null),
               Audit.ActionType.Create,
@@ -209,8 +208,8 @@ public class CloudProviderApiController extends AuthenticatedController {
       nickname = "accessKeyRotation",
       value = "Rotate access key for a provider",
       response = YBPTask.class)
-  public Result accessKeysRotation(UUID customerUUID, UUID providerUUID) {
-    RotateAccessKeyFormData params = parseJsonAndValidate(RotateAccessKeyFormData.class);
+  public Result accessKeysRotation(UUID customerUUID, UUID providerUUID, Http.Request request) {
+    RotateAccessKeyFormData params = parseJsonAndValidate(request, RotateAccessKeyFormData.class);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     String newKeyCode = params.newKeyCode;
     boolean rotateAllUniverses = params.rotateAllUniverses;
@@ -241,12 +240,10 @@ public class CloudProviderApiController extends AuthenticatedController {
         });
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.CloudProvider,
             Objects.toString(providerUUID, null),
-            Audit.ActionType.RotateAccessKey,
-            request().body().asJson(),
-            null);
+            Audit.ActionType.RotateAccessKey);
     return PlatformResults.withData(tasksResponseList);
   }
 
@@ -254,10 +251,11 @@ public class CloudProviderApiController extends AuthenticatedController {
       nickname = "scheduledAccessKeyRotation",
       value = "Rotate access key for a provider - Scheduled",
       response = Schedule.class)
-  public Result scheduledAccessKeysRotation(UUID customerUUID, UUID providerUUID) {
+  public Result scheduledAccessKeysRotation(
+      UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     ScheduledAccessKeyRotateFormData params =
-        parseJsonAndValidate(ScheduledAccessKeyRotateFormData.class);
+        parseJsonAndValidate(request, ScheduledAccessKeyRotateFormData.class);
     int schedulingFrequencyDays = params.schedulingFrequencyDays;
     boolean rotateAllUniverses = params.rotateAllUniverses;
     if (!rotateAllUniverses && params.universeUUIDs.size() == 0) {
@@ -284,12 +282,10 @@ public class CloudProviderApiController extends AuthenticatedController {
         scheduleUUID);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.CloudProvider,
             Objects.toString(providerUUID, null),
-            Audit.ActionType.CreateAndRotateAccessKey,
-            request().body().asJson(),
-            null);
+            Audit.ActionType.CreateAndRotateAccessKey);
     return PlatformResults.withData(schedule);
   }
 
@@ -320,11 +316,11 @@ public class CloudProviderApiController extends AuthenticatedController {
         paramType = "body")
   })
   public Result editAccessKeyRotationSchedule(
-      UUID customerUUID, UUID providerUUID, UUID scheduleUUID) {
+      UUID customerUUID, UUID providerUUID, UUID scheduleUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     Provider.getOrBadRequest(customerUUID, providerUUID);
     EditAccessKeyRotationScheduleParams params =
-        parseJsonAndValidate(EditAccessKeyRotationScheduleParams.class);
+        parseJsonAndValidate(request, EditAccessKeyRotationScheduleParams.class);
 
     Schedule schedule =
         cloudProviderHandler.editAccessKeyRotationSchedule(
@@ -332,11 +328,7 @@ public class CloudProviderApiController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.Schedule,
-            scheduleUUID.toString(),
-            Audit.ActionType.Edit,
-            request().body().asJson());
+            request, Audit.TargetType.Schedule, scheduleUUID.toString(), Audit.ActionType.Edit);
     return PlatformResults.withData(schedule);
   }
 

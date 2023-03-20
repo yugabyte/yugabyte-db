@@ -8,7 +8,6 @@ import scala.sys.process.Process
 historyPath := Some(file(System.getenv("HOME") + "/.sbt/.yugaware-history"))
 
 useCoursier := false
-playEnhancerEnabled := false
 
 // ------------------------------------------------------------------------------------------------
 // Constants
@@ -132,12 +131,13 @@ libraryDependencies ++= Seq(
   "com.google.inject.extensions" % "guice-multibindings" % "4.2.3",
   "org.postgresql" % "postgresql" % "42.3.3",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
-  "org.codehaus.janino" % "janino" % "3.1.6",
+  //"ch.qos.logback" % "logback-classic" % "1.3.6",
+  "org.codehaus.janino" % "janino" % "3.1.9",
   "org.apache.commons" % "commons-compress" % "1.21",
   "org.apache.commons" % "commons-csv" % "1.9.0",
   "org.apache.httpcomponents" % "httpcore" % "4.4.5",
   "org.apache.httpcomponents" % "httpclient" % "4.5.13",
-  "org.flywaydb" %% "flyway-play" % "4.0.0",
+  "org.flywaydb" %% "flyway-play" % "7.37.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
   "org.yaml" % "snakeyaml" % "1.33",
@@ -183,8 +183,8 @@ libraryDependencies ++= Seq(
   "com.google.oauth-client" % "google-oauth-client" % "1.34.1",
   "org.projectlombok" % "lombok" % "1.18.20",
   "com.squareup.okhttp3" % "okhttp" % "4.9.2",
-  "io.kamon" %% "kamon-bundle" % "2.2.2",
-  "io.kamon" %% "kamon-prometheus" % "2.2.2",
+  "io.kamon" %% "kamon-bundle" % "2.5.9",
+  "io.kamon" %% "kamon-prometheus" % "2.5.9",
   "org.unix4j" % "unix4j-command" % "0.6",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.0",
@@ -415,7 +415,7 @@ lazy val gogen = project.in(file("client/go"))
     openApiConfigFile := "client/go/openapi-go-config.json"
   )
 
-packageZipTarball.in(Universal) := packageZipTarball.in(Universal).dependsOn(versionGenerate, buildDependentArtifacts).value
+Universal / packageZipTarball := (Universal / packageZipTarball).dependsOn(versionGenerate, buildDependentArtifacts).value
 
 runPlatformTask := {
   (Compile / run).toTask("").value
@@ -449,10 +449,13 @@ dependencyOverrides += "com.google.guava" % "guava" % "23.0"
 // SSO functionality only works on the older version of nimbusds.
 // Azure library upgrade tries to upgrade nimbusds to latest version.
 dependencyOverrides += "com.nimbusds" % "oauth2-oidc-sdk" % "7.1.1"
+dependencyOverrides += "org.reflections" % "reflections" % "0.9.12"
+dependencyOverrides += "org.scala-lang.modules" %% "scala-java8-compat" % "1.0.2"
+dependencyOverrides += "org.scala-lang.modules" %% "scala-xml" % "2.1.0"
 
 val jacksonVersion         = "2.14.2"
 
-val jacksonOverrides = Seq(
+val jacksonLibs = Seq(
   "com.fasterxml.jackson.core"       % "jackson-core",
   "com.fasterxml.jackson.core"       % "jackson-annotations",
   "com.fasterxml.jackson.core"       % "jackson-databind",
@@ -463,14 +466,16 @@ val jacksonOverrides = Seq(
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml",
   "com.fasterxml.jackson.module"     % "jackson-module-parameter-names",
   "com.fasterxml.jackson.module"     %% "jackson-module-scala",
-).map(_ % jacksonVersion)
+)
+
+val jacksonOverrides = jacksonLibs.map(_ % jacksonVersion)
 
 dependencyOverrides ++= jacksonOverrides
 
 excludeDependencies += "org.eclipse.jetty" % "jetty-io"
 excludeDependencies += "org.eclipse.jetty" % "jetty-server"
 
-concurrentRestrictions in Global := Seq(Tags.limitAll(16))
+Global / concurrentRestrictions := Seq(Tags.limitAll(16))
 
 val testParallelForks = SettingKey[Int]("testParallelForks",
   "Number of parallel forked JVMs, running tests")
@@ -479,7 +484,7 @@ val testShardSize = SettingKey[Int]("testShardSize",
   "Number of test classes, executed by each forked JVM")
 testShardSize := 30
 
-concurrentRestrictions in Global += Tags.limit(Tags.ForkedTestGroup, testParallelForks.value)
+Global / concurrentRestrictions += Tags.limit(Tags.ForkedTestGroup, testParallelForks.value)
 
 def partitionTests(tests: Seq[TestDefinition], shardSize: Int) =
   tests.sortWith(_.name < _.name).grouped(shardSize).zipWithIndex map {
@@ -495,12 +500,12 @@ Test / parallelExecution := true
 Test / fork := true
 Test / testGrouping := partitionTests( (Test / definedTests).value, testShardSize.value )
 
-javaOptions in Test += "-Dconfig.resource=application.test.conf"
+Test / javaOptions += "-Dconfig.resource=application.test.conf"
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
 
 // Skip packaging javadoc for now
-sources in (Compile, doc) := Seq()
-publishArtifact in (Compile, packageDoc) := false
+Compile / doc / sources := Seq()
+Compile / doc / publishArtifact.withRank(KeyRanks.Invisible) := false
 
 topLevelDirectory := None
 
@@ -554,25 +559,27 @@ val swaggerGen: TaskKey[Unit] = taskKey[Unit](
   "generate swagger.json"
 )
 
+val swaggerJacksonVersion = "2.11.1"
+val swaggerJacksonOverrides = jacksonLibs.map(_ % swaggerJacksonVersion)
+
 lazy val swagger = project
   .dependsOn(root % "compile->compile;test->test")
   .settings(
     Test / fork := true,
-    javaOptions in Test += "-Dconfig.resource=application.test.conf",
+    Test / javaOptions += "-Dconfig.resource=application.test.conf",
     testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a"),
     libraryDependencies ++= Seq(
-      "io.swagger" %% "swagger-play2" % "1.6.1" % Test,
-      "io.swagger" %% "swagger-scala-module" % "1.0.5" % Test,
+      "com.github.dwickern" %% "swagger-play2.8" % "3.1.0",
+      "io.swagger" % "swagger-core" % "1.6.2"
     ),
-    dependencyOverrides += "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.10",
-    dependencyOverrides += "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10",
-    dependencyOverrides += "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10",
-    dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.9.10.8",
+
+    dependencyOverrides ++= swaggerJacksonOverrides,
+    dependencyOverrides += "org.scala-lang.modules" %% "scala-xml" % "2.1.0",
 
     swaggerGen := Def.taskDyn {
       // Consider generating this only in managedResources
-      val swaggerJson = (resourceDirectory in Compile in root).value / "swagger.json"
-      val swaggerStrictJson = (resourceDirectory in Compile in root).value / "swagger-strict.json"
+      val swaggerJson = (root / Compile / resourceDirectory).value / "swagger.json"
+      val swaggerStrictJson = (root / Compile / resourceDirectory).value / "swagger-strict.json"
       Def.sequential(
         (Test / runMain )
           .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerJson"),
@@ -587,7 +594,7 @@ lazy val swagger = project
     }.value
   )
 
-test in Test := (test in Test).dependsOn(swagger / Test / test).value
+Test / test := (Test / test).dependsOn(swagger / Test / test).value
 
 swaggerGen := Def.taskDyn {
   Def.sequential(
@@ -604,9 +611,9 @@ val grafanaGen: TaskKey[Unit] = taskKey[Unit](
 )
 
 grafanaGen := Def.taskDyn {
-  val file = (resourceDirectory in Compile).value / "metric" / "Dashboard.json"
+  val file = (Compile / resourceDirectory).value / "metric" / "Dashboard.json"
   Def.sequential(
-    (runMain in Test)
+    (Test / runMain)
       .toTask(s" com.yugabyte.yw.controllers.GrafanaGenTest $file")
   )
 }.value

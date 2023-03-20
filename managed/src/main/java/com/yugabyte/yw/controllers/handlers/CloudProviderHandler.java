@@ -1203,7 +1203,7 @@ public class CloudProviderHandler {
       if (params.schedulingFrequencyDays == 0) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Frequency cannot be null, specify frequency in days!");
-      } else if (schedule.getStatus().equals(Schedule.State.Active) && schedule.getRunningState()) {
+      } else if (schedule.getStatus().equals(Schedule.State.Active) && schedule.isRunningState()) {
         throw new PlatformServiceException(CONFLICT, "Cannot edit schedule as it is running.");
       } else {
         ScheduledAccessKeyRotateParams taskParams =

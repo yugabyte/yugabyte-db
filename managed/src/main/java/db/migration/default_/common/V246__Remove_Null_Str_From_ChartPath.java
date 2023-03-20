@@ -7,17 +7,20 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.Iterator;
 import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Optional;
-import org.flywaydb.core.api.migration.jdbc.BaseJdbcMigration;
 import play.libs.Json;
+import org.flywaydb.core.api.migration.BaseJavaMigration;
+import org.flywaydb.core.api.migration.Context;
 
-public class V246__Remove_Null_Str_From_ChartPath extends BaseJdbcMigration {
+public class V246__Remove_Null_Str_From_ChartPath extends BaseJavaMigration {
 
   @Override
-  public void migrate(Connection connection) throws Exception {
+  public void migrate(Context context) throws SQLException {
+    Connection connection = context.getConnection();
     ResultSet softwareReleasesResult =
         connection
             .createStatement()
