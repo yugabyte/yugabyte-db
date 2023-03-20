@@ -54,11 +54,11 @@ You can also modify TLS settings for an existing universe, as follows:
 
 1. Click **Actions > Edit Security > Encryption in-Transit** to open the **TLS Configuration** dialog and then proceed as follows:
 
-    - If encryption in transit is currently disabled for the universe, enable it via the **Encryption in Transit for this Universe** field, as per the following illustration:<br>
+    - If encryption in transit is currently disabled for the universe, enable it via the **Encryption in Transit for this Universe** field, as per the following illustration:
 
       ![TLS Configuration](/images/yp/encryption-in-transit/tls-config1.png)
 
-      Use the expanded **TLS Configuration** dialog shown in the following illustration to change the settings to meet your requirements:<br>
+      Use the expanded **TLS Configuration** dialog shown in the following illustration to change the settings to meet your requirements:
 
       ![TLS Configuration Expanded](/images/yp/encryption-in-transit/tls-config2.png)
 
@@ -66,7 +66,7 @@ You can also modify TLS settings for an existing universe, as follows:
 
       - To disable encryption in transit, disable the **Encryption in Transit for this Universe** field and then click **OK**.
 
-      - To modify encryption in-transit settings, leave the **Encryption in Transit for this Universe** field enabled and make the necessary changes to other fields.<br>
+      - To modify encryption in-transit settings, leave the **Encryption in Transit for this Universe** field enabled and make the necessary changes to other fields.
 
         If you are changing certificates, you need to be aware that this requires restart of the YB-Master and YB-TServer processes and can result in downtime. To avoid downtime, you should accept the default value (enabled) for the **Rolling Upgrade** field to trigger a sequential node-by-node change with a specific delay between node upgrades (as opposed to a simultaneous change of certificates in every node which occurs when the **Rolling Upgrade** field is disabled). If you select the **Create new certificate** option when changing certificates, the corresponding certificates will be rotated, that is, replaced with new certificates.
 
@@ -134,9 +134,9 @@ In addition, ensure the following:
 
 1. Click **Add Certificate** to open the **Add Certificate** dialog.
 
-1. Select **CA Signed**, as per the following illustration:<br>
+1. Select **CA Signed**, as per the following illustration:
 
-   ![add-cert](/images/yp/encryption-in-transit/add-cert.png)<br>
+   ![add-cert](/images/yp/encryption-in-transit/add-cert.png)
 
 1. Upload the custom CA root certificate as the root certificate.
 
@@ -206,13 +206,13 @@ You rotate the existing custom certificates and replace them with new database n
 
 - Navigate to the universe for which you are rotating the keys.
 
-- Select **Actions > Edit Security**, as shown in the following illustration:<br>
+- Select **Actions > Edit Security**, as shown in the following illustration:
 
-  ![edit-security](/images/yp/encryption-in-transit/edit-security.png)<br>
+  ![edit-security](/images/yp/encryption-in-transit/edit-security.png)
 
 - Select **Encryption in-Transit** to open the **TLS Configuration** dialog.
 
-- Complete the **TLS Configuration** dialog shown in the following illustration:<br>
+- Complete the **TLS Configuration** dialog shown in the following illustration:
 
   ![Configure TLS](/images/yp/encryption-in-transit/edit-tls-new.png)
 
@@ -220,11 +220,9 @@ You rotate the existing custom certificates and replace them with new database n
 
   - Modifying certificates requires restart of YB-Master and YB-TServer processes, which can result in downtime. To avoid downtime, you should accept the default value (enabled) for the **Rolling Upgrade** field to trigger a sequential node-by-node change with a specific delay between node upgrades (as opposed to a simultaneous change of certificates in every node which occurs when the **Rolling Upgrade** field is disabled).
 
-  - Click **OK**.<br>
+  - Click **OK**.
 
-    Typically, this process takes time, as it needs to wait for the specified delay interval after each node is upgraded.<br>
-
-  ![Configure TLS](/images/yp/encryption-in-transit/edit-tls-new.png)
+  Typically, this process takes time, as it needs to wait for the specified delay interval after each node is upgraded.
 
 ### Expand the universe
 
@@ -369,7 +367,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
   - For a node, execute the following:
 
     ```sh
-    vault write <PKI_MOUNT_PATH>/issue/<ROLE_NAME> common_name="<NODE_IP_ADDR>" ip_sans="<NODE_IP_ADDR>" ttl=”860h”
+    vault write <PKI_MOUNT_PATH>/issue/<ROLE_NAME> common_name="<NODE_IP_ADDR>" ip_sans="<NODE_IP_ADDR>" ttl="860h"
     ```
 
   - For YugabyteDB client, execute the following:
@@ -415,15 +413,15 @@ During the universe creation, you can enable TLS certificates issued by the cert
    - Navigate to **Configs > Security > Encryption in Transit** and click **Add Certificate**.
    - On the **Add Certificate** dialog shown in the following illustration, select **K8S cert-manager**:
 
-     ![img](/images/yp/security/kubernetes-cert-manager.png)
+     ![Add Certificate](/images/yp/security/kubernetes-cert-manager.png)
 
    - In the **Certificate Name** field, enter a meaningful name for your certificate configuration.
    - Click **Upload Root Certificate** and select the root certificate file that you prepared.
    - Click **Add** to make the certificate available.
 
-2. Configure the Kubernetes-based cloud provider by following instructions provided in [Configure region and zones](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones). In the **Add new region** dialog shown in the following illustration, you would be able to specify the Issuer name or the ClusterIssuer name for each zone. Since an Issuer Kind is a Kubernetes namespace-scoped resource, the zone definition should also set the **Namespace** field value if an Issuer Kind is selected:
+2. Configure the Kubernetes-based cloud provider by following instructions provided in [Configure region and zones](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones). In the **Add new region** dialog shown in the following illustration, you would be able to specify the Issuer name or the ClusterIssuer name for each zone. Because an Issuer Kind is a Kubernetes namespace-scoped resource, the zone definition should also set the **Namespace** field value if an Issuer Kind is selected:
 
-   ![img](/images/yp/security/kubernetes-cert-manager-add-region.png)
+   ![Add new region](/images/yp/security/kubernetes-cert-manager-add-region.png)
 
 3. Create the universe:
 
@@ -455,9 +453,9 @@ If you created your universe with the Client-to-Node TLS option enabled, then yo
 
 - Navigate to the **Certificates** page and then to your universe's certificate.
 
-- Click **Actions** and select **Download YSQL Cert**, as shown in the following illustration. This triggers the download of the `yugabytedb.crt` and `yugabytedb.key` files.<br>
+- Click **Actions** and select **Download YSQL Cert**, as shown in the following illustration. This triggers the download of the `yugabytedb.crt` and `yugabytedb.key` files.
 
-  ![download-ysql-cert](/images/yp/encryption-in-transit/download-ysql-cert.png)<br>
+  ![download-ysql-cert](/images/yp/encryption-in-transit/download-ysql-cert.png)
 
 - Optionally, when connecting to universes that are configured with custom CA-signed certificates, obtain the root CA and client YSQL certificate from your administrator. These certificates are not available on YugabyteDB Anywhere for downloading.
 
@@ -495,9 +493,9 @@ If you created your universe with the Client-to-Node TLS option enabled, then yo
 
 - Navigate to the **Certificates** page and then to your universe's certificate.
 
-- Click **Actions** and select **Download Root Cert**, as shown in the following illustration. This triggers the download of the `root.crt` file.<br>
+- Click **Actions** and select **Download Root Cert**, as shown in the following illustration. This triggers the download of the `root.crt` file.
 
-  ![download-root-cert](/images/yp/encryption-in-transit/download-root-cert.png)<br>
+  ![download-root-cert](/images/yp/encryption-in-transit/download-root-cert.png)
 
 - Optionally, when connecting to universes that are configured with custom CA-signed certificates, obtain the root CA and client YSQL certificate from your administrator. These certificates are not available on YugabyteDB Anywhere for downloading.
 
