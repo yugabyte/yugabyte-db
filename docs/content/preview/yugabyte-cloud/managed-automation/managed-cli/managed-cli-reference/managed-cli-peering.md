@@ -4,11 +4,10 @@ headerTitle: ybm vpc peering
 linkTitle: vpc peering
 description: YugabyteDB Managed CLI reference VPC Peering resource.
 headcontent: Manage account peering connections
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-cloud:
     identifier: managed-cli-peering
-    parent: managed-cli
+    parent: managed-cli-reference
     weight: 20
 type: docs
 ---

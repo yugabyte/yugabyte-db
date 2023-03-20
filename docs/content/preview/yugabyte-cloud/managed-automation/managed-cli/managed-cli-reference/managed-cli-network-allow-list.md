@@ -4,11 +4,10 @@ headerTitle: ybm network-allow-list
 linkTitle: network-allow-list
 description: YugabyteDB Managed CLI reference Network allow list resource.
 headcontent: Manage account IP allow lists
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-cloud:
     identifier: managed-cli-network-allow-list
-    parent: managed-cli
+    parent: managed-cli-reference
     weight: 20
 type: docs
 ---

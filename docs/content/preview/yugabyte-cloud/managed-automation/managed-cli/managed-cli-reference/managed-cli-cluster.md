@@ -4,11 +4,10 @@ headerTitle: ybm cluster
 linkTitle: cluster
 description: YugabyteDB Managed CLI reference Cluster resource.
 headcontent: Manage clusters
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-cloud:
     identifier: managed-cli-cluster
-    parent: managed-cli
+    parent: managed-cli-reference
     weight: 20
 type: docs
 ---

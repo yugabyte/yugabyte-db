@@ -4,11 +4,10 @@ headerTitle: ybm cluster read-replica
 linkTitle: cluster read-replica
 description: YugabyteDB Managed CLI reference Cluster Read Replica resource.
 headcontent: Manage cluster read replicas
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-cloud:
     identifier: managed-cli-read-replica
-    parent: managed-cli
+    parent: managed-cli-reference
     weight: 20
 type: docs
 ---

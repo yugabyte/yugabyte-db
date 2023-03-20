@@ -4,11 +4,10 @@ headerTitle: ybm vpc
 linkTitle: vpc
 description: YugabyteDB Managed CLI reference VPC resource.
 headcontent: Manage account VPCs
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-cloud:
     identifier: managed-cli-vpc
-    parent: managed-cli
+    parent: managed-cli-reference
     weight: 20
 type: docs
 ---

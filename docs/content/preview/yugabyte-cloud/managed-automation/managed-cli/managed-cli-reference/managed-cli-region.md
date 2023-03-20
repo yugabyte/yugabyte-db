@@ -4,11 +4,10 @@ headerTitle: ybm region
 linkTitle: region
 description: YugabyteDB Managed CLI reference Region resource.
 headcontent: Query regions and instance types
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-cloud:
     identifier: managed-cli-region
-    parent: managed-cli
+    parent: managed-cli-reference
     weight: 20
 type: docs
 ---
