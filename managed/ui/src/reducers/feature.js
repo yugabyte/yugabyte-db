@@ -24,7 +24,7 @@ const initialStateFeatureInTest = {
   enablePITR: true,
   enableNotificationTemplates: false,
   enableRestore: false,
-  enablePrefillKubeConfig: false,
+  enablePrefillKubeConfig: true,
   enableNewUI: true,
   enableAWSProviderValidation: false
 };
@@ -53,7 +53,7 @@ const initialStateFeatureReleased = {
   enablePITR: true,
   enableNotificationTemplates: false,
   enableRestore: false,
-  enablePrefillKubeConfig: false
+  enablePrefillKubeConfig: true 
 };
 
 export const FeatureFlag = (
