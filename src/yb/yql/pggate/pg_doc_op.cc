@@ -459,7 +459,6 @@ Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
   SetBackfillSpec();
   SetRowMark();
   SetReadTimeForBackfill();
-  SetDistinctScan();
   return Status::OK();
 }
 
@@ -1223,18 +1222,6 @@ void PgDocReadOp::SetReadTimeForBackfill() {
     // TODO: Change to RSTATUS_DCHECK
     DCHECK(exec_params_.backfill_read_time);
     read_op_->set_read_time(ReadHybridTime::FromUint64(exec_params_.backfill_read_time));
-  }
-}
-
-void PgDocReadOp::SetDistinctScan() {
-  if (exec_params_.is_select_distinct) {
-    // Prefix length is determined by the (1-based) index of the last column referenced
-    // in the request.
-    int prefix_length = 0;
-    for (const auto& col_ref : read_op_->read_request().col_refs()) {
-      prefix_length = std::max(prefix_length, col_ref.attno());
-    }
-    read_op_->read_request().set_prefix_length(prefix_length);
   }
 }
 

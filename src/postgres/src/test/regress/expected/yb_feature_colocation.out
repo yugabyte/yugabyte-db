@@ -159,14 +159,14 @@ SELECT * FROM tab_range_nonkey2 WHERE a = 1;
 (1 row)
 
 /*+IndexScan(tab_range_nonkey2 idx_range)*/EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey2 WHERE a <= 3;
-                   QUERY PLAN                    
+                   QUERY PLAN
 -------------------------------------------------
  Index Scan using idx_range on tab_range_nonkey2
    Index Cond: (a <= 3)
 (2 rows)
 
 /*+IndexScan(tab_range_nonkey2 idx_range)*/SELECT * FROM tab_range_nonkey2 WHERE a <= 3;
- a | b 
+ a | b
 ---+---
  0 | 0
  1 | 1
@@ -222,14 +222,14 @@ SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
 (1 row)
 
 EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey_noco WHERE a <= 3;
-                              QUERY PLAN                              
+                              QUERY PLAN
 ----------------------------------------------------------------------
  Index Scan using tab_range_nonkey_noco_pkey on tab_range_nonkey_noco
    Index Cond: (a <= 3)
 (2 rows)
 
 SELECT * FROM tab_range_nonkey_noco WHERE a <= 3;
- a | b 
+ a | b
 ---+---
  0 | 0
  1 | 1
@@ -824,6 +824,44 @@ RESET SESSION AUTHORIZATION;
 -- The default tablegroup cannot be used explicitly
 CREATE TABLE invalid_tbl (k int) TABLEGROUP "default";
 ERROR:  cannot use tablegroups in a colocated database
+-- Test distinct pushdown for colocated table
+CREATE TABLE tbl_colo(r1 INT, r2 INT, r3 INT, r4 INT, r5 INT) WITH (colocation = TRUE);
+CREATE INDEX ON tbl_colo(r1 asc, r3 asc, r5 asc);
+INSERT INTO tbl_colo (SELECT 1, i, i, i, i FROM generate_series(1, 100) AS i);
+INSERT INTO tbl_colo (SELECT 2, i, i, i, i FROM generate_series(1, 100) AS i);
+INSERT INTO tbl_colo (SELECT 3, i, i, i, i FROM generate_series(1, 100) AS i);
+EXPLAIN (COSTS OFF) SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Unique
+   ->  Index Only Scan using tbl_colo_r1_r3_r5_idx on tbl_colo
+         Index Cond: (r3 <= 1)
+(3 rows)
+
+SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
+ r1
+----
+  1
+  2
+  3
+(3 rows)
+
+/*+Set(enable_hashagg false)*/ EXPLAIN (COSTS OFF) SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Unique
+   ->  Index Only Scan using tbl_colo_r1_r3_r5_idx on tbl_colo
+         Index Cond: (r3 <= 1)
+(3 rows)
+
+/*+Set(enable_hashagg false)*/ SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
+ r1 
+----
+  1
+  2
+  3
+(3 rows)
+
 -- Drop database
 \c yugabyte
 DROP DATABASE colocation_test;
