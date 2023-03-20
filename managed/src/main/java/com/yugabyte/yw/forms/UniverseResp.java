@@ -11,7 +11,6 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
@@ -36,6 +35,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.yaml.snakeyaml.Yaml;
 import play.Environment;
+import play.api.Play;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 // TODO is this description accurate?
@@ -43,9 +43,6 @@ import play.Environment;
 @ApiModel(description = "Universe-creation response")
 @Slf4j
 public class UniverseResp {
-
-  @Inject private Environment environment;
-
   public static UniverseResp create(Universe universe, UUID taskUUID, Config config) {
     UniverseResourceDetails.Context context = new Context(config, universe);
     UniverseResourceDetails resourceDetails =
@@ -236,6 +233,7 @@ public class UniverseResp {
         log.warn("CertUUID cannot be null when TLS is enabled");
       }
       if (isKubernetesProvider) {
+        Environment environment = Play.current().injector().instanceOf(Environment.class);
         String certContent = certUUID == null ? "" : CertificateHelper.getCertPEM(certUUID);
         Yaml yaml = new Yaml();
         String sampleAppCommandTxt =
