@@ -5,6 +5,7 @@ import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Backup.StorageConfigType;
 import io.swagger.annotations.ApiModelProperty;
+import com.yugabyte.yw.models.helpers.TimeUnit;
 import java.util.Date;
 import java.util.UUID;
 import lombok.Builder;
@@ -23,6 +24,7 @@ public class BackupResp {
   Date lastIncrementalBackupTime;
 
   Long fullChainSizeInBytes;
+  TimeUnit expiryTimeUnit;
   String universeName;
   Boolean isStorageConfigPresent;
   Boolean isUniversePresent;
@@ -37,4 +39,5 @@ public class BackupResp {
   Boolean isFullBackup;
   TableType backupType;
   CommonBackupInfo commonBackupInfo;
+  String scheduleName;
 }

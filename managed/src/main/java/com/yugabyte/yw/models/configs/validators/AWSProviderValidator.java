@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
@@ -84,6 +85,10 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     // validate NTP Servers
     if (provider.details != null && provider.details.ntpServers != null) {
       validateNTPServers(provider.details.ntpServers);
+    }
+
+    if (provider.getProviderDetails().sshPort == null) {
+      throwBeanValidatorError("SSH_PORT", "Please provide a valid ssh port value");
     }
 
     // validate hosted zone id
@@ -185,6 +190,15 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
       if (!StringUtils.isEmpty(region.getSecurityGroupId())) {
         SecurityGroup securityGroup =
             awsCloudImpl.describeSecurityGroupsOrBadRequest(provider, region);
+        if (StringUtils.isEmpty(securityGroup.getVpcId())) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "No vpc is attached to SG: " + region.getSecurityGroupId());
+        }
+        if (!securityGroup.getVpcId().equals(region.getVnetName())) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              region.getSecurityGroupId() + " is not attached to vpc: " + region.getVnetName());
+        }
         Integer sshPort = provider.getProviderDetails().sshPort;
         boolean portOpen = false;
         if (!CollectionUtils.isNullOrEmpty(securityGroup.getIpPermissions())) {
@@ -222,6 +236,11 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
         List<Subnet> subnets = awsCloudImpl.describeSubnetsOrBadRequest(provider, region);
         Set<String> cidrBlocks = new HashSet<>();
         for (Subnet subnet : subnets) {
+          AvailabilityZone az = getAzBySubnetFromRegion(region, subnet.getSubnetId());
+          if (!az.code.equals(subnet.getAvailabilityZone())) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Invalid AZ code for subnet: " + subnet.getSubnetId());
+          }
           if (!subnet.getVpcId().equals(regionVnetName)) {
             throw new PlatformServiceException(
                 BAD_REQUEST, subnet.getSubnetId() + " is not associated with " + regionVnetName);
@@ -249,5 +268,17 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
         || (!StringUtils.isEmpty(accessKey) && StringUtils.isEmpty(accessKeySecret))) {
       throwBeanValidatorError("KEYS", "Please provide both access key and its secret");
     }
+  }
+
+  private AvailabilityZone getAzBySubnetFromRegion(Region region, String subnet) {
+    return region
+        .zones
+        .stream()
+        .filter(zone -> zone.subnet.equals(subnet))
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new PlatformServiceException(
+                    BAD_REQUEST, "Could not find AZ for subnet: " + subnet));
   }
 }

@@ -971,9 +971,6 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     int modifiedCount = Ebean.execute(update);
     assertEquals(1, modifiedCount);
 
-    when(mockConfigHelper.getAWSInstancePrefixesSupported())
-        .thenReturn(ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3."));
-
     Region secondRegion = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
     AvailabilityZone.createOrThrow(secondRegion, "az-4", "AZ 4", "subnet-4");
 

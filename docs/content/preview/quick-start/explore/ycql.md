@@ -8,7 +8,6 @@ aliases:
   - /quick-start/test-cassandra/
   - /preview/quick-start/test-cassandra/
   - /preview/quick-start/test-ycql/
-  - /preview/api/ycql/quick-start/
 menu:
   preview:
     parent: quick-start

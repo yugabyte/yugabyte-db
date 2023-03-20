@@ -126,7 +126,7 @@ def download_logs_k8s(args, client):
 
 
 def handle_download_logs(args, client):
-    if args.node_type == 'ssh':
+    if args.node_type == 'ssh' or args.node_type == 'rpc':
         download_logs_ssh(args, client)
     else:
         download_logs_k8s(args, client)

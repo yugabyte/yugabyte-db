@@ -399,7 +399,11 @@ void HandleWaitQueuePage(
     *out << tablet_result.status();
     return;
   }
-  auto* wq = (*tablet_result)->wait_queue();
+  auto* tp = (*tablet_result)->transaction_participant();
+  docdb::WaitQueue* wq = nullptr;
+  if (tp) {
+    wq = tp->wait_queue();
+  }
   if (wq) {
     wq->DumpStatusHtml(*out);
   } else {

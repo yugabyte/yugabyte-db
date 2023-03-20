@@ -130,7 +130,7 @@ static int MasterMain(int argc, char** argv) {
 
   auto opts_result = MasterOptions::CreateMasterOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(opts_result);
-  enterprise::Master server(*opts_result);
+  Master server(*opts_result);
 
   SetDefaultInitialSysCatalogSnapshotFlags();
 

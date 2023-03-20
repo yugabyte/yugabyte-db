@@ -10,7 +10,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValueAtPath;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
-import static com.yugabyte.yw.common.AssertHelper.assertYBPSuccess;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static junit.framework.TestCase.assertNull;
@@ -43,7 +42,6 @@ import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
@@ -60,23 +58,18 @@ import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
-import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import io.fabric8.kubernetes.api.model.Node;
-import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.PodList;
-import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.NodeList;
+import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.utils.Serialization;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.InputStream;
-import org.yaml.snakeyaml.Yaml;
-
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URLEncoder;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -89,13 +82,13 @@ import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yaml.snakeyaml.Yaml;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -104,9 +97,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderControllerTest.class);
 
   @Mock Config mockConfig;
-  @Mock ConfigHelper mockConfigHelper;
-
-  @Mock private play.Configuration appConfig;
 
   Customer customer;
   Users user;
@@ -125,12 +115,12 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   private Result listProviders() {
-    return FakeApiHelper.doRequestWithAuthToken(
+    return doRequestWithAuthToken(
         "GET", "/api/customers/" + customer.uuid + "/providers", user.createAuthToken());
   }
 
   private Result createProvider(JsonNode bodyJson) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+    return doRequestWithAuthTokenAndBody(
         "POST",
         "/api/customers/" + customer.uuid + "/providers/ui",
         user.createAuthToken(),
@@ -138,7 +128,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   private Result createKubernetesProvider(JsonNode bodyJson) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+    return doRequestWithAuthTokenAndBody(
         "POST",
         "/api/customers/" + customer.uuid + "/providers/kubernetes",
         user.createAuthToken(),
@@ -146,21 +136,21 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   private Result getKubernetesSuggestedConfig() {
-    return FakeApiHelper.doRequestWithAuthToken(
+    return doRequestWithAuthToken(
         "GET",
         "/api/customers/" + customer.uuid + "/providers/suggested_kubernetes_config",
         user.createAuthToken());
   }
 
   private Result deleteProvider(UUID providerUUID) {
-    return FakeApiHelper.doRequestWithAuthToken(
+    return doRequestWithAuthToken(
         "DELETE",
         "/api/customers/" + customer.uuid + "/providers/" + providerUUID,
         user.createAuthToken());
   }
 
   private Result editProvider(JsonNode bodyJson, UUID providerUUID) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+    return doRequestWithAuthTokenAndBody(
         "PUT",
         "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/edit",
         user.createAuthToken(),
@@ -168,7 +158,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   private Result bootstrapProvider(JsonNode bodyJson, Provider provider) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+    return doRequestWithAuthTokenAndBody(
         "POST",
         "/api/customers/" + customer.uuid + "/providers/" + provider.uuid + "/bootstrap",
         user.createAuthToken(),
@@ -176,7 +166,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   private Result getProvider(UUID providerUUID) {
-    return FakeApiHelper.doRequestWithAuthToken(
+    return doRequestWithAuthToken(
         "GET",
         "/api/customers/" + customer.uuid + "/providers/" + providerUUID,
         user.createAuthToken());
@@ -254,7 +244,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     if (!code.equals("null")) {
       findUrl += "&providerCode=" + URLEncoder.encode(code);
     }
-    Result result = FakeApiHelper.doRequestWithAuthToken("GET", findUrl, user.createAuthToken());
+    Result result = doRequestWithAuthToken("GET", findUrl, user.createAuthToken());
 
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.isArray());
@@ -650,7 +640,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
       assertNull(e.getMessage());
     }
 
-    assertEquals(0, InstanceType.findByProvider(p, mockConfig, mockConfigHelper).size());
+    assertEquals(0, InstanceType.findByProvider(p, mockConfig).size());
     assertNull(Provider.get(p.uuid));
   }
 

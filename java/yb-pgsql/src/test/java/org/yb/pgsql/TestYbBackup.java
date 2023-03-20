@@ -2269,4 +2269,39 @@ public class TestYbBackup extends BasePgSQLTest {
       }
     }
   }
+
+  @Test
+  public void testColocatedPartialIndex() throws Exception {
+    String dbname = "colocated_db";
+    String restore_dbname = "colocated_db2";
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format("CREATE DATABASE %s COLOCATION=true", dbname));
+    }
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase(dbname).connect();
+         Statement stmt = connection2.createStatement()) {
+      stmt.execute("CREATE TABLE tbl (k INT PRIMARY KEY, v INT, v2 TEXT)");
+      stmt.execute("CREATE INDEX tbl_partial_idx on tbl(v ASC) WHERE v < 300 AND v >= 100");
+      stmt.execute("INSERT INTO tbl VALUES (1, 100, '100'), (2, 200, '200'), (3, 300, '300')");
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", String.format("ysql.%s", dbname));
+      backupDir = new JSONObject(output).getString("snapshot_url");
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", String.format("ysql.%s",
+                                                                           restore_dbname));
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase(restore_dbname).connect();
+         Statement stmt = connection2.createStatement()) {
+      // Index Only Scan
+      String query = "SELECT v FROM tbl WHERE v < 300 AND v > 100";
+      assertTrue(isIndexOnlyScan(stmt, query, "tbl_partial_idx"));
+
+      // Verify data.
+      assertQuery(stmt, query, new Row(200));
+    }
+  }
 }

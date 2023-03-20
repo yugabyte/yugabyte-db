@@ -46,7 +46,6 @@
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/shared_lock_manager.h"
-#include "yb/docdb/wait_queue.h"
 
 #include "yb/gutil/ref_counted.h"
 
@@ -79,7 +78,6 @@ namespace yb {
 class FsManager;
 class MemTracker;
 class MetricEntity;
-class RowChangeList;
 
 namespace server {
 class Clock;
@@ -392,14 +390,20 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
-  // The returned iterator is not initialized.
-  Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
+  // The returned iterator is not initialized and should be initialized by the caller before usage.
+  Result<std::unique_ptr<docdb::DocRowwiseIterator>> NewUninitializedDocRowIterator(
       const Schema& projection,
       const ReadHybridTime& read_hybrid_time = {},
       const TableId& table_id = "",
       CoarseTimePoint deadline = CoarseTimePoint::max(),
-      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse,
-      const Slice& sub_doc_key = Slice()) const;
+      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse) const;
+
+  // The following functions create new row iterator that is already initialized.
+  Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
+      const Schema& projection,
+      const ReadHybridTime& read_hybrid_time = {},
+      const TableId& table_id = "",
+      CoarseTimePoint deadline = CoarseTimePoint::max()) const;
 
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
       const TableId& table_id) const;
@@ -407,7 +411,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> CreateCDCSnapshotIterator(
       const Schema& projection,
       const ReadHybridTime& time,
-      const std::string& next_key);
+      const std::string& next_key,
+      const TableId& table_id = "");
   //------------------------------------------------------------------------------------------------
   // Makes RocksDB Flush.
   Status Flush(FlushMode mode,
@@ -461,8 +466,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   MvccManager* mvcc_manager() { return &mvcc_; }
 
   docdb::SharedLockManager* shared_lock_manager() { return &shared_lock_manager_; }
-
-  docdb::WaitQueue* wait_queue() { return wait_queue_.get(); }
 
   std::atomic<int64_t>* monotonic_counter() { return &monotonic_counter_; }
 
@@ -1078,8 +1081,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       GUARDED_BY(num_sst_files_changed_listener_mutex_);
 
   std::shared_ptr<TabletRetentionPolicy> retention_policy_;
-
-  std::unique_ptr<docdb::WaitQueue> wait_queue_;
 
   std::mutex full_compaction_token_mutex_;
 

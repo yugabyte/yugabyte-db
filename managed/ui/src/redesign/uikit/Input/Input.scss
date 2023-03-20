@@ -25,6 +25,7 @@
       padding-right: $arrows-width + 10px;
       // hide arrows for firefox
       -moz-appearance: textfield;
+
       // hide arrows for chrome/safari/etc
       &::-webkit-inner-spin-button,
       &::-webkit-outer-spin-button {

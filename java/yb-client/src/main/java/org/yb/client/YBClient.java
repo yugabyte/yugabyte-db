@@ -1627,7 +1627,7 @@ public class YBClient implements AutoCloseable {
   }
 
   public GetCheckpointResponse getCheckpoint(YBTable table, String streamId,
-                                              String tabletId) throws Exception {
+                                             String tabletId) throws Exception {
     Deferred<GetCheckpointResponse> d = asyncClient
       .getCheckpoint(table, streamId, tabletId);
     return d.join(2*getDefaultAdminOperationTimeoutMs());

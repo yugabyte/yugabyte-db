@@ -13,7 +13,6 @@ menu:
 aliases:
   - /preview/explore/ysql-language-features/advanced-features/extensions/
   - /preview/api/ysql/extensions/
-  - /preview/explore/ysql-language-features/extensions/
 type: docs
 ---
 

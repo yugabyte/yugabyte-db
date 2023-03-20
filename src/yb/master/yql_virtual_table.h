@@ -82,7 +82,7 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
     return Status::OK();
   }
 
-  Status InitIterator(docdb::YQLRowwiseIteratorIf* iter,
+  Status InitIterator(docdb::DocRowwiseIterator* iter,
                       const PgsqlReadRequestPB& request,
                       const Schema& schema,
                       const QLValuePB& ybctid) const override {

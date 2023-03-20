@@ -165,6 +165,10 @@ class XClusterTestBase : public YBTest {
   Status WaitForValidSafeTimeOnAllTServers(
       const NamespaceId& namespace_id, Cluster* cluster = nullptr);
 
+  Result<std::vector<CDCStreamId>> BootstrapProducer(
+      MiniCluster* producer_cluster, YBClient* producer_client,
+      const std::vector<std::shared_ptr<yb::client::YBTable>>& tables);
+
   // Wait for replication drain on a list of tables.
   Status WaitForReplicationDrain(
       const std::shared_ptr<master::MasterReplicationProxy>& master_proxy,

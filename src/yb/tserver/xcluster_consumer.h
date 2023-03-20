@@ -121,6 +121,8 @@ class XClusterConsumer {
   // Returns the replication error map.
   cdc::TabletReplicationErrorMap GetReplicationErrors() const;
 
+  cdc::XClusterRole TEST_GetXClusterRole() const { return consumer_role_; }
+
  private:
   // Runs a thread that periodically polls for any new threads.
   void RunThread() EXCLUDES(should_run_mutex_);
@@ -215,7 +217,7 @@ class XClusterConsumer {
 
   client::TransactionManager* transaction_manager_;
 
-  client::YBTablePtr global_transaction_status_table_;
+  std::vector<TabletId> global_transaction_status_tablets_ GUARDED_BY(master_data_mutex_);
 
   bool enable_replicate_transaction_status_table_;
 

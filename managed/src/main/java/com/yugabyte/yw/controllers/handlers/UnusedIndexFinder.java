@@ -39,9 +39,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Singleton
 public class UnusedIndexFinder {
 
   public static final String QUERY_EXECUTOR_THREAD_POOL_CONFIG_KEY = "yb.perf_advisor.max_threads";

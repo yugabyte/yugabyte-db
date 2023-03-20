@@ -187,7 +187,7 @@ public class TlsToggle extends UpgradeTaskBase {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s", getTaskSubGroupType(), taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
       subTaskGroup.addSubTask(
           getAnsibleConfigureServerTaskForToggleTls(
@@ -202,8 +202,7 @@ public class TlsToggle extends UpgradeTaskBase {
   }
 
   private void createYbcFlagsUpdateTasks(List<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
     for (NodeDetails node : nodes) {
       subTaskGroup.addSubTask(getAnsibleConfigureServerTaskForYbcToggleTls(node));
     }
@@ -219,7 +218,7 @@ public class TlsToggle extends UpgradeTaskBase {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s", getTaskSubGroupType(), taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
       subTaskGroup.addSubTask(
           getAnsibleConfigureServerTaskForToggleTls(
@@ -230,8 +229,7 @@ public class TlsToggle extends UpgradeTaskBase {
   }
 
   private void createUniverseSetTlsParamsTask() {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("UniverseSetTlsParams", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseSetTlsParams");
     UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
     params.universeUUID = taskParams().universeUUID;
     params.enableNodeToNodeEncrypt = taskParams().enableNodeToNodeEncrypt;

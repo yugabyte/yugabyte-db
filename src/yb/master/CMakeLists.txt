@@ -61,11 +61,8 @@ ADD_YB_LIBRARY(master_proto
   DEPS ${MASTER_YRPC_LIBS}
   NONLINK_DEPS ${MASTER_YRPC_TGTS})
 
-YB_INCLUDE_EXTENSIONS()
-
 set(MASTER_PROTO_LIBS
-  master_proto
-  ${MASTER_PROTO_LIBS_EXTENSIONS})
+  master_proto)
 
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 
@@ -77,6 +74,7 @@ set(MASTER_SRCS
   master_call_home.cc
   backfill_index.cc
   catalog_manager.cc
+  catalog_manager_ext.cc
   catalog_manager_util.cc
   catalog_entity_info.cc
   catalog_manager_bg_tasks.cc
@@ -125,6 +123,7 @@ set(MASTER_SRCS
   util/yql_vtable_helpers.cc
   xcluster/xcluster_consumer_metrics.cc
   xcluster/xcluster_safe_time_service.cc
+  xrepl_catalog_manager.cc
   yql_aggregates_vtable.cc
   yql_auth_resource_role_permissions_index.cc
   yql_auth_role_permissions_vtable.cc
@@ -146,8 +145,7 @@ set(MASTER_SRCS
   yql_vtable_iterator.cc
   ysql_tablegroup_manager.cc
   ysql_tablespace_manager.cc
-  ysql_transaction_ddl.cc
-  ${MASTER_SRCS_EXTENSIONS})
+  ysql_transaction_ddl.cc)
 
 set(MASTER_DEPS
   yb_common
@@ -225,10 +223,7 @@ ADD_YB_TEST(stateful_service-test)
 ADD_YB_TEST(restore_sys_catalog_state_test)
 ADD_YB_TEST(cluster_balance_preferred_leader-test)
 ADD_YB_TEST(master_xrepl-test)
-
-foreach(ADDITIONAL_TEST ${MASTER_ADDITIONAL_TESTS})
-  ADD_YB_TEST(${ADDITIONAL_TEST})
-endforeach(ADDITIONAL_TEST)
+ADD_YB_TEST(sys_catalog_xrepl-test)
 
 # Actual master executable. In LTO mode, can also act as the tablet server if executed through a
 # symlink named as the tablet server executable.

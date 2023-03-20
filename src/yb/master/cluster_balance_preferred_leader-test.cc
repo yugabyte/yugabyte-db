@@ -15,7 +15,6 @@
 
 namespace yb {
 namespace master {
-namespace enterprise {
 using std::make_shared;
 using std::string;
 using std::vector;
@@ -665,6 +664,5 @@ TEST(TestLoadBalancerPreferredLeader, TestBalancingWithLeaderBlacklist) {
       ->TestBalancingWithLeaderBlacklist();
 }
 
-}  // namespace enterprise
 }  // namespace master
 }  // namespace yb

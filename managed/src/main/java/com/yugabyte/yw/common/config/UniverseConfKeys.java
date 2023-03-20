@@ -314,12 +314,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.BETA));
   // TODO(Shashank): Add correct metadata
-  public static final ConfKeyInfo<Boolean> setBatchNestedLoop =
+  public static final ConfKeyInfo<Boolean> setEnableNestloopOff =
       new ConfKeyInfo<>(
-          "yb.query_stats.slow_queries.set_batch_nested_loop",
+          "yb.query_stats.slow_queries.set_enable_nestloop_off",
           ScopeType.UNIVERSE,
-          "Set Batch Nested Loop",
-          "TODO - Leave this for feature owners to fill in",
+          "Turn off batch nest loop for running slow sql queries",
+          "This config turns off and on batch nestloop during running the join statement "
+              + "for slow queries. If true, it will be turned off and we expect better "
+              + "performance.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
   // TODO(Shashank)
@@ -594,6 +596,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Timeout used for internal universe-level helm operations like install/upgrade in secs",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enablePerfAdvisor =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.perf_advisor",
+          ScopeType.UNIVERSE,
+          "Enable Perf Advisor to view recommendations",
+          "Builds recommendations to help tune our applications accordingly",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> promoteAutoFlag =
       new ConfKeyInfo<>(
           "yb.upgrade.promote_auto_flag",
@@ -608,6 +618,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ScopeType.UNIVERSE,
           "Allow upgrade on transit universe",
           "Allow universe upgrade when nodes are in transit mode",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> promoteAutoFlagsForceFully =
+      new ConfKeyInfo<>(
+          "yb.upgrade.promote_flags_forcefully",
+          ScopeType.UNIVERSE,
+          "Promote AutoFlags Forcefully",
+          "Promote AutoFlags Forcefully during software upgrade",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

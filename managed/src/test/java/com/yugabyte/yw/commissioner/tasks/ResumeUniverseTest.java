@@ -238,8 +238,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     setupUniverse(false, 1);
     encryptionUtil.addKeyRef(
         defaultUniverse.universeUUID, testKMSConfig.configUUID, "some_key_ref".getBytes());
-    int numRotations =
-        encryptionUtil.getNumKeyRotations(defaultUniverse.universeUUID, testKMSConfig.configUUID);
+    int numRotations = encryptionUtil.getNumUniverseKeys(defaultUniverse.universeUUID);
     assertEquals(1, numRotations);
     ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
     taskParams.customerUUID = defaultCustomer.uuid;

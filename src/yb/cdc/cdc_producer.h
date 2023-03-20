@@ -90,6 +90,7 @@ Status GetChangesForCDCSDK(
     SchemaDetailsMap* cached_schema_details,
     OpId* last_streamed_op_id,
     int64_t* last_readable_opid_index = nullptr,
+    const TableId& colocated_table_id = "",
     const CoarseTimePoint deadline = CoarseTimePoint::max());
 
 using UpdateOnSplitOpFunc = std::function<Status(const consensus::ReplicateMsg&)>;

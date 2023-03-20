@@ -47,7 +47,6 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
   const { clusterType, mode, universeConfigureTemplate } = useContext(UniverseFormContext)[0];
   const isPrimary = clusterType === ClusterType.PRIMARY;
   const isEditMode = mode === ClusterModes.EDIT; //Form is in edit mode
-  const isCreatePrimary = !isEditMode && isPrimary; //Creating Primary Cluster
   const isEditPrimary = isEditMode && isPrimary; //Editing Primary Cluster
 
   //For async cluster creation show providers based on primary clusters provider type
@@ -93,14 +92,14 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
         <Box mt={2}>
           <ReplicationFactor disabled={isEditMode} isPrimary={isPrimary} />
         </Box>
-        {isCreatePrimary && isGeoPartitionEnabled && (
+        {isPrimary && isGeoPartitionEnabled && (
           <Box mt={2} display="flex" flexDirection="column">
-            <DefaultRegionField />
+            <DefaultRegionField disabled={isEditPrimary} />
           </Box>
         )}
       </Box>
-      <Box width="600px" mt={isLargeDevice ? 0 : 4}>
-        <PlacementsField disabled={false} isPrimary={isPrimary} />
+      <Box mt={isLargeDevice ? 0 : 4}>
+        <PlacementsField disabled={false} isPrimary={isPrimary} isEditMode={isEditMode} />
       </Box>
     </Box>
   );

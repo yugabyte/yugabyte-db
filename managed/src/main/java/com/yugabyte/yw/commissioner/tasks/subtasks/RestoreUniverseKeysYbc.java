@@ -56,8 +56,6 @@ public class RestoreUniverseKeysYbc extends RestoreUniverseKeysTaskBase {
       log.info("Running {}: hostPorts={}.", getName(), hostPorts);
       client = ybService.getClient(hostPorts, certificate);
 
-      Consumer<JsonNode> restoreToUniverse = getUniverseKeysConsumer();
-
       // Retrieve the universe key set (if one is set) to restore universe to original state
       // after restoration of backup completes
       if (client.isEncryptionEnabled().getFirst()) activeKeyRef = getActiveUniverseKey();
@@ -82,7 +80,9 @@ public class RestoreUniverseKeysYbc extends RestoreUniverseKeysTaskBase {
 
       RestoreKeyResult restoreResult = RestoreKeyResult.RESTORE_SKIPPED;
       if (universeKeys != null && !universeKeys.isNull()) {
-        restoreResult = keyManager.restoreUniverseKeyHistory(universeKeys, restoreToUniverse);
+        restoreResult =
+            keyManager.restoreUniverseKeyHistory(
+                ybService, taskParams().universeUUID, taskParams().kmsConfigUUID, universeKeys);
       }
 
       switch (restoreResult) {
@@ -102,7 +102,7 @@ public class RestoreUniverseKeysYbc extends RestoreUniverseKeysTaskBase {
             // Ensure the active universe key in YB is set back to what it was
             // before restore flow
             sendKeyToMasters(
-                activeKeyRef, universe.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID);
+                universe.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID, activeKeyRef);
           } else if (client.isEncryptionEnabled().getFirst()) {
             // If there is no active keyRef but encryption is enabled,
             // it means that the universe being restored into was not

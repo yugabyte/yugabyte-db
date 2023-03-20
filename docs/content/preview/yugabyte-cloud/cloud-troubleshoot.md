@@ -1,5 +1,6 @@
 ---
-title: Troubleshoot
+title: Troubleshoot YugabyteDB Managed
+headerTitle: Troubleshoot
 linkTitle: Troubleshoot
 description: Troubleshoot issues in YugabyteDB Managed.
 headcontent: Diagnose and troubleshoot issues with YugabyteDB clusters and YugabyteDB Managed

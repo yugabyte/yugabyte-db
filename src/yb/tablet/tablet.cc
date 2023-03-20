@@ -51,7 +51,7 @@
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_wire_protocol.h"
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/log_anchor_registry.h"
@@ -496,10 +496,10 @@ Tablet::Tablet(const TabletInitData& data)
         data.transaction_participant_context, this, DCHECK_NOTNULL(tablet_metrics_entity_),
         data.parent_mem_tracker);
     if (data.waiting_txn_registry) {
-      wait_queue_ = std::make_unique<docdb::WaitQueue>(
+      transaction_participant_->SetWaitQueue(std::make_unique<docdb::WaitQueue>(
         transaction_participant_.get(), metadata_->fs_manager()->uuid(), data.waiting_txn_registry,
         client_future_, clock(), DCHECK_NOTNULL(tablet_metrics_entity_),
-        DCHECK_NOTNULL(data.wait_queue_pool)->NewToken(ThreadPool::ExecutionMode::SERIAL));
+        DCHECK_NOTNULL(data.wait_queue_pool)->NewToken(ThreadPool::ExecutionMode::SERIAL)));
     }
   }
 
@@ -1025,10 +1025,6 @@ bool Tablet::StartShutdown() {
     return false;
   }
 
-  if (wait_queue_) {
-    wait_queue_->StartShutdown();
-  }
-
   if (transaction_participant_) {
     transaction_participant_->StartShutdown();
   }
@@ -1051,10 +1047,6 @@ void Tablet::CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown) 
 
   if (transaction_coordinator_) {
     transaction_coordinator_->Shutdown();
-  }
-
-  if (wait_queue_) {
-    wait_queue_->CompleteShutdown();
   }
 
   if (transaction_participant_) {
@@ -1181,13 +1173,12 @@ Status Tablet::CompleteShutdownRocksDBs(
   return regular_status.ok() ? intents_status : regular_status;
 }
 
-Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
+Result<std::unique_ptr<docdb::DocRowwiseIterator>> Tablet::NewUninitializedDocRowIterator(
     const Schema &projection,
     const ReadHybridTime& read_hybrid_time,
     const TableId& table_id,
     CoarseTimePoint deadline,
-    AllowBootstrappingState allow_bootstrapping_state,
-    const Slice& sub_doc_key) const {
+    AllowBootstrappingState allow_bootstrapping_state) const {
   if (state_ != kOpen && (!allow_bootstrapping_state || state_ != kBootstrapping)) {
     return STATUS_FORMAT(IllegalState, "Tablet in wrong state: $0", state_);
   }
@@ -1213,11 +1204,20 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   const auto read_time = read_hybrid_time
       ? read_hybrid_time
       : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse)));
-  auto result = std::make_unique<DocRowwiseIterator>(std::move(mapped_projection),
-                  table_info->doc_read_context, txn_op_ctx, doc_db(), deadline, read_time,
-                  &pending_non_abortable_op_counter_);
-  RETURN_NOT_OK(result->Init(table_type_, sub_doc_key));
-  return std::move(result);
+  return std::make_unique<DocRowwiseIterator>(
+      std::move(mapped_projection), table_info->doc_read_context, txn_op_ctx,
+      doc_db(), deadline, read_time, &pending_non_abortable_op_counter_);
+}
+
+Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
+    const Schema &projection,
+    const ReadHybridTime& read_hybrid_time,
+    const TableId& table_id,
+    CoarseTimePoint deadline) const {
+  auto iter = VERIFY_RESULT(NewUninitializedDocRowIterator(
+      projection, read_hybrid_time, table_id, deadline, AllowBootstrappingState::kFalse));
+  iter->Init(table_type_);
+  return std::move(iter);
 }
 
 Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
@@ -1974,7 +1974,8 @@ HybridTime Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadl
 }
 
 Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIterator(
-    const Schema& projection, const ReadHybridTime& time, const string& next_key) {
+    const Schema& projection, const ReadHybridTime& time, const string& next_key,
+    const TableId& table_id) {
   VLOG_WITH_PREFIX(2) << "The nextKey is " << next_key;
 
   docdb::KeyBytes encoded_next_key;
@@ -1985,9 +1986,10 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
     encoded_next_key = start_sub_doc_key.doc_key().Encode();
     VLOG_WITH_PREFIX(2) << "The nextKey doc is " << encoded_next_key;
   }
-  return NewRowIterator(
-      projection, time, "", CoarseTimePoint::max(), AllowBootstrappingState::kFalse,
-      encoded_next_key);
+  auto iter = VERIFY_RESULT(NewUninitializedDocRowIterator(
+      projection, time, table_id, CoarseTimePoint::max(), AllowBootstrappingState::kFalse));
+  iter->Init(table_type_, encoded_next_key);
+  return std::move(iter);
 }
 
 Status Tablet::CreatePreparedChangeMetadata(

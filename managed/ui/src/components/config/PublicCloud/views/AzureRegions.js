@@ -94,17 +94,17 @@ const AZURE_REGIONS = [
   {
     region: 'norwayeast',
     name: 'Norway East',
-    zones: ['norwayeast']
+    zones: ['norwayeast-1', 'norwayeast-2', 'norwayeast-3']
   },
   {
     region: 'switzerlandnorth',
     name: 'Switzerland North',
-    zones: ['switzerlandnorth']
+    zones: ['switzerlandnorth-1', 'switzerlandnorth-2', 'switzerlandnorth-3']
   },
   {
     region: 'eastasia',
     name: 'East Asia',
-    zones: ['eastasia']
+    zones: ['eastasia-1', 'eastasia-2', 'eastasia-3']
   },
   {
     region: 'southeastasia',
@@ -114,7 +114,7 @@ const AZURE_REGIONS = [
   {
     region: 'centralindia',
     name: 'Central India',
-    zones: ['centralindia']
+    zones: ['centralindia-1', 'centralindia-2', 'centralindia-3']
   },
   {
     region: 'southindia',
@@ -139,7 +139,7 @@ const AZURE_REGIONS = [
   {
     region: 'koreacentral',
     name: 'Korea Central',
-    zones: ['koreacentral']
+    zones: ['koreacentral-1', 'koreacentral-2', 'koreacentral-3']
   },
   {
     region: 'koreasouth',
@@ -149,7 +149,7 @@ const AZURE_REGIONS = [
   {
     region: 'uaenorth',
     name: 'UAE North',
-    zones: ['uaenorth']
+    zones: ['uaenorth-1', 'uaenorth-2', 'uaenorth-3']
   },
   {
     region: 'australiacentral',
@@ -169,12 +169,12 @@ const AZURE_REGIONS = [
   {
     region: 'southafricanorth',
     name: 'South Africa North',
-    zones: ['southafricanorth']
+    zones: ['southafricanorth-1', 'southafricanorth-2', 'southafricanorth-3']
   },
   {
     region: 'brazilsouth',
     name: 'Brazil South',
-    zones: ['brazilsouth']
+    zones: ['brazilsouth-1', 'brazilsouth-2', 'brazilsouth-3']
   },
 ];
 

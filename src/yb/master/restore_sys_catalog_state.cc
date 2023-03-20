@@ -70,6 +70,17 @@ Status ApplyWriteRequest(
   return operation.Apply(apply_data);
 }
 
+Status WriteEntry(
+    int8_t type, const std::string& item_id, const Slice& data,
+    QLWriteRequestPB::QLStmtType op_type, const Schema& schema, docdb::DocWriteBatch* write_batch) {
+  QLWriteRequestPB write_request;
+  RETURN_NOT_OK(FillSysCatalogWriteRequest(
+      type, item_id, data, QLWriteRequestPB::QL_STMT_INSERT, schema,
+      &write_request));
+  write_request.set_schema_version(kSysCatalogSchemaVersion);
+  return ApplyWriteRequest(schema, write_request, write_batch);
+}
+
 bool TableDeleted(const SysTablesEntryPB& table) {
   return table.state() == SysTablesEntryPB::DELETED ||
          table.state() == SysTablesEntryPB::DELETING ||
@@ -180,14 +191,22 @@ class PgCatalogRestorePatch : public RestorePatch {
         table_(table), pg_yb_catalog_meta_(pg_yb_catalog_meta) {}
 
   Status Finish() {
-    if (!catalog_version_doc_path_) {
+    if (doc_key_catalog_version_map_.empty()) {
       return Status::OK();
     }
-    QLValuePB value_pb;
-    value_pb.set_int64_value(catalog_version_);
-    LOG(INFO) << "PITR: Incrementing pg_yb_catalog version to " << catalog_version_;
-    return DocBatch()->SetPrimitive(
-        *catalog_version_doc_path_, docdb::ValueRef(value_pb, SortingType::kNotSpecified));
+    auto column_id = VERIFY_RESULT(
+        pg_yb_catalog_meta_->schema().ColumnIdByName(kCurrentVersionColumnName));
+    for (const auto& it : doc_key_catalog_version_map_) {
+      QLValuePB value_pb;
+      value_pb.set_int64_value(it.second);
+      auto doc_path = docdb::DocPath(
+          it.first.Encode(), docdb::KeyEntryValue::MakeColumnId(column_id));
+      LOG(INFO) << "PITR: Incrementing pg_yb_catalog version of "
+                << doc_path.ToString() << " to " << it.second;
+      RETURN_NOT_OK(DocBatch()->SetPrimitive(
+        doc_path, docdb::ValueRef(value_pb, SortingType::kNotSpecified)));
+    }
+    return Status::OK();
   }
 
  private:
@@ -211,15 +230,13 @@ class PgCatalogRestorePatch : public RestorePatch {
     return false;
   }
 
-  Status HandleSchemaVersionValue(
-      const docdb::DocKey& doc_key, ColumnId column_id, const Slice& existing_value) {
+  Status HandleSchemaVersionValue(const docdb::DocKey& doc_key, const Slice& existing_value) {
     docdb::Value value;
     RETURN_NOT_OK(value.Decode(existing_value));
     auto new_version = value.primitive_value().GetInt64() + 1;
-    if (!catalog_version_doc_path_ || catalog_version_ < new_version) {
-      catalog_version_doc_path_.emplace(
-          doc_key.Encode(), docdb::KeyEntryValue::MakeColumnId(column_id));
-      catalog_version_ = new_version;
+    auto emplace_result = doc_key_catalog_version_map_.emplace(doc_key, new_version);
+    if (!emplace_result.second && emplace_result.first->second < new_version) {
+      emplace_result.first->second = new_version;
     }
     return Status::OK();
   }
@@ -242,7 +259,7 @@ class PgCatalogRestorePatch : public RestorePatch {
             Corruption, "$0 missing in $1", kCurrentVersionColumnName,
             full_value.ToDebugHexString());
       }
-      return HandleSchemaVersionValue(sub_doc_key.doc_key(), column_id, *value);
+      return HandleSchemaVersionValue(sub_doc_key.doc_key(), *value);
     }
     SCHECK_EQ(sub_doc_key.subkeys().size(), 1U, Corruption, "Wrong number of subdoc keys");
     const auto& first_subkey = sub_doc_key.subkeys()[0];
@@ -251,7 +268,7 @@ class PgCatalogRestorePatch : public RestorePatch {
       const ColumnSchema& column = VERIFY_RESULT(pg_yb_catalog_meta_->schema().column_by_id(
           column_id));
       if (column.name() == kCurrentVersionColumnName) {
-        return HandleSchemaVersionValue(sub_doc_key.doc_key(), column_id, full_value);
+        return HandleSchemaVersionValue(sub_doc_key.doc_key(), full_value);
       }
     }
     return Status::OK();
@@ -261,8 +278,7 @@ class PgCatalogRestorePatch : public RestorePatch {
   const PgCatalogTableData& table_;
   // Should be alive while this object is alive.
   tablet::TableInfo* pg_yb_catalog_meta_;
-  std::optional<docdb::DocPath> catalog_version_doc_path_;
-  int64_t catalog_version_;
+  std::map<docdb::DocKey, int64_t> doc_key_catalog_version_map_;
 };
 
 } // namespace
@@ -822,11 +838,9 @@ Status RestoreSysCatalogState::CheckExistingEntry(
 Status RestoreSysCatalogState::PrepareWriteBatch(
     const Schema& schema, docdb::DocWriteBatch* write_batch, const HybridTime& now_ht) {
   for (const auto& entry : entries_.entries()) {
-    QLWriteRequestPB write_request;
-    RETURN_NOT_OK(FillSysCatalogWriteRequest(
+    RETURN_NOT_OK(WriteEntry(
         entry.type(), entry.id(), entry.data(), QLWriteRequestPB::QL_STMT_INSERT, schema,
-        &write_request));
-    RETURN_NOT_OK(ApplyWriteRequest(schema, write_request, write_batch));
+        write_batch));
   }
 
   for (const auto& tablet_id_and_pb : restoration_.non_system_obsolete_tablets) {
@@ -846,14 +860,11 @@ Status RestoreSysCatalogState::PrepareTabletCleanup(
     docdb::DocWriteBatch* write_batch) {
   VLOG_WITH_FUNC(4) << id;
 
-  QLWriteRequestPB write_request;
-
   FillHideInformation(pb.table_id(), &pb);
 
-  RETURN_NOT_OK(FillSysCatalogWriteRequest(
-      SysRowEntryType::TABLET, id, pb.SerializeAsString(),
-      QLWriteRequestPB::QL_STMT_UPDATE, schema, &write_request));
-  return ApplyWriteRequest(schema, write_request, write_batch);
+  return WriteEntry(
+      SysRowEntryType::TABLET, id, pb.SerializeAsString(), QLWriteRequestPB::QL_STMT_UPDATE, schema,
+      write_batch);
 }
 
 Status RestoreSysCatalogState::PrepareTableCleanup(
@@ -861,7 +872,6 @@ Status RestoreSysCatalogState::PrepareTableCleanup(
     docdb::DocWriteBatch* write_batch, const HybridTime& now_ht) {
   VLOG_WITH_FUNC(4) << id;
 
-  QLWriteRequestPB write_request;
   // For a colocated table, mark it as HIDDEN.
   if (pb.colocated()) {
     pb.set_hide_state(SysTablesEntryPB::HIDDEN);
@@ -871,10 +881,9 @@ Status RestoreSysCatalogState::PrepareTableCleanup(
   }
 
   pb.set_version(pb.version() + 1);
-  RETURN_NOT_OK(FillSysCatalogWriteRequest(
-      SysRowEntryType::TABLE, id, pb.SerializeAsString(),
-      QLWriteRequestPB::QL_STMT_UPDATE, schema, &write_request));
-  return ApplyWriteRequest(schema, write_request, write_batch);
+  return WriteEntry(
+      SysRowEntryType::TABLE, id, pb.SerializeAsString(), QLWriteRequestPB::QL_STMT_UPDATE, schema,
+      write_batch);
 }
 
 Result<bool> RestoreSysCatalogState::TEST_MatchTable(
@@ -912,11 +921,11 @@ Status RestoreSysCatalogState::IncrementLegacyCatalogVersion(
   auto existing_version = catalog_meta.ysql_catalog_config().version();
   catalog_meta.mutable_ysql_catalog_config()->set_version(existing_version + 1);
 
-  QLWriteRequestPB write_request;
-  RETURN_NOT_OK(FillSysCatalogWriteRequest(
-      SysRowEntryType::SYS_CONFIG, config_type, catalog_meta, QLWriteRequestPB::QL_STMT_UPDATE,
-      doc_read_context.schema, &write_request));
-  RETURN_NOT_OK(ApplyWriteRequest(doc_read_context.schema, write_request, write_batch));
+  faststring buffer;
+  RETURN_NOT_OK(pb_util::SerializeToString(catalog_meta, &buffer));
+  RETURN_NOT_OK(WriteEntry(
+      SysRowEntryType::SYS_CONFIG, config_type, buffer, QLWriteRequestPB::QL_STMT_UPDATE,
+      doc_read_context.schema, write_batch));
 
   LOG(INFO) << "PITR: Incrementing legacy catalog version to " << existing_version + 1;
 

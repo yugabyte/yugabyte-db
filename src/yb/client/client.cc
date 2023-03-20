@@ -72,7 +72,7 @@
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_wire_protocol.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
@@ -714,6 +714,13 @@ Status YBClient::FlushTables(const std::vector<YBTableName>& table_names,
                             add_indexes,
                             deadline,
                             is_compaction);
+}
+
+Result<MonoTime> YBClient::GetCompactionStatus(const YBTableName& table_name) {
+  const auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  MonoTime last_request_time;
+  RETURN_NOT_OK(data_->GetCompactionStatus(table_name, deadline, &last_request_time));
+  return last_request_time;
 }
 
 std::unique_ptr<YBTableAlterer> YBClient::NewTableAlterer(const YBTableName& name) {

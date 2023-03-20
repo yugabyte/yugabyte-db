@@ -1074,6 +1074,13 @@ def create_instance(args):
             tag_dicts.append(resources_tag_dict)
     vars["TagSpecifications"] = tag_dicts
 
+    if args.use_spot_instance:
+        options = {"MarketType": "spot"}
+        if args.spot_price is not None:
+            options["SpotOptions"] = {"MaxPrice": args.spot_price}
+        vars["InstanceMarketOptions"] = options
+        logging.info(f"[app] Using AWS spot instances with {options} options")
+
     # Newer instance types have Credit Specification set to unlimited by default
     if is_burstable(instance):
         vars["CreditSpecification"] = {

@@ -36,6 +36,7 @@
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/env.h"
+#include "yb/util/flags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
@@ -57,6 +58,8 @@ using yb::FormatBytesAsStr;
 using yb::util::TrimStr;
 using yb::util::LeftShiftTextBlock;
 using yb::util::TrimCppComments;
+
+DECLARE_bool(ycql_enable_packed_row);
 
 namespace yb {
 namespace docdb {
@@ -638,7 +641,10 @@ TransactionOperationContext DocDBLoadGenerator::GetReadOperationTransactionConte
 
 // ------------------------------------------------------------------------------------------------
 
-void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(const string &expected) {
+void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(
+    const std::string &pre_expected, const std::string& packed_row_expected) {
+  const auto& expected = !packed_row_expected.empty() && YcqlPackedRowEnabled()
+      ? packed_row_expected : pre_expected;
   const string debug_dump_str = TrimDocDbDebugDumpStr(DocDBDebugDumpToStr());
   const string expected_str = TrimDocDbDebugDumpStr(expected);
   if (expected_str != debug_dump_str) {
@@ -811,6 +817,14 @@ Status DocDBRocksDBFixture::InitRocksDBOptions() {
 
 string TrimDocDbDebugDumpStr(const string& debug_dump_str) {
   return TrimStr(ApplyEagerLineContinuation(LeftShiftTextBlock(TrimCppComments(debug_dump_str))));
+}
+
+void DisableYcqlPackedRow() {
+  ASSERT_OK(SET_FLAG(ycql_enable_packed_row, false));
+}
+
+bool YcqlPackedRowEnabled() {
+  return FLAGS_ycql_enable_packed_row;
 }
 
 }  // namespace docdb

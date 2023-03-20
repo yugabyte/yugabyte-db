@@ -64,7 +64,7 @@ Now take an inventory of your tables with the `\d` metacommand. You should see s
 
 The [`COPY`](../../../../../the-sql-language/statements/cmd_copy) SQL statement is designed to ingest data from a file "as is". However, its simple use requires that the to-be-read (or to-be-written) file resides _server-side_ on the local filesystem of the YB-TServer that you connect to. If you specify `stdin` as the argument of `COPY FROM`, then these input and output channels are defined client-side in the environment of the client where you run `ysqlsh`. This sounds promising. But the snag is that you must include the text of the `COPY FROM` statement at the start of the file that contains the data that you intend to ingest. This is described in the [stdin and stdout](../../../../../the-sql-language/statements/cmd_copy/#stdin-and-stdout) section of the documentation for the `COPY` statement.
 
-The preferred option for the present case study, because [`ysqlsh`](../../../../../../../admin/ysqlsh/) is chosen for running all the SQL statements, is to use the [`\copy`](../../../../../../../admin/ysqlsh/#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option) metacommand.
+The preferred option for the present case study, because [`ysqlsh`](../../../../../../../admin/ysqlsh/) is chosen for running all the SQL statements, is to use the [`\copy`](../../../../../../../admin/ysqlsh-meta-commands/#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option) meta-command.
 
 Because the three `.csv` files all have the same format, as do their three dedicated staging tables, the `copy` command will have the same form for each of its invocations, thus:
 
@@ -72,7 +72,7 @@ Because the three `.csv` files all have the same format, as do their three dedic
 \copy <staging table> from <csv file> with (format 'csv', header true)
 ```
 
-This is another case where a procedure that reads the names from the _"covidcast_names"_ table avoids repetition of code and brings optimal "single point of definition" maintainability. However, there's particular design dilemma to confront. The `\copy` metacommand cannot be run from a stored procedure written in PL/pgSQL. Therefore a _function_ is used that will return the text of the `\copy` metacommand. You execute the appropriately parameterized function, spool its output to a `.sql` script and start that script.
+This is another case where a procedure that reads the names from the _"covidcast_names"_ table avoids repetition of code and brings optimal "single point of definition" maintainability. However, there's particular design dilemma to confront. The `\copy` meta-command cannot be run from a stored procedure written in PL/pgSQL. Therefore a _function_ is used that will return the text of the `\copy` meta-command. You execute the appropriately parameterized function, spool its output to a `.sql` script and start that script.
 
 - Create the function with the [`cr-cr-copy-from-csv-scripts.sql`](../ingest-scripts/cr-cr-copy-from-csv-scripts-sql) script.
 

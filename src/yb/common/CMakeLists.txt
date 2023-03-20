@@ -93,6 +93,7 @@ set(COMMON_SRCS
   termination_monitor.cc
   transaction.cc
   transaction_error.cc
+  wire_protocol.cc
   ybc_util.cc
   ybc-internal.cc
   llvm_profile_dumper.cc
@@ -129,7 +130,7 @@ set(QL_SRCS
   ql_scanspec.cc
   row.cc
   schema.cc
-  wire_protocol.cc
+  ql_wire_protocol.cc
 )
 
 set(QL_LIBS

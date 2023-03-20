@@ -318,7 +318,7 @@ ADD_CXX_FLAGS("-DYB_COMPILER_TYPE=$ENV{YB_COMPILER_TYPE}")
 ADD_CXX_FLAGS("-DYB_COMPILER_VERSION=${COMPILER_VERSION}")
 ADD_CXX_FLAGS("-DSNAPPY")
 ADD_CXX_FLAGS("-DLZ4")
-ADD_CXX_FLAGS("-DZLIB")
+ADD_CXX_FLAGS("-DYB_ZLIB")
 
 ############################################################
 # Compiler flags
@@ -584,9 +584,8 @@ file(MAKE_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 set(EXECUTABLE_OUTPUT_PATH "${YB_BUILD_ROOT}/bin")
 file(MAKE_DIRECTORY "${EXECUTABLE_OUTPUT_PATH}")
 
-# Generated sources always have higher priority than even the "ent" directory include files.
+# Generated sources always have higher priority.
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/src)
-include_directories(ent/src)
 include_directories(src)
 
 enable_testing()
@@ -694,12 +693,6 @@ if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1" OR
     "${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
   message("Allowing undefined symbols "
           "(YB_TCMALLOC_ENABLED=${YB_TCMALLOC_ENABLED}, build type is ${YB_BUILD_TYPE})")
-  if(IS_GCC)
-    # Without this, yb_util cannot get linked with GCC 11 because it references some undefined
-    # symbols belonging to tcmalloc, e.g. HeapProfilerStart.
-    # https://gist.githubusercontent.com/mbautin/53e72fbc8c45b4b0d759673fba102ddf/raw
-    ADD_LINKER_FLAGS("-Wl,--unresolved-symbols=ignore-all")
-  endif()
   if(APPLE)
     # See https://bit.ly/3DrOibC on this Apple Clang specific flag.
     ADD_LINKER_FLAGS("-undefined dynamic_lookup")
@@ -709,8 +702,18 @@ if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1" OR
     #
     # See https://github.com/bazelbuild/bazel/issues/16413 for discussion.
     ADD_LINKER_FLAGS("-Wl,-no_fixup_chains")
+  elseif(IS_GCC)
+    # Without this, yb_util cannot get linked with GCC 11 because it references some undefined
+    # symbols belonging to tcmalloc, e.g. HeapProfilerStart.
+    # https://gist.githubusercontent.com/mbautin/53e72fbc8c45b4b0d759673fba102ddf/raw
+    ADD_LINKER_FLAGS("-Wl,--unresolved-symbols=ignore-all")
   else()
-    ADD_LINKER_FLAGS("-Wl,--allow-shlib-undefined")
+    # Allow undefined symbols when linking libs, so not resolved references to tcmalloc symbols
+    # does not break libs linking.
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--allow-shlib-undefined")
+    # Don't allow undefined symbols when linking executables, so we can catch undefined symbols
+    # during build phase rather than later in runtime.
+    ADD_EXE_LINKER_FLAGS("-Wl,--no-undefined -Wl,--no-allow-shlib-undefined")
   endif()
 
   if(APPLE)
@@ -815,8 +818,6 @@ add_subdirectory(src/yb/rocksutil)
 add_subdirectory(src/yb/docdb)
 add_subdirectory(src/yb/yql)
 add_subdirectory(src/yb/cdc)
-
-include("${YB_SRC_ROOT}/ent/CMakeLists.txt")
 
 # Note "yb-server", without the "t" -- this is not a typo. "yb-server" is the unified LTO executable
 # that contains the functionality of both yb-master and yb-tserver, and yb-master/yb-tserver are

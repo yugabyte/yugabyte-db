@@ -15,14 +15,16 @@
  default | postgres |                   |             |            |
 (1 row)
 
-                                                                     List of tablegroup tables
- Group Name | Group Owner | Access privileges | Group Description | Group Tablespace | Group Options |    Name     | Type  |     Owner     | Rel Description | Size
-------------+-------------+-------------------+-------------------+------------------+---------------+-------------+-------+---------------+-----------------+------
- default    | postgres    |                   |                   |                  |               | tbl         | table | yugabyte_test |                 |
- default    | postgres    |                   |                   |                  |               | tbl2        | table | yugabyte_test |                 |
- default    | postgres    |                   |                   |                  |               | tbl_v_idx   | index | yugabyte_test |                 |
- default    | postgres    |                   |                   |                  |               | tbl2_v2_idx | index | yugabyte_test |                 |
- default    | postgres    |                   |                   |                  |               | htest       | table | yugabyte_test |                 |
- default    | postgres    |                   |                   |                  |               | htest_1     | table | yugabyte_test |                 |
-(6 rows)
+                                                                         List of tablegroup tables
+ Group Name | Group Owner | Access privileges | Group Description | Group Tablespace | Group Options |        Name        | Type  |     Owner     | Rel Description | Size
+------------+-------------+-------------------+-------------------+------------------+---------------+--------------------+-------+---------------+-----------------+------
+ default    | postgres    |                   |                   |                  |               | tbl                | table | yugabyte_test |                 |
+ default    | postgres    |                   |                   |                  |               | tbl2               | table | yugabyte_test |                 |
+ default    | postgres    |                   |                   |                  |               | tbl_v_idx          | index | yugabyte_test |                 |
+ default    | postgres    |                   |                   |                  |               | tbl2_v2_idx        | index | yugabyte_test |                 |
+ default    | postgres    |                   |                   |                  |               | partial_unique_idx | index | yugabyte_test |                 |
+ default    | postgres    |                   |                   |                  |               | partial_idx        | index | yugabyte_test |                 |
+ default    | postgres    |                   |                   |                  |               | htest              | table | yugabyte_test |                 |
+ default    | postgres    |                   |                   |                  |               | htest_1            | table | yugabyte_test |                 |
+(8 rows)
 

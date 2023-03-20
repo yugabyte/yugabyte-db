@@ -144,7 +144,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     String url =
         "/api/customers/" + defaultCustomer.uuid + "/universes/" + universeUUID + "/backups";
 
-    Result r = FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
+    Result r = doRequestWithAuthToken(method, url, authToken);
     assertOk(r);
     return Json.parse(contentAsString(r));
   }
@@ -205,7 +205,7 @@ public class BackupsControllerTest extends FakeDBApplication {
             + "/backups/tasks/"
             + taskUUID;
 
-    Result r = FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
+    Result r = doRequestWithAuthToken(method, url, authToken);
     assertOk(r);
     return Json.parse(contentAsString(r));
   }
@@ -556,7 +556,7 @@ public class BackupsControllerTest extends FakeDBApplication {
             + "/universes/"
             + universeUUID
             + "/backups/restore";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   private Result restoreBackupYb(JsonNode bodyJson, Users user) {
@@ -566,49 +566,49 @@ public class BackupsControllerTest extends FakeDBApplication {
     }
     String method = "POST";
     String url = "/api/customers/" + defaultCustomer.uuid + "/restore";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   private Result deleteBackup(ObjectNode bodyJson, Users user) {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "DELETE";
     String url = "/api/customers/" + defaultCustomer.uuid + "/backups";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   private Result deleteBackupYb(ObjectNode bodyJson, Users user) {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "POST";
     String url = "/api/customers/" + defaultCustomer.uuid + "/backups/delete";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   private Result createBackupYb(ObjectNode bodyJson, Users user) {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "POST";
     String url = "/api/customers/" + defaultCustomer.uuid + "/backups";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   private Result createBackupSchedule(ObjectNode bodyJson, Users user) {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "POST";
     String url = "/api/customers/" + defaultCustomer.uuid + "/create_backup_schedule";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   private Result stopBackup(Users user, UUID backupUUID) {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "POST";
     String url = "/api/customers/" + defaultCustomer.uuid + "/backups/" + backupUUID + "/stop";
-    return FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
+    return doRequestWithAuthToken(method, url, authToken);
   }
 
   private Result editBackup(Users user, ObjectNode bodyJson, UUID backupUUID) {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "PUT";
     String url = "/api/customers/" + defaultCustomer.uuid + "/backups/" + backupUUID;
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   @Test
@@ -1242,7 +1242,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEditBackupWithNonPositiveDeletionTime() {
+  public void testEditBackupWithNegativeDeletionTime() {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("timeBeforeDeleteFromPresentInMillis", -1L);
 
@@ -1250,18 +1250,26 @@ public class BackupsControllerTest extends FakeDBApplication {
         assertPlatformException(() -> editBackup(defaultUser, bodyJson, defaultBackup.backupUUID));
     assertEquals(BAD_REQUEST, result.status());
     assertBadRequest(
-        result, "Please provide either a positive expiry time or storage config to edit backup");
+        result,
+        "Please provide either a non negative expiry time or storage config to edit backup");
+  }
 
+  @Test
+  public void testEditBackupNeverExpire() {
+    defaultBackup.state = BackupState.Completed;
+    defaultBackup.update();
+    Backup backup = Backup.getOrBadRequest(defaultCustomer.uuid, defaultBackup.backupUUID);
+
+    ObjectNode bodyJson = Json.newObject();
     bodyJson.put("timeBeforeDeleteFromPresentInMillis", 0L);
-    result =
-        assertPlatformException(() -> editBackup(defaultUser, bodyJson, defaultBackup.backupUUID));
-    assertBadRequest(
-        result, "Please provide either a positive expiry time or storage config to edit backup");
+    Result result = editBackup(defaultUser, bodyJson, defaultBackup.backupUUID);
+    backup = Backup.getOrBadRequest(defaultCustomer.uuid, defaultBackup.backupUUID);
+
+    assert (backup.getExpiry() == null);
   }
 
   @Test
   public void testEditBackup() {
-
     defaultBackup.state = BackupState.Completed;
     defaultBackup.update();
     Backup backup = Backup.getOrBadRequest(defaultCustomer.uuid, defaultBackup.backupUUID);
@@ -1321,6 +1329,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     backup.updateStorageConfigUUID(invalidConfigUUID);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("timeBeforeDeleteFromPresentInMillis", "-1");
     Result result = editBackup(defaultUser, bodyJson, backup.backupUUID);
     assertOk(result);
     assertAuditEntry(1, defaultCustomer.uuid);
@@ -1481,11 +1490,12 @@ public class BackupsControllerTest extends FakeDBApplication {
     UUID invalidConfigUUID = UUID.randomUUID();
     backup.updateStorageConfigUUID(invalidConfigUUID);
     ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("timeBeforeDeleteFromPresentInMillis", "0");
+    bodyJson.put("timeBeforeDeleteFromPresentInMillis", "-1");
     Result result =
         assertPlatformException(() -> editBackup(defaultUser, bodyJson, backup.backupUUID));
     assertBadRequest(
-        result, "Please provide either a positive expiry time or storage config to edit backup");
+        result,
+        "Please provide either a non negative expiry time" + " or storage config to edit backup");
     assertAuditEntry(0, defaultCustomer.uuid);
     backup.refresh();
     assertEquals(invalidConfigUUID, backup.storageConfigUUID);
@@ -1501,7 +1511,7 @@ public class BackupsControllerTest extends FakeDBApplication {
             + "/universes/"
             + universeUUID.toString()
             + "/ybc_throttle_params";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   private Result getThrottleParams(UUID universeUUID) {
@@ -1513,7 +1523,7 @@ public class BackupsControllerTest extends FakeDBApplication {
             + "/universes/"
             + universeUUID.toString()
             + "/ybc_throttle_params";
-    return FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
+    return doRequestWithAuthToken(method, url, authToken);
   }
 
   @Test
@@ -1692,7 +1702,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     String authToken = defaultUser.createAuthToken();
     String method = "POST";
     String url = "/api/customers/" + customerUUID + "/restore/page";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, body);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, body);
   }
 
   @Test

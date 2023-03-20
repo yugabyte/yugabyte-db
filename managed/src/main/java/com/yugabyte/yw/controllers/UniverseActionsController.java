@@ -15,6 +15,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UpdateLoadBalancerConfig;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.forms.AlertConfigFormData;
@@ -181,32 +182,6 @@ public class UniverseActionsController extends AuthenticatedController {
     return new YBPTask(taskUUID, universe.universeUUID).asResult();
   }
 
-  @Deprecated
-  @ApiOperation(
-      value = "Toggle a universe's TLS state",
-      notes =
-          "Enable or disable node-to-node and client-to-node encryption. "
-              + "Supports rolling and non-rolling universe upgrades.",
-      nickname = "toggleUniverseTLS",
-      response = UniverseResp.class)
-  public Result toggleTls(UUID customerUuid, UUID universeUuid) {
-    Customer customer = Customer.getOrBadRequest(customerUuid);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUuid, customer);
-    ObjectNode formData = (ObjectNode) request().body().asJson();
-    ToggleTlsParams requestParams = ToggleTlsParams.bindFromFormData(formData);
-    UUID taskUUID = universeActionsHandler.toggleTls(customer, universe, requestParams);
-    auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.Universe,
-            universeUuid.toString(),
-            Audit.ActionType.ToggleTls,
-            Json.toJson(formData),
-            taskUUID);
-    return PlatformResults.withData(
-        UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf()));
-  }
-
   /**
    * Mark whether the universe needs to be backed up or not.
    *
@@ -273,6 +248,21 @@ public class UniverseActionsController extends AuthenticatedController {
             universeUUID.toString(),
             Audit.ActionType.ResetUniverseVersion);
     universe.resetVersion();
+    return empty();
+  }
+
+  @ApiOperation(
+      hidden = true,
+      value = "Unlock a universe",
+      notes = "Unlock a universe",
+      response = YBPSuccess.class)
+  public Result unlockUniverse(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Util.unlockUniverse(universe);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Universe, universeUUID.toString(), Audit.ActionType.Unlock);
     return empty();
   }
 }

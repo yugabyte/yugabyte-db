@@ -19,6 +19,8 @@
 #include "yb/client/tablet_server.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/gutil/casts.h"
 
 #include "yb/rpc/poller.h"

@@ -1,5 +1,5 @@
 ---
-title: Manage users and roles
+title: Manage users and roles - YCQL
 headerTitle: Manage users and roles
 linkTitle: Manage users and roles
 description: Manage users and roles in YCQL

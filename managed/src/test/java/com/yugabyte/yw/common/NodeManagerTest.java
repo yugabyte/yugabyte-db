@@ -103,7 +103,6 @@ import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
 import junitparams.naming.TestCaseName;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Assert;
 import org.junit.Before;
@@ -120,13 +119,9 @@ import org.mockito.junit.MockitoRule;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
-@Slf4j
 public class NodeManagerTest extends FakeDBApplication {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
-
-  @Mock play.Configuration mockAppConfig;
-
   @Mock ShellProcessHandler shellProcessHandler;
 
   @Mock ReleaseManager releaseManager;
@@ -512,7 +507,7 @@ public class NodeManagerTest extends FakeDBApplication {
     when(mockConfGetter.getConfForScope(
             any(Provider.class), eq(ProviderConfKeys.universeBootScript)))
         .thenReturn("");
-    when(mockAppConfig.getString(eq("yb.security.default.access.key")))
+    when(mockConfig.getString(eq("yb.security.default.access.key")))
         .thenReturn(ApiUtils.DEFAULT_ACCESS_KEY_CODE);
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
     when(runtimeConfigFactory.forUniverse(any())).thenReturn(app.config());
@@ -1192,7 +1187,7 @@ public class NodeManagerTest extends FakeDBApplication {
           }
         }
         if (type == NodeManager.NodeCommandType.Provision) {
-          String packagePath = mockAppConfig.getString("yb.thirdparty.packagePath");
+          String packagePath = mockConfig.getString("yb.thirdparty.packagePath");
           if (packagePath != null) {
             expectedCommand.add("--local_package_path");
             expectedCommand.add(packagePath);
@@ -1367,7 +1362,7 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testProvisionNodeCommandWithLocalPackage() {
     String packagePath = "/tmp/third-party";
     new File(packagePath).mkdir();
-    when(mockAppConfig.getString("yb.thirdparty.packagePath")).thenReturn(packagePath);
+    when(mockConfig.getString("yb.thirdparty.packagePath")).thenReturn(packagePath);
     int idx = 0;
     for (TestData t : testData) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
@@ -1624,7 +1619,7 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testCreateNodeCommandWithLocalPackage() {
     String packagePath = "/tmp/third-party";
     new File(packagePath).mkdir();
-    when(mockAppConfig.getString("yb.thirdparty.packagePath")).thenReturn(packagePath);
+    when(mockConfig.getString("yb.thirdparty.packagePath")).thenReturn(packagePath);
     int idx = 0;
     for (TestData t : testData) {
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();

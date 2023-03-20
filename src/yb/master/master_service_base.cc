@@ -19,7 +19,7 @@ namespace master {
 
 // Available overloaded handlers of different types:
 
-enterprise::CatalogManager* MasterServiceBase::handler(CatalogManager*) {
+CatalogManager* MasterServiceBase::handler(CatalogManager*) {
   return server_->catalog_manager_impl();
 }
 

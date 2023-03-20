@@ -11,16 +11,14 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.common.KubernetesUtil;
-import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -145,28 +143,22 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         KubernetesUtil.getConfigPerAZ(activeZones);
     // Only used for new deployments, so maybe empty.
     SubTaskGroup createNamespaces =
-        getTaskExecutor()
-            .createSubTaskGroup(
-                KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE.getSubTaskGroupName(),
-                executor);
+        createSubTaskGroup(
+            KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE.getSubTaskGroupName());
     createNamespaces.setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
     SubTaskGroup applySecrets =
-        getTaskExecutor()
-            .createSubTaskGroup(
-                KubernetesCommandExecutor.CommandType.APPLY_SECRET.getSubTaskGroupName(), executor);
+        createSubTaskGroup(
+            KubernetesCommandExecutor.CommandType.APPLY_SECRET.getSubTaskGroupName());
     applySecrets.setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
     SubTaskGroup helmInstalls =
-        getTaskExecutor()
-            .createSubTaskGroup(
-                KubernetesCommandExecutor.CommandType.HELM_INSTALL.getSubTaskGroupName(), executor);
+        createSubTaskGroup(
+            KubernetesCommandExecutor.CommandType.HELM_INSTALL.getSubTaskGroupName());
     helmInstalls.setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
     SubTaskGroup podsWait =
-        getTaskExecutor()
-            .createSubTaskGroup(
-                KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS.getSubTaskGroupName(), executor);
+        createSubTaskGroup(KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS.getSubTaskGroupName());
     podsWait.setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
     Map<String, Object> universeOverrides =
@@ -321,9 +313,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean isReadOnlyCluster,
       String ybcSoftwareVersion) {
     SubTaskGroup ybcUpload =
-        getTaskExecutor()
-            .createSubTaskGroup(
-                KubernetesCommandExecutor.CommandType.COPY_PACKAGE.getSubTaskGroupName(), executor);
+        createSubTaskGroup(
+            KubernetesCommandExecutor.CommandType.COPY_PACKAGE.getSubTaskGroupName());
     createKubernetesYbcExecutorTask(
         ybcUpload,
         universeName,
@@ -337,9 +328,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   public void performYbcAction(
       Set<NodeDetails> servers, boolean isReadOnlyCluster, String command) {
     SubTaskGroup ybcAction =
-        getTaskExecutor()
-            .createSubTaskGroup(
-                KubernetesCommandExecutor.CommandType.YBC_ACTION.getSubTaskGroupName(), executor);
+        createSubTaskGroup(KubernetesCommandExecutor.CommandType.YBC_ACTION.getSubTaskGroupName());
     createKubernetesYbcExecutorTask(
         ybcAction,
         KubernetesCommandExecutor.CommandType.YBC_ACTION,
@@ -630,29 +619,21 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
     // If no config in new placement, delete deployment.
     SubTaskGroup helmDeletes =
-        getTaskExecutor()
-            .createSubTaskGroup(
-                KubernetesCommandExecutor.CommandType.HELM_DELETE.getSubTaskGroupName(), executor);
+        createSubTaskGroup(KubernetesCommandExecutor.CommandType.HELM_DELETE.getSubTaskGroupName());
     helmDeletes.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
     SubTaskGroup volumeDeletes =
-        getTaskExecutor()
-            .createSubTaskGroup(
-                KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName(),
-                executor);
+        createSubTaskGroup(
+            KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName());
     volumeDeletes.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
     SubTaskGroup namespaceDeletes =
-        getTaskExecutor()
-            .createSubTaskGroup(
-                KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName(),
-                executor);
+        createSubTaskGroup(
+            KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName());
     namespaceDeletes.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
     SubTaskGroup podsWait =
-        getTaskExecutor()
-            .createSubTaskGroup(
-                KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS.getSubTaskGroupName(), executor);
+        createSubTaskGroup(KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS.getSubTaskGroupName());
     podsWait.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
     Map<String, Object> universeOverrides =
@@ -1171,9 +1152,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean ignoreErrors,
       boolean enableYbc,
       String ybcSoftwareVersion) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor()
-            .createSubTaskGroup(commandType.getSubTaskGroupName(), executor, ignoreErrors);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(commandType.getSubTaskGroupName(), ignoreErrors);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
@@ -1244,8 +1223,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       String az,
       Map<String, String> config,
       boolean isReadOnlyCluster) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup(commandType.getSubTaskGroupName(), executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(commandType.getSubTaskGroupName());
     KubernetesWaitForPod.Params params = new KubernetesWaitForPod.Params();
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {

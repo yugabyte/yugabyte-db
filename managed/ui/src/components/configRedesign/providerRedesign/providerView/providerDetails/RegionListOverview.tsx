@@ -9,7 +9,7 @@ import pluralize from 'pluralize';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 
 import { ZoneList } from './ZoneList';
-import { ProviderCode } from '../../constants';
+import { ArchitectureType, ProviderCode } from '../../constants';
 
 import { YBAvailabilityZone, YBProvider, YBRegion } from '../../types';
 
@@ -26,6 +26,7 @@ interface RegionItem {
   securityGroupId?: string;
   vnetName?: string;
   ybImage?: string;
+  arch?: ArchitectureType;
 }
 
 const RegionItemField = {
@@ -33,7 +34,8 @@ const RegionItemField = {
   ZONES: 'zones',
   SECURITY_GROUP_ID: 'securityGroupId',
   VIRTUAL_NETWORK_NAME: 'vnetName',
-  YB_IMAGE: 'ybImage'
+  YB_IMAGE: 'ybImage',
+  ARCH_TYPE: 'arch'
 } as const;
 
 export const RegionListOverview = ({ providerConfig }: RegionListOverviewProps) => {
@@ -52,6 +54,16 @@ export const RegionListOverview = ({ providerConfig }: RegionListOverviewProps) 
         <TableHeaderColumn dataField={RegionItemField.NAME} isKey={true} dataSort={true}>
           Region
         </TableHeaderColumn>
+        {fields.includes(RegionItemField.ARCH_TYPE) && (
+          <TableHeaderColumn dataField={RegionItemField.ARCH_TYPE}>
+            Architecture Type
+          </TableHeaderColumn>
+        )}
+        {fields.includes(RegionItemField.YB_IMAGE) && (
+          <TableHeaderColumn dataField={RegionItemField.YB_IMAGE}>
+            {providerConfig.code === ProviderCode.AWS ? 'AMI' : 'Image'}
+          </TableHeaderColumn>
+        )}
         {fields.includes(RegionItemField.SECURITY_GROUP_ID) && (
           <TableHeaderColumn dataField={RegionItemField.SECURITY_GROUP_ID}>
             Security Group ID
@@ -83,13 +95,17 @@ const adaptToListItems = (
           RegionItemField.NAME,
           RegionItemField.ZONES,
           RegionItemField.SECURITY_GROUP_ID,
-          RegionItemField.VIRTUAL_NETWORK_NAME
+          RegionItemField.VIRTUAL_NETWORK_NAME,
+          RegionItemField.ARCH_TYPE,
+          RegionItemField.YB_IMAGE
         ] as const,
         regionListItems: providerConfig.regions.map((region) => ({
           [RegionItemField.NAME]: region.name,
           [RegionItemField.ZONES]: region.zones,
           [RegionItemField.SECURITY_GROUP_ID]: region.details.cloudInfo.aws.securityGroupId,
-          [RegionItemField.VIRTUAL_NETWORK_NAME]: region.details.cloudInfo.aws.vnet
+          [RegionItemField.VIRTUAL_NETWORK_NAME]: region.details.cloudInfo.aws.vnet,
+          [RegionItemField.ARCH_TYPE]: region.details.cloudInfo.aws.arch,
+          [RegionItemField.YB_IMAGE]: region.details.cloudInfo.aws.ybImage
         }))
       };
     case ProviderCode.AZU:

@@ -22,6 +22,7 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATIO
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -93,7 +94,7 @@ public class TableManager extends DevopsBase {
 
     boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
 
-    if (region.provider.code.equals("kubernetes")) {
+    if (region.getProviderCloudCode().equals(CloudType.kubernetes)) {
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         PlacementInfo pi = cluster.placementInfo;
         podAddrToConfig.putAll(
@@ -310,7 +311,7 @@ public class TableManager extends DevopsBase {
           bulkImportParams.instanceCount = userIntent.numNodes * EMR_MULTIPLE;
         }
         // TODO(bogdan): does this work?
-        if (!region.provider.code.equals("kubernetes")) {
+        if (!region.getProviderCloudCode().equals(CloudType.kubernetes)) {
           commandArgs.add("--key_path");
           commandArgs.add(accessKey.getKeyInfo().privateKey);
         }
@@ -352,7 +353,7 @@ public class TableManager extends DevopsBase {
   }
 
   private String getCertsDir(Region region, Provider provider) {
-    return region.provider.code.equals("kubernetes")
+    return region.getProviderCloudCode().equals(CloudType.kubernetes)
         ? K8S_CERT_PATH
         : provider.getYbHome() + VM_CERT_DIR;
   }
@@ -404,7 +405,7 @@ public class TableManager extends DevopsBase {
       boolean nodeToNodeTlsEnabled,
       Map<String, String> ipToSshKeyPath,
       List<String> commandArgs) {
-    if (region.provider.code.equals("kubernetes")) {
+    if (region.getProviderCloudCode().equals(CloudType.kubernetes)) {
       commandArgs.add("--k8s_config");
       commandArgs.add(Json.stringify(Json.toJson(podAddrToConfig)));
     } else {

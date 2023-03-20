@@ -178,7 +178,7 @@ export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalPr
                       input={{
                         onChange: (val: number) => setFieldValue('retention_interval', val),
                         value: values['retention_interval'],
-                        id:"PitrRetentionPeriodInput"
+                        id: 'PitrRetentionPeriodInput'
                       }}
                       minVal={2}
                     />

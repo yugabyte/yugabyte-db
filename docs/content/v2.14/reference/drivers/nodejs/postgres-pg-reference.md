@@ -15,7 +15,7 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/reference/drivers/nodejs/postgres-pg-reference/" class="nav-link active">
+    <a href="../postgres-pg-reference/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL node-postgres Driver
     </a>

@@ -115,6 +115,10 @@ class TransactionParticipant : public TransactionStatusManager {
       const scoped_refptr<MetricEntity>& entity, const std::shared_ptr<MemTracker>& parent);
   virtual ~TransactionParticipant();
 
+  void SetWaitQueue(std::unique_ptr<docdb::WaitQueue> wait_queue);
+
+  docdb::WaitQueue* wait_queue() const;
+
   // Notify participant that this context is ready and it could start performing its requests.
   void Start();
 

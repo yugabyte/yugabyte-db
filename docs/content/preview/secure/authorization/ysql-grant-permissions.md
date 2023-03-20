@@ -88,7 +88,7 @@ dev_database=# GRANT engineering TO developer;
 
 ## 2. List privileges for roles
 
-You can list all privileges granted to the various roles with the [\du meta-command](../../../admin/ysqlsh/#du-s-pattern-patterns):
+You can list all privileges granted to the various roles with the [\du meta-command](../../../admin/ysqlsh-meta-commands/#du-s-pattern-patterns):
 
 ```sql
 dev_database=# \du
@@ -125,7 +125,7 @@ dev_database=# GRANT SELECT ON integration_tests to engineering;
 dev_database=# GRANT USAGE ON SCHEMA public TO engineering;
 ```
 
-Verify that the `engineering` role has `SELECT` privilege on the table using the [\z meta-command](../../../admin/ysqlsh/#z-pattern-patterns), which lists tables with their associated access privileges:
+Verify that the `engineering` role has `SELECT` privilege on the table using the [\z meta-command](../../../admin/ysqlsh-meta-commands/#z-pattern-patterns), which lists tables with their associated access privileges:
 
 ```sql
 dev_database=# \z

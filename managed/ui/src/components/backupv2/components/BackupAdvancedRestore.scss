@@ -17,6 +17,16 @@
 .advanced-restore-form {
   font-size: 13px;
 
+  .yb-field-group {
+    padding-bottom: 0;
+  }
+
+  .kms-helper-text {
+    font-weight: 400;
+    font-size: 11.2px;
+    color: #67666c;
+  }
+
   .help-text {
     line-height: 21px;
   }

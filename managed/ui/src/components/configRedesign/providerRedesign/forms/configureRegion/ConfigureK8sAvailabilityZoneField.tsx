@@ -106,7 +106,7 @@ export const ConfigureK8sAvailabilityZoneField = ({
               />
             </div>
             <div className={classes.formField}>
-              <div>{K8sRegionFieldLabel.KUBE_DOMAIN}</div>
+              <div>{K8sRegionFieldLabel.STORAGE_CLASSES}</div>
               <YBInputField
                 control={control}
                 name={`zones.${index}.kubernetesStorageClasses`}

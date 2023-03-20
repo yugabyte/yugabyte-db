@@ -66,7 +66,7 @@
   - name: Provision | Create core dump kernel pattern
     sysctl:
       name: kernel.core_pattern
-      value: "{{ yb_home_dir }}/cores/core_%e.%p"
+      value: "{{ yb_home_dir }}/cores/core_%p_%t_%E"
       state: present
     tags: yb-prebuilt-ami
 

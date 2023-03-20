@@ -17,7 +17,7 @@ Before you can add Dedicated clusters, you need to create a billing profile and 
 
 {{< note title="Note" >}}
 
-You must be signed in as an Admin user to perform Admin tasks. Developer users cannot invite other users or view the billing profile.
+You must be signed in as an Admin user to perform Admin tasks. Developer users cannot invite other users, manage API keys, or view the billing profile.
 
 {{< /note >}}
 

@@ -278,8 +278,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
-    TaskExecutor.SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
       ServerType processType = getSingle(processTypes);
       Map<String, String> newGFlags =

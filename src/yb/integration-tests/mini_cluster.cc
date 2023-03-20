@@ -1380,4 +1380,15 @@ void ActivateCompactionTimeLogging(MiniCluster* cluster) {
   }
 }
 
+void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter) {
+  auto peers = ListTabletPeers(cluster, filter);
+  for (const auto& peer : peers) {
+    auto tablet = peer->shared_tablet();
+    if (!tablet) {
+      continue;
+    }
+    tablet->TEST_DocDBDumpToLog(tablet::IncludeIntents::kTrue);
+  }
+}
+
 }  // namespace yb

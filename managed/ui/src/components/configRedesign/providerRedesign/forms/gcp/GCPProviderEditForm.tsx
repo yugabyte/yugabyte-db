@@ -2,18 +2,12 @@ import React, { useState } from 'react';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { Box, Typography } from '@material-ui/core';
 
-import {
-  OptionProps,
-  RadioGroupOrientation,
-  YBInputField,
-  YBRadioGroupField,
-  YBToggleField
-} from '../../../../../redesign/components';
+import { YBInputField, YBToggleField } from '../../../../../redesign/components';
 import { YBButton } from '../../../../common/forms/fields';
 import { CloudVendorRegionField } from '../configureRegion/ConfigureRegionModal';
 import { NTPConfigField } from '../../components/NTPConfigField';
 import { RegionList } from '../../components/RegionList';
-import { NTPSetupType, ProviderCode, VPCSetupType, VPCSetupTypeLabel } from '../../constants';
+import { NTPSetupType, ProviderCode, VPCSetupType } from '../../constants';
 import { FieldGroup } from '../components/FieldGroup';
 import { FormContainer } from '../components/FormContainer';
 import { FormField } from '../components/FormField';
@@ -29,7 +23,7 @@ interface GCPProviderEditFormProps {
 
 interface GCPProviderEditFormFieldValues {
   dbNodePublicInternetAccess: boolean;
-  customGceNetwork: string;
+  destVpcId: string;
   gceProject: string;
   googleServiceAccount: File;
   ntpServers: string[];
@@ -58,22 +52,6 @@ const KeyPairManagement = {
 } as const;
 type KeyPairManagement = typeof KeyPairManagement[keyof typeof KeyPairManagement];
 
-const VPC_SETUP_OPTIONS: OptionProps[] = [
-  {
-    value: VPCSetupType.EXISTING,
-    label: VPCSetupTypeLabel[VPCSetupType.EXISTING]
-  },
-  {
-    value: VPCSetupType.HOST_INSTANCE,
-    label: VPCSetupTypeLabel[VPCSetupType.HOST_INSTANCE]
-  },
-  {
-    value: VPCSetupType.NEW,
-    label: VPCSetupTypeLabel[VPCSetupType.NEW],
-    disabled: true
-  }
-];
-
 export const GCPProviderEditForm = ({ providerConfig }: GCPProviderEditFormProps) => {
   const [, setIsRegionFormModalOpen] = useState<boolean>(false);
   const [, setIsDeleteRegionModalOpen] = useState<boolean>(false);
@@ -90,10 +68,7 @@ export const GCPProviderEditForm = ({ providerConfig }: GCPProviderEditFormProps
       sshUser: providerConfig.details.sshUser,
       sshPort: providerConfig.details.sshPort,
       ntpServers: providerConfig.details.ntpServers,
-      vpcSetupType: providerConfig.details.cloudInfo.gcp.useHostVPC
-        ? VPCSetupType.HOST_INSTANCE
-        : VPCSetupType.EXISTING,
-      customGceNetwork: providerConfig.details.cloudInfo.gcp.customGceNetwork,
+      destVpcId: providerConfig.details.cloudInfo.gcp.destVpcId,
       gceProject: providerConfig.details.cloudInfo.gcp.gceProject,
       providerCredentialType: providerConfig.details.cloudInfo.gcp.useHostCredentials
         ? ProviderCredentialType.INSTANCE_SERVICE_ACCOUNT
@@ -121,8 +96,7 @@ export const GCPProviderEditForm = ({ providerConfig }: GCPProviderEditFormProps
   };
 
   const regions = formMethods.watch('regions');
-
-  const vpcSetupType = formMethods.watch('vpcSetupType', defaultValues.vpcSetupType);
+  const destVpcId = formMethods.watch('destVpcId');
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -149,26 +123,17 @@ export const GCPProviderEditForm = ({ providerConfig }: GCPProviderEditFormProps
                   fullWidth
                 />
               </FormField>
-              <FormField>
-                <FieldLabel>VPC Setup</FieldLabel>
-                <YBRadioGroupField
-                  name="vpcSetupType"
-                  control={formMethods.control}
-                  options={VPC_SETUP_OPTIONS}
-                  orientation={RadioGroupOrientation.HORIZONTAL}
-                />
-              </FormField>
-              {(vpcSetupType === VPCSetupType.EXISTING || vpcSetupType === VPCSetupType.NEW) && (
+              {destVpcId ? (
                 <FormField>
-                  <FieldLabel>Custom GCE Network Name</FieldLabel>
+                  <FieldLabel>GCE Network Name</FieldLabel>
                   <YBInputField
                     control={formMethods.control}
-                    name="customGceNetwork"
+                    name="destVpcId"
                     fullWidth
                     disabled={true}
                   />
                 </FormField>
-              )}
+              ) : null}
             </FieldGroup>
             <FieldGroup
               heading="Regions"

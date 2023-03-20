@@ -113,8 +113,8 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
   if (doc_iter->valid()) {
     key_data = VERIFY_RESULT(doc_iter->FetchKey());
     VLOG_WITH_FUNC(4)
-        << "Found: " << SubDocKey::DebugSliceToString(key_data.key) << ", good: "
-        << key_prefix_.IsPrefixOf(key_data.key);
+            << "Found: " << SubDocKey::DebugSliceToString(key_data.key) << ", good: "
+            << key_prefix_.IsPrefixOf(key_data.key);
   }
 
   bool use_packed_row = false;

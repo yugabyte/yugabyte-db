@@ -20,7 +20,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
-import static play.test.Helpers.route;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -29,16 +28,12 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -91,8 +86,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
     u.getUniverseDetails().upsertPrimaryCluster(ui, null);
 
     // Read the value back.
-    Result result =
-        route(app, fakeRequest("GET", "/metamaster/universe/" + u.universeUUID.toString()));
+    Result result = route(fakeRequest("GET", "/metamaster/universe/" + u.universeUUID.toString()));
     assertRestResult(result, true, OK);
     // Verify that the correct data is present.
     JsonNode jsonNode = Json.parse(contentAsString(result));
@@ -167,7 +161,6 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
           Result r =
               route(
-                  app,
                   fakeRequest(
                       "GET",
                       "/api/customers/"
@@ -193,7 +186,6 @@ public class MetaMasterControllerTest extends FakeDBApplication {
           String expectedHostString = "12.13.14.15:" + value;
           Result r =
               route(
-                  app,
                   fakeRequest(
                       "GET",
                       "/api/customers/"
@@ -220,7 +212,6 @@ public class MetaMasterControllerTest extends FakeDBApplication {
           String completeString = String.format("%s,%s", expectedHostString, expectedHostString);
           Result r =
               route(
-                  app,
                   fakeRequest(
                       "GET",
                       "/api/customers/"
@@ -246,7 +237,6 @@ public class MetaMasterControllerTest extends FakeDBApplication {
           String expectedHostString = "56.78.90.1:" + value;
           Result r =
               route(
-                  app,
                   fakeRequest(
                       "GET",
                       "/api/customers/"
@@ -272,7 +262,6 @@ public class MetaMasterControllerTest extends FakeDBApplication {
           String expectedHostString = "loadbalancer.hostname:" + value;
           Result r =
               route(
-                  app,
                   fakeRequest(
                       "GET",
                       "/api/customers/"
@@ -298,7 +287,6 @@ public class MetaMasterControllerTest extends FakeDBApplication {
           String expectedHostString = "loadbalancer.hostname:" + value;
           Result r =
               route(
-                  app,
                   fakeRequest(
                       "GET",
                       "/api/customers/"
@@ -330,7 +318,6 @@ public class MetaMasterControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 route(
-                    app,
                     fakeRequest(
                         "GET",
                         "/api/customers/"
@@ -348,7 +335,6 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
     Result r =
         route(
-            app,
             fakeRequest(
                 "GET",
                 "/api/customers/"
@@ -366,7 +352,6 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
     Result r =
         route(
-            app,
             fakeRequest(
                 "GET",
                 "/api/customers/"
@@ -385,7 +370,6 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
     Result r =
         route(
-            app,
             fakeRequest(
                 "GET",
                 "/api/customers/"

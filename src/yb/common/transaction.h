@@ -117,18 +117,27 @@ struct TransactionStatusResult {
   // Set of thus-far aborted subtransactions in this transaction.
   SubtxnSet aborted_subtxn_set;
 
+  // Populating status_tablet field is optional, except when we report transaction promotion.
+  TabletId status_tablet;
+
+  TransactionStatusResult() {}
+
   TransactionStatusResult(TransactionStatus status_, HybridTime status_time_);
 
   TransactionStatusResult(
       TransactionStatus status_, HybridTime status_time_,
       SubtxnSet aborted_subtxn_set_);
 
+  TransactionStatusResult(
+      TransactionStatus status_, HybridTime status_time_, SubtxnSet aborted_subtxn_set_,
+      TabletId status_tablet);
+
   static TransactionStatusResult Aborted() {
     return TransactionStatusResult(TransactionStatus::ABORTED, HybridTime());
   }
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(status, status_time, aborted_subtxn_set);
+    return YB_STRUCT_TO_STRING(status, status_time, aborted_subtxn_set, status_tablet);
   }
 };
 

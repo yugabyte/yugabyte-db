@@ -53,7 +53,7 @@ func (u userCheck) Execute() Result {
 			"update the config back to the default user.", uname)
 		res.Status = StatusCritical
 	}
-	prompt := fmt.Sprintf("Can yba-ctl create the '%s' user on this machine:", uname)
+	prompt := fmt.Sprintf("Create the '%s' user to run YugabyteDB Anywhere services:", uname)
 	if !common.UserConfirm(prompt, common.DefaultNone) {
 		log.Fatal("please provide user '" + uname + "' and try the install again")
 	}

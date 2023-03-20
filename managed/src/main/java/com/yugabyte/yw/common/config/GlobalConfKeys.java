@@ -421,7 +421,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable detailed security logs",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static ConfKeyInfo<Boolean> supressError =
+  public static ConfKeyInfo<Boolean> fsStatelessSuppressError =
       new ConfKeyInfo<>(
           "yb.fs_stateless.suppress_error",
           ScopeType.GLOBAL,
@@ -429,15 +429,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "If set, suppresses exceptions to be thrown as part of FS <-> DB sync on YBA startup",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
-  public static ConfKeyInfo<Long> maxFileSizeBytes =
+  public static ConfKeyInfo<Long> fsStatelessMaxFileSizeBytes =
       new ConfKeyInfo<>(
           "yb.fs_stateless.max_file_size_bytes",
           ScopeType.GLOBAL,
           "Max File Size",
           "Maximum size of file that can be persisted in DB",
-          ConfDataType.BytesType,
+          ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.BETA));
-  public static ConfKeyInfo<Integer> maxFilesCountPersist =
+  public static ConfKeyInfo<Integer> fsStatelessMaxFilesCountPersist =
       new ConfKeyInfo<>(
           "yb.fs_stateless.max_files_count_persist",
           ScopeType.GLOBAL,
@@ -445,7 +445,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Maximum number of files that can be persisted in DB",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.BETA));
-  public static ConfKeyInfo<Boolean> syncDBStateToFS =
+  public static ConfKeyInfo<Boolean> disableSyncDbToFsStartup =
       new ConfKeyInfo<>(
           "yb.fs_stateless.disable_sync_db_to_fs_startup",
           ScopeType.GLOBAL,
@@ -534,6 +534,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable when a client to the YBAnywhere API wants to continue using the older date "
               + " fields in non-ISO format. Default behaviour is to not populate such deprecated "
               + "API fields and only return newer date fields.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> attachDetachEnabled =
+      new ConfKeyInfo<>(
+          "yb.attach_detach.enabled",
+          ScopeType.GLOBAL,
+          "Allow universes to be detached/attached",
+          "Allow universes to be detached from a source platform and attached to dest platform",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

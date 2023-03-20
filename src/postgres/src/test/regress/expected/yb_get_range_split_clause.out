@@ -21,9 +21,11 @@ SELECT yb_get_range_split_clause('pg_class'::regclass);
 
 (1 row)
 
+-- Control the message level sent to the client to make this test suite more robust for oid changes.
+-- Don't output NOTICE: relation with oid <oid> is not backed by YB for some cases.
+SET client_min_messages = 'WARNING';
 -- Test system view, view, YB materialized view
 SELECT yb_get_range_split_clause('pg_roles'::regclass);
-NOTICE:  relation with oid 12048 is not backed by YB
  yb_get_range_split_clause
 ---------------------------
  (null)
@@ -32,7 +34,6 @@ NOTICE:  relation with oid 12048 is not backed by YB
 CREATE TABLE view_test (a INT);
 CREATE VIEW my_view AS SELECT * FROM view_test;
 SELECT yb_get_range_split_clause('my_view'::regclass);
-NOTICE:  relation with oid 16502 is not backed by YB
  yb_get_range_split_clause
 ---------------------------
  (null)
@@ -41,7 +42,6 @@ NOTICE:  relation with oid 16502 is not backed by YB
 DROP VIEW my_view;
 CREATE MATERIALIZED VIEW my_materialized_view AS SELECT * FROM view_test;
 SELECT yb_get_range_split_clause('my_materialized_view'::regclass);
-NOTICE:  relation with oid 16506 is not range-partitioned
  yb_get_range_split_clause
 ---------------------------
  (null)
@@ -49,14 +49,16 @@ NOTICE:  relation with oid 16506 is not range-partitioned
 
 DROP MATERIALIZED VIEW my_materialized_view;
 DROP TABLE view_test;
+RESET client_min_messages;
+SET yb_enable_create_with_table_oid = true;
 -- Test temp table
 CREATE TEMP TABLE temp_tbl (
   a INT,
   PRIMARY KEY(a ASC)
-) SPLIT AT VALUES((-100), (250));
+) WITH (table_oid = 20000) SPLIT AT VALUES((-100), (250));
 WARNING:  Split options on TEMP table will be ignored
 SELECT yb_get_range_split_clause('temp_tbl'::regclass);
-NOTICE:  relation with oid 16510 is not backed by YB
+NOTICE:  relation with oid 20000 is not backed by YB
  yb_get_range_split_clause
 ---------------------------
  (null)
@@ -67,19 +69,19 @@ DROP TABLE temp_tbl;
 CREATE TABLE no_pk_tbl (
   a INT,
   b TEXT
-);
+) WITH (table_oid = 20003);
 SELECT yb_get_range_split_clause('no_pk_tbl'::regclass);
-NOTICE:  relation with oid 16515 is not range-partitioned
- yb_get_range_split_clause 
+NOTICE:  relation with oid 20003 is not range-partitioned
+ yb_get_range_split_clause
 ---------------------------
  (null)
 (1 row)
 
 DROP TABLE no_pk_tbl;
 -- Test hash-partitioned table.
-CREATE TABLE hash_partitioned_tbl (k INT PRIMARY KEY) SPLIT INTO 5 TABLETS;
+CREATE TABLE hash_partitioned_tbl (k INT PRIMARY KEY) WITH (table_oid = 20006) SPLIT INTO 5 TABLETS;
 SELECT yb_get_range_split_clause('hash_partitioned_tbl'::regclass);
-NOTICE:  relation with oid 16518 is not range-partitioned
+NOTICE:  relation with oid 20006 is not range-partitioned
  yb_get_range_split_clause
 ---------------------------
  (null)

@@ -4,19 +4,22 @@ import { useTranslation } from 'react-i18next';
 import { useWatch, useFormContext } from 'react-hook-form';
 import { Box, Typography } from '@material-ui/core';
 import { UserTagsField } from '../../fields';
-import { CloudType, ClusterType, UniverseFormData } from '../../../utils/dto';
+import { UniverseFormContext } from '../../../UniverseFormContainer';
+import { useVolumeControls } from '../../fields/VolumeInfoField/VolumeInfoFieldHelper';
+import { CloudType, ClusterModes, ClusterType, UniverseFormData } from '../../../utils/dto';
 import { PROVIDER_FIELD, USER_TAGS_FIELD } from '../../../utils/constants';
 import { useSectionStyles } from '../../../universeMainStyle';
-import { UniverseFormContext } from '../../../UniverseFormContainer';
 
 export const UserTags: FC = () => {
   const classes = useSectionStyles();
   const { t } = useTranslation();
 
   //form context
-  const { clusterType } = useContext(UniverseFormContext)[0];
+  const { clusterType, mode } = useContext(UniverseFormContext)[0];
   const isAsyncCluster = clusterType === ClusterType.ASYNC;
+  const isEditMode = mode === ClusterModes.EDIT;
 
+  const { userTagsDisable } = useVolumeControls(isEditMode);
   //form Data
   const { getValues } = useFormContext<Partial<UniverseFormData>>();
   const userTagsValue = getValues(USER_TAGS_FIELD);
@@ -36,7 +39,10 @@ export const UserTags: FC = () => {
       >
         <Typography variant="h4">{t('universeForm.userTags.title')}</Typography>
         <Box display="flex" width="100%" mt={4}>
-          <UserTagsField disabled={isAsyncCluster} isAsyncCluster={isAsyncCluster} />
+          <UserTagsField
+            disabled={isAsyncCluster || userTagsDisable}
+            isAsyncCluster={isAsyncCluster}
+          />
         </Box>
       </Box>
     );

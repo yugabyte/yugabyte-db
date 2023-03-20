@@ -89,6 +89,8 @@ class ConflictResolverContext {
 
   virtual HybridTime GetResolutionHt() = 0;
 
+  virtual void MakeResolutionAtLeast(const HybridTime& resolution_ht) = 0;
+
   virtual bool IgnoreConflictsWith(const TransactionId& other) = 0;
 
   virtual TransactionId transaction_id() const = 0;
@@ -585,7 +587,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     DCHECK(!status_tablet_id_.empty());
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
         context_->transaction_id(), lock_batch_, status_tablet_id_, serial_no_,
-        std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1));
+        std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
     if (!did_wait_or_status.ok()) {
       InvokeCallback(did_wait_or_status.status());
     } else if (!*did_wait_or_status) {
@@ -597,25 +599,28 @@ class WaitOnConflictResolver : public ConflictResolver {
 
   Status OnConflictingTransactionsFound() override {
     DCHECK_GT(conflict_data_->NumActiveTransactions(), 0);
-    wait_for_iters_++;
     VTRACE(3, "Waiting on $0 transactions after $1 tries.",
            conflict_data_->NumActiveTransactions(), wait_for_iters_);
 
     return wait_queue_->WaitOn(
         context_->transaction_id(), lock_batch_, ConsumeTransactionDataAndReset(),
         status_tablet_id_, serial_no_,
-        std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1));
+        std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
   }
 
   // Note: we must pass in shared_this to keep the WaitOnConflictResolver alive until the wait queue
   // invokes this call.
-  void WaitingDone(const Status& status) {
+  void WaitingDone(const Status& status, HybridTime resume_ht) {
     VLOG_WITH_FUNC(4) << context_->transaction_id() << " status: " << status;
+    wait_for_iters_++;
 
     if (!status.ok()) {
       InvokeCallback(status);
       return;
     }
+
+    DCHECK(!resume_ht.is_special());
+    context_->MakeResolutionAtLeast(resume_ht);
 
     // If status from wait_queue is OK, then all blockers read earlier are now resolved. Retry
     // conflict resolution with all state reset.
@@ -818,7 +823,7 @@ class ConflictResolverContextBase : public ConflictResolverContext {
     return resolution_ht_;
   }
 
-  void MakeResolutionAtLeast(const HybridTime& resolution_ht) {
+  void MakeResolutionAtLeast(const HybridTime& resolution_ht) override {
     resolution_ht_.MakeAtLeast(resolution_ht);
   }
 
@@ -1186,7 +1191,7 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
 Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    const ConflictManagementPolicy conflict_management_policy,
                                    const LWKeyValueWriteBatchPB& write_batch,
-                                   HybridTime hybrid_time,
+                                   HybridTime resolution_ht,
                                    HybridTime read_time,
                                    const DocDB& doc_db,
                                    PartialRangeKeyIntents partial_range_key_intents,
@@ -1195,17 +1200,17 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    LockBatch* lock_batch,
                                    WaitQueue* wait_queue,
                                    ResolutionCallback callback) {
-  DCHECK(hybrid_time.is_valid());
+  DCHECK(resolution_ht.is_valid());
   TRACE_FUNC();
 
   VLOG_WITH_FUNC(3) << "conflict_management_policy=" << conflict_management_policy;
   auto context = std::make_unique<TransactionConflictResolverContext>(
-      doc_ops, write_batch, hybrid_time, read_time, conflicts_metric,
+      doc_ops, write_batch, resolution_ht, read_time, conflicts_metric,
       conflict_management_policy);
   if (conflict_management_policy == WAIT_ON_CONFLICT) {
-    if (!wait_queue) {
-      return STATUS_FORMAT(NotSupported, "Wait queues are not enabled");
-    }
+    RSTATUS_DCHECK(
+        wait_queue, InternalError,
+        "Cannot use Wait-on-Conflict behavior - wait queue is not initialized");
     DCHECK(lock_batch);
     auto resolver = std::make_shared<WaitOnConflictResolver>(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback),
@@ -1224,7 +1229,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
 
 Status ResolveOperationConflicts(const DocOperations& doc_ops,
                                  const ConflictManagementPolicy conflict_management_policy,
-                                 HybridTime resolution_ht,
+                                 HybridTime intial_resolution_ht,
                                  const DocDB& doc_db,
                                  PartialRangeKeyIntents partial_range_key_intents,
                                  TransactionStatusManager* status_manager,
@@ -1236,12 +1241,12 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
   VLOG_WITH_FUNC(3) << "conflict_management_policy=" << conflict_management_policy;
 
   auto context = std::make_unique<OperationConflictResolverContext>(
-      &doc_ops, resolution_ht, conflicts_metric, conflict_management_policy);
+      &doc_ops, intial_resolution_ht, conflicts_metric, conflict_management_policy);
 
   if (conflict_management_policy == WAIT_ON_CONFLICT) {
-    if (!wait_queue) {
-      return STATUS_FORMAT(NotSupported, "Wait queues are not enabled");
-    }
+    RSTATUS_DCHECK(
+        wait_queue, InternalError,
+        "Cannot use Wait-on-Conflict behavior - wait queue is not initialized");
     auto resolver = std::make_shared<WaitOnConflictResolver>(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback),
         wait_queue, lock_batch);

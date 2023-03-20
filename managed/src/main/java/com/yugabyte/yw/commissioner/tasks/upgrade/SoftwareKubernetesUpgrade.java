@@ -5,7 +5,9 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import javax.inject.Inject;
 
 public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
@@ -31,6 +33,9 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
         () -> {
           // Verify the request params and fail if invalid
           taskParams().verifyParams(getUniverse());
+          // Preliminary checks for upgrades.
+          createCheckUpgradeTask(taskParams().ybSoftwareVersion)
+              .setSubTaskGroupType(getTaskSubGroupType());
           // Create Kubernetes Upgrade Task
           createUpgradeTask(
               getUniverse(),
@@ -43,6 +48,11 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             // Run YSQL upgrade on the universe
             createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
                 .setSubTaskGroupType(getTaskSubGroupType());
+          }
+          // Promote Auto flags on compatible versions.
+          if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.promoteAutoFlag)
+              && CommonUtils.isAutoFlagSupported(taskParams().ybSoftwareVersion)) {
+            createPromoteAutoFlagTask().setSubTaskGroupType(getTaskSubGroupType());
           }
           // Mark the final software version on the universe
           createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)

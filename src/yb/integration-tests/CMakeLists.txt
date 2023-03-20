@@ -34,8 +34,8 @@ set(YB_PCH_PREFIX integration-tests)
 set(YB_PCH_DEP_LIBS boost_regex opid_proto)
 
 file(COPY
-  ${CMAKE_SOURCE_DIR}/ent/test_certs DESTINATION
-  ${CMAKE_BINARY_DIR}/ent
+  ${CMAKE_SOURCE_DIR}/test_certs DESTINATION
+  ${CMAKE_BINARY_DIR}
   FILE_PERMISSIONS OWNER_WRITE OWNER_READ)
 
 ADD_YB_TEST_LIBRARY(
@@ -83,8 +83,7 @@ target_link_libraries(integration-tests
   yb_pgwrapper
   master_proto
   cdc_test_util
-  test_echo_service_proto
-  ${INTEGRATION_TESTS_LIB_EXTENSIONS})
+  test_echo_service_proto)
 
 add_dependencies(integration-tests
   "${YB_MASTER_DYNAMIC_EXE_NAME}"
@@ -104,15 +103,16 @@ target_link_libraries(tablet-split-itest-base integration-tests ql-dml-test-base
 
 # Tests
 set(YB_TEST_LINK_LIBS
+    cql_test_util
     integration-tests
-    yb_client
-    yb_tools_util
+    master_test_common
     ql-dml-test-base
     rpc_test_util
-    master_test_common
-    yb_common_test_util
     tablet-split-itest-base
-    cql_test_util
+    yb_client
+    yb_common_test_util
+    yb_docdb_test_common
+    yb_tools_util
     ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(alter_table-test)
@@ -135,6 +135,7 @@ ADD_YB_TEST(stateful_services/stateful_service-itest)
 # ADD_YB_TEST(non_gtest_failures-test.sh)
 
 # Not sure if we really need RUN_SERIAL here as this might not be a resource-intensive test.
+ADD_YB_TEST(are_leaders_on_preferred_only-itest)
 ADD_YB_TEST(compaction-test)
 ADD_YB_TEST(compressed_stream-test)
 ADD_YB_TEST(logging-test)

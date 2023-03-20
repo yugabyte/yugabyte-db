@@ -103,7 +103,7 @@ func createBackupCmd() *cobra.Command {
 		Short: "The createBackup command is used to take a backup of your YugabyteDB Anywhere instance.",
 		Long: `
     The createBackup command executes our yb_platform_backup.sh that creates a backup of your
-    YugabyteDB Anywhere instance. Executing this command requires that you create and specify the
+    YugabyteDB Anywhere instance. Executing this command requires that you specify the
     outputPath where you want the backup .tar.gz file to be stored as the first argument to
     createBackup.
     `,
@@ -140,10 +140,9 @@ func restoreBackupCmd() *cobra.Command {
 		Use:   "restoreBackup inputPath",
 		Short: "The restoreBackup command restores a backup of your YugabyteDB Anywhere instance.",
 		Long: `
-    The restoreBackup command executes our yb_platform_backup.sh that restores the backup of your
-    YugabyteDB Anywhere instance. Executing this command requires that you create and specify the
-    inputPath where the backup .tar.gz file that will be restored is located as the first argument
-    to restoreBackup.
+    The restoreBackup command executes our yb_platform_backup.sh that restores from a previously
+		taken backup of your YugabyteDB Anywhere instance. Executing this command requires that you
+		specify the inputPath to the backup .tar.gz file as the only argument to restoreBackup.
     `,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {

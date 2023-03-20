@@ -7,7 +7,6 @@ menu:
     parent: api-yedis
     weight: 2032
 aliases:
-  - /preview/api/redis/createdb
   - /preview/api/yedis/createdb
 type: docs
 ---

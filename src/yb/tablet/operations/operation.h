@@ -38,6 +38,7 @@
 #include <boost/optional/optional.hpp>
 
 #include "yb/common/hybrid_time.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_round.h"

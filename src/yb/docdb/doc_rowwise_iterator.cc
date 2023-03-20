@@ -163,7 +163,17 @@ void DocRowwiseIterator::SetupProjectionSubkeys() {
 
 DocRowwiseIterator::~DocRowwiseIterator() = default;
 
-Status DocRowwiseIterator::Init(TableType table_type, const Slice& sub_doc_key) {
+void DocRowwiseIterator::CheckInitOnce() {
+  if (is_initialized_) {
+    YB_LOG_EVERY_N_SECS(DFATAL, 3600)
+        << "DocRowwiseIterator(" << this << ") has been already initialized\n"
+        << GetStackTrace();
+  }
+  is_initialized_ = true;
+}
+
+void DocRowwiseIterator::Init(TableType table_type, const Slice& sub_doc_key) {
+  CheckInitOnce();
   db_iter_ = CreateIntentAwareIterator(
       doc_db_,
       BloomFilterMode::DONT_USE_BLOOM_FILTER,
@@ -188,8 +198,6 @@ Status DocRowwiseIterator::Init(TableType table_type, const Slice& sub_doc_key) 
     ConfigureForYsql();
   }
   InitResult();
-
-  return Status::OK();
 }
 
 void DocRowwiseIterator::InitScanChoices(
@@ -207,6 +215,7 @@ void DocRowwiseIterator::InitScanChoices(
 
 template <class T>
 Status DocRowwiseIterator::DoInit(const T& doc_spec) {
+  CheckInitOnce();
   InitResult();
   is_forward_scan_ = doc_spec.is_forward_scan();
 
@@ -427,7 +436,8 @@ Result<bool> DocRowwiseIterator::HasNext() {
       doc_reader_ = std::make_unique<DocDBTableReader>(
           db_iter_.get(), deadline_, &projection_subkeys_, table_type_,
           doc_read_context_.schema_packing_storage);
-      RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(doc_key));
+      RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
+          VERIFY_RESULT(GetTableTombstoneTime(doc_key))));
       if (!ignore_ttl_) {
         doc_reader_->SetTableTtl(doc_read_context_.schema);
       }

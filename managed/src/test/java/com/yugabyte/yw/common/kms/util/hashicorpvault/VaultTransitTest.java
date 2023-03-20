@@ -158,8 +158,7 @@ public class VaultTransitTest extends FakeDBApplication {
 
     transitEngine = new VaultTransit(vAccessor, mountPath, KeyType.CMK);
 
-    String returnedName =
-        HashicorpEARServiceUtil.getVaultKeyForUniverse(configUUID, fakeAuthConfig);
+    String returnedName = HashicorpEARServiceUtil.getVaultKeyForUniverse(fakeAuthConfig);
     assertEquals(keyName, returnedName);
 
     boolean created = transitEngine.createNewKeyWithEngine(returnedName);

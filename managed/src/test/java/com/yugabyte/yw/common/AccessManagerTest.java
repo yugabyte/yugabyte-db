@@ -63,9 +63,6 @@ public class AccessManagerTest extends FakeDBApplication {
   @InjectMocks AccessManager accessManager;
 
   @Mock ShellProcessHandler shellProcessHandler;
-
-  @Mock play.Configuration appConfig;
-
   @Mock RuntimeConfigFactory runtimeConfigFactory;
 
   @Mock Config mockConfig;
@@ -90,7 +87,7 @@ public class AccessManagerTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     defaultRegion = Region.create(defaultProvider, "us-west-2", "US West 2", "yb-image");
-    when(appConfig.getString("yb.storage.path")).thenReturn(TMP_STORAGE_PATH);
+    when(mockConfig.getString("yb.storage.path")).thenReturn(TMP_STORAGE_PATH);
     when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     command = ArgumentCaptor.forClass(List.class);
     cloudCredentials = ArgumentCaptor.forClass(Map.class);
@@ -247,7 +244,7 @@ public class AccessManagerTest extends FakeDBApplication {
 
   private String getBaseCommand(Region region, String commandType) {
     return "bin/ybcloud.sh "
-        + region.provider.code
+        + region.getProviderCloudCode()
         + " --region "
         + region.code
         + " access "
@@ -566,7 +563,7 @@ public class AccessManagerTest extends FakeDBApplication {
 
   @Test
   public void testInvalidKeysBasePath() {
-    when(appConfig.getString("yb.storage.path")).thenReturn("/sys/foo");
+    when(mockConfig.getString("yb.storage.path")).thenReturn("/sys/foo");
     Mockito.verify(shellProcessHandler, times(0)).run(command.capture(), anyMap());
     RuntimeException re =
         assertThrows(

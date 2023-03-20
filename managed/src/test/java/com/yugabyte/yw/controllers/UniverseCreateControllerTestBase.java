@@ -16,7 +16,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static com.yugabyte.yw.common.PlacementInfoUtil.updateUniverseDefinition;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
@@ -30,7 +29,6 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.anyMap;
 import static org.mockito.Mockito.times;
@@ -79,6 +77,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Matchers;
+import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -90,12 +89,15 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   private String TMP_CHART_PATH = "/tmp/yugaware_tests/" + getClass().getSimpleName() + "/charts";
 
+  @Override
+  protected GuiceApplicationBuilder appOverrides(GuiceApplicationBuilder applicationBuilder) {
+    return applicationBuilder.configure(
+        "yb.security.forbidden_ips", FORBIDDEN_IP_1 + ", " + FORBIDDEN_IP_2);
+  }
+
   @Before
-  public void setUp() {
-    super.setUp();
+  public void setUpTest() {
     new File(TMP_CHART_PATH).mkdirs();
-    when(mockAppConfig.getString(eq("yb.security.forbidden_ips"), anyString()))
-        .thenReturn(FORBIDDEN_IP_1 + ", " + FORBIDDEN_IP_2);
   }
 
   @After

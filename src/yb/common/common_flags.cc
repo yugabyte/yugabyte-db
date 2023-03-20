@@ -38,7 +38,12 @@ DEFINE_UNKNOWN_bool(ysql_disable_index_backfill, false,
 TAG_FLAG(ysql_disable_index_backfill, hidden);
 TAG_FLAG(ysql_disable_index_backfill, advanced);
 
-DEPRECATE_FLAG(bool, enable_pg_savepoints, "10_2022");
+DEFINE_NON_RUNTIME_bool(
+    enable_pg_savepoints, true,
+    "Set to false to disable savepoints in YugaByte PostgreSQL API. "
+    "This needs to be set to false when using xcluster replication for now.");
+TAG_FLAG(enable_pg_savepoints, evolving);
+TAG_FLAG(enable_pg_savepoints, advanced);
 
 DEFINE_UNKNOWN_bool(enable_automatic_tablet_splitting, true,
             "If false, disables automatic tablet splitting driven from the yb-master side.");

@@ -64,7 +64,7 @@ export const CreateReadReplica: FC<CreateReadReplicaProps> = ({ uuid }) => {
     }
   );
 
-  const onCancel = () => browserHistory.goBack();
+  const onCancel = () => browserHistory.push(`/universes/${uuid}`);
 
   const onSubmit = async (formData: UniverseFormData) => {
     const PRIMARY_CLUSTER = getPrimaryCluster(contextState.universeConfigureTemplate);

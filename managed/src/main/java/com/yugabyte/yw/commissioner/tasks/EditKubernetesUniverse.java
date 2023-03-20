@@ -11,8 +11,8 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckStorageClass;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
@@ -33,10 +33,9 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
-import java.util.Map.Entry;
-
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -590,8 +589,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       boolean newNamingStyle,
       UUID providerUUID) {
     SubTaskGroup subTaskGroup =
-        getTaskExecutor()
-            .createSubTaskGroup(KubernetesCheckStorageClass.getSubTaskGroupName(), executor);
+        createSubTaskGroup(KubernetesCheckStorageClass.getSubTaskGroupName());
     KubernetesCheckStorageClass.Params params = new KubernetesCheckStorageClass.Params();
     params.config = config;
     params.newNamingStyle = newNamingStyle;

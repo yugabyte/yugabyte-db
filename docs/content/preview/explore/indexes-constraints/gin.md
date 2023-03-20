@@ -8,8 +8,6 @@ menu:
     identifier: indexes-constraints-gin
     parent: explore-indexes-constraints
     weight: 260
-aliases:
-  - /preview/explore/ysql-language-features/gin/
 type: docs
 ---
 
@@ -83,11 +81,7 @@ YugabyteDB GIN indexes are somewhat different from PostgreSQL GIN indexes:
 
 ## Examples
 
-{{< note title="Setup" >}}
-
-Local multi-node cluster. See [Set up YugabyteDB universe](../../../explore/#set-up-yugabytedb-universe).
-
-{{< /note >}}
+{{% explore-setup-single-local %}}
 
 1. Set up the tables, indexes, and data.
 

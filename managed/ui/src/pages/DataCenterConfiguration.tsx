@@ -17,7 +17,7 @@ export const DataCenterConfiguration = (props: any) => {
   const customerUUID = localStorage.getItem('customerId') ?? '';
   const customerRuntimeConfigQuery = useQuery(
     runtimeConfigQueryKey.customerScope(customerUUID),
-    () => api.fetchRuntimeConfigs(customerUUID)
+    () => api.fetchRuntimeConfigs(customerUUID, true)
   );
 
   if (customerRuntimeConfigQuery.isLoading || customerRuntimeConfigQuery.isIdle) {
