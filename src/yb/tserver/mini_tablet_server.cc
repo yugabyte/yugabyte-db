@@ -69,6 +69,7 @@
 #include "yb/util/net/tunnel.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+#include "yb/util/thread.h"
 
 using std::pair;
 using std::string;
@@ -144,6 +145,7 @@ Result<std::unique_ptr<MiniTabletServer>> MiniTabletServer::CreateMiniTabletServ
 
 Status MiniTabletServer::Start(WaitTabletsBootstrapped wait_tablets_bootstrapped) {
   CHECK(!started_);
+  TEST_SetThreadPrefixScoped prefix_se(Format("ts-$0", index_));
 
   std::unique_ptr<TabletServer> server(new TabletServer(opts_));
   RETURN_NOT_OK(server->Init());
@@ -194,6 +196,7 @@ Status MiniTabletServer::WaitStarted() {
 }
 
 void MiniTabletServer::Shutdown() {
+  TEST_SetThreadPrefixScoped prefix_se(Format("ts-$0", index_));
   if (tunnel_) {
     tunnel_->Shutdown();
   }
