@@ -81,7 +81,7 @@ class GcpCloud(AbstractCloud):
 
         self.get_admin().create_instance(
             args.region, args.zone, args.cloud_subnet, args.search_pattern, args.instance_type,
-            server_type, args.use_preemptible, can_ip_forward, machine_image, args.num_volumes,
+            server_type, args.use_spot_instance, can_ip_forward, machine_image, args.num_volumes,
             args.volume_type, args.volume_size, args.boot_disk_size_gb, args.assign_public_ip,
             args.assign_static_public_ip, ssh_keys, boot_script=args.boot_script,
             auto_delete_boot_disk=args.auto_delete_boot_disk, tags=args.instance_tags,

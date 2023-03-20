@@ -1496,9 +1496,12 @@ public class NodeManager extends DevopsBase {
             if (taskParam.assignPublicIP) {
               commandArgs.add("--assign_public_ip");
             }
-            if (cloudType.equals(Common.CloudType.aws) && taskParam.useSpotInstance) {
+            if (taskParam.useSpotInstance
+                && (cloudType.equals(Common.CloudType.aws)
+                    || cloudType.equals(Common.CloudType.gcp))) {
               commandArgs.add("--use_spot_instance");
-              if (taskParam.spotPrice > 0.0) {
+              // GCP doesn't allow setting max prices for spot instances
+              if (taskParam.spotPrice > 0.0 && !cloudType.equals(Common.CloudType.gcp)) {
                 commandArgs.add("--spot_price");
                 commandArgs.add(Double.toString(taskParam.spotPrice));
               }

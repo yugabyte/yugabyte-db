@@ -48,8 +48,6 @@ class GcpCreateInstancesMethod(CreateInstancesMethod):
 
     def add_extra_args(self):
         super(GcpCreateInstancesMethod, self).add_extra_args()
-        self.parser.add_argument("--use_preemptible", action="store_true",
-                                 help="If to use preemptible instances.")
         self.parser.add_argument("--volume_type", choices=[GCP_SCRATCH, GCP_PERSISTENT],
                                  default="scratch", help="Storage type for GCP instances.")
         self.parser.add_argument("--instance_template",

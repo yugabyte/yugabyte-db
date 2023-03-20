@@ -883,7 +883,7 @@ class GoogleCloudAdmin():
         return results
 
     def create_instance(self, region, zone, cloud_subnet, instance_name, instance_type, server_type,
-                        use_preemptible, can_ip_forward, machine_image, num_volumes, volume_type,
+                        use_spot_instance, can_ip_forward, machine_image, num_volumes, volume_type,
                         volume_size, boot_disk_size_gb=None, assign_public_ip=True,
                         assign_static_public_ip=False, ssh_keys=None, boot_script=None,
                         auto_delete_boot_disk=True, tags=None, cloud_subnet_secondary=None,
@@ -956,11 +956,13 @@ class GoogleCloudAdmin():
             }],
             "tags": {
                 "items": get_firewall_tags()
-            },
-            "scheduling": {
-                "preemptible": use_preemptible
             }
         }
+        if use_spot_instance:
+            logging.info(f'[app] Using GCP spot instances')
+            body["scheduling"] = {
+                "provisioningModel": "SPOT"
+            }
         # Attach a secondary network interface if present.
         if cloud_subnet_secondary:
             body["networkInterfaces"].append({
