@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,6 +13,7 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
 import com.google.common.collect.Streams;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
@@ -110,9 +112,11 @@ import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.ybc.YbcBackupNodeRetriever;
@@ -159,6 +163,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -199,6 +204,8 @@ import play.libs.Json;
 
 @Slf4j
 public abstract class UniverseTaskBase extends AbstractTaskBase {
+
+  protected Set<UUID> lockedXClusterUniversesUuidSet = null;
 
   protected static final String MIN_WRITE_READ_TABLE_CREATION_RELEASE = "2.6.0.0";
 
@@ -892,11 +899,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /** Create a task to promote auto flag on the universe. */
-  public SubTaskGroup createPromoteAutoFlagTask() {
+  public SubTaskGroup createPromoteAutoFlagTask(UUID universeUUID) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("PromoteAutoFlag");
     PromoteAutoFlags task = createTask(PromoteAutoFlags.class);
     PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.setUniverseUUID(universeUUID);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -4120,6 +4127,64 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       }
     }
   }
+
+  protected void createPromoteAutoFlagsAndLockOtherUniverse(
+      Universe universe, Set<UUID> alreadyLockedUniverseUUIDSet) {
+    if (lockedXClusterUniversesUuidSet == null) {
+      lockedXClusterUniversesUuidSet = new HashSet<>();
+    }
+    // Lock the other universe if it is not locked already.
+    if (!(lockedXClusterUniversesUuidSet.contains(universe.getUniverseUUID())
+        || alreadyLockedUniverseUUIDSet.contains(universe.getUniverseUUID()))) {
+      lockedXClusterUniversesUuidSet =
+          Sets.union(
+              lockedXClusterUniversesUuidSet, Collections.singleton(universe.getUniverseUUID()));
+      if (lockUniverseIfExist(universe.getUniverseUUID(), -1 /* expectedUniverseVersion */)
+          == null) {
+        log.info("universe is deleted; No further action is needed");
+        return;
+      }
+    }
+    // Create subtask to promote autoFlags on the universe.
+    createPromoteAutoFlagTask(universe.getUniverseUUID())
+        .setSubTaskGroupType(SubTaskGroupType.PromoteAutoFlags);
+  }
+
+  protected void createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
+      Set<UUID> xClusterConnectedUniverseSet,
+      Set<UUID> alreadyLockedUniverseUUIDSet,
+      XClusterUniverseService xClusterUniverseService,
+      Set<UUID> excludeXClusterConfigSet) {
+    // Fetch all separate xCluster connected universe group and promote auto flags
+    // if possible.
+    xClusterUniverseService
+        .getMultipleXClusterConnectedUniverseSet(
+            xClusterConnectedUniverseSet, excludeXClusterConfigSet)
+        .forEach(
+            universeSet -> {
+              if (!CollectionUtils.isEmpty(universeSet)) {
+                Universe universe = universeSet.stream().findFirst().get();
+                if (CommonUtils.isAutoFlagSupported(
+                    universe
+                        .getUniverseDetails()
+                        .getPrimaryCluster()
+                        .userIntent
+                        .ybSoftwareVersion)) {
+                  try {
+                    if (xClusterUniverseService.canPromoteAutoFlags(universeSet, universe)) {
+                      universeSet.forEach(
+                          univ ->
+                              createPromoteAutoFlagsAndLockOtherUniverse(
+                                  univ, alreadyLockedUniverseUUIDSet));
+                    }
+                  } catch (IOException e) {
+                    throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+                  }
+                }
+              }
+            });
+  }
+
   // --------------------------------------------------------------------------------
   // End of XCluster.
 }

@@ -3,7 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
-import static org.hamcrest.MatcherAssert.*;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -18,10 +18,13 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.List;
@@ -301,6 +304,33 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     List<TaskType> expectedTasks = new ArrayList<>(UPGRADE_TASK_SEQUENCE);
     expectedTasks.remove(TaskType.RunYsqlUpgrade);
     assertTaskSequence(subTasksByPosition, expectedTasks, createUpgradeResult(true));
+    assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testSoftwareUpgradeAndPromoteAutoFlagsOnOthers() {
+    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    setupUniverseSingleAZ(false, true);
+
+    Universe xClusterUniv = ModelFactory.createUniverse("univ-2");
+    XClusterConfig.create(
+        "test-2", defaultUniverse.getUniverseUUID(), xClusterUniv.getUniverseUUID());
+
+    String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "new-version";
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    List<TaskType> expectedTasks = new ArrayList<>(UPGRADE_TASK_SEQUENCE);
+    expectedTasks.add(
+        expectedTasks.lastIndexOf(TaskType.PromoteAutoFlags), TaskType.PromoteAutoFlags);
+    List<JsonNode> expectedResultLists = new ArrayList<>(createUpgradeResult(true));
+    expectedResultLists.add(Json.toJson(ImmutableMap.of()));
+    assertTaskSequence(subTasksByPosition, expectedTasks, expectedResultLists);
     assertEquals(Success, taskInfo.getTaskState());
   }
 }

@@ -11,14 +11,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -31,6 +29,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -64,10 +63,6 @@ import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetAutoFlagsConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.master.CatalogEntityInfo;
-import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
-import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
-import play.libs.Json;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.YBClient;
@@ -238,6 +233,12 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       lenient()
           .when(mockClient.getLeaderBlacklistCompletion())
           .thenReturn(mockGetLoadMovePercentResponse);
+      GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
+          new GFlagsValidation.AutoFlagsPerServer();
+      autoFlagsPerServer.autoFlagDetails = new ArrayList<>();
+      lenient()
+          .when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
+          .thenReturn(autoFlagsPerServer);
     } catch (Exception ignored) {
       fail();
     }

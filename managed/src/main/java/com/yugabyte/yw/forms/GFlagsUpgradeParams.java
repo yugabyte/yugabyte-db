@@ -69,7 +69,8 @@ public class GFlagsUpgradeParams extends UpgradeTaskParams {
       XClusterUniverseService xClusterUniverseService) {
     try {
       Set<UUID> xClusterConnectedUniverseUUIDSet =
-          xClusterUniverseService.getXClusterSourceAndTargetUniverseSet(universe.getUniverseUUID());
+          xClusterUniverseService.getActiveXClusterSourceAndTargetUniverseSet(
+              universe.getUniverseUUID());
       if (CollectionUtils.isEmpty(xClusterConnectedUniverseUUIDSet)) {
         return;
       }
@@ -112,7 +113,8 @@ public class GFlagsUpgradeParams extends UpgradeTaskParams {
       XClusterUniverseService xClusterUniverseService) {
     try {
       Set<UUID> xClusterConnectedUniverseUUIDSet =
-          xClusterUniverseService.getXClusterSourceAndTargetUniverseSet(universe.getUniverseUUID());
+          xClusterUniverseService.getActiveXClusterSourceAndTargetUniverseSet(
+              universe.getUniverseUUID());
       if (CollectionUtils.isEmpty(xClusterConnectedUniverseUUIDSet)) {
         return;
       }

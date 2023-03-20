@@ -5,17 +5,25 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
-import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import java.util.Collections;
+import java.util.HashSet;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
 
+  private final XClusterUniverseService xClusterUniverseService;
+
   @Inject
-  protected SoftwareKubernetesUpgrade(BaseTaskDependencies baseTaskDependencies) {
+  protected SoftwareKubernetesUpgrade(
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
     super(baseTaskDependencies);
+    this.xClusterUniverseService = xClusterUniverseService;
   }
 
   @Override
@@ -52,9 +60,12 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           }
           // Promote Auto flags on compatible versions.
           if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.promoteAutoFlag)
-              && CommonUtils.isAutoFlagSupported(taskParams().ybSoftwareVersion)
-              && !XClusterConfig.isUniverseXClusterParticipant(taskParams().getUniverseUUID())) {
-            createPromoteAutoFlagTask().setSubTaskGroupType(getTaskSubGroupType());
+              && CommonUtils.isAutoFlagSupported(taskParams().ybSoftwareVersion)) {
+            createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
+                Collections.singleton(taskParams().getUniverseUUID()),
+                Collections.singleton(taskParams().getUniverseUUID()),
+                xClusterUniverseService,
+                new HashSet<>());
           }
 
           if (taskParams().isEnableYbc()) {
