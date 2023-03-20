@@ -183,20 +183,22 @@ ybm cluster create
 
 ### Online help
 
-You can access command-line help for ybm by running the following commands from YugabyteDB home:
+Access command-line help for ybm by running the following command:
 
 ```sh
-ybm -h
+ybm help
 ```
 
+For help with specific ybm resource commands, use the `--help` or `-h` flag, in the following form:
+
 ```sh
-ybm --help
+ybm [ resource ] [ command ] -h
 ```
 
-For help with specific ybm resource commands, run `ybm [ resource ] [ command ] -h`. For example, you can print the command-line help for the `ybm create` command by running the following:
+For example, to print the command-line help for the cluster `create` command, run the following:
 
 ```sh
-ybm cluster read-replica create -h
+ybm cluster create -h
 ```
 
 ### Global flags
