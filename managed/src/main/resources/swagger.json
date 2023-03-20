@@ -22,6 +22,12 @@
         "hostVpcRegion" : {
           "readOnly" : true,
           "type" : "string"
+        },
+        "vpcType" : {
+          "description" : "New/Existing VPC for provider creation",
+          "enum" : [ "EXISTING", "NEW" ],
+          "readOnly" : true,
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -1497,6 +1503,12 @@
           "type" : "string"
         },
         "azuTenantId" : {
+          "type" : "string"
+        },
+        "vpcType" : {
+          "description" : "New/Existing VPC for provider creation",
+          "enum" : [ "EXISTING", "NEW" ],
+          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -4240,6 +4252,12 @@
         "useHostVPC" : {
           "type" : "boolean"
         },
+        "vpcType" : {
+          "description" : "New/Existing VPC for provider creation",
+          "enum" : [ "EXISTING", "NEW" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
         "ybFirewallTags" : {
           "type" : "string"
         }
@@ -4733,6 +4751,12 @@
           "type" : "boolean"
         },
         "keyPairName" : {
+          "type" : "string"
+        },
+        "managementState" : {
+          "description" : "Key Management state",
+          "enum" : [ "YBAManaged", "SelfManaged", "Unknown" ],
+          "readOnly" : true,
           "type" : "string"
         },
         "nodeExporterPort" : {

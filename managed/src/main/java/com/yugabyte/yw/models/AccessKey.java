@@ -90,6 +90,23 @@ public class AccessKey extends Model {
     @ApiModelProperty public String keyPairName;
     @ApiModelProperty public String sshPrivateKeyContent;
 
+    @ApiModelProperty(value = "Key Management state", accessMode = AccessMode.READ_ONLY)
+    private KeyManagementState managementState = KeyManagementState.Unknown;
+
+    public static enum KeyManagementState {
+      YBAManaged,
+      SelfManaged,
+      Unknown
+    }
+
+    public void setManagementState(KeyManagementState state) {
+      this.managementState = state;
+    }
+
+    public KeyManagementState getManagementState() {
+      return this.managementState;
+    }
+
     public String getSshPrivateKeyContent() {
       return CommonUtils.getMaskedValue(sshPrivateKeyContent);
     }
