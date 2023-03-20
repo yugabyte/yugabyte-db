@@ -1014,6 +1014,10 @@ public class CloudProviderHandler {
           }
         }
 
+        if (gcpCloudInfo.getUseHostVPC() != null && !gcpCloudInfo.getUseHostVPC()) {
+          gcpCloudInfo.setVpcType(CloudInfoInterface.VPCType.NEW);
+        }
+
         if (gcpCloudInfo.getUseHostCredentials() != null
             && gcpCloudInfo.getUseHostCredentials()
             && gcpCloudInfo.getUseHostVPC() != null
