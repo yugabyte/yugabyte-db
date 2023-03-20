@@ -139,6 +139,7 @@ class PgDmlRead : public PgDml {
  private:
   // Indicates that current operation reads concrete row by specifying row's DocKey.
   bool IsConcreteRowRead() const;
+  void SetDistinctScan(const PgExecParameters *exec_params);
   Status ProcessEmptyPrimaryBinds();
   bool IsAllPrimaryKeysBound(size_t num_range_components_in_expected);
   bool CanBuildYbctidsFromPrimaryBinds();
