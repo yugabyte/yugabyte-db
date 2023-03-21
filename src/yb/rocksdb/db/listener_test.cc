@@ -19,8 +19,8 @@
 //
 
 #include "yb/rocksdb/db/db_test_util.h"
-#include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/util/sync_point.h"
 
 namespace rocksdb {
 

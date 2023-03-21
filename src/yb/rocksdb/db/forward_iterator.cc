@@ -32,9 +32,9 @@
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/slice_transform.h"
-#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 
 namespace rocksdb {
 

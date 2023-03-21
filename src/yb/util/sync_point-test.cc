@@ -59,7 +59,7 @@ TEST(SyncPointTest, TestSyncPoint) {
 #ifndef NDEBUG
   // Set up a sync point "second" that depends on "first".
   vector<SyncPoint::Dependency> dependencies;
-  dependencies.push_back(SyncPoint::Dependency("first", "second"));
+  dependencies.push_back({"first", "second"});
   SyncPoint::GetInstance()->LoadDependency(dependencies);
   SyncPoint::GetInstance()->EnableProcessing();
 
@@ -67,8 +67,7 @@ TEST(SyncPointTest, TestSyncPoint) {
   // setting 'var' to true, which unblocks the main thread.
   scoped_refptr<Thread> thread;
   bool var = false;
-  ASSERT_OK(yb::Thread::Create("test", "test",
-                                        &RunThread, &var, &thread));
+  ASSERT_OK(yb::Thread::Create("test", "test", &RunThread, &var, &thread));
 
   // Blocked on RunThread to process "first".
   TEST_SYNC_POINT("second");

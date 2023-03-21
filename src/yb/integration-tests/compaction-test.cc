@@ -42,7 +42,6 @@
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/types.h"
 #undef TEST_SYNC_POINT
-#include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/task_metrics.h"
 
 #include "yb/server/hybrid_clock.h"
@@ -65,6 +64,7 @@
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tsan_util.h"
@@ -551,11 +551,11 @@ TEST_F(CompactionTest, ManualCompactionTaskMetrics) {
 
 TEST_F(CompactionTest, FilesOverMaxSizeWithTableTTLDoNotGetAutoCompacted) {
   #ifndef NDEBUG
-    rocksdb::SyncPoint::GetInstance()->LoadDependency({
+    yb::SyncPoint::GetInstance()->LoadDependency({
         {"UniversalCompactionPicker::PickCompaction:SkippingCompaction",
             "CompactionTest::FilesOverMaxSizeDoNotGetAutoCompacted:WaitNoCompaction"}}
     );
-    rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+    yb::SyncPoint::GetInstance()->EnableProcessing();
   #endif // NDEBUG
 
   const int kNumFilesToWrite = 10;
@@ -576,8 +576,8 @@ TEST_F(CompactionTest, FilesOverMaxSizeWithTableTTLDoNotGetAutoCompacted) {
   }
 
   #ifndef NDEBUG
-    rocksdb::SyncPoint::GetInstance()->DisableProcessing();
-    rocksdb::SyncPoint::GetInstance()->ClearTrace();
+    yb::SyncPoint::GetInstance()->DisableProcessing();
+    yb::SyncPoint::GetInstance()->ClearTrace();
   #endif // NDEBUG
 }
 

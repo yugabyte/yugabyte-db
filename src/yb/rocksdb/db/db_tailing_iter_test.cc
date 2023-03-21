@@ -113,8 +113,8 @@ TEST_F(DBTestTailingIterator, TailingIteratorSeekToNext) {
     ASSERT_TRUE(itern->Valid());
     ASSERT_EQ(itern->key().compare(key), 0);
   }
-  rocksdb::SyncPoint::GetInstance()->ClearAllCallBacks();
-  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->ClearAllCallBacks();
+  yb::SyncPoint::GetInstance()->DisableProcessing();
   for (int i = 2 * num_records; i > 0; --i) {
     char buf1[32];
     char buf2[32];
@@ -157,25 +157,25 @@ TEST_F(DBTestTailingIterator, TailingIteratorTrimSeekToNext) {
   bool file_iters_deleted = false;
   bool file_iters_renewed_null = false;
   bool file_iters_renewed_copy = false;
-  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+  yb::SyncPoint::GetInstance()->SetCallBack(
       "ForwardIterator::SeekInternal:Return", [&](void* arg) {
         ForwardIterator* fiter = reinterpret_cast<ForwardIterator*>(arg);
         ASSERT_TRUE(!file_iters_deleted ||
                     fiter->TEST_CheckDeletedIters(&deleted_iters, &num_iters));
       });
-  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+  yb::SyncPoint::GetInstance()->SetCallBack(
       "ForwardIterator::Next:Return", [&](void* arg) {
         ForwardIterator* fiter = reinterpret_cast<ForwardIterator*>(arg);
         ASSERT_TRUE(!file_iters_deleted ||
                     fiter->TEST_CheckDeletedIters(&deleted_iters, &num_iters));
       });
-  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+  yb::SyncPoint::GetInstance()->SetCallBack(
       "ForwardIterator::RenewIterators:Null",
       [&](void* arg) { file_iters_renewed_null = true; });
-  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+  yb::SyncPoint::GetInstance()->SetCallBack(
       "ForwardIterator::RenewIterators:Copy",
       [&](void* arg) { file_iters_renewed_copy = true; });
-  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
   const int num_records = 1000;
   for (int i = 1; i < num_records; ++i) {
     char buf1[32];
@@ -427,14 +427,14 @@ TEST_F(DBTestTailingIterator, TailingIteratorUpperBound) {
 
   // This keeps track of the number of times NeedToSeekImmutable() was true.
   int immutable_seeks = 0;
-  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+  yb::SyncPoint::GetInstance()->SetCallBack(
       "ForwardIterator::SeekInternal:Immutable",
       [&](void* arg) { ++immutable_seeks; });
 
   // Seek to 13. This should not require any immutable seeks.
-  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
   it->Seek("13");
-  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->DisableProcessing();
 
   ASSERT_FALSE(it->Valid());
   ASSERT_EQ(0, immutable_seeks);

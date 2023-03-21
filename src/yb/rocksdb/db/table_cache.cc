@@ -36,10 +36,10 @@
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
-#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/stats/perf_step_timer.h"
+#include "yb/util/sync_point.h"
 
 using std::unique_ptr;
 
