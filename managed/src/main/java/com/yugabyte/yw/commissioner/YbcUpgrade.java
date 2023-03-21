@@ -421,7 +421,14 @@ public class YbcUpgrade {
     cmd.add("||");
     cmd.add("(");
     cmd.addAll(Arrays.asList("crontab", "-l", "2>/dev/null", "||", "true;"));
-    cmd.addAll(Arrays.asList("echo", "*/1 * * * * " + cronCheckCmd + " || " + cronStartCmd));
+    cmd.addAll(
+        Arrays.asList(
+            "echo",
+            "-e",
+            "#Ansible: Check liveness of controller\n*/1 * * * * "
+                + cronCheckCmd
+                + " || "
+                + cronStartCmd));
     cmd.add(")");
     cmd.add("|");
     cmd.addAll(Arrays.asList("crontab", "-", ";"));
