@@ -16,7 +16,12 @@ rightNav:
 
 ## Install ybm
 
-You can install ybm CLI using Homebrew:
+To install ybm CLI using Homebrew, you must:
+
+- Use a MacOS or Linux operating system.
+- Install [Homebrew](https://brew.sh).
+
+To install ybm CLI using Homebrew, enter the following command:
 
 ```sh
 brew install yugabyte/tap/ybm
@@ -32,6 +37,14 @@ For help, enter the following command:
 
 ```sh
 ybm help
+```
+
+## Upgrade ybm
+
+To upgrade ybm, enter the following Homebrew commands:
+
+```sh
+brew update && brew upgrade ybm
 ```
 
 ## Configure ybm
