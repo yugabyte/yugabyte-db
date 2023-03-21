@@ -7,6 +7,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/yugaware"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/ybactlstate"
 )
 
 var upgradeCmd = &cobra.Command{
@@ -36,6 +37,10 @@ var upgradeCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		state, err := ybactlstate.LoadState()
+		if err != nil {
+			log.Fatal("unable to load yba installer state: " + err.Error())
+		}
 		results := preflight.Run(preflight.UpgradeChecks, skippedPreflightChecks...)
 		if preflight.ShouldFail(results) {
 			preflight.PrintPreflightResults(results)
@@ -96,6 +101,10 @@ var upgradeCmd = &cobra.Command{
 
 		if err := ybaCtl.Install(); err != nil {
 			log.Fatal("failed to install yba-ctl")
+		}
+
+		if err := ybactlstate.StoreState(state); err != nil {
+			log.Fatal("failed to write state: " + err.Error())
 		}
 		common.PostUpgrade()
 	},
