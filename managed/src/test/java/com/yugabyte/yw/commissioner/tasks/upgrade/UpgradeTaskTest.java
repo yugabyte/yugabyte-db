@@ -12,6 +12,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -213,10 +215,9 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
               0, null, GetAutoFlagsConfigResponsePB.getDefaultInstance());
       lenient().when(mockClient.autoFlagsConfig()).thenReturn(resp);
       lenient().when(mockClient.ping(anyString(), anyInt())).thenReturn(true);
-      ObjectNode objectNode = Json.newObject();
-      objectNode.put("version_number", "2.17.0.0");
-      objectNode.put("build_number", "1");
-      lenient().when(mockApiHelper.getRequest(anyString())).thenReturn(objectNode);
+      lenient()
+          .when(mockClient.getStatus(anyString(), anyInt()))
+          .thenReturn(TestUtils.prepareGetStatusResponse("2.17.0.0", "1"));
       lenient()
           .when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
           .thenReturn(
