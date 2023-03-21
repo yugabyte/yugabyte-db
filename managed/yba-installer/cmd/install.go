@@ -9,6 +9,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/yugaware"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/ybactlstate"
 )
 
 var installCmd = &cobra.Command{
@@ -52,7 +53,13 @@ var installCmd = &cobra.Command{
 			}
 			log.Info("Completed installing component " + name)
 		}
-
+		if err := ybaCtl.Install(); err != nil {
+			log.Fatal("failed to install yba-ctl")
+		}
+		state := ybactlstate.New()
+		if err := ybactlstate.StoreState(state); err != nil {
+			log.Fatal("failed to write state: " + err.Error())
+		}
 		common.WaitForYBAReady()
 
 		var statuses []common.Status
@@ -68,9 +75,6 @@ var installCmd = &cobra.Command{
 			}
 		}
 
-		if err := ybaCtl.Install(); err != nil {
-			log.Fatal("failed to install yba-ctl")
-		}
 		common.PrintStatus(statuses...)
 		log.Info("Successfully installed YugabyteDB Anywhere!")
 	},
