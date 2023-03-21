@@ -51,6 +51,7 @@ import { YBAHost } from '../../../../../redesign/helpers/constants';
 import { RegionOperation } from '../configureRegion/constants';
 import { toast } from 'react-toastify';
 import { assertUnreachableCase } from '../../../../../utils/errorHandlingUtils';
+import { NTP_SERVER_REGEX } from '../constants';
 
 import { GCPRegionMutation, GCPAvailabilityZoneMutation, YBProviderMutation } from '../../types';
 
@@ -132,10 +133,15 @@ const VALIDATION_SCHEMA = object().shape({
     is: KeyPairManagement.CUSTOM_KEY_PAIR,
     then: mixed().required('SSH private key is required.')
   }),
-
   ntpServers: array().when('ntpSetupType', {
     is: NTPSetupType.SPECIFIED,
-    then: array().min(1, 'NTP Servers cannot be empty.')
+    then: array().of(
+      string().matches(
+        NTP_SERVER_REGEX,
+        (testContext) =>
+          `NTP servers must be provided in IPv4, IPv6, or hostname format. '${testContext.originalValue}' is not valid.`
+      )
+    )
   }),
   regions: array().min(1, 'Provider configurations must contain at least one region.')
 });
@@ -176,6 +182,14 @@ export const GCPProviderCreateForm = ({
 
   const onFormSubmit: SubmitHandler<GCPProviderCreateFormFieldValues> = async (formValues) => {
     formMethods.clearErrors(ASYNC_ERROR);
+
+    if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
+      formMethods.setError('ntpServers', {
+        type: 'min',
+        message: 'Please specify at least one NTP server.'
+      });
+      return;
+    }
 
     let googleServiceAccount = null;
     if (
