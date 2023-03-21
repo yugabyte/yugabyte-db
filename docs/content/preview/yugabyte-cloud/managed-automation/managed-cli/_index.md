@@ -23,7 +23,7 @@ The [YugabyteDB Managed Command Line Interface](https://github.com/yugabyte/ybm-
     <a class="section-link icon-offset" href="managed-cli-overview">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
-        <div class="title">Overview</div>
+        <div class="title">Install</div>
       </div>
       <div class="body">
         Install and configure ybm CLI.
