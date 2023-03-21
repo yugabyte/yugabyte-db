@@ -343,10 +343,7 @@ public class CloudProviderApiController extends AuthenticatedController {
   // v2 API version 1 backward compatiblity support.
   public JsonNode mayBeMassageRequest(JsonNode requestBody, Boolean forEdit) {
     JsonNode config = requestBody.get("config");
-    if (config == null) {
-      return requestBody;
-    }
-    if (forEdit) {
+    if (forEdit && config != null) {
       ((ObjectNode) requestBody).remove("config");
     }
     String providerCode = requestBody.get("code").asText();
