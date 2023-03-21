@@ -21,6 +21,8 @@
 #include "yb/util/status.h"
 #include "yb/util/unique_lock.h"
 
+DECLARE_int32(yb_client_admin_operation_timeout_sec);
+
 using namespace std::literals;
 
 DEFINE_RUNTIME_uint64(ysql_table_mutation_count_aggregate_interval_ms, 5 * 1000,
@@ -66,8 +68,52 @@ Status TableMutationCountSender::Stop() {
 }
 
 Status TableMutationCountSender::DoSendMutationCounts() {
-  // TODO(auto-analyze): Send mutations to the auto analyze service that aggregates mutations from
-  // all nodes and triggers ANALYZE as necessary.
+  // Send mutations to the auto analyze stateful service that aggregates mutations from all nodes
+  // and triggers ANALYZE as necessary.
+
+  auto mutation_counts = server_->GetPgNodeLevelMutationCounter()->GetAndClear();
+  if (mutation_counts.size() == 0) {
+    return Status::OK();
+  }
+
+  if (client_ == NULL) {
+    client_ = std::make_unique<client::PgAutoAnalyzeServiceClient>();
+    auto s = client_->Init(server_);
+    if (!s.ok()) {
+      client_ = nullptr;
+      return s;
+    }
+  }
+
+  stateful_service::IncreaseMutationCountersRequestPB req;
+  stateful_service::IncreaseMutationCountersResponsePB resp;
+
+  for (auto& [table_id, mutation_count] : mutation_counts) {
+    req.add_table_mutation_counts();
+    auto table_mutation_count = req.add_table_mutation_counts();
+    table_mutation_count->set_table_id(table_id);
+    table_mutation_count->set_mutation_count(mutation_count);
+  }
+
+  const Status s =
+      client_->IncreaseMutationCounters(
+          CoarseMonoClock::Now() + FLAGS_yb_client_admin_operation_timeout_sec * 1s, req, &resp);
+  if (!s.ok()) {
+    // It is possible that cluster-level mutation counters were updated but the response failed for
+    // some other reason. In this case, unless we are certain that the cluster-level mutation
+    // counters weren't updated, we avoid retrying to avoid double counting (i.e., we prefer
+    // avoiding over-aggresive auto ANALYZE).
+    if (s.IsTryAgain()) {
+      for (auto& [table_id, mutation_count] : mutation_counts) {
+        server_->GetPgNodeLevelMutationCounter()->Increase(table_id, mutation_count);
+      }
+    }
+    return s;
+  }
+
+  // TODO: Handle per-table errors. Same as above, retry later if we are certain that the
+  // cluster-level mutation counters weren't updated.
+
   return Status::OK();
 }
 
