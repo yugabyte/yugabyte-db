@@ -1,5 +1,6 @@
 ---
 title: GIN indexes in YugabyteDB YSQL
+headerTitle: GIN indexes
 linkTitle: GIN indexes
 description: Generalized inverted indexes in YSQL
 headContent: Explore GIN indexes using YSQL
