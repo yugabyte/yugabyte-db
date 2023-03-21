@@ -1725,6 +1725,18 @@ public class YBClient implements AutoCloseable {
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
   }
 
+  /**
+   * Get the status of current server.
+   * @param host the address to bind to.
+   * @param port the port to bind to (0 means any free port).
+   * @return an object containing the status details of the server.
+   * @throws Exception
+   */
+  public GetStatusResponse getStatus(final String host, int port) throws Exception {
+    Deferred<GetStatusResponse> d = asyncClient.getStatus(HostAndPort.fromParts(host, port));
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
     /**
    * Get the auto flag config for servers.
    * @return auto flag config for each server if exists, else a MasterErrorException.
