@@ -122,7 +122,7 @@ DEFINE_UNKNOWN_int32(update_metrics_interval_ms, kUpdateIntervalMs,
 DEFINE_UNKNOWN_bool(enable_cdc_state_table_caching, true,
     "Enable caching the cdc_state table schema.");
 
-DEFINE_UNKNOWN_bool(enable_cdc_client_tablet_caching, false,
+DEFINE_RUNTIME_bool(enable_cdc_client_tablet_caching, true,
     "Enable caching the tablets found by client.");
 
 DEFINE_UNKNOWN_bool(enable_collect_cdc_metrics, true, "Enable collecting cdc metrics.");
