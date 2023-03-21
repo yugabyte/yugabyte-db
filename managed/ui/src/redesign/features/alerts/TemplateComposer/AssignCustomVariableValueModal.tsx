@@ -263,7 +263,7 @@ const CustomVariableHoverMenu: FC<CustomVariableHoverMenuProps> = ({
   const { t } = useTranslation();
 
   const defaultValueSpan = () => (
-    <Typography className={clsx(commonStyles.subText, classes.defaultSpan)}>
+    <Typography className={clsx(commonStyles.subText, classes.defaultSpan)} component={'span'}>
       {t('alertCustomTemplates.customVariables.assignCustomVariableValueModal.menuDefault')}
     </Typography>
   );
