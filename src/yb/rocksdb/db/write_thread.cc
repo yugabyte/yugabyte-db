@@ -27,7 +27,8 @@
 #include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/util/sync_point.h"
+
+#include "yb/util/sync_point.h"
 
 namespace rocksdb {
 

@@ -43,12 +43,12 @@
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/statistics.h"
-#include "yb/util/string_util.h"
-#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/logging.h"
 #include <glog/logging.h>
 #include "yb/util/flags.h"
+#include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 
 DEFINE_UNKNOWN_bool(aggressive_compaction_for_read_amp, false,
             "Determines if we should compact aggressively to reduce read amplification based on "
