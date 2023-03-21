@@ -19,3 +19,4 @@ People who contributed to hypopg:
   * github user nikhil-postgres
   * Xiaozhe Yao
   * Krzysztof Szularz
+  * NutVII

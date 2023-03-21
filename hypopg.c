@@ -122,6 +122,7 @@ _PG_init(void)
 
 	isExplain = false;
 	hypoIndexes = NIL;
+	hypoHiddenIndexes = NIL;
 
 	HypoMemoryContext = AllocSetContextCreate(TopMemoryContext,
 											  "HypoPG context",
@@ -528,6 +529,8 @@ hypo_get_relation_info_hook(PlannerInfo *root,
 												 inhparent, rel, relation, entry);
 				}
 			}
+
+			hypo_hideIndexes(rel);
 		}
 
 		/* Close the relation release the lock now */

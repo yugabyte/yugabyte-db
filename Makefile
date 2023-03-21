@@ -51,6 +51,8 @@ ifneq ($(MAJORVERSION),$(filter $(MAJORVERSION), 9.2 9.3 9.4 9.5 9.6))
 	REGRESS += hypo_hash
 endif
 
+REGRESS += hypo_hide_index
+
 DEBUILD_ROOT = /tmp/$(EXTENSION)
 
 deb: release-zip
