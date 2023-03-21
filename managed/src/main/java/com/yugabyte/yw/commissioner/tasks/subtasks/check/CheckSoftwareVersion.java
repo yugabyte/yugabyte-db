@@ -5,25 +5,25 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
-import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import lombok.extern.slf4j.Slf4j;
+import org.yb.VersionInfo;
+import org.yb.client.GetStatusResponse;
+import org.yb.client.YBClient;
 
+@Slf4j
 public class CheckSoftwareVersion extends ServerSubTaskBase {
 
-  private final ApiHelper apiHelper;
-
   @Inject
-  protected CheckSoftwareVersion(BaseTaskDependencies baseTaskDependencies, ApiHelper apiHelper) {
+  protected CheckSoftwareVersion(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.apiHelper = apiHelper;
   }
 
   public static class Params extends ServerSubTaskParams {
@@ -35,24 +35,24 @@ public class CheckSoftwareVersion extends ServerSubTaskBase {
     return (Params) taskParams;
   }
 
-  public static class VersionInfo {
-    public String versionNumber;
-    public String buildNumber;
-  }
-
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
     String address = node.cloudInfo.private_ip;
-    VersionInfo versionInfo;
-    if (node.isMaster) {
-      versionInfo = getServerSoftwareVersion(address, node.masterHttpPort);
-    } else {
-      versionInfo = getServerSoftwareVersion(address, node.tserverHttpPort);
+    VersionInfo.VersionInfoPB versionInfo;
+    try {
+      if (node.isMaster) {
+        versionInfo = getServerSoftwareVersion(universe, address, node.masterRpcPort);
+      } else {
+        versionInfo = getServerSoftwareVersion(universe, address, node.tserverRpcPort);
+      }
+    } catch (Exception e) {
+      log.error("Error while fetching version info on node: " + node.nodeName, e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
 
-    String serverVersion = versionInfo.versionNumber + "-b" + versionInfo.buildNumber;
+    String serverVersion = versionInfo.getVersionNumber() + "-b" + versionInfo.getBuildNumber();
 
     // Validate the software version.
     if (Util.compareYbVersions(serverVersion, taskParams().requiredVersion) != 0) {
@@ -67,22 +67,11 @@ public class CheckSoftwareVersion extends ServerSubTaskBase {
     }
   }
 
-  private VersionInfo getServerSoftwareVersion(String address, int port) {
-    String url = String.format("http://%s:%s/api/v1/version", address, port);
-    JsonNode resp = apiHelper.getRequest(url);
-    VersionInfo info = new VersionInfo();
-    if (resp.has("version_number")) {
-      info.versionNumber = resp.get("version_number").asText();
-    } else {
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Could not find version number on address " + address);
+  private VersionInfo.VersionInfoPB getServerSoftwareVersion(
+      Universe universe, String address, int port) throws Exception {
+    try (YBClient client = getClient()) {
+      GetStatusResponse response = client.getStatus(address, port);
+      return response.getStatus().getVersionInfo();
     }
-    if (resp.has("build_number")) {
-      info.buildNumber = resp.get("build_number").asText();
-    } else {
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Could not find build number on address " + address);
-    }
-    return info;
   }
 }

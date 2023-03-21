@@ -581,6 +581,25 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Get the status of the server.
+   * @param hp the host and port of the server.
+   * @return a deferred object that yields auto flag config for each server.
+   */
+  public Deferred<GetStatusResponse> getStatus(final HostAndPort hp) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    GetStatusRequest rpc = new GetStatusRequest();
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<GetStatusResponse> d = rpc.getDeferred();
+    rpc.attempt++;
+    client.sendRpc(rpc);
+    return d;
+  }
+
+  /**
    * Get the auto flag config for servers.
    * @return a deferred object that yields auto flag config for each server.
    */
