@@ -286,6 +286,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status CreateTestEchoService();
 
+  Status CreatePgAutoAnalyzeService();
+
   // Get the information about an in-progress create operation.
   Status IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                            IsCreateTableDoneResponsePB* resp) override;

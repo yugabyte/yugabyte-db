@@ -16,13 +16,17 @@
 #include <condition_variable>
 #include <memory>
 
-#include "yb/gutil/macros.h"
+#include "yb/client/client.h"
+#include "yb/client/stateful_services/pg_auto_analyze_service_client.h"
 
+#include "yb/gutil/macros.h"
+#include "yb/gutil/strings/join.h"
 #include "yb/gutil/thread_annotations.h"
 #include "yb/server/server_base_options.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/thread.h"
+#include "yb/util/unique_lock.h"
 
 namespace yb {
 namespace tserver {
@@ -53,6 +57,8 @@ class TableMutationCountSender {
 
   // Protected by mutex_.
   bool should_run_ GUARDED_BY(mutex_);
+
+  std::unique_ptr<client::PgAutoAnalyzeServiceClient> client_;
 
   DISALLOW_COPY_AND_ASSIGN(TableMutationCountSender);
 };

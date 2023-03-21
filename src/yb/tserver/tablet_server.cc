@@ -87,6 +87,7 @@
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service_context.h"
+#include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
 #include "yb/tserver/stateful_services/test_echo_service.h"
 
 #include "yb/util/flags.h"
@@ -535,6 +536,14 @@ Status TabletServer::RegisterServices() {
     RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
         FLAGS_TEST_echo_svc_queue_length, std::move(test_echo_service)));
   }
+
+  auto pg_auto_analyze_service =
+      std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity());
+  LOG(INFO) << "yb::tserver::stateful_service::PgAutoAnalyzeService created at "
+            << pg_auto_analyze_service.get();
+  RETURN_NOT_OK(pg_auto_analyze_service->Init(tablet_manager_.get()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+      FLAGS_TEST_echo_svc_queue_length, std::move(pg_auto_analyze_service)));
 
   return Status::OK();
 }
