@@ -60,6 +60,12 @@ DEFINE_UNKNOWN_bool(sys_catalog_respect_affinity_task, true,
             "Whether the master sys catalog tablet respects cluster config preferred zones "
             "and sends step down requests to a preferred leader.");
 
+DEFINE_RUNTIME_bool(ysql_enable_auto_analyze_service, false,
+                    "Enable the Auto Analyze service which automatically triggers ANALYZE to "
+                    "update table statistics for tables which have changed more than a "
+                    "configurable threshold.");
+TAG_FLAG(ysql_enable_auto_analyze_service, experimental);
+
 DEFINE_test_flag(bool, pause_catalog_manager_bg_loop_start, false,
                  "Pause the bg tasks thread at the beginning of the loop.");
 
@@ -171,6 +177,11 @@ void CatalogManagerBgTasks::Run() {
       if (FLAGS_TEST_echo_service_enabled) {
         WARN_NOT_OK(
             catalog_manager_->CreateTestEchoService(), "Failed to create Test Echo service");
+      }
+
+      if (GetAtomicFlag(&FLAGS_ysql_enable_auto_analyze_service)) {
+        WARN_NOT_OK(catalog_manager_->CreatePgAutoAnalyzeService(),
+                    "Failed to create Auto Analyze service");
       }
 
       // Report metrics.

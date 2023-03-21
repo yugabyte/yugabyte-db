@@ -152,4 +152,5 @@ enum ReplicationErrorPb {
 enum StatefulServiceKind {
   // Test service.
   TEST_ECHO = 0;
+  PG_AUTO_ANALYZE = 1;
 }
