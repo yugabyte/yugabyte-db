@@ -25,7 +25,7 @@ The following sections focus primarily on metrics and their uses, including how 
 
 ## Overview
 
-A YugabyteDB cluster comprises multiple nodes and services, each emitting metrics. These metrics are applicable at different levels: cluster-wide, per-node, per-table, and per-tablet. The metrics are exported through various endpoints in JSON, HTML, and Prometheus formats. You can aggregate metrics appropriately to get a cluster-wide, per-database, per-table, or per-node view. The following diagram shows the various endpoints in a cluster.
+A YugabyteDB cluster comprises multiple nodes and services, each emitting metrics. Metrics can be for an entire cluster, or for a specific node, table, or tablet, and they can be aggregated into cluster, node, database, and table views. Metrics are exported through various endpoints in JSON, HTML, and Prometheus formats, as shown in the following diagram.
 
 ![Metrics endpoints](/images/manage/monitor/metrics-endpoints.png)
 
