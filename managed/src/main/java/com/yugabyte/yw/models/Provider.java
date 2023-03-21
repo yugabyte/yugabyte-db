@@ -17,16 +17,12 @@ import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadat
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.common.YBADeprecated;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
-import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
-import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
-
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Encrypted;
 import io.swagger.annotations.ApiModelProperty;
-
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,7 +47,7 @@ import play.data.validation.Constraints;
 public class Provider extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Provider.class);
   private static final String TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST =
-      "Transient property - only present in mutate API request";
+      "Transient property - only present in create provider API request";
 
   @ApiModelProperty(value = "Provider uuid", accessMode = READ_ONLY)
   @Id
@@ -131,24 +127,18 @@ public class Provider extends Model {
   // Custom keypair name to use when spinning up YB nodes.
   // Default: created and managed by YB.
   @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
-  @Transient
   @ApiModelProperty(
       value =
           "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
               + "Use allAccessKeys[0].keyInfo.keyPairName instead")
-  public String keyPairName = null;
+  public String getKeyPairName() {
+    if (this.allAccessKeys.size() > 0) {
+      return this.allAccessKeys.get(0).getKeyInfo().keyPairName;
+    }
+    return null;
+  }
 
-  // Custom SSH private key component.
-  // Default: created and managed by YB.
   @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
-  @Transient
-  @ApiModelProperty(
-      value =
-          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
-              + "Use allAccessKeys[0].keyInfo.sshPrivateKeyContent instead")
-  public String sshPrivateKeyContent = null;
-
-  @Deprecated
   @JsonProperty("keyPairName")
   public void setKeyPairName(String keyPairName) {
     if (this.allAccessKeys.size() > 0) {
@@ -162,7 +152,18 @@ public class Provider extends Model {
     }
   }
 
-  @Deprecated
+  // Custom SSH private key component.
+  // Default: created and managed by YB.
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
+  @ApiModelProperty(
+      value =
+          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
+              + "Use allAccessKeys[0].keyInfo.sshPrivateKeyContent instead")
+  public String getSshPrivateKeyContent() {
+    return null;
+  }
+
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
   @JsonProperty("sshPrivateKeyContent")
   public void setSshPrivateKeyContent(String sshPrivateKeyContent) {
     if (this.allAccessKeys.size() > 0) {
@@ -179,12 +180,13 @@ public class Provider extends Model {
   // Custom SSH user to login to machines.
   // Default: created and managed by YB.
   @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
-  @Transient
   @ApiModelProperty(
       value =
           "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
-              + "Use details.SshUser instead")
-  public String sshUser = null;
+              + "Use details.SshUser instead. Only supported in create request")
+  public String getSshUser() {
+    return this.details.sshUser;
+  }
 
   // Custom SSH user to login to machines.
   // Default: created and managed by YB.
@@ -197,7 +199,7 @@ public class Provider extends Model {
   @ApiModelProperty(
       value =
           "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
-              + "Use details.SshPort instead")
+              + "Use details.SshPort instead. Only supported in create request")
   public Integer getSshPort() {
     return this.details.sshPort;
   }
@@ -209,19 +211,20 @@ public class Provider extends Model {
   // Whether provider should use airgapped install.
   // Default: false.
   @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
-  @Transient
   @ApiModelProperty(
       value =
           "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
-              + "Use details.airGapInstall")
-  public boolean airGapInstall = false;
+              + "Use details.airGapInstall. Only supported in Create Request")
+  public boolean getAirGapInstall() {
+    return details.airGapInstall;
+  }
 
   // Whether provider should use airgapped install. Default: false.
   public void setAirGapInstall(boolean v) {
     details.airGapInstall = v;
   }
 
-  @Deprecated
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(hidden = true)
   public void setNtpServers(List<String> ntpServers) {
     this.details.ntpServers = ntpServers;
@@ -232,7 +235,7 @@ public class Provider extends Model {
    *
    * @deprecated use details.setUpChrony
    */
-  @Deprecated
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(hidden = true)
   public void setSetUpChrony(boolean v) {
     details.setUpChrony = v;
@@ -243,7 +246,7 @@ public class Provider extends Model {
    * after, else it was created before. Dictates whether or not to show the set up NTP option in the
    * provider UI
    */
-  @Deprecated
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(hidden = true)
   public void setShowSetUpChrony(boolean showSetUpChrony) {
     this.details.showSetUpChrony = showSetUpChrony;
@@ -253,14 +256,23 @@ public class Provider extends Model {
   // Migration for these fields is not required as we started persisting
   // these fields recently only as part of v2 APIs only.
   // UI only calls passes these values in the bootstrap call.
-  @Deprecated @Transient @ApiModelProperty public String hostVpcId = null;
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
+  @Transient
+  @ApiModelProperty
+  public String hostVpcId = null;
 
-  @Deprecated @Transient @ApiModelProperty public String hostVpcRegion = null;
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
+  @Transient
+  @ApiModelProperty
+  public String hostVpcRegion = null;
 
-  @Deprecated @Transient @ApiModelProperty public String destVpcId = null;
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
+  @Transient
+  @ApiModelProperty
+  public String destVpcId = null;
 
   // Hosted Zone for the deployment
-  @Deprecated
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
   @Transient
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
   public String hostedZoneId = null;
