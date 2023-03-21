@@ -105,6 +105,13 @@ Status GetUniverseConfig(ClusterAdminClient* client,
   return Status::OK();
 }
 
+Status GetXClusterConfig(ClusterAdminClient* client,
+                         const ClusterAdminCli::CLIArguments&) {
+  RETURN_NOT_OK_PREPEND(client->GetXClusterConfig(), "Unable to get xcluster config");
+  return Status::OK();
+}
+
+
 Status ChangeBlacklist(ClusterAdminClient* client,
                        const ClusterAdminCli::CLIArguments& args, bool blacklist_leader,
                        const std::string& errStr) {
@@ -1031,6 +1038,10 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClient* client) {
   Register(
       "get_universe_config", "",
       std::bind(&GetUniverseConfig, client, _1));
+
+  Register(
+      "get_xcluster_info", "",
+      std::bind(&GetXClusterConfig, client, _1));
 
   Register(
       "change_blacklist", Format(" <$0|$1> <ip_addr>:<port> [<ip_addr>:<port>]...",
