@@ -12,6 +12,7 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
+import com.google.protobuf.ByteString;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import java.io.IOException;
@@ -20,6 +21,10 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.commons.io.IOUtils;
+import org.yb.VersionInfo;
+import org.yb.WireProtocol;
+import org.yb.client.GetStatusResponse;
+import org.yb.server.ServerBase;
 
 import play.libs.Json;
 import play.mvc.Http;
@@ -73,5 +78,26 @@ public class TestUtils {
     Context currentContext =
         new Context(id, header, request, flashData, flashData, argData, contextComponents());
     Context.current.set(currentContext);
+  }
+
+  public static GetStatusResponse prepareGetStatusResponse(
+      String versionNumber, String buildNumber) {
+    return new GetStatusResponse(
+        0,
+        "uuid",
+        ServerBase.GetStatusResponsePB.newBuilder()
+            .setStatus(
+                ServerBase.ServerStatusPB.newBuilder()
+                    .setNodeInstance(
+                        WireProtocol.NodeInstancePB.newBuilder()
+                            .setInstanceSeqno(1)
+                            .setPermanentUuid(ByteString.copyFromUtf8("ab")))
+                    .setVersionInfo(
+                        VersionInfo.VersionInfoPB.newBuilder()
+                            .setVersionNumber(versionNumber)
+                            .setBuildNumber(buildNumber)
+                            .build())
+                    .build())
+            .build());
   }
 }
