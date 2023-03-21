@@ -12083,6 +12083,17 @@ Status CatalogManager::SetClusterConfig(
   return Status::OK();
 }
 
+Status CatalogManager::GetXClusterConfig(GetMasterXClusterConfigResponsePB* resp) {
+  return GetXClusterConfig(resp->mutable_xcluster_config());
+}
+
+Status CatalogManager::GetXClusterConfig(SysXClusterConfigEntryPB* config) {
+  auto xcluster_config = XClusterConfig();
+  DCHECK(xcluster_config) << "Missing xcluster config for master!";
+  *config = xcluster_config->LockForRead()->pb;
+  return Status::OK();
+}
+
 Result<uint32_t> CatalogManager::GetXClusterConfigVersion() const {
   auto xcluster_config = XClusterConfig();
   SCHECK(xcluster_config, IllegalState, "XCluster config is not initialized");

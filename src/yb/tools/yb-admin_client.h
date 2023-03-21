@@ -273,6 +273,8 @@ class ClusterAdminClient {
 
   Status GetUniverseConfig();
 
+  Status GetXClusterConfig();
+
   Status ChangeBlacklist(const std::vector<HostPort>& servers, bool add,
       bool blacklist_leader);
 
@@ -541,6 +543,8 @@ class ClusterAdminClient {
       master::ReplicationInfoPB* replication_info, const std::string& placement_uuid);
 
   Result<master::GetMasterClusterConfigResponsePB> GetMasterClusterConfig();
+
+  Result<master::GetMasterXClusterConfigResponsePB> GetMasterXClusterConfig();
 
   // Perform RPC call without checking Response structure for error
   template<class Response, class Request, class Object>

@@ -2115,6 +2115,24 @@ Status ClusterAdminClient::GetUniverseConfig() {
   return Status::OK();
 }
 
+Status ClusterAdminClient::GetXClusterConfig() {
+  const auto xcluster_config = VERIFY_RESULT(GetMasterXClusterConfig());
+  const auto cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
+  std::string producer_registry_output;
+  std::string consumer_registry_output;
+  MessageToJsonString(
+      xcluster_config.xcluster_config().xcluster_producer_registry(), &producer_registry_output);
+  MessageToJsonString(
+      cluster_config.cluster_config().consumer_registry(), &consumer_registry_output);
+  cout << Format(
+              "{\"version\":$0,\"xcluster_producer_registry\":$1,consumer_"
+              "registry:$2}",
+              xcluster_config.xcluster_config().version(), producer_registry_output,
+              consumer_registry_output)
+       << endl;
+  return Status::OK();
+}
+
 Status ClusterAdminClient::GetYsqlCatalogVersion() {
   uint64_t version = 0;
   RETURN_NOT_OK(yb_client_->GetYsqlCatalogMasterVersion(&version));
@@ -2262,6 +2280,12 @@ Result<master::GetMasterClusterConfigResponsePB> ClusterAdminClient::GetMasterCl
   return InvokeRpc(&master::MasterClusterProxy::GetMasterClusterConfig,
                    *master_cluster_proxy_, master::GetMasterClusterConfigRequestPB(),
                    "MasterServiceImpl::GetMasterClusterConfig call failed.");
+}
+
+Result<master::GetMasterXClusterConfigResponsePB> ClusterAdminClient::GetMasterXClusterConfig() {
+  return InvokeRpc(&master::MasterClusterProxy::GetMasterXClusterConfig,
+                   *master_cluster_proxy_, master::GetMasterXClusterConfigRequestPB(),
+                   "MasterServiceImpl::GetMasterXClusterConfig call failed.");
 }
 
 Status ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
