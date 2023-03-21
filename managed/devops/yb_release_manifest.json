@@ -1,7 +1,7 @@
 {
   ".": [
     "ansible.cfg",
-    "ansible_python3_requirements.txt",
+    "ansible_python_requirements.txt",
     "ansible_requirements_prod.yml",
     "configure-cluster-server.yml",
     "destroy-instance.yml",
