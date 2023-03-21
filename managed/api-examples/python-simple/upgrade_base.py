@@ -57,3 +57,4 @@ def run_upgrade(url, params):
     )
     response_json = json.load(conn.getresponse())
     print(response_json)
+    return response_json
