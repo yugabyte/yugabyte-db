@@ -1028,7 +1028,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     details.cloudInfo.aws.awsAccessKeyID = "Test AWS Access Key ID";
     details.cloudInfo.aws.awsAccessKeySecret = "Test AWS Access Key Secret";
     Provider provider = ModelFactory.newProvider(customer, Common.CloudType.aws, details);
-    JsonNode providerJson = Json.toJson(provider);
+    JsonNode providerJson = Json.parse(contentAsString(getProvider(provider.uuid)));
     Result result = assertPlatformException(() -> editProvider(providerJson, provider.uuid));
     assertBadRequest(result, "No changes to be made for provider type: aws");
     assertAuditEntry(0, customer.uuid);
