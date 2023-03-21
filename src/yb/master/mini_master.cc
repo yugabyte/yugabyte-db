@@ -78,7 +78,6 @@ MiniMaster::~MiniMaster() {
 
 Status MiniMaster::Start(bool TEST_simulate_fs_create_failure) {
   CHECK(!running_);
-  TEST_SetThreadPrefixScoped prefix_se(Format("m-$0", index_));
 
   FLAGS_rpc_server_allow_ephemeral_ports = true;
   FLAGS_TEST_simulate_fs_create_failure = TEST_simulate_fs_create_failure;
