@@ -32,6 +32,7 @@
 
 #include "yb/master/catalog_loaders.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/constants.h"
 #include "yb/master/master_util.h"
 #include "yb/master/ysql_tablegroup_manager.h"

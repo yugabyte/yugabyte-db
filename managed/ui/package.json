@@ -109,6 +109,7 @@
     "react-day-picker": "7.4.8",
     "react-dom": "16.13.1",
     "react-dropzone": "14.2.3",
+    "react-dropzone3": "npm:react-dropzone@3.13.4",
     "react-fa": "5.0.0",
     "react-hook-form": "7.40.0",
     "react-i18next": "11.8.15",
@@ -133,6 +134,9 @@
     "redux": "4.0.5",
     "redux-form": "8.3.6",
     "redux-promise": "0.5.3",
+    "slate": "0.91.4",
+    "slate-history": "0.86.0",
+    "slate-react": "0.91.10",
     "typescript": "4.9.3",
     "typy": "3.3.0",
     "yup": "0.30.0"

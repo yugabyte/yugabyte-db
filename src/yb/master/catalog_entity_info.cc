@@ -34,6 +34,7 @@
 
 #include <string>
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/partition.h"
 #include "yb/common/ql_wire_protocol.h"

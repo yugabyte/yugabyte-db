@@ -324,6 +324,7 @@ ARCHIVED_PATHS_IN_BUILD_DIR = [
     f'{POSTGRES_BUILD_SUBDIR}/contrib',
     f'{POSTGRES_BUILD_SUBDIR}/src/test/regress',
     f'{POSTGRES_BUILD_SUBDIR}/src/test/isolation',
+    f'{POSTGRES_BUILD_SUBDIR}/third-party-extensions',
 
     # Used by TestYsqlUpgrade.
     f'{POSTGRES_BUILD_SUBDIR}/src/include/catalog/pg_yb_migration.dat',

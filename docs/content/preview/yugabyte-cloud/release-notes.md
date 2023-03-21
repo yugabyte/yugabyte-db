@@ -16,7 +16,15 @@ On this page:
 
 ## Releases
 
+### March 16, 2023
+
+**Database**
+
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.7](../../releases/release-notes/v2.14/#v2.14.7.0) for dedicated clusters. New clusters use this version by default.
+
 ### March 1, 2023
+
+**Database**
 
 - [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) reset to [version 2.12.9](../../releases/release-notes/v2.12/#v2.12.9.0) for dedicated clusters. New clusters use this version by default.
 

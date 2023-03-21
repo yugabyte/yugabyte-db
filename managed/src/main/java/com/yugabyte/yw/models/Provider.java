@@ -194,12 +194,13 @@ public class Provider extends Model {
 
   // Port to open for connections on the instance.
   @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
-  @Transient
   @ApiModelProperty(
       value =
           "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
               + "Use details.SshPort instead")
-  public Integer sshPort = 22;
+  public Integer getSshPort() {
+    return this.details.sshPort;
+  }
 
   public void setSshPort(Integer sshPort) {
     this.details.sshPort = sshPort;

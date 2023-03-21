@@ -22,6 +22,12 @@
         "hostVpcRegion" : {
           "readOnly" : true,
           "type" : "string"
+        },
+        "vpcType" : {
+          "description" : "New/Existing VPC for provider creation",
+          "enum" : [ "EXISTING", "NEW" ],
+          "readOnly" : true,
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -1497,6 +1503,12 @@
           "type" : "string"
         },
         "azuTenantId" : {
+          "type" : "string"
+        },
+        "vpcType" : {
+          "description" : "New/Existing VPC for provider creation",
+          "enum" : [ "EXISTING", "NEW" ],
+          "readOnly" : true,
           "type" : "string"
         }
       },
@@ -4240,6 +4252,12 @@
         "useHostVPC" : {
           "type" : "boolean"
         },
+        "vpcType" : {
+          "description" : "New/Existing VPC for provider creation",
+          "enum" : [ "EXISTING", "NEW" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
         "ybFirewallTags" : {
           "type" : "string"
         }
@@ -4733,6 +4751,12 @@
           "type" : "boolean"
         },
         "keyPairName" : {
+          "type" : "string"
+        },
+        "managementState" : {
+          "description" : "Key Management state",
+          "enum" : [ "YBAManaged", "SelfManaged", "Unknown" ],
+          "readOnly" : true,
           "type" : "string"
         },
         "nodeExporterPort" : {
@@ -17074,7 +17098,7 @@
     },
     "/api/v1/customers/{cUUID}/tasks/{tUUID}/retry" : {
       "post" : {
-        "description" : "Retry a Universe task.",
+        "description" : "Retry a Universe or Provider task.",
         "operationId" : "retryTask",
         "parameters" : [ {
           "format" : "uuid",
@@ -17093,14 +17117,14 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/UniverseResp"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Retry a Universe task",
+        "summary" : "Retry a Universe or Provider task",
         "tags" : [ "Customer Tasks" ]
       }
     },

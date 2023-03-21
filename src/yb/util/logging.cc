@@ -61,6 +61,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/thread.h"
 
 DEFINE_UNKNOWN_string(log_filename, "",
     "Prefix of log filename - "
@@ -76,6 +77,8 @@ DEFINE_UNKNOWN_string(minicluster_daemon_id, "",
 DEFINE_UNKNOWN_string(ref_counted_debug_type_name_regex, "",
               "Regex for type names for debugging RefCounted / scoped_refptr based classes. "
               "An empty string disables RefCounted debug logging.");
+
+DECLARE_bool(TEST_running_test);
 
 const char* kProjName = "yb";
 
@@ -203,6 +206,10 @@ void InitializeGoogleLogging(const char *arg) {
   google::InitGoogleLogging(arg);
 
   google::InstallFailureFunction(DumpStackTraceAndExit);
+
+  if (FLAGS_TEST_running_test) {
+    google::SetLogPrefix(&TEST_GetThreadLogPrefix);
+  }
 
   log_fatal_handler_sink = std::make_unique<LogFatalHandlerSink>();
 }

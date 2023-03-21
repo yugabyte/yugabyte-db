@@ -11,6 +11,7 @@ import axios from 'axios';
 import { ROOT_URL } from '../../../../config';
 import {
   CustomVariable,
+  IAlertChannelTemplates,
   IAlertConfiguration,
   IAlertConfigurationList,
   IAlertVariablesList
@@ -56,5 +57,20 @@ export const setVariableValueForAlertconfig = (alertConfig: IAlertConfiguration)
   return axios.put<IAlertConfigurationList>(
     `${ROOT_URL}/customers/${cUUID}/alert_configurations/${alertConfig.uuid}`,
     alertConfig
+  );
+};
+
+export const getAlertChannelTemplates = () => {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.get<IAlertChannelTemplates[]>(
+    `${ROOT_URL}/customers/${cUUID}/alert_channel_templates`
+  );
+};
+
+export const createAlertChannelTemplates = (template: IAlertChannelTemplates) => {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.post(
+    `${ROOT_URL}/customers/${cUUID}/alert_channel_templates/${template.type}`,
+    template
   );
 };

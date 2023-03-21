@@ -21,6 +21,7 @@
 #include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/ql_value.h"
@@ -249,7 +250,7 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
       GetNamespaceInfoResponsePB ns_resp;
       RETURN_NOT_OK(producer_client()->GetNamespaceInfo("", kNamespaceName, YQL_DATABASE_PGSQL,
                                                     &ns_resp));
-      return master::GetColocatedDbParentTableId(ns_resp.namespace_().id());
+      return GetColocatedDbParentTableId(ns_resp.namespace_().id());
     }
     // Colocated database
     return GetTablegroupParentTable(&producer_cluster_, kNamespaceName);
@@ -324,8 +325,8 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     }
 
     if (colocated_database)
-      return master::GetColocationParentTableId(resp.tablegroups()[0].id());
-    return master::GetTablegroupParentTableId(resp.tablegroups()[0].id());
+      return GetColocationParentTableId(resp.tablegroups()[0].id());
+    return GetTablegroupParentTableId(resp.tablegroups()[0].id());
   }
 
   Status CreateTablegroup(Cluster* cluster,
