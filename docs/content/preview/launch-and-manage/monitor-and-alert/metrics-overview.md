@@ -14,7 +14,7 @@ type: docs
 
 YugabyteDB provides nearly two thousand metrics for monitoring, performance-tuning, and troubleshooting system, table, and tablet issues.
 
-The following sections focus primarily on metrics and their uses, including how to consume the metrics in practice, and how to use them to monitor and manage clusters, troubleshoot performance issues, and identify bottlenecks.
+The following sections describe how you can consume YugabyteDB metrics, and use them to monitor and manage clusters, troubleshoot performance issues, and identify bottlenecks.
 
 {{< note title="Note" >}}
 
