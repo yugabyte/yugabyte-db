@@ -73,8 +73,8 @@
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/util/sync_point.h"
 #include "yb/util/test_kill.h"
 #include "yb/util/flags.h"
 

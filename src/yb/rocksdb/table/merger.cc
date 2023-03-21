@@ -34,12 +34,12 @@
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/heap.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
-#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/rocksdb/db/dbformat.h"
 
 #include "yb/util/stats/perf_step_timer.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 
 namespace rocksdb {
 // Without anonymous namespace here, we fail the warning -Wmissing-prototypes

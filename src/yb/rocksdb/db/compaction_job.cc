@@ -70,13 +70,13 @@
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/perf_level.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/stats/perf_step_timer.h"
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 
 using std::unique_ptr;
 
