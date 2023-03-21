@@ -7020,17 +7020,8 @@
           "readOnly" : true,
           "type" : "string"
         },
-        "destVpcId" : {
-          "type" : "string"
-        },
         "details" : {
           "$ref" : "#/definitions/ProviderDetails"
-        },
-        "hostVpcId" : {
-          "type" : "string"
-        },
-        "hostVpcRegion" : {
-          "type" : "string"
         },
         "name" : {
           "description" : "Provider name",
