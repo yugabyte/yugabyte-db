@@ -49,7 +49,7 @@ brew update && brew upgrade ybm
 
 ## Configure ybm
 
-Using ybm CLI requires providing, at minimum, an [API key](../managed-apikeys/).
+Using ybm CLI requires providing, at minimum, an [API key](../../managed-apikeys/).
 
 You can pass the key as a [flag](../managed-cli-reference/#global-flags) when running ybm commands. For example:
 

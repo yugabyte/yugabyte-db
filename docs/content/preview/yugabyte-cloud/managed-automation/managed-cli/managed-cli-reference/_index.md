@@ -74,7 +74,7 @@ Use the following commands to configure ybm:
 
 | Resource | Description |
 | :--- | :--- |
-| [auth](../managed-cli-overview/#configure-ybm) | Write API key to a configuration file. |
+| [auth](managed-cli-auth/) | Write API key to a configuration file. |
 | [completion](../managed-cli-overview/#autocompletion) | Configure autocompletion for Bash, Fish, PowerShell, and Zsh |
 | [signup](../managed-cli-overview/#install-ybm) | Navigate to the YugabyteDB Managed signup page. |
 
