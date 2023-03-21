@@ -51,10 +51,10 @@ brew update && brew upgrade ybm
 
 Using ybm CLI requires providing, at minimum, an [API key](../managed-apikeys/).
 
-You can pass the key as a flag when running ybm commands. For example:
+You can pass the key as a [flag](../managed-cli-reference/#global-flags) when running ybm commands. For example:
 
 ```sh
-ybm --apiKey "eyJ..."
+ybm cluster list --apiKey "eyJ..."
 ```
 
 For convenience, you can configure ybm with a default API key as follows:
