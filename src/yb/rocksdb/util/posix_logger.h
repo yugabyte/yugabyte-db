@@ -42,8 +42,9 @@
 #include "yb/rocksdb/port/sys_time.h"
 
 #include "yb/rocksdb/env.h"
+
 #include "yb/util/stats/iostats_context_imp.h"
-#include "yb/rocksdb/util/sync_point.h"
+#include "yb/util/sync_point.h"
 
 namespace rocksdb {
 

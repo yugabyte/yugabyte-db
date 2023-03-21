@@ -26,11 +26,11 @@
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 
 #include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_util.h"
 
 namespace rocksdb {
@@ -113,11 +113,11 @@ TEST_F(CompactFilesTest, CapturingPendingFiles) {
   auto l0_files = collector->GetFlushedFiles();
   EXPECT_EQ(5, l0_files.size());
 
-  rocksdb::SyncPoint::GetInstance()->LoadDependency({
+  yb::SyncPoint::GetInstance()->LoadDependency({
       {"CompactFilesImpl:2", "CompactFilesTest.CapturingPendingFiles:0"},
       {"CompactFilesTest.CapturingPendingFiles:1", "CompactFilesImpl:3"},
   });
-  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
 
   // Start compacting files.
   std::thread compaction_thread(
@@ -131,7 +131,7 @@ TEST_F(CompactFilesTest, CapturingPendingFiles) {
 
   compaction_thread.join();
 
-  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->DisableProcessing();
 
   delete db;
 

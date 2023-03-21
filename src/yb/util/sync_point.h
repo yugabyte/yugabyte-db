@@ -1,19 +1,7 @@
-//  Licensed to the Apache Software Foundation (ASF) under one
-//  or more contributor license agreements.  See the NOTICE file
-//  distributed with this work for additional information
-//  regarding copyright ownership.  The ASF licenses this file
-//  to you under the Apache License, Version 2.0 (the
-//  "License"); you may not use this file except in compliance
-//  with the License.  You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-//  Unless required by applicable law or agreed to in writing,
-//  software distributed under the License is distributed on an
-//  "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-//  KIND, either express or implied.  See the License for the
-//  specific language governing permissions and limitations
-//  under the License.
+//  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
+//  This source code is licensed under the BSD-style license found in the
+//  LICENSE file in the root directory of this source tree. An additional grant
+//  of patent rights can be found in the PATENTS file in the same directory.
 //
 // The following only applies to changes made to this file as part of YugaByte development.
 //
@@ -29,22 +17,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-//  Copyright (c) 2014, Facebook, Inc.  All rights reserved.
-//  This source code is licensed under the BSD-style license found in the
-//  LICENSE file in the root directory of this source tree. An additional grant
-//  of patent rights can be found in the PATENTS file in the same directory.
 #pragma once
 
-#include <string>
+#include <condition_variable>
+#include <functional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
-#include "yb/util/condition_variable.h"
-#include "yb/util/mutex.h"
-
 #ifdef NDEBUG
 #define TEST_SYNC_POINT(x)
+#define TEST_SYNC_POINT_CALLBACK(x, y)
 #else
 
 namespace yb {
@@ -56,20 +39,24 @@ namespace yb {
 // In the unit test, 'Happens After' relationship among sync points could be
 // setup via SyncPoint::LoadDependency, to reproduce a desired interleave of
 // threads execution.
+// Refer to (DBTest,TransactionLogIteratorRace), for an example use case.
 
 class SyncPoint {
  public:
   static SyncPoint* GetInstance();
 
   struct Dependency {
-    Dependency(std::string predecessor, std::string successor);
-
-    std::string predecessor_;
-    std::string successor_;
+    std::string predecessor;
+    std::string successor;
   };
   // call once at the beginning of a test to setup the dependency between
   // sync points
   void LoadDependency(const std::vector<Dependency>& dependencies);
+
+  // Set up a call back function in sync point.
+  void SetCallBack(const std::string& point, std::function<void(void*)> callback);
+  // Clear all call back functions.
+  void ClearAllCallBacks();
 
   // enable sync point processing (disabled on startup)
   void EnableProcessing();
@@ -82,25 +69,28 @@ class SyncPoint {
 
   // triggered by TEST_SYNC_POINT, blocking execution until all predecessors
   // are executed.
-  void Process(const std::string& point);
+  // And/or call registered callback functionn, with argument `cb_arg`
+  void Process(const std::string& point, void* cb_arg = nullptr);
 
   // TODO: it might be useful to provide a function that blocks until all
   // sync points are cleared.
 
  private:
-  SyncPoint();
+  SyncPoint() {}
 
   bool PredecessorsAllCleared(const std::string& point);
 
   // successor/predecessor map loaded from LoadDependency
   std::unordered_map<std::string, std::vector<std::string> > successors_;
   std::unordered_map<std::string, std::vector<std::string> > predecessors_;
+  std::unordered_map<std::string, std::function<void(void*)> > callbacks_;
 
-  Mutex mutex_;
-  ConditionVariable cv_;
+  std::mutex mutex_;
+  std::condition_variable cv_;
   // sync points that have been passed through
   std::unordered_set<std::string> cleared_points_;
-  bool enabled_;
+  bool enabled_ = false;
+  int num_callbacks_running_ = 0;
 };
 
 }  // namespace yb
@@ -109,6 +99,9 @@ class SyncPoint {
 // Sync points can have happens-after depedency on other sync points,
 // configured at runtime via SyncPoint::LoadDependency. This could be
 // utilized to re-produce race conditions between threads.
+// See TransactionLogIteratorRace in db_test.cc for an example use case.
 // TEST_SYNC_POINT is no op in release build.
 #define TEST_SYNC_POINT(x) yb::SyncPoint::GetInstance()->Process(x)
+#define TEST_SYNC_POINT_CALLBACK(x, y) \
+    yb::SyncPoint::GetInstance()->Process(x, y)
 #endif  // NDEBUG
