@@ -1,7 +1,8 @@
 ---
-title: Expression indexes
+title: Expression indexes in YugabyteDB YSQL
 linkTitle: Expression indexes
 description: Using expression indexes in YSQL
+headContent: Explore Expression indexes in YugabyteDB using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:

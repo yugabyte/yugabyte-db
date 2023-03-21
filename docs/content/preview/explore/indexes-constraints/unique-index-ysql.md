@@ -1,7 +1,8 @@
 ---
-title: Unique indexes
-linkTitle:  Unique indexes
+title: Unique indexes in YugabyteDB YSQL
+linkTitle: Unique indexes
 description: Using Unique indexes in YSQL
+headContent: Explore Unique indexes in YugabyteDB using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:

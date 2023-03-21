@@ -1,7 +1,8 @@
 ---
-title: Foreign keys
+title: Foreign keys in YugabyteDB YSQL
 linkTitle: Foreign keys
 description: Defining Foreign key constraint in YSQL
+headContent: Explore Foreign keys in YugabyteDB using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:

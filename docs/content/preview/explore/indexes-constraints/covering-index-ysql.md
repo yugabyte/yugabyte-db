@@ -1,7 +1,8 @@
 ---
-title: Covering indexes
+title: Covering indexes in YugabyteDB YSQL
 linkTitle: Covering indexes
 description: Using covering indexes in YSQL
+headContent: Explore Covering indexes in YugabyteDB using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:

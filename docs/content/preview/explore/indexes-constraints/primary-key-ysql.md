@@ -1,7 +1,8 @@
 ---
-title: Primary keys
+title: Primary keys in YugabyteDB YSQL
 linkTitle: Primary keys
 description: Defining Primary key constraint in YSQL
+headContent: Explore Primary keys in YugabyteDB using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
