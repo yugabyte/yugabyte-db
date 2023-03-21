@@ -36,25 +36,27 @@ ybm help
 
 ## Configure ybm
 
-Using ybm CLI requires providing, at minimum, an [API key](../managed-apikeys/) and the host address of YugabyteDB Managed (cloud.yugabyte.com).
+Using ybm CLI requires providing, at minimum, an [API key](../managed-apikeys/).
 
-You can pass these values as flags when running ybm commands. For example:
+You can pass the key as a flag when running ybm commands. For example:
 
 ```sh
-ybm --apiKey "eyJ..." --host cloud.yugabyte.com cluster list
+ybm --apiKey "eyJ..."
 ```
 
-For convenience, you can configure ybm with default values for these flags as follows:
+For convenience, you can configure ybm with a default API key as follows:
 
-- Use the `auth` command to write these values to a YAML configuration file. For example:
+- Use the `auth` command to write the key to a YAML configuration file, as follows:
 
   ```sh
-  ybm auth --apiKey "eyJ..." --host cloud.yugabyte.com
+  ybm auth
   ```
 
-  By default, this writes the values to the file `.ybm-cli.yaml` under your `$HOME` directory.
+  At the prompt, paste your API key and press Enter.
 
-  You can create multiple configuration files, and switch between them using the [--config](../managed-cli-reference/#global-flags) flag. You can add any of the other [global flags](../managed-cli-reference/#global-flags) to your configuration file.
+  By default, this writes the value to the file `.ybm-cli.yaml` under your `$HOME` directory.
+
+  You can create multiple configuration files, and switch between them using the [--config](../managed-cli-reference/#global-flags) flag. You can add any of the other [global flags](../managed-cli-reference/#global-flags) to your configuration files.
 
 - Using [environment variables](#environment-variables). Environment variables must begin with `YBM_`. For example:
 
@@ -72,8 +74,8 @@ You can set the following ybm environment variables.
 | Variable | Description |
 | :--- | :--- |
 | YBM_APIKEY | The API key to use to authenticate to your YugabyteDB Managed account. |
-| YBM_HOST | The host address of the cluster you are managing. By default, https is added to the host if no scheme is provided. |
 | YBM_CI | Set to `true` to avoid outputting unnecessary log lines. |
+<!--| YBM_HOST | The host address of the cluster you are managing. By default, https is added to the host if no scheme is provided. |-->
 
 ## Autocompletion
 

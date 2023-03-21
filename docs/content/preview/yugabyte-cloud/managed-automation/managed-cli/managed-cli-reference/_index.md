@@ -74,13 +74,13 @@ Use the following commands to configure ybm:
 
 | Resource | Description |
 | :--- | :--- |
-| [auth](../managed-cli-overview/#configure-ybm) | Write API key and host address to a configuration file. |
+| [auth](../managed-cli-overview/#configure-ybm) | Write API key to a configuration file. |
 | [completion](../managed-cli-overview/#autocompletion) | Configure autocompletion for Bash, Fish, PowerShell, and Zsh |
 | [signup](../managed-cli-overview/#install-ybm) | Navigate to the YugabyteDB Managed signup page. |
 
 ### Global flags
 
-The following flags can be passed in with any command. These flags can all be added to you configuration file (see [Configure ybm](../managed-cli-overview/#configure-ybm)).
+The following flags can be passed in with any command. These flags can also be added to your configuration file (see [Configure ybm](../managed-cli-overview/#configure-ybm)).
 
 -a, --apiKey string
 : YugabyteDB Managed account API Key.
@@ -91,8 +91,9 @@ The following flags can be passed in with any command. These flags can all be ad
 --debug
 : Use debug mode, same as `--logLevel debug`.
 
+<!--
 --host string
-: Host address of YugabyteDB Managed (this should always be cloud.yugabyte.com).
+: Host address of YugabyteDB Managed (this should always be cloud.yugabyte.com). -->
 
 -l, --logLevel string
 : Specify the desired level of logging. `debug` or `info` (default).
@@ -104,7 +105,7 @@ The following flags can be passed in with any command. These flags can all be ad
 : Specify the desired output format. `table` (default), `json`, or `pretty`.
 
 --wait
-: For long-running commands such as creating or deleting a cluster, you can use the `--wait` flag to wait until the operation is completed. For example:
+: For long-running commands such as creating or deleting a cluster, you can use the `--wait` flag to wait until the operation is completed. `true` or `false` (default). For example:
 
 ```sh
 ybm cluster delete \
