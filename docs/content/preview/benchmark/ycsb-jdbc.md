@@ -1,8 +1,8 @@
 ---
-title: Benchmark YSQL performance with YCSB
+title: Benchmark YSQL performance in YugabyteDB with YCSB
 headerTitle: YCSB
 linkTitle: YCSB
-description: Benchmark YSQL performance with YCSB using the standard JDBC binding.
+description: Learn how to test the YSQL API using the YCSB benchmark.
 headcontent: Benchmark YSQL performance with YCSB using the standard JDBC binding.
 menu:
   preview:
