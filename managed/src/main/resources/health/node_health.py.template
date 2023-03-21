@@ -479,7 +479,7 @@ def get_rss_from_statm(statm):
 class NodeChecker():
 
     def __init__(self, node, node_name, master_index, tserver_index, is_k8s, yb_home_dir,
-                 start_time_ms, ysql_port, ycql_port, redis_port, enable_tls_client,
+                 ybc_dir, start_time_ms, ysql_port, ycql_port, redis_port, enable_tls_client,
                  enable_tls, root_and_client_root_ca_same, ssl_protocol, enable_ysql,
                  enable_ysql_auth, master_http_port, tserver_http_port, ysql_server_http_port,
                  node_version, is_ybc_enabled, ybc_port):
@@ -489,6 +489,7 @@ class NodeChecker():
         self.tserver_index = tserver_index
         self.start_time_ms = start_time_ms
         self.yb_home_dir = yb_home_dir
+        self.ybc_dir = ybc_dir
         self.enable_tls_client = enable_tls_client
         self.enable_tls = enable_tls
         self.root_and_client_root_ca_same = root_and_client_root_ca_same
@@ -1127,7 +1128,7 @@ class NodeChecker():
         return os.path.join(self.yb_home_dir, "tserver")
 
     def yb_controller_dir(self):
-        return os.path.join(self.yb_home_dir, "controller")
+        return os.path.join(self.ybc_dir, "controller")
 
     def check_cqlsh(self):
         logging.info("Checking cqlsh works for node {}".format(self.node))
@@ -1514,6 +1515,7 @@ class NodeInfo:
         self.tserver_index = data["tserverIndex"]
         self.is_k8s = data["k8s"]
         self.yb_home_dir = data["ybHomeDir"]
+        self.ybc_dir = data["ybcDir"]
         self.node_host = data["nodeHost"]
         self.node_name = data["nodeName"]
         self.node_start_time = data.get("nodeStartTime")
@@ -1569,7 +1571,7 @@ def main():
     report = Report()
     checker = NodeChecker(
         n.node_host, n.node_name, n.master_index, n.tserver_index, n.is_k8s, n.yb_home_dir,
-        n.node_start_time, n.ysql_port, n.ycql_port, n.redis_port, n.enable_tls_client,
+        n.ybc_dir, n.node_start_time, n.ysql_port, n.ycql_port, n.redis_port, n.enable_tls_client,
         n.enable_tls, n.root_and_client_root_ca_same, n.ssl_protocol, n.enable_ysql,
         n.enable_ysql_auth, n.master_http_port, n.tserver_http_port,
         n.ysql_server_http_port, n.yb_version, n.is_ybc_enabled, n.ybc_port)
@@ -1628,11 +1630,11 @@ def main():
             coordinator.add_check(checker, "check_postmaster_rss")
             coordinator.add_check(checker, "check_postgres_workers_rss")
             coordinator.add_check(checker, "check_ysql_connections_count")
+        if n.is_ybc_enabled:
+            coordinator.add_check(checker, "check_yb_controller_availability", max_tries=3)
 
     if not n.is_k8s:
         coordinator.add_check(checker, "check_oom_kills")
-    if n.is_ybc_enabled:
-        coordinator.add_check(checker, "check_yb_controller_availability", max_tries=3)
 
     entries = coordinator.run()
     for e in entries:
