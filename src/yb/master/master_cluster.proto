@@ -180,6 +180,14 @@ message GetMasterClusterConfigResponsePB {
   optional SysClusterConfigEntryPB cluster_config = 2;
 }
 
+message GetMasterXClusterConfigRequestPB {
+}
+
+message GetMasterXClusterConfigResponsePB {
+  optional MasterErrorPB error = 1;
+  optional SysXClusterConfigEntryPB xcluster_config = 2;
+}
+
 message ChangeMasterClusterConfigRequestPB {
   optional SysClusterConfigEntryPB cluster_config = 1;
 }
@@ -289,6 +297,8 @@ service MasterCluster {
   rpc SetPreferredZones(SetPreferredZonesRequestPB) returns (SetPreferredZonesResponsePB);
   rpc GetMasterClusterConfig(GetMasterClusterConfigRequestPB)
       returns (GetMasterClusterConfigResponsePB);
+  rpc GetMasterXClusterConfig(GetMasterXClusterConfigRequestPB)
+      returns (GetMasterXClusterConfigResponsePB);
   rpc ChangeMasterClusterConfig(ChangeMasterClusterConfigRequestPB)
       returns (ChangeMasterClusterConfigResponsePB);
   rpc GetLoadMoveCompletion(GetLoadMovePercentRequestPB)
