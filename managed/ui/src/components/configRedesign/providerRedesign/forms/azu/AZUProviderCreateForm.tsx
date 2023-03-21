@@ -36,6 +36,7 @@ import { FormField } from '../components/FormField';
 import { FieldLabel } from '../components/FieldLabel';
 import { CreateInfraProvider } from '../../InfraProvider';
 import { RegionOperation } from '../configureRegion/constants';
+import { NTP_SERVER_REGEX } from '../constants';
 
 import { AZURegionMutation, YBProviderMutation, AZUAvailabilityZoneMutation } from '../../types';
 
@@ -134,7 +135,13 @@ const VALIDATION_SCHEMA = object().shape({
   }),
   ntpServers: array().when('ntpSetupType', {
     is: NTPSetupType.SPECIFIED,
-    then: array().min(1, 'NTP Servers cannot be empty.')
+    then: array().of(
+      string().matches(
+        NTP_SERVER_REGEX,
+        (testContext) =>
+          `NTP servers must be provided in IPv4, IPv6, or hostname format. '${testContext.originalValue}' is not valid.`
+      )
+    )
   }),
   regions: array().min(1, 'Provider configurations must contain at least one region.')
 });
@@ -172,6 +179,14 @@ export const AZUProviderCreateForm = ({
 
   const onFormSubmit: SubmitHandler<AZUProviderCreateFormFieldValues> = async (formValues) => {
     formMethods.clearErrors(ASYNC_ERROR);
+
+    if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
+      formMethods.setError('ntpServers', {
+        type: 'min',
+        message: 'Please specify at least one NTP server.'
+      });
+      return;
+    }
 
     const providerPayload: YBProviderMutation = {
       code: ProviderCode.AZU,
