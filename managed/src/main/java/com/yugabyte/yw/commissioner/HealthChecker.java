@@ -62,6 +62,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.MetricFilter;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -739,7 +740,8 @@ public class HealthChecker {
           nodeInfo
               .setEnableYbc(true)
               .setYbcPort(
-                  params.universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort);
+                  params.universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort)
+              .setYbcDir(nodeInfo.isK8s() ? CommonUtils.DEFAULT_YBC_DIR : nodeInfo.getYbHomeDir());
         }
         nodeMetadata.add(nodeInfo);
       }
@@ -1031,6 +1033,7 @@ public class HealthChecker {
     private int tserverIndex = -1;
     private boolean isK8s = false;
     private String ybHomeDir;
+    private String ybcDir = "";
     private String nodeHost;
     private String nodeName;
     private String ybSoftwareVersion = null;
