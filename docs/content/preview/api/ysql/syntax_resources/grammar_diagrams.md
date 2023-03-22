@@ -1,5 +1,5 @@
 ---
-title: Grammar Diagrams
+title: Grammar Diagrams YSQL
 summary: Diagrams of the grammar rules.
 type: docs
 private: true

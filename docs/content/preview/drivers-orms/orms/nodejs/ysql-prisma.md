@@ -1,8 +1,8 @@
 ---
-title: Node.js ORM example application that uses Sequelize ORM and YSQL
+title: Node.js Prisma ORM example application
 headerTitle: Node.js ORM example application
 linkTitle: Node.js
-description: Node.js ORM example application that uses Sequelize ORM and YSQL.
+description: Node.js ORM example application that uses Prisma and YSQL.
 menu:
   preview:
     identifier: nodejs-prisma
