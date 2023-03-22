@@ -16,6 +16,7 @@ import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/com
 import { OnPremRegionFieldLabel } from './constants';
 import { ConfigureOnPremAvailabilityZoneField } from './ConfigureOnPremAvailabilityZoneField';
 import { generateLowerCaseAlphanumericId } from '../utils';
+import { ACCEPTABLE_CHARS } from '../../../../config/constants';
 
 interface ConfigureOnPremRegionModalProps extends YBModalProps {
   configuredRegions: ConfigureOnPremRegionFormValues[];
@@ -60,13 +61,20 @@ export const ConfigureOnPremRegionModal = ({
       .test(
         'is-unique',
         (testMessageParam) =>
-          `${testMessageParam.value} has been previously configured. Please edit or delete that configuration first.`,
+          `${testMessageParam.originalValue} has been previously configured. Please edit or delete that configuration first.`,
         (code) =>
           code ? regionSelection?.code === code || !configuredRegionCodes.includes(code) : false
       ),
     zones: array().of(
       object().shape({
-        code: string().required('Zone code is required.')
+        code: string()
+          .required('Zone code is required.')
+          .test(
+            'no-invalid-chars',
+            (testMessageParam) =>
+              `${testMessageParam.originalValue} contains invalid characters. Zone code cannot contain any special characters except '-' and '_'.`,
+            (code) => (code ? ACCEPTABLE_CHARS.test(code) : false)
+          )
       })
     )
   });
