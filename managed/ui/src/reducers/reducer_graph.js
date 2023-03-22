@@ -10,6 +10,7 @@ import {
   QUERY_MASTER_METRICS_FAILURE,
   SELECTED_METRIC_TYPE_TAB,
   RESET_METRICS,
+  SET_GRAPH_FILTER,
   RESET_GRAPH_FILTER,
   TOGGLE_PROMETHEUS_QUERY
 } from '../actions/graph';
@@ -75,6 +76,11 @@ export default function (state = INITIAL_STATE, action) {
       responseData.metrics = metricData;
       return responseData;
     }
+    case SET_GRAPH_FILTER: {
+      const filters = { ...action.payload };
+      return { ...state, graphFilter: filters };
+    }
+
     case QUERY_MASTER_METRICS_FAILURE: {
       const metricData = state.metrics;
       metricData[action.panelType] = { error: true };
