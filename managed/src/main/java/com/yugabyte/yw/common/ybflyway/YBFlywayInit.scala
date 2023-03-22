@@ -1,14 +1,12 @@
 package com.yugabyte.yw.common.ybflyway
 
-import com.yugabyte.yw.common.YBALifeCycle
-
 import java.io.FileNotFoundException
+
 import javax.inject._
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.MigrationInfo
 import org.flywaydb.core.internal.util.jdbc.DriverDataSource
 import org.flywaydb.play._
-import org.slf4j.{Logger, LoggerFactory}
 import play.api._
 import play.core._
 
@@ -25,8 +23,7 @@ import scala.collection.JavaConverters._
 class YBFlywayInit @Inject()(
                                  appConfiguration: Configuration,
                                  environment: Environment,
-                                 webCommands: WebCommands,
-                                 ybaLifeCycle: YBALifeCycle
+                                 webCommands: WebCommands
                                ) {
   private val flywayConfigurations = {
     val configReader = new ConfigReader(appConfiguration, environment)
@@ -37,15 +34,13 @@ class YBFlywayInit @Inject()(
 
   private val flywayPrefixToMigrationScript = "db/migration"
 
-  private val log: Logger = LoggerFactory.getLogger(getClass)
-
   private def migrationFileDirectoryExists(path: String): Boolean = {
     environment.resource(path) match {
       case Some(_) =>
-        log.debug(s"Directory for migration files found. $path")
+        Logger.debug(s"Directory for migration files found. $path")
         true
       case None =>
-        log.warn(s"Directory for migration files not found. $path")
+        Logger.warn(s"Directory for migration files not found. $path")
         false
     }
   }

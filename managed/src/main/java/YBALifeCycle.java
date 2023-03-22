@@ -7,25 +7,23 @@
  *
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
-import io.ebean.Ebean;
-import play.Environment;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.Util;
+import play.Application;
 
 /** Play lifecycle does not give onStartup event */
 public class YBALifeCycle {
 
-  private final Config config;
   private final ConfigHelper configHelper;
-  private final Environment environment;
+  private final Application application;
 
   @Inject
-  public YBALifeCycle(Config config, ConfigHelper configHelper, Environment environment) {
-    this.config = config;
+  public YBALifeCycle(Config config, ConfigHelper configHelper, Application application) {
     this.configHelper = configHelper;
-    this.environment = environment;
+    this.application = application;
     onStart();
   }
 
@@ -39,16 +37,7 @@ public class YBALifeCycle {
    * `yb.is_platform_downgrade_allowed`
    */
   private void checkIfDowngrade() {
-    boolean isFreshInstall =
-        !Ebean.getDefaultServer()
-            .createSqlQuery(
-                "SELECT * FROM information_schema.tables WHERE table_name = 'schema_version'")
-            .findOneOrEmpty()
-            .isPresent();
-    if (isFreshInstall) {
-      return;
-    }
-    String version = ConfigHelper.getCurrentVersion(environment);
+    String version = ConfigHelper.getCurrentVersion(application);
 
     String previousSoftwareVersion =
         configHelper
@@ -56,7 +45,8 @@ public class YBALifeCycle {
             .getOrDefault("version", "")
             .toString();
 
-    boolean isPlatformDowngradeAllowed = config.getBoolean("yb.is_platform_downgrade_allowed");
+    boolean isPlatformDowngradeAllowed =
+        application.config().getBoolean("yb.is_platform_downgrade_allowed");
 
     if (Util.compareYbVersions(previousSoftwareVersion, version, true) > 0
         && !isPlatformDowngradeAllowed) {

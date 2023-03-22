@@ -177,7 +177,7 @@ public class SessionControllerTest {
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
     Users user = ModelFactory.testUser(customer, "not.matching@yugabyte.com");
 
-    Result result = routeWithYWErrHandler(app, fakeRequest("GET", "/api/third_party_login"));
+    Result result = routeWithYWErrHandler(fakeRequest("GET", "/api/third_party_login"), app);
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(UNAUTHORIZED, result.status());
@@ -218,7 +218,7 @@ public class SessionControllerTest {
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
-    Result result = route(app, fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(OK, result.status());
@@ -234,7 +234,7 @@ public class SessionControllerTest {
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
-    Result result = route(app, fakeRequest("POST", "/api/api_login").bodyJson(loginJson));
+    Result result = route(fakeRequest("POST", "/api/api_login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(OK, result.status());
@@ -253,7 +253,7 @@ public class SessionControllerTest {
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password1");
     Result result =
-        routeWithYWErrHandler(app, fakeRequest("POST", "/api/login").bodyJson(loginJson));
+        routeWithYWErrHandler(fakeRequest("POST", "/api/login").bodyJson(loginJson), app);
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(UNAUTHORIZED, result.status());
@@ -271,8 +271,7 @@ public class SessionControllerTest {
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     Result result =
-        assertPlatformException(
-            () -> route(app, fakeRequest("POST", "/api/login").bodyJson(loginJson)));
+        assertPlatformException(() -> route(fakeRequest("POST", "/api/login").bodyJson(loginJson)));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(BAD_REQUEST, result.status());
@@ -294,7 +293,7 @@ public class SessionControllerTest {
     loginJson.put("password", "password");
     settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "true");
     when(ldapUtil.loginWithLdap(any())).thenReturn(user);
-    Result result = route(app, fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(OK, result.status());
@@ -317,8 +316,7 @@ public class SessionControllerTest {
     settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "true");
     when(ldapUtil.loginWithLdap(any())).thenReturn(null);
     Result result =
-        assertPlatformException(
-            () -> route(app, fakeRequest("POST", "/api/login").bodyJson(loginJson)));
+        assertPlatformException(() -> route(fakeRequest("POST", "/api/login").bodyJson(loginJson)));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(UNAUTHORIZED, result.status());
@@ -341,8 +339,7 @@ public class SessionControllerTest {
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
     Result result =
-        assertPlatformException(
-            () -> route(app, fakeRequest("POST", "/api/login").bodyJson(loginJson)));
+        assertPlatformException(() -> route(fakeRequest("POST", "/api/login").bodyJson(loginJson)));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(UNAUTHORIZED, result.status());
@@ -362,7 +359,7 @@ public class SessionControllerTest {
     loginJson.put("password", "password");
     settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "true");
     when(ldapUtil.loginWithLdap(any())).thenReturn(null);
-    Result result = route(app, fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(OK, result.status());
@@ -381,7 +378,7 @@ public class SessionControllerTest {
     configHelper.loadConfigToDB(
         ConfigHelper.ConfigType.Security, ImmutableMap.of("level", "insecure"));
 
-    Result result = route(app, fakeRequest("GET", "/api/insecure_login"));
+    Result result = route(fakeRequest("GET", "/api/insecure_login"));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(OK, result.status());
@@ -400,7 +397,7 @@ public class SessionControllerTest {
     configHelper.loadConfigToDB(
         ConfigHelper.ConfigType.Security, ImmutableMap.of("level", "insecure"));
 
-    Result result = routeWithYWErrHandler(app, fakeRequest("GET", "/api/insecure_login"));
+    Result result = routeWithYWErrHandler(fakeRequest("GET", "/api/insecure_login"), app);
     assertUnauthorized(result, "No read only customer exists.");
     assertAuditEntry(0, customer.uuid);
   }
@@ -412,7 +409,7 @@ public class SessionControllerTest {
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
     ModelFactory.testUser(customer);
 
-    Result result = routeWithYWErrHandler(app, fakeRequest("GET", "/api/insecure_login"));
+    Result result = routeWithYWErrHandler(fakeRequest("GET", "/api/insecure_login"), app);
 
     assertUnauthorized(result, "Insecure login unavailable.");
     assertAuditEntry(0, customer.uuid);
@@ -428,8 +425,7 @@ public class SessionControllerTest {
     registerJson.put("name", "Foo");
 
     Result result =
-        route(
-            app, fakeRequest("POST", "/api/register?generateApiToken=true").bodyJson(registerJson));
+        route(fakeRequest("POST", "/api/register?generateApiToken=true").bodyJson(registerJson));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(OK, result.status());
@@ -441,7 +437,7 @@ public class SessionControllerTest {
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "foo2@bar.com");
     loginJson.put("password", "pAssw_0rd");
-    result = route(app, fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     json = Json.parse(contentAsString(result));
 
     assertEquals(OK, result.status());
@@ -461,7 +457,7 @@ public class SessionControllerTest {
     registerJson.put("name", "Foo");
 
     Result result =
-        routeWithYWErrHandler(app, fakeRequest("POST", "/api/register").bodyJson(registerJson));
+        routeWithYWErrHandler(fakeRequest("POST", "/api/register").bodyJson(registerJson), app);
 
     assertEquals(BAD_REQUEST, result.status());
   }
@@ -476,7 +472,7 @@ public class SessionControllerTest {
     registerJson.put("password", "pAssw_0rd");
     registerJson.put("name", "Foo");
 
-    Result result = route(app, fakeRequest("POST", "/api/register").bodyJson(registerJson));
+    Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(OK, result.status());
@@ -495,7 +491,6 @@ public class SessionControllerTest {
 
     result =
         route(
-            app,
             fakeRequest("POST", "/api/register")
                 .bodyJson(registerJson2)
                 .header("X-AUTH-TOKEN", authToken));
@@ -508,10 +503,10 @@ public class SessionControllerTest {
     checkCount("count", "2");
     result =
         routeWithYWErrHandler(
-            app,
             fakeRequest("POST", "/api/register")
                 .bodyJson(registerJson2)
-                .header("X-AUTH-TOKEN", authToken));
+                .header("X-AUTH-TOKEN", authToken),
+            app);
     assertConflict(result, "Customer already registered.");
     checkCount("count", "2"); // Make sure that count stays 2
     // TODO(amalyshev): also check that alert config was rolled back
@@ -520,7 +515,7 @@ public class SessionControllerTest {
   public void checkCount(String count, String s2) {
     Result result;
     JsonNode json;
-    result = route(app, fakeRequest("GET", "/api/customer_count"));
+    result = route(fakeRequest("GET", "/api/customer_count"));
     json = Json.parse(contentAsString(result));
     assertOk(result);
     assertValue(json, count, s2);
@@ -536,7 +531,7 @@ public class SessionControllerTest {
     registerJson.put("password", "pAssw_0rd");
     registerJson.put("name", "Foo");
 
-    Result result = route(app, fakeRequest("POST", "/api/register").bodyJson(registerJson));
+    Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(OK, result.status());
@@ -551,7 +546,7 @@ public class SessionControllerTest {
     registerJson2.put("name", "Foo");
 
     result =
-        routeWithYWErrHandler(app, fakeRequest("POST", "/api/register").bodyJson(registerJson2));
+        routeWithYWErrHandler(fakeRequest("POST", "/api/register").bodyJson(registerJson2), app);
 
     assertBadRequest(result, "Only Super Admins can register tenant.");
   }
@@ -566,7 +561,7 @@ public class SessionControllerTest {
     registerJson.put("password", "pAssw_0rd");
     registerJson.put("name", "Foo");
 
-    Result result = route(app, fakeRequest("POST", "/api/register").bodyJson(registerJson));
+    Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(OK, result.status());
@@ -582,7 +577,6 @@ public class SessionControllerTest {
 
     result =
         route(
-            app,
             fakeRequest("POST", "/api/register")
                 .bodyJson(registerJson2)
                 .header("X-AUTH-TOKEN", authToken));
@@ -600,10 +594,10 @@ public class SessionControllerTest {
 
     result =
         routeWithYWErrHandler(
-            app,
             fakeRequest("POST", "/api/register")
                 .bodyJson(registerJson3)
-                .header("X-AUTH-TOKEN", authToken2));
+                .header("X-AUTH-TOKEN", authToken2),
+            app);
 
     assertBadRequest(result, "Only Super Admins can register tenant.");
   }
@@ -619,7 +613,7 @@ public class SessionControllerTest {
     registerJson.put("name", "Foo");
 
     Result result =
-        routeWithYWErrHandler(app, fakeRequest("POST", "/api/register").bodyJson(registerJson));
+        routeWithYWErrHandler(fakeRequest("POST", "/api/register").bodyJson(registerJson), app);
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(BAD_REQUEST, result.status());
@@ -637,7 +631,7 @@ public class SessionControllerTest {
     registerJson.put("password", "pAssw_0rd");
     registerJson.put("name", "Foo");
     Result result =
-        routeWithYWErrHandler(app, fakeRequest("POST", "/api/register").bodyJson(registerJson));
+        routeWithYWErrHandler(fakeRequest("POST", "/api/register").bodyJson(registerJson), app);
     assertBadRequest(result, "Cannot register multiple accounts in Single tenancy.");
   }
 
@@ -648,7 +642,7 @@ public class SessionControllerTest {
     registerJson.put("email", "test@customer.com");
     Result result =
         assertPlatformException(
-            () -> route(app, fakeRequest("POST", "/api/login").bodyJson(registerJson)));
+            () -> route(fakeRequest("POST", "/api/login").bodyJson(registerJson)));
 
     JsonNode json = Json.parse(contentAsString(result));
 
@@ -666,13 +660,13 @@ public class SessionControllerTest {
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
-    Result result = route(app, fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
     assertAuditEntry(1, customer.uuid);
 
     assertEquals(OK, result.status());
     String authToken = json.get("authToken").asText();
-    result = route(app, fakeRequest("GET", "/api/logout").header("X-AUTH-TOKEN", authToken));
+    result = route(fakeRequest("GET", "/api/logout").header("X-AUTH-TOKEN", authToken));
     assertEquals(OK, result.status());
     assertAuditEntry(1, customer.uuid);
   }
@@ -685,12 +679,12 @@ public class SessionControllerTest {
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
-    Result result = route(app, fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
     String authToken1 = json.get("authToken").asText();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
-    result = route(app, fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     json = Json.parse(contentAsString(result));
     String authToken2 = json.get("authToken").asText();
     assertEquals(authToken1, authToken2);
@@ -705,7 +699,7 @@ public class SessionControllerTest {
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
-    Result result = route(app, fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     assertAuditEntry(1, customer.uuid);
 
     JsonNode json = Json.parse(contentAsString(result));
@@ -715,7 +709,6 @@ public class SessionControllerTest {
     apiTokenJson.put("authToken", authToken);
     result =
         route(
-            app,
             fakeRequest("PUT", "/api/customers/" + custUuid + "/api_token")
                 .header("X-AUTH-TOKEN", authToken));
     json = Json.parse(contentAsString(result));
@@ -733,7 +726,7 @@ public class SessionControllerTest {
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
-    Result result = route(app, fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
     String authToken = json.get("authToken").asText();
     String custUuid = json.get("customerUUID").asText();
@@ -741,7 +734,6 @@ public class SessionControllerTest {
     apiTokenJson.put("authToken", authToken);
     result =
         route(
-            app,
             fakeRequest("PUT", "/api/customers/" + custUuid + "/api_token")
                 .header("X-AUTH-TOKEN", authToken));
     json = Json.parse(contentAsString(result));
@@ -749,7 +741,6 @@ public class SessionControllerTest {
     apiTokenJson.put("authToken", authToken);
     result =
         route(
-            app,
             fakeRequest("PUT", "/api/customers/" + custUuid + "/api_token")
                 .header("X-AUTH-TOKEN", authToken));
     json = Json.parse(contentAsString(result));
@@ -761,7 +752,7 @@ public class SessionControllerTest {
   @Test
   public void testCustomerCount() {
     startApp(false);
-    Result result = route(app, fakeRequest("GET", "/api/customer_count"));
+    Result result = route(fakeRequest("GET", "/api/customer_count"));
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertValue(json, "count", "0");
@@ -772,14 +763,14 @@ public class SessionControllerTest {
   @Test
   public void testAppVersion() {
     startApp(false);
-    Result result = route(app, fakeRequest("GET", "/api/app_version"));
+    Result result = route(fakeRequest("GET", "/api/app_version"));
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertEquals(json, Json.newObject());
     ConfigHelper configHelper = new ConfigHelper();
     configHelper.loadConfigToDB(
         ConfigHelper.ConfigType.SoftwareVersion, ImmutableMap.of("version", "0.0.1"));
-    result = route(app, fakeRequest("GET", "/api/app_version"));
+    result = route(fakeRequest("GET", "/api/app_version"));
     json = Json.parse(contentAsString(result));
     assertOk(result);
     assertValue(json, "version", "0.0.1");
@@ -796,7 +787,7 @@ public class SessionControllerTest {
     Http.RequestBuilder request =
         fakeRequest("GET", "/universes/" + universe.universeUUID + "/proxy/www.test.com")
             .header("X-AUTH-TOKEN", authToken);
-    Result result = routeWithYWErrHandler(app, request);
+    Result result = routeWithYWErrHandler(request, app);
     assertBadRequest(result, "Invalid proxy request");
   }
 
@@ -811,7 +802,7 @@ public class SessionControllerTest {
     Http.RequestBuilder request =
         fakeRequest("GET", "/universes/" + universe.universeUUID + "/proxy/" + "127.0.0.1:7000")
             .header("X-AUTH-TOKEN", authToken);
-    Result result = routeWithYWErrHandler(app, request);
+    Result result = routeWithYWErrHandler(request, app);
     assertBadRequest(result, "Invalid proxy request");
   }
 
@@ -847,7 +838,7 @@ public class SessionControllerTest {
                     + node.cloudInfo.private_ip
                     + ":7001/")
             .header("X-AUTH-TOKEN", authToken);
-    Result result = routeWithYWErrHandler(app, request);
+    Result result = routeWithYWErrHandler(request, app);
     assertBadRequest(result, "Invalid proxy request");
   }
 
@@ -885,7 +876,7 @@ public class SessionControllerTest {
     Http.RequestBuilder request =
         fakeRequest("GET", "/universes/" + universe.universeUUID + "/proxy/" + nodeAddr + "/")
             .header("X-AUTH-TOKEN", authToken);
-    Result result = routeWithYWErrHandler(app, request);
+    Result result = routeWithYWErrHandler(request, app);
     // Expect the request to fail since the hostname isn't real.
     // This shows that it got past validation though
     assertInternalServerError(result, null /*errorStr*/);
@@ -913,7 +904,6 @@ public class SessionControllerTest {
     String nodeAddr = node.cloudInfo.private_ip + ":" + node.masterHttpPort;
     Result result =
         route(
-            app,
             fakeRequest("GET", "/universes/" + universe.universeUUID + "/proxy/" + nodeAddr + "/"));
     // Expect the request to fail since the hostname isn't real.
     // This shows that it got past validation though

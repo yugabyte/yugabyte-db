@@ -30,8 +30,10 @@ import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.play.PlayWebContext;
 import org.pac4j.play.store.PlaySessionStore;
-import play.libs.typedmap.TypedKey;
-import play.mvc.*;
+import play.mvc.Action;
+import play.mvc.Http;
+import play.mvc.Result;
+import play.mvc.Results;
 
 @Slf4j
 public class TokenAuthenticator extends Action.Simple {
@@ -56,10 +58,6 @@ public class TokenAuthenticator extends Action.Simple {
   public static final String API_TOKEN_HEADER = "X-AUTH-YW-API-TOKEN";
   public static final String API_JWT_HEADER = "X-AUTH-YW-API-JWT";
   public static final String COOKIE_PLAY_SESSION = "PLAY_SESSION";
-
-  public static final TypedKey<Customer> CUSTOMER = TypedKey.create("customer");
-
-  public static final TypedKey<UserWithFeatures> USER = TypedKey.create("user");
 
   private final Config config;
 
@@ -132,56 +130,52 @@ public class TokenAuthenticator extends Action.Simple {
 
   @Override
   public CompletionStage<Result> call(Http.Context ctx) {
-    try {
-      Http.Request req = ctx.request();
-      String path = req.path();
-      String endPoint = "";
-      String requestType = req.method();
-      Pattern pattern = Pattern.compile(".*/customers/([a-zA-Z0-9-]+)(/.*)?");
-      Matcher matcher = pattern.matcher(path);
-      UUID custUUID = null;
-      String patternForUUID =
-          "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}" + "-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
-      String patternForHost = ".+:[0-9]{4,5}";
+    String path = ctx.request().path();
+    String endPoint = "";
+    String requestType = ctx.request().method();
+    Pattern pattern = Pattern.compile(".*/customers/([a-zA-Z0-9-]+)(/.*)?");
+    Matcher matcher = pattern.matcher(path);
+    UUID custUUID = null;
+    String patternForUUID =
+        "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}" + "-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+    String patternForHost = ".+:[0-9]{4,5}";
 
-      // Allow for disabling authentication on proxy endpoint so that
-      // Prometheus can scrape database nodes.
-      if (Pattern.matches(
-              String.format("^.*/universes/%s/proxy/%s/(.*)$", patternForUUID, patternForHost),
-              path)
-          && !config.getBoolean("yb.security.enable_auth_for_proxy_metrics")) {
-        return delegate.call(req);
-      }
-
-      if (matcher.find()) {
-        custUUID = UUID.fromString(matcher.group(1));
-        endPoint = ((endPoint = matcher.group(2)) != null) ? endPoint : "";
-      }
-      Customer cust;
-      Users user = getCurrentAuthenticatedUser(ctx);
-
-      if (user != null) {
-        cust = Customer.get(user.customerUUID);
-      } else {
-        return CompletableFuture.completedFuture(Results.forbidden("Unable To Authenticate User"));
-      }
-
-      // Some authenticated calls don't actually need to be authenticated
-      // (e.g. /metadata/column_types). Only check auth_token is valid in that case.
-      if (cust != null && (custUUID == null || custUUID.equals(cust.uuid))) {
-        if (!checkAccessLevel(endPoint, user, requestType)) {
-          return CompletableFuture.completedFuture(Results.forbidden("User doesn't have access"));
-        }
-        RequestContext.put(CUSTOMER, cust);
-        RequestContext.put(USER, userService.getUserWithFeatures(cust, user));
-      } else {
-        // Send Forbidden Response if Authentication Fails.
-        return CompletableFuture.completedFuture(Results.forbidden("Unable To Authenticate User"));
-      }
-      return delegate.call(req);
-    } finally {
-      RequestContext.clean();
+    // Allow for disabling authentication on proxy endpoint so that
+    // Prometheus can scrape database nodes.
+    if (Pattern.matches(
+            String.format("^.*/universes/%s/proxy/%s/(.*)$", patternForUUID, patternForHost), path)
+        && !config.getBoolean("yb.security.enable_auth_for_proxy_metrics")) {
+      return delegate.call(ctx);
     }
+
+    if (matcher.find()) {
+      custUUID = UUID.fromString(matcher.group(1));
+      endPoint = ((endPoint = matcher.group(2)) != null) ? endPoint : "";
+    }
+    Customer cust;
+    Users user = getCurrentAuthenticatedUser(ctx);
+
+    if (user != null) {
+      cust = Customer.get(user.customerUUID);
+    } else {
+      return CompletableFuture.completedFuture(Results.forbidden("Unable To Authenticate User"));
+    }
+
+    // Some authenticated calls don't actually need to be authenticated
+    // (e.g. /metadata/column_types). Only check auth_token is valid in that case.
+    if (cust != null && (custUUID == null || custUUID.equals(cust.uuid))) {
+      if (!checkAccessLevel(endPoint, user, requestType)) {
+        return CompletableFuture.completedFuture(Results.forbidden("User doesn't have access"));
+      }
+      // TODO: withUsername returns new request that is ignored. Maybe a bug.
+      ctx.request().withUsername(user.getEmail());
+      ctx.args.put("customer", cust);
+      ctx.args.put("user", userService.getUserWithFeatures(cust, user));
+    } else {
+      // Send Forbidden Response if Authentication Fails.
+      return CompletableFuture.completedFuture(Results.forbidden("Unable To Authenticate User"));
+    }
+    return delegate.call(ctx);
   }
 
   public boolean checkAuthentication(Http.Context ctx, Set<Role> roles) {
@@ -199,7 +193,7 @@ public class TokenAuthenticator extends Action.Simple {
         // So we can audit any super admin actions.
         // If there is a use case also lookup customer and put it in context
         UserWithFeatures userWithFeatures = new UserWithFeatures().setUser(user);
-        RequestContext.put(USER, userWithFeatures);
+        ctx.args.put("user", userWithFeatures);
         foundRole = true;
       }
       return foundRole;

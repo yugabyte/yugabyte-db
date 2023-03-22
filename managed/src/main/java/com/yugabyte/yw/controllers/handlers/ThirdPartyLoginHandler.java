@@ -100,6 +100,8 @@ public class ThirdPartyLoginHandler {
 
   public void onLoginSuccess(Context ctx, Users user) {
     Customer cust = Customer.get(user.customerUUID);
+    ctx.args.put("customer", cust);
+    ctx.args.put("user", userService.getUserWithFeatures(cust, user));
     ctx.response()
         .setCookie(
             Cookie.builder("customerId", cust.uuid.toString())

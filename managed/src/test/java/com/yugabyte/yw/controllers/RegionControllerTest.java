@@ -64,32 +64,32 @@ public class RegionControllerTest extends FakeDBApplication {
   private Result listRegions(UUID providerUUID) {
     String uri =
         String.format("/api/customers/%s/providers/%s/regions", customer.uuid, providerUUID);
-    return doRequest("GET", uri);
+    return FakeApiHelper.doRequest("GET", uri);
   }
 
   private Result listAllRegions() {
     String uri = String.format("/api/customers/%s/regions", customer.uuid);
-    return doRequest("GET", uri);
+    return FakeApiHelper.doRequest("GET", uri);
   }
 
   private Result createRegion(UUID providerUUID, JsonNode body) {
     String uri =
         String.format("/api/customers/%s/providers/%s/regions", customer.uuid, providerUUID);
-    return doRequestWithBody("POST", uri, body);
+    return FakeApiHelper.doRequestWithBody("POST", uri, body);
   }
 
   private Result deleteRegion(UUID providerUUID, UUID regionUUID) {
     String uri =
         String.format(
             "/api/customers/%s/providers/%s/regions/%s", customer.uuid, providerUUID, regionUUID);
-    return doRequest("DELETE", uri);
+    return FakeApiHelper.doRequest("DELETE", uri);
   }
 
   private Result editRegion(UUID providerUUID, UUID regionUUID, JsonNode body) {
     String uri =
         String.format(
             "/api/customers/%s/providers/%s/regions/%s", customer.uuid, providerUUID, regionUUID);
-    return doRequestWithBody("PUT", uri, body);
+    return FakeApiHelper.doRequestWithBody("PUT", uri, body);
   }
 
   @Test

@@ -42,7 +42,6 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Marker;
 import org.slf4j.MarkerFactory;
 import play.libs.Json;
-import com.typesafe.config.Config;
 
 @Singleton
 @Slf4j
@@ -161,7 +160,9 @@ public class ShellProcessHandler {
         log.info(logMsg);
       }
       String fullCommand = "'" + String.join("' '", redactedCommand) + "'";
-      if (appConfig.getBoolean("yb.log.logEnvVars") && extraEnvVars != null) {
+      if (appConfig.hasPath("yb.log.logEnvVars")
+          && appConfig.getBoolean("yb.log.logEnvVars")
+          && extraEnvVars != null) {
         fullCommand = Joiner.on(" ").withKeyValueSeparator("=").join(extraEnvVars) + fullCommand;
       }
       logMsg =

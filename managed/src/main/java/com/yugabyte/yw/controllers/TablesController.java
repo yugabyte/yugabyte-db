@@ -212,7 +212,7 @@ public class TablesController extends AuthenticatedController {
       response = Object.class,
       responseContainer = "Map")
   public Result alter(UUID cUUID, UUID uniUUID, UUID tableUUID) {
-    return TODO(request());
+    return play.mvc.Results.TODO;
   }
 
   @ApiOperation(value = "Drop a YugabyteDB table", nickname = "dropTable", response = YBPTask.class)
