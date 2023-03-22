@@ -160,7 +160,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
     sb.append(" && chmod 755 /root ").append(taskParams().nodeAgentHome);
     String installCommand = sb.toString();
     log.debug("Running node agent installation command: {}", installCommand);
-    command = ImmutableList.of("sudo", "/bin/bash", "-c", installCommand);
+    command = ImmutableList.of("sudo", "-H", "/bin/bash", "-c", installCommand);
     nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
   }
 }
