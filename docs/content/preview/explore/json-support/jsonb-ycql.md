@@ -3,7 +3,7 @@ title: JSON Support in YCQL
 headerTitle: JSON Support
 linkTitle: JSON support
 description: YCQL JSON Support in YugabyteDB.
-headcontent: JSON Support in YugabyteDB.
+headcontent: JSON Support in YugabyteDB
 image: <div class="icon"><i class="fa-solid fa-file-invoice"></i></div>
 menu:
   preview:

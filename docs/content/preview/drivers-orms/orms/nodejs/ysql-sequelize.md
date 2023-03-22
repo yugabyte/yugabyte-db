@@ -1,8 +1,8 @@
 ---
-title: Node.js ORM example application that uses Sequelize ORM and YSQL
+title: Node.js Sequelize ORM example application
 headerTitle: Node.js ORM example application
 linkTitle: Node.js
-description: Node.js ORM example application that uses Sequelize ORM and YSQL.
+description: Node.js ORM example application that uses Sequelize and YSQL.
 menu:
   preview:
     identifier: nodejs-sequelize

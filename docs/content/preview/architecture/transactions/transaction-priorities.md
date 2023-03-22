@@ -1,5 +1,5 @@
 ---
-title: Transaction priorities
+title: Transaction priorities in YugabyteDB YSQL
 headerTitle: Transaction priorities
 linkTitle: Transaction priorities
 description: Details about Transaction priorities in YSQL
