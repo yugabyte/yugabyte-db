@@ -50,7 +50,7 @@ Establishes a new connection to a YugabyteDB server. The connection parameters t
 
 Where the command omits *dname*, *user*, *host*, or *port*, the new connection can reuse values from the previous connection. By default, values from the previous connection are reused except when processing a *conninfo* string. Passing a first argument of `-reuse-previous=on` or `-reuse-previous=off` overrides that default. When the command neither specifies nor reuses a particular parameter, the `libpq` default is used. Specifying any of *dbname*, *username*, *host*, or *port* as `-` is equivalent to omitting that parameter.
 
-If the new connection is successfully made, the previous connection is closed. If the connection attempt failed (wrong user name, access denied, etc.), the previous connection is only kept if ysqlsh is in interactive mode. When executing a non-interactive script, processing immediately stops with an error. This distinction was chosen as a user convenience against typos on the one hand, and a safety mechanism that scripts aren't accidentally acting on the wrong database on the other hand.
+If the new connection is successful, the previous connection is closed. If the connection attempt failed (wrong user name, access denied, etc.), the previous connection is only kept if ysqlsh is in interactive mode. When executing a non-interactive script, processing immediately stops with an error. This distinction was chosen as a user convenience against typos on the one hand, and a safety mechanism that scripts aren't accidentally acting on the wrong database on the other hand.
 
 Examples:
 
@@ -68,11 +68,11 @@ Sets the title of any tables being printed as the result of a query or unset any
 
 Changes the current working directory to *directory*. Without argument, changes to the current user's home directory.
 
-{{< note title="Tip" >}}
+{{< tip title="Tip" >}}
 
 To print your current working directory, use `\! pwd`.
 
-{{< /note >}}
+{{< /tip >}}
 
 ##### \conninfo
 
@@ -88,13 +88,9 @@ For `\copy ... from stdin`, data rows are read from the same source that issued 
 
 The syntax of this command is similar to that of the SQL `COPY` statement. All options other than the data source or destination are as specified for `COPY`. Because of this, special parsing rules apply to the `\copy` meta-command. Unlike most other meta-commands, the entire remainder of the line is always taken to be the arguments of `\copy`, and neither variable interpolation nor backquote expansion are performed in the arguments.
 
-{{< note title="Tip" >}}
+{{< note title="Note" >}}
 
 Another way to obtain the same result as `\copy ... to` is to use the SQL [COPY ... TO STDOUT](../../api/ysql/the-sql-language/statements/cmd_copy) statement and terminate it with `\g *filename*` or `\g |*program*`. Unlike `\copy`, this method allows the command to span multiple lines; also, variable interpolation and backquote expansion can be used.
-
-{{< /note >}}
-
-{{< note title="Tip" >}}
 
 These operations aren't as efficient as the SQL `COPY` statement with a file or program data source or destination, because all data must pass through the client-server connection. For large amounts of data, the SQL `COPY` statement might be preferable.
 
@@ -128,7 +124,7 @@ By default, only user-created objects are shown; supply a pattern or the `S` mod
 
 {{< note title="Note" >}}
 
-If `\d` is used without a *pattern* argument, it is equivalent to `\dtvmsE`, which shows a list of all visible tables, views, materialized views, sequences, and foreign tables. This is purely a convenience measure.
+If `\d` is used without a *pattern* argument, it is equivalent to `\dtvmsE`, which shows a list of all visible tables, views, materialized views, sequences, and foreign tables.
 
 {{< /note >}}
 
@@ -232,7 +228,7 @@ Lists tables and indexes in database tablegroups matching the *pattern*. If the 
 
 ##### \dl
 
-This is an alias for [`\lo_list`](#lo-list), which shows a list of large objects.
+Alias for [`\lo_list`](#lo-list), which shows a list of large objects.
 
 ##### \dL[S+] [ [pattern](#patterns) ]
 
@@ -311,15 +307,15 @@ Mon Dec 16 21:40:57 CEST 2019
 
 If the first argument is an unquoted `-n`, the trailing newline isn't written.
 
-{{< note title="Tip" >}}
+{{< tip title="Tip" >}}
 
 If you use the `\o` command to redirect your query output, you might wish to use [\qecho](#qecho-text) instead of this command.
 
-{{< /note >}}
+{{< /tip >}}
 
 ##### \ef [ *function_description* [ *line_number* ] ]
 
-This command fetches and edits the definition of the named function, in the form of a [CREATE OR REPLACE FUNCTION](../../api/ysql/the-sql-language/statements/ddl_create_function) statement. Editing is done in the same way as for [\edit](#e-edit-filename-line-number). After the editor exits, the updated command waits in the query buffer; type semicolon (`;`) or [\g](#g-filename-g-command) to send it, or [\r](#r-reset) to cancel.
+Fetches and edits the definition of the named function, in the form of a [CREATE OR REPLACE FUNCTION](../../api/ysql/the-sql-language/statements/ddl_create_function) statement. Editing is done in the same way as for [\edit](#e-edit-filename-line-number). After the editor exits, the updated command waits in the query buffer; type semicolon (`;`) or [\g](#g-filename-g-command) to send it, or [\r](#r-reset) to cancel.
 
 The target function can be specified by name alone, or by name and arguments, for example, `foo(integer, text)`. The argument types must be given if there is more than one function of the same name.
 
@@ -345,7 +341,7 @@ Repeats the most recent server error message at maximum verbosity, as though [VE
 
 ##### \ev [ view_name [ line_number ] ]
 
-This command fetches and edits the definition of the named view, in the form of a `CREATE OR REPLACE VIEW` statement. Editing is done in the same way as for \edit. After the editor exits, the updated command waits in the query buffer; type semicolon (`;`) or [\g](#g-filename-g-command) to send it, or [\r](#r-reset) to cancel.
+Fetches and edits the definition of the named view, in the form of a `CREATE OR REPLACE VIEW` statement. Editing is done in the same way as for \edit. After the editor exits, the updated command waits in the query buffer; type semicolon (`;`) or [\g](#g-filename-g-command) to send it, or [\r](#r-reset) to cancel.
 
 If no view is specified, a blank `CREATE VIEW` template is presented for editing.
 
@@ -429,7 +425,7 @@ To simplify typing, commands that consists of several words don't have to be quo
 
 ##### \H, \html
 
-Turns on HTML query output format. If the HTML format is already on, it is switched back to the default aligned text format. This command is for compatibility and convenience, but see [\pset](#pset-option-value) about setting other output options.
+Turns on HTML query output format. If the HTML format is already on, it is switched back to the default aligned text format. This command is for compatibility and convenience. See [\pset](#pset-option-value) about setting other output options.
 
 ##### \i *filename*, \include *filename*
 
