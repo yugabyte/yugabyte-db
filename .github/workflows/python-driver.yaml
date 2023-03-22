@@ -18,7 +18,6 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     
-    - name: Run apache/age docker image
     - name: Set tag based on branch
       run: |
         if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
