@@ -825,9 +825,6 @@ Status PgClientSession::Perform(
   ADOPT_TRACE(context->trace());
 
   auto ops = VERIFY_RESULT(PrepareOperations(req, session, &context->sidecars(), &table_cache_));
-
-  auto transaction = session_info.first.transaction;
-
   auto ops_count = ops.size();
   auto data = std::make_shared<PerformData>(PerformData {
     .session_id = id_,
