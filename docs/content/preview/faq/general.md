@@ -3,7 +3,6 @@ title: FAQs about YugabyteDB
 headerTitle: General FAQ
 linkTitle: General FAQ
 description: Answers to common questions about YugabyteDB.
-headcontent: Answers to common questions about YugabyteDB
 aliases:
   - /preview/faq/product/
   - /preview/introduction/overview/
