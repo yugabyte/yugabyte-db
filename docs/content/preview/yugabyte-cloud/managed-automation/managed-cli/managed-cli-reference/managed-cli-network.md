@@ -80,8 +80,8 @@ Create a private service endpoint for a specified cluster.
 | :--- | :--- |
 | --cluster-name | Required. The cluster for which to create the endpoint. |
 | --region | Required. Region in which to create the endpoint. |
-| --accessibility-type | Required. Whether the endpoint is publicly accessible or private. |
-| --security-principals | Required. A comma-separated list of AWS Amazon Resource Names (ARNs). |
+| --accessibility-type | Required. The type of endpoint to create. `PUBLIC`, `PRIVATE`, or `PRIVATE_SERVICE_ENDPOINT`. |
+| --security-principals | Required for `PRIVATE_SERVICE_ENDPOINT`. A comma-separated list of AWS Amazon Resource Names (ARNs). |
 
 ### endpoint update
 
@@ -91,8 +91,8 @@ Update the configuration of a specified private service endpoint.
 | :--- | :--- |
 | --cluster-name | Required. The cluster where the endpoint is configured. |
 | --region | Required. Region in which to create the endpoint. |
-| --accessibility-type | Required. Whether the endpoint is publicly accessible or private. |
-| --security-principals | Required. A comma-separated list of AWS Amazon Resource Names (ARNs). |
+| --accessibility-type | Required. The type of endpoint to create. `PUBLIC`, `PRIVATE`, or `PRIVATE_SERVICE_ENDPOINT`. |
+| --security-principals | Required for `PRIVATE_SERVICE_ENDPOINT`. A comma-separated list of AWS Amazon Resource Names (ARNs). |
 
 ### endpoint delete
 
