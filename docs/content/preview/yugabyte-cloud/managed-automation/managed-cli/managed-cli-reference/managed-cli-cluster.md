@@ -75,14 +75,6 @@ Delete the specified cluster.
 | :--- | :--- |
 | --cluster-name | Name of the cluster. |
 
-### list
-
-List all the clusters to which you have access.
-
-| Flag | Description |
-| :--- | :--- |
-| --cluster-name | The name of the cluster to filter. |
-
 ### describe
 
 Fetch detailed information about the specified cluster.
@@ -90,6 +82,14 @@ Fetch detailed information about the specified cluster.
 | Flag | Description |
 | :--- | :--- |
 | --cluster-name | Name of the cluster. |
+
+### list
+
+List all the clusters to which you have access.
+
+| Flag | Description |
+| :--- | :--- |
+| --cluster-name | The name of the cluster to filter. |
 
 ### update
 

@@ -62,3 +62,43 @@ List the endpoints of the specified cluster. This includes public and private ho
 | --cluster-name | Required. The cluster for which to list the endpoints. |
 | --region | Return endpoints only from the specified region. |
 | --accessibility | Return endpoints only with the specified accessibility type. `PUBLIC`, `PRIVATE`, or `PRIVATE_SERVICE_ENDPOINT`.
+
+### endpoint describe
+
+Fetch detailed information about the specified private service endpoint.
+
+| Flag | Description |
+| :--- | :--- |
+| --cluster-name | Required. The cluster for which to list the endpoints. |
+| --endpoint-id | Required. The endpoint to describe. |
+
+### endpoint create
+
+Create a private service endpoint for a specified cluster.
+
+| Flag | Description |
+| :--- | :--- |
+| --cluster-name | Required. The cluster for which to create the endpoint. |
+| --region | Required. Region in which to create the endpoint. |
+| --accessibility-type | Required. Whether the endpoint is publicly accessible or private. |
+| --security-principals | Required. A comma-separated list of AWS Amazon Resource Names (ARNs). |
+
+### endpoint update
+
+Update the configuration of a specified private service endpoint.
+
+| Flag | Description |
+| :--- | :--- |
+| --cluster-name | Required. The cluster where the endpoint is configured. |
+| --region | Required. Region in which to create the endpoint. |
+| --accessibility-type | Required. Whether the endpoint is publicly accessible or private. |
+| --security-principals | Required. A comma-separated list of AWS Amazon Resource Names (ARNs). |
+
+### endpoint delete
+
+Delete a specified private service endpoint.
+
+| Flag | Description |
+| :--- | :--- |
+| --cluster-name | Required. The cluster for which to list the endpoints. |
+| --endpoint-id | Required. The endpoint to delete. |
