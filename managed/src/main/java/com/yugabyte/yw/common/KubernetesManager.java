@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.helm.HelmUtils;
@@ -48,7 +47,7 @@ public abstract class KubernetesManager {
 
   @Inject RuntimeConfGetter confGetter;
 
-  @Inject Config appConfig;
+  @Inject play.Configuration appConfig;
 
   public static final Logger LOG = LoggerFactory.getLogger(KubernetesManager.class);
 

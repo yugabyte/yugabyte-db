@@ -16,6 +16,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import io.swagger.annotations.ApiKeyAuthDefinition;
 import io.swagger.annotations.Contact;
 import io.swagger.annotations.ExternalDocs;
@@ -25,6 +26,7 @@ import io.swagger.annotations.SecurityDefinition;
 import io.swagger.annotations.SwaggerDefinition;
 import play.libs.Json;
 import play.mvc.Controller;
+import play.mvc.Http;
 import play.mvc.With;
 
 /**
@@ -72,7 +74,10 @@ public abstract class AbstractPlatformController extends Controller {
   @Inject private AuditService auditService;
 
   protected AuditService auditService() {
-    RequestContext.get(TokenAuthenticator.USER);
+    UserWithFeatures user = (UserWithFeatures) Http.Context.current().args.get("user");
+    if (user == null) {
+      throw new IllegalStateException("Shouldn't audit unauthenticated requests!");
+    }
     return auditService;
   }
 

@@ -11,10 +11,7 @@
 package com.yugabyte.yw.modules;
 
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
-import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.google.inject.AbstractModule;
 import com.google.inject.Inject;
 import com.google.inject.Provider;
@@ -39,18 +36,11 @@ public class CustomObjectMapperModule extends AbstractModule {
 
     @Override
     public ObjectMapper get() {
-      Json.setObjectMapper(createDefaultMapper());
+      ObjectMapper mapper = Json.newDefaultMapper();
+      mapper.setSerializationInclusion(Include.NON_NULL);
+      Json.setObjectMapper(mapper);
       lifecycle.addStopHook(() -> CompletableFuture.runAsync(() -> Json.setObjectMapper(null)));
-      return Json.mapper();
+      return mapper;
     }
-  }
-
-  public static ObjectMapper createDefaultMapper() {
-    ObjectMapper mapper = new ObjectMapper();
-    mapper.registerModule(new Jdk8Module());
-    mapper.registerModule(new JavaTimeModule());
-    mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-    mapper.setSerializationInclusion(Include.NON_NULL);
-    return mapper;
   }
 }

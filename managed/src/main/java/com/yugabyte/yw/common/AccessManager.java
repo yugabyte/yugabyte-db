@@ -9,7 +9,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.RotateAccessKeyParams;
@@ -44,13 +43,12 @@ import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import play.libs.Json;
 
 @Singleton
 @Slf4j
 public class AccessManager extends DevopsBase {
 
-  private final Config appConfig;
+  private final play.Configuration appConfig;
   private final Commissioner commissioner;
 
   private static final String YB_CLOUD_COMMAND_TYPE = "access";
@@ -60,7 +58,7 @@ public class AccessManager extends DevopsBase {
   public static final String STORAGE_PATH = "yb.storage.path";
 
   @Inject
-  public AccessManager(Config appConfig, Commissioner commissioner) {
+  public AccessManager(play.Configuration appConfig, Commissioner commissioner) {
     this.appConfig = appConfig;
     this.commissioner = commissioner;
   }
@@ -518,7 +516,8 @@ public class AccessManager extends DevopsBase {
     }
 
     if (Common.CloudType.valueOf(provider.code) == Common.CloudType.aws) {
-      ArrayNode ret = Json.mapper().getNodeFactory().arrayNode();
+      ObjectMapper mapper = play.libs.Json.newDefaultMapper();
+      ArrayNode ret = mapper.getNodeFactory().arrayNode();
       regions
           .stream()
           .map(r -> deleteKey(provider.uuid, r.uuid, keyCode, deleteRemote))

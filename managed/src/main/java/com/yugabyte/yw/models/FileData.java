@@ -2,38 +2,42 @@
 
 package com.yugabyte.yw.models;
 
-import com.typesafe.config.Config;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.CreatedTimestamp;
+
+import org.apache.commons.io.FileUtils;
+
+import java.util.Base64;
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
+import java.util.HashSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.Set;
+
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.io.FilenameUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.File;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.attribute.PosixFilePermission;
-import java.nio.file.attribute.PosixFilePermissions;
-import java.util.Base64;
-import java.util.Date;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import javax.persistence.EmbeddedId;
+
 import javax.persistence.Entity;
+import javax.persistence.EmbeddedId;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.FilenameUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import play.api.Play;
 import play.data.validation.Constraints;
 
@@ -111,22 +115,25 @@ public class FileData extends Model {
   }
 
   public static String getStoragePath() {
-    Config appConfig = Play.current().injector().instanceOf(Config.class);
+    play.Configuration appConfig = Play.current().injector().instanceOf(play.Configuration.class);
     return appConfig.getString(YB_STORAGE_PATH);
   }
 
   public static void writeFileToDB(String file) {
-    RuntimeConfGetter confGetter = Play.current().injector().instanceOf(RuntimeConfGetter.class);
-    writeFileToDB(file, getStoragePath(), confGetter);
+    RuntimeConfigFactory runtimeConfigFactory =
+        Play.current().injector().instanceOf(RuntimeConfigFactory.class);
+    writeFileToDB(file, getStoragePath(), runtimeConfigFactory);
   }
 
   public static void writeFileToDB(
-      String file, String storagePath, RuntimeConfGetter runtimeConfGetter) {
+      String file, String storagePath, RuntimeConfigFactory runtimeConfigFactory) {
     try {
       long maxAllowedFileSize =
-          runtimeConfGetter.getGlobalConf(GlobalConfKeys.fsStatelessMaxFileSizeBytes);
+          runtimeConfigFactory.globalRuntimeConf().getLong("yb.fs_stateless.max_file_size_bytes");
       int fileCountThreshold =
-          runtimeConfGetter.getGlobalConf(GlobalConfKeys.fsStatelessMaxFilesCountPersist);
+          runtimeConfigFactory
+              .globalRuntimeConf()
+              .getInt("yb.fs_stateless.max_files_count_persist");
 
       File f = new File(file);
       if (f.exists()) {

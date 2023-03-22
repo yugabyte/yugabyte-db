@@ -1,5 +1,9 @@
 package com.yugabyte.yw.models.helpers.provider;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -12,11 +16,9 @@ import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import lombok.Data;
 
 @Data
@@ -54,34 +56,34 @@ public class GCPCloudInfo implements CloudInfoInterface {
 
   @JsonAlias({"host_project_id", "project_id", GCPCloudImpl.GCE_PROJECT_PROPERTY})
   @ApiModelProperty
-  private String gceProject;
+  public String gceProject;
 
   @JsonAlias({"config_file_path", GCPCloudImpl.GOOGLE_APPLICATION_CREDENTIALS_PROPERTY})
   @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
-  private String gceApplicationCredentialsPath;
+  public String gceApplicationCredentialsPath;
 
   @JsonAlias("config_file_contents")
   @ApiModelProperty
-  private JsonNode gceApplicationCredentials;
+  public JsonNode gceApplicationCredentials;
 
   @JsonAlias({"network", GCPCloudImpl.CUSTOM_GCE_NETWORK_PROPERTY})
   @ApiModelProperty
-  private String destVpcId;
+  public String destVpcId;
 
   @JsonAlias(CloudProviderHandler.YB_FIREWALL_TAGS)
   @ApiModelProperty
-  private String ybFirewallTags;
+  public String ybFirewallTags;
 
   @JsonAlias("use_host_vpc")
   @ApiModelProperty
-  private Boolean useHostVPC;
+  public Boolean useHostVPC;
 
   @JsonAlias("use_host_credentials")
   @ApiModelProperty
-  private Boolean useHostCredentials;
+  public Boolean useHostCredentials;
 
   @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
-  private String hostVpcId;
+  public String hostVpcId;
 
   @ApiModelProperty(
       value = "New/Existing VPC for provider creation",

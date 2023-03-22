@@ -101,6 +101,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
+import play.Configuration;
 import play.Environment;
 import play.inject.ApplicationLifecycle;
 import play.libs.Json;
@@ -125,7 +126,7 @@ public class HealthChecker {
 
   private final Environment environment;
 
-  private final Config config;
+  private final play.Configuration config;
 
   // Last time we sent a status update email per customer.
   private final Map<UUID, Long> lastStatusUpdateTimeMap = new HashMap<>();
@@ -166,7 +167,7 @@ public class HealthChecker {
   @Inject
   public HealthChecker(
       Environment environment,
-      Config config,
+      Configuration config,
       PlatformExecutorFactory platformExecutorFactory,
       PlatformScheduler platformScheduler,
       HealthCheckerReport healthCheckerReport,
@@ -193,7 +194,7 @@ public class HealthChecker {
 
   HealthChecker(
       Environment environment,
-      Config config,
+      Configuration config,
       PlatformScheduler platformScheduler,
       HealthCheckerReport healthCheckerReport,
       EmailHelper emailHelper,

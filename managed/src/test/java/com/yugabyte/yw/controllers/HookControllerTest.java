@@ -29,6 +29,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
+import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
@@ -138,7 +139,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
       Users user) {
     List<Http.MultipartFormData.Part<Source<ByteString, ?>>> bodyData =
         getCreateHookMultiPartData(name, executionLang, hookText, useSudo, runtimeArgs);
-    return doRequestWithAuthTokenAndMultipartData(
+    return FakeApiHelper.doRequestWithAuthTokenAndMultipartData(
         "POST", baseRoute, user.createAuthToken(), bodyData, mat);
   }
 
@@ -210,7 +211,8 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
   public void testListHooks() {
     createHook("test.py", Python, "DEFAULT\nTEXT\n", true, superAdminUser);
     createHook("test2.sh", Bash, "DEFAULT\nTEXT\n", false, superAdminUser);
-    Result result = doRequestWithAuthToken("GET", baseRoute, superAdminUser.createAuthToken());
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken("GET", baseRoute, superAdminUser.createAuthToken());
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertTrue(json.size() == 2);
@@ -222,7 +224,9 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     createHook("test2.sh", Bash, "DEFAULT\nTEXT\n", false, superAdminUser);
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthToken("GET", baseRoute, defaultUser.createAuthToken()));
+            () ->
+                FakeApiHelper.doRequestWithAuthToken(
+                    "GET", baseRoute, defaultUser.createAuthToken()));
     assertUnauthorized(result, "Only Super Admins can perform this operation.");
   }
 
@@ -232,7 +236,8 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     JsonNode json = Json.parse(contentAsString(createResult));
     String uuid = json.get("uuid").asText();
     String uri = baseRoute + "/" + uuid;
-    Result deleteResult = doRequestWithAuthToken("DELETE", uri, superAdminUser.createAuthToken());
+    Result deleteResult =
+        FakeApiHelper.doRequestWithAuthToken("DELETE", uri, superAdminUser.createAuthToken());
     assertOk(deleteResult);
     assertAuditEntry(2, defaultCustomer.uuid);
   }
@@ -245,7 +250,8 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     String uri = baseRoute + "/" + uuid;
     Result deleteResult =
         assertPlatformException(
-            () -> doRequestWithAuthToken("DELETE", uri, defaultUser.createAuthToken()));
+            () ->
+                FakeApiHelper.doRequestWithAuthToken("DELETE", uri, defaultUser.createAuthToken()));
     assertUnauthorized(deleteResult, "Only Super Admins can perform this operation.");
     assertAuditEntry(1, defaultCustomer.uuid);
   }
@@ -260,7 +266,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     List<Http.MultipartFormData.Part<Source<ByteString, ?>>> bodyData =
         getCreateHookMultiPartData("test2.sh", Bash, "UPDATED\nTEXT\n", false, alternateArgs);
     Result updateResult =
-        doRequestWithAuthTokenAndMultipartData(
+        FakeApiHelper.doRequestWithAuthTokenAndMultipartData(
             "PUT", uri, superAdminUser.createAuthToken(), bodyData, mat);
     JsonNode updateResultJson = Json.parse(contentAsString(updateResult));
 
@@ -302,7 +308,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     Result updateResult =
         assertPlatformException(
             () ->
-                doRequestWithAuthTokenAndMultipartData(
+                FakeApiHelper.doRequestWithAuthTokenAndMultipartData(
                     "PUT", uri, superAdminUser.createAuthToken(), bodyData, mat));
     assertBadRequest(updateResult, "Hook with this name already exists: test2.sh");
     assertAuditEntry(2, defaultCustomer.uuid);
@@ -318,7 +324,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     List<Http.MultipartFormData.Part<Source<ByteString, ?>>> bodyData =
         getCreateHookMultiPartData("test.py", Python, "UPDATED\nTEXT\n", false, alternateArgs);
     Result updateResult =
-        doRequestWithAuthTokenAndMultipartData(
+        FakeApiHelper.doRequestWithAuthTokenAndMultipartData(
             "PUT", uri, superAdminUser.createAuthToken(), bodyData, mat);
     JsonNode updateResultJson = Json.parse(contentAsString(updateResult));
 
@@ -342,7 +348,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     Result updateResult =
         assertPlatformException(
             () ->
-                doRequestWithAuthTokenAndMultipartData(
+                FakeApiHelper.doRequestWithAuthTokenAndMultipartData(
                     "PUT", uri, defaultUser.createAuthToken(), bodyData, mat));
     assertUnauthorized(updateResult, "Only Super Admins can perform this operation.");
     assertAuditEntry(1, defaultCustomer.uuid);
@@ -359,7 +365,8 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
             + "/universes/"
             + universe.universeUUID
             + "/run_hooks";
-    Result result = doRequestWithAuthToken("POST", uri, superAdminUser.createAuthToken());
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken("POST", uri, superAdminUser.createAuthToken());
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
@@ -385,7 +392,8 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
             + "?clusterUUID="
             + clusterUUID;
 
-    Result result = doRequestWithAuthToken("POST", uri, superAdminUser.createAuthToken());
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken("POST", uri, superAdminUser.createAuthToken());
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
@@ -409,7 +417,9 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
             + "/run_hooks";
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthToken("POST", uri, superAdminUser.createAuthToken()));
+            () ->
+                FakeApiHelper.doRequestWithAuthToken(
+                    "POST", uri, superAdminUser.createAuthToken()));
     assertUnauthorized(
         result,
         "The execution of API Triggered custom hooks is not enabled on this Anywhere instance");
