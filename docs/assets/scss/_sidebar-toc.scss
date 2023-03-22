@@ -115,23 +115,32 @@
       }
     }
   }
+}
+
+.td-main {
+  position: relative;
 
   .scroll-to-top {
     bottom: 32px;
-    position: absolute;
-    left: 0;
+    position: fixed;
+    z-index: 9999;
+    right: 2vw;
 
-    @media (max-width: 1380px) {
-      left: -10px;
+    @media (max-width: 1199px) {
+      right: 24px;
+    }
+
+    @media (max-width: 767px) {
+      right: 20px;
     }
 
     .scrolltop-btn,
     .scrolltop-btn::before {
       -webkit-backface-visibility: hidden;
       backface-visibility: hidden;
-      height: 40px;
+      height: 30px;
       transition: all 0.3s ease-out;
-      width: 40px;
+      width: 30px;
     }
 
     .scrolltop-btn {
@@ -143,6 +152,8 @@
       padding: 0;
       -webkit-transform: translateY(64px);
       transform: translateY(64px);
+      background: #7879f1;
+      border-radius: 8px;
 
       &.btn-visible {
         opacity: 1;
@@ -152,7 +163,7 @@
 
       &::before {
         align-items: center;
-        background-image: url("/icons/bottom-to-top-arrow.svg");
+        background-image: url("/icons/bottom-to-top-arrow-hover.svg");
         background-repeat: no-repeat;
         background-size: contain;
         content: "";
@@ -162,13 +173,8 @@
       }
 
       &:hover {
-        background: #7879f1;
         -webkit-transform: translateY(-8px);
         transform: translateY(-8px);
-
-        &::before {
-          background-image: url("/icons/bottom-to-top-arrow-hover.svg");
-        }
       }
     }
   }
