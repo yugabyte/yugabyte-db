@@ -10,9 +10,6 @@
 
 package com.yugabyte.yw.common.ha;
 
-import static junit.framework.TestCase.assertTrue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
@@ -28,12 +25,12 @@ import static org.mockito.Mockito.when;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.services.FileDataService;
 import java.io.File;
 import java.net.URL;
 import java.nio.file.Path;
@@ -41,8 +38,13 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import junit.framework.TestCase;
+import static junit.framework.TestCase.assertNull;
+import static junit.framework.TestCase.assertTrue;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -65,7 +67,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
 
   @Mock ConfigHelper mockConfigHelper;
 
-  @Mock FileDataService mockFileDataService;
+  @Mock private play.Configuration appConfig;
 
   private static final String STORAGE_PATH = "yb.storage.path";
 
@@ -162,11 +164,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     setupConfig(prometheusHost, dbUsername, dbPassword, dbHost, dbPort);
     PlatformReplicationManager backupManager =
         new PlatformReplicationManager(
-            mockPlatformScheduler,
-            mockReplicationUtil,
-            mockConfigHelper,
-            mockConfig,
-            mockFileDataService);
+            mockPlatformScheduler, mockReplicationUtil, mockConfigHelper, appConfig);
 
     List<String> expectedCommandArgs =
         getExpectedPlatformBackupCommandArgs(
@@ -214,11 +212,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       PlatformReplicationManager backupManager =
           spy(
               new PlatformReplicationManager(
-                  mockPlatformScheduler,
-                  mockReplicationUtil,
-                  mockConfigHelper,
-                  mockConfig,
-                  mockFileDataService));
+                  mockPlatformScheduler, mockReplicationUtil, mockConfigHelper, appConfig));
 
       List<File> backups = backupManager.listBackups(testUrl);
       assertEquals(3, backups.size());

@@ -17,8 +17,6 @@ import com.jayway.jsonpath.DocumentContext;
 import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
-import com.yugabyte.yw.controllers.RequestContext;
-import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import java.util.List;
@@ -225,7 +223,7 @@ public class AuditService {
       JsonNode params,
       UUID taskUUID,
       JsonNode additionalDetails) {
-    UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
+    UserWithFeatures user = (UserWithFeatures) ctx.args.get("user");
     ctx.args.put("isAudited", true);
     String method = request.method();
     String path = request.path();

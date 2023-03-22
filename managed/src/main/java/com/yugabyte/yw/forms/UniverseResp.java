@@ -34,8 +34,7 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.yaml.snakeyaml.Yaml;
-import play.Environment;
-import play.api.Play;
+import play.Play;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 // TODO is this description accurate?
@@ -233,13 +232,13 @@ public class UniverseResp {
         log.warn("CertUUID cannot be null when TLS is enabled");
       }
       if (isKubernetesProvider) {
-        Environment environment = Play.current().injector().instanceOf(Environment.class);
         String certContent = certUUID == null ? "" : CertificateHelper.getCertPEM(certUUID);
         Yaml yaml = new Yaml();
         String sampleAppCommandTxt =
             yaml.dump(
                 yaml.load(
-                    environment.resourceAsStream("templates/k8s-sample-app-command-pod.yml")));
+                    Play.application()
+                        .resourceAsStream("templates/k8s-sample-app-command-pod.yml")));
         sampleAppCommandTxt =
             sampleAppCommandTxt
                 .replace("<root_cert_content>", certContent)
@@ -248,7 +247,8 @@ public class UniverseResp {
         String secretCommandTxt =
             yaml.dump(
                 yaml.load(
-                    environment.resourceAsStream("templates/k8s-sample-app-command-secret.yml")));
+                    Play.application()
+                        .resourceAsStream("templates/k8s-sample-app-command-secret.yml")));
         secretCommandTxt =
             secretCommandTxt
                 .replace("<root_cert_content>", certContent)
