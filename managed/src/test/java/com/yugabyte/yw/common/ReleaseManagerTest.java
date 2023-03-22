@@ -21,7 +21,6 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -42,6 +41,7 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.Spy;
 import org.mockito.runners.MockitoJUnitRunner;
+import play.Configuration;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -52,7 +52,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
 
   @InjectMocks ReleaseManager releaseManager;
 
-  @Mock Config appConfig;
+  @Mock Configuration appConfig;
 
   @Spy ConfigHelper configHelper;
 

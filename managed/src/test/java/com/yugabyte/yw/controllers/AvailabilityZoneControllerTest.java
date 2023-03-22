@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.AvailabilityZoneEditData;
@@ -259,9 +260,9 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
             + zoneUUID;
     Result result;
     if (isYWServiceException) {
-      result = assertPlatformException(() -> doRequest("DELETE", uri));
+      result = assertPlatformException(() -> FakeApiHelper.doRequest("DELETE", uri));
     } else {
-      result = doRequest("DELETE", uri);
+      result = FakeApiHelper.doRequest("DELETE", uri);
     }
     assertEquals(expectedStatus, result.status());
     return Json.parse(contentAsString(result));
@@ -279,9 +280,9 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
             + "/zones";
     Result result;
     if (isYWServiceException) {
-      result = assertPlatformException(() -> doRequest("GET", uri));
+      result = assertPlatformException(() -> FakeApiHelper.doRequest("GET", uri));
     } else {
-      result = doRequest("GET", uri);
+      result = FakeApiHelper.doRequest("GET", uri);
     }
     assertEquals(expectedStatus, result.status());
     return Json.parse(contentAsString(result));
@@ -306,9 +307,10 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
     Result result;
 
     if (isYWServiceException) {
-      result = assertPlatformException(() -> doRequestWithBody("PUT", uri, azRequestJson));
+      result =
+          assertPlatformException(() -> FakeApiHelper.doRequestWithBody("PUT", uri, azRequestJson));
     } else {
-      result = doRequestWithBody("PUT", uri, azRequestJson);
+      result = FakeApiHelper.doRequestWithBody("PUT", uri, azRequestJson);
     }
 
     assertEquals(expectedStatus, result.status());
@@ -330,15 +332,17 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
     Result result;
     if (azRequestJson != null) {
       if (isYWServiceException) {
-        result = assertPlatformException(() -> doRequestWithBody("POST", uri, azRequestJson));
+        result =
+            assertPlatformException(
+                () -> FakeApiHelper.doRequestWithBody("POST", uri, azRequestJson));
       } else {
-        result = doRequestWithBody("POST", uri, azRequestJson);
+        result = FakeApiHelper.doRequestWithBody("POST", uri, azRequestJson);
       }
     } else {
       if (isYWServiceException) {
-        result = assertPlatformException(() -> doRequest("POST", uri));
+        result = assertPlatformException(() -> FakeApiHelper.doRequest("POST", uri));
       } else {
-        result = doRequest("POST", uri);
+        result = FakeApiHelper.doRequest("POST", uri);
       }
     }
     assertEquals(expectedStatus, result.status());

@@ -27,6 +27,7 @@ import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.ScheduleResp.BackupInfo;
 import com.yugabyte.yw.models.ScheduleResp.ScheduleRespBuilder;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.filters.ScheduleFilter;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList.KeyspaceTablesListBuilder;
@@ -74,6 +75,7 @@ import org.apache.commons.lang3.time.DateUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
+import play.mvc.Http.Context;
 
 @Entity
 @Table(
@@ -356,7 +358,7 @@ public class Schedule extends Model {
     schedule.cronExpression = cronExpression;
     schedule.ownerUUID = ownerUUID;
     schedule.frequencyTimeUnit = frequencyTimeUnit;
-    schedule.userEmail = Util.maybeGetEmailFromContext();
+    schedule.userEmail = Util.maybeGetEmailFromContext(Context.current.get());
     schedule.scheduleName =
         scheduleName != null ? scheduleName : "schedule-" + schedule.scheduleUUID;
     schedule.nextScheduleTaskTime = nextExpectedTaskTime(null, schedule);

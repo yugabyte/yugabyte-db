@@ -9,21 +9,24 @@
  */
 package com.yugabyte.yw.common;
 
-import static play.test.Helpers.contextComponents;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yugabyte.yw.controllers.RequestContext;
-import com.yugabyte.yw.controllers.TokenAuthenticator;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.Map;
 import java.util.UUID;
 import org.apache.commons.io.IOUtils;
+
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Http.Context;
+
+import static org.mockito.Mockito.mock;
+import static play.test.Helpers.contextComponents;
 
 public class TestUtils {
   public static String readResource(String path) {
@@ -59,12 +62,16 @@ public class TestUtils {
   }
 
   public static void setFakeHttpContext(Users user, String email) {
+    Map<String, String> flashData = Collections.emptyMap();
     if (user != null) {
       user.email = email;
     }
-    RequestContext.put(TokenAuthenticator.USER, new UserWithFeatures().setUser(user));
-    Http.Request request = new Http.RequestBuilder().build();
-    Context currentContext = new Context(request, contextComponents());
+    Map<String, Object> argData = ImmutableMap.of("user", new UserWithFeatures().setUser(user));
+    Http.Request request = mock(Http.Request.class);
+    Long id = 2L;
+    play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
+    Context currentContext =
+        new Context(id, header, request, flashData, flashData, argData, contextComponents());
     Context.current.set(currentContext);
   }
 }

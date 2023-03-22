@@ -15,7 +15,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.Util.UniverseDetailSubset;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -311,7 +310,7 @@ public class EncryptionAtRestUtil {
   }
 
   public static File getUniverseBackupKeysFile(String storageLocation) {
-    Config appConfig = Play.current().injector().instanceOf(Config.class);
+    play.Configuration appConfig = Play.current().injector().instanceOf(play.Configuration.class);
     File backupKeysDir = new File(appConfig.getString("yb.storage.path"), "backupKeys");
 
     String[] dirParts = storageLocation.split("/");

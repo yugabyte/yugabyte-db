@@ -128,7 +128,7 @@ public class NodeManager extends DevopsBase {
 
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
-  @Inject Config appConfig;
+  @Inject play.Configuration appConfig;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 

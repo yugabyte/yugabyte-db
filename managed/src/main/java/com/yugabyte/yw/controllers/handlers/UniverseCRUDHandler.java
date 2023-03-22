@@ -18,7 +18,6 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.SetMultimap;
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.AddOnClusterDelete;
@@ -88,7 +87,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
-import javax.inject.Singleton;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -96,7 +94,6 @@ import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Http.Status;
 
-@Singleton
 public class UniverseCRUDHandler {
 
   private static final Logger LOG = LoggerFactory.getLogger(UniverseCRUDHandler.class);
@@ -105,7 +102,7 @@ public class UniverseCRUDHandler {
 
   @Inject EncryptionAtRestManager keyManager;
 
-  @Inject Config appConfig;
+  @Inject play.Configuration appConfig;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
@@ -1792,7 +1789,7 @@ public class UniverseCRUDHandler {
       Cluster cluster, Set<NodeDetails> existingNodes, Set<NodeDetails> inputNodes) {
     AtomicInteger inputNodesInToBeRemoved = new AtomicInteger();
     Set<String> forbiddenIps =
-        Arrays.stream(appConfig.getString("yb.security.forbidden_ips").split("[, ]"))
+        Arrays.stream(appConfig.getString("yb.security.forbidden_ips", "").split("[, ]"))
             .filter(StringUtils::isNotBlank)
             .collect(Collectors.toSet());
 

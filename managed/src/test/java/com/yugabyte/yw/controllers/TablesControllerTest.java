@@ -46,6 +46,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
@@ -53,6 +54,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -84,6 +86,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -318,7 +321,7 @@ public class TablesControllerTest extends FakeDBApplication {
 
     Result r =
         assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody(method, url, authToken, emptyJson));
+            () -> FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, emptyJson));
     assertEquals(BAD_REQUEST, r.status());
     String errMsg = "Cannot find universe " + badUUID;
     assertThat(Json.parse(contentAsString(r)).get("error").asText(), containsString(errMsg));
@@ -339,7 +342,7 @@ public class TablesControllerTest extends FakeDBApplication {
 
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody(method, url, authToken, emptyJson));
+            () -> FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, emptyJson));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), containsString(errorString));
     assertAuditEntry(0, customer.uuid);
@@ -405,7 +408,7 @@ public class TablesControllerTest extends FakeDBApplication {
                 + "}"
                 + "}");
 
-    Result result = doRequestWithAuthTokenAndBody(method, url, authToken, topJson);
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, topJson);
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(json.get("taskUUID").asText(), fakeTaskUUID.toString());
@@ -479,7 +482,7 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetColumnTypes() {
-    Result result = doRequest("GET", "/api/metadata/column_types");
+    Result result = FakeApiHelper.doRequest("GET", "/api/metadata/column_types");
     Set<ColumnDetails.YQLDataType> types = ImmutableSet.copyOf(ColumnDetails.YQLDataType.values());
     assertEquals(OK, result.status());
     JsonNode resultContent = Json.parse(contentAsString(result));
@@ -510,7 +513,7 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetYQLDataTypes() throws IOException {
-    Result result = doRequest("GET", "/api/metadata/yql_data_types");
+    Result result = FakeApiHelper.doRequest("GET", "/api/metadata/yql_data_types");
     Set<ColumnDetails.YQLDataType> types = ImmutableSet.copyOf(ColumnDetails.YQLDataType.values());
     assertEquals(OK, result.status());
 
@@ -549,7 +552,7 @@ public class TablesControllerTest extends FakeDBApplication {
     topJson.put("keyspace", "mock_ks");
     topJson.put("tableName", "mock_table");
 
-    Result result = doRequestWithAuthTokenAndBody(method, url, authToken, topJson);
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, topJson);
     assertEquals(OK, result.status());
     assertAuditEntry(1, customer.uuid);
   }
@@ -581,7 +584,7 @@ public class TablesControllerTest extends FakeDBApplication {
 
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody(method, url, authToken, topJson));
+            () -> FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, topJson));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), containsString("Invalid S3 Bucket provided: foobar"));
     assertAuditEntry(0, customer.uuid);
@@ -602,7 +605,9 @@ public class TablesControllerTest extends FakeDBApplication {
 
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson));
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, user.createAuthToken(), bodyJson));
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
     assertErrorNodeValue(resultJson, "storageConfigUUID", "This field is required");
@@ -629,7 +634,9 @@ public class TablesControllerTest extends FakeDBApplication {
 
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson));
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, user.createAuthToken(), bodyJson));
     assertBadRequest(result, "Invalid StorageConfig UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);
   }
@@ -654,7 +661,8 @@ public class TablesControllerTest extends FakeDBApplication {
     bodyJson.put("actionType", "CREATE");
     bodyJson.put("storageConfigUUID", randomUUID.toString());
 
-    Result result = doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
     assertForbidden(result, "User doesn't have access");
     assertAuditEntry(0, customer.uuid);
   }
@@ -685,7 +693,8 @@ public class TablesControllerTest extends FakeDBApplication {
     ArgumentCaptor<BackupTableParams> taskParams = ArgumentCaptor.forClass(BackupTableParams.class);
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    Result result = doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
     assertEquals(TaskType.BackupUniverse, taskType.getValue());
     assertOk(result);
@@ -721,7 +730,8 @@ public class TablesControllerTest extends FakeDBApplication {
 
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    Result result = doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
     assertEquals(TaskType.BackupUniverse, taskType.getValue());
     assertOk(result);
@@ -775,7 +785,9 @@ public class TablesControllerTest extends FakeDBApplication {
 
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson));
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, user.createAuthToken(), bodyJson));
 
     String errMsg =
         String.format(
@@ -803,7 +815,8 @@ public class TablesControllerTest extends FakeDBApplication {
     bodyJson.put("actionType", "CREATE");
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("cronExpression", "5 * * * *");
-    Result result = doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(result));
     UUID scheduleUUID = UUID.fromString(resultJson.path("scheduleUUID").asText());
@@ -836,7 +849,8 @@ public class TablesControllerTest extends FakeDBApplication {
     UUID fakeTaskUUID = UUID.randomUUID();
 
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    Result result = doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
     assertEquals(TaskType.MultiTableBackup, taskType.getValue());
     assertOk(result);
@@ -865,7 +879,9 @@ public class TablesControllerTest extends FakeDBApplication {
 
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson));
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, user.createAuthToken(), bodyJson));
     String errMsg =
         String.format(
             "Cannot run Backup task since the " + "universe %s is currently in a locked state.",
@@ -891,7 +907,9 @@ public class TablesControllerTest extends FakeDBApplication {
 
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson));
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, user.createAuthToken(), bodyJson));
     String errMsg = "Cannot initiate backup with empty Keyspace";
     assertBadRequest(result, errMsg);
   }
@@ -914,17 +932,22 @@ public class TablesControllerTest extends FakeDBApplication {
 
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson));
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, user.createAuthToken(), bodyJson));
     assertBadRequest(result, "Cannot initiate backup with empty Keyspace");
   }
 
   @Test
   public void testDeleteTableWithValidParams() throws Exception {
-    Http.Request request =
-        new Http.RequestBuilder().method("DELETE").path("/api/customer/test/universe/test").build();
-    Http.Context context = new Http.Context(request, contextComponents());
+    Map<String, String> flashData = Collections.emptyMap();
+    Map<String, Object> argData = ImmutableMap.of("user", new UserWithFeatures().setUser(user));
+    Http.Request request = mock(Http.Request.class);
+    Long id = 2L;
+    play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
+    Http.Context context =
+        new Http.Context(id, header, request, flashData, flashData, argData, contextComponents());
     Http.Context.current.set(context);
-    RequestContext.put(TokenAuthenticator.USER, new UserWithFeatures().setUser(user));
     tablesController.commissioner = mockCommissioner;
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
@@ -939,6 +962,8 @@ public class TablesControllerTest extends FakeDBApplication {
     when(mockSchemaResponse.getNamespace()).thenReturn("mock_ks");
     when(mockSchemaResponse.getTableType()).thenReturn(TableType.YQL_TABLE_TYPE);
     when(mockSchemaResponse.getTableId()).thenReturn(tableUUID.toString().replace("-", ""));
+    when(request.method()).thenReturn("DELETE");
+    when(request.path()).thenReturn("/api/customer/test/universe/test");
 
     Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
@@ -1100,7 +1125,7 @@ public class TablesControllerTest extends FakeDBApplication {
         generateTablespaceParams(
             universe.universeUUID, provider.code, 3, "r1-az1-1;r1-az2-1;r1-az3-1");
     Result result =
-        doRequestWithAuthTokenAndBody(
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
             "POST",
             "/api/customers/"
                 + customer.getUuid()
@@ -1173,7 +1198,7 @@ public class TablesControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () ->
-                doRequestWithAuthTokenAndBody(
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "POST",
                     "/api/customers/"
                         + customer.getUuid()

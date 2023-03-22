@@ -52,6 +52,8 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -104,6 +106,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
       ImmutableList.of("region1", "region2");
 
   @Mock Config mockConfig;
+  @Mock ConfigHelper mockConfigHelper;
+  @Mock private play.Configuration appConfig;
 
   Customer customer;
   Users user;
@@ -122,12 +126,12 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   private Result listProviders() {
-    return doRequestWithAuthToken(
+    return FakeApiHelper.doRequestWithAuthToken(
         "GET", "/api/customers/" + customer.uuid + "/providers", user.createAuthToken());
   }
 
   private Result createProvider(JsonNode bodyJson) {
-    return doRequestWithAuthTokenAndBody(
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
         "POST",
         "/api/customers/" + customer.uuid + "/providers?validate=true",
         user.createAuthToken(),
@@ -135,7 +139,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   private Result createKubernetesProvider(JsonNode bodyJson) {
-    return doRequestWithAuthTokenAndBody(
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
         "POST",
         "/api/customers/" + customer.uuid + "/providers/kubernetes",
         user.createAuthToken(),
@@ -143,28 +147,28 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   private Result getKubernetesSuggestedConfig() {
-    return doRequestWithAuthToken(
+    return FakeApiHelper.doRequestWithAuthToken(
         "GET",
         "/api/customers/" + customer.uuid + "/providers/suggested_kubernetes_config",
         user.createAuthToken());
   }
 
   private Result getProvider(UUID providerUUID) {
-    return doRequestWithAuthToken(
+    return FakeApiHelper.doRequestWithAuthToken(
         "GET",
         "/api/customers/" + customer.uuid + "/providers/" + providerUUID,
         user.createAuthToken());
   }
 
   private Result deleteProvider(UUID providerUUID) {
-    return doRequestWithAuthToken(
+    return FakeApiHelper.doRequestWithAuthToken(
         "DELETE",
         "/api/customers/" + customer.uuid + "/providers/" + providerUUID,
         user.createAuthToken());
   }
 
   private Result editProvider(JsonNode bodyJson, UUID providerUUID) {
-    return doRequestWithAuthTokenAndBody(
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
         "PUT",
         "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/edit?validate=true",
         user.createAuthToken(),
@@ -172,7 +176,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   private Result bootstrapProviderXX(JsonNode bodyJson, Provider provider) {
-    return doRequestWithAuthTokenAndBody(
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
         "POST",
         "/api/customers/" + customer.uuid + "/providers/" + provider.uuid + "/bootstrap",
         user.createAuthToken(),
@@ -526,6 +530,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   public void testDeleteProviderWithInstanceType() {
     Provider p = ModelFactory.onpremProvider(customer);
 
+    when(mockConfigHelper.getAWSInstancePrefixesSupported())
+        .thenReturn(ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3."));
     ObjectNode metaData = Json.newObject();
     metaData.put("numCores", 4);
     metaData.put("memSizeGB", 300);
@@ -544,7 +550,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     Result result = deleteProvider(p.uuid);
     assertYBPSuccess(result, "Deleted provider: " + p.uuid);
 
-    assertEquals(0, InstanceType.findByProvider(p, mockConfig).size());
+    assertEquals(0, InstanceType.findByProvider(p, mockConfig, mockConfigHelper).size());
     assertNull(Provider.get(p.uuid));
   }
 

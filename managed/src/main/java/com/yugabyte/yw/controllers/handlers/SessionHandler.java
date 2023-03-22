@@ -18,11 +18,9 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
-import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@Singleton
 public class SessionHandler {
 
   public static final Logger LOG = LoggerFactory.getLogger(SessionHandler.class);
@@ -40,7 +38,12 @@ public class SessionHandler {
       String startDateStr,
       String endDateStr)
       throws PlatformServiceException {
-    String logDir = config.getString("log.override.path");
+    String appHomeDir =
+        config.hasPath("application.home") ? config.getString("application.home") : ".";
+    String logDir =
+        config.hasPath("log.override.path")
+            ? config.getString("log.override.path")
+            : String.format("%s/logs", appHomeDir);
     Path logPath = Paths.get(logDir);
 
     List<String> regexBuilder = new ArrayList<>();
