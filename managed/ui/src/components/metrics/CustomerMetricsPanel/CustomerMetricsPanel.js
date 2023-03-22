@@ -83,7 +83,6 @@ const PanelBody = ({
         : invalidTabType.push(MetricTypes.MASTER, MetricTypes.MASTER_ADVANCED);
       defaultTabToDisplay =
         currentSelectedNodeType === NodeType.MASTER ? MetricTypes.MASTER : MetricTypes.TSERVER;
-      console.warn('defaultTabToDisplay', defaultTabToDisplay);
     }
 
     if (
