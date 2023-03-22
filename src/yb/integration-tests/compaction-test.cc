@@ -197,8 +197,7 @@ class CompactionTest : public YBTest {
     YBTest::TearDown();
   }
 
-  void SetupWorkload(IsolationLevel isolation_level,
-      int num_tablets = kNumTablets) {
+  void SetupWorkload(IsolationLevel isolation_level, int num_tablets = kNumTablets) {
     workload_.reset(new TestWorkload(cluster_.get()));
     workload_->set_timeout_allowed(true);
     workload_->set_payload_bytes(kPayloadBytes);
@@ -611,6 +610,24 @@ TEST_F(CompactionTest, MaxFileSizeIgnoredIfNoTableTTL) {
   auto dbs = GetAllRocksDbs(cluster_.get(), false);
   for (auto* db : dbs) {
     ASSERT_LT(db->GetCurrentVersionNumSSTFiles(), kNumFilesToWrite);
+  }
+}
+
+TEST_F(CompactionTest, UpdateLastFullCompactionTimeForTableWithoutWrites) {
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+
+  ASSERT_OK(ExecuteManualCompaction());
+  const auto table_info = FindTable(cluster_.get(), workload_->table_name());
+  ASSERT_OK(table_info);
+
+  for (int i = 0; i < NumTabletServers(); ++i) {
+    auto ts_tablet_manager = cluster_->GetTabletManager(i);
+
+    for (const auto& peer : ts_tablet_manager->GetTabletPeers()) {
+      if (peer->tablet_metadata()->table_id() == (*table_info)->id()) {
+        ASSERT_NE(peer->shared_tablet()->metadata()->last_full_compaction_time(), 0);
+      }
+    }
   }
 }
 
