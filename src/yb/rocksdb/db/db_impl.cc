@@ -2532,6 +2532,27 @@ void DBImpl::NotifyOnCompactionCompleted(
   // flush process.
 }
 
+void DBImpl::NotifyOnTrivialCompactionCompleted(
+    const ColumnFamilyData& cfd, const CompactionReason compaction_reason) {
+  mutex_.AssertHeld();
+  if (IsShuttingDown()) {
+    return;
+  }
+  // release lock while notifying events
+  mutex_.Unlock();
+  if (db_options_.listeners.size() > 0) {
+    CompactionJobInfo info;
+    info.cf_name = cfd.GetName();
+    info.status = Status::OK();
+    info.thread_id = env_->GetThreadID();
+    info.is_full_compaction = true;
+    for (auto listener : db_options_.listeners) {
+      listener->OnCompactionCompleted(this, info);
+    }
+  }
+  mutex_.Lock();
+}
+
 void DBImpl::SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {
   // disable_flush_on_shutdown_ can only transition from false to true. This location
   // can be called multiple times with arg as false. It is only called once with arg
@@ -2963,6 +2984,12 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
     } else if (!scheduled) {
       if (manual_compaction.compaction == nullptr) {
         manual_compaction.done = true;
+
+        // If there are no files to compact, a trivial full compaction has been completed.
+        if (cfd->current()->storage_info()->num_non_empty_levels() == 0) {
+          NotifyOnTrivialCompactionCompleted(*cfd, compaction_reason);
+        }
+
         bg_cv_.SignalAll();
         continue;
       }
