@@ -139,6 +139,7 @@ class GraphPanelHeader extends Component {
       outlierNumNodes: DEFAULT_OUTLIER_NUM_NODES,
       isSingleNodeSelected: false
     };
+    this.props.setGraphFilter(defaultFilters);
 
     if (isValidObject(currentQuery) && Object.keys(currentQuery).length > 1) {
       const filterParams = {
