@@ -19,7 +19,26 @@ jobs:
     - uses: actions/checkout@v3
     
     - name: Run apache/age docker image
-      run: docker-compose up -d
+    - name: Set tag based on branch
+      run: |
+        if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+          if [[ "$GITHUB_REF" == "refs/heads/master" ]]; then
+            echo "TAG=latest" >> $GITHUB_ENV
+          elif [[ "$GITHUB_REF" == "refs/heads/PG11" ]]; then
+            echo "TAG=PG11_latest" >> $GITHUB_ENV
+          fi
+        elif [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+          if [[ "$GITHUB_BASE_REF" == "master" ]]; then
+            echo "TAG=latest" >> $GITHUB_ENV
+          elif [[ "$GITHUB_BASE_REF" == "PG11" ]]; then
+            echo "TAG=PG11_latest" >> $GITHUB_ENV
+          fi
+        fi
+      
+    - name: Run apache/age docker image
+      run: |
+        export TAG=$TAG
+        docker-compose up -d
 
     - name: Set up python
       uses: actions/setup-python@v4

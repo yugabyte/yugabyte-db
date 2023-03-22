@@ -2,10 +2,10 @@ name: Go Driver Tests
 
 on:
   push:
-    branches: [ "master", PG11 ]
+    branches: [ "master", "PG11" ]
 
   pull_request:
-    branches: [ "master", PG11 ]
+    branches: [ "master", "PG11" ]
 
 jobs:
   build:
@@ -19,9 +19,27 @@ jobs:
   
     steps:
     - uses: actions/checkout@v3
-    
+
+    - name: Set tag based on branch
+      run: |
+        if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+          if [[ "$GITHUB_REF" == "refs/heads/master" ]]; then
+            echo "TAG=latest" >> $GITHUB_ENV
+          elif [[ "$GITHUB_REF" == "refs/heads/PG11" ]]; then
+            echo "TAG=PG11_latest" >> $GITHUB_ENV
+          fi
+        elif [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+          if [[ "$GITHUB_BASE_REF" == "master" ]]; then
+            echo "TAG=latest" >> $GITHUB_ENV
+          elif [[ "$GITHUB_BASE_REF" == "PG11" ]]; then
+            echo "TAG=PG11_latest" >> $GITHUB_ENV
+          fi
+        fi
+      
     - name: Run apache/age docker image
-      run: docker-compose up -d
+      run: |
+        export TAG=$TAG
+        docker-compose up -d
 
     - name: Set up Go
       uses: actions/setup-go@v3
