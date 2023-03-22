@@ -523,6 +523,9 @@ class DBImpl : public DB {
                                    const CompactionJobStats& job_stats,
                                    int job_id);
 
+  void NotifyOnTrivialCompactionCompleted(
+      const ColumnFamilyData& cfd, const CompactionReason compaction_reason);
+
   Status WriteImpl(const WriteOptions& options, WriteBatch* updates,
                    WriteCallback* callback);
 
