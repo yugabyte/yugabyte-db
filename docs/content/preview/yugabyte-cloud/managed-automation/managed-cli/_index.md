@@ -38,7 +38,7 @@ The [YugabyteDB Managed Command Line Interface](https://github.com/yugabyte/ybm-
         <div class="title">Reference</div>
       </div>
       <div class="body">
-        ybm CLI command reference.
+        ybm command reference.
       </div>
     </a>
   </div>

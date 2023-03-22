@@ -3,7 +3,7 @@ title: ybm CLI command reference
 headerTitle: Reference
 linkTitle: Reference
 description: Use YugabyteDB Managed CLI to access YugabyteDB clusters.
-headcontent: ybm CLI command reference
+headcontent: ybm syntax and commands
 menu:
   preview_yugabyte-cloud:
     identifier: managed-cli-reference

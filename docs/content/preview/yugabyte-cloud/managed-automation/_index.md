@@ -1,5 +1,5 @@
 ---
-title: Automation
+title: Automation in YugabyteDB Managed
 headerTitle: Automation
 linkTitle: Automation
 description: Automation tools for YugabyteDB Managed.
@@ -29,8 +29,8 @@ For access, automation tools require authentication in the form of an [API key](
 
 For some REST API commands, you may need one or more of the following account details:
 
-- Your YugabyteDB Managed account ID. To view your account ID, click the **Profile** icon in the top right corner of the YugabyteDB Managed window. The account ID is also displayed in the API Key Details.
-- The project ID. The project ID is a unique identifier of the YugabyteDB Managed project under which database clusters can be deployed. Currently, accounts have only one project. The project ID is also available via the **Profile** icon in the top right corner of the YugabyteDB Managed window.
+- Your YugabyteDB Managed account ID. To view your account ID, click the **Profile** icon in the top right corner of the YugabyteDB Managed window. The account ID is also displayed in the **API Key Details** sheet.
+- The project ID. The project ID is a unique identifier of the YugabyteDB Managed project under which database clusters can be deployed. Currently, accounts have only one project. The project ID is also available via the **Profile** icon in the top right corner of the YugabyteDB Managed window. The project ID is also displayed in the **API Key Details** sheet.
 - Cluster ID. Every cluster has a unique ID. The cluster ID is available via the cluster **Settings** tab.
 
 These identifiers can also be found in the URL when you access a cluster using the YugabyteDB Managed user interface.

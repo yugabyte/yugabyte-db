@@ -1,9 +1,9 @@
 ---
 title: API keys
-headerTitle:
+headerTitle: API keys
 linkTitle: API keys
-description: Manage API keys for use with YugabyteDB Managed automation tools including API and Terraform provider.
-headcontent: Manage API keys for use with YugabyteDB Managed automation tools
+description: Manage API keys for use with YugabyteDB Managed automation tools including API, CLI, and Terraform provider.
+headcontent: Use API keys to authenticate with automation tools
 aliases:
   - /preview/yugabyte-cloud/cloud-admin/cloud-admin-apikeys/
 menu:
@@ -22,7 +22,7 @@ API keys are not stored in YugabyteDB Managed. Safeguard them by doing the follo
 - Revoke keys that are lost or compromised.
 - Don't embed keys in code. Applications that contain keys can be decompiled to extract keys, or de-obfuscated from on-device storage. API keys can also be compromised if committed to a code repository.
 
-API keys are [role-specific](../manage-access/#user-roles); keys assigned a Developer role can only be used to perform developer-level tasks using the API.
+API keys are [role-specific](../../cloud-admin/manage-access/#user-roles); keys assigned a Developer role can only be used to perform developer-level tasks using the API.
 
 You must be signed in as an Admin user to create and revoke API keys.
 
@@ -40,7 +40,7 @@ To create an API key:
 
 1. Enter a name and description for the key.
 
-1. Choose a role for the API Key. Keys assigned a [Developer](../manage-access/#user-roles) role can only be used to perform developer-level tasks using the API.
+1. Choose a role for the API Key. Keys assigned a [Developer](../../cloud-admin/manage-access/#user-roles) role can only be used to perform developer-level tasks using the API.
 
 1. Set the key expiration or select **Never expire** to create a key without an expiration.
 

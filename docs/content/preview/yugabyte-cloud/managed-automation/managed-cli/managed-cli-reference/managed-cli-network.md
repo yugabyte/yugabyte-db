@@ -14,7 +14,7 @@ type: docs
 
 Use the `cluster network` resource to manage cluster network resources, including:
 
-- add [IP allow lists](../../cloud-secure-clusters/add-connections/) to clusters
+- add [IP allow lists](../../../../cloud-secure-clusters/add-connections/) to clusters
 - list cluster endpoints
 
 ## Syntax

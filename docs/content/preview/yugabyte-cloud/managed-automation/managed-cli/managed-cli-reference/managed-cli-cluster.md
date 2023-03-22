@@ -124,7 +124,7 @@ Resume the specified cluster.
 
 ### cert download
 
-Download the [cluster certificate](../../cloud-secure-clusters/cloud-authentication/) to a specified location.
+Download the [cluster certificate](../../../../cloud-secure-clusters/cloud-authentication/) to a specified location.
 
 | Flag | Description |
 | :--- | :--- |

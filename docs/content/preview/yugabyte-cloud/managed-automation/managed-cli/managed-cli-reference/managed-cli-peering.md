@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the `vpc peering` resource to perform operations on [peering connections](../../cloud-basics/cloud-vpcs/cloud-vpc-intro/), including the following:
+Use the `vpc peering` resource to perform operations on [peering connections](../../../../cloud-basics/cloud-vpcs/cloud-vpc-intro/), including the following:
 
 - create and delete peering connections
 - get information about a peering connection

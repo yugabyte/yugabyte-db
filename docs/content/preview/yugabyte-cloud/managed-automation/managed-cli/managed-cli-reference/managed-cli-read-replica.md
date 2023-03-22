@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the `cluster read-replica` resource to perform operations on a YugabyteDB cluster [read replica](../../cloud-clusters/managed-read-replica/), including the following:
+Use the `cluster read-replica` resource to perform operations on a YugabyteDB cluster [read replica](../../../../cloud-clusters/managed-read-replica/), including the following:
 
 - create, update, and delete read replicas
 - get information about read replicas

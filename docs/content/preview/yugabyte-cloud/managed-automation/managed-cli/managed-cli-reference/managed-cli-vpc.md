@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the `vpc` resource to create and delete [VPCs](../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
+Use the `vpc` resource to create and delete [VPCs](../../../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
 
 ## Syntax
 

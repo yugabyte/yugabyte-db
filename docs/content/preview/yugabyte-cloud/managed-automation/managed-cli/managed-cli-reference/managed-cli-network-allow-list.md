@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the `network-allow-list` resource to perform operations on [allow lists](../../cloud-secure-clusters/add-connections/), including the following:
+Use the `network-allow-list` resource to perform operations on [allow lists](../../../../cloud-secure-clusters/add-connections/), including the following:
 
 - create and delete allow lists
 - get information about an IP allow list
