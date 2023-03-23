@@ -504,6 +504,8 @@ public class TaskExecutor {
 
     // Parent task runnable to which this group belongs.
     private volatile RunnableTask runnableTask;
+    // Group position which is same as that of the subtasks.
+    private volatile int position;
     // Optional executor service for the subtasks.
     private ExecutorService executorService;
     private SubTaskGroupType subTaskGroupType = SubTaskGroupType.Invalid;
@@ -511,6 +513,7 @@ public class TaskExecutor {
     // It is instantiated internally.
     private SubTaskGroup(String name, SubTaskGroupType subTaskGroupType, boolean ignoreErrors) {
       this.name = name;
+      this.subTaskGroupType = subTaskGroupType;
       this.ignoreErrors = ignoreErrors;
       this.numTasksCompleted = new AtomicInteger();
     }
@@ -556,6 +559,7 @@ public class TaskExecutor {
 
     private void setRunnableTaskContext(RunnableTask runnableTask, int position) {
       this.runnableTask = runnableTask;
+      this.position = position;
       for (RunnableSubTask runnable : subTasks) {
         runnable.setRunnableTaskContext(runnableTask, position);
       }
@@ -657,6 +661,8 @@ public class TaskExecutor {
           }
         }
       }
+      Duration elapsed = Duration.between(waitStartTime, Instant.now());
+      log.debug("{}: wait completed in {}ms", title(), elapsed.toMillis());
       if (anyEx != null) {
         Throwables.propagate(anyEx);
       }
@@ -671,7 +677,7 @@ public class TaskExecutor {
       if (subTaskGroupType == null) {
         return;
       }
-      log.info("Setting subtask({}} group type to {}", name, subTaskGroupType);
+      log.info("Setting subtask({}) group type to {}", name, subTaskGroupType);
       this.subTaskGroupType = subTaskGroupType;
       for (RunnableSubTask runnable : subTasks) {
         runnable.setSubTaskGroupType(subTaskGroupType);
@@ -686,14 +692,15 @@ public class TaskExecutor {
       return numTasksCompleted.get();
     }
 
+    private String title() {
+      return String.format(
+          "SubTaskGroup %s of type %s at position %d", name, subTaskGroupType.name(), position);
+    }
+
     @Override
     public String toString() {
-      return name
-          + " : completed "
-          + getTasksCompletedCount()
-          + " out of "
-          + getSubTaskCount()
-          + " tasks.";
+      return String.format(
+          "%s: completed %d out of %d tasks", title(), getTasksCompletedCount(), getSubTaskCount());
     }
   }
 
