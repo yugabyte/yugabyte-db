@@ -95,8 +95,8 @@ cascade:
   linkUrl1="cloud-admin/manage-access/"
   linkText2="Manage billing"
   linkUrl2="cloud-admin/cloud-billing-profile/"
-  linkText3="Manage API keys"
-  linkUrl3="cloud-admin/cloud-admin-apikeys/"
+  linkText3="Automation"
+  linkUrl3="managed-automation/"
   >}}
 
   {{< sections/3-box-card
