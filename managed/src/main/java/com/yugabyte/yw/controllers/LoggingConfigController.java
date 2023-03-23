@@ -24,7 +24,7 @@ import play.mvc.Result;
 @Api(
     value = "LoggingConfig",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
-public class LoggingConfigController extends Controller {
+public class LoggingConfigController extends AuthenticatedController {
 
   public static final org.slf4j.Logger LOG = LoggerFactory.getLogger(LoggingConfigController.class);
 
