@@ -807,7 +807,7 @@ You can install a node agent as follows:
 1. Download the installer from YugabyteDB Anywhere using the API token of the Super Admin, as follows:
 
    ```sh
-   curl https://<yugabytedb_anywhere_address>/api/v1/node_agents/download --header 'X-AUTH-YW-API-TOKEN: <api_token>' > installer.sh && chmod +x installer.sh
+   curl https://<yugabytedb_anywhere_address>/api/v1/node_agents/download --fail --header 'X-AUTH-YW-API-TOKEN: <api_token>' > installer.sh && chmod +x installer.sh
    ```
 
 1. Verify that the installer file contains the script.
@@ -815,10 +815,10 @@ You can install a node agent as follows:
 1. Run the following command to download the node agent's `.tgz` file which installs and starts the interactive configuration:
 
    ```sh
-   ./installer.sh -t install -u https://<yugabytedb_anywhere_address> -at <api_token>
+   ./installer.sh -c install -u https://<yugabytedb_anywhere_address> -t <api_token>
    ```
 
-   For example, if you execute `./installer.sh  -t install -u http://100.98.0.42:9000 -at 301fc382-cf06-4a1b-b5ef-0c8c45273aef`, expect the following output:
+   For example, if you execute `./installer.sh  -c install -u http://100.98.0.42:9000 -t 301fc382-cf06-4a1b-b5ef-0c8c45273aef`, expect the following output:
 
    ```output
    * Starting YB Node Agent install
@@ -851,7 +851,7 @@ You can install a node agent as follows:
 1. Run the following command to enable the node agent as a systemd service, which is required for self-upgrade and other functions:
 
    ```sh
-   sudo node-agent-installer.sh -t install-service
+   sudo node-agent-installer.sh -c install-service --user yugabyte
    ```
 
 When the installation has been completed, the configurations are saved in the `config.yml` file located in the `node-agent/config/` directory. You should refrain from manually changing values in this file.
