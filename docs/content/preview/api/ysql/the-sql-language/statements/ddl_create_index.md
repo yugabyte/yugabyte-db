@@ -7,8 +7,6 @@ menu:
   preview:
     identifier: ddl_create_index
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/ddl_create_index/
 type: docs
 ---
 

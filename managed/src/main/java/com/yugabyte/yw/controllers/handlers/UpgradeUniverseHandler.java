@@ -13,14 +13,16 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.common.gflags.GFlagsAuditPayload;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
@@ -37,6 +39,7 @@ import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
@@ -57,6 +60,7 @@ public class UpgradeUniverseHandler {
   private final RuntimeConfigFactory runtimeConfigFactory;
   private final GFlagsValidationHandler gFlagsValidationHandler;
   private final YbcManager ybcManager;
+  private final RuntimeConfGetter confGetter;
 
   @Inject
   public UpgradeUniverseHandler(
@@ -64,12 +68,14 @@ public class UpgradeUniverseHandler {
       KubernetesManagerFactory kubernetesManagerFactory,
       RuntimeConfigFactory runtimeConfigFactory,
       GFlagsValidationHandler gFlagsValidationHandler,
-      YbcManager ybcManager) {
+      YbcManager ybcManager,
+      RuntimeConfGetter confGetter) {
     this.commissioner = commissioner;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.gFlagsValidationHandler = gFlagsValidationHandler;
     this.ybcManager = ybcManager;
+    this.confGetter = confGetter;
   }
 
   public UUID restartUniverse(
@@ -104,7 +110,18 @@ public class UpgradeUniverseHandler {
       checkHelmChartExists(requestParams.ybSoftwareVersion);
     }
 
-    if (Util.compareYbVersions(
+    if (userIntent.providerType.equals(CloudType.kubernetes)) {
+      Provider p = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+      if (confGetter.getConfForScope(p, ProviderConfKeys.enableYbcOnK8s)
+          && Util.compareYbVersions(
+                  userIntent.ybSoftwareVersion, Util.K8S_YBC_COMPATIBLE_DB_VERSION, true)
+              < 0
+          && !universe.isYbcEnabled()
+          && requestParams.enableYbc) {
+        requestParams.ybcSoftwareVersion = ybcManager.getStableYbcVersion();
+        requestParams.installYbc = true;
+      }
+    } else if (Util.compareYbVersions(
                 requestParams.ybSoftwareVersion, Util.YBC_COMPATIBLE_DB_VERSION, true)
             > 0
         && !universe.isYbcEnabled()

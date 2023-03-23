@@ -23,6 +23,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
@@ -110,6 +111,8 @@ public class Util {
   public static final double EPSILON = 0.000001d;
 
   public static final String YBC_COMPATIBLE_DB_VERSION = "2.15.0.0-b1";
+
+  public static final String K8S_YBC_COMPATIBLE_DB_VERSION = "2.17.3.0-b62";
 
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
 
@@ -898,5 +901,27 @@ public class Util {
             .map(Object::toString)
             .orElse("Unknown");
     return userEmail;
+  }
+
+  public static Universe lockUniverse(Universe universe) {
+    UniverseUpdater updater =
+        u -> {
+          UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+          universeDetails.updateInProgress = true;
+          universeDetails.updateSucceeded = false;
+          u.setUniverseDetails(universeDetails);
+        };
+    return Universe.saveDetails(universe.universeUUID, updater, false);
+  }
+
+  public static Universe unlockUniverse(Universe universe) {
+    UniverseUpdater updater =
+        u -> {
+          UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+          universeDetails.updateInProgress = false;
+          universeDetails.updateSucceeded = true;
+          u.setUniverseDetails(universeDetails);
+        };
+    return Universe.saveDetails(universe.universeUUID, updater, false);
   }
 }

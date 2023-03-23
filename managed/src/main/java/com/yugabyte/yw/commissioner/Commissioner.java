@@ -26,6 +26,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -204,7 +205,8 @@ public class Commissioner {
             () -> new PlatformServiceException(BAD_REQUEST, "Not able to find task " + taskUUID));
   }
 
-  public Optional<ObjectNode> buildTaskStatus(CustomerTask task, TaskInfo taskInfo) {
+  public Optional<ObjectNode> buildTaskStatus(
+      CustomerTask task, TaskInfo taskInfo, Map<UUID, CustomerTask> lastTaskByTarget) {
     if (task == null || taskInfo == null) {
       return Optional.empty();
     }
@@ -220,7 +222,9 @@ public class Commissioner {
     // Get the percentage of subtasks that ran and completed
     responseJson.put("percent", taskInfo.getPercentCompleted());
     String correlationId = task.getCorrelationId();
-    if (!Strings.isNullOrEmpty(correlationId)) responseJson.put("correlationId", correlationId);
+    if (!Strings.isNullOrEmpty(correlationId)) {
+      responseJson.put("correlationId", correlationId);
+    }
     responseJson.put("userEmail", task.getUserEmail());
 
     // Get subtask groups and add other details to it if applicable.
@@ -244,13 +248,21 @@ public class Commissioner {
     responseJson.put("retryable", false);
     if (isTaskRetryable(taskInfo.getTaskType())
         && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
-      // Retryable depends on the updating Task UUID in the Universe.
-      Universe.getUniverseDetailsField(String.class, task.getTargetUUID(), "updatingTaskUUID")
-          .ifPresent(
-              updatingTask -> {
-                responseJson.put(
-                    "retryable", taskInfo.getTaskUUID().equals(UUID.fromString(updatingTask)));
-              });
+      if (task.getTarget() == CustomerTask.TargetType.Provider) {
+        CustomerTask lastTask =
+            lastTaskByTarget.computeIfAbsent(
+                task.getTargetUUID(), tId -> CustomerTask.getLastTaskByTargetUuid(tId));
+        responseJson.put(
+            "retryable", lastTask != null && lastTask.getTaskUUID().equals(task.getTaskUUID()));
+      } else {
+        // Retryable depends on the updating Task UUID in the Universe.
+        Universe.getUniverseDetailsField(String.class, task.getTargetUUID(), "updatingTaskUUID")
+            .ifPresent(
+                updatingTask -> {
+                  responseJson.put(
+                      "retryable", taskInfo.getTaskUUID().equals(UUID.fromString(updatingTask)));
+                });
+      }
     }
     if (pauseLatches.containsKey(taskInfo.getTaskUUID())) {
       // Set this only if it is true. The thread is just parking. From the task state
@@ -269,7 +281,7 @@ public class Commissioner {
       LOG.error("Error fetching task progress for {}. TaskInfo is not found", taskUUID);
       return Optional.empty();
     }
-    return buildTaskStatus(task, taskInfo);
+    return buildTaskStatus(task, taskInfo, new HashMap<>());
   }
 
   public JsonNode getTaskDetails(UUID taskUUID) {

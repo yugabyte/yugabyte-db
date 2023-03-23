@@ -14,15 +14,15 @@
  * string literal (including a function body!) or a multiline comment.
  */
 
-CREATE VIEW yb_terminated_queries AS 
-SELECT 
+CREATE VIEW yb_terminated_queries AS
+SELECT
     D.datname AS databasename,
     S.backend_pid AS backend_pid,
     S.query_text AS query_text,
     S.termination_reason AS termination_reason,
     S.query_start AS query_start_time,
-    S.query_end AS query_end_time 
-FROM yb_pg_stat_get_queries(NULL) AS S 
+    S.query_end AS query_end_time
+FROM yb_pg_stat_get_queries(NULL) AS S
 LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);
 
 CREATE VIEW pg_roles AS
@@ -517,6 +517,9 @@ CREATE VIEW pg_config AS
 REVOKE ALL on pg_config FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION pg_config() FROM PUBLIC;
 
+CREATE VIEW pg_backend_memory_contexts AS
+    SELECT * FROM pg_get_backend_memory_contexts();
+
 -- Statistics views
 
 CREATE VIEW pg_stat_all_tables AS
@@ -721,7 +724,9 @@ CREATE VIEW pg_stat_activity AS
             s.backend_xmin,
             S.query,
             S.backend_type,
-            yb_pg_stat_get_backend_catalog_version(B.beid) AS catalog_version
+            yb_pg_stat_get_backend_catalog_version(B.beid) AS catalog_version,
+            yb_pg_stat_get_backend_allocated_mem_bytes(B.beid) AS allocated_mem_bytes,
+            yb_pg_stat_get_backend_rss_mem_bytes(B.beid) AS rss_mem_bytes
     FROM pg_stat_get_activity(NULL) AS S
         LEFT JOIN pg_database AS D ON (S.datid = D.oid)
         LEFT JOIN pg_authid AS U ON (S.usesysid = U.oid)

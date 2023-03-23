@@ -672,7 +672,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
           && useSpotInstance == other.useSpotInstance
-          && spotPrice == other.spotPrice
+          && spotPrice.equals(other.spotPrice)
           && assignStaticPublicIP == other.assignStaticPublicIP
           && useTimeSync == other.useTimeSync
           && useSystemd == other.useSystemd
@@ -696,7 +696,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
           && useSpotInstance == other.useSpotInstance
-          && spotPrice == other.spotPrice
+          && spotPrice.equals(other.spotPrice)
           && assignStaticPublicIP == other.assignStaticPublicIP
           && useTimeSync == other.useTimeSync
           && dedicatedNodes == other.dedicatedNodes

@@ -252,9 +252,11 @@ export const AWSProviderCreateForm = ({
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.AWS]: {
-          awsAccessKeyID: formValues.accessKeyId,
-          awsAccessKeySecret: formValues.secretAccessKey,
-          awsHostedZoneId: formValues.hostedZoneId
+          ...(formValues.providerCredentialType === ProviderCredentialType.ACCESS_KEY && {
+            awsAccessKeyID: formValues.accessKeyId,
+            awsAccessKeySecret: formValues.secretAccessKey
+          }),
+          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId })
         }
       },
       ntpServers: formValues.ntpServers,
@@ -637,6 +639,7 @@ export const AWSProviderCreateForm = ({
           providerCode={ProviderCode.AWS}
           regionOperation={regionOperation}
           regionSelection={regionSelection}
+          configuredRegions={regions}
           vpcSetupType={vpcSetupType}
           ybImageType={ybImageType}
         />

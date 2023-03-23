@@ -789,6 +789,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const ChangeMasterClusterConfigRequestPB* req,
       ChangeMasterClusterConfigResponsePB* resp) override;
 
+  Status GetXClusterConfig(GetMasterXClusterConfigResponsePB* resp) override;
+  Status GetXClusterConfig(SysXClusterConfigEntryPB* config) override;
   Result<uint32_t> GetXClusterConfigVersion() const;
 
   // Validator for placement information with respect to cluster configuration
@@ -1328,6 +1330,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     std::lock_guard<MutexType> lock(backfill_mutex_);
     pending_backfill_tables_.emplace(id);
   }
+
+  Status UpdateLastFullCompactionRequestTime(const TableId& table_id) override;
+
+  Status GetCompactionStatus(
+      const GetCompactionStatusRequestPB* req, GetCompactionStatusResponsePB* resp) override;
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.

@@ -19,8 +19,10 @@
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/docdb_fwd.h"
-
 #include "yb/docdb/value_type.h"
+
+#include "yb/gutil/casts.h"
+
 #include "yb/util/slice.h"
 #include "yb/util/status_fwd.h"
 
@@ -53,8 +55,25 @@ class ScanChoices {
   // current target.
   virtual Status SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) = 0;
 
-  static Result<std::vector<KeyEntryValue>> DecodeKeyEntryValue(
-      DocKeyDecoder* decoder, size_t num_cols);
+  // Append KeyEntryValue to target. After every append, we need to check if it is the last hash key
+  // column. Subsequently, we need to add a kGroundEnd after that if it is the last hash key cokumn.
+  // Hence, appending to scan target should always be done using this function.
+  void AppendToScanTarget(const KeyEntryValue& target, size_t col_idx) {
+    target.AppendToKey(&current_scan_target_);
+    if (has_hash_columns_ && col_idx == num_hash_cols_) {
+      current_scan_target_.AppendKeyEntryType(KeyEntryType::kGroupEnd);
+    }
+  }
+
+  void AppendInfToScanTarget(bool positive, size_t col_idx) {
+    if (has_hash_columns_ && col_idx == num_hash_cols_) {
+      current_scan_target_.RemoveLastByte();
+    }
+
+    KeyEntryValue inf_val =
+        positive ? KeyEntryValue(KeyEntryType::kHighest) : KeyEntryValue(KeyEntryType::kLowest);
+    AppendToScanTarget(inf_val, col_idx);
+  }
 
   static ScanChoicesPtr Create(
       const Schema& schema, const DocQLScanSpec& doc_spec, const KeyBytes& lower_doc_key,
@@ -68,6 +87,12 @@ class ScanChoices {
   const bool is_forward_scan_;
   KeyBytes current_scan_target_;
   bool finished_ = false;
+  bool has_hash_columns_ = false;
+  size_t num_hash_cols_;
+
+  // True if CurrentTargetMatchesKey should return true all the time as
+  // the filter this ScanChoices iterates over is trivial.
+  bool is_trivial_filter_ = false;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(ScanChoices);
@@ -138,22 +163,22 @@ class ScanChoices {
 class OptionRange {
  public:
   OptionRange(KeyEntryValue lower, bool lower_inclusive, KeyEntryValue upper, bool upper_inclusive)
-      : lower_(lower),
-        lower_inclusive_(lower_inclusive),
-        upper_(upper),
-        upper_inclusive_(upper_inclusive),
-        begin_idx_(0),
-        end_idx_(0) {}
+    : OptionRange(std::move(lower),
+                  lower_inclusive,
+                  std::move(upper),
+                  upper_inclusive,
+                  0 /* begin_idx_ */,
+                  0 /* end_idx_ */) {}
 
   OptionRange(
-      KeyEntryValue lower, bool lower_inclusive, KeyEntryValue upper, bool upper_inclusive,
-      size_t begin_idx, size_t end_idx)
-      : lower_(lower),
-        lower_inclusive_(lower_inclusive),
-        upper_(upper),
-        upper_inclusive_(upper_inclusive),
-        begin_idx_(begin_idx),
-        end_idx_(end_idx) {}
+    KeyEntryValue lower, bool lower_inclusive, KeyEntryValue upper, bool upper_inclusive,
+    size_t begin_idx, size_t end_idx)
+    : lower_(std::move(lower)),
+      lower_inclusive_(lower_inclusive),
+      upper_(std::move(upper)),
+      upper_inclusive_(upper_inclusive),
+      begin_idx_(begin_idx),
+      end_idx_(end_idx) {}
 
   // Convenience constructors for testing
   OptionRange(int begin, int end, SortOrder sort_order = SortOrder::kAscending)
@@ -247,8 +272,8 @@ class HybridScanChoices : public ScanChoices {
       const KeyBytes& lower_doc_key,
       const KeyBytes& upper_doc_key,
       bool is_forward_scan,
-      const std::vector<ColumnId>& range_options_col_ids,
-      const std::shared_ptr<std::vector<OptionList>>& range_options,
+      const std::vector<ColumnId>& options_col_ids,
+      const std::shared_ptr<std::vector<OptionList>>& options,
       const std::vector<ColumnId>& range_bounds_col_ids,
       const QLScanRange* range_bounds,
       const ColGroupHolder& col_groups,
@@ -278,23 +303,31 @@ class HybridScanChoices : public ScanChoices {
   // incrementing the option index for an OptionList. Will handle overflow by setting current
   // index to 0 and incrementing the previous index instead. If it overflows at first index
   // it means we are done, so it clears the scan target idxs array.
-  Status IncrementScanTargetAtOptionList(int start_option_list_idx);
+  Status IncrementScanTargetAtOptionList(ssize_t start_option_list_idx);
 
   // Utility function for testing
   std::vector<OptionRange> TEST_GetCurrentOptions();
+  Result<bool> ValidateHashGroup(const KeyBytes& scan_target) const;
 
  private:
+  // Utility method to return a column corresponding to idx in the schema.
+  // This may be different from schema.column_id in the presence of the hash_code column.
+  ColumnId GetColumnId(const Schema& schema, size_t idx) const;
+
+  Status DecodeKey(DocKeyDecoder* decoder, KeyEntryValue* target_value = nullptr) const;
+
   // Returns an iterator reference to the lowest option in the current search
   // space of this option list index. See comment for OptionRange.
-  std::vector<OptionRange>::const_iterator GetSearchSpaceLowerBound(size_t opt_list_idx);
+  std::vector<OptionRange>::const_iterator GetSearchSpaceLowerBound(size_t opt_list_idx) const;
 
   // Returns an iterator reference to the exclusive highest option range in the current search
   // space of this option list index. See comment for OptionRange.
-  std::vector<OptionRange>::const_iterator GetSearchSpaceUpperBound(size_t opt_list_idx);
+  std::vector<OptionRange>::const_iterator GetSearchSpaceUpperBound(size_t opt_list_idx) const;
 
   // Gets the option range that corresponds to the given option index at the given
   // option list index.
-  std::vector<OptionRange>::const_iterator GetOptAtIndex(size_t opt_list_idx, size_t opt_index);
+  std::vector<OptionRange>::const_iterator GetOptAtIndex(size_t opt_list_idx,
+                                                         size_t opt_index) const;
 
   // Sets the option that corresponds to the given option index at the given
   // logical option list index.
@@ -308,8 +341,8 @@ class HybridScanChoices : public ScanChoices {
   // The following fields aid in the goal of iterating through all possible
   // scan key values based on given IN-lists and range filters.
 
-  // The following encodes the list of ranges we are iterating over
-  std::vector<std::vector<OptionRange>> range_cols_scan_options_;
+  // The following encodes the list of option we are iterating over
+  std::vector<std::vector<OptionRange>> scan_options_;
 
   // Vector of references to currently active elements being used
   // in range_cols_scan_options_

@@ -173,10 +173,6 @@ public class CustomerTask extends Model {
     @EnumValue("UpdateCert")
     UpdateCert,
 
-    @Deprecated
-    @EnumValue("ToggleTls")
-    ToggleTls,
-
     @EnumValue("UpdateDiskSize")
     UpdateDiskSize,
 
@@ -343,8 +339,6 @@ public class CustomerTask extends Model {
           return completed ? "Updated Load Balancer Config " : "Updating Load Balancer Config ";
         case UpdateCert:
           return completed ? "Updated Cert " : "Updating Cert ";
-        case ToggleTls:
-          return completed ? "Toggled Tls " : "Toggling Tls ";
         case UpgradeGflags:
           return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
         case BulkImportData:
@@ -730,11 +724,11 @@ public class CustomerTask extends Model {
     return find.query().where().eq("target_uuid", targetUUID).isNull("completion_time").findList();
   }
 
-  public static CustomerTask getLatestByUniverseUuid(UUID universeUUID) {
+  public static CustomerTask getLastTaskByTargetUuid(UUID targetUUID) {
     List<CustomerTask> tasks =
         find.query()
             .where()
-            .eq("target_uuid", universeUUID)
+            .eq("target_uuid", targetUUID)
             .isNotNull("completion_time")
             .orderBy("completion_time desc")
             .setMaxRows(1)

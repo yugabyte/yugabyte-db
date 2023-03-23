@@ -75,6 +75,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/universe_key_client.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/constants.h"
@@ -2776,7 +2777,7 @@ Status CatalogManager::CompactSysCatalog(
     const CompactSysCatalogRequestPB* req,
     CompactSysCatalogResponsePB* resp,
     rpc::RpcContext* context) {
-  return PerformOnSysCatalogTablet(req, resp, [](auto shared_tablet) {
+  return PerformOnSysCatalogTablet(req, resp, [&](auto shared_tablet) {
     return shared_tablet->ForceFullRocksDBCompact(rocksdb::CompactionReason::kManualCompaction);
   });
 }
@@ -12082,6 +12083,17 @@ Status CatalogManager::SetClusterConfig(
   return Status::OK();
 }
 
+Status CatalogManager::GetXClusterConfig(GetMasterXClusterConfigResponsePB* resp) {
+  return GetXClusterConfig(resp->mutable_xcluster_config());
+}
+
+Status CatalogManager::GetXClusterConfig(SysXClusterConfigEntryPB* config) {
+  auto xcluster_config = XClusterConfig();
+  DCHECK(xcluster_config) << "Missing xcluster config for master!";
+  *config = xcluster_config->LockForRead()->pb;
+  return Status::OK();
+}
+
 Result<uint32_t> CatalogManager::GetXClusterConfigVersion() const {
   auto xcluster_config = XClusterConfig();
   SCHECK(xcluster_config, IllegalState, "XCluster config is not initialized");
@@ -13074,6 +13086,24 @@ void CatalogManager::SysCatalogLoaded(int64_t term) {
   StartXClusterSafeTimeServiceIfStopped();
 
   snapshot_coordinator_.SysCatalogLoaded(term);
+}
+
+Status CatalogManager::UpdateLastFullCompactionRequestTime(const TableId& table_id) {
+  auto table_info = VERIFY_RESULT(FindTableById(table_id));
+  const auto request_time = CoarseMonoClock::now().time_since_epoch().count();
+  auto lock = table_info->LockForWrite();
+  lock.mutable_data()->pb.set_last_full_compaction_time(request_time);
+  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table_info));
+  lock.Commit();
+  return Status::OK();
+}
+
+Status CatalogManager::GetCompactionStatus(
+    const GetCompactionStatusRequestPB* req, GetCompactionStatusResponsePB* resp) {
+  auto table_info = VERIFY_RESULT(FindTableById(req->table().table_id()));
+  auto lock = table_info->LockForRead();
+  resp->set_last_request_time(lock->pb.last_full_compaction_time());
+  return Status::OK();
 }
 
 }  // namespace master

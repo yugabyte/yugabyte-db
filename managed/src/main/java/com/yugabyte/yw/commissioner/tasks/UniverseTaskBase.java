@@ -93,6 +93,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForYbcServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds;
@@ -840,8 +841,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  /** Create a task to promote auto flag on the universe */
-  public SubTaskGroup createPromoteAutoFlagTask(String ybSoftwareVersion) {
+  /** Create a task to promote auto flag on the universe. */
+  public SubTaskGroup createPromoteAutoFlagTask() {
     SubTaskGroup subTaskGroup = createSubTaskGroup("PromoteAutoFlag");
     PromoteAutoFlags task = createTask(PromoteAutoFlags.class);
     PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
@@ -852,7 +853,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  /** Create a task to check memory limit on the universe nodes */
+  /** Create a task to check the software version on the universe node. */
+  public SubTaskGroup createCheckSoftwareVersionTask(
+      Collection<NodeDetails> nodes, String ybSoftwareVersion) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckSoftwareVersion");
+    for (NodeDetails node : nodes) {
+      CheckSoftwareVersion task = createTask(CheckSoftwareVersion.class);
+      CheckSoftwareVersion.Params params = new CheckSoftwareVersion.Params();
+      params.universeUUID = taskParams().universeUUID;
+      params.nodeName = node.nodeName;
+      params.requiredVersion = ybSoftwareVersion;
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Create a task to check memory limit on the universe nodes. */
   public SubTaskGroup createAvailabeMemoryCheck(
       Collection<NodeDetails> nodes, String memoryType, Long memoryLimitKB) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("CheckMemory");
@@ -869,7 +887,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  /** Create a task to preform pre-check for software upgrade */
+  /** Create a task to preform pre-check for software upgrade. */
   public SubTaskGroup createCheckUpgradeTask(String ybSoftwareVersion) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("CheckUpgrade");
     CheckUpgrade task = createTask(CheckUpgrade.class);
@@ -2394,7 +2412,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       int parallelDBBackups) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("BackupTableYbc");
     YbcBackupNodeRetriever nodeRetriever =
-        new YbcBackupNodeRetriever(backupParams.universeUUID, parallelDBBackups, backupStates);
+        new YbcBackupNodeRetriever(backupParams.universeUUID, parallelDBBackups);
+    nodeRetriever.initializeNodePoolForBackups(backupStates);
     backupParams
         .backupList
         .stream()
@@ -2429,8 +2448,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     RestoreBackupYbc.Params restoreParams = new RestoreBackupYbc.Params(taskParams);
     // Giving node-ip as subtask param, so that leader changes does not
     // affect polling.
-    restoreParams.nodeIp =
-        restoreParams.nodeIp != null ? restoreParams.nodeIp : Util.getYbcNodeIp(getUniverse(false));
+    restoreParams.nodeIp = restoreParams.nodeIp;
     task.initialize(restoreParams);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);
@@ -2534,12 +2552,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
-   * Creates a task to upgrade desired ybc version on a universe.
+   * Creates a task to upgrade desired ybc version on a k8s universe.
    *
    * @param universeUUID universe on which ybc need to be upgraded
    * @param ybcVersion desired ybc version
-   * @param validateOnlyMasterLeader flag to check only if master leader node's ybc is upgraded or
-   *     not
    */
   public SubTaskGroup createUpgradeYbcTaskOnK8s(UUID universeUUID, String ybcSoftwareVersion) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpgradeYbc");

@@ -85,6 +85,11 @@ public class GCPCloudInfo implements CloudInfoInterface {
   @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
   public String hostVpcId;
 
+  @ApiModelProperty(
+      value = "New/Existing VPC for provider creation",
+      accessMode = AccessMode.READ_ONLY)
+  private VPCType vpcType = VPCType.EXISTING;
+
   @JsonIgnore
   public Map<String, String> getEnvVars() {
     Map<String, String> envVars = new HashMap<>();

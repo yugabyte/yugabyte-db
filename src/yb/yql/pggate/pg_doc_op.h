@@ -493,6 +493,8 @@ class PgDocReadOp : public PgDocOp {
   // - After being queried from inner select, ybctids are used for populate request for outer query.
   void InitializeYbctidOperators();
 
+  bool IsHashBatchingPossible();
+
   // Create operators by partition arguments.
   // - Optimization for statement:
   //     SELECT ... WHERE <hash-columns> IN <value-lists>
@@ -501,8 +503,45 @@ class PgDocReadOp : public PgDocOp {
   // - When an operator is assigned a hash permutation, it is marked as active to be executed.
   // - When an operator completes the execution, it is marked as inactive and available for the
   //   exection of the next hash permutation.
-  bool PopulateNextHashPermutationOps();
+  Result<bool> PopulateNextHashPermutationOps();
   void InitializeHashPermutationStates();
+
+  // Binds the given hash and range values to the given read request.
+  // hashed_values and range_values have the same descriptions as in BindExprsToBatch.
+  void BindExprsRegular(
+      LWPgsqlReadRequestPB* read_req,
+      const std::vector<const LWPgsqlExpressionPB*>& hashed_values,
+      const std::vector<const LWPgsqlExpressionPB*>& range_values);
+
+  // Helper functions for when we are batching hash permutations where
+  // we are creating an IN condition of the form
+  // (yb_hash_code(hashkeys), h1, h2, ..., hn) IN (tuple_1, tuple_2, tuple_3, ...)
+
+  // This operates by creating one such IN condition for each partition we are sending
+  // our query to and buidling each of them up in hash_in_conds_[partition_idx]. We make sure
+  // that each permutation value goes into the correct partition's condition. We then
+  // make one read op clone per partition and for each one we bind their respective condition
+  // from hash_in_conds_[partition_idx].
+
+  // This prepares the LHS of the hash IN condition for a particular partition.
+  void PrepareInitialHashConditionList(size_t partition);
+
+  // Binds the given hash and range values to whatever partition in hash_in_conds_
+  // the hashed values suggest. The range_values vector is expected to be a
+  // vector of size num_range_keys where a range_values[i] == nullptr iff
+  // the ith range column is not relevant to the IN condition we are building
+  // up.
+  void BindExprsToBatch(
+      const std::vector<const LWPgsqlExpressionPB*>& hashed_values,
+      const std::vector<const LWPgsqlExpressionPB*>& range_values);
+
+  // These functions are used to iterate over each partition batch and bind them to a request.
+
+  // Returns false if we are done iterating over our partition batches.
+  bool HasNextBatch();
+
+  // Binds the next partition batch available to the given request's condition expression.
+  Result<bool> BindNextBatchToRequest(LWPgsqlReadRequestPB* read_req);
 
   // Helper functions for PopulateNextHashPermutationOps
   // Prepares a new read request from the pool of inactive operators.
@@ -513,7 +552,7 @@ class PgDocReadOp : public PgDocOp {
   bool GetNextPermutation(std::vector<const LWPgsqlExpressionPB*>* exprs);
   // Binds a given permutation of partition expressions to the given read request.
   void BindPermutation(const std::vector<const LWPgsqlExpressionPB*>& exprs,
-                       LWPgsqlReadRequestPB* read_op) const;
+                       LWPgsqlReadRequestPB* read_op);
 
   // Create operators by partitions.
   // - Optimization for aggregating or filtering requests.
@@ -578,6 +617,30 @@ class PgDocReadOp : public PgDocOp {
   void ClonePgsqlOps(size_t op_count);
 
   //----------------------------------- Data Members -----------------------------------------------
+
+  // Whether or not we are using hash permutation batching for this op.
+  boost::optional<bool> is_hash_batched_;
+
+  // Pointer to the per tablet hash component condition expression. For each hash key
+  // combination, once we identify the partition at which it should be executed, we enqueue
+  // it into this vector among the other hash keys that are to be executed in that tablet.
+  // This vector contains a reference to the vector that contains the list of hash keys
+  // that are supposed to be executed in each tablet.
+
+  // This is a vector of IN condition expressions for each partition. In each partition's
+  // condition expression the LHS is a tuple of the hash code and hash keys and the RHS
+  // is built up to eventually be a list of all the hash key permutations
+  // that belong to that partition. These conditions are eventually bound
+  // to a read op's condition expression.
+  std::vector<LWPgsqlExpressionPB*> hash_in_conds_;
+
+  // Sometimes in the final hash IN condition's LHS, range columns may be involved.
+  // For example, if we get a filter of the form (h1, h2, r2) IN (t2, t2, t3), commonly found
+  // in the case of batched nested loop joins. These should be sorted.
+  std::vector<size_t> permutation_range_column_indexes_;
+
+  // Used when iterating over the partition batches in hash_in_conds_.
+  size_t next_batch_partition_ = 0;
 
   // Template operation, used to fill in pgsql_ops_ by either assigning or cloning.
   PgsqlReadOpPtr read_op_;

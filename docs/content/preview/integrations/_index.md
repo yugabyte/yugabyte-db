@@ -9,7 +9,6 @@ aliases:
   - /develop/client-drivers/
   - /preview/develop/client-drivers/
   - /preview/quick-start/build-apps/
-  - /preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/
 type: indexpage
 ---
 

@@ -553,8 +553,6 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
     return LeaderTerm() != OpId::kUnknownTerm;
   }
 
-  void PollWaitQueue() const;
-
   TabletSplitter* tablet_splitter_;
 
   std::shared_future<client::YBClient*> client_future_;

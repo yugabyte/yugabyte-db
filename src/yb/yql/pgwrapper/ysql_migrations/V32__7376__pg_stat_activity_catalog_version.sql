@@ -31,10 +31,18 @@ BEGIN;
 COMMIT;
 
 -- (Using the same indentation as the definition in yb_system_views.sql.)
-CREATE OR REPLACE VIEW pg_catalog.pg_stat_activity
-WITH (use_initdb_acl = true)
-AS
-    SELECT
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT TRUE FROM pg_attribute
+    WHERE attrelid = 'pg_catalog.pg_stat_activity'::regclass
+          AND attname = 'catalog_version'
+          AND NOT attisdropped
+  ) THEN
+    CREATE OR REPLACE VIEW pg_catalog.pg_stat_activity
+    WITH (use_initdb_acl = true)
+    AS
+        SELECT
             S.datid AS datid,
             D.datname AS datname,
             S.pid,
@@ -56,8 +64,10 @@ AS
             S.query,
             S.backend_type,
             yb_pg_stat_get_backend_catalog_version(B.beid) AS catalog_version
-    FROM pg_stat_get_activity(NULL) AS S
-        LEFT JOIN pg_database AS D ON (S.datid = D.oid)
-        LEFT JOIN pg_authid AS U ON (S.usesysid = U.oid)
-        LEFT JOIN (pg_stat_get_backend_idset() beid CROSS JOIN
-                   pg_stat_get_backend_pid(beid) pid) B ON B.pid = S.pid;
+        FROM pg_stat_get_activity(NULL) AS S
+            LEFT JOIN pg_database AS D ON (S.datid = D.oid)
+            LEFT JOIN pg_authid AS U ON (S.usesysid = U.oid)
+            LEFT JOIN (pg_stat_get_backend_idset() beid CROSS JOIN
+                      pg_stat_get_backend_pid(beid) pid) B ON B.pid = S.pid;
+  END IF;
+END $$;

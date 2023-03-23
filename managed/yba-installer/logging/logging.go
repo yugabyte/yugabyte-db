@@ -21,6 +21,11 @@ func Fatal(errorMsg string) {
 	stdLogger.Fatalln(errorMsg)
 }
 
+func Error(errorMsg string) {
+	logFileLogger.Errorln(errorMsg)
+	stdLogger.Errorln(errorMsg)
+}
+
 // Info prints the info message to the console at the info level.
 func Info(infoMsg string) {
 	logFileLogger.Infoln(infoMsg)
@@ -37,6 +42,11 @@ func Warn(warnMsg string) {
 func Debug(debugMsg string) {
 	logFileLogger.Debug(debugMsg)
 	stdLogger.Debugln(debugMsg)
+}
+
+// DebugLF will debug log only to the file logger.
+func DebugLF(debugMsg string) {
+	logFileLogger.Debug(debugMsg)
 }
 
 func Trace(msg string) {

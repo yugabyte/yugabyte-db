@@ -220,6 +220,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   PgIsolationLevel GetIsolationLevel();
 
+  bool IsHashBatchingEnabled();
+
   // Run (apply + flush) list of given operations to read and write database content.
   template<class OpPtr>
   struct TableOperation {

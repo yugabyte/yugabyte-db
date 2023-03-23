@@ -38,17 +38,15 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
                                    const DocKey& start_doc_key,
                                    bool is_forward_scan,
                                    const size_t prefix_length)
-    : PgsqlScanSpec(nullptr),
-      schema_(schema),
+    : PgsqlScanSpec(schema, is_forward_scan, nullptr),
       query_id_(query_id),
       hashed_components_(nullptr),
       range_components_(nullptr),
-      range_options_groups_(schema_.num_range_key_columns()),
+      options_groups_(schema.num_dockey_components()),
       hash_code_(hash_code),
       max_hash_code_(max_hash_code),
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
       lower_doc_key_(doc_key.Encode()),
-      is_forward_scan_(is_forward_scan),
       prefix_length_(prefix_length) {
 
   // Compute lower and upper doc_key.
@@ -91,30 +89,18 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     const DocKey& lower_doc_key,
     const DocKey& upper_doc_key,
     const size_t prefix_length)
-    : PgsqlScanSpec(where_expr),
+    : PgsqlScanSpec(schema, is_forward_scan,  where_expr),
       range_bounds_(condition ? new QLScanRange(schema, *condition) : nullptr),
-      schema_(schema),
       query_id_(query_id),
       hashed_components_(&hashed_components.get()),
       range_components_(&range_components.get()),
-      range_options_groups_(schema_.num_range_key_columns()),
+      options_groups_(schema.num_dockey_components()),
       hash_code_(hash_code),
       max_hash_code_(max_hash_code),
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
       lower_doc_key_(lower_doc_key.Encode()),
       upper_doc_key_(upper_doc_key.Encode()),
-      is_forward_scan_(is_forward_scan),
       prefix_length_(prefix_length) {
-
-  auto lower_bound_key = bound_key(schema, true);
-  lower_doc_key_ = lower_bound_key > lower_doc_key_
-                    || lower_doc_key.empty()
-                    ? lower_bound_key : lower_doc_key_;
-
-  auto upper_bound_key = bound_key(schema, false);
-  upper_doc_key_ = upper_bound_key < upper_doc_key_
-                    || upper_doc_key.empty()
-                    ? upper_bound_key : upper_doc_key_;
 
   if (where_expr_) {
     // Should never get here until WHERE clause is supported.
@@ -125,24 +111,58 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     range_bounds_indexes_ = range_bounds_->GetColIds();
   }
 
-  // If the hash key is fixed and we have range columns with IN condition, try to construct the
-  // exact list of range options to scan for.
-  if ((!hashed_components_->empty() || schema_.num_hash_key_columns() == 0) &&
-      schema_.num_range_key_columns() > 0 &&
-      range_bounds_ && range_bounds_->has_in_range_options()) {
-    DCHECK(condition);
-    range_options_ = std::make_shared<std::vector<OptionList>>(schema_.num_range_key_columns());
-    InitRangeOptions(*condition);
+  if (!hashed_components_->empty() && schema.num_hash_key_columns() > 0) {
+    options_ = std::make_shared<std::vector<OptionList>>(schema.num_dockey_components());
+    options_col_ids_.reserve(schema.num_dockey_components());
+
+    // should come here if we are not batching hash keys as a part of IN condition
+    options_groups_.BeginNewGroup();
+
+    // dockeys contains elements in the format yb_hash_code, hk1, hk2, ... hkn followed by
+    // rk1, rk2... rkn etc. As yb_hash_code is the first element and is not part of the schema
+    // we add it manually.
+    options_groups_.AddToLatestGroup(0);
+    options_col_ids_.emplace_back(ColumnId(kYbHashCodeColId));
+
+    (*options_)[0].push_back(KeyEntryValue::UInt16Hash(hash_code_.value()));
+    DCHECK(hashed_components_->size() == schema.num_hash_key_columns());
+    for (size_t col_idx = 0; col_idx < schema.num_hash_key_columns(); ++col_idx) {
+      // Adding 1 to col_idx to account for hash_code column
+      options_groups_.AddToLatestGroup(schema.get_dockey_component_idx(col_idx));
+      options_col_ids_.emplace_back(schema.column_id(col_idx));
+
+      (*options_)[schema.get_dockey_component_idx(col_idx)]
+          .push_back(std::move((*hashed_components_)[col_idx]));
+    }
   }
+
+  // We have hash or range columns with IN condition, try to construct the exact list of options to
+  // scan for.
+  if (range_bounds_ &&
+      (range_bounds_->has_in_range_options() || range_bounds_->has_in_hash_options())) {
+    DCHECK(condition);
+    if (options_ == nullptr)
+      options_ = std::make_shared<std::vector<OptionList>>(schema.num_dockey_components());
+    InitOptions(*condition);
+  }
+
+  auto lower_bound_key = bound_key(schema, true);
+  lower_doc_key_ = lower_bound_key > lower_doc_key_
+                    || lower_doc_key.empty()
+                    ? lower_bound_key : lower_doc_key_;
+
+  auto upper_bound_key = bound_key(schema, false);
+  upper_doc_key_ = upper_bound_key < upper_doc_key_
+                    || upper_doc_key.empty()
+                    ? upper_bound_key : upper_doc_key_;
 }
 
-void DocPgsqlScanSpec::InitRangeOptions(const PgsqlConditionPB& condition) {
-  size_t num_hash_cols = schema_.num_hash_key_columns();
+void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
   switch (condition.op()) {
     case QLOperator::QL_OP_AND:
       for (const auto& operand : condition.operands()) {
         DCHECK(operand.has_condition());
-        InitRangeOptions(operand.condition());
+        InitOptions(operand.condition());
       }
       break;
 
@@ -150,6 +170,8 @@ void DocPgsqlScanSpec::InitRangeOptions(const PgsqlConditionPB& condition) {
     case QLOperator::QL_OP_IN: {
       DCHECK_EQ(condition.operands_size(), 2);
       // Skip any condition where LHS is not a column (e.g. subscript columns: 'map[k] = v')
+      // operands(0) always contains the column id.
+      // operands(1) contains the corresponding value or a list values.
       const auto& lhs = condition.operands(0);
       const auto& rhs = condition.operands(1);
       if (lhs.expr_case() != PgsqlExpressionPB::kColumnId &&
@@ -165,71 +187,81 @@ void DocPgsqlScanSpec::InitRangeOptions(const PgsqlConditionPB& condition) {
 
       DCHECK(condition.op() == QL_OP_IN ||
              condition.op() == QL_OP_EQUAL); // move this up
-
       if (lhs.has_column_id()) {
 
-        size_t col_idx = schema_.find_column_by_id(ColumnId(lhs.column_id()));
+        auto col_id = ColumnId(lhs.column_id());
+        auto col_idx = schema().find_column_by_id(col_id);
 
-        // Skip any non-range columns.
-        if (!schema_.is_range_column(col_idx)) {
-          return;
-        }
+        // Skip any non-range columns. Hashed columns should always be sent as tuples along with
+        // their yb_hash_code. Hence, for hashed columns lhs should never be a column id.
+        DCHECK(schema().is_range_column(col_idx));
 
-        SortingType sortingType = schema_.column(col_idx).sorting_type();
-        range_options_indexes_.emplace_back(condition.operands(0).column_id());
+        auto sortingType = get_sorting_type(col_idx);
 
-        range_options_groups_.BeginNewGroup();
-        range_options_groups_.AddToLatestGroup(col_idx - num_hash_cols);
+        // Adding the offset if yb_hash_code is present after schema usages. Schema does not know
+        // about yb_hash_code_column
+        auto key_idx = schema().get_dockey_component_idx(col_idx);
+
+        options_col_ids_.emplace_back(col_id);
+        options_groups_.BeginNewGroup();
+        options_groups_.AddToLatestGroup(key_idx);
+
         if (condition.op() == QL_OP_EQUAL) {
-          auto pv = KeyEntryValue::FromQLValuePBForKey(rhs.value(), sortingType);
-          (*range_options_)[col_idx - num_hash_cols].push_back(pv);
-        } else {
+          auto pv = KeyEntryValue::FromQLValuePBForKey(condition.operands(1).value(), sortingType);
+          (*options_)[key_idx].push_back(std::move(pv));
+        } else { // QL_OP_IN
+          DCHECK_EQ(condition.op(), QL_OP_IN);
           DCHECK(rhs.value().has_list_value());
           const auto &options = rhs.value().list_value();
           int opt_size = options.elems_size();
-          (*range_options_)[col_idx - num_hash_cols].reserve(opt_size);
+          (*options_)[key_idx].reserve(opt_size);
 
           // IN arguments should have been de-duplicated and ordered ascendingly by the executor.
-          bool is_reverse_order = is_forward_scan_ ^ (sortingType == SortingType::kAscending ||
-              sortingType == SortingType::kAscendingNullsLast);
+          bool is_reverse_order = get_scan_direction(col_idx);
           for (int i = 0; i < opt_size; i++) {
             int elem_idx = is_reverse_order ? opt_size - i - 1 : i;
             const auto &elem = options.elems(elem_idx);
             auto pv = KeyEntryValue::FromQLValuePBForKey(elem, sortingType);
-            (*range_options_)[col_idx - num_hash_cols].push_back(pv);
+            (*options_)[key_idx].push_back(std::move(pv));
           }
         }
       } else if (lhs.has_tuple()) {
-        // The lhs of this tuple IN condition might have a mix of hash and range columns.
-        // The hash columns in the lhs are always expected to appear to the left of all the
-        // range columns. We only take care to add the range components of the lhs to
-        // range_options_groups_ and range_options_indexes_. We compute start_range_col_idx to
-        // denote where in the lhs tuple range columns start appearing.
         size_t total_cols = lhs.tuple().elems_size();
         DCHECK_GT(total_cols, 0);
 
+        // Whenever you have a tuple as a part of IN array, the query is of two types:
+        // 1. Range tuples SELECT * FROM table where (r1, r2) IN ((1, 1), (2, 2), (3,3));
+        // 2. Hash tuples
+        //    a. SELECT * FROM table where (h1, h2) IN ((1, 1), (2, 2), (3,3));
+        //    b. SELECT * FROM table where h1 IN (1, 2, 3, 4) AND h2 IN (5, 6, 7, 8);
+        // 3. Hash and range mix.
+        // The hash columns in the lhs are always expected to appear to the left of all the
+        // range columns. We only take care to add the range components of the lhs to
+        // options_groups_ and options_col_ids_.
+        // In each of these situations, the following steps have to be undertaken
+        //
+        // Step 1: Get the column ids of the elements
+        // For range tuples its (r1, r2).
+        // For hash tuples its (yb_hash_code, h1, h2), (yb_hash_code, h3, h4)
+        // Push them into the options groups and options indexes as hybrid scan utilizes to match
+        // target elements with their corresponding columns.
         int start_range_col_idx = 0;
-        std::vector<int> col_idxs;
-        col_idxs.reserve(lhs.tuple().elems_size());
-
-        range_options_groups_.BeginNewGroup();
+        ColumnListVector col_idxs;
+        options_groups_.BeginNewGroup();
 
         for (const auto& elem : lhs.tuple().elems()) {
           DCHECK(elem.has_column_id());
           ColumnId col_id = ColumnId(elem.column_id());
-          int col_idx = schema_.find_column_by_id(col_id);
+          auto col_idx = elem.column_id() == kYbHashCodeColId ? kYbHashCodeColId
+              : schema().find_column_by_id(col_id);
           col_idxs.push_back(col_idx);
-          if (!schema_.is_range_column(col_idx)) {
+          if (!schema().is_range_column(col_idx)) {
             start_range_col_idx++;
-            DCHECK_EQ(start_range_col_idx, col_idxs.size());
-            continue;
           }
-          range_options_groups_.AddToLatestGroup(col_idx - num_hash_cols);
-          range_options_indexes_.emplace_back(col_id);
-        }
-
-        if (start_range_col_idx >= lhs.tuple().elems_size()) {
-          return;
+          options_col_ids_.emplace_back(col_id);
+          // yb_hash_code takes the 0th group. If there exists a yb_hash_code column, then we offset
+          // other columns by one position from what schema().find_column_by_id(col_id) provides us
+          options_groups_.AddToLatestGroup(schema().get_dockey_component_idx(col_idx));
         }
 
         if (condition.op() == QL_OP_EQUAL) {
@@ -237,56 +269,70 @@ void DocPgsqlScanSpec::InitRangeOptions(const PgsqlConditionPB& condition) {
           const auto& value = rhs.value().list_value();
           DCHECK_EQ(total_cols, value.elems_size());
           for (size_t i = start_range_col_idx; i < total_cols; i++) {
-            SortingType sorting_type = schema_.column(col_idxs[i]).sorting_type();
-            Option option =
-                KeyEntryValue::FromQLValuePBForKey(
-                    value.elems(static_cast<int>(i)), sorting_type);
-            (*range_options_)[col_idxs[i] - num_hash_cols].push_back(std::move(option));
+            // hash codes are always sorted ascending.
+            auto option = KeyEntryValue::FromQLValuePBForKey(value.elems(static_cast<int>(i)),
+                                                             get_sorting_type(col_idxs[i]));
+            auto options_idx = schema().get_dockey_component_idx(col_idxs[i]);
+            (*options_)[options_idx].push_back(std::move(option));
           }
         } else if (condition.op() == QL_OP_IN) {
           // There should be no range columns before start_range_col_idx in col_idxs
           // and there should be no hash columns after start_range_col_idx
           DCHECK(std::find_if(col_idxs.begin(), col_idxs.begin() + start_range_col_idx,
-                              [this] (int idx) { return schema_.is_range_column(idx); })
+                              [this] (int idx) { return schema().is_range_column(idx); })
                  == (col_idxs.begin() + start_range_col_idx));
           DCHECK(std::find_if(col_idxs.begin() + start_range_col_idx, col_idxs.end(),
-                              [this] (int idx) { return schema_.is_hash_key_column(idx); })
+                              [this] (int idx) { return schema().is_hash_key_column(idx); })
                  == (col_idxs.end()));
 
+          // Obtain the list of tuples that contain the target values.
           DCHECK(rhs.value().has_list_value());
           const auto& options = rhs.value().list_value();
-          int num_options = options.elems_size();
-          // IN arguments should have been de-duplicated and ordered ascendingly by the
-          // executor.
 
+          // IN arguments should have been de-duplicated and ordered ascendingly by the executor.
+          // For range columns, yb_scan sorts them according to the range key values at the pggate
+          // layer itself. For hash key columns, we need to sort the options based on the
+          // yb_hash_code value. This enables the docDB iterator to pursue a one pass scan on the
+          // list of hash key columns
+          //
+          // Step 2: Obtain the sorting order for elements. For hash key columns its always
+          // SortingType::kAscending based on the yb_hash_code, and then the individual hash key
+          // components subsequently. For range key columns, we try to obtain it from the column
+          // structure.
           std::vector<bool> reverse;
           reverse.reserve(total_cols);
           for (size_t i = 0; i < total_cols; i++) {
-            SortingType sorting_type = schema_.column(col_idxs[i]).sorting_type();
-            bool is_reverse_order =
-                is_forward_scan_ ^
-                    (sorting_type == SortingType::kAscending ||
-                        sorting_type == SortingType::kAscendingNullsLast);
-            reverse.push_back(is_reverse_order);
+            reverse.push_back(get_scan_direction(col_idxs[i]));
           }
 
           const auto sorted_options =
-              GetTuplesSortedByOrdering(options, schema_, is_forward_scan_, col_idxs);
+              GetTuplesSortedByOrdering(options, schema(), is_forward_scan(), col_idxs);
 
+          // Step 3: Add the sorted options into the options_ vector for HybridScan to use them to
+          // perform seeks and nexts.
+          // options_ array indexes into every key column. Here we append to every key column the
+          // list of target elements that needs to be scanned.
+          int num_options = options.elems_size();
           for (int i = 0; i < num_options; i++) {
             const auto& elem = sorted_options[i];
+            DCHECK(elem->has_tuple_value());
             const auto& value = elem->tuple_value();
+            DCHECK_EQ(total_cols, value.elems_size());
 
-            for (size_t j = start_range_col_idx; j < total_cols; j++) {
-              const auto sorting_type = schema_.column(col_idxs[j]).sorting_type();
-              auto option = KeyEntryValue::FromQLValuePBForKey(
-                  value.elems(static_cast<int>(j)), sorting_type);
-              (*range_options_)[col_idxs[j] - num_hash_cols].push_back(std::move(option));
+            for (size_t j = 0; j < total_cols; j++) {
+              const auto sorting_type = get_sorting_type(col_idxs[j]);
+
+              // For hash tuples, the first element always contains the yb_hash_code
+              auto option = (j == 0 && col_idxs[j] == kYbHashCodeColId)
+                ? KeyEntryValue::UInt16Hash(value.elems(static_cast<int>(j)).int32_value())
+                : KeyEntryValue::FromQLValuePBForKey(value.elems(static_cast<int>(j)),
+                                                     sorting_type);
+              auto options_idx = schema().get_dockey_component_idx(col_idxs[j]);
+              (*options_)[options_idx].push_back(std::move(option));
             }
           }
         }
       }
-
       break;
     }
 
@@ -300,19 +346,41 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
   KeyBytes result;
   auto encoder = DocKeyEncoder(&result).Schema(schema);
 
-  bool has_hash_columns = schema_.num_hash_key_columns() > 0;
-  bool hash_components_unset = has_hash_columns && hashed_components_->empty();
+  bool has_hash_columns = schema.num_hash_key_columns() > 0;
+  std::vector<KeyEntryValue> hashed_components;
+  hashed_components.reserve(schema.num_hash_key_columns());
+
+  int32_t hash_code;
+  int32_t max_hash_code;
+  if (hashed_components_->empty() && has_hash_columns && options_ && !options_->empty()) {
+    for (size_t i = 0; i < schema.num_hash_key_columns(); ++i) {
+      DCHECK_GE(options_->size(),
+                schema.num_hash_key_columns() + schema.has_yb_hash_code());
+      KeyEntryValue keyval = (*options_)[schema.get_dockey_component_idx(i)].front();
+      hashed_components.push_back(keyval);
+    }
+    hash_code = static_cast<int32_t>(options_.get()[0][0][0].GetUInt16Hash());
+    max_hash_code = (*options_)[0].size() == 1 ? hash_code
+        : max_hash_code_.get_value_or(std::numeric_limits<DocKeyHash>::max());
+  } else {
+    hash_code = hash_code_.get_value_or(std::numeric_limits<DocKeyHash>::min());
+    max_hash_code = max_hash_code_.get_value_or(std::numeric_limits<DocKeyHash>::max());
+    hashed_components = *hashed_components_;
+  }
+
+  bool hash_components_unset = has_hash_columns &&
+                               (hashed_components.empty() && hashed_components_->empty());
   if (hash_components_unset) {
     // use lower bound hash code if set in request (for scans using token)
-    if (lower_bound && hash_code_) {
-      encoder.HashAndRange(*hash_code_,
+    if (lower_bound && hash_code) {
+      encoder.HashAndRange(hash_code,
                            {KeyEntryValue(KeyEntryType::kLowest)},
                            {KeyEntryValue(KeyEntryType::kLowest)});
     }
     // use upper bound hash code if set in request (for scans using token)
     if (!lower_bound) {
       if (max_hash_code_) {
-        encoder.HashAndRange(*max_hash_code_,
+        encoder.HashAndRange(max_hash_code,
                              {KeyEntryValue(KeyEntryType::kHighest)},
                              {KeyEntryValue(KeyEntryType::kHighest)});
       } else {
@@ -323,14 +391,11 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
   }
 
   if (has_hash_columns) {
-    uint16_t hash = lower_bound
-        ? hash_code_.get_value_or(std::numeric_limits<DocKeyHash>::min())
-        : max_hash_code_.get_value_or(std::numeric_limits<DocKeyHash>::max());
-
-    encoder.HashAndRange(hash, *hashed_components_, range_components(lower_bound));
+    uint16_t hash = lower_bound ? hash_code : max_hash_code;
+    encoder.HashAndRange(hash, hashed_components, range_components(lower_bound));
   } else {
     // If no hash columns use default hash code (0).
-    encoder.Hash(false, 0, *hashed_components_).Range(range_components(lower_bound));
+    encoder.Hash(false, 0, hashed_components).Range(range_components(lower_bound));
   }
   return result;
 }
@@ -338,7 +403,7 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
 std::vector<KeyEntryValue> DocPgsqlScanSpec::range_components(const bool lower_bound,
                                                               std::vector<bool> *inclusivities,
                                                               bool use_strictness) const {
-  return GetRangeKeyScanSpec(schema_,
+  return GetRangeKeyScanSpec(schema(),
                              range_components_,
                              range_bounds_.get(),
                              inclusivities,
@@ -361,7 +426,7 @@ Result<KeyBytes> DocPgsqlScanSpec::Bound(const bool lower_bound) const {
   }
 
   // Paging state + forward scan.
-  if (is_forward_scan_) {
+  if (is_forward_scan()) {
     return lower_bound ? start_doc_key_ : upper_doc_key_;
   }
 

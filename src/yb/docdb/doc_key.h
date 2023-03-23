@@ -396,6 +396,7 @@ class DocKeyDecoder {
   Result<bool> DecodeCotableId(Uuid* uuid = nullptr);
   Result<bool> DecodeColocationId(ColocationId* colocation_id = nullptr);
 
+  Status DecodeToKeys();
   Result<bool> HasPrimitiveValue(AllowSpecial allow_special = AllowSpecial::kFalse);
 
   Result<bool> DecodeHashCode(
@@ -423,8 +424,6 @@ class DocKeyDecoder {
   Slice* mutable_input() {
     return &input_;
   }
-
-  Status DecodeToRangeGroup();
 
  private:
   Slice input_;

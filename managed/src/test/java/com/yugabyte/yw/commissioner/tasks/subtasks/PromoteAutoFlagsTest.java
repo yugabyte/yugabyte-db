@@ -7,7 +7,6 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -51,6 +50,7 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
     node = new NodeDetails();
     node.cloudInfo = new CloudSpecificInfo();
     node.cloudInfo.private_ip = "1.2.3.4";
+    node.nodeName = "node-1";
     details.nodeDetailsSet.add(node);
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
@@ -63,30 +63,9 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testFailWhenNodeAreUnreachable() throws Exception {
-    PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
-    when(mockClient.ping(anyString(), anyInt()))
-        .thenThrow(new Exception("Could not connect to the server"))
-        .thenReturn(false);
-    PromoteAutoFlags task = AbstractTaskBase.createTask(PromoteAutoFlags.class);
-    task.initialize(params);
-    PlatformServiceException exception =
-        assertThrows(PlatformServiceException.class, () -> task.run());
-    assertEquals(INTERNAL_SERVER_ERROR, exception.getHttpStatus());
-    assertEquals("Could not connect to the server", exception.getMessage());
-    exception = assertThrows(PlatformServiceException.class, () -> task.run());
-    assertEquals(INTERNAL_SERVER_ERROR, exception.getHttpStatus());
-    assertEquals(
-        node.cloudInfo.private_ip + " is not responding on either master or tserver",
-        exception.getMessage());
-  }
-
-  @Test
   public void testPromoteAutoFlagException() throws Exception {
     PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
     params.universeUUID = defaultUniverse.universeUUID;
-    when(mockClient.ping(anyString(), anyInt())).thenReturn(true);
     when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
         .thenThrow(new Exception("Error promoting auto flags"));
     PromoteAutoFlags task = AbstractTaskBase.createTask(PromoteAutoFlags.class);
@@ -101,7 +80,6 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
   public void voidTestPromoteAutoFlagFail() throws Exception {
     PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
     params.universeUUID = defaultUniverse.universeUUID;
-    when(mockClient.ping(anyString(), anyInt())).thenReturn(true);
     when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
         .thenReturn(
             new PromoteAutoFlagsResponse(
@@ -145,7 +123,6 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
   public void testPromoteAutoFlagSuccess() throws Exception {
     PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
     params.universeUUID = defaultUniverse.universeUUID;
-    when(mockClient.ping(anyString(), anyInt())).thenReturn(true);
     when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
         .thenReturn(
             new PromoteAutoFlagsResponse(

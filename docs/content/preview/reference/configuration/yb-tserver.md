@@ -8,9 +8,6 @@ menu:
     identifier: yb-tserver
     parent: configuration
     weight: 2440
-aliases:
-  - /preview/admin/yb-tserver
-  - /preview/deploy/reference/configuration/yb-tserver
 type: docs
 ---
 

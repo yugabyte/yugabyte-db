@@ -1,7 +1,9 @@
 ---
-title: Unique indexes
+title: Unique indexes in YugabyteDB YCQL
+headerTitle: Unique indexes
 linkTitle: Unique indexes
 description: Using Unique indexes in YCQL
+headContent: Explore unique indexes in YugabyteDB using YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
@@ -10,7 +12,6 @@ menu:
     weight: 231
 aliases:
   - /preview/explore/ysql-language-features/indexes-1/
-  - /preview/explore/indexes-constraints/indexes-1/
 type: docs
 ---
 

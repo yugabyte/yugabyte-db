@@ -55,9 +55,9 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
         } catch (PlatformServiceException e) {
           if (e.getHttpStatus() == BAD_REQUEST) {
             if (awsCloudImpl.checkKeysExists(provider)) {
-              throwBeanValidatorError("KEYS", e.getMessage());
+              throwBeanProviderValidatorError("KEYS", e.getMessage());
             } else {
-              throwBeanValidatorError("IAM", e.getMessage());
+              throwBeanProviderValidatorError("IAM", e.getMessage());
             }
           }
           throw e;
@@ -77,7 +77,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
       }
     } catch (PlatformServiceException e) {
       if (e.getHttpStatus() == BAD_REQUEST) {
-        throwBeanValidatorError("SSH_PRIVATE_KEY_CONTENT", e.getMessage());
+        throwBeanProviderValidatorError("SSH_PRIVATE_KEY_CONTENT", e.getMessage());
       }
       throw e;
     }
@@ -85,6 +85,10 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     // validate NTP Servers
     if (provider.details != null && provider.details.ntpServers != null) {
       validateNTPServers(provider.details.ntpServers);
+    }
+
+    if (provider.getProviderDetails().sshPort == null) {
+      throwBeanProviderValidatorError("SSH_PORT", "Please provide a valid ssh port value");
     }
 
     // validate hosted zone id
@@ -97,7 +101,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
           }
         } catch (PlatformServiceException e) {
           if (e.getHttpStatus() == BAD_REQUEST) {
-            throwBeanValidatorError("HOSTED_ZONE", e.getMessage());
+            throwBeanProviderValidatorError("HOSTED_ZONE", e.getMessage());
           }
           throw e;
         }
@@ -122,7 +126,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
       awsCloudImpl.dryRunDescribeInstanceOrBadRequest(provider, region.code);
     } catch (PlatformServiceException e) {
       if (e.getHttpStatus() == BAD_REQUEST) {
-        throwBeanValidatorError(fieldDetails, e.getMessage());
+        throwBeanProviderValidatorError(fieldDetails, e.getMessage());
       }
       throw e;
     }
@@ -152,14 +156,14 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
         List<String> supportedPlatform =
             runtimeConfigGetter.getStaticConf().getStringList("yb.aws.supported_platform");
         String platformDetails = image.getPlatformDetails().toLowerCase();
-        if (!supportedPlatform.stream().anyMatch(platform -> platformDetails.contains(platform))) {
+        if (supportedPlatform.stream().noneMatch(platformDetails::contains)) {
           throw new PlatformServiceException(
               BAD_REQUEST, platformDetails + " platform on image " + imageId + " is not supported");
         }
       }
     } catch (PlatformServiceException e) {
       if (e.getHttpStatus() == BAD_REQUEST) {
-        throwBeanValidatorError(fieldDetails, e.getMessage());
+        throwBeanProviderValidatorError(fieldDetails, e.getMessage());
       }
       throw e;
     }
@@ -173,7 +177,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
       }
     } catch (PlatformServiceException e) {
       if (e.getHttpStatus() == BAD_REQUEST) {
-        throwBeanValidatorError(fieldDetails, e.getMessage());
+        throwBeanProviderValidatorError(fieldDetails, e.getMessage());
       }
       throw e;
     }
@@ -186,6 +190,15 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
       if (!StringUtils.isEmpty(region.getSecurityGroupId())) {
         SecurityGroup securityGroup =
             awsCloudImpl.describeSecurityGroupsOrBadRequest(provider, region);
+        if (StringUtils.isEmpty(securityGroup.getVpcId())) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "No vpc is attached to SG: " + region.getSecurityGroupId());
+        }
+        if (!securityGroup.getVpcId().equals(region.getVnetName())) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              region.getSecurityGroupId() + " is not attached to vpc: " + region.getVnetName());
+        }
         Integer sshPort = provider.getProviderDetails().sshPort;
         boolean portOpen = false;
         if (!CollectionUtils.isNullOrEmpty(securityGroup.getIpPermissions())) {
@@ -209,7 +222,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
       }
     } catch (PlatformServiceException e) {
       if (e.getHttpStatus() == BAD_REQUEST) {
-        throwBeanValidatorError(fieldDetails, e.getMessage());
+        throwBeanProviderValidatorError(fieldDetails, e.getMessage());
       }
       throw e;
     }
@@ -241,7 +254,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
       }
     } catch (PlatformServiceException e) {
       if (e.getHttpStatus() == BAD_REQUEST) {
-        throwBeanValidatorError(fieldDetails, e.getMessage());
+        throwBeanProviderValidatorError(fieldDetails, e.getMessage());
       }
       throw e;
     }
@@ -253,7 +266,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     String accessKeySecret = cloudInfo.awsAccessKeySecret;
     if ((StringUtils.isEmpty(accessKey) && !StringUtils.isEmpty(accessKeySecret))
         || (!StringUtils.isEmpty(accessKey) && StringUtils.isEmpty(accessKeySecret))) {
-      throwBeanValidatorError("KEYS", "Please provide both access key and its secret");
+      throwBeanProviderValidatorError("KEYS", "Please provide both access key and its secret");
     }
   }
 

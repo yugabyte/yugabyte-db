@@ -1,7 +1,9 @@
 ---
-title: Other constraints
+title: Other constraints in YugabyteDB YSQL
+headerTitle: Other constraints
 linkTitle: Other constraints
 description: Other constraints in YSQL
+headContent: Explore other constraints in YugabyteDB using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:

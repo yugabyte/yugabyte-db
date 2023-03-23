@@ -241,178 +241,32 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
   }
 
   @Test
-  public void testUniverseToggleTlsWithEmptyParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = prepareUniverseForToggleTls(false, false, null);
+  public void testUnlockUniverseSuccess() {
+    Universe u = createUniverse(customer.getCustomerId());
 
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
-    Result result =
-        assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
-    assertBadRequest(result, "This field is required");
-
-    ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
-    verify(mockCommissioner, times(0)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
-
-    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testUniverseToggleTlsWithInvalidUpgradeOption() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = prepareUniverseForToggleTls(false, false, null);
-
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
-    ObjectNode bodyJson = prepareRequestBodyForToggleTls(true, true, null);
-    bodyJson.put("upgradeOption", "ROLLING");
-    Result result =
-        assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    assertBadRequest(result, "Invalid upgrade option");
-
-    ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
-    verify(mockCommissioner, times(0)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
-
-    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testUniverseToggleTlsWithNoChangeInParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = prepareUniverseForToggleTls(false, false, null);
-
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
-    ObjectNode bodyJson = prepareRequestBodyForToggleTls(false, false, null);
-    Result result =
-        assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    assertBadRequest(result, "No changes in Tls parameters");
-
-    ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
-    verify(mockCommissioner, times(0)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
-
-    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testUniverseToggleTlsWithInvalidRootCa() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = prepareUniverseForToggleTls(false, false, null);
-
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
-    ObjectNode bodyJson = prepareRequestBodyForToggleTls(true, false, UUID.randomUUID());
-    Result result =
-        assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    assertBadRequest(result, "No valid rootCA");
-
-    ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
-    verify(mockCommissioner, times(0)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
-
-    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testUniverseToggleTlsWithRootCaUpdate() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    when(mockRuntimeConfig.getString("yb.storage.path")).thenReturn("/tmp/certs");
-    UUID certUUID1 =
-        CertificateHelper.createRootCA(mockRuntimeConfig, "test cert 1", customer.uuid);
-    UUID certUUID2 =
-        CertificateHelper.createRootCA(mockRuntimeConfig, "test cert 2", customer.uuid);
-    UUID universeUUID = prepareUniverseForToggleTls(true, true, certUUID1);
-
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
-    ObjectNode bodyJson = prepareRequestBodyForToggleTls(false, true, certUUID2);
-    Result result =
-        assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    assertBadRequest(result, "Cannot update root certificate");
-
-    ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
-    verify(mockCommissioner, times(0)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
-
-    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testUniverseToggleTlsWithNodesInTransit() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = prepareUniverseForToggleTls(false, false, null);
-    setInTransitNode(universeUUID);
-
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
-    ObjectNode bodyJson = prepareRequestBodyForToggleTls(true, true, null);
-    Result result =
-        assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    assertBadRequest(result, "as it has nodes in one of");
-
-    ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
-    verify(mockCommissioner, times(0)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
-
-    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testUniverseToggleTlsWithValidParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = prepareUniverseForToggleTls(false, false, null);
-
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
-    ObjectNode bodyJson = prepareRequestBodyForToggleTls(true, true, null);
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
-    assertOk(result);
-    JsonNode json = Json.parse(contentAsString(result));
-
-    ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
-    verify(mockCommissioner, times(1)).submit(eq(TaskType.UpgradeUniverse), argCaptor.capture());
-
-    assertValue(json, "taskUUID", fakeTaskUUID.toString());
-    assertNotNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(1, customer.uuid);
-  }
-
-  private UUID prepareUniverseForToggleTls(
-      boolean enableNodeToNodeEncrypt, boolean enableClientToNodeEncrypt, UUID rootCA) {
-    UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
-    Universe.saveDetails(universeUUID, ApiUtils.mockUniverseUpdater());
-    // Update current TLS params
-    Universe.saveDetails(
-        universeUUID,
+    // Set universe to be in updating state.
+    Universe.UniverseUpdater updater =
         universe -> {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          PlacementInfo placementInfo = universeDetails.getPrimaryCluster().placementInfo;
-          UniverseDefinitionTaskParams.UserIntent userIntent =
-              universeDetails.getPrimaryCluster().userIntent;
-          userIntent.providerType = Common.CloudType.aws;
-          userIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
-          userIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
-          universeDetails.rootCA = rootCA;
-          universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+          universeDetails.updateInProgress = true;
+          universeDetails.updateSucceeded = false;
           universe.setUniverseDetails(universeDetails);
-        });
-    return universeUUID;
-  }
+        };
 
-  private ObjectNode prepareRequestBodyForToggleTls(
-      boolean enableNodeToNodeEncrypt, boolean enableClientToNodeEncrypt, UUID rootCA) {
-    return Json.newObject()
-        .put("enableNodeToNodeEncrypt", enableNodeToNodeEncrypt)
-        .put("enableClientToNodeEncrypt", enableClientToNodeEncrypt)
-        .put("rootCA", rootCA != null ? rootCA.toString() : "");
+    // Save the updates to the universe.
+    u = Universe.saveDetails(u.universeUUID, updater);
+
+    // Validate that universe in update state.
+    assertEquals(true, u.getUniverseDetails().updateInProgress);
+    assertEquals(false, u.getUniverseDetails().updateSucceeded);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/unlock";
+    Result result = doRequestWithAuthToken("POST", url, authToken);
+    assertOk(result);
+
+    // Validate universe is unlocked.
+    u = Universe.getOrBadRequest(u.universeUUID);
+    assertEquals(false, u.getUniverseDetails().updateInProgress);
+    assertEquals(true, u.getUniverseDetails().updateSucceeded);
   }
 }

@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common/shell"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
@@ -41,16 +41,16 @@ func (m memoryCheck) Execute() Result {
 	}
 	command := "grep"
 	args := []string{"MemTotal", "/proc/meminfo"}
-	output, err := common.RunBash(command, args)
-	if err != nil {
-		res.Error = err
+	out := shell.Run(command, args...)
+	if !out.SucceededOrLog() {
+		res.Error = out.Error
 		res.Status = StatusCritical
 	} else {
-		field1 := strings.Fields(output)[1]
+		field1 := strings.Fields(out.StdoutString())[1]
 		availableMemoryKB, _ := strconv.Atoi(strings.Split(field1, " ")[0])
 		availableMemoryGB := float64(availableMemoryKB) / 1e6
 		if availableMemoryGB < defaultMinMemoryLimit {
-			err = fmt.Errorf("System does not meet the minimum memory limit of %v GB.",
+			err := fmt.Errorf("System does not meet the minimum memory limit of %v GB.",
 				defaultMinMemoryLimit)
 			res.Error = err
 			res.Status = StatusCritical

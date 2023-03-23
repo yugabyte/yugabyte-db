@@ -214,6 +214,12 @@ yb-voyager export data status --export-dir /path/to/yb/export/dir
 
 During migration, run the import schema command twice, first without the [--post-import-data](#post-import-data) argument and then with the argument. The second invocation creates indexes and triggers in the target schema, and must be done after [import data](../../migrate-steps/#import-data) is complete.
 
+{{< note title="For Oracle migrations" >}}
+
+For Oracle migrations using YugabyteDB Voyager v1.1, the Orafce extension is installed on the target database by default. This enables you to use a subset of predefined functions, operators, and packages from Oracle. The extension is installed in the public schema, and when listing functions or views, extra objects will be visible on the target database which may confuse you. You can remove the extension using the [DROP EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_drop_extension) command.
+
+{{< /note >}}
+
 #### Syntax
 
 ```sh

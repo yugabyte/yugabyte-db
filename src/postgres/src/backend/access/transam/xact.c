@@ -1942,6 +1942,7 @@ YBInitializeTransaction(void)
 			YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
 		HandleYBStatus(YBCPgEnableFollowerReads(YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
 		HandleYBStatus(YBCPgSetTransactionReadOnly(XactReadOnly));
+		HandleYBStatus(YBCPgSetEnableTracing(YBEnableTracing()));
 		HandleYBStatus(YBCPgSetTransactionDeferrable(XactDeferrable));
 	}
 }

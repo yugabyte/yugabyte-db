@@ -31,7 +31,7 @@ type: docs
   <li>
     <a href="../azure/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
-      &nbsp;&nbsp; Azure
+      Azure
     </a>
   </li>
 
@@ -51,7 +51,9 @@ type: docs
 
 <li>
     <a href="../openshift/" class="nav-link active">
-      <i class="fa-brands fa-redhat" aria-hidden="true"></i>OpenShift</a>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>
+      OpenShift
+    </a>
   </li>
 
   <li>
@@ -63,7 +65,7 @@ type: docs
 
 </ul>
 
-<br>You can configure OpenShift for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured via YugabyteDB Anywhere, the main **Dashboard** page requests to configure at least one provider.
+You can configure OpenShift for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured via YugabyteDB Anywhere, the main **Dashboard** page requests to configure at least one provider.
 
 To create a YugabyteDB universe using the deployed YugabyteDB Anywhere, you start by creating the required role-based access control (RBAC) and adding the provider in the YugabyteDB Anywhere.
 
@@ -140,7 +142,7 @@ Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
 
 ## Create a provider in YugabyteDB Anywhere
 
-Since YugabyteDB Anywhere manages YugabyteDB universes, YugabyteDB Anywhere needs details about the cloud providers. In your case, the provider is your own OCP cluster.
+Because YugabyteDB Anywhere manages YugabyteDB universes, YugabyteDB Anywhere needs details about the cloud providers. In your case, the provider is your own OCP cluster.
 
 You can create a provider as follows:
 
@@ -151,12 +153,13 @@ You can create a provider as follows:
   - Use the **Kube Config** field to select the file that you created in the preceding step.
   - In the **Service Account** field, enter yugabyte-platform-universe-management.
   - In the **Image Registry** field, if you are performing Operator-based installation, use  `registry.connect.redhat.com/yugabytedb/yugabyte`, and if you are performing Helm-based installation, use  `quay.io/yugabyte/yugabyte-ubi`
-  - Optionally, use the **Pull Secret File** field to upload the pull secret you received from Yugabyte Support. <br><br>
-![OpenShift Provider Config](/images/ee/openshift-cloud-provider-setup.png)
+  - Optionally, use the **Pull Secret File** field to upload the pull secret you received from Yugabyte Support.
+
+  ![OpenShift Provider Config](/images/ee/openshift-cloud-provider-setup.png)
 
 - Click **Add Region** and complete the **Add new region** dialog shown in the following illustration by first selecting the region you found previously (US East), and then entering the following information:
   - In the **Zone** field, enter the exact zone label (us-east4-a).
-  - In the **Namespace** field, enter yb-platform.<br><br>
+  - In the **Namespace** field, enter yb-platform.
 
   ![Add Region](/images/ee/openshift-add-region.png)
 
@@ -176,7 +179,7 @@ You can create a universe using the provider as follows:
   - In the **Name** field, enter universe-1.
   - In the **Provider** field, enter ocp-test.
   - In the **Regions** field, enter US East.
-  - In the **Instance Type** field, enter xsmall (2 cores, 4GB RAM).<br>
+  - In the **Instance Type** field, enter xsmall (2 cores, 4GB RAM).
 
   ![Create Universe](/images/ee/openshift-create-uni.png)
 

@@ -16,6 +16,7 @@ export CASS_DRIVER_NO_CYTHON=1
 POINTER=""
 
 PYTHON_REQUIREMENTS_FILE=""
+INCLUDE_PYTHON2=""
 
 # Generate the PEX file that support multiple platforms and Python Versions.
 # Currently supports all Linux Platforms newer than manylinux_2014, and all Python
@@ -31,8 +32,12 @@ function generateMultiPlatformPex {
     # Line 5: --resolve-local-platforms flag (Ensure wheels built in the pex match
     # the platform specifications)
     # Line 6: Created PEX file output (named as pexEnv.pex)
+    PYTHON_VERSIONS=$PYTHON3_VERSIONS
+    if [ "$INCLUDE_PYTHON2" == "true" ]; then
+          PYTHON_VERSIONS+=($PYTHON2_VERSIONS)
+    fi
     pex_command_exec=(python3 -m pex -r "$PYTHON_REQUIREMENTS_FILE"
-    ${PYTHON3_VERSIONS[@]/#/--python=}
+    ${PYTHON_VERSIONS[@]/#/--python=}
     ${LINUX_PLATFORMS[@]/#/--platform=}
     -D ../opscli
     --resolve-local-platforms
@@ -132,6 +137,8 @@ Options:
     Show usage.
   -r, --requirements
     Python requirements file for building pex env.
+  --include_python2
+    Adds python2 support in pex env.
 EOT
 }
 
@@ -144,6 +151,9 @@ while [ $# -gt 0 ]; do
     -r|--requirements)
       PYTHON_REQUIREMENTS_FILE="$2"
       shift
+    ;;
+    --include_python2)
+      INCLUDE_PYTHON2="true"
     ;;
   esac
   shift

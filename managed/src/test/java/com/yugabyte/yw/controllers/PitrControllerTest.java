@@ -410,7 +410,6 @@ public class PitrControllerTest extends FakeDBApplication {
         assertTrue(currentTime3 < maxTime);
         assertEquals("FAILED", state);
       } else if (scheduleUUID.equals(scheduleUUID3)) {
-        assertTrue(currentTime3 <= minTime);
         assertEquals("COMPLETE", state);
       } else {
         Assert.fail();

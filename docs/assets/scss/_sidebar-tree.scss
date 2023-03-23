@@ -26,34 +26,31 @@
 .td-main {
   aside.td-sidebar {
     position: sticky;
-    top: 112px;
+    top: 114px;
     padding: 0;
     background: #fff;
+    max-height: calc(100vh - 114px);
+
+    @media (max-width: 991px) {
+      top: 80px;
+      max-height: calc(100vh - 80px);
+    }
 
     .left-sidebar-wrap {
-      height: calc(100vh - 112px);
+      height: 100%;
       position: sticky;
       margin-top: 0;
-      top: 112px;
+      top: 0;
       transition: width 100ms ease-in-out;
       max-width: 100%;
-
-      @media (max-width: 991px) {
-        height: calc(100vh - 75px);
-        top: 75px;
-      }
     }
 
     .left-sidebar-wrap-inner {
       position: sticky;
-      height: calc(100vh - 112px);
+      height: 100%;
       display: flex;
       flex-flow: column;
       overflow-x: hidden;
-
-      @media (max-width: 991px) {
-        height: calc(100vh - 75px);
-      }
     }
 
     .side-nav-collapse-toggle-2 {
@@ -63,7 +60,7 @@
       justify-content: center;
       background-color: #fff;
       cursor: pointer;
-      top: 21px;
+      bottom: 40px;
       width: 30px;
       height: 30px;
       right: 16px;
@@ -125,11 +122,7 @@
         }
 
         &::after {
-          opacity: 1;
           content: "Show sidebar";
-          background: transparent;
-          border: 0 solid #e9edf0;
-          box-shadow: 0 0 0 rgba(0, 0, 0, 0.1);
           left: 35px;
         }
 

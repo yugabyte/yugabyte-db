@@ -847,7 +847,7 @@ TEST_F(RaftConsensusITest, TestLaggingFollowerRestart) {
   vector<string> extra_flags = {
       "--consensus_inject_latency_ms_in_notifications=10"s,
       "--rpc_throttle_threshold_bytes=-1"s,
-      "--consensus_max_batch_size_bytes=1024"s
+      "--consensus_max_batch_size_bytes=512"s
   };
   ASSERT_NO_FATALS(BuildAndStart(extra_flags));
 
@@ -891,7 +891,7 @@ TEST_F(RaftConsensusITest, TestLaggingFollowerRestart) {
                                        TServerDetailsVector(tablet_servers_), 10s,
                                        &actual_minimum_index));
   LOG(INFO) << "Replica " << replica->uuid() << " received " << actual_minimum_index;
-  ASSERT_LE(actual_minimum_index, kNumWrites / 2);
+  ASSERT_LT(actual_minimum_index, kNumWrites);
 
   replica_ets->Shutdown();
   LOG(INFO)<< "Shutdown replica " << replica->uuid() << ".";

@@ -82,7 +82,9 @@ public class VMImageUpgrade extends UpgradeTaskBase {
             // Promote Auto flags on compatible versions.
             if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.promoteAutoFlag)
                 && CommonUtils.isAutoFlagSupported(newVersion)) {
-              createPromoteAutoFlagTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
+              createCheckSoftwareVersionTask(nodeSet, newVersion)
+                  .setSubTaskGroupType(getTaskSubGroupType());
+              createPromoteAutoFlagTask().setSubTaskGroupType(getTaskSubGroupType());
             }
 
             // Update software version in the universe metadata.

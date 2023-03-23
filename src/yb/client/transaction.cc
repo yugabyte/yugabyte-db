@@ -199,7 +199,7 @@ const SubTransactionMetadata& YBSubTransaction::get() { return sub_txn_; }
 class YBTransaction::Impl final : public internal::TxnBatcherIf {
  public:
   Impl(TransactionManager* manager, YBTransaction* transaction, TransactionLocality locality)
-      : trace_(Trace::NewTrace()),
+      : trace_(Trace::MaybeGetNewTrace()),
         manager_(manager),
         transaction_(transaction),
         read_point_(manager->clock()),
@@ -214,7 +214,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   Impl(TransactionManager* manager, YBTransaction* transaction, const TransactionMetadata& metadata)
-      : trace_(Trace::NewTrace()),
+      : trace_(Trace::MaybeGetNewTrace()),
         manager_(manager),
         transaction_(transaction),
         metadata_(metadata),
@@ -225,7 +225,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   Impl(TransactionManager* manager, YBTransaction* transaction, ChildTransactionData data)
-      : trace_(Trace::NewTrace()),
+      : trace_(Trace::MaybeGetNewTrace()),
         manager_(manager),
         transaction_(transaction),
         read_point_(manager->clock()),
@@ -277,6 +277,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       priority = FLAGS_TEST_override_transaction_priority;
     }
     metadata_.priority = priority;
+  }
+
+  void EnsureTraceCreated() {
+    if (!trace_) {
+      trace_ = new Trace;
+      TRACE_TO(trace_, "Ensure Trace Created");
+    }
   }
 
   uint64_t GetPriority() const {
@@ -993,6 +1000,33 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                         << "; subtransaction_=" << subtransaction_.ToString();
 
     return Status::OK();
+  }
+
+  void IncreaseMutationCounts(
+      SubTransactionId subtxn_id, const TableId& table_id, uint64 mutation_count) {
+    if (subtxn_table_mutation_counter_map_[subtxn_id].contains(table_id)) {
+      subtxn_table_mutation_counter_map_[subtxn_id][table_id] += mutation_count;
+    } else {
+      subtxn_table_mutation_counter_map_[subtxn_id].insert({table_id, mutation_count});
+    }
+  }
+
+  const std::map<TableId, uint64> GetTableMutationCounts() {
+    auto& aborted_sub_txn_set = subtransaction_.get().aborted;
+    std::map<TableId, uint64> table_mutation_counts;
+    for (const auto& [sub_txn_id, table_mutation_cnt_map] : subtxn_table_mutation_counter_map_) {
+      if (aborted_sub_txn_set.Test(sub_txn_id)) {
+        continue;
+      }
+
+      for (const auto& [table_id, mutation_count] : table_mutation_cnt_map) {
+        if (table_mutation_counts.find(table_id) == table_mutation_counts.end()) {
+          table_mutation_counts[table_id] = 0;
+        }
+        table_mutation_counts[table_id] += mutation_count;
+      }
+    }
+    return table_mutation_counts;
   }
 
   void SetLogPrefixTag(const LogPrefixName& name, uint64_t id) {
@@ -2034,6 +2068,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // Metadata tracking savepoint-related state for the scope of this transaction.
   YBSubTransaction subtransaction_;
 
+  // Map to track number of mutations to different tables in each sub-transaction. On transaction
+  // commit, this helps count the total mutations per table which is aggregated to the node level
+  // mutation counter that is in turn sent to the auto analyze service that maintains the cluster
+  // level mutations (see PgMutationCounter).
+  std::map<SubTransactionId, std::map<TableId, uint64>> subtxn_table_mutation_counter_map_;
+
   std::atomic<bool> requested_status_tablet_{false};
   internal::RemoteTabletPtr status_tablet_ GUARDED_BY(mutex_);
   internal::RemoteTabletPtr old_status_tablet_ GUARDED_BY(mutex_);
@@ -2245,6 +2285,10 @@ Trace* YBTransaction::trace() {
   return impl_->trace();
 }
 
+void YBTransaction::EnsureTraceCreated() {
+  return impl_->EnsureTraceCreated();
+}
+
 void YBTransaction::SetActiveSubTransaction(SubTransactionId id) {
   return impl_->SetActiveSubTransaction(id);
 }
@@ -2255,6 +2299,15 @@ Status YBTransaction::RollbackToSubTransaction(SubTransactionId id, CoarseTimePo
 
 bool YBTransaction::HasSubTransaction(SubTransactionId id) {
   return impl_->HasSubTransaction(id);
+}
+
+void YBTransaction::IncreaseMutationCounts(
+    SubTransactionId subtxn_id, const TableId& table_id, uint64 mutation_count) {
+  return impl_->IncreaseMutationCounts(subtxn_id, table_id, mutation_count);
+}
+
+const std::map<TableId, uint64> YBTransaction::GetTableMutationCounts() const {
+  return impl_->GetTableMutationCounts();
 }
 
 void YBTransaction::SetLogPrefixTag(const LogPrefixName& name, uint64_t value) {

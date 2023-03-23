@@ -199,9 +199,7 @@ const validateForm = (values: AddStandbyInstanceFormValues, isMissingPeerCerts: 
     errors.instanceAddress = 'Required field';
   } else if (!INSTANCE_VALID_ADDRESS_PATTERN.test(values.instanceAddress)) {
     errors.instanceAddress = 'Must be a valid URL';
-  }
-
-  if (isMissingPeerCerts) {
+  } else if (values.instanceAddress.startsWith('https:') && isMissingPeerCerts) {
     errors.peerCerts = 'A peer certificate is required for adding a standby instance over HTTPS';
   }
 

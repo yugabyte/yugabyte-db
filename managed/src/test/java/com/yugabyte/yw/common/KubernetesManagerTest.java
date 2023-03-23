@@ -5,16 +5,14 @@ package com.yugabyte.yw.common;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Matchers.anyList;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.eq;
+
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -29,10 +27,9 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class KubernetesManagerTest extends FakeDBApplication {
@@ -69,9 +66,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
     context = ArgumentCaptor.forClass(ShellProcessContext.class);
     new File(TMP_CHART_PATH).mkdirs();
     releaseManager = app.injector().instanceOf(ReleaseManager.class);
-    kubernetesManager =
-        new ShellKubernetesManager(
-            releaseManager, shellProcessHandler, mockConfGetter, mockAppConfig);
+    kubernetesManager = new ShellKubernetesManager(shellProcessHandler);
   }
 
   @After

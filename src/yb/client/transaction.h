@@ -98,6 +98,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   ~YBTransaction();
 
   Trace *trace();
+  void EnsureTraceCreated();
   void SetPriority(uint64_t priority);
 
   uint64_t GetPriority() const;
@@ -176,6 +177,13 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   bool HasSubTransaction(SubTransactionId id);
 
   void SetLogPrefixTag(const LogPrefixName& name, uint64_t value);
+
+  void IncreaseMutationCounts(
+      SubTransactionId subtxn_id, const TableId& table_id, uint64 mutation_count);
+
+  // Get aggregated mutations for each table across the whole transaction (exclude aborted
+  // sub-transactions).
+  const std::map<TableId, uint64> GetTableMutationCounts() const;
 
  private:
   class Impl;

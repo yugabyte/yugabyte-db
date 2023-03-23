@@ -186,6 +186,7 @@ class PgClientServiceImpl::Impl {
       TransactionPoolProvider transaction_pool_provider,
       rpc::Scheduler* scheduler,
       const XClusterSafeTimeMap* xcluster_safe_time_map,
+      std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter,
       MetricEntity* metric_entity)
       : tablet_server_(tablet_server.get()),
         client_future_(client_future),
@@ -194,6 +195,7 @@ class PgClientServiceImpl::Impl {
         table_cache_(client_future),
         check_expired_sessions_(scheduler),
         xcluster_safe_time_map_(xcluster_safe_time_map),
+        pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
         response_cache_(metric_entity) {
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
   }
@@ -211,7 +213,7 @@ class PgClientServiceImpl::Impl {
     auto session_id = ++session_serial_no_;
     auto session = std::make_shared<LockablePgClientSession>(
         session_id, &client(), clock_, transaction_pool_provider_, &table_cache_,
-        xcluster_safe_time_map_, &response_cache_);
+        xcluster_safe_time_map_, pg_node_level_mutation_counter_, &response_cache_);
     resp->set_session_id(session_id);
 
     std::lock_guard<rw_spinlock> lock(mutex_);
@@ -567,7 +569,9 @@ class PgClientServiceImpl::Impl {
 
   struct CompareExpiration {
     bool operator()(const ExpirationEntry& lhs, const ExpirationEntry& rhs) const {
-      return rhs.first > lhs.first;
+      // Order is reversed, because std::priority_queue keeps track of the largest element.
+      // This comparator is important for the cleanup logic.
+      return rhs.first < lhs.first;
     }
   };
 
@@ -581,6 +585,8 @@ class PgClientServiceImpl::Impl {
 
   const XClusterSafeTimeMap* xcluster_safe_time_map_;
 
+  std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter_;
+
   PgResponseCache response_cache_;
 };
 
@@ -591,11 +597,12 @@ PgClientServiceImpl::PgClientServiceImpl(
     TransactionPoolProvider transaction_pool_provider,
     const scoped_refptr<MetricEntity>& entity,
     rpc::Scheduler* scheduler,
-    const XClusterSafeTimeMap* xcluster_safe_time_map)
+    const XClusterSafeTimeMap* xcluster_safe_time_map,
+    std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter)
     : PgClientServiceIf(entity),
       impl_(new Impl(
           tablet_server, client_future, clock, std::move(transaction_pool_provider), scheduler,
-          xcluster_safe_time_map, entity.get())) {}
+          xcluster_safe_time_map, pg_node_level_mutation_counter, entity.get())) {}
 
 PgClientServiceImpl::~PgClientServiceImpl() = default;
 

@@ -43,6 +43,7 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
       (AddTransactionStatusTablet)
       (CheckIfPitrActive)
       (CompactSysCatalog)
+      (GetCompactionStatus)
       (CreateTransactionStatusTable)
       (DdlLog)
       (DeleteNotServingTablet)

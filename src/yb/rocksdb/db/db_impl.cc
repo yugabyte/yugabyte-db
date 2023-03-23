@@ -111,14 +111,14 @@
 #include "yb/rocksdb/util/options_parser.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/task_metrics.h"
 #include "yb/rocksdb/db/db_iterator_wrapper.h"
 
-#include "yb/util/status_log.h"
-#include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/enums.h"
+#include "yb/util/status_log.h"
+#include "yb/util/stats/iostats_context_imp.h"
+#include "yb/util/sync_point.h"
 
 using std::unique_ptr;
 using std::shared_ptr;

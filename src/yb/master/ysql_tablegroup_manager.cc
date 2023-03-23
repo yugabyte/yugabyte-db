@@ -16,6 +16,8 @@
 
 #include <glog/logging.h>
 
+#include "yb/common/colocated_util.h"
+
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"

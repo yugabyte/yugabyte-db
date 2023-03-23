@@ -393,6 +393,7 @@ export const AZUProviderCreateForm = ({
       {/* Modals */}
       {isRegionFormModalOpen && (
         <ConfigureRegionModal
+          configuredRegions={regions}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}

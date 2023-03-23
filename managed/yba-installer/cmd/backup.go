@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common/shell"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
@@ -40,7 +41,7 @@ func CreateBackupScript(outputPath string, dataDir string,
 	addPostgresArgs(args)
 
 	log.Info("Creating a backup of your YugabyteDB Anywhere Installation.")
-	common.RunBash(fileName, args)
+	shell.Run(fileName, args...)
 }
 
 // RestoreBackupScript calls the yb_platform_backup.sh script with the correct args.
@@ -73,8 +74,7 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 	}
 	addPostgresArgs(args)
 	log.Info("Restoring a backup of your YugabyteDB Anywhere Installation.")
-	common.RunBash(fileName, args)
-
+	shell.Run(fileName, args...)
 }
 
 func addPostgresArgs(args []string) {

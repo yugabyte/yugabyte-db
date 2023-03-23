@@ -29,11 +29,11 @@
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/util/histogram.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_kill.h"
 #include "yb/util/flags.h"
 

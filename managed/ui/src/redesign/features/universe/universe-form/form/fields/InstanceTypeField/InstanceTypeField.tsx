@@ -5,7 +5,13 @@ import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { Controller, useFormContext, useWatch } from 'react-hook-form';
 import { Box } from '@material-ui/core';
-import { YBLabel, YBAutoComplete, YBHelper, YBHelperVariants, YBToggleField } from '../../../../../../components';
+import {
+  YBLabel,
+  YBAutoComplete,
+  YBHelper,
+  YBHelperVariants,
+  YBToggleField
+} from '../../../../../../components';
 import { api, QUERY_KEY } from '../../../utils/api';
 import {
   sortAndGroup,
@@ -29,7 +35,7 @@ import {
   MASTER_INSTANCE_TYPE_FIELD,
   MASTER_DEVICE_INFO_FIELD,
   MASTER_PLACEMENT_FIELD,
-  USE_SPOT_INSTANCE
+  SPOT_INSTANCE_FIELD
 } from '../../../utils/constants';
 import { useFormFieldStyles } from '../../../universeMainStyle';
 
@@ -183,29 +189,23 @@ export const InstanceTypeField = ({
                 )}
               </Box>
             </Box>
-            { provider?.code == CloudType.aws && canUseSpotInstance(providerRuntimeConfigs) &&
-            <Box
-              display="flex"
-              width="100%"
-              mt={2}
-            >
-              <YBLabel dataTestId={`SpotInstanceField-${nodeTypeTag}-Label`}>
-                {t('universeForm.instanceConfig.useSpotInstance')}
-              </YBLabel>
-              <Box
-                flex={1}
-                className={
-                  masterPlacement === MasterPlacementMode.COLOCATED
-                    ? classes.defaultTextBox
-                    : classes.instanceConfigTextBox
-                }
-              >
-                <YBToggleField
-                  name={USE_SPOT_INSTANCE}
-                  control={control}   
-                />
+            {provider?.code == CloudType.aws && canUseSpotInstance(providerRuntimeConfigs) && (
+              <Box display="flex" width="100%" mt={2}>
+                <YBLabel dataTestId={`SpotInstanceField-${nodeTypeTag}-Label`}>
+                  {t('universeForm.instanceConfig.useSpotInstance')}
+                </YBLabel>
+                <Box
+                  flex={1}
+                  className={
+                    masterPlacement === MasterPlacementMode.COLOCATED
+                      ? classes.defaultTextBox
+                      : classes.instanceConfigTextBox
+                  }
+                >
+                  <YBToggleField name={SPOT_INSTANCE_FIELD} control={control} />
+                </Box>
               </Box>
-            </Box>}
+            )}
           </>
         );
       }}
