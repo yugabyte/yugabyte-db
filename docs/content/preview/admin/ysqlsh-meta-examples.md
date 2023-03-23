@@ -14,7 +14,7 @@ type: docs
 
 ## Create a database
 
-Start a ysqlsh session, and enter the following command to create and connect to a database:
+[Start a ysqlsh session](../ysqlsh/#starting-ysqlsh) and enter the following command to create and connect to a database:
 
 ```sql
 CREATE DATABASE testdb;

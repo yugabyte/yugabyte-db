@@ -12,25 +12,26 @@ menu:
 type: docs
 ---
 
-The [pset meta-command](../ysqlsh-meta-commands/#pset-option-value) sets options affecting the output of query result tables. *option* indicates which option is to be set. The semantics of value vary depending on the selected option. For some options, omitting value causes the option to be toggled or unset, as described under the particular option. If no such behavior is mentioned, then omitting value just results in the current setting being displayed.
+The [\pset meta-command](../ysqlsh-meta-commands/#pset-option-value) is used to change the display of the output of query result tables. This page describes the available options for changing display properties using `\pset`.
+
+**Syntax**:
+
+```output
+\pset [ option [ value ] ]
+```
+
+- *option* indicates which option is to be set.
+- *value* varies depending on the selected option.
 
 `\pset` without any arguments displays the current status of all printing options.
 
-The *options* are defined in [pset options](#pset-options).
-
-Illustrations of how these different formats look can be seen in the [Examples](#examples) section.
-
-{{< note title="Tip" >}}
-
-There are various shortcut commands for [`\pset`](../ysqlsh-meta-commands#pset-option-value). See `\a`, `\C`, `\f`, `\H`, `\t`, `\T`, and `\x`.
-
-{{< /note >}}
+For examples using `\pset`, see [ysqlsh meta-command examples](../ysqlsh-meta-examples/).
 
 ## Options
 
 ### border
 
-The *value* must be a number. In general, the higher the number, the more borders and lines the tables have, but details depend on the particular format. In HTML, this translates directly into the `border=...` attribute. In most other formats only values `0` (no border), `1` (internal dividing lines), and `2` (table frame) make sense, and values greater than `2` are treated as `border = 2`. The latex and latex-longtable formats additionally allow a value of `3` to add dividing lines between data rows.
+*value* must be a number. In general, the higher the number, the more borders and lines the tables have, but details depend on the particular format. In HTML, this translates directly into the `border=...` attribute. In most other formats only values `0` (no border), `1` (internal dividing lines), and `2` (table frame) make sense, and values greater than `2` are treated as `border = 2`. The latex and latex-longtable formats additionally allow a value of `3` to add dividing lines between data rows.
 
 ### columns
 
@@ -38,11 +39,11 @@ Sets the target width for the `wrapped` format, and also the width limit for det
 
 ### expanded (or x)
 
-If *value* is specified it must be either `on` or `off`, which enables or disables expanded mode, or `auto`. If *value* is omitted, the command toggles between the `on` and `off` settings. When expanded mode is enabled, query results are displayed in two columns; the column name is on the left, and the data on the right. This is useful if the data won't fit on the screen in the normal horizontal mode. In the `auto` setting, the expanded mode is used whenever the query output has more than one column and is wider than the screen; otherwise, the regular mode is used. The `auto` setting is only effective in the aligned and wrapped formats. In other formats, it always behaves as if the expanded mode is `off`.
+If *value* is specified it must be either `on` or `off`, which enables or disables expanded mode, or `auto`. If *value* is omitted, the command toggles between the `on` and `off` settings. When expanded mode is enabled, query results are displayed in two columns; the column name is on the left, and the data on the right. This is helpful if the data won't fit on the screen in the normal horizontal mode. In the `auto` setting, the expanded mode is used whenever the query output has more than one column and is wider than the screen; otherwise, the regular mode is used. The `auto` setting is only effective in the aligned and wrapped formats. In other formats, it always behaves as if the expanded mode is `off`.
 
 ### fieldsep
 
-Specifies the field separator to be used in unaligned output format. That way, one can create, for example, tab- or comma-separated output, which other programs might prefer. To set a tab as field separator, run the command [\pset fieldsep '\t'](#fieldsep). The default field separator is `|` (a vertical bar).
+Specifies the field separator to use in unaligned output format. You can create, for example, tab- or comma-separated output, which other programs might prefer. To set a tab as field separator, run the command `\pset fieldsep '\t'`. The default field separator is `|` (a vertical bar).
 
 ### fieldsep_zero
 
