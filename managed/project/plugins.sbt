@@ -19,6 +19,8 @@ val jacksonOverrides = Seq(
 
 dependencyOverrides ++= jacksonOverrides
 
+libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.11"
+
 // The Play plugin
 addSbtPlugin("com.typesafe.play" % "sbt-plugin" % "2.8.19")
 
