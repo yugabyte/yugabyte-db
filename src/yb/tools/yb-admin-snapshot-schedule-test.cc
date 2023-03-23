@@ -1576,6 +1576,37 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddColumnCom
   ASSERT_EQ(res, "1, one, NULL; 2, two, dva");
 }
 
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSingleColumnUpdate),
+          YbAdminSnapshotScheduleTestWithYsqlAndPackedRow) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+  {
+    auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+    // Create a sequence.
+    ASSERT_OK(conn.Execute("CREATE SEQUENCE seq_1 INCREMENT 5 START 10"));
+  }
+  // Note down the restore time.
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  // Now get next val in new connection.
+  {
+    auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+    auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('seq_1')"));
+    LOG(INFO) << "First value of sequence " << result;
+    ASSERT_EQ(result, "10");
+  }
+
+  // Restore to noted time.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Open a new connection and get the next value.
+  {
+    auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+    auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('seq_1')"));
+    LOG(INFO) << "First value of sequence post restore " << result;
+    ASSERT_EQ(result, "10");
+  }
+}
+
 void YbAdminSnapshotScheduleTestWithYsql::TestPgsqlDropDefault() {
   auto schedule_id = ASSERT_RESULT(PreparePg());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));

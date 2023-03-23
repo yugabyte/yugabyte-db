@@ -60,11 +60,11 @@ class RestoreSysCatalogState {
       const yb::OpId& op_id, tablet::Tablet* tablet);
 
   Status ProcessPgCatalogRestores(
-      yb::tablet::TableInfo* pg_yb_catalog_meta,
       const docdb::DocDB& restoring_db,
       const docdb::DocDB& existing_db,
       docdb::DocWriteBatch* write_batch,
-      const docdb::DocReadContext& doc_read_context);
+      const docdb::DocReadContext& doc_read_context,
+      const tablet::RaftGroupMetadata* metadata);
 
   Result<bool> TEST_MatchTable(const TableId& id, const SysTablesEntryPB& table);
 

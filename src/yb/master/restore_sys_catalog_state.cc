@@ -166,12 +166,14 @@ struct PgCatalogTableData {
   std::array<uint8_t, kUuidSize + 1> prefix;
   const TableName* name;
   uint32_t pg_table_oid;
+  const TableId* id;
 
   Status SetTableId(const TableId& table_id) {
     Uuid cotable_id = VERIFY_RESULT(Uuid::FromHexString(table_id));
     prefix[0] = docdb::KeyEntryTypeAsChar::kTableId;
     cotable_id.EncodeToComparable(&prefix[1]);
     pg_table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
+    id = &table_id;
     return Status::OK();
   }
 
@@ -184,18 +186,17 @@ struct PgCatalogTableData {
 class PgCatalogRestorePatch : public RestorePatch {
  public:
   PgCatalogRestorePatch(
-      FetchState* existing_state, FetchState* restoring_state,
-      docdb::DocWriteBatch* doc_batch, const PgCatalogTableData& table,
-      tablet::TableInfo* pg_yb_catalog_meta)
-      : RestorePatch(existing_state, restoring_state, doc_batch),
-        table_(table), pg_yb_catalog_meta_(pg_yb_catalog_meta) {}
+      FetchState* existing_state, FetchState* restoring_state, docdb::DocWriteBatch* doc_batch,
+      const PgCatalogTableData& table, tablet::TableInfo* table_info)
+      : RestorePatch(existing_state, restoring_state, doc_batch, table_info), table_(table) {}
 
   Status Finish() {
     if (doc_key_catalog_version_map_.empty()) {
       return Status::OK();
     }
+    SCHECK_EQ(table_.IsPgYbCatalogMeta(), true, Corruption, "Expected Pg Yb catalog version");
     auto column_id = VERIFY_RESULT(
-        pg_yb_catalog_meta_->schema().ColumnIdByName(kCurrentVersionColumnName));
+        table_info_->schema().ColumnIdByName(kCurrentVersionColumnName));
     for (const auto& it : doc_key_catalog_version_map_) {
       QLValuePB value_pb;
       value_pb.set_int64_value(it.second);
@@ -250,9 +251,9 @@ class PgCatalogRestorePatch : public RestorePatch {
       SCHECK(value_slice.TryConsumeByte(docdb::ValueEntryTypeAsChar::kPackedRow),
              Corruption, "Packed row expected: $0", full_value.ToDebugHexString());
       const docdb::SchemaPacking& packing = VERIFY_RESULT(
-          pg_yb_catalog_meta_->doc_read_context->schema_packing_storage.GetPacking(&value_slice));
+          table_info_->doc_read_context->schema_packing_storage.GetPacking(&value_slice));
       auto column_id = VERIFY_RESULT(
-          pg_yb_catalog_meta_->schema().ColumnIdByName(kCurrentVersionColumnName));
+          table_info_->schema().ColumnIdByName(kCurrentVersionColumnName));
       auto value = packing.GetValue(column_id, value_slice);
       if (!value) {
         return STATUS_FORMAT(
@@ -265,7 +266,7 @@ class PgCatalogRestorePatch : public RestorePatch {
     const auto& first_subkey = sub_doc_key.subkeys()[0];
     if (first_subkey.type() == docdb::KeyEntryType::kColumnId) {
       auto column_id = first_subkey.GetColumnId();
-      const ColumnSchema& column = VERIFY_RESULT(pg_yb_catalog_meta_->schema().column_by_id(
+      const ColumnSchema& column = VERIFY_RESULT(table_info_->schema().column_by_id(
           column_id));
       if (column.name() == kCurrentVersionColumnName) {
         return HandleSchemaVersionValue(sub_doc_key.doc_key(), full_value);
@@ -276,8 +277,6 @@ class PgCatalogRestorePatch : public RestorePatch {
 
   // Should be alive while this object is alive.
   const PgCatalogTableData& table_;
-  // Should be alive while this object is alive.
-  tablet::TableInfo* pg_yb_catalog_meta_;
   std::map<docdb::DocKey, int64_t> doc_key_catalog_version_map_;
 };
 
@@ -933,16 +932,29 @@ Status RestoreSysCatalogState::IncrementLegacyCatalogVersion(
 }
 
 Status RestoreSysCatalogState::ProcessPgCatalogRestores(
-    tablet::TableInfo* pg_yb_catalog_meta,
     const docdb::DocDB& restoring_db,
     const docdb::DocDB& existing_db,
     docdb::DocWriteBatch* write_batch,
-    const docdb::DocReadContext& doc_read_context) {
+    const docdb::DocReadContext& doc_read_context,
+    const tablet::RaftGroupMetadata* metadata) {
   if (restoration_.existing_system_tables.empty()) {
     return Status::OK();
   }
   RETURN_NOT_OK(ValidateSysCatalogTables(
       restoration_.restoring_system_tables, restoration_.existing_system_tables));
+
+  // We also need to increment the catalog version by 1 so that
+  // postgres and tservers can refresh their catalog cache.
+  auto pg_yb_catalog_meta_result = metadata->GetTableInfo(kPgYbCatalogVersionTableId);
+  std::shared_ptr<yb::tablet::TableInfo> pg_yb_catalog_meta = nullptr;
+  // If the catalog version table is not found then this is a cluster upgraded from < 2.4, so
+  // we need to use the SysYSQLCatalogConfigEntryPB. All other errors are fatal.
+  if (!pg_yb_catalog_meta_result.ok() && !pg_yb_catalog_meta_result.status().IsNotFound()) {
+    return pg_yb_catalog_meta_result.status();
+  } else if (pg_yb_catalog_meta_result.ok()) {
+    pg_yb_catalog_meta = *pg_yb_catalog_meta_result;
+  }
+
   // For backwards compatibility.
   if (!pg_yb_catalog_meta) {
     LOG(INFO) << "PITR: pg_yb_catalog_version table not found. "
@@ -952,8 +964,6 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
 
   FetchState restoring_state(restoring_db, ReadHybridTime::SingleTime(restoration_.restore_at));
   FetchState existing_state(existing_db, ReadHybridTime::Max());
-  char tombstone_char = docdb::ValueEntryTypeAsChar::kTombstone;
-  Slice tombstone(&tombstone_char, 1);
 
   std::vector<PgCatalogTableData> tables(restoration_.existing_system_tables.size());
   size_t idx = 0;
@@ -977,13 +987,17 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
   });
 
   for (auto& table : tables) {
+    VLOG_WITH_FUNC(2)
+        << "Processing pg table " << *(table.id) << " ("
+        << ((table.name == nullptr) ? "pg_yb_catalog_version" : *(table.name)) << ")";
     Slice prefix(table.prefix);
 
     RETURN_NOT_OK(restoring_state.SetPrefix(prefix));
     RETURN_NOT_OK(existing_state.SetPrefix(prefix));
 
     PgCatalogRestorePatch restore_patch(
-        &existing_state, &restoring_state, write_batch, table, pg_yb_catalog_meta);
+        &existing_state, &restoring_state, write_batch, table,
+        VERIFY_RESULT(metadata->GetTableInfo(*(table.id))).get());
 
     RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
 

@@ -122,8 +122,8 @@ class TabletRestorePatch : public RestorePatch {
  public:
   TabletRestorePatch(
       FetchState* existing_state, FetchState* restoring_state,
-      docdb::DocWriteBatch* doc_batch, int64_t db_oid)
-      : RestorePatch(existing_state, restoring_state, doc_batch),
+      docdb::DocWriteBatch* doc_batch, tablet::TableInfo* table_info, int64_t db_oid)
+      : RestorePatch(existing_state, restoring_state, doc_batch, table_info),
         db_oid_(db_oid) {}
 
  private:
