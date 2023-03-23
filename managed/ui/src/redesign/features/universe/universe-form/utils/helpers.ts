@@ -13,7 +13,8 @@ import {
   DEFAULT_FORM_DATA,
   InstanceTag,
   InstanceTags,
-  MasterPlacementMode
+  MasterPlacementMode,
+  NodeDetails
 } from './dto';
 import { UniverseFormContextState } from '../UniverseFormContainer';
 import {
@@ -80,12 +81,26 @@ export const filterFormDataByClusterType = (
 };
 
 //transform gflags - to consume it in the form
-export const transformGFlagToFlagsArray = (gFlags: Record<string, any> = {}, flagType: string) => [
-  ...Object.keys(gFlags).map((key: string) => ({
-    Name: key,
-    [flagType]: gFlags[key]
-  }))
-];
+export const transformGFlagToFlagsArray = (
+  masterGFlags: Record<string, any> = {},
+  tserverGFlags: Record<string, any> = {}
+) => {
+  // convert { flagname:value } to => { Name:flagname, TSERVER: value , MASTER: value }
+  const tranformFlagsByFlagType = (gFlags: Record<string, any>, flagType: string) => [
+    ...Object.keys(gFlags).map((key: string) => ({
+      Name: key,
+      [flagType]: gFlags[key]
+    }))
+  ];
+
+  //merge tserver and master glags value into single object if flag Name is same
+  return _.values(
+    _.merge(
+      _.keyBy(tranformFlagsByFlagType(masterGFlags, 'MASTER'), 'Name'),
+      _.keyBy(tranformFlagsByFlagType(tserverGFlags, 'TSERVER'), 'Name')
+    )
+  );
+};
 
 //transform gflags - for universe configure route
 export const transformFlagArrayToObject = (
@@ -170,10 +185,7 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
       ybcPackagePath: null //** */
     },
     instanceTags: transformInstanceTags(userIntent.instanceTags),
-    gFlags: [
-      ...transformGFlagToFlagsArray(userIntent.masterGFlags, 'MASTER'),
-      ...transformGFlagToFlagsArray(userIntent.tserverGFlags, 'TSERVER')
-    ],
+    gFlags: transformGFlagToFlagsArray(userIntent.masterGFlags, userIntent.tserverGFlags),
     azOverrides: userIntent.azOverrides,
     universeOverrides: userIntent.universeOverrides
   };
@@ -280,6 +292,18 @@ export const createUniverse = async ({
       userIntent.ycqlPassword = configPayload.clusters[clusterIndex].userIntent.ycqlPassword;
     if (userIntent.enableYSQLAuth)
       userIntent.ysqlPassword = configPayload.clusters[clusterIndex].userIntent.ysqlPassword;
+
+    if (finalPayload.nodeDetailsSet) {
+      finalPayload.nodeDetailsSet = finalPayload.nodeDetailsSet.map((nodeDetail: NodeDetails) => {
+        return {
+          ...nodeDetail,
+          cloudInfo: {
+            ...nodeDetail.cloudInfo,
+            assignPublicIP: !!userIntent.assignPublicIP
+          }
+        };
+      });
+    }
     //patch - end
 
     // now everything is ready to create universe

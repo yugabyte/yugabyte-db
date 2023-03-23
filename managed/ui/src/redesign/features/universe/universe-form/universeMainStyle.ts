@@ -125,7 +125,8 @@ export const useFormFieldStyles = makeStyles((theme) => ({
   },
   advancedConfigLabel: {
     maxWidth: theme.spacing(28),
-    minWidth: theme.spacing(27)
+    minWidth: theme.spacing(27),
+    zIndex: 2
   },
   advancedConfigTextBox: {
     maxWidth: theme.spacing(58.5),
