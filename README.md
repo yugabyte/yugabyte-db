@@ -109,7 +109,7 @@ Create two real indexes and run `EXPLAIN`:
     rjuju=# CREATE INDEX ON hypo(id);
     rjuju=# CREATE INDEX ON hypo(id, val);
     rjuju=# EXPLAIN SELECT * FROM hypo WHERE id = 1;
-                                        QUERY PLAN                                    
+                                        QUERY PLAN
     ----------------------------------------------------------------------------------
     Index Only Scan using hypo_id_val_idx on hypo  (cost=0.29..8.30 rows=1 width=13)
     Index Cond: (id = 1)
@@ -119,7 +119,7 @@ The query plan is using the `hypo_id_val_idx` index. Use `hypopg_hide_index(oid)
 
     rjuju=# SELECT hypopg_hide_index('hypo_id_val_idx'::REGCLASS);
     rjuju=# EXPLAIN SELECT * FROM hypo WHERE id = 1;
-                                QUERY PLAN                                
+                                QUERY PLAN
     -------------------------------------------------------------------------
     Index Scan using hypo_id_idx on hypo  (cost=0.29..8.30 rows=1 width=13)
     Index Cond: (id = 1)
@@ -129,7 +129,7 @@ The query plan is using the other index `hypo_id_idx` now. Use `hypopg_hide_inde
 
     rjuju=# SELECT hypopg_hide_index('hypo_id_idx'::REGCLASS);
     rjuju=# EXPLAIN SELECT * FROM hypo WHERE id = 1;
-                        QUERY PLAN                       
+                        QUERY PLAN
     -------------------------------------------------------
     Seq Scan on hypo  (cost=0.00..180.00 rows=1 width=13)
     Filter: (id = 1)
@@ -139,7 +139,7 @@ And now the query plan changes back to `Seq Scan`. Use `hypopg_unhide_index(oid)
 
     rjuju=# SELECT hypopg_unhide_index('hypo_id_idx'::regclass);
     rjuju=# EXPLAIN SELECT * FROM hypo WHERE id = 1;
-                                QUERY PLAN                                
+                                QUERY PLAN
     -------------------------------------------------------------------------
     Index Scan using hypo_id_idx on hypo  (cost=0.29..8.30 rows=1 width=13)
     Index Cond: (id = 1)
@@ -149,7 +149,7 @@ Of course, you can also hide hypothetical indexes:
 
     rjuju=# SELECT hypopg_create_index('CREATE INDEX ON hypo(id)');
     rjuju=# EXPLAIN SELECT * FROM hypo WHERE id = 1;
-                                        QUERY PLAN                                     
+                                        QUERY PLAN
     ------------------------------------------------------------------------------------
     Index Scan using "<12659>btree_hypo_id" on hypo  (cost=0.04..8.05 rows=1 width=13)
     Index Cond: (id = 1)
@@ -157,7 +157,7 @@ Of course, you can also hide hypothetical indexes:
 
     rjuju=# SELECT hypopg_hide_index(12659);
     rjuju=# EXPLAIN SELECT * FROM hypo WHERE id = 1;
-                        QUERY PLAN                       
+                        QUERY PLAN
     -------------------------------------------------------
     Seq Scan on hypo  (cost=0.00..180.00 rows=1 width=13)
     Filter: (id = 1)
@@ -166,7 +166,7 @@ Of course, you can also hide hypothetical indexes:
 You can check which indexes are hidden using `hypopg_hidden_indexes()` or the `hypopg_hidden_indexes` view:
 
     rjuju=# SELECT * FROM hypopg_hidden_indexes();
-    indexid 
+    indexid
     ---------
     526604
     526603

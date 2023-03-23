@@ -1695,7 +1695,11 @@ hypopg_hidden_indexes(PG_FUNCTION_ARGS)
 
 	oldcontext = MemoryContextSwitchTo(rsinfo->econtext->ecxt_per_query_memory);
 
-	tupdesc = CreateTemplateTupleDesc(1);
+	tupdesc = CreateTemplateTupleDesc(1
+#if PG_VERSION_NUM < 120000
+			, false
+#endif
+			);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "indexid", OIDOID, -1, 0);
 
 	tupstore = tuplestore_begin_heap(true, false, work_mem);
