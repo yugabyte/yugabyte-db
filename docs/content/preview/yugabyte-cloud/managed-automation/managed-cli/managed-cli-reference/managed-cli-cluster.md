@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the `cluster` resource to perform operations on a YugabyteDB cluster, including the following:
+Use the `cluster` resource to perform operations on a YugabyteDB Managed cluster, including the following:
 
 - create, update, and delete clusters
 - pause and resume clusters
@@ -129,4 +129,4 @@ Download the [cluster certificate](../../../../cloud-secure-clusters/cloud-authe
 | Flag | Description |
 | :--- | :--- |
 | --force | Overwrite the output file if it exists. |
-| --out | Full path with file name for the downloaded the cluster certificate file. Default is stdout. |
+| --out | Full path with file name of the location to which to download the cluster certificate file. Default is stdout. |

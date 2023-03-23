@@ -14,7 +14,7 @@ type: docs
 
 Use the `auth` command to add an [API key](../../../managed-apikeys/) to your ybm CLI configuration.
 
-When you enter the auth command, you are prompted for an API key. At the prompt, paste your API key and press Enter.
+When you enter the `auth` command, you are prompted for an API key. At the prompt, paste your API key and press Enter.
 
 By default, this writes the key to the file `.ybm-cli.yaml` under your `$HOME` directory. You can update a different configuration file using the `--config` flag.
 

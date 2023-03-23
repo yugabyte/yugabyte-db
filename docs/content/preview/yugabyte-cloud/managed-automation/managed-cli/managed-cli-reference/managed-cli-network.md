@@ -15,7 +15,7 @@ type: docs
 Use the `cluster network` resource to manage cluster network resources, including:
 
 - add [IP allow lists](../../../../cloud-secure-clusters/add-connections/) to clusters
-- list cluster endpoints
+- create, update, list, and delete cluster endpoints
 
 ## Syntax
 
@@ -41,7 +41,7 @@ Assign an allow list to a specified cluster.
 
 | Flag | Description |
 | :--- | :--- |
-| --cluster-name | Required. The cluster name to which to assign the allow lists. |
+| --cluster-name | Required. The name of the cluster to which you want to assign the allow lists. |
 | --network-allow-list | Required. The network allow list to assign to the cluster. |
 
 ### allow-list unassign
@@ -50,7 +50,7 @@ Unassign an allow list from a specified cluster.
 
 | Flag | Description |
 | :--- | :--- |
-| --cluster-name | Required. The cluster name from which to unassign the allow lists. |
+| --cluster-name | Required. The name of the cluster from which you want to unassign the allow lists. |
 | --network-allow-list | Required. The network allow list to unassign from the cluster. |
 
 ### endpoint list
@@ -59,7 +59,7 @@ List the endpoints of the specified cluster. This includes public and private ho
 
 | Flag | Description |
 | :--- | :--- |
-| --cluster-name | Required. The cluster for which to list the endpoints. |
+| --cluster-name | Required. The name of the cluster for which you want to list the endpoints. |
 | --region | Return endpoints only from the specified region. |
 | --accessibility | Return endpoints only with the specified accessibility type. `PUBLIC`, `PRIVATE`, or `PRIVATE_SERVICE_ENDPOINT`.
 
@@ -69,7 +69,7 @@ Fetch detailed information about the specified private service endpoint.
 
 | Flag | Description |
 | :--- | :--- |
-| --cluster-name | Required. The cluster for which to list the endpoints. |
+| --cluster-name | Required. The name of the cluster for which to list the endpoints. |
 | --endpoint-id | Required. The endpoint to describe. |
 
 ### endpoint create
@@ -78,8 +78,8 @@ Create a private service endpoint for a specified cluster.
 
 | Flag | Description |
 | :--- | :--- |
-| --cluster-name | Required. The cluster for which to create the endpoint. |
-| --region | Required. Region in which to create the endpoint. |
+| --cluster-name | Required. The name of the cluster for which you want to create the endpoint. |
+| --region | Required. Region in which you want to create the endpoint. |
 | --accessibility-type | Required. The type of endpoint to create. `PUBLIC`, `PRIVATE`, or `PRIVATE_SERVICE_ENDPOINT`. |
 | --security-principals | Required for `PRIVATE_SERVICE_ENDPOINT`. A comma-separated list of AWS Amazon Resource Names (ARNs). |
 
@@ -89,8 +89,8 @@ Update the configuration of a specified private service endpoint.
 
 | Flag | Description |
 | :--- | :--- |
-| --cluster-name | Required. The cluster where the endpoint is configured. |
-| --region | Required. Region in which to create the endpoint. |
+| --cluster-name | Required. The name of the cluster where the endpoint is configured. |
+| --region | Required. Region in which you want to create the endpoint. |
 | --accessibility-type | Required. The type of endpoint to create. `PUBLIC`, `PRIVATE`, or `PRIVATE_SERVICE_ENDPOINT`. |
 | --security-principals | Required for `PRIVATE_SERVICE_ENDPOINT`. A comma-separated list of AWS Amazon Resource Names (ARNs). |
 
@@ -100,5 +100,5 @@ Delete a specified private service endpoint.
 
 | Flag | Description |
 | :--- | :--- |
-| --cluster-name | Required. The cluster for which to list the endpoints. |
+| --cluster-name | Required. The name of the cluster for which you want to list the endpoints. |
 | --endpoint-id | Required. The endpoint to delete. |

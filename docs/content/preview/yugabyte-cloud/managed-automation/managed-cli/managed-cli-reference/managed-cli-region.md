@@ -54,7 +54,7 @@ List the available instance types for the specified cloud provider and region.
 | Flag | Description |
 | :--- | :--- |
 | --cloud-provider | Required. Cloud provider. `AWS` or `GCP`. |
-| --region | Required. The region for which to fetch instance types. |
+| --region | Required. The region from which to fetch instance types. |
 | --tier | Type of cluster. `Sandbox` or `Dedicated` (default). |
 | --show-disabled | Whether to show disabled instance types. `true` (default) or `false`.
 
