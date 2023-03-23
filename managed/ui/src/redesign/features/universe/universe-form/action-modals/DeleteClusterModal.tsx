@@ -100,7 +100,7 @@ export const DeleteClusterModal: FC<DeleteClusterModalProps> = ({
           <Typography variant="body1">
             {t('universeForm.deleteClusterModal.enterUniverseName')}
           </Typography>
-          <Box>
+          <Box mt={1}>
             <YBInputField
               fullWidth
               control={control}
