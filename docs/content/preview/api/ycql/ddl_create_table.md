@@ -150,7 +150,7 @@ ycqlsh:example> INSERT INTO items(supplier_id, item_id, supplier_name, item_name
 ```
 
 ```sql
-ycqlsh:example> SELECT * FROM devices;
+ycqlsh:example> SELECT * FROM items;
 ```
 
 ```output
