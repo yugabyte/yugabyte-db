@@ -787,12 +787,6 @@ public class GFlagsUtil {
 
   public static void mergeCSVs(
       Map<String, String> userGFlags, Map<String, String> platformGFlags, String key) {
-    mergeCSVs(
-        key, new HashMap<String, Object>(userGFlags), new HashMap<String, Object>(platformGFlags));
-  }
-
-  public static void mergeCSVs(
-      String key, Map<String, Object> userGFlags, Map<String, Object> platformGFlags) {
     if (userGFlags.containsKey(key)) {
       String userValue = userGFlags.get(key).toString();
       try {

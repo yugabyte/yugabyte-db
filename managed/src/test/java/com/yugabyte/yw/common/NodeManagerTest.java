@@ -2224,13 +2224,13 @@ public class NodeManagerTest extends FakeDBApplication {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
 
         when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
-        when(mockConfig.getBoolean("yb.gflags.allow_user_override")).thenReturn(false);
+        when(mockAppConfig.getBoolean("yb.gflags.allow_user_override")).thenReturn(false);
         when(mockConfGetter.getConfForScope(
                 any(Universe.class), eq(UniverseConfKeys.gflagsAllowUserOverride)))
             .thenReturn(false);
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
 
-        when(mockConfig.getBoolean("yb.gflags.allow_user_override")).thenReturn(true);
+        when(mockAppConfig.getBoolean("yb.gflags.allow_user_override")).thenReturn(true);
         when(mockConfGetter.getConfForScope(
                 any(Universe.class), eq(UniverseConfKeys.gflagsAllowUserOverride)))
             .thenReturn(true);
