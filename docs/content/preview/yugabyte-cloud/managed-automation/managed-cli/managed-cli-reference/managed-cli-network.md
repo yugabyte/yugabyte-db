@@ -15,7 +15,8 @@ type: docs
 Use the `cluster network` resource to manage cluster network resources, including:
 
 - add [IP allow lists](../../../../cloud-secure-clusters/add-connections/) to clusters
-- create, update, list, and delete cluster endpoints
+- list cluster endpoints
+- create, update, and delete cluster private service endpoints
 
 ## Syntax
 
@@ -55,7 +56,7 @@ Unassign an allow list from a specified cluster.
 
 ### endpoint list
 
-List the endpoints of the specified cluster. This includes public and private host addresses, and private service endpoints.
+List the network endpoints of the specified cluster. This includes public and private host addresses, and private service endpoints.
 
 | Flag | Description |
 | :--- | :--- |
@@ -65,7 +66,7 @@ List the endpoints of the specified cluster. This includes public and private ho
 
 ### endpoint describe
 
-Fetch detailed information about the specified private service endpoint.
+Fetch detailed information about a specified private service endpoint.
 
 | Flag | Description |
 | :--- | :--- |
@@ -100,5 +101,5 @@ Delete a specified private service endpoint.
 
 | Flag | Description |
 | :--- | :--- |
-| --cluster-name | Required. The name of the cluster for which you want to list the endpoints. |
+| --cluster-name | Required. The name of the cluster with the endpoint you want to delete. |
 | --endpoint-id | Required. The endpoint to delete. |
