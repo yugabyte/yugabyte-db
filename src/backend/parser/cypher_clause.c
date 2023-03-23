@@ -4527,12 +4527,15 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
             {
                 cypher_node *cnode = (cypher_node *)entity->entity.node;
 
-                if (cnode != NULL &&
+
+
+                if (!node->label ||
+                    (cnode != NULL &&
                     node != NULL &&
                     /* allow node using a default label against resolved var */
                     pg_strcasecmp(node->label, AG_DEFAULT_LABEL_VERTEX) != 0 &&
                     /* allow labels with the same name */
-                    pg_strcasecmp(cnode->label, node->label) != 0)
+                    pg_strcasecmp(cnode->label, node->label) != 0))
                 {
                     ereport(ERROR,
                             (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),

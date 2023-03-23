@@ -284,6 +284,9 @@ $$) AS (a agtype);
 SELECT * FROM cypher('cypher_match', $$
         MATCH (a)-[]-(a)-[]-(a:v1) RETURN a
 $$) AS (a agtype);
+SELECT * FROM cypher('cypher_match', $$
+        MATCH (a)-[]-(a)-[]-(a:invalid_label) RETURN a
+$$) AS (a agtype);
 
 --Valid variable reuse, although why would you want to do it this way?
 SELECT * FROM cypher('cypher_match', $$
