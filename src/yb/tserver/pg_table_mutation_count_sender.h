@@ -15,6 +15,7 @@
 
 #include <condition_variable>
 #include <memory>
+#include <mutex>
 
 #include "yb/client/client.h"
 #include "yb/client/stateful_services/pg_auto_analyze_service_client.h"
@@ -22,7 +23,6 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/thread_annotations.h"
-#include "yb/server/server_base_options.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/thread.h"
@@ -32,7 +32,6 @@ namespace yb {
 namespace tserver {
 
 class TabletServer;
-class TabletServerOptions;
 
 class TableMutationCountSender {
  public:
@@ -44,10 +43,10 @@ class TableMutationCountSender {
  private:
   void RunThread() EXCLUDES(mutex_);
 
-  Status DoSendMutationCounts();
+  Status DoSendMutationCounts() EXCLUDES(mutex_);
 
   // The server for which we are sending tables mutation counts.
-  TabletServer* const server_;
+  TabletServer& server_;
 
   scoped_refptr<yb::Thread> thread_;
 
@@ -56,7 +55,7 @@ class TableMutationCountSender {
   std::condition_variable cond_;
 
   // Protected by mutex_.
-  bool should_run_ GUARDED_BY(mutex_);
+  bool stopped_ GUARDED_BY(mutex_) = false;
 
   std::unique_ptr<client::PgAutoAnalyzeServiceClient> client_;
 
