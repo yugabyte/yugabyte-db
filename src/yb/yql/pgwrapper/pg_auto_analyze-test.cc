@@ -53,7 +53,7 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
 
     stmt_executor();
 
-    auto table_mutations = node_level_mutation_counter->GetAndClear();
+    auto table_mutations = node_level_mutation_counter.GetAndClear();
     // There is no assertion that the sizes of expected_table_mutations matches table_mutations
     // because table_mutations also contains mutations to Pg sys catalog tables.
     for (auto [table_id, expected_mutations] : expected_table_mutations) {
