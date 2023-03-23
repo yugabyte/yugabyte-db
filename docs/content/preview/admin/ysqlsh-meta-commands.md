@@ -20,6 +20,8 @@ For security reasons, the YugabyteDB Managed cloud shell only has access to a su
 
 {{< /note >}}
 
+For examples of using meta-commands, see [ysqlsh meta-command examples](../ysqlsh-meta-examples/).
+
 ## Syntax
 
 The format of a ysqlsh command is the backslash (`\`), followed immediately by a command verb, then any arguments. Arguments are separated from the command verb and each other by any number of whitespace characters.
@@ -551,7 +553,7 @@ Sets options affecting the output of query result tables. *option* indicates whi
 
 The *options* are defined in [pset options](../ysqlsh-pset-options/#pset-options).
 
-Illustrations of how these different formats look can be seen in [Meta-command examples](../ysqlsh-meta-examples/).
+For examples using `\pset`, see [ysqlsh meta-command examples](../ysqlsh-meta-examples/).
 
 There are various shortcut commands for `\pset`. See `\a`, `\C`, `\f`, `\H`, `\t`, `\T`, and `\x`.
 
