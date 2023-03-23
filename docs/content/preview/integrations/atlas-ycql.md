@@ -10,25 +10,26 @@ menu:
 type: docs
 ---
 
+Solr is needed as an indexing backend to run Apache Atlas. I will clarify this in the document as well.
 This tutorial describes how to set up Apache Atlas to work with YugabyteDB and run the quick start provided by it.
 
 ## Prerequisites
 
-To use the [Apache Atlas](https://doc.akka.io/docs/akka-persistence-r2dbc/current/overview.html), ensure that you have the following:
+To use [Apache Atlas](https://doc.akka.io/docs/akka-persistence-r2dbc/current/overview.html), ensure that you have the following:
 
 - YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../quick-start/).
 
-- [Apache Solr](https://solr.apache.org/guide/6_6/installing-solr.html) is installed.
+- [Apache Solr 5.5.1](https://solr.apache.org/guide/6_6/installing-solr.html) is installed.
 
 ## Build The Apache Atlas Project
 
 To get the Apache Atlas server file, you need to build the Apache Atlas source first. To do that:
 
-1. Clone the [source](https://github.com/apache/atlas) from github to your local setup. The latest stable release is 2.3.0, so checkout to the tag: release-2.3.0 and follow the steps in the README.
+1. Clone the [source](https://github.com/apache/atlas) from GitHub to your local setup. Checkout checkout to the latest stable release tag ( For example: release-2.3.0), and follow the steps in the README to build the files.
 
-1. Once packaged, you will see the Apache Atlas server tar in the folder distro/target.
+1. After the source files are packaged, the Apache Atlas server tar should be available in the folder `distro/target`.
 
-1. Unzip the tar file by running the command:
+1. Unzip the tar file using the following command:
 
     ```sh
     tar -xzvf apache-atlas-2.3.0-server.tar.gz
