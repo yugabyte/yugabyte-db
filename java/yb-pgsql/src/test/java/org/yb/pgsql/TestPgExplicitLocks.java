@@ -64,7 +64,8 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
       String query = "update explicitlocks set vi=5 where h=0 and r=0";
       s2.execute(query);
     } catch (PSQLException ex) {
-      if (ex.getMessage().contains("conflicts with higher priority transaction")) {
+      if (ex.getMessage().contains("could not serialize access due to concurrent update")) {
+        assertTrue(ex.getMessage().contains("conflicts with higher priority transaction"));
         LOG.info("Conflict ERROR");
         conflict_occurred = true;
       }
@@ -98,7 +99,9 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
       int first = stmts[0].getUpdateCount();
       int second = 0;
       if (conflict_expected) {
-        runInvalidQuery(stmts[1], query2, "conflicts with higher priority transaction");
+        runInvalidQuery(stmts[1], query2, true,
+          "could not serialize access due to concurrent update",
+          "conflicts with higher priority transaction");
         stmts[0].execute("COMMIT");
         stmts[1].execute("ROLLBACK");
       } else {
