@@ -323,13 +323,15 @@ Result<TabletRestorePatch> TabletSnapshots::GenerateRestoreWriteBatch(
     RETURN_NOT_OK(restoring_state.SetPrefix(""));
 
     TabletRestorePatch restore_patch(
-        &existing_state, &restoring_state, write_batch, request.db_oid());
+        &existing_state, &restoring_state, write_batch,
+        tablet().metadata()->primary_table_info().get(), request.db_oid());
     RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
     return std::move(restore_patch);
   } else {
     LOG_WITH_PREFIX(INFO) << "Cleaning only rows with db oid " << request.db_oid();
     TabletRestorePatch restore_patch(
-        &existing_state, nullptr, write_batch, request.db_oid());
+        &existing_state, nullptr, write_batch,
+        tablet().metadata()->primary_table_info().get(), request.db_oid());
     RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
     return std::move(restore_patch);
   }
