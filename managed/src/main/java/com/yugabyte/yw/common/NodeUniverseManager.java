@@ -303,8 +303,13 @@ public class NodeUniverseManager extends DevopsBase {
         NodeAgentClient.addNodeAgentClientParams(optional.get(), commandArgs);
       } else {
         commandArgs.add("ssh");
+        String sshPort = String.valueOf(providerDetails.sshPort);
+        // Default SSH port can be the custom port for custom images.
+        if (context.isDefaultSshPort() && Util.isAddressReachable(node.cloudInfo.private_ip, 22)) {
+          sshPort = "22";
+        }
         commandArgs.add("--port");
-        commandArgs.add(context.isDefaultSshPort() ? "22" : providerDetails.sshPort.toString());
+        commandArgs.add(sshPort);
         commandArgs.add("--ip");
         commandArgs.add(node.cloudInfo.private_ip);
         commandArgs.add("--key");
@@ -313,9 +318,17 @@ public class NodeUniverseManager extends DevopsBase {
           commandArgs.add("--ssh2_enabled");
         }
       }
-      if (context.isCustomUser() && StringUtils.isNotBlank(providerDetails.sshUser)) {
-        commandArgs.add("--user");
-        commandArgs.add(providerDetails.sshUser);
+      if (context.isCustomUser()) {
+        // It is for backward compatibility after a platform upgrade as custom user is null in prior
+        // versions.
+        String user =
+            StringUtils.isNotBlank(providerDetails.sshUser)
+                ? providerDetails.sshUser
+                : cloudType.getSshUser();
+        if (StringUtils.isNotBlank(user)) {
+          commandArgs.add("--user");
+          commandArgs.add(user);
+        }
       }
     }
   }
