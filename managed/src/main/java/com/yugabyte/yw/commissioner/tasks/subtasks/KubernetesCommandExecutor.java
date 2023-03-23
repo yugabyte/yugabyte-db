@@ -949,9 +949,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
 
     // Go over tserver flags.
-    Map<String, Object> tserverOverrides =
-        new HashMap<String, Object>(
-            GFlagsUtil.getBaseGFlags(ServerType.TSERVER, cluster, u.getUniverseDetails().clusters));
+    Map<String, String> tserverOverrides =
+        GFlagsUtil.getBaseGFlags(ServerType.TSERVER, cluster, u.getUniverseDetails().clusters);
     if (!primaryClusterIntent
         .enableYSQL) { // In the UI, we can choose not to show these entries for read replica.
       tserverOverrides.put("enable_ysql", "false");
@@ -962,10 +961,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     tserverOverrides.put("start_redis_proxy", String.valueOf(primaryClusterIntent.enableYEDIS));
     if (primaryClusterIntent.enableYSQL && primaryClusterIntent.enableYSQLAuth) {
       tserverOverrides.put("ysql_enable_auth", "true");
-      Map<String, Object> DEFAULT_YSQL_HBA_CONF_MAP =
+      Map<String, String> DEFAULT_YSQL_HBA_CONF_MAP =
           Collections.singletonMap(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
       GFlagsUtil.mergeCSVs(
-          GFlagsUtil.YSQL_HBA_CONF_CSV, tserverOverrides, DEFAULT_YSQL_HBA_CONF_MAP);
+          tserverOverrides, DEFAULT_YSQL_HBA_CONF_MAP, GFlagsUtil.YSQL_HBA_CONF_CSV);
     }
     if (primaryClusterIntent.enableYCQL && primaryClusterIntent.enableYCQLAuth) {
       tserverOverrides.put("use_cassandra_authentication", "true");
