@@ -6,9 +6,6 @@ description: Learn how colocated tables aggregate data into a single tablet.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /preview/architecture/docdb/colocated_tables/
-  - /preview/explore/colocated-tables/linux/
-  - /preview/explore/colocated-tables/macos/
-  - /preview/explore/colocated-tables/
 menu:
   preview:
     identifier: docdb-colocated-tables

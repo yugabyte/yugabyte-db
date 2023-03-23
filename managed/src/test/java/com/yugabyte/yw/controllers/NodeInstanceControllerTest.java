@@ -89,7 +89,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   private Result getNode(UUID nodeUuid) {
     String uri = "/api/customers/" + customer.uuid + "/nodes/" + nodeUuid + "/list";
-    return doRequest("GET", uri);
+    return FakeApiHelper.doRequest("GET", uri);
   }
 
   private Result getNodeDetails(UUID universeUUID, String nodeName) {
@@ -101,17 +101,17 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
             + "/nodes/"
             + nodeName
             + "/details";
-    return doRequest("GET", uri);
+    return FakeApiHelper.doRequest("GET", uri);
   }
 
   private Result listByZone(UUID zoneUuid) {
     String uri = "/api/customers/" + customer.uuid + "/zones/" + zoneUuid + "/nodes/list";
-    return doRequest("GET", uri);
+    return FakeApiHelper.doRequest("GET", uri);
   }
 
   private Result listByProvider(UUID providerUUID) {
     String uri = "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/nodes/list";
-    return doRequest("GET", uri);
+    return FakeApiHelper.doRequest("GET", uri);
   }
 
   private Result createNode(UUID zoneUuid, NodeInstanceFormData.NodeInstanceData details) {
@@ -120,7 +120,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     formData.nodes = new LinkedList<>();
     formData.nodes.add(details);
     JsonNode body = Json.toJson(formData);
-    return doRequestWithBody("POST", uri, body);
+    return FakeApiHelper.doRequestWithBody("POST", uri, body);
   }
 
   private Result deleteInstance(UUID customerUUID, UUID providerUUID, String instanceIP) {
@@ -131,7 +131,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
             + providerUUID
             + "/instances/"
             + instanceIP;
-    return doRequest("DELETE", uri);
+    return FakeApiHelper.doRequest("DELETE", uri);
   }
 
   private Result performNodeAction(
@@ -149,7 +149,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
       params.put("nodeAction", nodeAction.name());
     }
 
-    return doRequestWithBody("PUT", uri, params);
+    return FakeApiHelper.doRequestWithBody("PUT", uri, params);
   }
 
   private Result performDetachedNodeAction(
@@ -166,7 +166,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     } else {
       params.put("nodeAction", nodeAction.name());
     }
-    return doRequestWithBody("POST", uri, params);
+    return FakeApiHelper.doRequestWithBody("POST", uri, params);
   }
 
   private void setNodeState(UUID universeUUID, String nodeName, NodeState state) {
@@ -390,7 +390,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
             () ->
                 performNodeAction(
                     customer.uuid, universe.universeUUID, "host-n1", NodeActionType.DELETE, true));
-    assertBadRequest(r, "{\"nodeAction\":[\"must not be null\"]}");
+    assertBadRequest(r, "{\"nodeAction\":[\"may not be null\"]}");
     assertAuditEntry(0, customer.uuid);
   }
 

@@ -90,10 +90,18 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
   const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
 
   const createPITR = useMutation((values: any) => restoreSnapShot(universeUUID, values), {
-    onSuccess: () => {
-      toast.success(`${config.dbName} recovered successfully!`, {
-        autoClose: TOAST_AUTO_CLOSE_INTERVAL
-      });
+    onSuccess: (resp) => {
+      toast.success(
+        <span>
+          {config.dbName} is being recovered. Click &nbsp;
+          <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+            here
+          </a>
+          &nbsp; for task details.
+        </span>,
+        { autoClose: TOAST_AUTO_CLOSE_INTERVAL }
+      );
+
       queryClient.invalidateQueries(['scheduled_sanpshots']);
       onHide();
     },

@@ -34,6 +34,8 @@ import org.mockito.junit.MockitoJUnitRunner;
 public class ShellProcessHandlerTest extends TestCase {
   private ShellProcessHandler shellProcessHandler;
 
+  @Mock Config appConfig;
+
   @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
 
   @Mock Config mockConfig;
@@ -46,13 +48,13 @@ public class ShellProcessHandlerTest extends TestCase {
   @Before
   public void beforeTest() {
     new File(TMP_STORAGE_PATH).mkdirs();
-    when(mockConfig.getString("yb.devops.home")).thenReturn(TMP_STORAGE_PATH);
+    when(appConfig.getString("yb.devops.home")).thenReturn(TMP_STORAGE_PATH);
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     when(mockConfig.getBoolean(COMMAND_OUTPUT_LOGS_DELETE)).thenReturn(true);
-    when(mockConfig.getBytes(YB_LOGS_MAX_MSG_SIZE)).thenReturn(2000L);
+    when(appConfig.getBytes(YB_LOGS_MAX_MSG_SIZE)).thenReturn(2000L);
     ShellLogsManager shellLogsManager =
         new ShellLogsManager(mockPlatformScheduler, mockRuntimeConfigFactory);
-    shellProcessHandler = new ShellProcessHandler(mockConfig, shellLogsManager);
+    shellProcessHandler = new ShellProcessHandler(appConfig, shellLogsManager);
   }
 
   @After
@@ -83,7 +85,7 @@ public class ShellProcessHandlerTest extends TestCase {
 
   @Test
   public void testRunWithInvalidDevopsHome() {
-    when(mockConfig.getString("yb.devops.home")).thenReturn("/foo");
+    when(appConfig.getString("yb.devops.home")).thenReturn("/foo");
     List<String> command = new ArrayList<String>();
     command.add("pwd");
     ShellResponse response = shellProcessHandler.run(command, new HashMap<>());

@@ -459,7 +459,7 @@ public class AsyncYBClient implements AutoCloseable {
                                                        int write_id, long time,
                                                        boolean needSchemaInfo) {
     return getChangesCDCSDK(table, streamId, tabletId, term, index, key, write_id, time,
-                            needSchemaInfo, null, new String(""));
+                            needSchemaInfo, null);
   }
 
   /**
@@ -480,11 +480,10 @@ public class AsyncYBClient implements AutoCloseable {
                                                        long index, byte[] key,
                                                        int write_id, long time,
                                                        boolean needSchemaInfo,
-                                                       CdcSdkCheckpoint explicitCheckpoint,
-                                                       String tableId) {
+                                                       CdcSdkCheckpoint explicitCheckpoint) {
     checkIsClosed();
     GetChangesRequest rpc = new GetChangesRequest(table, streamId, tabletId, term,
-      index, key, write_id, time, needSchemaInfo, explicitCheckpoint, tableId);
+      index, key, write_id, time, needSchemaInfo, explicitCheckpoint, table.getTableId());
     Deferred<GetChangesResponse> d = rpc.getDeferred();
     d.addErrback(new Callback<Exception, Exception>() {
       @Override
@@ -560,17 +559,6 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     FlushTableRequest rpc = new FlushTableRequest(this.masterTable, tableId);
     Deferred<FlushTableResponse> d = rpc.getDeferred();
-    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
-    sendRpcToTablet(rpc);
-    return d;
-  }
-
-  public Deferred<GetCheckpointForColocatedTableResponse>
-    getCheckpointForColocatedTableResponse(YBTable table, String streamId, String tabletId) {
-    checkIsClosed();
-    GetCheckpointForColocatedTableRequest rpc =
-      new GetCheckpointForColocatedTableRequest(table, streamId, tabletId);
-    Deferred<GetCheckpointForColocatedTableResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
     return d;
@@ -1772,10 +1760,6 @@ public class AsyncYBClient implements AutoCloseable {
         request instanceof SplitTabletRequest ||
         request instanceof FlushTableRequest) {
       tablet = getFirstTablet(tableId);
-    }
-    if (request instanceof GetCheckpointForColocatedTableRequest) {
-      String tabletId = ((GetCheckpointForColocatedTableRequest)request).getTabletId();
-      tablet = getTablet(tableId, tabletId);
     }
     // Set the propagated timestamp so that the next time we send a message to
     // the server the message includes the last propagated timestamp.

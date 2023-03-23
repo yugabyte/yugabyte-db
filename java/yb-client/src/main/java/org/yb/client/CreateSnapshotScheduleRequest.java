@@ -88,14 +88,17 @@ public class CreateSnapshotScheduleRequest extends YRpc<CreateSnapshotScheduleRe
     @Override
     Pair<CreateSnapshotScheduleResponse, Object> deserialize(CallResponse callResponse,
                                                    String masterUUID) throws Exception {
-
         final CreateSnapshotScheduleResponsePB.Builder respBuilder =
                 CreateSnapshotScheduleResponsePB.newBuilder();
         readProtobuf(callResponse.getPBMessage(), respBuilder);
 
-        UUID scheduleUUID = SnapshotUtil.convertToUUID(respBuilder.getSnapshotScheduleId());
+        boolean hasErr = respBuilder.hasError();
         MasterTypes.MasterErrorPB serverError =
-                respBuilder.hasError() ? respBuilder.getError() : null;
+                        hasErr ? respBuilder.getError() : null;
+        UUID scheduleUUID = null;
+        if (!hasErr) {
+                scheduleUUID = SnapshotUtil.convertToUUID(respBuilder.getSnapshotScheduleId());
+        }
         CreateSnapshotScheduleResponse response =
                 new CreateSnapshotScheduleResponse(deadlineTracker.getElapsedMillis(),
                         masterUUID, serverError, scheduleUUID);

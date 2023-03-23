@@ -37,9 +37,10 @@
 
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_create_table.h"
+#include "yb/tserver/pg_mutation_counter.h"
+#include "yb/tserver/pg_response_cache.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
-#include "yb/tserver/pg_response_cache.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -47,6 +48,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
+#include "yb/util/trace.h"
 #include "yb/util/write_buffer.h"
 #include "yb/util/yb_pg_errcodes.h"
 
@@ -57,6 +59,13 @@ using std::string;
 DEFINE_RUNTIME_bool(report_ysql_ddl_txn_status_to_master, false,
                     "If set, at the end of DDL operation, the TServer will notify the YB-Master "
                     "whether the DDL operation was committed or aborted");
+
+DEFINE_RUNTIME_bool(ysql_enable_table_mutation_counter, false,
+                    "Enable counting of mutations on a per-table basis. These mutations are used "
+                    "to automatically trigger ANALYZE as soon as the mutations of a table cross a "
+                    "certain threshold (decided based on ysql_auto_analyze_tuples_threshold and "
+                    "ysql_auto_analyze_scale_factor).");
+TAG_FLAG(ysql_enable_table_mutation_counter, experimental);
 
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_ddl_rollback_enabled);
@@ -334,6 +343,9 @@ struct PerformData {
   PgPerformResponsePB* resp;
   rpc::RpcContext context;
   PgClientSessionOperations ops;
+  client::YBTransactionPtr transaction;
+  std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter;
+  SubTransactionId subtxn_id;
   PgTableCache* table_cache;
   PgClientSession::UsedReadTimePtr used_read_time;
   PgResponseCache::Setter cache_setter;
@@ -364,6 +376,25 @@ struct PerformData {
         }
         VLOG(2) << SessionLogPrefix(session_id) << "Failed op " << idx << ": " << status;
         return status.CloneAndAddErrorCode(OpIndex(idx));
+      }
+      // In case of write operation, increase mutation counter
+      if (op->type() == client::YBOperation::Type::PGSQL_WRITE &&
+          GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
+          pg_node_level_mutation_counter) {
+        const TableId& table_id = down_cast<const client::YBPgsqlWriteOp&>(*op).table()->id();
+
+        VLOG(4) << SessionLogPrefix(session_id) << "Increasing "
+                << (transaction ? "transaction's mutation counters"
+                                : "pg_node_level_mutation_counter")
+                << " by 1 for table_id: " << table_id;
+
+        // If there is no distributed transaction, it means we can directly update the TServer
+        // level aggregate. Otherwise increase the transaction level aggregate.
+        if (!transaction) {
+          pg_node_level_mutation_counter->Increase(table_id, 1);
+        } else if (transaction) {
+          transaction->IncreaseMutationCounts(subtxn_id, table_id, 1);
+        }
       }
       if (op->response().is_backfill_batch_done() &&
           op->type() == client::YBOperation::Type::PGSQL_READ &&
@@ -418,6 +449,7 @@ PgClientSession::PgClientSession(
     uint64_t id, client::YBClient* client, const scoped_refptr<ClockBase>& clock,
     std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
     PgTableCache* table_cache, const XClusterSafeTimeMap* xcluster_safe_time_map,
+    std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter,
     PgResponseCache* response_cache)
     : id_(id),
       client_(*client),
@@ -425,6 +457,7 @@ PgClientSession::PgClientSession(
       transaction_pool_provider_(transaction_pool_provider.get()),
       table_cache_(*table_cache),
       xcluster_safe_time_map_(xcluster_safe_time_map),
+      pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
       response_cache_(*response_cache) {}
 
 uint64_t PgClientSession::id() const {
@@ -735,6 +768,15 @@ Status PgClientSession::FinishTransaction(
     // will run its background task to figure out whether the transaction succeeded or failed.
     if (!commit_status.ok()) {
       return commit_status;
+    } else if (GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
+               pg_node_level_mutation_counter_) {
+      // Gather # of mutated rows for each table (count only the committed sub-transactions).
+      const auto& table_mutations = txn_value->GetTableMutationCounts();
+      VLOG_WITH_PREFIX(4) << "Incrementing global mutation count using table to mutations map: "
+                          << AsString(table_mutations) << " for txn: " << txn_value->id();
+      for(auto& [table_id, mutation_count] : table_mutations) {
+        pg_node_level_mutation_counter_->Increase(table_id, mutation_count);
+      }
     }
   } else {
     VLOG_WITH_PREFIX_AND_FUNC(2)
@@ -768,6 +810,20 @@ Status PgClientSession::Perform(
   VLOG_WITH_PREFIX(5) << "using in_txn_limit_ht: " << in_txn_limit;
   auto session_info = VERIFY_RESULT(SetupSession(*req, context->GetClientDeadline(), in_txn_limit));
   auto* session = session_info.first.session.get();
+  auto transaction = session_info.first.transaction;
+
+  if (options.trace_requested()) {
+    context->EnsureTraceCreated();
+    if (transaction) {
+      transaction->EnsureTraceCreated();
+      context->trace()->AddChildTrace(transaction->trace());
+      transaction->trace()->set_must_print(true);
+    } else {
+      context->trace()->set_must_print(true);
+    }
+  }
+  ADOPT_TRACE(context->trace());
+
   auto ops = VERIFY_RESULT(PrepareOperations(req, session, &context->sidecars(), &table_cache_));
   auto ops_count = ops.size();
   auto data = std::make_shared<PerformData>(PerformData {
@@ -775,13 +831,15 @@ Status PgClientSession::Perform(
     .resp = resp,
     .context = std::move(*context),
     .ops = std::move(ops),
+    .transaction = transaction,
+    .pg_node_level_mutation_counter = pg_node_level_mutation_counter_,
+    .subtxn_id = options.active_sub_transaction_id(),
     .table_cache = &table_cache_,
     .used_read_time = session_info.second,
     .cache_setter = std::move(setter),
     .used_in_txn_limit = in_txn_limit
   });
 
-  auto transaction = session_info.first.transaction;
   session->FlushAsync([this, data, transaction, ops_count](client::FlushStatus* flush_status) {
     data->FlushDone(flush_status);
     if (transaction) {

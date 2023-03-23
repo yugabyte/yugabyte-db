@@ -18,7 +18,6 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.SetMultimap;
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.AddOnClusterDelete;
@@ -30,13 +29,13 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.certmgmt.providers.VaultPKI;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -44,6 +43,7 @@ import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
+import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.DiskIncreaseFormData;
 import com.yugabyte.yw.forms.ResizeNodeParams;
@@ -87,7 +87,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
-import javax.inject.Singleton;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -95,7 +94,6 @@ import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Http.Status;
 
-@Singleton
 public class UniverseCRUDHandler {
 
   private static final Logger LOG = LoggerFactory.getLogger(UniverseCRUDHandler.class);
@@ -104,7 +102,7 @@ public class UniverseCRUDHandler {
 
   @Inject EncryptionAtRestManager keyManager;
 
-  @Inject Config appConfig;
+  @Inject play.Configuration appConfig;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
@@ -499,12 +497,28 @@ public class UniverseCRUDHandler {
           taskParams.getPrimaryCluster().userIntent;
 
       if (taskParams.enableYbc) {
-        if (Util.compareYbVersions(
+        Provider p = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+        if (userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+          if (confGetter.getConfForScope(p, ProviderConfKeys.enableYbcOnK8s)
+              && Util.compareYbVersions(
+                      userIntent.ybSoftwareVersion, Util.K8S_YBC_COMPATIBLE_DB_VERSION, true)
+                  >= 0) {
+            taskParams.ybcSoftwareVersion =
+                StringUtils.isNotBlank(taskParams.ybcSoftwareVersion)
+                    ? taskParams.ybcSoftwareVersion
+                    : ybcManager.getStableYbcVersion();
+          } else {
+            taskParams.enableYbc = false;
+            LOG.error(
+                "Ybc installation is skipped on k8s universe with DB version lower than "
+                    + Util.K8S_YBC_COMPATIBLE_DB_VERSION);
+          }
+        } else if (Util.compareYbVersions(
                 userIntent.ybSoftwareVersion, Util.YBC_COMPATIBLE_DB_VERSION, true)
             < 0) {
           taskParams.enableYbc = false;
           LOG.error(
-              "Ybc installation is skipped on universe with DB version lower than "
+              "Ybc installation is skipped on VM universe with DB version lower than "
                   + Util.YBC_COMPATIBLE_DB_VERSION);
         } else {
           taskParams.ybcSoftwareVersion =
@@ -1775,7 +1789,7 @@ public class UniverseCRUDHandler {
       Cluster cluster, Set<NodeDetails> existingNodes, Set<NodeDetails> inputNodes) {
     AtomicInteger inputNodesInToBeRemoved = new AtomicInteger();
     Set<String> forbiddenIps =
-        Arrays.stream(appConfig.getString("yb.security.forbidden_ips").split("[, ]"))
+        Arrays.stream(appConfig.getString("yb.security.forbidden_ips", "").split("[, ]"))
             .filter(StringUtils::isNotBlank)
             .collect(Collectors.toSet());
 

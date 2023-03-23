@@ -23,6 +23,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/thread.h"
 
 DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
@@ -68,7 +69,10 @@ Status XClusterYsqlTestBase::InitClusters(const MiniClusterOptions& opts) {
   const uint16_t producer_pg_port = producer_cluster_.mini_cluster_->AllocateFreePort();
   FLAGS_pgsql_proxy_bind_address = Format("$0:$1", pg_addr, producer_pg_port);
 
-  RETURN_NOT_OK(producer_cluster()->StartSync());
+  {
+    TEST_SetThreadPrefixScoped prefix_se("P");
+    RETURN_NOT_OK(producer_cluster()->StartSync());
+  }
 
   auto consumer_opts = opts;
   consumer_opts.cluster_id = "consumer";
@@ -78,7 +82,10 @@ Status XClusterYsqlTestBase::InitClusters(const MiniClusterOptions& opts) {
   const uint16_t consumer_pg_port = consumer_cluster_.mini_cluster_->AllocateFreePort();
   FLAGS_pgsql_proxy_bind_address = Format("$0:$1", pg_addr, consumer_pg_port);
 
-  RETURN_NOT_OK(consumer_cluster()->StartSync());
+  {
+    TEST_SetThreadPrefixScoped prefix_se("C");
+    RETURN_NOT_OK(consumer_cluster()->StartSync());
+  }
 
   RETURN_NOT_OK(RunOnBothClusters([&opts](MiniCluster* cluster) {
     return cluster->WaitForTabletServerCount(opts.num_tablet_servers);
@@ -95,8 +102,17 @@ Status XClusterYsqlTestBase::InitClusters(const MiniClusterOptions& opts) {
   producer_cluster_.pg_ts_idx_ = pg_ts_idx;
   consumer_cluster_.pg_ts_idx_ = pg_ts_idx;
 
-  RETURN_NOT_OK(InitPostgres(&producer_cluster_, pg_ts_idx, producer_pg_port));
-  return InitPostgres(&consumer_cluster_, pg_ts_idx, consumer_pg_port);
+  {
+    TEST_SetThreadPrefixScoped prefix_se("P");
+    RETURN_NOT_OK(InitPostgres(&producer_cluster_, pg_ts_idx, producer_pg_port));
+  }
+
+  {
+    TEST_SetThreadPrefixScoped prefix_se("C");
+    RETURN_NOT_OK(InitPostgres(&consumer_cluster_, pg_ts_idx, consumer_pg_port));
+  }
+
+  return Status::OK();
 }
 
 Status XClusterYsqlTestBase::InitPostgres(

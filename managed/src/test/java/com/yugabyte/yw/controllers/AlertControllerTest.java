@@ -46,6 +46,8 @@ import static com.yugabyte.yw.common.AlertTemplate.YSQL_OP_P99_LATENCY;
 import static com.yugabyte.yw.common.AlertTemplate.YSQL_THROUGHPUT;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
+import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.contains;
@@ -522,8 +524,8 @@ public class AlertControllerTest extends FakeDBApplication {
                     data));
     AssertHelper.assertBadRequest(
         result,
-        "{\"params.webhookUrl\":[\"must not be null\"],"
-            + "\"params.username\":[\"must not be null\"]}");
+        "{\"params.webhookUrl\":[\"may not be null\"],"
+            + "\"params.username\":[\"may not be null\"]}");
   }
 
   @Test
@@ -1274,7 +1276,7 @@ public class AlertControllerTest extends FakeDBApplication {
                     "/api/customers/" + customer.getUuid() + "/alert_configurations",
                     authToken,
                     Json.toJson(alertConfiguration)));
-    assertBadRequest(result, "{\"name\":[\"must not be null\"]}");
+    assertBadRequest(result, "{\"name\":[\"may not be null\"]}");
   }
 
   @Test
@@ -1314,7 +1316,7 @@ public class AlertControllerTest extends FakeDBApplication {
                         + alertConfiguration.getUuid(),
                     authToken,
                     Json.toJson(alertConfiguration)));
-    assertBadRequest(result, "{\"targetType\":[\"must not be null\"]}");
+    assertBadRequest(result, "{\"targetType\":[\"may not be null\"]}");
   }
 
   @Test
@@ -1564,7 +1566,7 @@ public class AlertControllerTest extends FakeDBApplication {
                     "/api/customers/" + customer.getUuid() + "/alert_template_variables",
                     authToken,
                     Json.toJson(data)));
-    assertBadRequest(result, "{\"name\":[\"must not be null\"]}");
+    assertBadRequest(result, "{\"name\":[\"may not be null\"]}");
   }
 
   @Test

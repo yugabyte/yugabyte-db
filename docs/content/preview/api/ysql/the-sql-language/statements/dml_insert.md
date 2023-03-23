@@ -7,8 +7,6 @@ menu:
   preview:
     identifier: dml_insert
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/dml_insert/
 type: docs
 ---
 

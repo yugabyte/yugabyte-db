@@ -4,8 +4,6 @@ headerTitle: Explicit locking
 linkTitle: Explicit locking
 description: Explicit locking in YugabyteDB.
 headcontent: Row locking in YugabyteDB
-aliases:
-  - /preview/architecture/transactions/explicit-locking/
 menu:
   preview:
     identifier: explore-transactions-explicit-locking-1-ysql

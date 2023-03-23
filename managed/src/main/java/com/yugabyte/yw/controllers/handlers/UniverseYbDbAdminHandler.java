@@ -15,7 +15,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
@@ -30,14 +29,12 @@ import com.yugabyte.yw.models.Universe;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Optional;
-import javax.inject.Singleton;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Controller;
 import play.mvc.Http;
 
-@Singleton
 public class UniverseYbDbAdminHandler {
   @VisibleForTesting
   public static final String RUN_QUERY_ISNT_ALLOWED =
@@ -47,7 +44,7 @@ public class UniverseYbDbAdminHandler {
 
   @VisibleForTesting public static final String LEARN_DOMAIN_NAME = "learn.yugabyte.com";
 
-  @Inject Config appConfig;
+  @Inject play.Configuration appConfig;
   @Inject ConfigHelper configHelper;
   @Inject RuntimeConfigFactory runtimeConfigFactory;
   @Inject YsqlQueryExecutor ysqlQueryExecutor;
@@ -120,7 +117,7 @@ public class UniverseYbDbAdminHandler {
 
   public JsonNode validateRequestAndExecuteQuery(
       Universe universe, RunQueryFormData runQueryFormData) {
-    String mode = appConfig.getString("yb.mode");
+    String mode = appConfig.getString("yb.mode", "PLATFORM");
     if (!mode.equals("OSS")) {
       throw new PlatformServiceException(BAD_REQUEST, RUN_QUERY_ISNT_ALLOWED);
     }
@@ -132,10 +129,5 @@ public class UniverseYbDbAdminHandler {
     }
 
     return ysqlQueryExecutor.executeQuery(universe, runQueryFormData);
-  }
-
-  @VisibleForTesting
-  public void setAppConfig(Config config) {
-    appConfig = config;
   }
 }

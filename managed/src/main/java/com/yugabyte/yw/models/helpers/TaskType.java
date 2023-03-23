@@ -156,8 +156,8 @@ public enum TaskType {
 
   UpdateKubernetesDiskSize(com.yugabyte.yw.commissioner.tasks.UpdateKubernetesDiskSize.class),
 
-  KubernetesCheckStorageClass(
-      com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckStorageClass.class),
+  KubernetesCheckVolumeExpansion(
+      com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckVolumeExpansion.class),
 
   StartMasterOnNode(com.yugabyte.yw.commissioner.tasks.StartMasterOnNode.class),
 

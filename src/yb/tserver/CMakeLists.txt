@@ -198,8 +198,10 @@ set(TSERVER_SRCS
   pg_client_service.cc
   pg_client_session.cc
   pg_create_table.cc
-  pg_table_cache.cc
+  pg_mutation_counter.cc
   pg_response_cache.cc
+  pg_table_cache.cc
+  pg_table_mutation_count_sender.cc
   read_query.cc
   remote_bootstrap_anchor_client.cc
   remote_bootstrap_client.cc

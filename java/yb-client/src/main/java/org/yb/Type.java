@@ -68,7 +68,11 @@ public enum Type {
   DATE (DataType.DATE, "date"),
   TIME (DataType.TIME, "time"),
   JSONB (DataType.JSONB, "jsonb"),
-  USER_DEFINED_TYPE (DataType.USER_DEFINED_TYPE, "user_defined_type");
+  USER_DEFINED_TYPE (DataType.USER_DEFINED_TYPE, "user_defined_type"),
+  NULL_VALUE_TYPE (DataType.NULL_VALUE_TYPE, "null_value_type"),
+  GIN_NULL (DataType.GIN_NULL, "gin_null"),
+  TYPEARGS (DataType.TYPEARGS, "typeargs"),
+  TUPLE (DataType.TUPLE, "tuple");
 
   private final DataType dataType;
   private final String name;
@@ -134,17 +138,22 @@ public enum Type {
       case JSONB:
       // TODO(mihnea) handle the cases above properly after cleaning up inherited code
       case STRING:
-      case BINARY: return 8 + 8; // offset then string length
+      case BINARY:
+      case TYPEARGS:
+      case TUPLE:
+        return 8 + 8; // offset then string length
       case BOOL:
       case INT8: return 1;
       case INT16: return Shorts.BYTES;
       case INT32:
       case FLOAT:
-      case DATE: return Ints.BYTES;
+      case DATE:
+      case GIN_NULL: return Ints.BYTES;
       case INT64:
       case DOUBLE:
       case TIMESTAMP:
       case TIME: return Longs.BYTES;
+      case NULL_VALUE_TYPE: return 0;
       default: throw new IllegalArgumentException("The provided data type doesn't map" +
           " to know any known one.");
     }
@@ -157,10 +166,13 @@ public enum Type {
    */
   public static Type getTypeForDataType(DataType type) {
     switch (type) {
-      case INT8: return INT8;
-      case INT16: return INT16;
-      case INT32: return INT32;
-      case INT64: return INT64;
+      case INT8:
+      case UINT8: return INT8;
+      case INT16:
+      case UINT16: return INT16;
+      case INT32:
+      case UINT32: return INT32;
+      case INT64:
       case UINT64: return INT64;
       case STRING: return STRING;
       case BOOL: return BOOL;
@@ -181,6 +193,10 @@ public enum Type {
       case DATE: return DATE;
       case TIME: return TIME;
       case JSONB: return JSONB;
+      case NULL_VALUE_TYPE: return NULL_VALUE_TYPE;
+      case GIN_NULL: return GIN_NULL;
+      case TYPEARGS: return TYPEARGS;
+      case TUPLE: return TUPLE;
 
       default:
         throw new IllegalArgumentException("The provided data type doesn't map" +

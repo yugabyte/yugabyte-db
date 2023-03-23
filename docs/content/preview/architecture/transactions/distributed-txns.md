@@ -9,7 +9,6 @@ menu:
     parent: architecture-acid-transactions
     weight: 1155
 aliases:
-  - /architecture/transactions/distributed-txns/
   - /architecture/concepts/transactions/
 type: docs
 ---

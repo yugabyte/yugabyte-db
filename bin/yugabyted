@@ -142,6 +142,7 @@ PREFIX = {
     'configure' : "",
     'configure data_placement': "",
     'configure encrypt_at_rest': "",
+    'configure admin_operation': "",
     'connect' : "",
     'connect ycql' : "",
     'connect ysql' : "",
@@ -163,6 +164,7 @@ USAGE = {
     'configure' : "yugabyted configure [command] [flags]",
     'configure data_placement': "yugabyted configure data_placement [flags]",
     'configure encrypt_at_rest': "yugabyted configure encrypt_at_rest [flags]",
+    'configure admin_operation' : "yugabyted admin_operation [flags]",
     'connect' : "yugabyted connect [command] [flags]",
     'connect ycql' : "yugabyted connect ycql [flags]",
     'connect ysql' : "yugabyted connect ysql [flags]",
@@ -205,6 +207,8 @@ EXAMPLE = {
                         "yugabyted configure encrypt_at_rest --enable\n\n" +
                         "# Disable encryption at rest for a cluster:\n" +
                         "yugabyted configure encrypt_at_rest --disable\n\n",
+    'admin_operation' : "# Execute yb-admin command on the YugabyteDB cluster:\n" +
+                         "yugabyted configure admin_operation --command 'get_universe_config'\n\n",
 }
 
 EPILOG_COMMON = "Run '{} [command] -h' for help with specific commands.".format(SCRIPT_NAME)
@@ -1033,6 +1037,30 @@ class ControlScript(object):
                     ]
 
         Output.print_out(self.get_status_string_common(status_details))
+
+    # handle the admin operations passthrough to yb-admin command.
+    def configure_admin_operation(self, timeout=10):
+
+        master_addrs = self.configs.temp_data.get("admin_operation_master_addresses")
+        if not master_addrs:
+            master_addrs = ",".join(self.get_all_masters())
+        command = self.configs.temp_data.get("admin_command")
+        command_args = command.split(" ")
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs]
+        for cmd_var in command_args:
+            cmd += [cmd_var]
+
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+
+        status_details = {}
+        status_details = [(Output.make_yellow("Admin operation"),
+                           "Find the response below."),]
+        Output.print_out(self.get_status_string_common(status_details))
+        if 0 == ret_code:
+          Output.print_out(out)
+        else:
+          Output.log(err)
+          Output.print_out(Output.make_red(err))
 
     # Check for openssl
     def check_openssl(self):
@@ -3111,6 +3139,20 @@ class ControlScript(object):
         if args.parser == "collect_logs":
             self.configs.temp_data["collect_logs_stdout"] = args.stdout
 
+        if args.parser == "admin_operation":
+            if not args.command:
+                has_errors = True
+                Output.print_and_log(Output.make_red("Error:") + " --command flag is empty. " +
+                                 "Please specify a yb-admin command to execute.")
+                # Output.print_out("--command flag is empty. " +
+                #                  "Specify a yb-admin command to execute.")
+            else:
+                self.configs.temp_data["admin_command"] = args.command
+
+            if args.master_addresses is not None:
+                self.configs.temp_data[
+                    "admin_operation_master_addresses"] = args.master_addresses
+
         if args.parser == "data_placement":
             if args.fault_tolerance is not None:
                 if args.fault_tolerance.lower() in FAULT_TOLERANCE_CHOICES:
@@ -3467,7 +3509,8 @@ class ControlScript(object):
         configure_subparsers.required = True
         for cmd, description in (
                 ("data_placement", "Configure multi-zone/multi-region cluster."),
-                ("encrypt_at_rest", "Enable or disable encryption at rest."),):
+                ("encrypt_at_rest", "Enable or disable encryption at rest."),
+                ("admin_operation", "Run yb-admin command on the YugabyteDB cluster.")):
             example = ""
             if EXAMPLE[cmd]:
                 example = Output.make_yellow("Examples") + ": \n" + EXAMPLE[cmd]
@@ -3506,6 +3549,19 @@ class ControlScript(object):
                 "value for the flag. Use --enable or --disable flag to toggle encryption " +
                 "features on a YugabyteDB cluster.",
                 action="store_true")
+
+        # flags for admin operations
+        for cmd in ("configure_admin_operation",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--command", help="specify the yb-admin command to be executed " +
+                                        "on the YugabyteDB Cluster",
+                metavar="")
+            cur_parser.add_argument(
+                "--master_addresses", help="specify the comma seperated values of current " +
+                "masters of the cluster.",
+                metavar=""
+            )
 
         # Commands that can alter configuration file.
         for cmd in ("start",):
@@ -3740,6 +3796,8 @@ class Configs(object):
             "hostnames": "",
             "enable_encrypt_at_rest": False,
             "disable_encrypt_at_rest": False,
+            "admin_command": "",
+            "admin_operation_master_addresses":"",
         }
         self.config_file = config_file
 
@@ -4279,6 +4337,15 @@ class YBAdminProxy(object):
         if 0 != ret_code:
             return None
         return out
+
+    # Passthrough method for all the yb-admin commands
+    # @staticmethod
+    # def call_yb_admin_command(master_addrss, command, timeout=10):
+    #     cmd =  YBAdminProxy.cmd_args + ["-master_addresses", master_addrss, command]
+    #     out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+    #     if 0 != ret_code:
+    #         return None
+    #     return out
 
 
 # Proxy for ysqlsh commands.

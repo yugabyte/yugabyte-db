@@ -18,11 +18,10 @@ import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.utils.Pair;
-import com.yugabyte.yw.controllers.RequestContext;
-import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedResponse;
@@ -70,6 +69,7 @@ import play.mvc.Http;
 public class CommonUtils {
 
   public static final String DEFAULT_YB_HOME_DIR = "/home/yugabyte";
+  public static final String DEFAULT_YBC_DIR = "/tmp/yugabyte";
 
   private static final Pattern RELEASE_REGEX =
       Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+).*$");
@@ -769,7 +769,7 @@ public class CommonUtils {
 
   /** Get the user sending the API request from the HTTP context. */
   public static Users getUserFromContext(Http.Context ctx) {
-    return RequestContext.get(TokenAuthenticator.USER).getUser();
+    return ((UserWithFeatures) ctx.args.get("user")).getUser();
   }
 
   public static boolean isAutoFlagSupported(String dbVersion) {

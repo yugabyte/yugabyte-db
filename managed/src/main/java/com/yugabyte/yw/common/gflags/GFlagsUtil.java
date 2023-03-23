@@ -336,8 +336,6 @@ public class GFlagsUtil {
     ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
     ybcFlags.put("log_dir", K8S_YBC_LOG_SUBDIR);
     ybcFlags.put("cores_dir", K8S_YBC_CORES_DIR);
-
-    ybcFlags.put("yb_master_address", node.cloudInfo.private_ip);
     ybcFlags.put("yb_master_webserver_port", Integer.toString(node.masterHttpPort));
     ybcFlags.put("yb_tserver_webserver_port", Integer.toString(node.tserverHttpPort));
     ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);
@@ -787,15 +785,16 @@ public class GFlagsUtil {
     return trimData;
   }
 
-  private static void mergeCSVs(
+  public static void mergeCSVs(
       Map<String, String> userGFlags, Map<String, String> platformGFlags, String key) {
     if (userGFlags.containsKey(key)) {
-      String userValue = userGFlags.get(key);
+      String userValue = userGFlags.get(key).toString();
       try {
         CSVParser userValueParser = new CSVParser(new StringReader(userValue), CSVFormat.DEFAULT);
         CSVParser platformValuesParser =
             new CSVParser(
-                new StringReader(platformGFlags.getOrDefault(key, "")), CSVFormat.DEFAULT);
+                new StringReader(platformGFlags.getOrDefault(key, "").toString()),
+                CSVFormat.DEFAULT);
         Set<String> records = new LinkedHashSet<>();
         StringWriter writer = new StringWriter();
         CSVPrinter csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT);

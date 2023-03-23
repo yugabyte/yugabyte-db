@@ -71,7 +71,7 @@ On a computer connected to the Internet, perform the following steps:
 - Download the `yugaware` binary and change the following number, as required:
 
   ```sh
-  wget https://downloads.yugabyte.com/releases/{{<yb-version version="preview">}}/yugaware-{{<yb-version version="preview" format="build">}}-linux-x86_64.airgap
+  wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable">}}/yugaware-{{<yb-version version="stable" format="build">}}-linux-x86_64.airgap
   ```
 
 - Switch to the following directory:
@@ -155,6 +155,6 @@ If the preflight check fails, review the [Troubleshoot YugabyteDB Anywhere](../.
 
 Specify TLS versions via **Application config**, as shown in the following illustration:
 
-![Application Config](/images/replicated/application-config.png)
+![Application Configuration](/images/replicated/application-config.png)
 
 The recommended TLS version is 1.2.

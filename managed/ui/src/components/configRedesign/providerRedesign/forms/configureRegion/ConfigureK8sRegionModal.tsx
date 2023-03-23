@@ -12,10 +12,9 @@ import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 
-import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
+import { YBModal, YBModalProps } from '../../../../../redesign/components';
 import { ProviderCode, VPCSetupType } from '../../constants';
 import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
-import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { ConfigureK8sAvailabilityZoneField } from './ConfigureK8sAvailabilityZoneField';
 import { K8sCertIssuerType, K8sRegionFieldLabel, RegionOperation } from './constants';
 import { getRegionOptions } from './utils';
@@ -140,52 +139,6 @@ export const ConfigureK8sRegionModal = ({
             control={formMethods.control}
             name="regionData"
             options={regionOptions}
-          />
-        </div>
-        <div className={classes.formField}>
-          <div>{K8sRegionFieldLabel.KUBE_CONFIG_CONTENT}</div>
-          <YBDropZoneField
-            name="kubeConfigContent"
-            control={formMethods.control}
-            actionButtonText="Upload Kube Config File"
-            multipleFiles={false}
-            showHelpText={false}
-          />
-        </div>
-        <div className={classes.formField}>
-          <div>{K8sRegionFieldLabel.KUBE_DOMAIN}</div>
-          <YBInputField
-            control={formMethods.control}
-            name="kubeDomain"
-            placeholder="Enter..."
-            fullWidth
-          />
-        </div>
-        <div className={classes.formField}>
-          <div>{K8sRegionFieldLabel.KUBE_NAMESPACE}</div>
-          <YBInputField
-            control={formMethods.control}
-            name="kubeNamespace"
-            placeholder="Enter..."
-            fullWidth
-          />
-        </div>
-        <div className={classes.formField}>
-          <div>{K8sRegionFieldLabel.KUBE_POD_ADDRESS_TEMPLATE}</div>
-          <YBInputField
-            control={formMethods.control}
-            name="kubePodAddressTemplate"
-            placeholder="Enter..."
-            fullWidth
-          />
-        </div>
-        <div className={classes.formField}>
-          <div>{K8sRegionFieldLabel.OVERRIDES}</div>
-          <YBInputField
-            control={formMethods.control}
-            name="overrides"
-            placeholder="Enter..."
-            fullWidth
           />
         </div>
         <div>

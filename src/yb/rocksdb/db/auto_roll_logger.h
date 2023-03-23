@@ -37,9 +37,9 @@
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/port/util_logger.h"
 #include "yb/rocksdb/util/mutexlock.h"
-#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/cache_metrics.h"
+#include "yb/util/sync_point.h"
 
 namespace rocksdb {
 

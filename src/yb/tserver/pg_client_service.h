@@ -29,6 +29,8 @@ class XClusterSafeTimeMap;
 
 namespace tserver {
 
+class PgMutationCounter;
+
 #define YB_PG_CLIENT_METHODS \
     (AlterDatabase) \
     (AlterTable) \
@@ -76,7 +78,8 @@ class PgClientServiceImpl : public PgClientServiceIf {
       TransactionPoolProvider transaction_pool_provider,
       const scoped_refptr<MetricEntity>& entity,
       rpc::Scheduler* scheduler,
-      const XClusterSafeTimeMap* xcluster_safe_time_map);
+      const XClusterSafeTimeMap* xcluster_safe_time_map = nullptr,
+      std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter = nullptr);
 
   ~PgClientServiceImpl();
 

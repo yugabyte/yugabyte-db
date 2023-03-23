@@ -17,6 +17,7 @@
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_wire_protocol.h"
 

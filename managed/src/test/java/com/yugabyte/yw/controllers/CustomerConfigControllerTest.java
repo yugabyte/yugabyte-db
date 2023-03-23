@@ -27,6 +27,7 @@ import static play.test.Helpers.contentAsString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.BeanValidator;
+import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
@@ -38,8 +39,8 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
-import com.yugabyte.yw.models.configs.StubbedCustomerConfigValidator;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
+import com.yugabyte.yw.models.configs.StubbedCustomerConfigValidator;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -76,14 +77,14 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () ->
-                doRequestWithAuthTokenAndBody(
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "POST", url, defaultUser.createAuthToken(), bodyJson));
 
     JsonNode node = Json.parse(contentAsString(result));
-    assertErrorNodeValue(node, "data", "must not be null");
-    assertErrorNodeValue(node, "name", "must not be null");
-    assertErrorNodeValue(node, "type", "must not be null");
-    assertErrorNodeValue(node, "configName", "must not be null");
+    assertErrorNodeValue(node, "data", "may not be null");
+    assertErrorNodeValue(node, "name", "may not be null");
+    assertErrorNodeValue(node, "type", "may not be null");
+    assertErrorNodeValue(node, "configName", "may not be null");
     assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, defaultCustomer.uuid);
   }
@@ -99,7 +100,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () ->
-                doRequestWithAuthTokenAndBody(
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "POST", url, defaultUser.createAuthToken(), bodyJson));
 
     assertBadRequest(
@@ -122,7 +123,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () ->
-                doRequestWithAuthTokenAndBody(
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "POST", url, defaultUser.createAuthToken(), bodyJson));
 
     assertBadRequest(
@@ -144,7 +145,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () ->
-                doRequestWithAuthTokenAndBody(
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "POST", url, defaultUser.createAuthToken(), bodyJson));
 
     JsonNode node = Json.parse(contentAsString(result));
@@ -163,7 +164,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     bodyJson.put("configName", "fake-config");
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
     Result result =
-        doRequestWithAuthTokenAndBody("POST", url, defaultUser.createAuthToken(), bodyJson);
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "POST", url, defaultUser.createAuthToken(), bodyJson);
 
     JsonNode node = Json.parse(contentAsString(result));
     assertOk(result);
@@ -186,7 +188,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () ->
-                doRequestWithAuthTokenAndBody(
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "POST", url, defaultUser.createAuthToken(), bodyJson));
     assertConflict(result, "Configuration TEST123 already exists");
   }
@@ -196,7 +198,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     ModelFactory.createS3StorageConfig(defaultCustomer, "TEST7");
     ModelFactory.createS3StorageConfig(defaultCustomer, "TEST8");
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
-    Result result = doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
     JsonNode node = Json.parse(contentAsString(result));
     assertEquals(2, node.size());
     assertAuditEntry(0, defaultCustomer.uuid);
@@ -205,7 +207,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   @Test
   public void testListCustomerWithoutData() {
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
-    Result result = doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
     JsonNode node = Json.parse(contentAsString(result));
     assertEquals(0, node.size());
     assertAuditEntry(0, defaultCustomer.uuid);
@@ -217,7 +219,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     UUID.randomUUID();
-    Result result = doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
     assertOk(result);
     assertAuditEntry(1, defaultCustomer.uuid);
   }
@@ -229,7 +232,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
+            () ->
+                FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
     assertBadRequest(result, "Invalid StorageConfig UUID: " + configUUID);
     assertEquals(1, CustomerConfig.getAll(customer.uuid).size());
     assertAuditEntry(0, defaultCustomer.uuid);
@@ -248,7 +252,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
             + "/configs/"
             + configUUID
             + "?isDeleteBackups=true";
-    Result result = doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
     assertOk(result);
     CustomerTask customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertEquals(customerTask.getTargetUUID(), configUUID);
@@ -259,7 +264,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     TestUtils.setFakeHttpContext(defaultUser);
 
     ModelFactory.createScheduleBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
-    result = doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
+    result = FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
     assertOk(result);
     customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertEquals(customerTask.getTargetUUID(), configUUID);
@@ -274,7 +279,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
+            () ->
+                FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
     CustomerConfig config = CustomerConfig.get(configUUID);
     assertBadRequest(
         result,
@@ -291,7 +297,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
+            () ->
+                FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
     assertBadRequest(
         result,
         "Backup task associated with Configuration " + configUUID.toString() + " is in progress.");
@@ -315,10 +322,13 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
-        doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson);
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "PUT", url, defaultUser.createAuthToken(), bodyJson);
     assertOk(result);
     backup.delete();
-    result = doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson);
+    result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "PUT", url, defaultUser.createAuthToken(), bodyJson);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     JsonNode responseData = json.get("data");
@@ -360,7 +370,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () ->
-                doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson));
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, defaultUser.createAuthToken(), bodyJson));
     assertBadRequest(result, "Invalid StorageConfig UUID: " + configUUID);
     assertEquals(1, CustomerConfig.getAll(customer.uuid).size());
     assertAuditEntry(0, defaultCustomer.uuid);
@@ -379,7 +390,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () ->
-                doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson));
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, defaultUser.createAuthToken(), bodyJson));
 
     assertBadRequest(result, "{\"data.BACKUP_LOCATION\":[\"Field is read-only.\"]}");
 
@@ -394,7 +406,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
 
-    Result result = doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
 
     JsonNode node = Json.parse(contentAsString(result));
     List<CustomerConfigUI> customerConfigUIList =
@@ -421,7 +433,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
-        doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson);
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "PUT", url, defaultUser.createAuthToken(), bodyJson);
     assertOk(result);
 
     CustomerConfig newFromDb = CustomerConfig.get(configUUID);
@@ -451,7 +464,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () ->
-                doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson));
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, defaultUser.createAuthToken(), bodyJson));
     assertConflict(result, "Configuration TEST152 already exists");
   }
 
@@ -481,7 +495,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     bodyJson.put("type", "PASSWORD_POLICY");
     bodyJson.put("configName", "fake-config");
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
-    return doRequestWithAuthTokenAndBody("POST", url, defaultUser.createAuthToken(), bodyJson);
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        "POST", url, defaultUser.createAuthToken(), bodyJson);
   }
 
   @Test
@@ -491,7 +506,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID + "/delete";
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
+            () ->
+                FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
     assertBadRequest(
         result,
         "Backup task associated with Configuration " + configUUID.toString() + " is in progress.");
@@ -507,7 +523,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     backup.transitionState(Backup.BackupState.Completed);
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID + "/delete";
-    Result result = doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
     assertOk(result);
     CustomerTask customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertEquals(customerTask.getTargetUUID(), configUUID);
@@ -519,7 +536,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID + "/delete";
-    Result result = doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
     assertOk(result);
     CustomerTask customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertEquals(customerTask.getTargetUUID(), configUUID);
@@ -538,7 +556,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
             + "/configs/"
             + configUUID
             + "/delete?isDeleteBackups=true";
-    Result result = doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
     assertOk(result);
     CustomerTask customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertEquals(customerTask.getTargetUUID(), configUUID);
@@ -551,7 +570,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID + "/delete";
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
+            () ->
+                FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
     assertBadRequest(result, "Invalid StorageConfig UUID: " + configUUID);
     assertEquals(1, CustomerConfig.getAll(customer.uuid).size());
     assertAuditEntry(0, defaultCustomer.uuid);
@@ -561,7 +581,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   public void testDeleteValidCustomerConfigYb() {
     UUID configUUID = CustomerConfig.createCallHomeConfig(defaultCustomer.uuid).configUUID;
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID + "/delete";
-    Result result = doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
     assertOk(result);
     assertAuditEntry(1, defaultCustomer.uuid);
   }
@@ -582,10 +603,13 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID + "/edit";
     Result result =
-        doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson);
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "PUT", url, defaultUser.createAuthToken(), bodyJson);
     assertOk(result);
     backup.delete();
-    result = doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson);
+    result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "PUT", url, defaultUser.createAuthToken(), bodyJson);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals("s3://foo", json.get("data").get(BACKUP_LOCATION_FIELDNAME).textValue());
@@ -605,7 +629,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () ->
-                doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson));
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, defaultUser.createAuthToken(), bodyJson));
     assertBadRequest(result, "Invalid StorageConfig UUID: " + configUUID);
     assertEquals(1, CustomerConfig.getAll(customer.uuid).size());
     assertAuditEntry(0, defaultCustomer.uuid);
@@ -625,7 +650,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () ->
-                doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson));
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, defaultUser.createAuthToken(), bodyJson));
 
     assertBadRequest(result, "{\"data.BACKUP_LOCATION\":[\"Field is read-only.\"]}");
 
@@ -649,7 +675,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID + "/edit";
     Result result =
-        doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson);
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "PUT", url, defaultUser.createAuthToken(), bodyJson);
     assertOk(result);
 
     CustomerConfig newFromDb = CustomerConfig.get(configUUID);
@@ -685,7 +712,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () ->
-                doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson));
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, defaultUser.createAuthToken(), bodyJson));
     assertConflict(result, "Configuration TEST152 already exists");
   }
 
@@ -709,7 +737,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () ->
-                doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson));
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, defaultUser.createAuthToken(), bodyJson));
     assertBadRequest(result, "Cannot edit config as it is queued for deletion.");
   }
 }

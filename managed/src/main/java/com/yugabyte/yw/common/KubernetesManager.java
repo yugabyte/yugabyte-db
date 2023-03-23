@@ -6,13 +6,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.models.Universe;
 import io.fabric8.kubernetes.api.model.LoadBalancerIngress;
 import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodCondition;
 import io.fabric8.kubernetes.api.model.PodStatus;
@@ -48,7 +48,7 @@ public abstract class KubernetesManager {
 
   @Inject RuntimeConfGetter confGetter;
 
-  @Inject Config appConfig;
+  @Inject play.Configuration appConfig;
 
   public static final Logger LOG = LoggerFactory.getLogger(KubernetesManager.class);
 
@@ -552,6 +552,20 @@ public abstract class KubernetesManager {
       String helmReleaseName,
       String appName,
       String newDiskSize,
+      boolean newNamingStyle);
+
+  public abstract List<PersistentVolumeClaim> getPVCs(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle);
+
+  public abstract List<Pod> getPods(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
       boolean newNamingStyle);
 
   public abstract void copyFileToPod(

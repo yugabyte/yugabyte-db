@@ -12,7 +12,7 @@ import (
 
 	_ "github.com/lib/pq"
 	"github.com/spf13/viper"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common/shell"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"golang.org/x/exp/slices"
@@ -70,9 +70,9 @@ func (p postgresCheck) Execute() Result {
 		return res
 	}
 
-	_, err := common.RunBash("pg_dump", []string{"--help"})
-	if err != nil {
-		res.Error = fmt.Errorf("pg_dump has to be installed on the host (error %w)", err)
+	out := shell.Run("pg_dump", "--help")
+	if !out.SucceededOrLog() {
+		res.Error = fmt.Errorf("pg_dump has to be installed on the host (error %w)", out.Error)
 		res.Status = StatusCritical
 		return res
 	}

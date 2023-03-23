@@ -17,6 +17,8 @@
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
 
+
+#include "yb/common/colocated_util.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_wire_protocol.h"

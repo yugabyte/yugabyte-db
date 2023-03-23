@@ -1,24 +1,25 @@
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.controllers.handlers.GFlagsValidationHandler.GFLAGS_FILTER_PATTERN;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.controllers.handlers.GFlagsValidationHandler.GFLAGS_FILTER_TAGS;
+import static com.yugabyte.yw.controllers.handlers.GFlagsValidationHandler.GFLAGS_FILTER_PATTERN;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static play.test.Helpers.contentAsString;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.when;
-import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.AssertHelper;
+import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import java.io.IOException;
@@ -80,7 +81,7 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
             + gflagName
             + "&server="
             + serverType;
-    Result result = doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
     AssertHelper.assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "name", gflagName);
@@ -93,7 +94,7 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
         "/api/v1/metadata" + "/version/1.1.1.1-b11" + "/gflag?name=" + gflagName + "&server=MASTER";
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthToken("GET", url, defaultUser.createAuthToken()));
+            () -> FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken()));
     AssertHelper.assertBadRequest(result, gflagName + " is not present in metadata.");
   }
 
@@ -105,7 +106,7 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
         "/api/v1/metadata" + "/version/" + version + "/gflag?name=" + gflagName + "&server=MASTER";
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthToken("GET", url, defaultUser.createAuthToken()));
+            () -> FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken()));
     AssertHelper.assertBadRequest(
         result,
         "Incorrect version format. Valid formats: 1.1.1.1, 1.1.1.1-b1 or 1.1.1.1-b12-remote");
@@ -123,7 +124,7 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
             + invalidServerType;
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthToken("GET", url, defaultUser.createAuthToken()));
+            () -> FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken()));
     AssertHelper.assertBadRequest(result, "Given server type is not valid");
   }
 
@@ -143,7 +144,9 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
     gflags.add(flag2);
     body.set("gflags", gflags);
     String url = "/api/v1/metadata" + "/version/1.1.1.1-b11" + "/validate_gflags";
-    Result result = doRequestWithAuthTokenAndBody("POST", url, defaultUser.createAuthToken(), body);
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "POST", url, defaultUser.createAuthToken(), body);
     AssertHelper.assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
 
@@ -177,7 +180,9 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
     gflags.add(flag2);
     body.set("gflags", gflags);
     String url = "/api/v1/metadata" + "/version/1.1.1.1-b11" + "/validate_gflags";
-    Result result = doRequestWithAuthTokenAndBody("POST", url, defaultUser.createAuthToken(), body);
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "POST", url, defaultUser.createAuthToken(), body);
     AssertHelper.assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
 
@@ -216,7 +221,9 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
     gflags.add(flag2);
     body.set("gflags", gflags);
     String url = "/api/v1/metadata" + "/version/1.1.1.1-b11" + "/validate_gflags";
-    Result result = doRequestWithAuthTokenAndBody("POST", url, defaultUser.createAuthToken(), body);
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "POST", url, defaultUser.createAuthToken(), body);
     AssertHelper.assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     ArrayNode expectedJson = Json.newObject().arrayNode();
@@ -243,7 +250,9 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
     ObjectNode body = Json.newObject();
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody("POST", url, defaultUser.createAuthToken(), body));
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "POST", url, defaultUser.createAuthToken(), body));
     AssertHelper.assertBadRequest(result, "Please provide a valid list of gflags.");
   }
 
@@ -257,7 +266,7 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
             + gflagName
             + "&server=MASTER"
             + "&mostUsedGFlag=false";
-    Result result = doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
     AssertHelper.assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertNotNull(json);
@@ -281,7 +290,7 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
             + "/version/1.1.1.1-b78"
             + "/list_gflags?server=MASTER"
             + "&mostUsedGFlag=false";
-    Result result = doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
     AssertHelper.assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertNotNull(json);
@@ -308,7 +317,7 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
             + "/version/1.1.1.1-b78"
             + "/list_gflags?server=MASTER"
             + "&mostUsedGFlag=false";
-    Result result = doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
     AssertHelper.assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertNotNull(json);
@@ -329,7 +338,9 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
     flag1.put("TSERVER", "random_value");
     ObjectNode body = Json.newObject().set("gflags", Json.newArray().add(flag1));
     String url = "/api/v1/metadata" + "/version/1.1.1.1-b11" + "/validate_gflags";
-    Result result = doRequestWithAuthTokenAndBody("POST", url, defaultUser.createAuthToken(), body);
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "POST", url, defaultUser.createAuthToken(), body);
     AssertHelper.assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     ArrayNode expectedJson = Json.newObject().arrayNode();

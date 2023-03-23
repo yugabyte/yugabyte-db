@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -32,7 +31,6 @@ const (
 )
 
 var (
-	envFiles     = []string{".bashrc", ".bash_profile"}
 	envRegex     = regexp.MustCompile("[A-Za-z_0-9]+=.*")
 	redactParams = map[string]bool{
 		"jwt":       true,
@@ -133,18 +131,13 @@ func (s *ShellTask) command(ctx context.Context, name string, arg ...string) (*e
 func (s *ShellTask) userEnv(ctx context.Context, homeDir string) []string {
 	var out bytes.Buffer
 	env := []string{}
-	bashArgs := []string{}
-	for _, envFile := range envFiles {
-		file := filepath.Join(homeDir, envFile)
-		bashArgs = append(bashArgs, fmt.Sprintf("source %s 2> /dev/null", file))
-	}
-	bashArgs = append(bashArgs, "env")
-	cmd, err := s.command(ctx, "bash", "-c", strings.Join(bashArgs, ";"))
+	// Interactive login and run command.
+	cmd, err := s.command(ctx, "bash", "-ilc", "env 2>/dev/null")
 	cmd.Stdout = &out
 	err = cmd.Run()
 	if err != nil {
 		util.FileLogger().Warnf(
-			ctx, "Failed to source files %v in %s. Error: %s", envFiles, homeDir, err.Error())
+			ctx, "Failed to get env variables for %s. Error: %s", homeDir, err.Error())
 		return env
 	}
 	env = append(env, os.Environ()...)

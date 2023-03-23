@@ -44,6 +44,11 @@ public interface CloudInfoInterface {
 
   public void withSensitiveDataMasked();
 
+  public static enum VPCType {
+    EXISTING,
+    NEW
+  }
+
   public static <T extends CloudInfoInterface> T get(Provider provider) {
     return get(provider, false);
   }

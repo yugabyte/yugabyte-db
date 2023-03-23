@@ -1946,6 +1946,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_docdb_tracing", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Enables tracing for the commands in this session."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_docdb_tracing,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"data_sync_retry", PGC_POSTMASTER, ERROR_HANDLING_OPTIONS,
 			gettext_noop("Whether to continue running after a failure to sync data files."),
 		},

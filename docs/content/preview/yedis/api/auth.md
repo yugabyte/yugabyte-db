@@ -6,9 +6,6 @@ menu:
   preview:
     parent: api-yedis
     weight: 2020
-aliases:
-  - /preview/api/redis/auth
-  - /preview/api/yedis/auth
 type: docs
 ---
 

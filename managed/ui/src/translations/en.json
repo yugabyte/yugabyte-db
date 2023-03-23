@@ -383,6 +383,11 @@
           "menuDefault": "(default)",
           "tablePolicyHeader": "Alert Policies"
         }
+      },
+      "composer": {
+        "subject": "Subject",
+        "content": "Content",
+        "helpText": "All Alert Policies that generate email alerts will use this notification template."
       }
     }
   }

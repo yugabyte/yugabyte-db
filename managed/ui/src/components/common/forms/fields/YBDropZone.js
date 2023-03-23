@@ -1,7 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Fragment, Component } from 'react';
-import Dropzone from 'react-dropzone';
+import Dropzone from 'react-dropzone3';
+
 import { YBLabel } from '../../../../components/common/descriptors';
 
 import './stylesheets/YBDropZone.scss';
@@ -23,13 +24,8 @@ export default class YBDropZone extends Component {
             input.value ? 'has-value' : ''
           }`}
         >
-          <Dropzone name={this.props.name} onDrop={this.onDrop}>
-            {({ getRootProps, getInputProps }) => (
-              <div className={this.props.className} {...getRootProps()}>
-                <input {...getInputProps()} />
-                {title && <p>{title}</p>}
-              </div>
-            )}
+          <Dropzone className={this.props.className} name={this.props.name} onDrop={this.onDrop}>
+            <p>{title}</p>
           </Dropzone>
           {touched && error && <span className="help-block standard-error">{error}</span>}
           {input.value && <span className="drop-zone-file">{input.value.name}</span>}
@@ -64,13 +60,12 @@ export class YBDropZoneWithLabel extends Component {
             touched && error ? 'has-error' : ''
           } ${input.value ? 'has-value' : ''}`}
         >
-          <Dropzone name={this.props.input.name} onDrop={this.onDrop}>
-            {({ getRootProps, getInputProps }) => (
-              <div className={this.props.className} {...getRootProps()}>
-                <input {...getInputProps()} />
-                {title && <p>{title}</p>}
-              </div>
-            )}
+          <Dropzone
+            className={this.props.className}
+            name={this.props.input.name}
+            onDrop={this.onDrop}
+          >
+            <p>{title}</p>
           </Dropzone>
           {input.value && <span className="drop-zone-file">{input.value.name}</span>}
         </div>

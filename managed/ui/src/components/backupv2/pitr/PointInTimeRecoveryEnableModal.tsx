@@ -66,10 +66,17 @@ export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalPr
     (values: any) =>
       createPITRConfig(universeUUID, values.tableType, values.keyspaceName, values.payload),
     {
-      onSuccess: (_, variables) => {
-        toast.success(`Point-in-time recovery enabled successfully for ${variables.keyspaceName}`, {
-          autoClose: TOAST_AUTO_CLOSE_INTERVAL
-        });
+      onSuccess: (resp, variables) => {
+        toast.success(
+          <span>
+            Point-in-time recovery is being enabled for {variables.keyspaceName}. Click &nbsp;
+            <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+              here
+            </a>
+            &nbsp; for task details.
+          </span>,
+          { autoClose: TOAST_AUTO_CLOSE_INTERVAL }
+        );
         //refetch after 5 secs
         setTimeout(() => {
           queryClient.invalidateQueries(['scheduled_sanpshots']);

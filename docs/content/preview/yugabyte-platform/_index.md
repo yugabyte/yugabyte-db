@@ -3,8 +3,6 @@ title: YugabyteDB Anywhere
 headerTitle: YugabyteDB Anywhere
 linkTitle: YugabyteDB Anywhere
 description: YugabyteDB delivered as a private database-as-a-service for enterprises.
-aliases:
-  - /preview/yugabyte-platform/overview/
 menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere

@@ -122,6 +122,9 @@ import play.libs.Json;
 public class NodeManagerTest extends FakeDBApplication {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
+
+  @Mock play.Configuration mockAppConfig;
+
   @Mock ShellProcessHandler shellProcessHandler;
 
   @Mock ReleaseManager releaseManager;
@@ -507,7 +510,7 @@ public class NodeManagerTest extends FakeDBApplication {
     when(mockConfGetter.getConfForScope(
             any(Provider.class), eq(ProviderConfKeys.universeBootScript)))
         .thenReturn("");
-    when(mockConfig.getString(eq("yb.security.default.access.key")))
+    when(mockAppConfig.getString(eq("yb.security.default.access.key")))
         .thenReturn(ApiUtils.DEFAULT_ACCESS_KEY_CODE);
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
     when(runtimeConfigFactory.forUniverse(any())).thenReturn(app.config());
@@ -1187,7 +1190,7 @@ public class NodeManagerTest extends FakeDBApplication {
           }
         }
         if (type == NodeManager.NodeCommandType.Provision) {
-          String packagePath = mockConfig.getString("yb.thirdparty.packagePath");
+          String packagePath = mockAppConfig.getString("yb.thirdparty.packagePath");
           if (packagePath != null) {
             expectedCommand.add("--local_package_path");
             expectedCommand.add(packagePath);
@@ -1362,7 +1365,7 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testProvisionNodeCommandWithLocalPackage() {
     String packagePath = "/tmp/third-party";
     new File(packagePath).mkdir();
-    when(mockConfig.getString("yb.thirdparty.packagePath")).thenReturn(packagePath);
+    when(mockAppConfig.getString("yb.thirdparty.packagePath")).thenReturn(packagePath);
     int idx = 0;
     for (TestData t : testData) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
@@ -1619,7 +1622,7 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testCreateNodeCommandWithLocalPackage() {
     String packagePath = "/tmp/third-party";
     new File(packagePath).mkdir();
-    when(mockConfig.getString("yb.thirdparty.packagePath")).thenReturn(packagePath);
+    when(mockAppConfig.getString("yb.thirdparty.packagePath")).thenReturn(packagePath);
     int idx = 0;
     for (TestData t : testData) {
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
@@ -2221,13 +2224,13 @@ public class NodeManagerTest extends FakeDBApplication {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
 
         when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
-        when(mockConfig.getBoolean("yb.gflags.allow_user_override")).thenReturn(false);
+        when(mockAppConfig.getBoolean("yb.gflags.allow_user_override")).thenReturn(false);
         when(mockConfGetter.getConfForScope(
                 any(Universe.class), eq(UniverseConfKeys.gflagsAllowUserOverride)))
             .thenReturn(false);
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
 
-        when(mockConfig.getBoolean("yb.gflags.allow_user_override")).thenReturn(true);
+        when(mockAppConfig.getBoolean("yb.gflags.allow_user_override")).thenReturn(true);
         when(mockConfGetter.getConfForScope(
                 any(Universe.class), eq(UniverseConfKeys.gflagsAllowUserOverride)))
             .thenReturn(true);

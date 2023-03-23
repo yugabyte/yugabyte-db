@@ -34,4 +34,4 @@ docker inspect "$DOCKER_IMAGE_NAME" > /dev/null 2>&1 || docker build -t "$DOCKER
 # Execute the build_pex.sh script inside the built docker image
 # to generate the repaired PEX.
 docker run -v "$yb_devops_home:/code" -u "$UID:$(id -g $UID)" \
-"$DOCKER_IMAGE_NAME" -c "-r" "/code/ansible_python3_requirements.txt"
+"$DOCKER_IMAGE_NAME" -c "-r" "/code/ansible_python_requirements.txt" "--include_python2"

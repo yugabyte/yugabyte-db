@@ -131,6 +131,6 @@ public class V231__ProviderDetailsPersist extends BaseJdbcMigration {
     if (gcpCloudInfo == null) {
       return;
     }
-    gcpCloudInfo.setGceApplicationCredentials(gcpCredentials);
+    gcpCloudInfo.gceApplicationCredentials = gcpCredentials;
   }
 }

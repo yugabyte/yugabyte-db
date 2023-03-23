@@ -7,8 +7,6 @@ menu:
   preview:
     identifier: dcl_create_user
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/dcl_create_user/
 type: docs
 ---
 

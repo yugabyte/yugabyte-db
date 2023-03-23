@@ -7,7 +7,6 @@ image: /images/section_icons/index/api.png
 headcontent:
 aliases:
   - /architecture/query-layer/
-  - /preview/architecture/concepts/yql/
 menu:
   preview:
     identifier: architecture-query-layer
