@@ -568,8 +568,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   // TODO(Piyush): Find a more robust way to check for kConflict/kAbort/kReadRestart
   private static boolean isConflictError(Exception ex) {
     String lcMsg = ex.getMessage().toLowerCase();
-    // kAborted messages also have the conflict word sometimes.
-    return lcMsg.contains("conflict") && !lcMsg.contains("abort");
+    return lcMsg.contains("could not serialize access due to concurrent update");
   }
 
   private static boolean isAbortError(Exception ex) {

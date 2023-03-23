@@ -1502,6 +1502,7 @@ void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
   auto status = conn2.Execute("DELETE FROM t WHERE a = 1");
   ASSERT_FALSE(status.ok());
   ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "could not serialize access due to concurrent update");
   ASSERT_STR_CONTAINS(status.ToString(), "conflicts with higher priority transaction");
 
   ASSERT_OK(conn1.CommitTransaction());
