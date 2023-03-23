@@ -2,7 +2,7 @@
 title: YugabyteDB metrics
 headerTitle: Metrics
 linkTitle: Metrics
-headcontent: YugabyteDB's database metrics and troubleshooting system, table, and tablet issues.
+headcontent: YugabyteDB's commonly used metrics to monitor and manage.
 description: Learn about YugabyteDB's database metrics, and how to select and use the metrics relevant to your situation
 menu:
   preview:
@@ -18,7 +18,7 @@ The following sections describe how you can consume YugabyteDB metrics, and use 
 
 {{< note title="Note" >}}
 
-- This page does not contain an exhaustive list of all the metrics exported by YugabyteDB.
+- This page covers only the most frequently used metrics and not an exhaustive list of all the metrics exported by YugabyteDB.
 - This page only covers metrics and not query tuning. To learn more about query tuning in YugabyteDB, refer to [Query tuning](../../../explore/query-1-performance/).
 
 {{< /note >}}
@@ -44,31 +44,31 @@ System-level metrics are not exposed by YugabyteDB and are generally collected u
 
 {{< /note >}}
 
-### Metric categories
+### Metric naming conventions
 
-YugabyteDB has four major types of metrics per node: [Server](https://github.com/yugabyte/yugabyte-db/diffs/3?base_sha=b8c7b3ba3bd5f78029bcca06b495322d2eb1a9f3&commentable=true&head_user=polarweasel&name=doc-12-add-metrics-overview&pull_number=16107&sha1=b8c7b3ba3bd5f78029bcca06b495322d2eb1a9f3&sha2=f3bb86c03f3927df7c022a44ce9d430e412f7e96&short_path=fc1ba5b&unchanged=expanded&w=false#server-metrics), [Table](https://github.com/yugabyte/yugabyte-db/diffs/3?base_sha=b8c7b3ba3bd5f78029bcca06b495322d2eb1a9f3&commentable=true&head_user=polarweasel&name=doc-12-add-metrics-overview&pull_number=16107&sha1=b8c7b3ba3bd5f78029bcca06b495322d2eb1a9f3&sha2=f3bb86c03f3927df7c022a44ce9d430e412f7e96&short_path=fc1ba5b&unchanged=expanded&w=false#table-metrics), [Tablet](https://github.com/yugabyte/yugabyte-db/diffs/3?base_sha=b8c7b3ba3bd5f78029bcca06b495322d2eb1a9f3&commentable=true&head_user=polarweasel&name=doc-12-add-metrics-overview&pull_number=16107&sha1=b8c7b3ba3bd5f78029bcca06b495322d2eb1a9f3&sha2=f3bb86c03f3927df7c022a44ce9d430e412f7e96&short_path=fc1ba5b&unchanged=expanded&w=false#tablet-metrics), and [Cluster](https://github.com/yugabyte/yugabyte-db/diffs/3?base_sha=b8c7b3ba3bd5f78029bcca06b495322d2eb1a9f3&commentable=true&head_user=polarweasel&name=doc-12-add-metrics-overview&pull_number=16107&sha1=b8c7b3ba3bd5f78029bcca06b495322d2eb1a9f3&sha2=f3bb86c03f3927df7c022a44ce9d430e412f7e96&short_path=fc1ba5b&unchanged=expanded&w=false#cluster-metrics).
+YugabyteDB has four major types of metrics per node: Server, Table, Tablet, and Cluster.
 
 These metric names are generally of the form `<metric_category>_<server_type>_<service_type>_<service_method>` where:
 
-`metric_category` (optional) can be one of:
+- `metric_category` (optional) can be one of the following:
 
-- `handler_latency` - The latency seen by the logical architecture block.
-- `rpcs_in_queue` - The number of RPCs in the queue for service.
-- `service_request_bytes` - The number of bytes a service sends to other services in a request. This metric type is beneficial in a very limited number of cases.
-- `service_response_bytes` - The number of bytes a service receives from other services in a request. This metric type is beneficial in a very limited number of cases.
-- `proxy_request_bytes` - The number of request bytes sent by the proxy in a request to a service. Anything a client requires that the local tablet server cannot provide is proxied to the correct service, which can be a master (via the master leader) or another tablet server, changes to the followers, and awaiting a majority alias consensus to be reached. This metric type is beneficial in a very limited number of cases.
-- `proxy_response_bytes` - The number of response bytes the proxy receives from a service. Anything a client requires that the local tablet server cannot provide is proxied to the correct service, which can be a master (via the master leader) or another tablet server, changes to the followers, and awaiting a majority alias consensus to be reached. This metric type is beneficial in a very limited number of cases.
+  - `handler_latency` - The latency seen by the logical architecture block.
+  - `rpcs_in_queue` - The number of RPCs in the queue for service.
+  - `service_request_bytes` - The number of bytes a service sends to other services in a request. This metric type is beneficial in a very limited number of cases.
+  - `service_response_bytes` - The number of bytes a service receives from other services in a     request. This metric type is beneficial in a very limited number of cases.
+  - `proxy_request_bytes` - The number of request bytes sent by the proxy in a request to a service. Anything a client requires that the local tablet server cannot provide is proxied to the correct service, which can be a master (via the master leader) or another tablet server, changes to the followers, and awaiting a majority alias consensus to be reached. This metric type is beneficial in a very limited number of cases.
+  - `proxy_response_bytes` - The number of response bytes the proxy receives from a service. Anything a client requires that the local tablet server cannot provide is proxied to the correct service, which can be a master (via the master leader) or another tablet server, changes to the followers, and awaiting a majority alias consensus to be reached. This metric type is beneficial in a very limited number of cases.
 
-`server_type` must be one of the following:
+- `server_type` can be one of the following:
 
-- `yb_tserver` - YB-TServer metrics
-- `yb_master` - YB-Master metrics
-- `yb_ycqlserver` - YCQL metrics
-- `yb_ysqlserver` - YSQL metrics
-- `yb_consesus` - RAFT consensus metrics
-- `yb_cdc` - Change Data Capture metrics
+  - `yb_tserver` - YB-TServer metrics
+  - `yb_master` - YB-Master metrics
+  - `yb_ycqlserver` - YCQL metrics
+  - `yb_ysqlserver` - YSQL metrics
+  - `yb_consesus` - RAFT consensus metrics
+  - `yb_cdc` - Change Data Capture metrics
 
-`service_method` (optional) identifies service methods, which are specific functions performed by the service.
+- `service_method` (optional) identifies service methods, which are specific functions performed by the service.
 
 {{< note title= "Note">}}
 
@@ -94,7 +94,6 @@ A description of key metrics in this category is listed in the following table:
 | `handler_latency_yb_ysqlserver_SQLProcessor_RollbackStmt` | microseconds | counter | The time in microseconds to parse and execute transaction ROLLBACK statement |
 | `handler_latency_yb_ysqlserver_SQLProcessor_OtherStmts` | microseconds | counter | The time in microseconds to parse and execute all other statements apart from the preceding ones listed in this table. This includes statements like PREPARE, RELEASE SAVEPOINT, and so on. |
 | `handler_latency_yb_ysqlserver_SQLProcessor_Transactions` | microseconds | counter | The time in microseconds to execute any of the statements in this table.|
-
 
 **Note** that all YugabyteDB handler latency metrics have ten additional attributes in them which include the following:
 
