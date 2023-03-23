@@ -67,24 +67,18 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       // Try to unify this with the edit remove pods/deployments flow. Currently delete is
       // tied down to a different base class which makes params porting not straight-forward.
       SubTaskGroup helmDeletes =
-          getTaskExecutor()
-              .createSubTaskGroup(
-                  KubernetesCommandExecutor.CommandType.HELM_DELETE.getSubTaskGroupName(),
-                  executor);
+          createSubTaskGroup(
+              KubernetesCommandExecutor.CommandType.HELM_DELETE.getSubTaskGroupName());
       helmDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
 
       SubTaskGroup volumeDeletes =
-          getTaskExecutor()
-              .createSubTaskGroup(
-                  KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName(),
-                  executor);
+          createSubTaskGroup(
+              KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName());
       volumeDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
 
       SubTaskGroup namespaceDeletes =
-          getTaskExecutor()
-              .createSubTaskGroup(
-                  KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName(),
-                  executor);
+          createSubTaskGroup(
+              KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName());
       namespaceDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
 
       for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {

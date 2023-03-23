@@ -74,13 +74,14 @@ export const QueryLoadSkew: FC<QueryLoadRecommendation> = ({ data, summary }) =>
           <span className="learnPerfAdvisorText">
             {t('clusterDetail.performance.advisor.Recommendation')}
             {t('clusterDetail.performance.advisor.Separator')}
+            {data.suggestion}
             <a
               target="_blank"
               rel="noopener noreferrer"
               className="learnSchemaSuggestion"
-              href={EXTERNAL_LINKS.SUPPORT_TICKET_LINK}
+              href={EXTERNAL_LINKS.QUERY_LOAD_SKEW}
             >
-              {t('clusterDetail.performance.advisor.OpenSupportTicket')}
+              {t('clusterDetail.performance.advisor.LearnHow')}
             </a>
           </span>
         </div>

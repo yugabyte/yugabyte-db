@@ -69,6 +69,8 @@
 
 using std::string;
 
+DECLARE_bool(ysql_enable_pack_full_row_update);
+
 namespace yb {
 using client::YBClient;
 using client::YBTableName;
@@ -146,6 +148,7 @@ Status CDCSDKTestBase::SetUpWithParams(
   FLAGS_cdc_max_apply_batch_num_records = 1;
   FLAGS_cdc_enable_replicate_intents = true;
   FLAGS_replication_factor = replication_factor;
+  FLAGS_ysql_enable_pack_full_row_update = true;
 
   MiniClusterOptions opts;
   opts.num_masters = num_masters;

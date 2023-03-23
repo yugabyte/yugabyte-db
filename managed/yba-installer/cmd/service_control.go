@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"log"
+
 	"github.com/spf13/cobra"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/ybactl"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/yugaware"
 )
 
 var startCmd = &cobra.Command{
@@ -16,12 +19,27 @@ var startCmd = &cobra.Command{
     Valid service names: postgres, prometheus, yb-platform`,
 	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
 	ValidArgs: serviceOrder,
+	PreRun: func(cmd *cobra.Command, args []string) {
+		if !skipVersionChecks {
+			yugawareVersion, err := yugaware.InstalledVersionFromMetadata()
+			if err != nil {
+				log.Fatal("Cannot start: " + err.Error())
+			}
+			if yugawareVersion != ybactl.Version {
+				log.Fatal("yba-ctl version does not match the installed YugabyteDB Anywhere version")
+			}
+		}
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 1 {
-			services[args[0]].Start()
+			if err := services[args[0]].Start(); err != nil {
+				log.Fatal("Failed to start " + args[0] + ": " + err.Error())
+			}
 		} else {
 			for _, name := range serviceOrder {
-				services[name].Start()
+				if err := services[name].Start(); err != nil {
+					log.Fatal("Failed to start " + name + ": " + err.Error())
+				}
 			}
 		}
 	},
@@ -38,12 +56,27 @@ var stopCmd = &cobra.Command{
     Valid service names: postgres, prometheus, yb-platform`,
 	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
 	ValidArgs: serviceOrder,
+	PreRun: func(cmd *cobra.Command, args []string) {
+		if !skipVersionChecks {
+			yugawareVersion, err := yugaware.InstalledVersionFromMetadata()
+			if err != nil {
+				log.Fatal("Cannot stop: " + err.Error())
+			}
+			if yugawareVersion != ybactl.Version {
+				log.Fatal("yba-ctl version does not match the installed YugabyteDB Anywhere version")
+			}
+		}
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 1 {
-			services[args[0]].Stop()
+			if err := services[args[0]].Stop(); err != nil {
+				log.Fatal("Failed to stop " + args[0] + ": " + err.Error())
+			}
 		} else {
 			for _, name := range serviceOrder {
-				services[name].Stop()
+				if err := services[name].Stop(); err != nil {
+					log.Fatal("Failed to stop " + name + ": " + err.Error())
+				}
 			}
 		}
 	},
@@ -60,20 +93,32 @@ var restartCmd = &cobra.Command{
     Valid service names: postgres, prometheus, yb-platform`,
 	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
 	ValidArgs: serviceOrder,
+	PreRun: func(cmd *cobra.Command, args []string) {
+		if !skipVersionChecks {
+			yugawareVersion, err := yugaware.InstalledVersionFromMetadata()
+			if err != nil {
+				log.Fatal("Cannot restart: " + err.Error())
+			}
+			if yugawareVersion != ybactl.Version {
+				log.Fatal("yba-ctl version does not match the installed YugabyteDB Anywhere version")
+			}
+		}
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 1 {
-			services[args[0]].Restart()
+			if err := services[args[0]].Restart(); err != nil {
+				log.Fatal("Failed to restart " + args[0] + ": " + err.Error())
+			}
 		} else {
 			for _, name := range serviceOrder {
-				services[name].Restart()
+				if err := services[name].Restart(); err != nil {
+					log.Fatal("Failed to restart " + name + ": " + err.Error())
+				}
 			}
 		}
 	},
 }
 
 func init() {
-	// Service control commands only work from the installed path
-	if common.RunFromInstalled() {
-		rootCmd.AddCommand(startCmd, stopCmd, restartCmd)
-	}
+	rootCmd.AddCommand(startCmd, stopCmd, restartCmd)
 }

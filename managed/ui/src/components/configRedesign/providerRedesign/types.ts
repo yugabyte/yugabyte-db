@@ -204,14 +204,16 @@ interface ProviderDetails extends ProviderDetailsBase {
 }
 
 interface AWSCloudInfoBase {
-  awsAccessKeyID: string;
-  awsAccessKeySecret: string;
-  awsHostedZoneId: string;
+  awsAccessKeyID?: string;
+  awsAccessKeySecret?: string;
+  awsHostedZoneId?: string;
 }
 type AWSCloudInfoMutation = AWSCloudInfoBase;
-type AWSCloudInfo = AWSCloudInfoBase & {
+interface AWSCloudInfo extends AWSCloudInfoBase {
+  awsAccessKeyID: string;
+  awsAccessKeySecret: string;
   awsHostedZoneName: string;
-};
+}
 
 interface AZUCloudInfoBase {
   azuClientId: string;
@@ -230,7 +232,7 @@ interface GCPCloudInfoBase {
   ybFirewallTags: string;
 
   gceProject?: string;
-  customGceNetwork?: string;
+  destVpcId?: string;
 }
 interface GCPCloudInfoMutation extends GCPCloudInfoBase {
   gceApplicationCredentials?: {};
@@ -375,9 +377,9 @@ export interface OnPremRegion extends Region {
 // ---------------------------------------------------------------------------
 
 interface AWSRegionCloudInfoBase {
+  arch?: ArchitectureType;
   securityGroupId?: string;
   vnet?: string;
-
   ybImage?: string;
 }
 type AWSRegionCloudInfoMutation = AWSRegionCloudInfoBase;
@@ -385,6 +387,7 @@ interface AWSRegionCloudInfo extends AWSRegionCloudInfoBase {
   arch: ArchitectureType;
   securityGroupId: string;
   vnet: string;
+  ybImage?: string;
 }
 
 interface AZURegionCloudInfoBase {

@@ -1,9 +1,0 @@
-@use '../../../../uikit/common';
-
-.instance-config {
-  @include common.wizard-step-form();
-  @include common.wizard-form-section-title();
-  @include common.wizard-form-row();
-  @include common.wizard-form-text-label();
-  @include common.wizard-form-footer();
-}

@@ -101,3 +101,9 @@ export interface IAlertConfiguration {
 }
 
 export type IAlertConfigurationList = IAlertConfiguration[];
+
+export interface IAlertChannelTemplates {
+  type: 'Email' | 'WebHook';
+  titleTemplate: string;
+  textTemplate: string;
+}

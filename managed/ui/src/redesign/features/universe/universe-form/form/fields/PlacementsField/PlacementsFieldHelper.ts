@@ -32,7 +32,8 @@ import {
   MASTER_DEVICE_INFO_FIELD,
   MASTER_INSTANCE_TYPE_FIELD,
   TOAST_AUTO_DISMISS_INTERVAL,
-  RESET_AZ_FIELD
+  RESET_AZ_FIELD,
+  USER_AZSELECTED_FIELD
 } from '../../../utils/constants';
 import { CloudType } from '../../../../../../helpers/dtos';
 
@@ -165,6 +166,7 @@ export const useNodePlacements = () => {
   const tserverK8SNodeResourceSpec = useWatch({ name: TSERVER_K8_NODE_SPEC_FIELD });
   const masterK8SNodeResourceSpec = useWatch({ name: MASTER_K8_NODE_SPEC_FIELD });
   const resetAZ = useWatch({ name: RESET_AZ_FIELD });
+  const userAZSelected = useWatch({ name: USER_AZSELECTED_FIELD });
 
   const prevPropsCombination = useRef({
     instanceType,
@@ -206,7 +208,7 @@ export const useNodePlacements = () => {
 
     payload.clusters[clusterIndex].userIntent = userIntent;
     payload['regionsChanged'] = regionsChanged;
-    payload['userAZSelected'] = false;
+    payload['userAZSelected'] = userAZSelected;
     payload['resetAZConfig'] = resetAZ;
     payload['clusterOperation'] = mode;
     payload['currentClusterType'] = clusterType;
@@ -247,6 +249,9 @@ export const useNodePlacements = () => {
           setValue(TOTAL_NODES_FIELD, Number(cluster?.userIntent.numNodes));
           setValue(RESET_AZ_FIELD, false);
         }
+        if (userAZSelected) {
+          setValue(USER_AZSELECTED_FIELD, false);
+        }
         const zones = getPlacementsFromCluster(cluster);
         setValue(PLACEMENTS_FIELD, _.compact(zones));
         setUniverseConfigureTemplate(data);
@@ -267,6 +272,17 @@ export const useNodePlacements = () => {
     }
   );
 
+  useEffect(() => {
+    // On page load make an initial universe configure call if placementInfo is not set
+    //Add RR && Create New Universe + RR flow
+    if (clusterType === ClusterType.ASYNC) {
+      const asyncCluster = universeConfigureTemplate.clusters.find(
+        (cluster: Cluster) => cluster.clusterType === clusterType
+      );
+      !asyncCluster?.placementInfo && setNeedPlacement(true);
+    }
+  }, [clusterType]);
+
   useUpdateEffect(() => {
     const propsCombination = {
       instanceType,
@@ -283,7 +299,7 @@ export const useNodePlacements = () => {
     if (_.isEmpty(regionList)) {
       setValue(PLACEMENTS_FIELD, [], { shouldValidate: true });
       setNeedPlacement(false);
-    } else if (resetAZ) {
+    } else if (resetAZ || userAZSelected) {
       setNeedPlacement(true);
     } else {
       const isRegionListChanged = !_.isEqual(
@@ -306,6 +322,7 @@ export const useNodePlacements = () => {
     masterDeviceInfo,
     masterInstanceType,
     resetAZ,
+    userAZSelected,
     tserverK8SNodeResourceSpec,
     masterK8SNodeResourceSpec
   ]);

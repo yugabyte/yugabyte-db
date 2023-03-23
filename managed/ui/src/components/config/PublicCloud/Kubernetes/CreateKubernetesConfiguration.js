@@ -12,7 +12,7 @@ import { YBButton, YBFormSelect, YBFormInput, YBFormDropZone } from '../../../co
 import { toast } from 'react-toastify';
 
 import YBInfoTip from '../../../common/descriptors/YBInfoTip';
-import { isNonEmptyObject } from '../../../../utils/ObjectUtils';
+import { isNonEmptyObject, isDefinedNotNull } from '../../../../utils/ObjectUtils';
 import { readUploadedFile } from '../../../../utils/UniverseUtils';
 import { KUBERNETES_PROVIDERS, REGION_DICT } from '../../../../config';
 import AddRegionList from './AddRegionList';
@@ -95,7 +95,6 @@ class CreateKubernetesConfiguration extends Component {
             : providerTypeMetadata
             ? providerTypeMetadata.code
             : 'gke',
-          KUBECONFIG_SERVICE_ACCOUNT: vals.serviceAccount,
           KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || quayImageRegistry
         };
 
@@ -109,7 +108,7 @@ class CreateKubernetesConfiguration extends Component {
         });
         // TODO: fetch the service account name from the kubeconfig.
 
-        if (isNonEmptyObject(pullSecretFile)) {
+        if (isDefinedNotNull(pullSecretFile)) {
           const pullSecretYaml = JsYaml.load(configs[0]);
           Object.assign(providerConfig, {
             KUBECONFIG_IMAGE_PULL_SECRET_NAME:
@@ -201,7 +200,6 @@ class CreateKubernetesConfiguration extends Component {
       // preselect the only available provider type, if any
       providerType: providerTypeOptions.length === 1 ? providerTypeOptions[0] : null,
       accountName: '',
-      serviceAccount: '',
       pullSecret: null,
       regionCode: '',
       zoneLabel: '',
@@ -223,8 +221,6 @@ class CreateKubernetesConfiguration extends Component {
       accountName: Yup.string()
         .required('Config name is Required')
         .matches(ACCEPTABLE_CHARS, 'Config Name cannot contain special characters except - and _'),
-
-      serviceAccount: Yup.string().required('Service Account name is Required'),
 
       kubeConfig: Yup.mixed().nullable(),
 
@@ -343,19 +339,6 @@ class CreateKubernetesConfiguration extends Component {
                             content={
                               'Use this setting to set a kube config for all regions and zones.'
                             }
-                          />
-                        </Col>
-                      </Row>
-                      <Row className="config-provider-row">
-                        <Col lg={3}>
-                          <div className="form-item-custom-label">Service Account</div>
-                        </Col>
-                        <Col lg={7}>
-                          <Field
-                            name="serviceAccount"
-                            placeholder="Service Account name"
-                            component={YBFormInput}
-                            className={'kube-provider-input-field'}
                           />
                         </Col>
                       </Row>

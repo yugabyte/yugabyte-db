@@ -54,6 +54,7 @@ set(CLIENT_SRCS
   permissions.cc
   session.cc
   schema.cc
+  stateful_services/pg_auto_analyze_service_client.cc
   stateful_services/stateful_service_client_base.cc
   stateful_services/test_echo_service_client.cc
   table.cc
@@ -82,6 +83,7 @@ set(CLIENT_LIBS
   server_process
   tserver_proto
   tserver_service_proto
+  pg_auto_analyze_service_proto
   test_echo_service_proto
   tserver_util
   yb_util
@@ -122,7 +124,8 @@ ADD_YB_LIBRARY(ql-dml-test-base
 
 # Tests
 
-set(YB_TEST_LINK_LIBS integration-tests rpc_test_util ql-dml-test-base ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS
+    yb_docdb_test_common integration-tests rpc_test_util ql-dml-test-base ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(backup-txn-test)
 ADD_YB_TEST(client-test)
 ADD_YB_TEST(client-unittest)

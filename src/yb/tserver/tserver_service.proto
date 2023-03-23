@@ -226,6 +226,7 @@ message UpdateTransactionWaitingForStatusRequestPB {
   message BlockingTransaction {
     optional bytes transaction_id = 1;
     optional bytes status_tablet_id = 2;
+    optional SubtxnSetPB subtxn_set = 3;
   }
   message WaitingTransaction {
     optional bytes transaction_id = 1;
@@ -260,6 +261,8 @@ message ProbeTransactionDeadlockRequestPB {
   optional fixed32 probe_num = 6;
 
   optional fixed32 min_probe_num = 7;
+
+  optional SubtxnSetPB blocking_subtxn_set = 8;
 }
 
 message ProbeTransactionDeadlockResponsePB {

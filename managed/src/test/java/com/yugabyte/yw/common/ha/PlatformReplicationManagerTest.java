@@ -29,6 +29,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.File;
 import java.net.URL;
@@ -60,6 +61,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
 
   @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
 
+  @Mock RuntimeConfGetter runtimeConfGetter;
+
   @Mock PlatformReplicationHelper mockReplicationUtil;
 
   @Mock ConfigHelper mockConfigHelper;
@@ -78,6 +81,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       String prometheusHost, String dbUsername, String dbPassword, String dbHost, int dbPort) {
     when(mockReplicationUtil.getBackupDir()).thenReturn(new File("/tmp/foo.bar").toPath());
     when(mockReplicationUtil.getPrometheusHost()).thenReturn(prometheusHost);
+    when(mockReplicationUtil.getPrometheusPort()).thenReturn(9090);
     when(mockReplicationUtil.getDBHost()).thenReturn(dbHost);
     when(mockReplicationUtil.getDBPort()).thenReturn(dbPort);
     when(mockReplicationUtil.getDBUser()).thenReturn(dbUsername);
@@ -116,6 +120,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     expectedCommandArgs.add(Integer.toString(dbPort));
     expectedCommandArgs.add("--prometheus_host");
     expectedCommandArgs.add(prometheusHost);
+    expectedCommandArgs.add("--prometheus_port");
+    expectedCommandArgs.add("9090");
     expectedCommandArgs.add("--verbose");
     expectedCommandArgs.add("--skip_restart");
 
@@ -150,6 +156,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     when(shellProcessHandler.run(anyList(), anyMap(), anyBoolean()))
         .thenReturn(new ShellResponse());
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
+    when(runtimeConfGetter.getStaticConf()).thenReturn(mockConfig);
     mockReplicationUtil.shellProcessHandler = shellProcessHandler;
     doCallRealMethod()
         .when(mockReplicationUtil)
@@ -196,6 +203,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       URL testUrl = new URL(testAddr);
       Path tmpDir = testFile1.toPath().getParent();
       when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
+      when(runtimeConfGetter.getStaticConf()).thenReturn(mockConfig);
       when(mockReplicationUtil.getNumBackupsRetention()).thenReturn(Math.max(0, numToRetain));
       when(mockReplicationUtil.getReplicationDirFor(anyString())).thenReturn(tmpDir);
       doCallRealMethod().when(mockReplicationUtil).cleanupBackups(anyList(), anyInt());

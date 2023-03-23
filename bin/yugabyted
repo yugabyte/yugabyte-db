@@ -142,6 +142,7 @@ PREFIX = {
     'configure' : "",
     'configure data_placement': "",
     'configure encrypt_at_rest': "",
+    'configure admin_operation': "",
     'connect' : "",
     'connect ycql' : "",
     'connect ysql' : "",
@@ -163,6 +164,7 @@ USAGE = {
     'configure' : "yugabyted configure [command] [flags]",
     'configure data_placement': "yugabyted configure data_placement [flags]",
     'configure encrypt_at_rest': "yugabyted configure encrypt_at_rest [flags]",
+    'configure admin_operation' : "yugabyted admin_operation [flags]",
     'connect' : "yugabyted connect [command] [flags]",
     'connect ycql' : "yugabyted connect ycql [flags]",
     'connect ysql' : "yugabyted connect ysql [flags]",
@@ -205,6 +207,8 @@ EXAMPLE = {
                         "yugabyted configure encrypt_at_rest --enable\n\n" +
                         "# Disable encryption at rest for a cluster:\n" +
                         "yugabyted configure encrypt_at_rest --disable\n\n",
+    'admin_operation' : "# Execute yb-admin command on the YugabyteDB cluster:\n" +
+                         "yugabyted configure admin_operation --command 'get_universe_config'\n\n",
 }
 
 EPILOG_COMMON = "Run '{} [command] -h' for help with specific commands.".format(SCRIPT_NAME)
@@ -639,7 +643,7 @@ class ControlScript(object):
                 "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
 
         fault_tolerance = self.configs.temp_data.get("fault_tolerance")
-        rf_value = self.configs.temp_data.get("replication_factor")
+        replication_factor = self.configs.temp_data.get("replication_factor")
 
         if fault_tolerance == "cloud":
             Output.log_error_and_exit("Cloud based fault tolerance is not supported yet.")
@@ -654,8 +658,13 @@ class ControlScript(object):
                         self.configs.saved_data.get("master_webserver_port"))
         placement_locations = self.get_all_masters_locations(leader_master_http_endpoint)
 
+        if len(placement_locations) < int(replication_factor):
+            Output.print_and_log(msg = Output.make_red("ERROR") + ": not enough nodes to set-up " +
+                                "a RF-{} cluster".format(replication_factor), level=logging.ERROR)
+            sys.exit(1)
+
         new_masters = self.get_new_valid_masters(current_masters,
-                leader_master, placement_locations, rf_value)
+                leader_master, placement_locations)
 
         masters_to_remove = [ master for master in current_masters if master not in new_masters ]
         masters_to_add = [ master for master in new_masters if master not in current_masters ]
@@ -663,8 +672,8 @@ class ControlScript(object):
         if not masters_to_remove and not masters_to_add:
             Output.log("Desired fault tolerance is already setup. No Masters to move.")
         else :
-            track_masters_to_remove = masters_to_remove
-            track_masters_to_add = masters_to_add
+            track_masters_to_remove = masters_to_remove[:]
+            track_masters_to_add = masters_to_add[:]
             if masters_to_remove and masters_to_add:
                 for i in range(len(masters_to_remove)):
                     self.replace_master(master_addr, masters_to_remove[i], masters_to_add[i])
@@ -687,7 +696,7 @@ class ControlScript(object):
                 placement_info.append(placement_locations[master.split(":")[0]])
             placement_info = ",".join(placement_info)
 
-        if not self.is_placement_constraint_valid_length(placement_info, rf_value):
+        if not self.is_placement_constraint_valid_length(placement_info):
             Output.log_error_and_exit("FAILED: Invalid number of placement constraint specified.")
 
         if not self.is_placement_constraint_valid_values(placement_locations, placement_info):
@@ -695,37 +704,15 @@ class ControlScript(object):
 
         master_addresses = ",".join(current_masters)
 
-        if not YBAdminProxy.modify_placement_info(master_addresses, placement_info, rf_value):
+        if not YBAdminProxy.modify_placement_info(master_addresses,
+                                                    placement_info, replication_factor):
             Output.log_error_and_exit("FAILED: Setting of placement info of masters")
         else:
             Output.log("Configure step was successful.")
 
-        status_details = {}
-        if self.is_master_placement_location_valid(placement_locations, new_masters):
-            success_status = ""
-            if fault_tolerance == "zone":
-                success_status = "Universe can survive at least 1 availability {} failure".format(
-                    fault_tolerance)
-            if fault_tolerance == "region":
-                success_status = "Universe can survive at least 1 {} failure".format(
-                        fault_tolerance)
+        status_details = self.get_configure_status_details(placement_locations, new_masters)
 
-            status_details = [(Output.make_yellow("Status"),
-            "Configuration successful. Primary data placement is geo-redundant"), ]
-            status_details += [
-                (Output.make_yellow("Fault Tolerance"), success_status),
-            ]
-        else:
-            failure_status = Output.make_red("Universe cannot survive even 1 availability " +
-                        "{} failure".format(self.configs.temp_data.get("fault_tolerance")))
-            status_details = [(Output.make_yellow("Status"),
-                "Configuration unsuccessful. " + \
-                "Primary data placement is not geo-redundant"), ]
-            status_details += [
-                (Output.make_yellow("Fault Tolerance"), failure_status),
-            ]
-
-        Output.print_out(self.get_status_string_common(status_details))
+        Output.print_out(self.get_status_string_common(status_details[0], status_details[1]))
 
     # Generate the node server certificates
     def cert_generate_server_certs(self):
@@ -1050,6 +1037,30 @@ class ControlScript(object):
                     ]
 
         Output.print_out(self.get_status_string_common(status_details))
+
+    # handle the admin operations passthrough to yb-admin command.
+    def configure_admin_operation(self, timeout=10):
+
+        master_addrs = self.configs.temp_data.get("admin_operation_master_addresses")
+        if not master_addrs:
+            master_addrs = ",".join(self.get_all_masters())
+        command = self.configs.temp_data.get("admin_command")
+        command_args = command.split(" ")
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs]
+        for cmd_var in command_args:
+            cmd += [cmd_var]
+
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+
+        status_details = {}
+        status_details = [(Output.make_yellow("Admin operation"),
+                           "Find the response below."),]
+        Output.print_out(self.get_status_string_common(status_details))
+        if 0 == ret_code:
+          Output.print_out(out)
+        else:
+          Output.log(err)
+          Output.print_out(Output.make_red(err))
 
     # Check for openssl
     def check_openssl(self):
@@ -2063,11 +2074,29 @@ class ControlScript(object):
 
     # Get new valid master addresses that does not violate fault tolerance policy
     def get_new_valid_masters(self, current_masters, leader_master,
-                              master_locations, replication_factor):
+                              master_locations):
+
+        replication_factor = int(self.configs.temp_data.get("replication_factor"))
+        # ft_locations_to_masters_map is map in the form of {ft_location: list_of_masters}.
+        # Here ft_location means the fault tolerance location (cloud.region for ft=region and
+        # cloud.region.zone for ft=zone).
+        # list_of_masters is the list of all the masters present in that ft_location.
+        # This map is used to equally distribute the nodes if the number of ft_locations
+        # is less than the replication factor (implied or explicit) specified in the
+        # configure command.
+        ft_locations_to_masters_map = dict()
+        for master, location in master_locations.items():
+            ft_location = self.get_cloud_location_per_fault_tolerance(location)
+            if ft_location not in ft_locations_to_masters_map.keys():
+                ft_locations_to_masters_map[ft_location] = [master]
+            else:
+                ft_locations_to_masters_map[ft_location].append(master)
 
         new_master_locations = dict()
-        new_master_locations[leader_master] = self.get_cloud_location_per_fault_tolerance(
+        ft_location_of_leader_master = self.get_cloud_location_per_fault_tolerance(
                                                 master_locations[leader_master])
+        new_master_locations[leader_master] = ft_location_of_leader_master
+        ft_locations_to_masters_map[ft_location_of_leader_master].remove(leader_master)
         # check if the current master's cloud location are already
         # statisfying the fault tolerance value and replication factor (implied or explicit)
         # specified in the configure command
@@ -2075,9 +2104,10 @@ class ControlScript(object):
             ft_location = self.get_cloud_location_per_fault_tolerance(master_locations[master])
             if ft_location not in new_master_locations.values():
                 new_master_locations[master] = ft_location
+                ft_locations_to_masters_map[ft_location].remove(master)
 
-        if len(new_master_locations) == int(replication_factor):
-            return new_master_locations.keys()
+        if len(new_master_locations) == replication_factor:
+            return list(new_master_locations.keys())
 
         # if new masters list is not equal to replication factor,
         # determine new masters based on the distinct cloud locations
@@ -2086,18 +2116,19 @@ class ControlScript(object):
             ft_location = self.get_cloud_location_per_fault_tolerance(location)
             if ft_location not in new_master_locations.values():
                 new_master_locations[master] = ft_location
-            if len(new_master_locations) == int(replication_factor):
-                return new_master_locations.keys()
+                ft_locations_to_masters_map[ft_location].remove(master)
+            if len(new_master_locations) == replication_factor:
+                return list(new_master_locations.keys())
 
         # if new master list is not equal to replication factor after iterating
         # through the distinct cloud locations, add the existing masters back
         # to the new master's list for satisfying the replication factor.
-        new_valid_masters_list = new_master_locations.keys()
-        if len(new_valid_masters_list) != int(replication_factor):
-            for master in current_masters:
-                if not master in new_valid_masters_list:
-                    new_valid_masters_list.append(master)
-                if len(new_valid_masters_list) == int(replication_factor):
+        new_valid_masters_list = list(new_master_locations.keys())
+        while len(new_valid_masters_list) != replication_factor:
+            for location, master_list in ft_locations_to_masters_map.items():
+                if len(master_list) != 0:
+                    new_valid_masters_list.append(master_list.pop())
+                if len(new_valid_masters_list) == replication_factor:
                     break
 
         return new_valid_masters_list
@@ -2134,37 +2165,179 @@ class ControlScript(object):
             Output.log("Removed master {} from the cluster".format(old_master))
 
 
-    # After Master reconsile step is complete, determine if master placement
-    # is valid per fault tolerance specified in the configure command
-    def is_master_placement_location_valid(self, placement_locations, new_masters):
+    # Get status details to print after configure data_placement was run
+    def get_configure_status_details(self, placement_locations, new_masters):
 
         fault_tolerance = self.configs.temp_data.get("fault_tolerance")
-        replication_factor = self.configs.temp_data.get("replication_factor")
+        replication_factor = int(self.configs.temp_data.get("replication_factor"))
 
-        master_placement_locations = dict()
+        # Get the number of nodes present in each AZ/region
+        placement_location_map = dict()
         for master in new_masters:
-            master_placement_locations[master] = placement_locations.get(master)
+            ft_location = self.get_cloud_location_per_fault_tolerance(placement_locations[master])
+            if ft_location not in placement_location_map.keys():
+                placement_location_map[ft_location] = 1
+            else:
+                placement_location_map[ft_location] += 1
 
-        # determine the placement location index based on the fault tolerance
-        # default zone fault tolerance.
-        placement_location_index = 2
-        if(fault_tolerance == "region"):
-            placement_location_index = 1
-        if(fault_tolerance == "cloud"):
-            placement_location_index = 0
+        status_details = []
+        status_display_info = {}
 
-        placement_location_set = set()
-        for master_node in master_placement_locations:
-            placement_location_temp = master_placement_locations[
-                master_node
-            ].split('.')[placement_location_index]
-            placement_location_set.add(placement_location_temp)
+        # Case Scenario: When each AZ/region has only 1 node. (Most happy path)
+        if len(placement_location_map) == replication_factor:
+            final_status = ""
+            ft_status = ""
 
-        invalid_placement = True
-        if len(placement_location_set) != int(replication_factor):
-            invalid_placement = False
+            # Case Scenario: When rf = 1, the universe cannot survive the failure of the
+            # AZ/region in which the master node is located.
+            if replication_factor == 1:
+                if fault_tolerance == "zone":
+                    final_status = "Configuration successful."
+                    ft_status = "Universe cannot survive even 1 availability zone failure"
+                elif fault_tolerance == "region":
+                    final_status = "Configuration successful. Primary data placement is " + \
+                        "not geo-redundant."
+                    ft_status = "Universe cannot survive even 1 region failure."
 
-        return invalid_placement
+                status_details = [
+                    (Output.make_yellow("Status"), final_status),
+                    (Output.make_yellow("Fault Tolerance"), ft_status),
+                ]
+                status_display_info[ft_status] = Output.make_red
+
+            # Case Scenario: When rf = 3, 5, 7. the universe can survive atmost (rf-1)/2
+            # AZ/region failure
+            else:
+                if fault_tolerance == "zone":
+                    final_status = "Configuration successful."
+                    ft_status = "Universe can survive at most any " + \
+                        "{} availability zone failure".format(replication_factor//2)
+                elif fault_tolerance == "region":
+                    final_status = "Configuration successful. Primary data placement is " + \
+                        "geo-redundant."
+                    ft_status = "Universe can survive at most any " + \
+                        "{} region failure.".format(replication_factor//2)
+
+                status_details = [
+                    (Output.make_yellow("Status"), final_status),
+                    (Output.make_yellow("Fault Tolerance"), ft_status),
+                ]
+                status_display_info[ft_status] = Output.make_green
+
+        # Case Scenario: When all the master nodes belong to the same AZ/region
+        # In this case, the universe cannot survive even 1 AZ/region failure.
+        elif len(placement_location_map) == 1:
+            final_status = ""
+            ft_status = ""
+
+            if fault_tolerance == "zone":
+                final_status = "Configuration successful."
+                ft_status = "Universe cannot survive even 1 availability zone failure."
+            elif fault_tolerance == "region":
+                final_status = "Configuration successful. Primary data placement is " + \
+                    "not geo-redundant."
+                ft_status = "Universe cannot survive even 1 region failure."
+
+            status_details = [
+                (Output.make_yellow("Status"), final_status),
+                (Output.make_yellow("Fault Tolerance"), ft_status)
+            ]
+            status_display_info[ft_status] = Output.make_red
+
+        # Case Scenario: When all master nodes are distributed accross 2 AZs/regions
+        # In this case the universe can survive failure of only
+        # 1 AZ/region (The one with lower number of master nodes).
+        elif len(placement_location_map) == 2:
+            number_of_failure_node_tolerance = replication_factor//2
+            if fault_tolerance == "zone":
+                final_status = "Configuration successful."
+                ft_status = [
+                    "For specified Replication factor (rf) {},".format(replication_factor) + \
+                        " not enough availability zones.",
+                    "Universe can survive the failure of only {} availability zone.".format(
+                        [k for k, v in placement_location_map.items()
+                            if v<=number_of_failure_node_tolerance][0]),
+                    "Following are number of nodes in each availability zone."
+                ]
+            elif fault_tolerance == "region":
+                final_status = "Configuration successful. Primary data placement is " + \
+                    "not geo-redundant."
+                ft_status = [
+                    "For specified Replication factor (rf) {},".format(replication_factor) + \
+                        " not enough regions.",
+                    "Universe can survive the failure of only {} region.".format(
+                        [k for k, v in placement_location_map.items()
+                            if v<=number_of_failure_node_tolerance][0]),
+                    "Following are number of nodes in each region."
+                ]
+
+            status_details = [
+                (Output.make_yellow("Status"), final_status),
+                (Output.make_yellow("Fault Tolerance"), ft_status[0]),
+                (Output.make_yellow(""), ft_status[1]),
+                (Output.make_yellow(""), ft_status[2]),
+            ]
+            status_display_info[ft_status[0]] = Output.make_yellow
+            status_display_info[ft_status[1]] = Output.make_yellow
+
+            for az, nodes in sorted(placement_location_map.items(), key=lambda x: x[1],
+                                                                        reverse=True):
+                az_node_info = "{} : {}".format(az, nodes)
+                status_details += [
+                    (Output.make_yellow(""), az_node_info)
+                ]
+                if nodes > replication_factor//2:
+                    status_display_info[az_node_info] = Output.make_red
+                else:
+                    status_display_info[az_node_info] = Output.make_green
+
+        # Case Scenario: When all master nodes are distributed accross more than 2 AZs/regions
+        else:
+            final_status = ""
+            ft_status = ""
+            if fault_tolerance == "zone":
+                final_status = "Configuration successful."
+                ft_status = [
+                    "For specified Replication factor (rf) {},".format(replication_factor) + \
+                        " not enough availability zones.",
+                    "Universe can survive the failure of availability zones,",
+                    "if the total number of down nodes in the YugabyteDB cluster doesn't " + \
+                        "exceed {}.".format(replication_factor//2),
+                    "Following are number of nodes in each availability zone."
+                ]
+            elif fault_tolerance == "region":
+                final_status = "Configuration successful. Primary data placement is " + \
+                    "not geo-redundant."
+                ft_status = [
+                    "For specified Replication factor (rf) {},".format(replication_factor) + \
+                        " not enough regions.",
+                    "Universe can survive the failure of regions,",
+                    "if the total number of down nodes in the YugabyteDB cluster doesn't " + \
+                        "exceed {}.".format(replication_factor//2),
+                    "Following are number of nodes in each region."
+                ]
+
+            status_details += [
+                (Output.make_yellow("Status"), final_status),
+                (Output.make_yellow("Fault Tolerance"), ft_status[0]),
+                (Output.make_yellow(""), ft_status[1]),
+                (Output.make_yellow(""), ft_status[2]),
+                (Output.make_yellow(""), ft_status[3]),
+            ]
+            status_display_info[ft_status[0]] = Output.make_yellow
+            status_display_info[ft_status[1]] = Output.make_yellow
+            status_display_info[ft_status[2]] = Output.make_yellow
+
+            for az, nodes in sorted(placement_location_map.items(), key=lambda x: x[1],
+                                    reverse=True):
+                az_node_info = "{} : {}".format(az, nodes)
+                status_details += [
+                    (Output.make_yellow(""), az_node_info)
+                ]
+
+        status_display_info = None if len(status_display_info) == 0 else status_display_info
+
+        return [status_details, status_display_info]
 
     # This functions is used to determine if the placement constraint specified in
     # configure command is valid
@@ -2181,11 +2354,12 @@ class ControlScript(object):
 
         return is_valid
 
-    def is_placement_constraint_valid_length(self, placement_constraint, replication_factor):
+    def is_placement_constraint_valid_length(self, placement_constraint):
 
+        replication_factor = int(self.configs.temp_data.get("replication_factor"))
         placement_constraint_list = placement_constraint.split(',')
         is_valid = True
-        if len(placement_constraint_list) != int(replication_factor):
+        if len(placement_constraint_list) != replication_factor:
             is_valid = False
 
         return is_valid
@@ -2530,7 +2704,7 @@ class ControlScript(object):
         return status
 
     # Returns pretty output table
-    def get_status_string_common(self, status_info):
+    def get_status_string_common(self, status_info, status_display_info = None):
         title = Output.make_bold(Output.make_green(SCRIPT_NAME))
         extra_len = len(Output.make_bold(Output.make_green("")))
 
@@ -2543,9 +2717,15 @@ class ControlScript(object):
         status += ("| {:^" + str(max_len + 31 + extra_len) + "} |\n").format(title)
         status += div_line
         for k, v in status_info:
+            func = None
+            if status_display_info is not None and v in status_display_info.keys():
+                func = status_display_info.get(v)
             extra_len = len(Output.make_yellow(""))
             status += ("| {:" + str(27 + extra_len) + "}: ").format(k)
-            status += ("{:<" + str(max_len + 2) + "} |\n").format(v)
+            if func is not None:
+                status += ("{:<" + str(max_len + 2 + len(func(""))) + "} |\n").format(func(v))
+            else:
+                status += ("{:<" + str(max_len + 2) + "} |\n").format(v)
         status += div_line
         return status
 
@@ -2959,6 +3139,20 @@ class ControlScript(object):
         if args.parser == "collect_logs":
             self.configs.temp_data["collect_logs_stdout"] = args.stdout
 
+        if args.parser == "admin_operation":
+            if not args.command:
+                has_errors = True
+                Output.print_and_log(Output.make_red("Error:") + " --command flag is empty. " +
+                                 "Please specify a yb-admin command to execute.")
+                # Output.print_out("--command flag is empty. " +
+                #                  "Specify a yb-admin command to execute.")
+            else:
+                self.configs.temp_data["admin_command"] = args.command
+
+            if args.master_addresses is not None:
+                self.configs.temp_data[
+                    "admin_operation_master_addresses"] = args.master_addresses
+
         if args.parser == "data_placement":
             if args.fault_tolerance is not None:
                 if args.fault_tolerance.lower() in FAULT_TOLERANCE_CHOICES:
@@ -3315,7 +3509,8 @@ class ControlScript(object):
         configure_subparsers.required = True
         for cmd, description in (
                 ("data_placement", "Configure multi-zone/multi-region cluster."),
-                ("encrypt_at_rest", "Enable or disable encryption at rest."),):
+                ("encrypt_at_rest", "Enable or disable encryption at rest."),
+                ("admin_operation", "Run yb-admin command on the YugabyteDB cluster.")):
             example = ""
             if EXAMPLE[cmd]:
                 example = Output.make_yellow("Examples") + ": \n" + EXAMPLE[cmd]
@@ -3354,6 +3549,19 @@ class ControlScript(object):
                 "value for the flag. Use --enable or --disable flag to toggle encryption " +
                 "features on a YugabyteDB cluster.",
                 action="store_true")
+
+        # flags for admin operations
+        for cmd in ("configure_admin_operation",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--command", help="specify the yb-admin command to be executed " +
+                                        "on the YugabyteDB Cluster",
+                metavar="")
+            cur_parser.add_argument(
+                "--master_addresses", help="specify the comma seperated values of current " +
+                "masters of the cluster.",
+                metavar=""
+            )
 
         # Commands that can alter configuration file.
         for cmd in ("start",):
@@ -3588,6 +3796,8 @@ class Configs(object):
             "hostnames": "",
             "enable_encrypt_at_rest": False,
             "disable_encrypt_at_rest": False,
+            "admin_command": "",
+            "admin_operation_master_addresses":"",
         }
         self.config_file = config_file
 
@@ -4127,6 +4337,15 @@ class YBAdminProxy(object):
         if 0 != ret_code:
             return None
         return out
+
+    # Passthrough method for all the yb-admin commands
+    # @staticmethod
+    # def call_yb_admin_command(master_addrss, command, timeout=10):
+    #     cmd =  YBAdminProxy.cmd_args + ["-master_addresses", master_addrss, command]
+    #     out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+    #     if 0 != ret_code:
+    #         return None
+    #     return out
 
 
 # Proxy for ysqlsh commands.

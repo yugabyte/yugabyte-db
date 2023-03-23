@@ -375,6 +375,7 @@ CREATE INDEX ON test_method ((h2) HASH);
 \d test_method
 EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 258;
 SELECT * FROM test_method WHERE h2 = 258;
+DROP TABLE test_method;
 
 -- Test more HASH key cases in PRIMARY KEY
 CREATE TABLE test_hash (

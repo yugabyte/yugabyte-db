@@ -163,7 +163,6 @@ set(ROCKSDB_SRCS
     util/rate_limiter.cc
     util/slice_transform.cc
     util/statistics.cc
-    util/sync_point.cc
     util/thread_local.cc
     util/xxhash.cc
     ${ROCKSDB_PROTO_SRCS}

@@ -33,7 +33,7 @@ type: docs
   <li>
     <a href="../azure/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
-      &nbsp;&nbsp; Azure
+      Azure
     </a>
   </li>
 
@@ -53,7 +53,9 @@ type: docs
 
 <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fa-brands fa-redhat" aria-hidden="true"></i>OpenShift</a>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>
+      OpenShift
+    </a>
   </li>
 
   <li>
@@ -65,7 +67,7 @@ type: docs
 
 </ul>
 
-<br>You can configure VMware Tanzu Kubernetes Grid (TKG) for a YugabyteDB universe using YugabyteDB Anywhere.
+You can configure VMware Tanzu Kubernetes Grid (TKG) for a YugabyteDB universe using YugabyteDB Anywhere.
 
 Before you start, ensure that you have the `kubeconfig` file generated during [YugabyteDB Anywhere Installation](/preview/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes/#create-a-kubeconfig-file-for-a-kubernetes-cluster) so YugabyteDB Anywhere can use the provided credentials to automatically provision and deprovision Kubernetes pods that run the YugabyteDB universe.
 
@@ -92,7 +94,6 @@ You configure the TKG credentials as follows:
 
 - The **Pull Secret File** field indicates that the Enterprise YugabyteDB image is in a private repository. Use this field to upload the pull secret for downloading the images. The secret should be supplied by your organization's sales team.
 
-
 ## Configure region and zones
 
 You configure region and zones as follows:
@@ -103,9 +104,7 @@ You configure region and zones as follows:
 
 - Complete the fields of the expanded **Add new region** dialog shown in the following illustration:
 
-  <br>
-
-  ![Add Region](/images/deploy/pivotal-cloud-foundry/add-region-1.png)<br>
+  ![Add Region](/images/deploy/pivotal-cloud-foundry/add-region-1.png)
 
   - Use the **Zone** field to enter a zone label that matches your failure domain zone label `failure-domain.beta.kubernetes.io/zone`
 
@@ -142,7 +141,7 @@ You configure region and zones as follows:
           ysql-port: "5433"
     ```
 
-    <br>To disable LoadBalancer, use the following overrides:
+    To disable LoadBalancer, use the following overrides:
 
     ```configuration
     enableLoadBalancer: False
@@ -166,7 +165,7 @@ You configure region and zones as follows:
 
   - Click **Add Region**.
 
-  - Click **Save**. <br>
+  - Click **Save**.
 
   If your configuration is successful, you are redirected to **VMware Tanzu configs**.
 
@@ -186,14 +185,14 @@ You can create a YugabyteDB service instance via the App Manager UI or Cloud Fou
 #### Use the PCF app manager
 
 - In your PCF App manager, navigate to the marketplace and select **YugabyteDB**.
-- Read descriptions of the available service plans to identify the resource requirements and intended environment, as shown in the following illustration:<br>
+- Read descriptions of the available service plans to identify the resource requirements and intended environment, as shown in the following illustration:
 
   ![Yugabyte Service Plans](/images/deploy/pivotal-cloud-foundry/service-plan-choices.png)
 
 - Select the service plan.
-- Complete the service instance configuration, as shown in the following illustration:<br>
+- Complete the service instance configuration, as shown in the following illustration:
 
-  ![App Manager Config](/images/deploy/pivotal-cloud-foundry/apps-manager-config.png)
+  ![App Manager Configuration](/images/deploy/pivotal-cloud-foundry/apps-manager-config.png)
 
 #### Use the cloud foundry CLI
 
@@ -214,7 +213,7 @@ large          Cores: 16, Memory (GB): 15   paid
 x-large        Cores: 32, Memory (GB): 30   paid
 ```
 
-Once you decide on the service plan, you can launch the YugabyteDB service instance by executing the following command:
+After you decide on the service plan, you can launch the YugabyteDB service instance by executing the following command:
 
 ```sh
 cf create-service yugabyte-db x-small yb-demo -c '{"universe_name": "yb-demo"}'

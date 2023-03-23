@@ -19,7 +19,7 @@
 
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_wire_protocol.h"
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_client.pb.h"

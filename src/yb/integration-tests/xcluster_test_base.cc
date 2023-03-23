@@ -65,13 +65,19 @@ Status XClusterTestBase::InitClusters(const MiniClusterOptions& opts) {
 
   producer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(producer_opts);
 
-  RETURN_NOT_OK(producer_cluster()->StartSync());
+  {
+    TEST_SetThreadPrefixScoped prefix_se("P");
+    RETURN_NOT_OK(producer_cluster()->StartSync());
+  }
 
   auto consumer_opts = opts;
   consumer_opts.cluster_id = "consumer";
   consumer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(consumer_opts);
 
-  RETURN_NOT_OK(consumer_cluster()->StartSync());
+  {
+    TEST_SetThreadPrefixScoped prefix_se("C");
+    RETURN_NOT_OK(consumer_cluster()->StartSync());
+  }
 
   RETURN_NOT_OK(RunOnBothClusters([&opts](MiniCluster* cluster) {
     return cluster->WaitForTabletServerCount(opts.num_tablet_servers);
@@ -86,6 +92,7 @@ Status XClusterTestBase::InitClusters(const MiniClusterOptions& opts) {
 void XClusterTestBase::TearDown() {
   LOG(INFO) << "Destroying CDC Clusters";
   if (consumer_cluster()) {
+    TEST_SetThreadPrefixScoped prefix_se("C");
     if (consumer_cluster_.pg_supervisor_) {
       consumer_cluster_.pg_supervisor_->Stop();
     }
@@ -94,6 +101,7 @@ void XClusterTestBase::TearDown() {
   }
 
   if (producer_cluster()) {
+    TEST_SetThreadPrefixScoped prefix_se("P");
     if (producer_cluster_.pg_supervisor_) {
       producer_cluster_.pg_supervisor_->Stop();
     }
@@ -503,6 +511,13 @@ Status XClusterTestBase::WaitForValidSafeTimeOnAllTServers(
   for (auto& tserver : cluster->mini_cluster_->mini_tablet_servers()) {
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
+          auto xcluster_role = tserver->server()->TEST_GetXClusterRole();
+          return xcluster_role && xcluster_role.get() == cdc::XClusterRole::STANDBY;
+        },
+        safe_time_propagation_timeout_, "Wait for cluster to be in STANDBY"));
+
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
           auto safe_time =
               tserver->server()->GetXClusterSafeTimeMap().GetSafeTime(namespace_id);
           if (!safe_time) {
@@ -515,6 +530,30 @@ Status XClusterTestBase::WaitForValidSafeTimeOnAllTServers(
   }
 
   return Status::OK();
+}
+
+Result<std::vector<CDCStreamId>> XClusterTestBase::BootstrapProducer(
+    MiniCluster* producer_cluster, YBClient* producer_client,
+    const std::vector<std::shared_ptr<yb::client::YBTable>>& tables) {
+  std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
+      &producer_client->proxy_cache(),
+      HostPort::FromBoundEndpoint(producer_cluster->mini_tablet_server(0)->bound_rpc_addr()));
+  cdc::BootstrapProducerRequestPB req;
+  cdc::BootstrapProducerResponsePB resp;
+
+  for (const auto& producer_table : tables) {
+    req.add_table_ids(producer_table->id());
+  }
+
+  rpc::RpcController rpc;
+  RETURN_NOT_OK(producer_cdc_proxy->BootstrapProducer(req, &resp, &rpc));
+  if (resp.has_error()) {
+    RETURN_NOT_OK(StatusFromPB(resp.error().status()));
+  }
+
+  std::vector<CDCStreamId> stream_ids;
+  MoveCollection(&resp.cdc_bootstrap_ids(), &stream_ids);
+  return stream_ids;
 }
 
 Status XClusterTestBase::WaitForReplicationDrain(

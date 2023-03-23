@@ -13,7 +13,8 @@ import {
   DEFAULT_FORM_DATA,
   InstanceTag,
   InstanceTags,
-  MasterPlacementMode
+  MasterPlacementMode,
+  NodeDetails
 } from './dto';
 import { UniverseFormContextState } from '../UniverseFormContainer';
 import {
@@ -80,12 +81,26 @@ export const filterFormDataByClusterType = (
 };
 
 //transform gflags - to consume it in the form
-export const transformGFlagToFlagsArray = (gFlags: Record<string, any> = {}, flagType: string) => [
-  ...Object.keys(gFlags).map((key: string) => ({
-    Name: key,
-    [flagType]: gFlags[key]
-  }))
-];
+export const transformGFlagToFlagsArray = (
+  masterGFlags: Record<string, any> = {},
+  tserverGFlags: Record<string, any> = {}
+) => {
+  // convert { flagname:value } to => { Name:flagname, TSERVER: value , MASTER: value }
+  const tranformFlagsByFlagType = (gFlags: Record<string, any>, flagType: string) => [
+    ...Object.keys(gFlags).map((key: string) => ({
+      Name: key,
+      [flagType]: gFlags[key]
+    }))
+  ];
+
+  //merge tserver and master glags value into single object if flag Name is same
+  return _.values(
+    _.merge(
+      _.keyBy(tranformFlagsByFlagType(masterGFlags, 'MASTER'), 'Name'),
+      _.keyBy(tranformFlagsByFlagType(tserverGFlags, 'TSERVER'), 'Name')
+    )
+  );
+};
 
 //transform gflags - for universe configure route
 export const transformFlagArrayToObject = (
@@ -134,6 +149,8 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
       numNodes: userIntent.numNodes,
       replicationFactor: userIntent.replicationFactor,
       placements: getPlacementsFromCluster(cluster),
+      defaultRegion: cluster?.placementInfo?.cloudList[0]?.defaultRegion ?? null,
+      mastersInDefaultRegion: universeData.mastersInDefaultRegion,
       masterPlacement: userIntent.dedicatedNodes
         ? MasterPlacementMode.DEDICATED
         : MasterPlacementMode.COLOCATED,
@@ -142,6 +159,7 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
     instanceConfig: {
       instanceType: userIntent.instanceType,
       deviceInfo: userIntent.deviceInfo,
+      useSpotInstance: userIntent.useSpotInstance,
       assignPublicIP: !!userIntent.assignPublicIP,
       useTimeSync: !!userIntent.useTimeSync,
       enableClientToNodeEncrypt: !!userIntent.enableClientToNodeEncrypt,
@@ -167,17 +185,30 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
       ybcPackagePath: null //** */
     },
     instanceTags: transformInstanceTags(userIntent.instanceTags),
-    gFlags: [
-      ...transformGFlagToFlagsArray(userIntent.masterGFlags, 'MASTER'),
-      ...transformGFlagToFlagsArray(userIntent.tserverGFlags, 'TSERVER')
-    ]
+    gFlags: transformGFlagToFlagsArray(userIntent.masterGFlags, userIntent.tserverGFlags),
+    azOverrides: userIntent.azOverrides,
+    universeOverrides: userIntent.universeOverrides
   };
+
+  if (data.cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
+    data.instanceConfig.masterInstanceType = userIntent.masterInstanceType;
+    data.instanceConfig.masterDeviceInfo = userIntent.masterDeviceInfo;
+  }
+
   return data;
 };
 
 //Transform form data to intent
 export const getUserIntent = ({ formData }: { formData: UniverseFormData }) => {
-  const { cloudConfig, instanceConfig, advancedConfig, instanceTags, gFlags } = formData;
+  const {
+    cloudConfig,
+    instanceConfig,
+    advancedConfig,
+    instanceTags,
+    gFlags,
+    azOverrides,
+    universeOverrides
+  } = formData;
   const { masterGFlags, tserverGFlags } = transformFlagArrayToObject(gFlags);
 
   let intent: UserIntent = {
@@ -199,6 +230,7 @@ export const getUserIntent = ({ formData }: { formData: UniverseFormData }) => {
     enableYCQLAuth: instanceConfig.enableYCQLAuth,
     useTimeSync: instanceConfig.useTimeSync,
     enableYEDIS: instanceConfig.enableYEDIS,
+    useSpotInstance: instanceConfig.useSpotInstance,
     accessKeyCode: advancedConfig.accessKeyCode,
     ybSoftwareVersion: advancedConfig.ybSoftwareVersion,
     enableIPV6: advancedConfig.enableIPV6,
@@ -210,8 +242,13 @@ export const getUserIntent = ({ formData }: { formData: UniverseFormData }) => {
   if (!_.isEmpty(tserverGFlags)) intent.tserverGFlags = tserverGFlags;
   if (!_.isEmpty(advancedConfig.awsArnString)) intent.awsArnString = advancedConfig.awsArnString;
   if (!_.isEmpty(instanceTags)) intent.instanceTags = transformTagsArrayToObject(instanceTags);
+  if (!_.isEmpty(azOverrides)) intent.azOverrides = azOverrides;
+  if (!_.isEmpty(universeOverrides)) intent.universeOverrides = universeOverrides;
 
-  if (cloudConfig.provider?.code === CloudType.kubernetes && cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
+  if (
+    cloudConfig.provider?.code === CloudType.kubernetes &&
+    cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED
+  ) {
     intent.tserverK8SNodeResourceSpec = instanceConfig.tserverK8SNodeResourceSpec;
     intent.masterK8SNodeResourceSpec = instanceConfig.masterK8SNodeResourceSpec;
   }
@@ -255,6 +292,18 @@ export const createUniverse = async ({
       userIntent.ycqlPassword = configPayload.clusters[clusterIndex].userIntent.ycqlPassword;
     if (userIntent.enableYSQLAuth)
       userIntent.ysqlPassword = configPayload.clusters[clusterIndex].userIntent.ysqlPassword;
+
+    if (finalPayload.nodeDetailsSet) {
+      finalPayload.nodeDetailsSet = finalPayload.nodeDetailsSet.map((nodeDetail: NodeDetails) => {
+        return {
+          ...nodeDetail,
+          cloudInfo: {
+            ...nodeDetail.cloudInfo,
+            assignPublicIP: !!userIntent.assignPublicIP
+          }
+        };
+      });
+    }
     //patch - end
 
     // now everything is ready to create universe

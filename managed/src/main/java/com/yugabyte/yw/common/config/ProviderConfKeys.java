@@ -324,4 +324,21 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Offload ansible tasks to the DB nodes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> useSpotInstances =
+      new ConfKeyInfo<>(
+          "yb.use_spot_instances",
+          ScopeType.PROVIDER,
+          "Use Spot Instances",
+          "Use spot instances instead of On-Demand during universe creation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> enableYbcOnK8s =
+      new ConfKeyInfo<>(
+          "ybc.k8s.enabled",
+          ScopeType.PROVIDER,
+          "Enable YBC on K8S",
+          "To enable ybc on k8s universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
 }

@@ -16,6 +16,7 @@
 #include "yb/client/transaction_rpc.h"
 
 #include "yb/common/ql_expr.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
@@ -127,10 +128,9 @@ YsqlTransactionDdl::GetPgCatalogTableScanIterator(const TableId& pg_catalog_tabl
   // Use Scan to query the given table, filtering by lookup_oid_col.
   RETURN_NOT_OK(schema.CreateProjectionByNames(col_names, projection, schema.num_key_columns()));
   const auto oid_col_id = VERIFY_RESULT(projection->ColumnIdByName(oid_col_name)).rep();
-  auto iter = VERIFY_RESULT(catalog_tablet->NewRowIterator(
-      projection->CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_catalog_table_id));
+  auto iter = VERIFY_RESULT(catalog_tablet->NewUninitializedDocRowIterator(
+      projection->CopyWithoutColumnIds(), ReadHybridTime(), pg_catalog_table_id));
 
-  auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
   PgsqlConditionPB cond;
   cond.add_operands()->set_column_id(oid_col_id);
   cond.set_op(QL_OP_EQUAL);
@@ -139,7 +139,7 @@ YsqlTransactionDdl::GetPgCatalogTableScanIterator(const TableId& pg_catalog_tabl
   docdb::DocPgsqlScanSpec spec(
       *projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
       &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
-  RETURN_NOT_OK(doc_iter->Init(spec));
+  RETURN_NOT_OK(iter->Init(spec));
   return iter;
 }
 

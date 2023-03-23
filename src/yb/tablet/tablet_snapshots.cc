@@ -16,9 +16,9 @@
 #include <boost/algorithm/string/predicate.hpp>
 
 #include "yb/common/index.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
 #include "yb/common/snapshot.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_rocksdb_util.h"

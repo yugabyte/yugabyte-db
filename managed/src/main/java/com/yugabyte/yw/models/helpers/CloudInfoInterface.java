@@ -44,6 +44,11 @@ public interface CloudInfoInterface {
 
   public void withSensitiveDataMasked();
 
+  public static enum VPCType {
+    EXISTING,
+    NEW
+  }
+
   public static <T extends CloudInfoInterface> T get(Provider provider) {
     return get(provider, false);
   }
@@ -80,12 +85,7 @@ public interface CloudInfoInterface {
     if (regionDetails == null) {
       regionDetails = new RegionDetails();
     }
-    CloudType cloudType = null;
-    if (region.provider != null) {
-      cloudType = CloudType.valueOf(region.provider.code);
-    } else if (!Strings.isNullOrEmpty(region.providerCode)) {
-      cloudType = CloudType.valueOf(region.providerCode);
-    }
+    CloudType cloudType = region.getProviderCloudCode();
     return get(regionDetails, maskSensitiveData, cloudType);
   }
 
@@ -105,12 +105,7 @@ public interface CloudInfoInterface {
     if (azDetails == null) {
       azDetails = new AvailabilityZoneDetails();
     }
-    CloudType cloudType = null;
-    if (zone.region != null) {
-      cloudType = CloudType.valueOf(zone.region.provider.code);
-    } else if (!Strings.isNullOrEmpty(zone.providerCode)) {
-      cloudType = CloudType.valueOf(zone.providerCode);
-    }
+    CloudType cloudType = zone.getProviderCloudCode();
     return get(azDetails, maskSensitiveData, cloudType);
   }
 
@@ -300,12 +295,8 @@ public interface CloudInfoInterface {
   }
 
   public static void setCloudProviderInfoFromConfig(Region region, Map<String, String> config) {
-    CloudType cloudType = null;
-    if (region.provider != null) {
-      cloudType = CloudType.valueOf(region.provider.code);
-    } else if (!Strings.isNullOrEmpty(region.providerCode)) {
-      cloudType = CloudType.valueOf(region.providerCode);
-    } else {
+    CloudType cloudType = region.getProviderCloudCode();
+    if (cloudType.equals(CloudType.other)) {
       return;
     }
     RegionDetails regionDetails = region.getRegionDetails();
@@ -319,12 +310,8 @@ public interface CloudInfoInterface {
 
   public static void setCloudProviderInfoFromConfig(
       AvailabilityZone az, Map<String, String> config) {
-    CloudType cloudType = null;
-    if (az.region != null) {
-      cloudType = CloudType.valueOf(az.region.provider.code);
-    } else if (!Strings.isNullOrEmpty(az.providerCode)) {
-      cloudType = CloudType.valueOf(az.providerCode);
-    } else {
+    CloudType cloudType = az.getProviderCloudCode();
+    if (cloudType.equals(CloudType.other)) {
       return;
     }
     AvailabilityZoneDetails azDetails = az.getAvailabilityZoneDetails();

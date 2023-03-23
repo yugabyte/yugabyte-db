@@ -11,10 +11,10 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckStorageClass;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckVolumeExpansion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -33,10 +33,9 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
-import java.util.Map.Entry;
-
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -196,6 +195,25 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
+    // Update disk size if there is a change
+    boolean diskSizeChanged =
+        !curIntent.deviceInfo.volumeSize.equals(newIntent.deviceInfo.volumeSize);
+    if (diskSizeChanged) {
+      log.info(
+          "Creating task for disk size change from {} to {}",
+          curIntent.deviceInfo.volumeSize,
+          newIntent.deviceInfo.volumeSize);
+      createResizeDiskTask(
+          universe.name,
+          curPlacement,
+          masterAddresses,
+          newIntent,
+          isReadOnlyCluster,
+          newNamingStyle,
+          universe.isYbcEnabled(),
+          universe.getUniverseDetails().ybcSoftwareVersion);
+    }
+
     boolean instanceTypeChanged = false;
     if (!curIntent.instanceType.equals(newIntent.instanceType)) {
       List<String> masterResourceChangeInstances = Arrays.asList("dev", "xsmall");
@@ -274,7 +292,17 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           masterAddresses,
           newPlacement,
-          curPlacement);
+          curPlacement,
+          universe.isYbcEnabled());
+
+      if (universe.isYbcEnabled()) {
+        installYbcOnThePods(
+            universe.name,
+            tserversToAdd,
+            isReadOnlyCluster,
+            universe.getUniverseDetails().ybcSoftwareVersion);
+        createWaitForYbcServerTask(tserversToAdd);
+      }
     }
 
     // Update the blacklist servers on master leader.
@@ -329,7 +357,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           false,
           true,
           newNamingStyle,
-          isReadOnlyCluster);
+          isReadOnlyCluster,
+          KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
+          universe.isYbcEnabled(),
+          universe.getUniverseDetails().ybcSoftwareVersion);
     }
 
     // If tservers have been removed, check if some deployments need to be completely
@@ -351,23 +382,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       createModifyBlackListTask(
               new ArrayList<>(tserversToRemove), false /* isAdd */, false /* isLeaderBlacklist */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-    }
-
-    // Finally, update disk size if there is a change
-    boolean diskSizeChanged =
-        !curIntent.deviceInfo.volumeSize.equals(newIntent.deviceInfo.volumeSize);
-    if (diskSizeChanged) {
-      log.info(
-          "Creating task for disk size change from {} to {}",
-          curIntent.deviceInfo.volumeSize,
-          newIntent.deviceInfo.volumeSize);
-      createResizeDiskTask(
-          universe.name,
-          newPlacement,
-          masterAddresses,
-          newIntent,
-          isReadOnlyCluster,
-          newNamingStyle);
     }
 
     // Update the universe to the new state.
@@ -432,6 +446,27 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
+  public void startNewPods(
+      String universeName,
+      Set<NodeDetails> podsToAdd,
+      ServerType serverType,
+      PlacementInfo activeZones,
+      boolean isReadOnlyCluster,
+      String masterAddresses,
+      KubernetesPlacement newPlacement,
+      KubernetesPlacement currPlacement) {
+    startNewPods(
+        universeName,
+        podsToAdd,
+        serverType,
+        activeZones,
+        isReadOnlyCluster,
+        masterAddresses,
+        newPlacement,
+        currPlacement,
+        false);
+  }
+
   /*
   Starts up the new pods as requested by the user.
   */
@@ -443,7 +478,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       boolean isReadOnlyCluster,
       String masterAddresses,
       KubernetesPlacement newPlacement,
-      KubernetesPlacement currPlacement) {
+      KubernetesPlacement currPlacement,
+      boolean enableYbc) {
     createPodsTask(
         universeName,
         newPlacement,
@@ -451,7 +487,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         currPlacement,
         serverType,
         activeZones,
-        isReadOnlyCluster);
+        isReadOnlyCluster,
+        enableYbc);
 
     createSingleKubernetesExecutorTask(
         universeName,
@@ -477,7 +514,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       String masterAddresses,
       UserIntent userIntent,
       boolean isReadOnlyCluster,
-      boolean newNamingStyle) {
+      boolean newNamingStyle,
+      boolean enableYbc,
+      String ybcSoftwareVersion) {
 
     // The method to expand disk size is:
     // 1. Delete statefulset without deleting the pods
@@ -515,7 +554,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           null,
           isReadOnlyCluster,
           null,
-          newDiskSizeGi);
+          newDiskSizeGi,
+          false,
+          enableYbc,
+          ybcSoftwareVersion);
       createSingleKubernetesExecutorTaskForServerType(
           universeName,
           KubernetesCommandExecutor.CommandType.PVC_EXPAND_SIZE,
@@ -532,7 +574,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           null,
           newDiskSizeGi,
-          true);
+          true,
+          enableYbc,
+          ybcSoftwareVersion);
       createSingleKubernetesExecutorTaskForServerType(
           universeName,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
@@ -548,7 +592,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           null,
           isReadOnlyCluster,
           null,
-          newDiskSizeGi);
+          newDiskSizeGi,
+          false,
+          enableYbc,
+          ybcSoftwareVersion);
     }
   }
 
@@ -560,9 +607,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       boolean newNamingStyle,
       UUID providerUUID) {
     SubTaskGroup subTaskGroup =
-        getTaskExecutor()
-            .createSubTaskGroup(KubernetesCheckStorageClass.getSubTaskGroupName(), executor);
-    KubernetesCheckStorageClass.Params params = new KubernetesCheckStorageClass.Params();
+        getTaskExecutor().createSubTaskGroup(KubernetesCheckVolumeExpansion.getSubTaskGroupName());
+    KubernetesCheckVolumeExpansion.Params params = new KubernetesCheckVolumeExpansion.Params();
     params.config = config;
     params.newNamingStyle = newNamingStyle;
     if (config != null) {
@@ -582,7 +628,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             azName,
             isReadOnlyCluster,
             taskParams().useNewHelmNamingStyle);
-    KubernetesCheckStorageClass task = createTask(KubernetesCheckStorageClass.class);
+    KubernetesCheckVolumeExpansion task = createTask(KubernetesCheckVolumeExpansion.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

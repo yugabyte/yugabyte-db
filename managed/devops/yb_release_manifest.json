@@ -1,9 +1,8 @@
 {
   ".": [
     "ansible.cfg",
-    "ansible_python3_requirements.txt",
+    "ansible_python_requirements.txt",
     "ansible_requirements_prod.yml",
-    "build_ansible_pex.sh",
     "configure-cluster-server.yml",
     "destroy-instance.yml",
     "python_requirements_frozen.txt",
@@ -23,6 +22,7 @@
   ],
   "bin": [
     "bin/ansible-playbook.sh",
+    "bin/build_ansible_pex.sh",
     "bin/common.sh",
     "bin/install_ansible_requirements.sh",
     "bin/install_python_requirements.sh",

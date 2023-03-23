@@ -8,10 +8,12 @@ import {
   resetGraphQueryPeriod,
   togglePrometheusQuery,
   getGrafanaJson,
-  resetMetrics
+  resetMetrics,
+  resetGraphFilter,
+  setGraphFilter
 } from '../../../actions/graph';
 import { fetchUniverseList, fetchUniverseListResponse } from '../../../actions/universe';
-import { closeDialog, openDialog } from "../../../actions/modal";
+import { closeDialog, openDialog } from '../../../actions/modal';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -35,6 +37,12 @@ const mapDispatchToProps = (dispatch) => {
     },
     resetMetrics: () => {
       dispatch(resetMetrics());
+    },
+    resetGraphFilter: () => {
+      dispatch(resetGraphFilter());
+    },
+    setGraphFilter: (filter) => {
+      dispatch(setGraphFilter(filter));
     },
     closeModal: () => {
       dispatch(closeDialog());

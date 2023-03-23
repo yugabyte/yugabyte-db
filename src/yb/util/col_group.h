@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_COL_GROUP_H
-#define YB_UTIL_COL_GROUP_H
+#pragma once
 
 #include <stdint.h>
 #include <vector>
@@ -50,7 +49,7 @@ class ColGroupHolder {
 
   // Returns a reference to the group idx is a part of. idx must have been
   // added to a group in this ColGroupHolder.
-  const std::vector<size_t> &GetGroup(size_t idx) {
+  const std::vector<size_t> &GetGroup(size_t idx) const {
     DCHECK_LT(idx, col_to_group_.size());
     DCHECK_GE(col_to_group_[idx], 0);
     DCHECK_LT(col_to_group_[idx], groups_.size());
@@ -65,5 +64,3 @@ class ColGroupHolder {
 };
 
 };  // namespace yb
-
-#endif  // YB_UTIL_COL_GROUP_H

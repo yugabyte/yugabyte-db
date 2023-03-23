@@ -638,6 +638,11 @@ class CreateInstancesMethod(AbstractInstancesMethod):
                                  default=False,
                                  help="Assign a static public ip to the instance.")
 
+        self.parser.add_argument("--use_spot_instance",
+                                 action="store_true",
+                                 default=False,
+                                 help="Use Spot instance.")
+
         self.parser.add_argument("--boot_disk_size_gb",
                                  type=int,
                                  default=40,
@@ -837,7 +842,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         # Disabling custom_ssh_port for onprem provider when ssh2_enabled, because
         # we won't be able to know whether the nodes used are having openssh/tectia server.
         if not args.disable_custom_ssh and use_default_ssh_port and \
-                not (args.ssh2_enabled and self.cloud.name == "onprem"):
+                not (args.ssh2_enabled and self.cloud.name == "onprem") and \
+                int(args.custom_ssh_port) != DEFAULT_SSH_PORT:
             ansible.run("use_custom_ssh_port.yml", self.extra_vars, host_info)
 
 
@@ -1012,6 +1018,7 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
         super(ChangeInstanceTypeMethod, self).update_ansible_vars_with_args(args)
         self.extra_vars["pg_max_mem_mb"] = args.pg_max_mem_mb
         self.extra_vars["air_gap"] = args.air_gap
+        self.extra_vars["systemd_option"] = args.systemd_services
 
     def _validate_args(self, args):
         # Make sure "instance_type" exists in args

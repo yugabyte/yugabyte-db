@@ -45,6 +45,12 @@ export type KubernetesProviderTab = Exclude<
   typeof KubernetesProviderType.DEPRECATED
 >;
 
+export const ArchitectureType = {
+  X86_64: 'x86_64',
+  ARM64: 'aarch64'
+} as const;
+export type ArchitectureType = typeof ArchitectureType[keyof typeof ArchitectureType];
+
 // --------------------------------------------------------------------------------------
 // Route Constants
 // --------------------------------------------------------------------------------------
@@ -53,11 +59,13 @@ export const PROVIDER_ROUTE_PREFIX = `${CONFIG_ROUTE_PREFIX}/${ConfigTabKey.INFR
 // --------------------------------------------------------------------------------------
 // Provider Field & Form Constants
 // --------------------------------------------------------------------------------------
-export const ArchitectureType = {
-  X86_64: 'x86_64',
-  ARM64: 'aarch64'
+
+export const YBImageType = {
+  X86_64: ArchitectureType.X86_64,
+  ARM64: ArchitectureType.ARM64,
+  CUSTOM_AMI: 'customAMI'
 } as const;
-export type ArchitectureType = typeof ArchitectureType[keyof typeof ArchitectureType];
+export type YBImageType = typeof YBImageType[keyof typeof YBImageType];
 
 export const NTPSetupType = {
   CLOUD_VENDOR: 'cloudVendor',
@@ -108,6 +116,18 @@ export type InstanceTypeOperation = typeof InstanceTypeOperation[keyof typeof In
 export const ASYNC_ERROR = 'asyncError';
 
 export const DEFAULT_SSH_PORT = 22;
+export const DEFAULT_NODE_EXPORTER_PORT = 9300;
+export const DEFAULT_NODE_EXPORTER_USER = 'prometheus';
+
+export const AWSValidationKey = {
+  ACCESS_KEY_CREDENTIALS: 'KEYS',
+  IAM_CREDENTIALS: 'IAM',
+  SSH_PRIVATE_KEY_CONTENT: 'SSH_PRIVATE_KEY_CONTENT',
+  NTP_SERVERS: 'NTP_SERVERS',
+  HOSTED_ZONE_ID: 'HOSTED_ZONE',
+  REGION: 'REGION'
+} as const;
+export type AWSValidationKey = typeof AWSValidationKey[keyof typeof AWSValidationKey];
 
 // --------------------------------------------------------------------------------------
 // User Facing Labels

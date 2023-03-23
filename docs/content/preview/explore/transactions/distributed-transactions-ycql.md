@@ -1,8 +1,8 @@
 ---
-title: Distributed transactions
+title: Distributed transactions in YCQL
 headerTitle: Distributed transactions
 linkTitle: Distributed transactions
-description: Distributed transactions in YugabyteDB.
+description: Understand distributed transactions in YugabyteDB using YCQL.
 headcontent:
 menu:
   preview:
@@ -32,6 +32,8 @@ type: docs
 </ul>
 
 The best way to understand distributed transactions in YugabyteDB is through examples.
+
+To learn about how YugabyteDB handles failures during transactions, see [High availability of transactions](../../fault-tolerance/transaction-availability/).
 
 {{% explore-setup-single %}}
 

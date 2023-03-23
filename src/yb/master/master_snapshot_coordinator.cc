@@ -208,7 +208,7 @@ Result<TxnSnapshotId> FindSnapshotSuitableForRestoreAt(
 
 class MasterSnapshotCoordinator::Impl {
  public:
-  explicit Impl(SnapshotCoordinatorContext* context, enterprise::CatalogManager* cm)
+  explicit Impl(SnapshotCoordinatorContext* context, CatalogManager* cm)
       : context_(*context), cm_(cm), poller_(std::bind(&Impl::Poll, this)) {}
 
   Result<TxnSnapshotId> Create(
@@ -1929,7 +1929,7 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   SnapshotCoordinatorContext& context_;
-  enterprise::CatalogManager* cm_;
+  CatalogManager* cm_;
   std::mutex mutex_;
   class ScheduleTag;
   using Snapshots = boost::multi_index_container<
@@ -1989,7 +1989,7 @@ class MasterSnapshotCoordinator::Impl {
 };
 
 MasterSnapshotCoordinator::MasterSnapshotCoordinator(
-    SnapshotCoordinatorContext* context, enterprise::CatalogManager* cm)
+    SnapshotCoordinatorContext* context, CatalogManager* cm)
     : impl_(new Impl(context, cm)) {}
 
 MasterSnapshotCoordinator::~MasterSnapshotCoordinator() {}

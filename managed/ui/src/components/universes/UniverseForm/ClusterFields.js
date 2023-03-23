@@ -42,7 +42,6 @@ import {
   getPlacementCloud
 } from '../../../utils/UniverseUtils';
 import pluralize from 'pluralize';
-import { AZURE_INSTANCE_TYPE_GROUPS } from '../../../redesign/universe/wizard/fields/InstanceTypeField/InstanceTypeField';
 import { isEphemeralAwsStorageInstance } from '../UniverseDetail/UniverseDetail';
 import { fetchSupportedReleases } from '../../../actions/universe';
 import { sortVersion } from '../../releases';
@@ -54,6 +53,19 @@ const DEFAULT_INSTANCE_TYPE_MAP = {
   aws: 'c5.large',
   gcp: 'n1-standard-1',
   kubernetes: 'small'
+};
+
+const AZURE_INSTANCE_TYPE_GROUPS = {
+  'B-Series': /^standard_b.+/i,
+  'D-Series': /^standard_d.+/i,
+  'E-Series': /^standard_e.+/i,
+  'F-Series': /^standard_f.+/i,
+  'GS-Series': /^standard_gs.+/i,
+  'H-Series': /^standard_h.+/i,
+  'L-Series': /^standard_l.+/i,
+  'M-Series': /^standard_m.+/i,
+  'N-Series': /^standard_n.+/i,
+  'P-Series': /^standard_p.+/i
 };
 
 // Maps API storage types to UI display options

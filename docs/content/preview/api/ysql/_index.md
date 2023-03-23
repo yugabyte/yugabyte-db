@@ -12,7 +12,6 @@ menu:
     weight: 10
 aliases:
   - /preview/api/ysql/
-  - /preview/api/postgresql/
 type: indexpage
 ---
 

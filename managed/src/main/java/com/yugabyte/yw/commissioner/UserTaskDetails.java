@@ -176,6 +176,12 @@ public class UserTaskDetails {
     // Upgrade pod in Kubernetes.
     KubernetesUpgradePod,
 
+    // Copy package to YBC
+    KubernetesCopyPackage,
+
+    // Perform YBC Action
+    KubernetesYbcAction,
+
     // Run the initdb script in a tserver pod. (Deprecated)
     KubernetesInitYSQL,
 
@@ -428,6 +434,14 @@ public class UserTaskDetails {
       case KubernetesUpgradePod:
         title = "Upgrade Kubernetes Pod";
         description = "Upgrade Kubernetes Pod";
+        break;
+      case KubernetesCopyPackage:
+        title = "Copy Package to Kubernetes Pod";
+        description = "Copy Package to Kubernetes Pod";
+        break;
+      case KubernetesYbcAction:
+        title = "Perform YBC Action in the Container";
+        description = "Perform YBC Action in the Container";
         break;
       case KubernetesInitYSQL:
         title = "Initialize YSQL in Kubernetes Universe";

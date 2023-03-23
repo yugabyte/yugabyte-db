@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common/shell"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/systemd"
@@ -77,7 +78,7 @@ func (prom Prometheus) Name() string {
 }
 
 // Install the prometheus service.
-func (prom Prometheus) Install() {
+func (prom Prometheus) Install() error {
 	log.Info("Starting Prometheus install")
 	config.GenerateTemplate(prom)
 	prom.moveAndExtractPrometheusPackage()
@@ -93,97 +94,111 @@ func (prom Prometheus) Install() {
 		prom.CreateCronJob()
 	}
 
-	prom.Start()
+	if err := prom.Start(); err != nil {
+		return err
+	}
 	log.Info("Finishing Prometheus install")
+	return nil
 }
 
 // Start the prometheus service.
-func (prom Prometheus) Start() {
+func (prom Prometheus) Start() error {
 
 	if common.HasSudoAccess() {
 
-		common.RunBash(common.Systemctl, []string{"daemon-reload"})
-		common.RunBash(common.Systemctl, []string{"start", "prometheus"})
-		common.RunBash(common.Systemctl, []string{"status", "prometheus"})
+		if out := shell.Run(common.Systemctl, "daemon-reload"); !out.SucceededOrLog() {
+			return out.Error
+		}
+		if out := shell.Run(common.Systemctl, "start", "prometheus"); !out.SucceededOrLog() {
+			return out.Error
+		}
+		if out := shell.Run(common.Systemctl, "status", "prometheus"); !out.SucceededOrLog() {
+			return out.Error
+		}
 
 	} else {
-		bashCmd := fmt.Sprintf("%s %s %s %d %d %d %d %d %s > /dev/null 2>&1 &",
-			prom.cronScript,
-			common.GetSoftwareRoot(),
+		out := shell.RunShell(prom.cronScript, common.GetSoftwareRoot(),
 			common.GetDataRoot(),
-			viper.GetInt("prometheus.port"),
-			viper.GetInt("prometheus.maxConcurrency"),
-			viper.GetInt("prometheus.maxSamples"),
-			viper.GetInt("prometheus.timeout"),
-			viper.GetInt("prometheus.restartSeconds"),
+			fmt.Sprint(viper.GetInt("prometheus.port")),
+			fmt.Sprint(viper.GetInt("prometheus.maxSamples")),
+			fmt.Sprint(viper.GetInt("prometheus.timeout")),
+			fmt.Sprint(viper.GetInt("prometheus.maxConcurrency")),
+			fmt.Sprint(viper.GetInt("prometheus.restartSeconds")),
 			prom.version,
+			"> /dev/null 2>&1 &",
 		)
-		command1 := "bash"
-		arg1 := []string{"-c", bashCmd}
-
-		common.RunBash(command1, arg1)
-
+		if !out.SucceededOrLog() {
+			return out.Error
+		}
 	}
-
+	return nil
 }
 
-func (prom Prometheus) Stop() {
-
-	if prom.Status().Status != common.StatusRunning {
+func (prom Prometheus) Stop() error {
+	status, err := prom.Status()
+	if err != nil {
+		return err
+	}
+	if status.Status != common.StatusRunning {
 		log.Debug(prom.name + " is already stopped")
-		return
+		return nil
 	}
 
 	if common.HasSudoAccess() {
-
-		arg1 := []string{"stop", "prometheus"}
-		common.RunBash(common.Systemctl, arg1)
-
+		if out := shell.Run(common.Systemctl, "stop", "prometheus"); !out.SucceededOrLog() {
+			return out.Error
+		}
 	} else {
 
 		// Delete the file used by the crontab bash script for monitoring.
 		common.RemoveAll(common.GetSoftwareRoot() + "/prometheus/testfile")
 
-		commandCheck0 := "bash"
-		argCheck0 := []string{"-c", "pgrep prometheus"}
-		out0, _ := common.RunBash(commandCheck0, argCheck0)
-
+		out := shell.Run("pgrep", "prometheus")
+		if !out.SucceededOrLog() {
+			return out.Error
+		}
 		// Need to stop the binary if it is running, can just do kill -9 PID (will work as the
 		// process itself was started by a non-root user.)
-		if strings.TrimSuffix(string(out0), "\n") != "" {
-			pids := strings.Split(string(out0), "\n")
+		if strings.TrimSuffix(out.StdoutString(), "\n") != "" {
+			pids := strings.Split(out.StdoutString(), "\n")
 			for _, pid := range pids {
 				log.Debug("kill prometheus pid: " + pid)
 				if strings.TrimSuffix(pid, "\n") != "" {
-					argStop := []string{"-c", "kill -9 " + strings.TrimSuffix(pid, "\n")}
-					common.RunBash(commandCheck0, argStop)
+					if out2 := shell.Run("kill", "-9", strings.TrimSuffix(pid, "\n")); !out2.SucceededOrLog() {
+						return out2.Error
+					}
 				}
 			}
 		}
 	}
+	return nil
 }
 
 // Restart the prometheus service.
-func (prom Prometheus) Restart() {
+func (prom Prometheus) Restart() error {
+	log.Info("Restarting prometheus..")
 
 	if common.HasSudoAccess() {
-
-		arg1 := []string{"restart", "prometheus"}
-		common.RunBash(common.Systemctl, arg1)
-
+		if out := shell.Run(common.Systemctl, "restart", "prometheus"); !out.SucceededOrLog() {
+			return out.Error
+		}
 	} else {
-
-		prom.Stop()
-		prom.Start()
-
+		if err := prom.Stop(); err != nil {
+			return err
+		}
+		if err := prom.Start(); err != nil {
+			return err
+		}
 	}
-
+	return nil
 }
 
 // Uninstall stops prometheus and optionally removes all data.
-func (prom Prometheus) Uninstall(removeData bool) {
+func (prom Prometheus) Uninstall(removeData bool) error {
 	log.Info("Uninstalling prometheus")
-	prom.Stop()
+	if err := prom.Stop(); err != nil {
+		return err
+	}
 
 	if common.HasSudoAccess() {
 		err := os.Remove(prom.SystemdFileLocation)
@@ -192,10 +207,13 @@ func (prom Prometheus) Uninstall(removeData bool) {
 			if !errors.Is(pe.Err, fs.ErrNotExist) {
 				log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
 					err.Error(), prom.SystemdFileLocation))
+				return err
 			}
 		}
 		// reload systemd daemon
-		common.RunBash(common.Systemctl, []string{"daemon-reload"})
+		if out := shell.Run(common.Systemctl, "daemon-reload"); !out.SucceededOrLog() {
+			return out.Error
+		}
 	}
 
 	if removeData {
@@ -203,13 +221,15 @@ func (prom Prometheus) Uninstall(removeData bool) {
 		if err != nil {
 			log.Info(fmt.Sprintf("Error %s removing data dir %s.", err.Error(),
 				prom.prometheusDirectories.DataDir))
+			return err
 		}
 	}
+	return nil
 }
 
 // Upgrade will upgrade prometheus and install it into the alt install directory.
 // Upgrade will NOT restart the service, the old version is expected to still be runnins
-func (prom Prometheus) Upgrade() {
+func (prom Prometheus) Upgrade() error {
 	prom.prometheusDirectories = newPrometheusDirectories()
 	config.GenerateTemplate(prom) // No need to reload systemd, start takes care of that for us.
 	prom.moveAndExtractPrometheusPackage()
@@ -226,7 +246,7 @@ func (prom Prometheus) Upgrade() {
 	if !common.HasSudoAccess() {
 		prom.CreateCronJob()
 	}
-	prom.Start()
+	return prom.Start()
 }
 
 func (prom Prometheus) moveAndExtractPrometheusPackage() {
@@ -286,6 +306,9 @@ func (prom Prometheus) createPrometheusSymlinks() {
 	// Required for systemctl.
 	if common.HasSudoAccess() {
 		promBinaryDir = "/usr/local/bin"
+	} else {
+		// promBinaryDir doesn't exist for non-root mode, lets create it.
+		common.MkdirAll(promBinaryDir, os.ModePerm)
 	}
 
 	common.CreateSymlink(promPkg, promBinaryDir, "prometheus")
@@ -302,7 +325,7 @@ func (prom Prometheus) createPrometheusSymlinks() {
 
 // Status prints out the header information for the
 // Prometheus service specifically.
-func (prom Prometheus) Status() common.Status {
+func (prom Prometheus) Status() (common.Status, error) {
 	status := common.Status{
 		Service:    prom.Name(),
 		Port:       viper.GetInt("prometheus.port"),
@@ -332,17 +355,16 @@ func (prom Prometheus) Status() common.Status {
 			status.Status = common.StatusErrored
 		}
 	} else {
-		command := "bash"
-		args := []string{"-c", "pgrep prometheus"}
-		out0, _ := common.RunBash(command, args)
-
-		if strings.TrimSuffix(string(out0), "\n") != "" {
+		out := shell.Run("pgrep", "prometheus")
+		if out.Succeeded() {
 			status.Status = common.StatusRunning
-		} else {
+		} else if out.ExitCode == 1 {
 			status.Status = common.StatusStopped
+		} else {
+			return status, out.Error
 		}
 	}
-	return status
+	return status, nil
 }
 
 // CreateCronJob creates the cron job for managing prometheus with cron script in non-root.
@@ -360,5 +382,5 @@ func (prom Prometheus) CreateCronJob() {
 		config.GetYamlPathData("prometheus.restartSeconds"),
 		prom.version,
 	)
-	common.RunBash("bash", []string{"-c", bashCmd})
+	shell.Run("bash", "-c", bashCmd)
 }

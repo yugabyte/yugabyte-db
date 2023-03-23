@@ -483,7 +483,7 @@ public class AsyncYBClient implements AutoCloseable {
                                                        CdcSdkCheckpoint explicitCheckpoint) {
     checkIsClosed();
     GetChangesRequest rpc = new GetChangesRequest(table, streamId, tabletId, term,
-      index, key, write_id, time, needSchemaInfo, explicitCheckpoint);
+      index, key, write_id, time, needSchemaInfo, explicitCheckpoint, table.getTableId());
     Deferred<GetChangesResponse> d = rpc.getDeferred();
     d.addErrback(new Callback<Exception, Exception>() {
       @Override

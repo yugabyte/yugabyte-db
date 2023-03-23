@@ -15,7 +15,6 @@ menu:
       classes: separator
 aliases:
   - /preview/api/ycql/
-  - /preview/api/cassandra/
 type: indexpage
 ---
 

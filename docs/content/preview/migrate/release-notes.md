@@ -3,7 +3,6 @@ title: What's new in YugabyteDB Voyager
 linkTitle: What's new
 description: YugabyteDB Voyager release notes.
 headcontent: New features, key enhancements, and bug fixes
-image: /images/section_icons/index/quick_start.png
 menu:
   preview:
     identifier: release-notes

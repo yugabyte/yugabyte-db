@@ -57,7 +57,7 @@ PROTOBUF_GENERATE_CPP(
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES rpc_introspection.proto)
 set(RPC_INTROSPECTION_PROTO_LIBS
-  rpc_header_proto  
+  rpc_header_proto
   protobuf)
 ADD_YB_LIBRARY(rpc_introspection_proto
   SRCS ${RPC_INTROSPECTION_PROTO_SRCS}
@@ -177,6 +177,3 @@ ADD_YB_TEST(rpc-test)
 ADD_YB_TEST(rpc_stub-test RUN_SERIAL true)
 ADD_YB_TEST(scheduler-test)
 ADD_YB_TEST(thread_pool-test)
-if(RPC_ADDITIONAL_TESTS)
-  ADD_YB_TESTS(${RPC_ADDITIONAL_TESTS})
-endif()

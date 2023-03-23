@@ -91,9 +91,12 @@ class QLTestSelectedExpr : public QLTestBase {
     shared_ptr<QLRowBlock> row_block = processor->row_block();
     EXPECT_EQ(row_block->row_count(), 1);
     if (row_block->row_count() > 0) {
-      const QLRow& row = row_block->row(0);
-      LOG(INFO) << "Got row: " << row.ToString();
-      EXPECT_EQ(row.ToString(), expected_row);
+      std::string row_str = row_block->row(0).ToString();
+      LOG(INFO) << "Got row: " << row_str;
+      if(row_str != expected_row) {
+        DumpDocDB(cluster_.get());
+        EXPECT_EQ(row_str, expected_row);
+      }
     }
   }
 };

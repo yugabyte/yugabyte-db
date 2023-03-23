@@ -51,6 +51,7 @@ class SchemaPacking;
 class SchemaPackingStorage;
 class SharedLockManager;
 class TransactionStatusCache;
+class WaitQueue;
 class YQLRowwiseIteratorIf;
 class YQLStorageIf;
 

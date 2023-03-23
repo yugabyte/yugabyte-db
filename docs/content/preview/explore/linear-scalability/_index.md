@@ -7,10 +7,8 @@ headcontent: Dynamically add and remove nodes in a running universe
 aliases:
   - /explore/linear-scalability/
   - /preview/explore/linear-scalability/
-  - /preview/explore/cloud-native/linear-scalability/
   - /preview/explore/postgresql/linear-scalability/
   - /preview/explore/linear-scalability-macos/
-  - /preview/explore/linear-scalability/macos/
   - /preview/explore/linear-scalability/linux/
   - /preview/explore/linear-scalability/docker/
   - /preview/explore/linear-scalability/kubernetes/

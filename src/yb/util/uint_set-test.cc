@@ -88,6 +88,34 @@ TEST_F(UnsignedIntSetTest, OverlappingRange) {
   VerifyState();
 }
 
+TEST_F(UnsignedIntSetTest, Contains) {
+  UnsignedIntSet<uint32_t> other;
+  ASSERT_TRUE(set_.Contains(other));
+
+  ASSERT_OK(SetRange(1, 4));
+  ASSERT_TRUE(set_.Contains(other));
+  ASSERT_FALSE(other.Contains(set_));
+
+  ASSERT_OK(other.SetRange(1, 1));
+  ASSERT_TRUE(set_.Contains(other));
+  ASSERT_OK(other.SetRange(2, 3));
+  ASSERT_TRUE(set_.Contains(other));
+  ASSERT_OK(other.SetRange(5, 5));
+  ASSERT_FALSE(set_.Contains(other));
+  ASSERT_FALSE(other.Contains(set_));
+  ASSERT_OK(other.SetRange(4, 4));
+  ASSERT_FALSE(set_.Contains(other));
+  ASSERT_TRUE(other.Contains(set_));
+
+  ASSERT_OK(SetRange(6, 8));
+  ASSERT_OK(other.SetRange(7, 8));
+  ASSERT_FALSE(set_.Contains(other));
+  ASSERT_FALSE(other.Contains(set_));
+  ASSERT_OK(SetRange(5, 5));
+  ASSERT_TRUE(set_.Contains(other));
+  ASSERT_FALSE(other.Contains(set_));
+}
+
 class UnsignedIntSetEncodeDecodeTest : public UnsignedIntSetTest {
  protected:
   void VerifyCopy() const {

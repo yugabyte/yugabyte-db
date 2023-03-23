@@ -18,7 +18,7 @@ You must be signed in as an Admin user to invite other users, change roles, and 
 
 The **Users** tab displays a list of users that are either active or have been invited, including their email, display name, role, and status.
 
-![Admin Users page](/images/yb-cloud/cloud-admin-users.png)
+![Admin Users page](/images/yb-cloud/managed-admin-users.png)
 
 ## User roles
 
@@ -30,15 +30,16 @@ Admin users have full access to all features. There must always be at least one 
 
 ### Developer
 
-Developer users have access to all features, with the exception of administrative tasks, including the following:
+Developer users have access to all features, with the exception of the following administrative tasks:
 
 - invite users
 - delete or change the role of other users
 - change login methods
+- create or revoke API keys
 - create a billing profile
 - view account activity
 
-To access a cluster database, you need to ask an Admin for the username and password of a [database user created on your behalf](../../cloud-secure-clusters/add-users/).
+To access a cluster database, you need to ask a user with administrative privileges on the database for the username and password of a [database user created on your behalf](../../cloud-secure-clusters/add-users/).
 
 ## Manage login methods
 
@@ -46,7 +47,7 @@ Users can log in to YugabyteDB Managed using either an email-based account or a 
 
 To manage the social logins available to users, do the following:
 
-1. On the **Admin** page, select the **Users** tab, then click **Login Methods** to display the **Login Methods** dialog.
+1. Navigate to **Admin > Access Control > Users**, then click **Login Methods** to display the **Login Methods** dialog.
 1. Enable the social logins you want to use.
 1. Click **Save Changes**.
 
@@ -58,7 +59,7 @@ You add users by sending them an invitation. Only an Admin user can invite users
 
 To invite a user:
 
-1. On the **Admin** page, select the **Users** tab, then click **Invite User** to display the **Invite User** dialog.
+1. Navigate to **Admin > Access Control > Users**, then click **Invite User** to display the **Invite User** dialog.
 1. Enter one or more email addresses of people you're inviting.
 1. Choose a role for the new users.
 1. Click **Invite**.

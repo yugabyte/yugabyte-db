@@ -209,12 +209,6 @@ public class UniverseTaskParams extends AbstractTaskParams {
   @ApiModelProperty(value = "Extra dependencies")
   public ExtraDependencies extraDependencies = new ExtraDependencies();
 
-  // Whether this task has been tried before or not. Awkward naming because we cannot use
-  // `isRetry` due to play reading the "is" prefix differently.
-  @ApiModelProperty(value = "Whether this task has been tried before")
-  @Deprecated
-  public boolean firstTry = true;
-
   // The user that created the task
   public Users creatingUser;
 

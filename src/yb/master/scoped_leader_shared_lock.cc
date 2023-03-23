@@ -145,15 +145,6 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
   }
 }
 
-ScopedLeaderSharedLock::ScopedLeaderSharedLock(
-    enterprise::CatalogManager* catalog,
-    const char* file_name,
-    int line_number,
-    const char* function_name)
-    : ScopedLeaderSharedLock(
-          static_cast<CatalogManager*>(catalog), file_name, line_number, function_name) {
-}
-
 ScopedLeaderSharedLock::~ScopedLeaderSharedLock() {
   Unlock();
 }

@@ -21,12 +21,13 @@ import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
+import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -109,8 +110,19 @@ public class CreateBackup extends UniverseTaskBase {
                 .getUniverseDetails()
                 .ybcSoftwareVersion
                 .equals(ybcManager.getStableYbcVersion())) {
-          createUpgradeYbcTask(params().universeUUID, ybcManager.getStableYbcVersion(), true)
-              .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+
+          if (universe
+              .getUniverseDetails()
+              .getPrimaryCluster()
+              .userIntent
+              .providerType
+              .equals(Common.CloudType.kubernetes)) {
+            createUpgradeYbcTaskOnK8s(params().universeUUID, ybcManager.getStableYbcVersion())
+                .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+          } else {
+            createUpgradeYbcTask(params().universeUUID, ybcManager.getStableYbcVersion(), true)
+                .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+          }
         }
 
         Backup backup =

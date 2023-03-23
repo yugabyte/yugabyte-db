@@ -64,7 +64,7 @@ export const CreateReadReplica: FC<CreateReadReplicaProps> = ({ uuid }) => {
     }
   );
 
-  const onCancel = () => browserHistory.goBack();
+  const onCancel = () => browserHistory.push(`/universes/${uuid}`);
 
   const onSubmit = async (formData: UniverseFormData) => {
     const PRIMARY_CLUSTER = getPrimaryCluster(contextState.universeConfigureTemplate);
@@ -102,9 +102,15 @@ export const CreateReadReplica: FC<CreateReadReplicaProps> = ({ uuid }) => {
     const finalPayload = {
       ...configureData,
       expectedUniverseVersion: universe?.version,
-      nodeDetailsSet: configureData.nodeDetailsSet.filter(
-        (node: NodeDetails) => node.state === NodeState.ToBeAdded
-      ),
+      nodeDetailsSet: configureData.nodeDetailsSet
+        .filter((node: NodeDetails) => node.state === NodeState.ToBeAdded)
+        .map((node: NodeDetails) => ({
+          ...node,
+          cloudInfo: {
+            ...node.cloudInfo,
+            assignPublicIP: !!PRIMARY_CLUSTER?.userIntent.assignPublicIP
+          }
+        })),
       clusters: [
         {
           ...getAsyncCluster(configureData),

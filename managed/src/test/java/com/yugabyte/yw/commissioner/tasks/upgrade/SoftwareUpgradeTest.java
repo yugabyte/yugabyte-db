@@ -181,6 +181,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
       }
       commonNodeTasks.addAll(
           ImmutableList.of(
+              TaskType.CheckSoftwareVersion,
               TaskType.PromoteAutoFlags,
               TaskType.UpdateSoftwareVersion,
               TaskType.RunHooks,
@@ -224,7 +225,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
                 new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
 
             if (taskType.equals(TaskType.AnsibleConfigureServers)) {
-              String version = "new-version";
+              String version = "2.17.0.0-b1";
               String taskSubType =
                   subTaskGroupType.equals(DownloadingSoftware) ? "Download" : "Install";
               assertValues.putAll(
@@ -266,7 +267,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           Map<String, Object> assertValues =
               new HashMap<>(ImmutableMap.of("nodeNames", nodes, "nodeCount", nodes.size()));
           if (taskType.equals(TaskType.AnsibleConfigureServers)) {
-            String version = "new-version";
+            String version = "2.17.0.0-b1";
             assertValues.putAll(
                 ImmutableMap.of(
                     "ybSoftwareVersion", version, "processType", serverType.toString()));
@@ -313,7 +314,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     updateDefaultUniverseTo5Nodes(true);
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "new-version";
+    taskParams.ybSoftwareVersion = "2.17.0.0-b1";
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.version);
     verify(mockNodeManager, times(71)).nodeCommand(any(), any());
@@ -352,7 +353,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     updateDefaultUniverseTo5Nodes(true);
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "new-version";
+    taskParams.ybSoftwareVersion = "2.17.0.0-b1";
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     taskParams.upgradeSystemCatalog = false;
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.version);
@@ -418,7 +419,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
             ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "new-version";
+    taskParams.ybSoftwareVersion = "2.17.0.0-b1";
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.version);
     verify(mockNodeManager, times(95)).nodeCommand(any(), any());
@@ -469,7 +470,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     updateDefaultUniverseTo5Nodes(true);
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "new-version";
+    taskParams.ybSoftwareVersion = "2.17.0.0-b1";
     taskParams.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
 

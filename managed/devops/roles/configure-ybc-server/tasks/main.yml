@@ -93,10 +93,6 @@
       dest: "{{ yb_bin_dir }}/yb-server-ctl.sh"
       owner: "{{ user_name }}"
       mode: 0755
-    when: not systemd_option
-    tags:
-      - ybc-install
-      - yb-prebuilt-ami
 
   # Cronjob approach for starting yb-controller
   - name: Setup cron to check liveness of controller
@@ -111,10 +107,10 @@
     failed_when:
       - cron_result is failed
       - cloud_type != "onprem"
-    when: not systemd_option
-    tags:
-      - ybc-install
-      - yb-prebuilt-ami
+  when: not systemd_option
+  tags:
+    - yb-prebuilt-ami
+    - ybc-install
 
 - block:
   # Remove old cron job and its tasks that start yb-controller
@@ -127,6 +123,7 @@
       - override_ybc_gflags
       - systemd_upgrade
       - ybc-install
+  when: systemd_option
 
 - block:
   - set_fact:

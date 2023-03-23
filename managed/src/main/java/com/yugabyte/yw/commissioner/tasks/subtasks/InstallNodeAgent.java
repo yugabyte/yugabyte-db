@@ -35,7 +35,11 @@ public class InstallNodeAgent extends AbstractTaskBase {
   private final NodeUniverseManager nodeUniverseManager;
   private final NodeAgentManager nodeAgentManager;
   private final ShellProcessContext shellContext =
-      ShellProcessContext.builder().logCmdOutput(true).customUser(true).build();
+      ShellProcessContext.builder()
+          .logCmdOutput(true)
+          .defaultSshPort(true)
+          .customUser(true)
+          .build();
 
   @Inject
   protected InstallNodeAgent(
@@ -142,7 +146,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
     sb.setLength(0);
     sb.append("rm -rf /tmp/node-agent-installer.sh /root/node-agent");
     sb.append(" && tar -zxf ").append(installerFiles.getPackagePath());
-    sb.append(" --strip-components=3 -C /tmp */node-agent-installer.sh");
+    sb.append(" --strip-components=3 -C /tmp --wildcards */node-agent-installer.sh");
     sb.append(" && chmod +x /tmp/node-agent-installer.sh");
     sb.append(" && mv -f ").append(baseTargetDir).append("/node-agent");
     sb.append(" ").append(taskParams().nodeAgentHome);
@@ -156,7 +160,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
     sb.append(" && chmod 755 /root ").append(taskParams().nodeAgentHome);
     String installCommand = sb.toString();
     log.debug("Running node agent installation command: {}", installCommand);
-    command = ImmutableList.of("sudo", "/bin/bash", "-c", installCommand);
+    command = ImmutableList.of("sudo", "-H", "/bin/bash", "-c", installCommand);
     nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
   }
 }

@@ -13,7 +13,8 @@ import {
   getMaxDiskIops,
   getIopsByStorageType,
   getThroughputByStorageType,
-  getThroughputByIops
+  getThroughputByIops,
+  useVolumeControls
 } from './VolumeInfoFieldHelper';
 import { isEphemeralAwsStorageInstance } from '../InstanceTypeField/InstanceTypeFieldHelper';
 import {
@@ -71,7 +72,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   const { t } = useTranslation();
   const instanceTypeChanged = useRef(false);
   const dataTag = isDedicatedMasterField ? 'Master' : 'TServer';
-
+  const { numVolumesDisable, volumeSizeDisable, minVolumeSize } = useVolumeControls(isEditMode);
   //watchers
   const fieldValue = isDedicatedMasterField
     ? useWatch({ name: MASTER_DEVICE_INFO_FIELD })
@@ -121,12 +122,20 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   //reset methods
   const resetThroughput = () => {
-    const { storageType, throughput, diskIops } = fieldValue;
+    const { storageType, throughput, diskIops, volumeSize } = fieldValue;
     if ([StorageType.IO1, StorageType.GP3, StorageType.UltraSSD_LRS].includes(storageType)) {
       //resetting throughput
       const throughputVal = getThroughputByIops(Number(throughput), diskIops, storageType);
-      setValue(UPDATE_FIELD, { ...fieldValue, throughput: throughputVal });
-    }
+      setValue(UPDATE_FIELD, {
+        ...fieldValue,
+        throughput: throughputVal,
+        volumeSize: volumeSize < minVolumeSize ? minVolumeSize : volumeSize
+      });
+    } else
+      setValue(UPDATE_FIELD, {
+        ...fieldValue,
+        volumeSize: volumeSize < minVolumeSize ? minVolumeSize : volumeSize
+      });
   };
 
   //field actions
@@ -138,7 +147,10 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   const onVolumeSizeChanged = (value: any) => {
     const { storageType, diskIops } = fieldValue;
-    setValue(UPDATE_FIELD, { ...fieldValue, volumeSize: Number(value) });
+    setValue(UPDATE_FIELD, {
+      ...fieldValue,
+      volumeSize: Number(value)
+    });
     if (storageType === StorageType.UltraSSD_LRS) {
       onDiskIopsChanged(diskIops);
     }
@@ -202,10 +214,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                   <YBInput
                     type="number"
                     fullWidth
-                    disabled={fixedNumVolumes || 
-                      disableNumVolumes || 
-                      (isEditMode && !instanceTypeChanged.current)
-                    }
+                    disabled={fixedNumVolumes || disableNumVolumes || numVolumesDisable}
                     inputProps={{ min: 1, 'data-testid': `VolumeInfoField-${dataTag}-VolumeInput` }}
                     value={convertToString(fieldValue.numVolumes)}
                     onChange={(event) => onNumVolumesChanged(event.target.value)}
@@ -226,7 +235,9 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                       disableVolumeSize ||
                       (provider?.code !== CloudType.kubernetes &&
                         !smartResizePossible &&
-                        (isEditMode && !instanceTypeChanged.current))
+                        isEditMode &&
+                        !instanceTypeChanged.current) ||
+                      volumeSizeDisable
                     }
                     inputProps={{
                       min: 1,

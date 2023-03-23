@@ -22,7 +22,7 @@ A universe's **Metrics** page displays graphs representing information on operat
 
 You access metrics by navigating to **Universes > Universe-Name > Metrics**, as shown in the following illustration:
 
-![Metrics Page](/images/yp/metrics_main.png)<br>
+![Metrics Page](/images/yp/metrics_main.png)
 
 You can chose to view metrics based on different criteria:
 

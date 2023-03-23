@@ -49,15 +49,18 @@ public class CloudBootstrap extends CloudTaskBase {
   @ApiModel(value = "CloudBootstrapParams", description = "Cloud bootstrap parameters")
   public static class Params extends CloudTaskParams {
     public static Params fromProvider(Provider provider) {
-      return CloudBootstrap.Params.fromProvider(provider, provider.regions);
+      return CloudBootstrap.Params.fromProvider(provider, provider);
     }
 
-    public static Params fromProvider(Provider provider, List<Region> regions) {
+    public static Params fromProvider(Provider provider, Provider reqProvider) {
       Params taskParams = new Params();
+      List<Region> regions = reqProvider.regions;
       // This is the case of initial provider creation.
       // If user provides his own access keys, we should take the first one in the list.
-      if (provider.allAccessKeys != null && provider.allAccessKeys.size() > 0) {
-        AccessKey accessKey = provider.allAccessKeys.get(0);
+      // AccessKey in the provider object will be empty at this point as they are not yet
+      // synced in the DB.
+      if (reqProvider.allAccessKeys != null && reqProvider.allAccessKeys.size() > 0) {
+        AccessKey accessKey = reqProvider.allAccessKeys.get(0);
         taskParams.keyPairName = accessKey.getKeyInfo().keyPairName;
         taskParams.sshPrivateKeyContent = accessKey.getKeyInfo().sshPrivateKeyContent;
       }
@@ -167,7 +170,7 @@ public class CloudBootstrap extends CloudTaskBase {
         perRegionMetadata.architecture =
             region.getArchitecture() != null ? region.getArchitecture() : Architecture.x86_64;
         // Instance templates are currently only implemented for GCP.
-        if (Common.CloudType.valueOf(region.provider.code).equals(Common.CloudType.gcp)) {
+        if (region.getProviderCloudCode().equals(Common.CloudType.gcp)) {
           GCPRegionCloudInfo g = CloudInfoInterface.get(region);
           perRegionMetadata.instanceTemplate = g.instanceTemplate;
         }
@@ -296,8 +299,7 @@ public class CloudBootstrap extends CloudTaskBase {
   }
 
   public SubTaskGroup createCloudSetupTask() {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("Create Cloud setup task", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("Create Cloud setup task");
     CloudSetup.Params params = new CloudSetup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.customPayload = Json.stringify(Json.toJson(taskParams()));
@@ -309,8 +311,7 @@ public class CloudBootstrap extends CloudTaskBase {
   }
 
   public SubTaskGroup createRegionSetupTask(String regionCode, Params.PerRegionMetadata metadata) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("Create Region task", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("Create Region task");
     CloudRegionSetup.Params params = new CloudRegionSetup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.regionCode = regionCode;
@@ -325,7 +326,7 @@ public class CloudBootstrap extends CloudTaskBase {
   }
 
   public SubTaskGroup createAccessKeySetupTask(String regionCode) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("Create Access Key", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("Create Access Key");
     CloudAccessKeySetup.Params params = new CloudAccessKeySetup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.regionCode = regionCode;
@@ -346,8 +347,7 @@ public class CloudBootstrap extends CloudTaskBase {
   }
 
   public SubTaskGroup createInitializerTask() {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("Create Cloud initializer task", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("Create Cloud initializer task");
     CloudInitializer.Params params = new CloudInitializer.Params();
     params.providerUUID = taskParams().providerUUID;
     CloudInitializer task = createTask(CloudInitializer.class);

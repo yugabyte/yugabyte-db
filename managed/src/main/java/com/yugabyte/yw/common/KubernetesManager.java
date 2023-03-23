@@ -2,28 +2,23 @@
 
 package com.yugabyte.yw.common;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.helm.HelmUtils;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.google.inject.Inject;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.models.Universe;
 import io.fabric8.kubernetes.api.model.LoadBalancerIngress;
 import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodCondition;
 import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.events.v1.Event;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.ToString;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
@@ -38,8 +33,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
-import com.google.inject.Inject;
-import com.google.inject.Singleton;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.ToString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
@@ -558,6 +554,35 @@ public abstract class KubernetesManager {
       String newDiskSize,
       boolean newNamingStyle);
 
+  public abstract List<PersistentVolumeClaim> getPVCs(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle);
+
+  public abstract List<Pod> getPods(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle);
+
+  public abstract void copyFileToPod(
+      Map<String, String> config,
+      String namespace,
+      String podName,
+      String containerName,
+      String srcFilePath,
+      String destFilePath);
+
+  public abstract void performYbcAction(
+      Map<String, String> config,
+      String namespace,
+      String podName,
+      String containerName,
+      List<String> commandArgs);
+
   // Get the name of StorageClass used for master/tserver PVCs.
   public abstract String getStorageClassName(
       Map<String, String> config,
@@ -603,4 +628,8 @@ public abstract class KubernetesManager {
 
   public abstract String getStorageClass(
       Map<String, String> config, String storageClassName, String namespace, String outputFormat);
+
+  public abstract String getKubeconfigUser(Map<String, String> config);
+
+  public abstract String getKubeconfigCluster(Map<String, String> config);
 }

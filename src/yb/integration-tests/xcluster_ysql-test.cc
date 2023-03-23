@@ -21,6 +21,7 @@
 #include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/ql_value.h"
@@ -249,7 +250,7 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
       GetNamespaceInfoResponsePB ns_resp;
       RETURN_NOT_OK(producer_client()->GetNamespaceInfo("", kNamespaceName, YQL_DATABASE_PGSQL,
                                                     &ns_resp));
-      return master::GetColocatedDbParentTableId(ns_resp.namespace_().id());
+      return GetColocatedDbParentTableId(ns_resp.namespace_().id());
     }
     // Colocated database
     return GetTablegroupParentTable(&producer_cluster_, kNamespaceName);
@@ -324,8 +325,8 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     }
 
     if (colocated_database)
-      return master::GetColocationParentTableId(resp.tablegroups()[0].id());
-    return master::GetTablegroupParentTableId(resp.tablegroups()[0].id());
+      return GetColocationParentTableId(resp.tablegroups()[0].id());
+    return GetTablegroupParentTableId(resp.tablegroups()[0].id());
   }
 
   Status CreateTablegroup(Cluster* cluster,
@@ -752,20 +753,33 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
     });
   }
 
-  Result<std::pair<client::YBTablePtr, client::YBTablePtr>> CreateTableAndSetupReplication(
+  Result<std::pair<client::YBTablePtr, client::YBTablePtr>> CreateClusterAndTable(
       int num_masters = 3) {
     FLAGS_enable_replicate_transaction_status_table = true;
     auto tables = VERIFY_RESULT(SetUpWithParams({4}, {4}, 3, num_masters));
     auto producer_table = tables[0];
     auto consumer_table = tables[1];
+    return std::make_pair(producer_table, consumer_table);
+  }
+
+  Status SetupReplicationAndWaitForValidSafeTime(
+      const std::pair<client::YBTablePtr, client::YBTablePtr>& tables) {
+    auto producer_table = tables.first;
+    auto consumer_table = tables.second;
     RETURN_NOT_OK(SetupUniverseReplication(kUniverseId, {producer_table}));
     // Verify that universe was setup on consumer.
     master::GetUniverseReplicationResponsePB resp;
     RETURN_NOT_OK(VerifyUniverseReplication(kUniverseId, &resp));
     RETURN_NOT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
     RETURN_NOT_OK(WaitForValidSafeTimeOnAllTServers(consumer_table->name().namespace_id()));
+    return Status::OK();
+  }
 
-    return std::make_pair(producer_table, consumer_table);
+  Result<std::pair<client::YBTablePtr, client::YBTablePtr>> CreateTableAndSetupReplication(
+      int num_masters = 3) {
+    const auto tables = VERIFY_RESULT(CreateClusterAndTable(num_masters));
+    RETURN_NOT_OK(SetupReplicationAndWaitForValidSafeTime(tables));
+    return tables;
   }
 
   Status WaitForIntentsCleanedUpOnConsumer() {
@@ -1197,6 +1211,59 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, GarbageCollectExpiredTransact
   FLAGS_aborted_intent_cleanup_ms = 0;
   ASSERT_OK(consumer_cluster()->CompactTablets());
   ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
+}
+
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
+  // Keep same tablet count for normal tablets.
+  auto tables_pair = ASSERT_RESULT(CreateClusterAndTable());
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+  const auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
+  const auto global_txn_table =
+      YBTableName(YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+
+  auto setup_write_verify_delete = [&](bool perform_bootstrap = false) {
+    if (!perform_bootstrap) {
+      ASSERT_OK(SetupReplicationAndWaitForValidSafeTime(tables_pair));
+    } else {
+      std::shared_ptr<client::YBTable> global_txn_table_ptr;
+      ASSERT_OK(producer_client()->OpenTable(global_txn_table, &global_txn_table_ptr));
+      // Need to also include the transaction table for bootstrapping.
+      auto bootstrap_ids = ASSERT_RESULT(BootstrapProducer(
+          producer_cluster(), producer_client(), {producer_table, global_txn_table_ptr}));
+      ASSERT_OK(SetupUniverseReplication(
+          producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId,
+          {producer_table, global_txn_table_ptr}, false /* leader_only */, bootstrap_ids));
+      ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
+      ASSERT_OK(WaitForValidSafeTimeOnAllTServers(consumer_table->name().namespace_id()));
+    }
+
+    auto test_thread_holder = TestThreadHolder();
+    ASSERT_NO_FATALS(AsyncTransactionConsistencyTest(
+        producer_table->name(), consumer_table->name(), &test_thread_holder, duration));
+    test_thread_holder.JoinAll();
+    ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+    ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+  };
+
+  // Create an additional transaction tablet on the producer before starting replication.
+  auto global_txn_table_id = ASSERT_RESULT(client::GetTableId(producer_client(), global_txn_table));
+  ASSERT_OK(producer_client()->AddTransactionStatusTablet(global_txn_table_id));
+
+  setup_write_verify_delete();
+
+  // Now add 2 txn tablets on the consumer, then rerun test.
+  global_txn_table_id = ASSERT_RESULT(client::GetTableId(consumer_client(), global_txn_table));
+  ASSERT_OK(consumer_client()->AddTransactionStatusTablet(global_txn_table_id));
+  ASSERT_OK(consumer_client()->AddTransactionStatusTablet(global_txn_table_id));
+  // Reset the role and data before setting up replication again.
+  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::ACTIVE));
+  ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(producer_table->name().namespace_name()));
+    return conn.ExecuteFormat("delete from $0;", producer_table->name().table_name());
+  }));
+
+  setup_write_verify_delete(true /* perform_bootstrap */);
 }
 
 class XClusterYSqlTestStressTest : public XClusterYSqlTestConsistentTransactionsTest {
@@ -1883,11 +1950,7 @@ TEST_F(XClusterYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
       producer_leader_mini_master->bound_rpc_addr());
 
   std::unique_ptr<client::YBClient> client;
-  std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy;
   client = ASSERT_RESULT(consumer_cluster()->CreateClient());
-  producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
-      &client->proxy_cache(),
-      HostPort::FromBoundEndpoint(producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
 
   // tables contains both producer and consumer universe tables (alternately).
   // Pick out just the producer tables from the list.
@@ -1910,21 +1973,13 @@ TEST_F(XClusterYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
   }
 
   SleepFor(MonoDelta::FromSeconds(10));
-  cdc::BootstrapProducerRequestPB req;
-  cdc::BootstrapProducerResponsePB resp;
 
-  for (const auto& producer_table : producer_tables) {
-    req.add_table_ids(producer_table->id());
-  }
-
-  rpc::RpcController rpc;
-  ASSERT_OK(producer_cdc_proxy->BootstrapProducer(req, &resp, &rpc));
-  ASSERT_FALSE(resp.has_error());
-
-  ASSERT_EQ(resp.cdc_bootstrap_ids().size(), producer_tables.size());
+  auto bootstrap_ids =
+      ASSERT_RESULT(BootstrapProducer(producer_cluster(), producer_client(), producer_tables));
+  ASSERT_EQ(bootstrap_ids.size(), producer_tables.size());
 
   int table_idx = 0;
-  for (const auto& bootstrap_id : resp.cdc_bootstrap_ids()) {
+  for (const auto& bootstrap_id : bootstrap_ids) {
     LOG(INFO) << "Got bootstrap id " << bootstrap_id
               << " for table " << producer_tables[table_idx++]->name().table_name();
   }
@@ -1962,8 +2017,8 @@ TEST_F(XClusterYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
 
   // Map table -> bootstrap_id. We will need when setting up replication.
   std::unordered_map<TableId, std::string> table_bootstrap_ids;
-  for (int i = 0; i < resp.cdc_bootstrap_ids_size(); i++) {
-    table_bootstrap_ids[req.table_ids(i)] = resp.cdc_bootstrap_ids(i);
+  for (size_t i = 0; i < bootstrap_ids.size(); i++) {
+    table_bootstrap_ids[producer_tables[i]->id()] = bootstrap_ids[i];
   }
 
   // 2. Setup replication.
@@ -1988,7 +2043,7 @@ TEST_F(XClusterYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
       &consumer_client()->proxy_cache(),
       consumer_leader_mini_master->bound_rpc_addr());
 
-  rpc.Reset();
+  rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
   ASSERT_OK(master_proxy.SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
   ASSERT_FALSE(setup_universe_resp.has_error());

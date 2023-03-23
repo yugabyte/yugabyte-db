@@ -65,6 +65,45 @@ using SubtxnSet = UnsignedIntSet<SubTransactionId>;
 // True for transactions present on the consumer's participant that originated on the producer.
 YB_STRONGLY_TYPED_BOOL(IsExternalTransaction);
 
+// SubtxnSetAndPB avoids repeated serialization of SubtxnSet, required for rpc calls, by storing
+// the serialized proto form (SubtxnSetPB). A shared_ptr to a SubtxnSetAndPB object can be obtained
+// by calling SubtxnSetAndPB::Create(const T& set_pb), where T should be some type where
+// SubtxnSet::FromPB(set_pb.set()) is well defined. for instance, SubtxnSetPB/ ::yb::LWSubtxnSetPB.
+class SubtxnSetAndPB {
+ public:
+  SubtxnSetAndPB() {}
+
+  SubtxnSetAndPB(SubtxnSet&& set, SubtxnSetPB&& pb) : set_(std::move(set)), pb_(std::move(pb)) {}
+
+  template <class T>
+  static Result<std::shared_ptr<SubtxnSetAndPB>> Create(const T& set_pb) {
+    auto res = SubtxnSet::FromPB(set_pb.set());
+    RETURN_NOT_OK(res);
+    SubtxnSetPB pb;
+    res->ToPB(pb.mutable_set());
+    std::shared_ptr<SubtxnSetAndPB>
+        subtxn_info = std::make_shared<SubtxnSetAndPB>(std::move(*res), std::move(pb));
+    return subtxn_info;
+  }
+
+  const SubtxnSet& set() const {
+    return set_;
+  }
+
+  const SubtxnSetPB& pb() const {
+    return pb_;
+  }
+
+  std::string ToString() const {
+    // Skip including the redundant string representation of the proto form.
+    return set_.ToString();
+  }
+
+ private:
+  const SubtxnSet set_;
+  const SubtxnSetPB pb_;
+};
+
 struct TransactionStatusResult {
   TransactionStatus status;
 
@@ -78,18 +117,27 @@ struct TransactionStatusResult {
   // Set of thus-far aborted subtransactions in this transaction.
   SubtxnSet aborted_subtxn_set;
 
+  // Populating status_tablet field is optional, except when we report transaction promotion.
+  TabletId status_tablet;
+
+  TransactionStatusResult() {}
+
   TransactionStatusResult(TransactionStatus status_, HybridTime status_time_);
 
   TransactionStatusResult(
       TransactionStatus status_, HybridTime status_time_,
       SubtxnSet aborted_subtxn_set_);
 
+  TransactionStatusResult(
+      TransactionStatus status_, HybridTime status_time_, SubtxnSet aborted_subtxn_set_,
+      TabletId status_tablet);
+
   static TransactionStatusResult Aborted() {
     return TransactionStatusResult(TransactionStatus::ABORTED, HybridTime());
   }
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(status, status_time, aborted_subtxn_set);
+    return YB_STRUCT_TO_STRING(status, status_time, aborted_subtxn_set, status_tablet);
   }
 };
 

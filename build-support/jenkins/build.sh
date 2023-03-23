@@ -551,8 +551,8 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
 
   # Upload the package.
   if ! is_jenkins_phabricator_build; then
-    # shellcheck source=ent/build-support/upload_package.sh
-    . "${YB_SRC_ROOT}/ent/build-support/upload_package.sh"
+    # shellcheck source=build-support/upload_package.sh
+    . "${YB_SRC_ROOT}/build-support/upload_package.sh"
     if ! "${package_uploaded}" && ! "${package_upload_skipped}"; then
       FAILURES+=$'Package upload failed\n'
       EXIT_STATUS=1

@@ -15,8 +15,7 @@
 
 #include <memory>
 
-#include "boost/function/function_fwd.hpp"
-#include "boost/optional.hpp"
+#include <boost/optional.hpp>
 
 #include "yb/common/common_fwd.h"
 
@@ -30,13 +29,10 @@ class Slice;
 
 namespace docdb {
 
-YB_STRONGLY_TYPED_BOOL(ContinueScan);
-using YQLScanCallback = boost::function<Result<ContinueScan>(const QLTableRow& row)>;
-
 class YQLRowwiseIteratorIf {
  public:
   typedef std::unique_ptr<YQLRowwiseIteratorIf> UniPtr;
-  virtual ~YQLRowwiseIteratorIf() {}
+  virtual ~YQLRowwiseIteratorIf() = default;
 
   //------------------------------------------------------------------------------------------------
   // Pure virtual API methods.
@@ -84,15 +80,14 @@ class YQLRowwiseIteratorIf {
   //------------------------------------------------------------------------------------------------
   // Read next row using the specified projection.
   // REQUIRES: projection should be a subset of schema().
-  Status NextRow(const Schema& projection, QLTableRow* table_row);
+  Status NextRow(const Schema& projection, QLTableRow* row) {
+    return DoNextRow(projection, row);
+  }
 
   // Read next row using whole schema() as a projection.
-  Status NextRow(QLTableRow* table_row);
-
-  // Iterates over the rows until --
-  //  - callback fails or returns false.
-  //  - Iterator reaches end of iteration.
-  virtual Status Iterate(const YQLScanCallback& callback);
+  Status NextRow(QLTableRow* row) {
+    return DoNextRow(boost::none, row);
+  }
 
  private:
   virtual Status DoNextRow(boost::optional<const Schema&> projection, QLTableRow* table_row) = 0;

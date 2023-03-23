@@ -146,6 +146,7 @@ public class BackupTest extends FakeDBApplication {
         ModelFactory.createBackup(defaultCustomer.uuid, u.universeUUID, s3StorageConfig.configUUID);
     UUID taskUUID = UUID.randomUUID();
     b.setTaskUUID(taskUUID);
+    b.save();
     Backup fb = Backup.fetchAllBackupsByTaskUUID(taskUUID).get(0);
     assertNotNull(fb);
     assertEquals(fb, b);
@@ -237,6 +238,7 @@ public class BackupTest extends FakeDBApplication {
     UUID taskUUID = UUID.randomUUID();
     assertNull(b.taskUUID);
     b.setTaskUUID(taskUUID);
+    b.save();
     b.refresh();
     assertEquals(taskUUID, b.taskUUID);
   }
@@ -251,8 +253,16 @@ public class BackupTest extends FakeDBApplication {
     ExecutorService service = Executors.newFixedThreadPool(2);
     AtomicBoolean success1 = new AtomicBoolean();
     AtomicBoolean success2 = new AtomicBoolean();
-    service.submit(() -> success1.set(b.setTaskUUID(taskUUID1)));
-    service.submit(() -> success2.set(b.setTaskUUID(taskUUID2)));
+    service.submit(
+        () -> {
+          success1.set(b.setTaskUUID(taskUUID1));
+          b.save();
+        });
+    service.submit(
+        () -> {
+          success2.set(b.setTaskUUID(taskUUID2));
+          b.save();
+        });
     service.awaitTermination(3, TimeUnit.SECONDS);
     b.refresh();
     if (success1.get() && !success2.get()) {
@@ -270,9 +280,11 @@ public class BackupTest extends FakeDBApplication {
     Backup b =
         ModelFactory.createBackup(defaultCustomer.uuid, u.universeUUID, s3StorageConfig.configUUID);
     b.setTaskUUID(UUID.randomUUID());
+    b.save();
     UUID taskUUID = UUID.randomUUID();
     assertNotNull(b.taskUUID);
     b.setTaskUUID(taskUUID);
+    b.save();
     b.refresh();
     assertEquals(taskUUID, b.taskUUID);
   }

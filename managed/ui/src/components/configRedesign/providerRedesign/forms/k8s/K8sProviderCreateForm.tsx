@@ -177,16 +177,7 @@ export const K8sProviderCreateForm = ({
               name: regionField.regionData.label,
               zones: preprocessedZones,
               details: {
-                cloudInfo: {
-                  [ProviderCode.KUBERNETES]: {
-                    kubeDomain: regionField.kubeDomain,
-                    kubeNamespace: regionField.kubeNamespace,
-                    kubePodAddressTemplate: regionField.kubePodAddressTemplate,
-                    ...(regionField.kubeConfigContent && {
-                      kubeConfigContent: (await readFileAsText(regionField.kubeConfigContent)) ?? ''
-                    })
-                  }
-                }
+                cloudInfo: { [ProviderCode.KUBERNETES]: {} }
               }
             };
             return newRegion;
@@ -198,7 +189,9 @@ export const K8sProviderCreateForm = ({
     }
     if (providerPayload) {
       await createInfraProvider(providerPayload, {
-        onError: (error) => handleFormServerError(error, ASYNC_ERROR, formMethods.setError)
+        mutateOptions: {
+          onError: (error) => handleFormServerError(error, ASYNC_ERROR, formMethods.setError)
+        }
       });
     }
   };
@@ -320,6 +313,7 @@ export const K8sProviderCreateForm = ({
       </FormProvider>
       {isRegionFormModalOpen && (
         <ConfigureK8sRegionModal
+          configuredRegions={regions}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}

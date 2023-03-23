@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common/shell"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/systemd"
@@ -89,7 +90,7 @@ func (plat Platform) Name() string {
 }
 
 // Install YBA service.
-func (plat Platform) Install() {
+func (plat Platform) Install() error {
 	log.Info("Starting Platform install")
 	config.GenerateTemplate(plat)
 	plat.createNecessaryDirectories()
@@ -115,6 +116,7 @@ func (plat Platform) Install() {
 
 	plat.Start()
 	log.Info("Finishing Platform install")
+	return nil
 }
 
 func (plat Platform) createNecessaryDirectories() {
@@ -260,94 +262,105 @@ func (plat Platform) renameAndCreateSymlinks() {
 }
 
 // Start the YBA platform service.
-func (plat Platform) Start() {
-
+func (plat Platform) Start() error {
 	if common.HasSudoAccess() {
-
-		common.RunBash(common.Systemctl,
-			[]string{"daemon-reload"})
-		common.RunBash(common.Systemctl,
-			[]string{"enable", filepath.Base(plat.SystemdFileLocation)})
-		common.RunBash(common.Systemctl,
-			[]string{"start", filepath.Base(plat.SystemdFileLocation)})
-		common.RunBash(common.Systemctl,
-			[]string{"status", filepath.Base(plat.SystemdFileLocation)})
-
+		if out := shell.Run(common.Systemctl, "daemon-reload"); !out.SucceededOrLog() {
+			return out.Error
+		}
+		if out := shell.Run(common.Systemctl, "enable",
+			filepath.Base(plat.SystemdFileLocation)); !out.SucceededOrLog() {
+			return out.Error
+		}
+		if out := shell.Run(common.Systemctl, "start",
+			filepath.Base(plat.SystemdFileLocation)); !out.SucceededOrLog() {
+			return out.Error
+		}
 	} else {
-
 		containerExposedPort := config.GetYamlPathData("platform.port")
 		restartSeconds := config.GetYamlPathData("platform.restartSeconds")
 
-		command1 := "bash"
-		arg1 := []string{"-c", plat.cronScript + " " + common.GetSoftwareRoot() + " " +
-			common.GetDataRoot() + " " + containerExposedPort + " " + restartSeconds +
-			" > /dev/null 2>&1 &"}
-
-		common.RunBash(command1, arg1)
-
+		arg1 := []string{common.GetSoftwareRoot(), common.GetDataRoot(), containerExposedPort,
+			restartSeconds, " > /dev/null 2>&1 &"}
+		if out := shell.RunShell(plat.cronScript, arg1...); !out.SucceededOrLog() {
+			return out.Error
+		}
 	}
-
+	return nil
 }
 
 // Stop the YBA platform service.
-func (plat Platform) Stop() {
-	if plat.Status().Status != common.StatusRunning {
+func (plat Platform) Stop() error {
+	status, err := plat.Status()
+	if err != nil {
+		return err
+	}
+	if status.Status != common.StatusRunning {
 		log.Debug(plat.name + " is already stopped")
-		return
+		return nil
 	}
 	if common.HasSudoAccess() {
-		arg1 := []string{"stop", filepath.Base(plat.SystemdFileLocation)}
-		common.RunBash(common.Systemctl, arg1)
 
+		if out := shell.Run(common.Systemctl, "stop",
+			filepath.Base(plat.SystemdFileLocation)); !out.SucceededOrLog() {
+			return out.Error
+		}
 	} else {
 
 		// Delete the file used by the crontab bash script for monitoring.
 		common.RemoveAll(common.GetSoftwareRoot() + "/yb-platform/testfile")
 
-		commandCheck0 := "bash"
-		argCheck0 := []string{"-c", "pgrep -fl yb-platform"}
-		out0, _ := common.RunBash(commandCheck0, argCheck0)
-
+		out := shell.Run("pgrep", "-fl", "yb-platform")
+		if !out.SucceededOrLog() {
+			return out.Error
+		}
+		result := out.StdoutString()
 		// Need to stop the binary if it is running, can just do kill -9 PID (will work as the
 		// process itself was started by a non-root user.)
 
 		// Java check because pgrep will count the execution of yba-ctl as a process itself.
-		if strings.TrimSuffix(string(out0), "\n") != "" {
-			pids := strings.Split(string(out0), "\n")
+		if strings.TrimSuffix(string(result), "\n") != "" {
+			pids := strings.Split(string(result), "\n")
 			for _, pid := range pids {
 				if strings.Contains(pid, "java") {
 					log.Debug("kill platform pid: " + pid)
-					argStop := []string{"-c", "kill -9 " + strings.TrimSuffix(pid, "\n")}
-					common.RunBash(commandCheck0, argStop)
+					if out := shell.Run("kill", "-9", pid); !out.SucceededOrLog() {
+						return out.Error
+					}
 				}
 			}
 		}
 	}
+	return nil
 }
 
 // Restart the YBA platform service.
-func (plat Platform) Restart() {
+func (plat Platform) Restart() error {
+	log.Info("Restarting YBA..")
 
 	if common.HasSudoAccess() {
-
-		arg1 := []string{"restart", "yb-platform.service"}
-		common.RunBash(common.Systemctl, arg1)
-
+		out := shell.Run(common.Systemctl, "restart", "yb-platform.service")
+		if !out.SucceededOrLog() {
+			return out.Error
+		}
 	} else {
-
-		plat.Stop()
-		plat.Start()
-
+		if err := plat.Stop(); err != nil {
+			return err
+		}
+		if err := plat.Start(); err != nil {
+			return err
+		}
 	}
-
+	return nil
 }
 
 // Uninstall the YBA platform service and optionally clean out data.
-func (plat Platform) Uninstall(removeData bool) {
+func (plat Platform) Uninstall(removeData bool) error {
 	log.Info("Uninstalling yb-platform")
 
 	// Stop running platform service
-	plat.Stop()
+	if err := plat.Stop(); err != nil {
+		return err
+	}
 
 	// Clean up systemd file
 	if common.HasSudoAccess() {
@@ -360,7 +373,9 @@ func (plat Platform) Uninstall(removeData bool) {
 			}
 		}
 		// reload systemd daemon
-		common.RunBash(common.Systemctl, []string{"daemon-reload"})
+		if out := shell.Run(common.Systemctl, "daemon-reload"); !out.SucceededOrLog() {
+			return out.Error
+		}
 	}
 
 	// Optionally remove data
@@ -369,13 +384,12 @@ func (plat Platform) Uninstall(removeData bool) {
 		if err != nil {
 			log.Info(fmt.Sprintf("Error %s removing data dir %s.", err.Error(), plat.DataDir))
 		}
-
 	}
-
+	return nil
 }
 
 // Status prints the status output specific to yb-platform.
-func (plat Platform) Status() common.Status {
+func (plat Platform) Status() (common.Status, error) {
 	status := common.Status{
 		Service:    plat.Name(),
 		Port:       viper.GetInt("platform.port"),
@@ -405,22 +419,22 @@ func (plat Platform) Status() common.Status {
 			status.Status = common.StatusErrored
 		}
 	} else {
-		command := "bash"
-		args := []string{"-c", "pgrep -f yb-platform"}
-		out0, _ := common.RunBash(command, args)
-
-		if strings.TrimSuffix(string(out0), "\n") != "" {
+		out := shell.Run("pgrep", "-f", "yb-platform")
+		if out.Succeeded() {
 			status.Status = common.StatusRunning
-		} else {
+		} else if out.ExitCode == 1 {
 			status.Status = common.StatusStopped
+		} else {
+			out.SucceededOrLog()
+			return status, out.Error
 		}
 	}
-	return status
+	return status, nil
 }
 
 // Upgrade will upgrade the platform and install it into the alt install directory.
 // Upgrade will NOT restart the service, the old version is expected to still be running
-func (plat Platform) Upgrade() {
+func (plat Platform) Upgrade() error {
 	plat.platformDirectories = newPlatDirectories()
 	config.GenerateTemplate(plat) // systemctl reload is not needed, start handles it for us.
 	plat.createNecessaryDirectories()
@@ -443,7 +457,8 @@ func (plat Platform) Upgrade() {
 		userName := viper.GetString("service_username")
 		common.Chown(common.GetSoftwareRoot(), userName, userName, true)
 	}
-	plat.Start()
+	err := plat.Start()
+	return err
 }
 
 func convertCertsToKeyStoreFormat() {
@@ -475,8 +490,7 @@ func convertCertsToKeyStoreFormat() {
 func (plat Platform) CreateCronJob() {
 	containerExposedPort := config.GetYamlPathData("platform.port")
 	restartSeconds := config.GetYamlPathData("platform.restartSeconds")
-	common.RunBash("bash", []string{"-c",
-		"(crontab -l 2>/dev/null; echo \"@reboot " + plat.cronScript + " " +
-			common.GetSoftwareRoot() + " " + common.GetDataRoot() + " " + containerExposedPort + " " +
-			restartSeconds + "\") | sort - | uniq - | crontab - "})
+	shell.RunShell("(crontab", "-l", "2>/dev/null;", "echo", "\"@reboot", plat.cronScript,
+		common.GetSoftwareRoot(), common.GetDataRoot(), containerExposedPort, restartSeconds, ")\"", "|",
+		"sort", "-", "|", "uniq", "-", "|", "crontab", "-")
 }

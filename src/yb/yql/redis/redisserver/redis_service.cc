@@ -29,6 +29,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/redis_protocol.pb.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"

@@ -16,111 +16,19 @@ import os.path
 import re
 import shutil
 import urllib.request as urllib_request
+import urllib.error
 import uuid
 
 # Constants
-ATTACH_ACTION = "attach_universe"
-DETACH_ACTION = "detach_universe"
-VALID_ACTIONS = [ATTACH_ACTION, DETACH_ACTION]
+RUN_ACTION = "run"
+ATTACH_ACTION = "attach"
+DETACH_ACTION = "detach"
+DELETE = "delete"
 UUID4_REGEX = re.compile("[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
 
 
-class YBAttachDetach:
-    """
-    Allows user to detach universe from a specific platform and attach the universe to
-    a separate platform as needed.
-
-    Sample detach example:
-        python3 ./yb_attach_detach.py detach_universe bb4991fd-2cb9-4052-9821-639351454e73 -f
-        /Users/cwang/Downloads/output.tar.gz -p http://localhost:9000 -c
-        f33e3c9b-75ab-4c30-80ad-cba85646ea39 -t ce5dd0f1-3e3f-4334-aa64-28f1c87cb3f2
-
-    Sample attach example:
-        python3 ./yb_attach_detach.py attach_universe bb4991fd-2cb9-4052-9821-639351454e73 -f
-        /Users/cwang/Downloads/output.tar.gz -p http://localhost:9000 -c
-        f33e3c9b-75ab-4c30-80ad-cba85646ea39 -t ce5dd0f1-3e3f-4334-aa64-28f1c87cb3f2
-    """
-    def __init__(self, action, universe_uuid, file, customer_uuid,
-                 api_token, platform_host, skip_releases):
-        self.action = action
-        self.universe_uuid = universe_uuid
-        self.file = file
-        self.customer_uuid = customer_uuid
-        self.api_token = api_token
-        self.platform_host = platform_host
-        self.skip_releases = skip_releases
-        self.set_url_request_variables()
-
-    def run(self):
-        """Performs the required action and throw error if failed."""
-        self.validate_arguments()
-        logging.info("Running %s action", self.action)
-        if self.action == ATTACH_ACTION:
-            logging.info("Attaching universe...")
-            file_name = self.file.split("/")[-1]
-            form = MultiPartForm()
-            form.add_file(
-                "spec", file_name, file_handle=open(self.file, "rb"), mimetype="application/gzip")
-            data = bytes(form)
-            req = urllib_request.Request(
-                self.attach_url, method="POST", headers=self.default_headers, data=data)
-            req.add_header('Content-type', form.get_content_type())
-            urllib_request.urlopen(req)
-
-            logging.info("Completed attaching universe.")
-        elif self.action == DETACH_ACTION:
-            logging.info("Detaching universe...")
-            data = {
-                "skipReleases": self.skip_releases
-            }
-            req = urllib_request.Request(
-                url=self.detach_url, method="POST", headers=self.default_headers,
-                data=json.dumps(data).encode())
-            with urllib_request.urlopen(req) as response, open(self.file, "wb") as file:
-                shutil.copyfileobj(response, file)
-            logging.info("Completed detaching universe.")
-
-    def validate_arguments(self):
-        """Simple validation of the arguments passed in."""
-        if not is_valid_uuid(self.universe_uuid):
-            raise ValueError("Invalid universe uuid passed in.")
-
-        if not is_valid_uuid(self.customer_uuid):
-            raise ValueError("Invalid customer uuid passed in.")
-
-        if not is_valid_uuid(self.api_token):
-            raise ValueError("Invalid api token passed in.")
-
-        if self.action not in VALID_ACTIONS:
-            raise ValueError(
-                f"Invalid action passed in. Got {self.action}. "
-                f"Expected one of: {VALID_ACTIONS}")
-
-        if (self.action == DETACH_ACTION and os.path.isfile(self.file)):
-            raise ValueError(f"File {self.file} already exists")
-
-    def set_url_request_variables(self):
-        """
-        Use arguments passed in to generate required urls/headers
-        needed to perform requests later on.
-        """
-        self.base_url = f"{self.platform_host}/api/v1"
-        self.attach_url = (f"{self.base_url}/customers/"
-                           f"{self.customer_uuid}/universes/{self.universe_uuid}/import")
-        self.detach_url = (f"{self.base_url}/customers/"
-                           f"{self.customer_uuid}/universes/{self.universe_uuid}/export")
-        self.default_headers = {
-            "X-AUTH-YW-API-TOKEN": self.api_token,
-            "Content-Type": "application/json"
-        }
-        logging.debug("Base url: %s", self.base_url)
-        logging.debug("Detach url: %s", self.detach_url)
-        logging.debug("Attach url: %s", self.attach_url)
-        logging.debug("Default headers: %s", self.default_headers)
-
-
 def is_valid_uuid(uuid_to_test):
-    """Regular rexpression to check if UUID is valid"""
+    """Regular rexpression to check if UUID is valid."""
     match = UUID4_REGEX.match(uuid_to_test)
     return bool(match)
 
@@ -131,48 +39,295 @@ def parse_arguments():
     """
     parser = argparse.ArgumentParser(
         prog="Attach/detach universe script",
-        description="Command line script for attaching and detaching universe"
+        description="Command line script for attaching and detaching universe."
     )
 
     parser.add_argument(
-        "action",
-        help=f"Accepts one of the following: {VALID_ACTIONS}")
+        "-u",
+        "--univ_uuid", required=True,
+        help="Universe's uuid for universe to be attached/detached/deleted.")
+
     parser.add_argument(
-        "univ_uuid",
-        help="Universe uuid to be passed to attach/detach")
-    parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        required=False, default=False, help="Enable verbose logging.")
+
+    file_parent_parser = argparse.ArgumentParser(add_help=False)
+    file_parent_parser.add_argument(
         "-f", "--file", required=True,
         help="For detach, file location to save tar gz file to. "
-        "For attach, file location of required tar gz used")
-    parser.add_argument(
-        "-c", "--customer", required=True,
-        help="Customer uuid for the universe")
-    parser.add_argument(
-        "-t", "--api_token", required=True,
-        help="Api token required to connect to YBA platform")
-    parser.add_argument(
-        "-p", "--platform_host", required=True,
-        help="Base endpoint platform requests are sent to")
-    parser.add_argument(
+        "For attach, file location of required tar gz used.")
+
+    detach_parent_parser = argparse.ArgumentParser(add_help=False)
+    detach_parent_parser.add_argument(
+        "-ts", "--api_token_src", required=True,
+        help="Api token required to connect to the source YBA platform.")
+    detach_parent_parser.add_argument(
+        "-ps", "--platform_host_src", required=True,
+        help="Base endpoint for source platform requests are sent to.")
+
+    attach_parent_parser = argparse.ArgumentParser(add_help=False)
+    attach_parent_parser.add_argument(
+        "-td", "--api_token_dest", required=True,
+        help="Api token required to connect to the destination YBA platform.")
+    attach_parent_parser.add_argument(
+        "-pd", "--platform_host_dest", required=True,
+        help="Base endpoint for destination platform requests are sent to.")
+
+    releases_parent_parser = argparse.ArgumentParser(add_help=False)
+    releases_parent_parser.add_argument(
         "-s", "--skip_releases", action="store_true",
         required=False, default=False,
-        help="For detach, whether or not do include software and ybc releases")
-    args = parser.parse_args()
+        help="Whether or not do include software and ybc releases.")
+
+    subparsers = parser.add_subparsers(help="sub-command --help", dest="name")
+    run_parser = subparsers.add_parser(
+        RUN_ACTION,
+        parents=[detach_parent_parser, attach_parent_parser,
+                 file_parent_parser, releases_parent_parser],
+        help="Perform detach/attach/deletion in one-stop.")
+    detach_parser = subparsers.add_parser(
+        DETACH_ACTION, parents=[detach_parent_parser, file_parent_parser, releases_parent_parser],
+        help="Generate tar gz containing all universe metadata.")
+    attach_parser = subparsers.add_parser(
+        ATTACH_ACTION, parents=[attach_parent_parser, file_parent_parser],
+        help="Populate target platform with universe metadata using tar gz.")
+    delete_parser = subparsers.add_parser(
+        DELETE, parents=[detach_parent_parser],
+        help="Perform a delete of the universe on the source platform.")
+
+    args = vars(parser.parse_args())
 
     logging.info("\n")
     logging.info("-----------------Arguments----------------------------")
-    logging.info("Action: %s", args.action)
-    logging.info("Universe uuid: %s", args.univ_uuid)
-    logging.info("File path: %s", args.file)
-    logging.info("Customer: %s", args.customer)
-    logging.info("Api token: %s", args.api_token)
-    logging.info("Platform host: %s", args.platform_host)
-    if (args.action == "detach_universe"):
-        logging.info("Skip releases: %s", args.skip_releases)
+    for key in args:
+        logging.info("%s: %s", key, redact_sensitive_info(key, args[key]))
     logging.info("------------------------------------------------------")
     logging.info("\n")
 
     return args
+
+
+def redact_sensitive_info(key, val):
+    if "api_token" in key and len(val) >= 5:
+        return "".join((val[0:2], len(val[2:-2]) * "*", val[-2:]))
+    return val
+
+
+class YBAttachDetach:
+    """
+    Allows user to detach universe from a specific platform and attach the universe to
+    a separate platform as needed.
+
+    Sample detach example:
+        python3 ./yb_attach_detach.py -u edf981dc-a11a-46d1-9518-c022b1f0bc80 detach
+        -ts ad09f10f-c377-4cdf-985c-898d13eae783 -ps http://167.123.191.88:9000
+        -f /tmp/universe-export-spec.tar.gz -s
+
+    Sample attach example:
+        python3 ./yb_attach_detach.py -u edf981dc-a11a-46d1-9518-c022b1f0bc80 attach
+        -td 4abb151c-3020-43fb-bd04-f6a63934e4e5 -pd http://10.150.7.155:9000
+        -f /tmp/universe-export-spec.tar.gz
+
+    Sample one stop detach/attach/delete example:
+        python3 ./yb_attach_detach.py -u edf981dc-a11a-46d1-9518-c022b1f0bc80 run
+        -ts ad09f10f-c377-4cdf-985c-898d13eae783 -ps http://167.123.191.88:9000
+        -f /tmp/universe-export-spec.tar.gz -s -td 4abb151c-3020-43fb-bd04-f6a63934e4e5
+        -pd http://10.150.7.155:9000
+
+
+    Can enable verbose logging for debugging purposes by passing -v before the action.
+    """
+
+    def __init__(self, args):
+        self.action_map = {
+            DETACH_ACTION: self.run_detach,
+            ATTACH_ACTION: self.run_attach,
+            DELETE: self.run_delete_metadata
+        }
+        self.name = args.get("name")
+        if self.name == RUN_ACTION:
+            self.actions = [DETACH_ACTION, ATTACH_ACTION, DELETE]
+        else:
+            self.actions = [args.get("name")]
+        self.universe_uuid = args.get("univ_uuid")
+        self.file = args.get("file")
+
+        self.api_token_src = args.get("api_token_src")
+        self.platform_host_src = args.get("platform_host_src")
+
+        self.api_token_dest = args.get("api_token_dest")
+        self.platform_host_dest = args.get("platform_host_dest")
+
+        self.skip_releases = args.get("skip_releases")
+
+    def run_detach(self):
+        """Generate tar gz file for a specific universe from the source platform"""
+        logging.info("Detaching universe...")
+        data = {
+            "skipReleases": self.skip_releases
+        }
+        url = self._get_detach_url()
+        headers = {
+            "X-AUTH-YW-API-TOKEN": self.api_token_src,
+            "Content-Type": "application/json"
+        }
+        logging.debug("Url: %s", url)
+        logging.debug("Request body: %s", data)
+        req = urllib_request.Request(
+            url=url, method="POST", headers=headers,
+            data=json.dumps(data).encode())
+        with open_url(req) as response, open(self.file, "wb") as file:
+            shutil.copyfileobj(response, file)
+        logging.info("Completed detaching universe.")
+
+    def run_attach(self):
+        """Attach universe using generated tar gz destination platform"""
+        logging.info("Attaching universe...")
+        file_name = self.file.split("/")[-1]
+        form = MultiPartForm()
+        form.add_file(
+            "spec", file_name, file_handle=open(self.file, "rb"), mimetype="application/gzip")
+        url = self._get_attach_url()
+        headers = {
+            "X-AUTH-YW-API-TOKEN": self.api_token_dest,
+            "Content-Type": "application/json"
+        }
+        data = bytes(form)
+        logging.debug("Url: %s", url)
+        logging.debug("Request body: %s", form)
+        req = urllib_request.Request(
+            url=url, method="POST", headers=headers, data=data)
+        req.add_header('Content-type', form.get_content_type())
+
+        try:
+            open_url(req)
+        except (urllib.error.HTTPError, urllib.error.URLError) as err:
+            logging.info("Failed attaching universe.")
+            if self.name == RUN_ACTION:
+                logging.info("Unlocking universe from source platform.")
+                unlock_url = self._get_unlock_universe_url()
+                unlock_headers = {
+                    "X-AUTH-YW-API-TOKEN": self.api_token_src,
+                    "Content-Type": "application/json"
+                }
+                unlock_req = urllib_request.Request(
+                    url=unlock_url, method="POST", headers=unlock_headers)
+                logging.debug("Url: %s", unlock_url)
+                open_url(unlock_req)
+                logging.info("Finished unlocking universe from source platform.")
+            raise err
+
+        logging.info("Completed attaching universe.")
+
+    def run_delete_metadata(self):
+        """Delete universe metadata from source platform"""
+        logging.info("Removing universe metadata from source platform...")
+        url = self._get_delete_metadata_url()
+        headers = {
+            "X-AUTH-YW-API-TOKEN": self.api_token_src,
+            "Content-Type": "application/json"
+        }
+        logging.debug("url: %s", url)
+        req = urllib_request.Request(url=url, method="POST", headers=headers)
+        open_url(req)
+        logging.info("Completed removing universe metadata from source platform.")
+
+    def run(self):
+        """Performs the required action(s) and throw error if failed."""
+        self.validate_arguments()
+        for action in self.actions:
+            logging.info("Running %s action", action)
+            self.action_map[action]()
+
+    def _get_detach_url(self):
+        customer_uuid = self._get_customer_uuid(self.api_token_src, self.platform_host_src)
+        base_url = f"{self.platform_host_src}/api/v1"
+        detach_url = (
+            f"{base_url}/customers/"
+            f"{customer_uuid}/universes/{self.universe_uuid}/export")
+        return detach_url
+
+    def _get_attach_url(self):
+        customer_uuid = self._get_customer_uuid(self.api_token_dest, self.platform_host_dest)
+        base_url = f"{self.platform_host_dest}/api/v1"
+        attach_url = (
+            f"{base_url}/customers/"
+            f"{customer_uuid}/universes/{self.universe_uuid}/import")
+        return attach_url
+
+    def _get_delete_metadata_url(self):
+        customer_uuid = self._get_customer_uuid(self.api_token_src, self.platform_host_src)
+        base_url = f"{self.platform_host_src}/api/v1"
+        delete_url = (
+            f"{base_url}/customers/"
+            f"{customer_uuid}/universes/{self.universe_uuid}/delete_metadata")
+        return delete_url
+
+    def _get_unlock_universe_url(self):
+        customer_uuid = self._get_customer_uuid(self.api_token_src, self.platform_host_src)
+        base_url = f"{self.platform_host_src}/api/v1"
+        unlock_universe_url = (
+            f"{base_url}/customers/"
+            f"{customer_uuid}/universes/{self.universe_uuid}/unlock")
+        return unlock_universe_url
+
+    def validate_arguments(self):
+        """Simple validation of the arguments passed in."""
+        if not is_valid_uuid(self.universe_uuid):
+            raise ValueError("Invalid universe uuid passed in.")
+
+        if self.name == DETACH_ACTION or self.name == RUN_ACTION or self.name == DELETE:
+            if not is_valid_uuid(self.api_token_src):
+                raise ValueError("Invalid api_token_src passed in.")
+
+            # Ping source platform to make sure we are able to connect before running commands
+            self._get_customer_uuid(self.api_token_src, self.platform_host_src)
+
+        if self.name == ATTACH_ACTION or self.name == RUN_ACTION:
+            if not is_valid_uuid(self.api_token_dest):
+                raise ValueError("Invalid api_token_dest passed in.")
+
+            # Ping dest platform to make sure we are able to connect before running commands
+            self._get_customer_uuid(self.api_token_dest, self.platform_host_dest)
+
+        if (self.name == DETACH_ACTION or self.name == RUN_ACTION) and os.path.isfile(self.file):
+            raise ValueError(f"File {self.file} already exists")
+
+    def _get_customer_uuid(self, api_token, platform_host):
+        headers = {
+            "X-AUTH-YW-API-TOKEN": api_token,
+            "Content-Type": "application/json"
+        }
+        url = self._get_session_info_url(platform_host)
+        logging.debug("Url: %s", url)
+        req = urllib_request.Request(
+            url=url, method="GET", headers=headers)
+        with open_url(req) as response:
+            data = response.read()
+            session_info = json.loads(data.decode('utf-8'))
+            logging.debug("Response: %s", session_info)
+            return session_info["customerUUID"]
+
+    def _get_session_info_url(self, platform_host):
+        base_url = f"{platform_host}/api/v1"
+        session_info_url = f"{base_url}/session_info"
+        return session_info_url
+
+
+def open_url(request):
+    """Make request to desired url and print verbose logs if needed"""
+    try:
+        resp = urllib_request.urlopen(request)
+        logging.debug("Success Status %s", resp.code)
+        return resp
+    except urllib.error.HTTPError as err:
+        logging.debug("Error Status %s", err.code)
+        logging.debug("Error Reason %s", err.reason)
+        logging.debug("Error Response %s", err.read().decode())
+        raise err
+    except urllib.error.URLError as err:
+        logging.debug("Error Reason %s", err.reason)
+        raise err
 
 
 class MultiPartForm:
@@ -251,7 +406,8 @@ class MultiPartForm:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
     cmd_args = parse_arguments()
-    yb_attach_detach = YBAttachDetach(
-        cmd_args.action, cmd_args.univ_uuid, cmd_args.file,
-        cmd_args.customer, cmd_args.api_token, cmd_args.platform_host, cmd_args.skip_releases)
+    if cmd_args.get("verbose"):
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    yb_attach_detach = YBAttachDetach(cmd_args)
     yb_attach_detach.run()

@@ -74,10 +74,10 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
 
   void SetupProjectionSubkeys();
 
-  virtual ~DocRowwiseIterator();
+  ~DocRowwiseIterator() override;
 
   // Init scan iterator.
-  Status Init(TableType table_type, const Slice& sub_doc_key = Slice());
+  void Init(TableType table_type, const Slice& sub_doc_key = Slice());
   // Init QL read scan.
   Status Init(const QLScanSpec& spec);
   Status Init(const PgsqlScanSpec& spec);
@@ -123,9 +123,6 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // Retrieves the next key to read after the iterator finishes for the given page.
   Status GetNextReadSubDocKey(SubDocKey* sub_doc_key) override;
 
-  // Iterates over records until callback fails or returns false to stop iteration.
-  Status Iterate(const YQLScanCallback& callback) override;
-
   void set_debug_dump(bool value) {
     debug_dump_ = value;
   }
@@ -134,6 +131,7 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   bool ValidateDocKeyOffsets(const Slice& iter_key);
 
  private:
+  void CheckInitOnce();
   template <class T>
   Status DoInit(const T& spec);
   void ConfigureForYsql();
@@ -153,6 +151,13 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
 
   // Read next row into a value map using the specified projection.
   Status DoNextRow(boost::optional<const Schema&> projection, QLTableRow* table_row) override;
+
+  Result<DocHybridTime> GetTableTombstoneTime(const Slice& root_doc_key) const {
+    return docdb::GetTableTombstoneTime(
+        root_doc_key, doc_db_, txn_op_context_, deadline_, read_time_);
+  }
+
+  bool is_initialized_ = false;
 
   const std::unique_ptr<Schema> projection_owner_;
   // Used to maintain ownership of projection_.

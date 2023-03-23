@@ -103,7 +103,6 @@ import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
 import junitparams.naming.TestCaseName;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Assert;
 import org.junit.Before;
@@ -120,7 +119,6 @@ import org.mockito.junit.MockitoRule;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
-@Slf4j
 public class NodeManagerTest extends FakeDBApplication {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
@@ -2226,13 +2224,13 @@ public class NodeManagerTest extends FakeDBApplication {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
 
         when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
-        when(mockConfig.getBoolean("yb.gflags.allow_user_override")).thenReturn(false);
+        when(mockAppConfig.getBoolean("yb.gflags.allow_user_override")).thenReturn(false);
         when(mockConfGetter.getConfForScope(
                 any(Universe.class), eq(UniverseConfKeys.gflagsAllowUserOverride)))
             .thenReturn(false);
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
 
-        when(mockConfig.getBoolean("yb.gflags.allow_user_override")).thenReturn(true);
+        when(mockAppConfig.getBoolean("yb.gflags.allow_user_override")).thenReturn(true);
         when(mockConfGetter.getConfForScope(
                 any(Universe.class), eq(UniverseConfKeys.gflagsAllowUserOverride)))
             .thenReturn(true);

@@ -38,9 +38,9 @@
 #include <boost/preprocessor/stringize.hpp>
 #include <glog/logging.h>
 
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log.h"

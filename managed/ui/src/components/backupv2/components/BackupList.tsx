@@ -14,7 +14,7 @@ import { RemoteObjSpec, SortOrder, TableHeaderColumn } from 'react-bootstrap-tab
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import Select, { OptionTypeBase } from 'react-select';
-import { Backup_States, getBackupsList, IBackup, TIME_RANGE_STATE } from '..';
+import { Backup_States, getBackupsList, IBackup, IStorageConfig, TIME_RANGE_STATE } from '..';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton, YBMultiSelectRedesiged } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
@@ -24,8 +24,9 @@ import {
   BACKUP_STATUS_OPTIONS,
   CALDENDAR_ICON,
   convertArrayToMap,
+  convertBackupToFormValues,
   DATE_FORMAT,
-  ENTITY_NOT_AVAILABLE,
+  ENTITY_NOT_AVAILABLE
 } from '../common/BackupUtils';
 import { BackupCancelModal, BackupDeleteModal } from './BackupDeleteModal';
 import { BackupRestoreModal } from './BackupRestoreModal';
@@ -133,6 +134,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [showBackupCreateModal, setShowBackupCreateModal] = useState(false);
   const [showAssignConfigModal, setShowAssignConfigModal] = useState(false);
+  const [showEditBackupModal, setShowEditBackupModal] = useState(false);
   const [isRestoreEntireBackup, setRestoreEntireBackup] = useState(false);
 
   const [selectedBackups, setSelectedBackups] = useState<IBackup[]>([]);
@@ -289,6 +291,25 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           className="action-danger"
         >
           Delete Backup
+        </MenuItem>
+        <MenuItem
+          onClick={(e) => {
+            e.stopPropagation();
+            if (
+              row.commonBackupInfo.state !== Backup_States.COMPLETED ||
+              !row.isStorageConfigPresent
+            ) {
+              return;
+            }
+
+            setSelectedBackups([row]);
+            setShowEditBackupModal(true);
+          }}
+          disabled={
+            row.commonBackupInfo.state !== Backup_States.COMPLETED ||
+            !row.isStorageConfigPresent
+          }>
+          Edit Backup
         </MenuItem>
       </DropdownButton>
     );
@@ -544,9 +565,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="expiryTime"
-            dataFormat={(time) =>
-              time ? ybFormatDate(time) : "Won't Expire"
-            }
+            dataFormat={(time) => (time ? ybFormatDate(time) : "Won't Expire")}
             width="20%"
           >
             Expiration
@@ -600,6 +619,10 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           setShowAssignConfigModal(true);
         }}
         currentUniverseUUID={universeUUID}
+        onEdit={() => {
+          setSelectedBackups([showDetails] as IBackup[]);
+          setShowEditBackupModal(true);
+        }}
       />
       <BackupDeleteModal
         backupsList={selectedBackups}
@@ -634,6 +657,19 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         onHide={() => {
           setShowAssignConfigModal(false);
         }}
+      />
+      <BackupCreateModal
+        visible={showEditBackupModal}
+        onHide={() => setShowEditBackupModal(false)}
+        currentUniverseUUID={selectedBackups[0]?.universeUUID}
+        isEditBackupMode={true}
+        isEditMode={true}
+        isIncrementalBackup={selectedBackups[0]?.hasIncrementalBackups}
+        isScheduledBackup={selectedBackups.length !== 0 && !selectedBackups[0].onDemand}
+        editValues={selectedBackups[0] && convertBackupToFormValues(selectedBackups[0], 
+          storageConfigs?.data.find((e:IStorageConfig) => {
+            return e.configUUID === selectedBackups[0].commonBackupInfo.storageConfigUUID;
+          }))}
       />
     </Row>
   );

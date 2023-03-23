@@ -31,6 +31,8 @@ def wait_for_server(connect_options, num_retries=CONNECT_RETRY_LIMIT, **kwargs):
 
     retry_count = 0
     while retry_count < num_retries:
+        logging.info("[app] Attempting connection to the remote host, retry count: {}"
+                     .format(retry_count))
         if can_connect(connect_options, **kwargs):
             return True
         time.sleep(1)

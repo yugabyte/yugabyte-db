@@ -294,18 +294,6 @@ export default class ListKubernetesConfigurations extends Component {
                     />
                   </Col>
                 </Row>
-                <Row className="config-provider-row">
-                  <Col lg={5}>
-                    <div className="form-item-custom-label">Service Account</div>
-                  </Col>
-                  <Col lg={7}>
-                    <YBTextInput
-                      label="Service Account name:"
-                      isReadOnly={true}
-                      input={{ value: providerDetails.serviceAccount }}
-                    />
-                  </Col>
-                </Row>
 
                 <Row className="config-provider-row">
                   <Col lg={5}>

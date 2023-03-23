@@ -67,9 +67,8 @@ func ensureInstallerConfFile() {
 	if os.IsNotExist(err) {
 		userChoice := common.UserConfirm(
 			fmt.Sprintf(
-				("Using default settings in config file %s. "+
-					"Note that some settings cannot be changed later. \n\n"+
-					"Proceed with default config? "),
+				("No config file found at '%s', creating it with default values now.\n"+
+					"Do you want to proceed with the default config?"),
 				common.InputFile()),
 			common.DefaultNo)
 
@@ -82,7 +81,6 @@ func ensureInstallerConfFile() {
 				"Aborting current command. Please edit the config at %s and retry.", common.InputFile()))
 			os.Exit(1)
 		}
-
 	}
 }
 
@@ -91,7 +89,7 @@ func initServices() {
 	services = make(map[string]common.Component)
 	installPostgres := viper.GetBool("postgres.install.enabled")
 	services[PostgresServiceName] = NewPostgres("10.23")
-	services[PrometheusServiceName] = NewPrometheus("2.41.0")
+	services[PrometheusServiceName] = NewPrometheus("2.42.0")
 	services[YbPlatformServiceName] = NewPlatform(common.GetVersion())
 	// serviceOrder = make([]string, len(services))
 	if installPostgres {

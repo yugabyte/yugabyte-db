@@ -42,7 +42,6 @@ import play.Play;
 @ApiModel(description = "Universe-creation response")
 @Slf4j
 public class UniverseResp {
-
   public static UniverseResp create(Universe universe, UUID taskUUID, Config config) {
     UniverseResourceDetails.Context context = new Context(config, universe);
     UniverseResourceDetails resourceDetails =

@@ -1,11 +1,9 @@
 ---
-title: Read replicas
+title: Read replicas and follower reads in YugabyteDB YCQL
 headerTitle: Read replicas
 linkTitle: Read replicas
-description: Read replicas
+description: Explore read replicas in YugabyteDB using YCQL
 headContent: Replicate data asynchronously to one or more read replica clusters
-aliases:
-  - /preview/explore/multi-region-deployments/read-replicas
 menu:
   preview:
     name: Read replicas

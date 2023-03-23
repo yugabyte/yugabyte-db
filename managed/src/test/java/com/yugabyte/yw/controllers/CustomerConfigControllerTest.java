@@ -722,6 +722,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST15").configUUID;
     CustomerConfig config = customerConfigService.getOrBadRequest(defaultCustomer.uuid, configUUID);
     config.setState(ConfigState.QueuedForDeletion);
+    config.save();
     config.refresh();
 
     CustomerConfig fromDb = CustomerConfig.get(configUUID);

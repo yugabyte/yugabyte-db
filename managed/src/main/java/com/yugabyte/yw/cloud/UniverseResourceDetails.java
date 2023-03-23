@@ -147,11 +147,9 @@ public class UniverseResourceDetails {
       if (Math.abs(instancePrice.priceDetails.pricePerHour - 0) < EPSILON) {
         setPricingKnown(false);
       }
-      if (!nodeDetails.isActive()) {
+      if (!nodeDetails.isNodeRunning()) {
         continue;
       }
-
-      hourlyPrice += instancePrice.priceDetails.pricePerHour;
 
       DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(nodeDetails);
 
@@ -198,6 +196,11 @@ public class UniverseResourceDetails {
           hourlyEBSPrice +=
               (numVolumes * (billedThroughput * mibpsPrice.priceDetails.pricePerHour / MIB_IN_GIB));
         }
+      }
+      if (!params.universePaused) {
+        // Node is in Stopped state when universe is paused and when node processes are stopped
+        // - and we need to distinguish between the two.
+        hourlyPrice += instancePrice.priceDetails.pricePerHour;
       }
     }
     hourlyPrice += hourlyEBSPrice;
@@ -333,7 +336,7 @@ public class UniverseResourceDetails {
                   ud ->
                       ud.nodeDetailsSet
                           .stream()
-                          .filter(NodeDetails::isActive)
+                          .filter(NodeDetails::isNodeRunning)
                           .filter(nodeDetails -> nodeDetails.cloudInfo != null)
                           .filter(nodeDetails -> nodeDetails.cloudInfo.region != null)
                           .map(

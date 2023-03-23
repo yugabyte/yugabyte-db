@@ -67,7 +67,6 @@
 #include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
-#include "yb/yql/pggate/pg_sys_table_prefetcher.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_truncate_colocated.h"
@@ -1525,12 +1524,12 @@ Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_p
   auto& dml_read = *down_cast<PgDmlRead*>(handle);
   if (pg_sys_table_prefetcher_ && dml_read.IsReadFromYsqlCatalog() && dml_read.read_req()) {
     // In case of sys tables prefething is enabled all reads from sys table must use cached data.
-    auto data = VERIFY_RESULT(pg_sys_table_prefetcher_->GetData(
-        pg_session_.get(), *dml_read.read_req(), dml_read.IsIndexOrderedScan()));
+    auto data = pg_sys_table_prefetcher_->GetData(
+        *dml_read.read_req(), dml_read.IsIndexOrderedScan());
     if (!data) {
-      // DLOG(FATAL) is used instead of SCHECK to let user on release build proceed by reading
+      // LOG(DFATAL) is used instead of SCHECK to let user on release build proceed by reading
       // data from a master in a non efficient way (by using separate RPC).
-      DLOG(FATAL) << "Data was not prefetched for request "
+      LOG(DFATAL) << "Data was not prefetched for request "
                   << dml_read.read_req()->ShortDebugString();
     } else {
       dml_read.UpgradeDocOp(MakeDocReadOpWithData(pg_session_, std::move(data)));
@@ -1783,6 +1782,10 @@ Status PgApiImpl::SetTransactionReadOnly(bool read_only) {
   return pg_txn_manager_->SetReadOnly(read_only);
 }
 
+Status PgApiImpl::SetEnableTracing(bool tracing) {
+  return pg_txn_manager_->SetEnableTracing(tracing);
+}
+
 Status PgApiImpl::EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms) {
   return pg_txn_manager_->EnableFollowerReads(enable_follower_reads, staleness_ms);
 }
@@ -1879,20 +1882,18 @@ Status PgApiImpl::ValidatePlacement(const char *placement_info) {
   return pg_session_->ValidatePlacement(placement_info);
 }
 
-void PgApiImpl::StartSysTablePrefetching(
-    uint64_t latest_known_ysql_catalog_version, bool should_use_cache) {
+void PgApiImpl::StartSysTablePrefetching(const PrefetcherOptions& options) {
   if (pg_sys_table_prefetcher_) {
-    DLOG(FATAL) << "Sys table prefetching was started already";
+    LOG(DFATAL) << "Sys table prefetching was started already";
   }
 
   CHECK(!pg_session_->catalog_read_time());
-  pg_sys_table_prefetcher_.reset(new PgSysTablePrefetcher(
-      latest_known_ysql_catalog_version,  should_use_cache));
+  pg_sys_table_prefetcher_.emplace(options);
 }
 
 void PgApiImpl::StopSysTablePrefetching() {
   if (!pg_sys_table_prefetcher_) {
-    DLOG(FATAL) << "Sys table prefetching was not started yet";
+    LOG(DFATAL) << "Sys table prefetching was not started yet";
   } else {
     pg_sys_table_prefetcher_.reset();
   }
@@ -1902,10 +1903,15 @@ bool PgApiImpl::IsSysTablePrefetchingStarted() const {
   return static_cast<bool>(pg_sys_table_prefetcher_);
 }
 
+Status PgApiImpl::PrefetchRegisteredSysTables() {
+  SCHECK(pg_sys_table_prefetcher_, IllegalState, "Sys table prefetching has not been started");
+  return pg_sys_table_prefetcher_->Prefetch(pg_session_.get());
+}
+
 void PgApiImpl::RegisterSysTableForPrefetching(
   const PgObjectId& table_id, const PgObjectId& index_id) {
   if (!pg_sys_table_prefetcher_) {
-    DLOG(FATAL) << "Sys table prefetching was not started yet";
+    LOG(DFATAL) << "Sys table prefetching was not started yet";
   } else {
     pg_sys_table_prefetcher_->Register(table_id, index_id);
   }

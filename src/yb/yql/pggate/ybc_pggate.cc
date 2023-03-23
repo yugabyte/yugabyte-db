@@ -1229,6 +1229,10 @@ YBCStatus YBCPgEnableFollowerReads(bool enable_follower_reads, int32_t staleness
   return ToYBCStatus(pgapi->EnableFollowerReads(enable_follower_reads, staleness_ms));
 }
 
+YBCStatus YBCPgSetEnableTracing(bool tracing) {
+  return ToYBCStatus(pgapi->SetEnableTracing(tracing));
+}
+
 YBCStatus YBCPgSetTransactionDeferrable(bool deferrable) {
   return ToYBCStatus(pgapi->SetTransactionDeferrable(deferrable));
 }
@@ -1478,8 +1482,23 @@ void* YBCPgGetThreadLocalErrStatus() {
 }
 
 void YBCStartSysTablePrefetching(
-    uint64_t latest_known_ysql_catalog_version, bool should_use_cache) {
-  pgapi->StartSysTablePrefetching(latest_known_ysql_catalog_version, should_use_cache);
+  uint64_t latest_known_ysql_catalog_version, YBCPgSysTablePrefetcherCacheMode cache_mode) {
+  PrefetchingCacheMode mode = PrefetchingCacheMode::NO_CACHE;
+  switch (cache_mode) {
+    case YB_YQL_PREFETCHER_TRUST_CACHE:
+      mode = PrefetchingCacheMode::TRUST_CACHE;
+      break;
+    case YB_YQL_PREFETCHER_RENEW_CACHE_SOFT:
+      mode = PrefetchingCacheMode::RENEW_CACHE_SOFT;
+      break;
+    case YB_YQL_PREFETCHER_RENEW_CACHE_HARD:
+      LOG(DFATAL) << "Emergency fallback prefetching cache mode is used";
+      mode = PrefetchingCacheMode::RENEW_CACHE_HARD;
+      break;
+    default:
+      break;
+  }
+  pgapi->StartSysTablePrefetching(PrefetcherOptions{latest_known_ysql_catalog_version, mode});
 }
 
 void YBCStopSysTablePrefetching() {
@@ -1495,6 +1514,10 @@ void YBCRegisterSysTableForPrefetching(
   pgapi->RegisterSysTableForPrefetching(
       PgObjectId(database_oid, table_oid),
       index_oid == kPgInvalidOid ? PgObjectId() : PgObjectId(database_oid, index_oid));
+}
+
+YBCStatus YBCPrefetchRegisteredSysTables() {
+  return ToYBCStatus(pgapi->PrefetchRegisteredSysTables());
 }
 
 YBCStatus YBCPgCheckIfPitrActive(bool* is_active) {

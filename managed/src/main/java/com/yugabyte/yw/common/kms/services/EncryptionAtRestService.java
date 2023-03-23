@@ -25,6 +25,8 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -121,7 +123,6 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
       LOG.warn(errMsg);
       return null;
     }
-
     // Attempt to retrieve cached entry
     byte[] keyVal = EncryptionAtRestUtil.getUniverseKeyCacheEntry(universeUUID, keyRef);
     // Retrieve through KMS provider if no cache entry exists
@@ -156,6 +157,8 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
     return key;
   }
 
+  public abstract byte[] encryptKeyWithService(UUID configUUID, byte[] universeKey);
+
   /**
    * Verifies if the config UUID can decrypt the given key ref (encrypted universe key).
    *
@@ -163,10 +166,10 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
    * @param keyRef the encrypted universe key.
    * @return true if it can be decrypted, else false.
    */
-  public boolean verifyKmsConfigAndKeyRef(UUID configUUID, byte[] keyRef) {
+  public boolean verifyKmsConfigAndKeyRef(UUID universeUUID, UUID configUUID, byte[] keyRef) {
     byte[] decryptedUniverseKey = null;
     try {
-      decryptedUniverseKey = retrieveKeyWithService(configUUID, keyRef);
+      decryptedUniverseKey = retrieveKey(universeUUID, configUUID, keyRef);
     } catch (Exception e) {
       // Throws an error when decrypting wrong encrypted text,
       // because the key ref stores the master key metadata (managed by the KMS provider).
@@ -311,13 +314,15 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
   }
 
   public BackupEntry getBackupEntry(KmsHistory history) {
-    return new BackupEntry(Base64.getDecoder().decode(history.uuid.keyRef), this.keyProvider);
+    return new BackupEntry(
+        Base64.getDecoder().decode(history.uuid.keyRef), this.keyProvider, history.dbKeyId);
   }
 
   // Add backed up keyRefs to the kms_history table for universeUUID and configUUID
-  public void restoreBackupEntry(UUID universeUUID, UUID configUUID, byte[] keyRef) {
-    if (!EncryptionAtRestUtil.keyRefExists(universeUUID, keyRef)) {
-      EncryptionAtRestUtil.addKeyRef(universeUUID, configUUID, keyRef);
+  public void restoreBackupEntry(
+      UUID universeUUID, UUID configUUID, byte[] keyRef, String dbKeyId) {
+    if (!EncryptionAtRestUtil.dbKeyIdExists(universeUUID, dbKeyId)) {
+      EncryptionAtRestUtil.addKeyRefAndKeyId(universeUUID, configUUID, keyRef, dbKeyId);
     }
   }
 

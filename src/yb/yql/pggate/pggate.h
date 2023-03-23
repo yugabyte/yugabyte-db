@@ -48,12 +48,12 @@
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_statement.h"
+#include "yb/yql/pggate/pg_sys_table_prefetcher.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 namespace pggate {
-class PgSysTablePrefetcher;
 class PgSession;
 
 struct PgMemctxComparator {
@@ -557,6 +557,7 @@ class PgApiImpl {
   Status SetTransactionIsolationLevel(int isolation);
   Status SetTransactionReadOnly(bool read_only);
   Status SetTransactionDeferrable(bool deferrable);
+  Status SetEnableTracing(bool tracing);
   Status EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
   Status EnterSeparateDdlTxnMode();
   bool HasWriteOperationsInDdlTxnMode() const;
@@ -620,10 +621,11 @@ class PgApiImpl {
   Status GetIndexBackfillProgress(std::vector<PgObjectId> oids,
                                   uint64_t** backfill_statuses);
 
-  void StartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version, bool should_use_cache);
+  void StartSysTablePrefetching(const PrefetcherOptions& options);
   void StopSysTablePrefetching();
   bool IsSysTablePrefetchingStarted() const;
   void RegisterSysTableForPrefetching(const PgObjectId& table_id, const PgObjectId& index_id);
+  Status PrefetchRegisteredSysTables();
 
   // RPC stats for EXPLAIN ANALYZE
   void GetAndResetReadRpcStats(PgStatement *handle, uint64_t* reads, uint64_t* read_wait,
@@ -682,7 +684,7 @@ class PgApiImpl {
   std::unordered_map<int, const YBCPgTypeEntity *> type_map_;
 
   scoped_refptr<PgSession> pg_session_;
-  std::unique_ptr<PgSysTablePrefetcher> pg_sys_table_prefetcher_;
+  std::optional<PgSysTablePrefetcher> pg_sys_table_prefetcher_;
   std::unordered_set<std::unique_ptr<PgMemctx>, PgMemctxHasher, PgMemctxComparator> mem_contexts_;
   std::optional<std::pair<PgOid, int32_t>> catalog_version_db_index_;
   // Used as a snapshot of the tserver catalog version map prior to MyDatabaseId is resolved.

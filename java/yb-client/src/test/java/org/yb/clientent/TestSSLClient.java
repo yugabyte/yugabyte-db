@@ -268,6 +268,6 @@ public class TestSSLClient extends TestYBClient {
 
   private static String certsDir() {
     FileSystem fs = FileSystems.getDefault();
-    return fs.getPath(TestUtils.getBinDir()).resolve(fs.getPath("../ent/test_certs")).toString();
+    return fs.getPath(TestUtils.getBinDir()).resolve(fs.getPath("../test_certs")).toString();
   }
 }

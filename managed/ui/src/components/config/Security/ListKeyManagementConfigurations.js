@@ -7,17 +7,19 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../panels';
 import { ConfigDetails } from './ConfigDetails';
 import { AssociatedUniverse } from '../../common/associatedUniverse/AssociatedUniverse';
+import { DeleteKMSConfig } from './DeleteKMSConfig.tsx';
 
 export class ListKeyManagementConfigurations extends Component {
   state = {
     associatedUniverses: [],
     isVisibleModal: false,
+    deleteConfig: null,
     configDetail: null
   };
 
   actionList = (item, row) => {
-    const { configUUID, in_use, universeDetails } = row.metadata;
-    const { isAdmin, onDelete, onEdit } = this.props;
+    const { in_use: inUse, universeDetails } = row.metadata;
+    const { isAdmin, onEdit } = this.props;
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
         <MenuItem
@@ -34,9 +36,9 @@ export class ListKeyManagementConfigurations extends Component {
         )}
         <MenuItem
           title={'Delete provider'}
-          disabled={in_use}
+          disabled={inUse}
           onClick={() => {
-            !in_use && onDelete(configUUID);
+            !inUse && this.setState({ deleteConfig: row });
           }}
         >
           <i className="fa fa-trash"></i> Delete Configuration
@@ -63,10 +65,19 @@ export class ListKeyManagementConfigurations extends Component {
     this.setState({ configDetail: null });
   };
 
+  handleDeleteConfig = (config) => {
+    this.props.onDelete(config.metadata.configUUID);
+    this.setState({ deleteConfig: null });
+  };
+
+  hideDeleteConfig = () => {
+    this.setState({ deleteConfig: null });
+  };
+
   render() {
     const { configs, onCreate } = this.props;
 
-    const { associatedUniverses, isVisibleModal, configDetail } = this.state;
+    const { associatedUniverses, isVisibleModal, configDetail, deleteConfig } = this.state;
 
     const showConfigProperties = (item, row) => {
       return (
@@ -157,6 +168,15 @@ export class ListKeyManagementConfigurations extends Component {
             visible={!!configDetail}
             onHide={this.hideConfigDetail}
             data={configDetail}
+          />
+        )}
+
+        {deleteConfig && (
+          <DeleteKMSConfig
+            open={!!deleteConfig}
+            onHide={this.hideDeleteConfig}
+            onSubmit={this.handleDeleteConfig}
+            config={deleteConfig}
           />
         )}
       </div>

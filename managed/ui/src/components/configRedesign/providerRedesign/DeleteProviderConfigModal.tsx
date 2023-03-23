@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import axios, { AxiosError } from 'axios';
 import { browserHistory } from 'react-router';
+import { makeStyles } from '@material-ui/core';
 import { toast } from 'react-toastify';
-import { useMutation, useQueryClient } from 'react-query';
+import { useQueryClient } from 'react-query';
 
 import { YBModal, YBModalProps } from '../../../redesign/components';
-import { api, providerQueryKey } from '../../../redesign/helpers/api';
+import { fetchTaskUntilItCompletes } from '../../../actions/xClusterReplication';
+import { providerQueryKey } from '../../../redesign/helpers/api';
+import { useDeleteProvider } from '../../../redesign/helpers/hooks';
 
 import { YBProvider } from './types';
 
@@ -15,6 +17,17 @@ interface DeleteModalProps extends YBModalProps {
   redirectURL?: string;
 }
 
+const useStyles = makeStyles((theme) => ({
+  toastContainer: {
+    display: 'flex',
+    gap: theme.spacing(0.5),
+    '& a': {
+      textDecoration: 'underline',
+      color: '#fff'
+    }
+  }
+}));
+
 export const DeleteProviderConfigModal = ({
   providerConfig,
   onClose,
@@ -22,33 +35,46 @@ export const DeleteProviderConfigModal = ({
   ...modalProps
 }: DeleteModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const classes = useStyles();
   const queryClient = useQueryClient();
 
-  const deleteProviderMutation = useMutation(
-    (providerUUID: string | undefined) => {
-      return api.deleteProvider(providerUUID);
-    },
-    {
-      onSuccess: () => {
+  const deleteProviderMutation = useDeleteProvider(queryClient, {
+    onSuccess: (response, variables) => {
+      queryClient.invalidateQueries(providerQueryKey.ALL, { exact: true });
+      queryClient.invalidateQueries(providerQueryKey.detail(variables.providerUUID), {
+        exact: true
+      });
+
+      fetchTaskUntilItCompletes(response.taskUUID, (error: boolean) => {
+        if (error) {
+          toast.error(
+            <span className={classes.toastContainer}>
+              <i className="fa fa-exclamation-circle" />
+              <span>Provider deletion failed.</span>
+              <a href={`/tasks/${response.taskUUID}`} rel="noopener noreferrer" target="_blank">
+                View Details
+              </a>
+            </span>
+          );
+        }
         queryClient.invalidateQueries(providerQueryKey.ALL);
-        setIsSubmitting(false);
-        onClose();
-        if (redirectURL) {
-          browserHistory.push(redirectURL);
-        }
-      },
-      onError: (error: Error | AxiosError) => {
-        if (axios.isAxiosError(error)) {
-          toast.error(error.response?.data?.error?.message ?? error.message);
-        } else {
-          toast.error(error.message);
-        }
+      });
+
+      setIsSubmitting(false);
+      onClose();
+      if (redirectURL) {
+        browserHistory.push(redirectURL);
       }
     }
-  );
+  });
   const onSubmit = () => {
-    setIsSubmitting(true);
-    deleteProviderMutation.mutate(providerConfig?.uuid);
+    if (!providerConfig?.uuid) {
+      toast.error('Error: Selected provider has undefined or empty provider UUID.');
+      onClose();
+    } else {
+      setIsSubmitting(true);
+      deleteProviderMutation.mutate({ providerUUID: providerConfig.uuid });
+    }
   };
 
   return (

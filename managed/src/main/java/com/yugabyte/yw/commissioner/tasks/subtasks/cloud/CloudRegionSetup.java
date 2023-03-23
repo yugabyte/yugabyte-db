@@ -23,6 +23,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import java.util.ArrayList;
 import java.util.List;
@@ -160,6 +161,16 @@ public class CloudRegionSetup extends CloudTaskBase {
           }
           zoneSubnets = Json.fromJson(zoneInfo.get(regionCode), Map.class);
         }
+
+        // In case vpcID & securityGroup is missing, we will end up creating new VPC.
+        if (StringUtils.isBlank(taskParams().metadata.vpcId)
+            && StringUtils.isBlank(taskParams().metadata.customSecurityGroupId)) {
+          AWSCloudInfo awsCloudInfo = CloudInfoInterface.get(provider);
+          awsCloudInfo.setVpcType(CloudInfoInterface.VPCType.NEW);
+          provider.details.cloudInfo.setAws(awsCloudInfo);
+          provider.save();
+        }
+
         region.setVnetName(taskParams().metadata.vpcId);
         region.update();
         region.zones = new ArrayList<>();

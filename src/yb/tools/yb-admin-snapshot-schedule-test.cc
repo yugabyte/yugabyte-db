@@ -14,6 +14,7 @@
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/json_util.h"
 
 #include "yb/gutil/logging-inl.h"
@@ -67,7 +68,7 @@ const std::string kClusterName = "yugacluster";
 const std::string kTablegroupName = "ysql_tg";
 
 constexpr auto kInterval = 6s;
-constexpr auto kRetention = 10min;
+constexpr auto kRetention = RegularBuildVsDebugVsSanitizers(10min, 18min, 10min);
 constexpr auto kHistoryRetentionIntervalSec = 5;
 constexpr auto kCleanupSplitTabletsInterval = 1s;
 const std::string old_sys_catalog_snapshot_path = "/opt/yb-build/ysql-sys-catalog-snapshots/";
@@ -2490,7 +2491,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(TablegroupGCAfter
 
   auto tablegroups = ASSERT_RESULT(client_->ListTablegroups(client::kTableName.namespace_name()));
   ASSERT_EQ(tablegroups.size(), 1);
-  TableId parent_table_id = master::GetTablegroupParentTableId(tablegroups[0].id());
+  TableId parent_table_id = GetTablegroupParentTableId(tablegroups[0].id());
   LOG(INFO) << "Tablegroup parent table name: " << parent_table_id;
 
   LOG(INFO) << "Perform a Restore to the time noted above";

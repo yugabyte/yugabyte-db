@@ -10,12 +10,16 @@ import static org.junit.Assert.assertNull;
 import org.junit.Before;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -40,12 +44,16 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.yb.client.IsServerReadyResponse;
+import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetAutoFlagsConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
-
+import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
+import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
+import play.libs.Json;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.api.model.PodStatus;
@@ -108,7 +116,20 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
       YBClient mockClient = mock(YBClient.class);
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
+      GetAutoFlagsConfigResponse resp =
+          new GetAutoFlagsConfigResponse(
+              0, null, GetAutoFlagsConfigResponsePB.getDefaultInstance());
+      lenient().when(mockClient.autoFlagsConfig()).thenReturn(resp);
+      lenient().when(mockClient.ping(anyString(), anyInt())).thenReturn(true);
+      lenient()
+          .when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
+          .thenReturn(
+              new PromoteAutoFlagsResponse(
+                  0, "uuid", PromoteAutoFlagsResponsePB.getDefaultInstance()));
 
+      ObjectNode objectNode = Json.newObject();
+      objectNode.put("version_number", "new-version");
+      lenient().when(mockApiHelper.getRequest(anyString())).thenReturn(objectNode);
       String masterLeaderName = "yb-master-0.yb-masters.demo-universe.svc.cluster.local";
       if (placementInfo.cloudList.get(0).regionList.get(0).azList.size() > 1) {
         masterLeaderName = "yb-master-0.yb-masters.demo-universe-az-2.svc.cluster.local";

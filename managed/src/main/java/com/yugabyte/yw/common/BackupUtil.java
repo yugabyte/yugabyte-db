@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.common.ybc.YbcBackupUtil;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
@@ -271,6 +272,7 @@ public class BackupUtil {
     BackupRespBuilder builder =
         BackupResp.builder()
             .expiryTime(backup.getExpiry())
+            .expiryTimeUnit(backup.getExpiryTimeUnit())
             .onDemand(onDemand)
             .isFullBackup(backup.getBackupInfo().isFullBackup)
             .universeName(backup.universeName)
@@ -286,7 +288,8 @@ public class BackupUtil {
             .commonBackupInfo(getCommonBackupInfo(backup))
             .hasIncrementalBackups(hasIncrements)
             .lastIncrementalBackupTime(lastIncrementDate)
-            .lastBackupState(lastBackupState);
+            .lastBackupState(lastBackupState)
+            .scheduleName(backup.getScheduleName());
     return builder.build();
   }
 

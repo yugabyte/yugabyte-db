@@ -3,12 +3,20 @@ DEVOPS_HOME=$(CURDIR)/../devops
 
 
 VERSION ?= $(shell cat $(CURDIR)/version.txt)
+BUILD_ID ?= $(shell cat $(CURDIR)/version_metadata.json | jq '.build_id')
 
 # go compile options
 GOOS ?= linux
 GOARCH ?= amd64
-BUILD_TYPE := preview
 
+# Build Tags
+BUILD_TYPE := preview
+USE_LICENSE := true
+
+BUILD_TAGS = ${BUILD_TYPE}
+ifeq ($(USE_LICENSE), false)
+	BUILD_TAGS := ${BUILD_TAGS},nolicense 
+endif
 
 # build requirements
 BIN_NAME ?= yba-ctl
@@ -58,7 +66,9 @@ ${PREREQS_DIR}/${JDK_BINARY_NAME}:
 
 yba-ctl: test ${BIN_DIR}/${BIN_NAME}
 ${BIN_DIR}/${BIN_NAME}:
-	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} go build -a -o $@ -tags ${BUILD_TYPE}
+	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} go build -a -o $@ -tags ${BUILD_TAGS} -ldflags=" \
+		-X 'components.ybactl.Version=${VERSION}' \
+		-X 'components.ybactl.BuildID=${BUILD_ID}'"
 
 
 package: ${PACKAGE_NAME}

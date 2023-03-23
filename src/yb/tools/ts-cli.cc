@@ -37,6 +37,7 @@
 
 #include "yb/common/partition.h"
 #include "yb/common/ql_rowblock.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 

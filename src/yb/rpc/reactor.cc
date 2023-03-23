@@ -161,8 +161,11 @@ Reactor::~Reactor() {
 }
 
 Status Reactor::Init() {
-  DCHECK(thread_.get() == nullptr) << "Already started";
   DVLOG_WITH_PREFIX(6) << "Called Reactor::Init()";
+  auto old_state = ReactorState::kIdle;
+  SCHECK(
+      state_.compare_exchange_strong(old_state, ReactorState::kRunning, std::memory_order_acq_rel),
+      IllegalState, "Already started");
   // Register to get async notifications in our epoll loop.
   async_.set(loop_);
   async_.set<Reactor, &Reactor::AsyncHandler>(this);
@@ -182,7 +185,7 @@ Status Reactor::Init() {
 }
 
 void Reactor::Shutdown() {
-  ReactorState old_state = ReactorState::kRunning;
+  auto old_state = ReactorState::kRunning;
   do {
     if (state_.compare_exchange_weak(old_state,
                                      ReactorState::kClosing,
@@ -190,7 +193,7 @@ void Reactor::Shutdown() {
       VLOG_WITH_PREFIX(1) << "shutting down Reactor thread.";
       WakeThread();
     }
-  } while (!HasReactorStartedClosing(old_state));
+  } while (old_state == ReactorState::kRunning);
 
   // Another thread already switched the state to closing before us.
 }
@@ -202,8 +205,7 @@ void Reactor::ShutdownConnection(const ConnectionPtr& conn) {
   conn->Shutdown(ServiceUnavailableError());
   if (!conn->context().Idle()) {
     VLOG_WITH_PREFIX(1) << "connection is not idle: " << conn->ToString();
-    std::weak_ptr<Connection> weak_conn(conn);
-    conn->context().ListenIdle([this, weak_conn]() {
+    conn->context().ListenIdle([this, weak_conn = std::weak_ptr(conn)]() {
       DCHECK(IsCurrentThreadOrStartedClosing());
       auto conn = weak_conn.lock();
       if (conn) {
@@ -488,8 +490,7 @@ bool Reactor::IsCurrentThread() const {
 }
 
 bool Reactor::IsCurrentThreadOrStartedClosing() const {
-  return thread_.get() == yb::Thread::current_thread() ||
-         HasReactorStartedClosing(state_.load(std::memory_order_acquire));
+  return IsCurrentThread() || HasReactorStartedClosing(state());
 }
 
 void Reactor::RunThread() {
@@ -543,7 +544,7 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
     return Status::OK();
   }
 
-  if (HasReactorStartedClosing(state_.load(std::memory_order_acquire))) {
+  if (state() != ReactorState::kRunning) {
     return ServiceUnavailableError();
   }
 
@@ -942,14 +943,14 @@ bool Reactor::ScheduleReactorTask(ReactorTaskPtr task, bool schedule_even_closin
     // Even though state_ is atomic, we still need to take the lock to make sure state_
     // and pending_tasks_mtx_ are being modified in a consistent way.
     std::unique_lock<simple_spinlock> pending_lock(pending_tasks_mtx_);
-    auto state = state_.load(std::memory_order_acquire);
-    bool failure = schedule_even_closing ? state == ReactorState::kClosed
-                                         : HasReactorStartedClosing(state);
+    auto current_state = state();
+    bool failure = schedule_even_closing ? current_state == ReactorState::kClosed
+                                         : current_state != ReactorState::kRunning;
     if (failure) {
       return false;
     }
     was_empty = pending_tasks_.empty();
-    pending_tasks_.emplace_back(std::move(task));
+    pending_tasks_.push_back(std::move(task));
   }
   if (was_empty) {
     WakeThread();
@@ -963,7 +964,7 @@ bool Reactor::DrainTaskQueueAndCheckIfClosing() {
 
   std::lock_guard<simple_spinlock> lock(pending_tasks_mtx_);
   async_handler_tasks_.swap(pending_tasks_);
-  return HasReactorStartedClosing(state_.load(std::memory_order_acquire));
+  return HasReactorStartedClosing(state());
 }
 
 // Task to call an arbitrary function within the reactor thread.

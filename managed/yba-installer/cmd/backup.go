@@ -10,6 +10,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common/shell"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/ybactl"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/yugaware"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
@@ -25,7 +28,8 @@ func CreateBackupScript(outputPath string, dataDir string,
 		log.Debug("Create Backup Script has now been given executable permissions.")
 	}
 
-	args := []string{"create", "--output", outputPath, "--data_dir", dataDir, "--yba_installer"}
+	args := []string{"create", "--output", outputPath, "--data_dir", dataDir,
+		"--yba_installer", "--yba_version", common.GetVersion()}
 	if excludePrometheus {
 		args = append(args, "--exclude-prometheus")
 	}
@@ -36,21 +40,10 @@ func CreateBackupScript(outputPath string, dataDir string,
 		args = append(args, "--verbose")
 	}
 
-	if viper.GetBool("postgres.useExisting.enabled") {
-		args = append(args, "--db_username", viper.GetString("postgres.useExisting.username"))
-		args = append(args, "--db_host", viper.GetString("postgres.useExisting.host"))
-		args = append(args, "--db_port", viper.GetString("postgres.useExisting.port"))
-		// TODO: modify yb platform backup sript to accept a custom password
-	}
-
-	if viper.GetBool("postgres.install.enabled") {
-		args = append(args, "--db_username", "postgres")
-		args = append(args, "--db_host", "localhost")
-		args = append(args, "--db_port", viper.GetString("postgres.install.port"))
-	}
+	addPostgresArgs(args)
 
 	log.Info("Creating a backup of your YugabyteDB Anywhere Installation.")
-	common.RunBash(fileName, args)
+	shell.Run(fileName, args...)
 }
 
 // RestoreBackupScript calls the yb_platform_backup.sh script with the correct args.
@@ -68,21 +61,37 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 
 	args := []string{"restore", "--input", inputPath,
 		"--destination", destination, "--data_dir", destination, "--disable_version_check",
-		"--yba_installer"}
+		"--yba_installer", "--yba_version", common.GetVersion()}
 	if skipRestart {
 		args = append(args, "--skip_restart")
 	}
 	if verbose {
 		args = append(args, "--verbose")
 	}
+	// Add prometheus user
 	if common.HasSudoAccess() {
-		args = append(args, "-u", userName, "-e", userName)
+		args = append(args, "-e", userName)
 	} else {
-		args = append(args, "-u", common.GetCurrentUser(), "-e", common.GetCurrentUser())
+		args = append(args, "-e", common.GetCurrentUser())
 	}
+	addPostgresArgs(args)
 	log.Info("Restoring a backup of your YugabyteDB Anywhere Installation.")
-	common.RunBash(fileName, args)
+	shell.Run(fileName, args...)
+}
 
+func addPostgresArgs(args []string) {
+	if viper.GetBool("postgres.useExisting.enabled") {
+		args = append(args, "--db_username", viper.GetString("postgres.useExisting.username"))
+		args = append(args, "--db_host", viper.GetString("postgres.useExisting.host"))
+		args = append(args, "--db_port", viper.GetString("postgres.useExisting.port"))
+		// TODO: modify yb platform backup sript to accept a custom password
+	}
+
+	if viper.GetBool("postgres.install.enabled") {
+		args = append(args, "--db_username", "postgres")
+		args = append(args, "--db_host", "localhost")
+		args = append(args, "--db_port", viper.GetString("postgres.install.port"))
+	}
 }
 
 func createBackupCmd() *cobra.Command {
@@ -96,11 +105,23 @@ func createBackupCmd() *cobra.Command {
 		Short: "The createBackup command is used to take a backup of your YugabyteDB Anywhere instance.",
 		Long: `
     The createBackup command executes our yb_platform_backup.sh that creates a backup of your
-    YugabyteDB Anywhere instance. Executing this command requires that you create and specify the
+    YugabyteDB Anywhere instance. Executing this command requires that you specify the
     outputPath where you want the backup .tar.gz file to be stored as the first argument to
     createBackup.
     `,
 		Args: cobra.ExactArgs(1),
+		PreRun: func(cmd *cobra.Command, args []string) {
+
+			if !skipVersionChecks {
+				yugawareVersion, err := yugaware.InstalledVersionFromMetadata()
+				if err != nil {
+					log.Fatal("Cannot create a backup: " + err.Error())
+				}
+				if yugawareVersion != ybactl.Version {
+					log.Fatal("yba-ctl version does not match the installed YugabyteDB Anywhere version")
+				}
+			}
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 
 			outputPath := args[0]
@@ -133,12 +154,22 @@ func restoreBackupCmd() *cobra.Command {
 		Use:   "restoreBackup inputPath",
 		Short: "The restoreBackup command restores a backup of your YugabyteDB Anywhere instance.",
 		Long: `
-    The restoreBackup command executes our yb_platform_backup.sh that restores the backup of your
-    YugabyteDB Anywhere instance. Executing this command requires that you create and specify the
-    inputPath where the backup .tar.gz file that will be restored is located as the first argument
-    to restoreBackup.
+    The restoreBackup command executes our yb_platform_backup.sh that restores from a previously
+		taken backup of your YugabyteDB Anywhere instance. Executing this command requires that you
+		specify the inputPath to the backup .tar.gz file as the only argument to restoreBackup.
     `,
 		Args: cobra.ExactArgs(1),
+		PreRun: func(cmd *cobra.Command, args []string) {
+			if !skipVersionChecks {
+				yugawareVersion, err := yugaware.InstalledVersionFromMetadata()
+				if err != nil {
+					log.Fatal("Cannot restore from backup: " + err.Error())
+				}
+				if yugawareVersion != ybactl.Version {
+					log.Fatal("yba-ctl version does not match the installed YugabyteDB Anywhere version")
+				}
+			}
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 
 			inputPath := args[0]
@@ -163,8 +194,5 @@ func restoreBackupCmd() *cobra.Command {
 }
 
 func init() {
-	// Backup commands must be run from installed yba-ctl
-	if common.RunFromInstalled() {
-		rootCmd.AddCommand(createBackupCmd(), restoreBackupCmd())
-	}
+	rootCmd.AddCommand(createBackupCmd(), restoreBackupCmd())
 }

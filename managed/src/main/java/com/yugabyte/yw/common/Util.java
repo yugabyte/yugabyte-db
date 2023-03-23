@@ -10,7 +10,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
@@ -21,11 +20,12 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
 import java.io.BufferedInputStream;
 import java.io.File;
@@ -66,7 +66,6 @@ import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 import lombok.Getter;
 import org.apache.commons.codec.binary.Hex;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
@@ -112,6 +111,8 @@ public class Util {
   public static final double EPSILON = 0.000001d;
 
   public static final String YBC_COMPATIBLE_DB_VERSION = "2.15.0.0-b1";
+
+  public static final String K8S_YBC_COMPATIBLE_DB_VERSION = "2.17.3.0-b62";
 
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
 
@@ -900,5 +901,27 @@ public class Util {
             .map(Object::toString)
             .orElse("Unknown");
     return userEmail;
+  }
+
+  public static Universe lockUniverse(Universe universe) {
+    UniverseUpdater updater =
+        u -> {
+          UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+          universeDetails.updateInProgress = true;
+          universeDetails.updateSucceeded = false;
+          u.setUniverseDetails(universeDetails);
+        };
+    return Universe.saveDetails(universe.universeUUID, updater, false);
+  }
+
+  public static Universe unlockUniverse(Universe universe) {
+    UniverseUpdater updater =
+        u -> {
+          UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+          universeDetails.updateInProgress = false;
+          universeDetails.updateSucceeded = true;
+          u.setUniverseDetails(universeDetails);
+        };
+    return Universe.saveDetails(universe.universeUUID, updater, false);
   }
 }

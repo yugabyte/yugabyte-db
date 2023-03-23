@@ -129,7 +129,9 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
           // Promote Auto flags on compatible versions.
           if (confGetter.getConfForScope(universe, UniverseConfKeys.promoteAutoFlag)
               && CommonUtils.isAutoFlagSupported(newVersion)) {
-            createPromoteAutoFlagTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
+            createCheckSoftwareVersionTask(allNodes, newVersion)
+                .setSubTaskGroupType(getTaskSubGroupType());
+            createPromoteAutoFlagTask().setSubTaskGroupType(getTaskSubGroupType());
           }
 
           // Update software version in the universe metadata.
@@ -144,8 +146,7 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.DownloadingSoftware, taskParams().nodePrefix);
 
-    SubTaskGroup downloadTaskGroup =
-        getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup downloadTaskGroup = createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
       downloadTaskGroup.addSubTask(
           getAnsibleConfigureServerTask(

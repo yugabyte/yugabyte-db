@@ -123,9 +123,15 @@ class ApiService {
     return Promise.reject('Failed to fetch universe: No universe UUID provided.');
   };
 
-  createProvider = (providerConfigMutation: YBProviderMutation) => {
+  createProvider = (providerConfigMutation: YBProviderMutation, shouldValidate = false) => {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers`;
-    return axios.post<YBPTask>(requestURL, providerConfigMutation).then((resp) => resp.data);
+    return axios
+      .post<YBPTask>(requestURL, providerConfigMutation, {
+        params: {
+          validate: shouldValidate
+        }
+      })
+      .then((resp) => resp.data);
   };
 
   fetchProviderList = (): Promise<YBProvider[]> => {
@@ -133,10 +139,10 @@ class ApiService {
     return axios.get<YBProvider[]>(requestUrl).then((resp) => resp.data);
   };
 
-  deleteProvider = (providerUUID: string | undefined) => {
+  deleteProvider = (providerUUID: string) => {
     if (providerUUID) {
       const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}`;
-      return axios.delete(requestURL);
+      return axios.delete<YBPTask>(requestURL).then((response) => response.data);
     }
     return Promise.reject('Failed to delete provider: No provider UUID provided.');
   };

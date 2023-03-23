@@ -108,28 +108,29 @@ public class BackupUniverse extends UniverseTaskBase {
       // to prevent other updates from happening.
       universe = lockUniverseForUpdate(-1);
 
-      // If this is a retry and keyspace to restore to already exists, drop it.
-      if (!isFirstTry() && taskParams().actionType == ActionType.RESTORE) {
-        createDeleteKeySpaceTask(taskParams().getKeyspace(), taskParams().backupType)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-      }
-
-      if (taskParams().alterLoadBalancer) {
-        createLoadBalancerStateChangeTask(false)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-      }
-
-      if (cloudType != CloudType.kubernetes) {
-        // Ansible Configure Task for copying xxhsum binaries from
-        // third_party directory to the DB nodes.
-        installThirdPartyPackagesTask(universe)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
-      } else {
-        installThirdPartyPackagesTaskK8s(universe)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
-      }
-
       try {
+
+        // If this is a retry and keyspace to restore to already exists, drop it.
+        if (!isFirstTry() && taskParams().actionType == ActionType.RESTORE) {
+          createDeleteKeySpaceTask(taskParams().getKeyspace(), taskParams().backupType)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
+
+        if (taskParams().alterLoadBalancer) {
+          createLoadBalancerStateChangeTask(false)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
+
+        if (cloudType != CloudType.kubernetes) {
+          // Ansible Configure Task for copying xxhsum binaries from
+          // third_party directory to the DB nodes.
+          installThirdPartyPackagesTask(universe)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
+        } else {
+          installThirdPartyPackagesTaskK8s(universe)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
+        }
+
         UserTaskDetails.SubTaskGroupType groupType;
         if (taskParams().actionType == ActionType.CREATE) {
           groupType = UserTaskDetails.SubTaskGroupType.CreatingTableBackup;
@@ -160,6 +161,7 @@ public class BackupUniverse extends UniverseTaskBase {
 
         Backup backup = Backup.create(taskParams().customerUuid, taskParams());
         backup.setTaskUUID(userTaskUUID);
+        backup.save();
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.
         if (taskParams().alterLoadBalancer) {

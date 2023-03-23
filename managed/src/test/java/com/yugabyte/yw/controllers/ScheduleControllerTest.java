@@ -433,6 +433,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
         Schedule.create(
             defaultCustomer.uuid, backupTableParams, TaskType.BackupUniverse, 1000, null);
     schedule.setRunningState(true);
+    schedule.save();
     Result result =
         assertPlatformException(
             () -> deleteScheduleYb(schedule.scheduleUUID, defaultCustomer.uuid));

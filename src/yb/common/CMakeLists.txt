@@ -75,6 +75,7 @@ ADD_YB_LIBRARY(yb_common_base
 
 set(COMMON_SRCS
   clock.cc
+  colocated_util.cc
   common_flags.cc
   common_types_util.cc
   consistent_read_point.cc
@@ -93,6 +94,7 @@ set(COMMON_SRCS
   termination_monitor.cc
   transaction.cc
   transaction_error.cc
+  wire_protocol.cc
   ybc_util.cc
   ybc-internal.cc
   llvm_profile_dumper.cc
@@ -129,7 +131,7 @@ set(QL_SRCS
   ql_scanspec.cc
   row.cc
   schema.cc
-  wire_protocol.cc
+  ql_wire_protocol.cc
 )
 
 set(QL_LIBS
@@ -178,3 +180,4 @@ ADD_YB_TEST(placement_info-test)
 ADD_YB_TEST(schema-test)
 ADD_YB_TEST(types-test)
 ADD_YB_TEST(wire_protocol-test)
+ADD_YB_TEST(subtxn_set_and_pb-test)

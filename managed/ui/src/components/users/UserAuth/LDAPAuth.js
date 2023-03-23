@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import * as Yup from 'yup';
-import { trimStart, trimEnd } from 'lodash';
+import { trimStart, trimEnd, isString } from 'lodash';
 import { toast } from 'react-toastify';
 import { Row, Col, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { Formik, Form, Field } from 'formik';
@@ -126,8 +126,8 @@ export const LDAPAuth = (props) => {
         enable_ldaps === 'true'
           ? 'enable_ldaps'
           : enable_ldap_start_tls === 'true'
-            ? 'enable_ldap_start_tls'
-            : 'unsecure';
+          ? 'enable_ldap_start_tls'
+          : 'unsecure';
       finalFormData = { ...finalFormData, ldap_security };
     }
 
@@ -139,15 +139,17 @@ export const LDAPAuth = (props) => {
     const initValues = initializeFormValues();
     const promiseArray = Object.keys(formValues).reduce((promiseArr, key) => {
       if (formValues[key] !== initValues[key]) {
+        const keyName = `${LDAP_PATH}.${key}`;
+        const value = isString(formValues[key]) ? `"${formValues[key]}"` : formValues[key];
         promiseArr.push(
           formValues[key] !== ''
             ? setRunTimeConfig({
-              key: `${LDAP_PATH}.${key}`,
-              value: formValues[key]
-            })
+                key: keyName,
+                value
+              })
             : deleteRunTimeConfig({
-              key: `${LDAP_PATH}.${key}`
-            })
+                key: keyName
+              })
         );
       }
 

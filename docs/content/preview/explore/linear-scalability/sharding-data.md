@@ -36,7 +36,7 @@ rightNav:
 
 YugabyteDB automatically splits user tables into multiple shards, called tablets, using either a [hash](#hash-sharding)- or [range](#range-sharding)-based strategy.
 
-The primary key for each row in the table uniquely identifies the location of the tablet in the row, as per the following following diagram:
+The primary key for each row in the table uniquely identifies the location of the tablet in the row, as per the following diagram:
 
 ![Sharding a table into tablets](/images/architecture/partitioning-table-into-tablets.png)
 
@@ -364,36 +364,4 @@ The key has been written to one of the tablets. In this example, the tablet's UU
 
     ![Auto-sharding when adding three nodes](/images/ce/sharding_6nodes.png)
 
-### Clean up
-
-Execute the following commands to shut down the local universe:
-
-```sh
-./bin/yugabyted destroy \
-                  --base_dir=/tmp/ybd1
-```
-
-```sh
-./bin/yugabyted destroy \
-                  --base_dir=/tmp/ybd2
-```
-
-```sh
-./bin/yugabyted destroy \
-                  --base_dir=/tmp/ybd3
-```
-
-```sh
-./bin/yugabyted destroy \
-                  --base_dir=/tmp/ybd4
-```
-
-```sh
-./bin/yugabyted destroy \
-                  --base_dir=/tmp/ybd5
-```
-
-```sh
-./bin/yugabyted destroy \
-                  --base_dir=/tmp/ybd6
-```
+{{% explore-cleanup-local %}}

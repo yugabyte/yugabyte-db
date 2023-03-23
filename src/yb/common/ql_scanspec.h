@@ -23,6 +23,7 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/schema.h"
 #include "yb/common/value.pb.h"
 
 namespace yb {
@@ -33,7 +34,8 @@ namespace yb {
 //--------------------------------------------------------------------------------------------------
 class YQLScanSpec {
  public:
-  explicit YQLScanSpec(QLClient client_type) : client_type_(client_type) {
+  YQLScanSpec(QLClient client_type, const Schema& schema, bool is_forward_scan)
+      : schema_(schema), is_forward_scan_(is_forward_scan), client_type_(client_type) {
   }
 
   virtual ~YQLScanSpec() {
@@ -43,7 +45,30 @@ class YQLScanSpec {
     return client_type_;
   }
 
+  // for a particular column, give a column id, this function tries to determine its sorting type
+  SortingType get_sorting_type(size_t col_idx) {
+    return col_idx == kYbHashCodeColId || schema().is_hash_key_column(col_idx) ?
+      SortingType::kAscending : schema().column(col_idx).sorting_type();
+  }
+
+  // for a particular column, given a column id, this function tries to determine if it is
+  // a forward scan or a reverse scan
+  bool get_scan_direction(size_t col_idx) {
+    auto sorting_type = get_sorting_type(col_idx);
+    return is_forward_scan_ ^ (sorting_type == SortingType::kAscending ||
+      sorting_type == SortingType::kAscendingNullsLast);
+  }
+
+  bool is_forward_scan() const {
+    return is_forward_scan_;
+  }
+
+  const Schema& schema() const { return schema_; }
+
+
  private:
+  const Schema& schema_;
+  const bool is_forward_scan_;
   const QLClient client_type_;
 };
 
@@ -62,15 +87,15 @@ class QLScanRange {
   class QLBound {
 
    public:
-    const QLValuePB &GetValue() const { return value_; }
+    const QLValuePB& GetValue() const { return value_; }
     bool IsInclusive() const { return is_inclusive_; }
-    bool operator<(const QLBound &other) const;
-    bool operator>(const QLBound &other) const;
-    bool operator==(const QLBound &other) const;
+    bool operator<(const QLBound& other) const;
+    bool operator>(const QLBound& other) const;
+    bool operator==(const QLBound& other) const;
 
    protected:
-    QLBound(const QLValuePB &value, bool is_inclusive, bool is_lower_bound);
-    QLBound(const LWQLValuePB &value, bool is_inclusive, bool is_lower_bound);
+    QLBound(const QLValuePB& value, bool is_inclusive, bool is_lower_bound);
+    QLBound(const LWQLValuePB& value, bool is_inclusive, bool is_lower_bound);
 
     QLValuePB value_;
     bool is_inclusive_ = true;
@@ -80,20 +105,20 @@ class QLScanRange {
   // Upper bound class
   class QLUpperBound : public QLBound {
    public:
-    QLUpperBound(const QLValuePB &value, bool is_inclusive)
+    QLUpperBound(const QLValuePB& value, bool is_inclusive)
         : QLBound(value, is_inclusive, false) {}
 
-    QLUpperBound(const LWQLValuePB &value, bool is_inclusive)
+    QLUpperBound(const LWQLValuePB& value, bool is_inclusive)
         : QLBound(value, is_inclusive, false) {}
   };
 
   // Lower bound class
   class QLLowerBound : public QLBound {
    public:
-    QLLowerBound(const QLValuePB &value, bool is_inclusive)
+    QLLowerBound(const QLValuePB& value, bool is_inclusive)
         : QLBound(value, is_inclusive, true) {}
 
-    QLLowerBound(const LWQLValuePB &value, bool is_inclusive)
+    QLLowerBound(const LWQLValuePB& value, bool is_inclusive)
         : QLBound(value, is_inclusive, true) {}
   };
 
@@ -114,10 +139,14 @@ class QLScanRange {
 
   std::vector<ColumnId> GetColIds() const {
     std::vector<ColumnId> col_id_list;
-    for (auto &it : ranges_) {
+    for (auto& it : ranges_) {
       col_id_list.push_back(it.first);
     }
     return col_id_list;
+  }
+
+  bool has_in_hash_options() const {
+    return has_in_hash_options_;
   }
 
   bool has_in_range_options() const {
@@ -144,16 +173,19 @@ class QLScanRange {
   // Whether the condition has an IN condition on a range (clustering) column.
   // Used in doc_ql_scanspec to try to construct the set of options for a multi-point scan.
   bool has_in_range_options_ = false;
+  bool has_in_hash_options_ = false;
 };
 
 // A scan specification for a QL scan. It may be used to scan either a specified doc key
 // or a hash key + optional WHERE condition clause.
 class QLScanSpec : public YQLScanSpec {
  public:
-  explicit QLScanSpec(QLExprExecutorPtr executor = nullptr);
+  explicit QLScanSpec(const Schema& schema,
+                      QLExprExecutorPtr executor = nullptr);
 
   // Scan for the given hash key and a condition.
-  QLScanSpec(const QLConditionPB* condition,
+  QLScanSpec(const Schema& schema,
+             const QLConditionPB* condition,
              const QLConditionPB* if_condition,
              const bool is_forward_scan,
              QLExprExecutorPtr executor = nullptr);
@@ -164,17 +196,9 @@ class QLScanSpec : public YQLScanSpec {
   // virtual to make the class polymorphic.
   virtual Status Match(const QLTableRow& table_row, bool* match) const;
 
-  bool is_forward_scan() const {
-    return is_forward_scan_;
-  }
-
-  // Get Schema if available.
-  virtual const Schema* schema() const { return nullptr; }
-
  protected:
   const QLConditionPB* condition_;
   const QLConditionPB* if_condition_;
-  const bool is_forward_scan_;
   QLExprExecutorPtr executor_;
 };
 
@@ -185,17 +209,19 @@ class PgsqlScanSpec : public YQLScanSpec {
  public:
   typedef std::unique_ptr<PgsqlScanSpec> UniPtr;
 
-  explicit PgsqlScanSpec(const PgsqlExpressionPB *where_expr,
+  explicit PgsqlScanSpec(const Schema& schema,
+                         const bool is_forward_scan,
+                         const PgsqlExpressionPB* where_expr,
                          QLExprExecutorPtr executor = nullptr);
 
   virtual ~PgsqlScanSpec();
 
-  const PgsqlExpressionPB *where_expr() {
+  const PgsqlExpressionPB* where_expr() {
     return where_expr_;
   }
 
  protected:
-  const PgsqlExpressionPB *where_expr_;
+  const PgsqlExpressionPB* where_expr_;
   QLExprExecutorPtr executor_;
 };
 

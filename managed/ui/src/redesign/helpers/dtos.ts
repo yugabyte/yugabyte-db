@@ -427,7 +427,9 @@ export interface MetricQueryParams {
 
 // ---------------------------------------------------------------------------
 // Platform Result Types
-// Source: src/main/java/com/yugabyte/yw/forms/PlatformResults.java
+// Sources:
+// src/main/java/com/yugabyte/yw/forms/PlatformResults.java
+// src/main/java/com/yugabyte/yw/models/helpers/BaseBeanValidator.java
 // ---------------------------------------------------------------------------
 export interface YBPTask {
   resourceUUID: string;
@@ -436,6 +438,22 @@ export interface YBPTask {
 
 export interface YBPSuccess {
   message: string;
-  success: boolean;
+  success: true;
+}
+
+export interface YBPError {
+  error: string;
+  httpMethod: string;
+  requestUri: string;
+  success: false;
+
+  errorJson?: string;
+}
+
+export interface YBBeanValidationError {
+  error: {
+    [fieldKey: string]: string[];
+  };
+  success: false;
 }
 // ---------------------------------------------------------------------------

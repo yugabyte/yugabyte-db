@@ -47,9 +47,8 @@ import {
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
 import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
 import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
-import { PerfAdvisor } from '../../queries/PerfAdvisor.tsx';
 import { XClusterReplication } from '../../xcluster/XClusterReplication';
-
+import { EncryptionAtRest } from '../../../redesign/features/universe/universe-actions/encryption-at-rest/EncryptionAtRest';
 import './UniverseDetail.scss';
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
@@ -273,6 +272,9 @@ class UniverseDetail extends Component {
     const isTopKMetricsEnabled =
       runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.metrics.ui.topk.enable')
         ?.value === 'true';
+    const isPerfAdvisorEnabled =
+      runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.ui.feature_flags.perf_advisor')
+        ?.value === 'true';
 
     const type =
       pathname.indexOf('edit') < 0
@@ -413,19 +415,6 @@ class UniverseDetail extends Component {
           </Tab.Pane>
         ),
 
-        isNotHidden(currentCustomer.data.features, 'universes.details.perfadvisor', 'hidden') && (
-          <Tab.Pane
-            eventKey={'perfadvisor'}
-            tabtitle="Performance Advisor"
-            key="perfadvisor-tab"
-            mountOnEnter={true}
-            unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, 'universes.details.perfadvisor')}
-          >
-            <PerfAdvisor />
-          </Tab.Pane>
-        ),
-
         isNotHidden(currentCustomer.data.features, 'universes.details.queries') && (
           <Tab.Pane
             eventKey={'queries'}
@@ -436,7 +425,7 @@ class UniverseDetail extends Component {
             onExit={this.stripQueryParams}
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.queries')}
           >
-            <QueriesViewer />
+            <QueriesViewer isPerfAdvisorEnabled={isPerfAdvisorEnabled} />
           </Tab.Pane>
         ),
 
@@ -561,6 +550,8 @@ class UniverseDetail extends Component {
     const enableThirdpartyUpgrade =
       featureFlags.test['enableThirdpartyUpgrade'] ||
       featureFlags.released['enableThirdpartyUpgrade'];
+
+    const isMKREnabled = featureFlags.test['enableMKR'] || featureFlags.released['enableMKR'];
 
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
@@ -909,14 +900,26 @@ class UniverseDetail extends Component {
           universe={currentUniverse.data}
           type="primary"
         />
-        <EncryptionKeyModalContainer
-          modalVisible={showModal && visibleModal === 'manageKeyModal'}
-          onHide={closeModal}
-          handleSubmitKey={this.handleSubmitManageKey}
-          currentUniverse={currentUniverse}
-          name={currentUniverse.data.name}
-          uuid={currentUniverse.data.universeUUID}
-        />
+        {isMKREnabled ? (
+          <EncryptionAtRest
+            open={showModal && visibleModal === 'manageKeyModal'}
+            onClose={() => {
+              closeModal();
+              this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+            }}
+            universeDetails={currentUniverse.data}
+          />
+        ) : (
+          <EncryptionKeyModalContainer
+            modalVisible={showModal && visibleModal === 'manageKeyModal'}
+            onHide={closeModal}
+            handleSubmitKey={this.handleSubmitManageKey}
+            currentUniverse={currentUniverse}
+            name={currentUniverse.data.name}
+            uuid={currentUniverse.data.universeUUID}
+          />
+        )}
+
         <Measure onMeasure={this.onResize.bind(this)}>
           <YBTabsWithLinksPanel
             defaultTab={defaultTab}

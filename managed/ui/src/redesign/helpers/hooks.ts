@@ -7,8 +7,9 @@ import {
   InstanceTypeMutation,
   YBProviderMutation
 } from '../../components/configRedesign/providerRedesign/types';
-import { InstanceType, YBPSuccess, YBPTask } from './dtos';
+import { InstanceType, YBBeanValidationError, YBPError, YBPSuccess, YBPTask } from './dtos';
 import { handleServerError } from '../../utils/errorHandlingUtils';
+import { getCreateProviderErrorMessage } from '../../components/configRedesign/providerRedesign/forms/utils';
 
 // run callback when component is mounted only
 export const useWhenMounted = () => {
@@ -39,16 +40,54 @@ export const useDeepCompareUpdateEffect: typeof useDeepCompareEffect = (effect, 
 // Resource Management Custom Hooks
 // --------------------------------------------------------------------------------------
 
+export type UseCreateProviderParams = {
+  values: YBProviderMutation;
+  shouldValidate: boolean;
+};
 export const useCreateProvider = (
   queryClient: QueryClient,
-  mutationOptions?: MutationOptions<YBPTask, Error | AxiosError, YBProviderMutation>
+  mutationOptions?: MutationOptions<YBPTask, Error | AxiosError, UseCreateProviderParams>
 ) =>
-  useMutation((values: YBProviderMutation) => api.createProvider(values), {
+  useMutation(
+    ({ values, shouldValidate }: UseCreateProviderParams) =>
+      api.createProvider(values, shouldValidate),
+    {
+      ...mutationOptions,
+      onSuccess: (response, variables, context) => {
+        mutationOptions?.onSuccess
+          ? mutationOptions.onSuccess(response, variables, context)
+          : queryClient.invalidateQueries(providerQueryKey.ALL);
+      },
+      onError: (error, variables, context) => {
+        error;
+        mutationOptions?.onError
+          ? mutationOptions.onError(error, variables, context)
+          : handleServerError<YBBeanValidationError | YBPError>(
+              error,
+              getCreateProviderErrorMessage
+            );
+      }
+    }
+  );
+
+type UseDeleteProviderParams = {
+  providerUUID: string;
+};
+export const useDeleteProvider = (
+  queryClient: QueryClient,
+  mutationOptions?: MutationOptions<YBPTask, Error | AxiosError, UseDeleteProviderParams>
+) =>
+  useMutation(({ providerUUID }: UseDeleteProviderParams) => api.deleteProvider(providerUUID), {
     ...mutationOptions,
     onSuccess: (response, variables, context) => {
-      mutationOptions?.onSuccess
-        ? mutationOptions.onSuccess(response, variables, context)
-        : queryClient.invalidateQueries(providerQueryKey.ALL);
+      if (mutationOptions?.onSuccess) {
+        mutationOptions.onSuccess(response, variables, context);
+      } else {
+        queryClient.invalidateQueries(providerQueryKey.ALL, { exact: true });
+        queryClient.invalidateQueries(providerQueryKey.detail(variables.providerUUID), {
+          exact: true
+        });
+      }
     },
     onError: (error, variables, context) => {
       mutationOptions?.onError

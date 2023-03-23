@@ -13,6 +13,12 @@
 
 #include <boost/algorithm/string/join.hpp>
 
+#include "yb/docdb/docdb_test_util.h"
+
+#include "yb/gutil/casts.h"
+#include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/split.h"
+
 #include "yb/integration-tests/cql_test_base.h"
 #include "yb/integration-tests/mini_cluster.h"
 
@@ -29,10 +35,6 @@
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/timestamp.h"
-
-#include "yb/gutil/casts.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/split.h"
 
 using namespace std::literals;
 
@@ -161,6 +163,8 @@ void CheckWriteTimeConsistency(
 // Write more values.
 // Check that all write times are before current time.
 TEST_F(DataPatcherTest, AddTimeDelta) {
+  docdb::DisableYcqlPackedRow();
+
   constexpr int kValueGroupSize = 10;
   constexpr int kDataPatcherConcurrency = 2;
   const MonoDelta kMonoDelta(60min * 24 * 365 * 80);

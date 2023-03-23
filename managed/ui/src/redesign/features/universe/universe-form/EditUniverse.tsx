@@ -87,7 +87,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
     }
   );
 
-  const onCancel = () => browserHistory.goBack();
+  const onCancel = () => browserHistory.push(`/universes/${uuid}`);
 
   const submitEditUniverse = async (finalPayload: UniverseConfigure) => {
     try {

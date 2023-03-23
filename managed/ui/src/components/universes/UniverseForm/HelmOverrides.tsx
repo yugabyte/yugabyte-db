@@ -104,7 +104,7 @@ interface HelmOverridesModalProps {
 interface NodeOverridesModalProps {
   visible: boolean;
   nodeId: string;
-  universeId:string;
+  universeId: string;
   onClose: () => void;
 }
 
@@ -360,37 +360,41 @@ export const NodeOverridesModal: FC<NodeOverridesModalProps> = ({
   nodeId,
   universeId
 }) => {
-
-  const { data, isLoading, isError } = useQuery(
-    ["NODE_DETAILS", universeId, nodeId],
-    () => fetchNodeDetails(universeId,nodeId)
+  const { data, isLoading, isError } = useQuery(['NODE_DETAILS', universeId, nodeId], () =>
+    fetchNodeDetails(universeId, nodeId)
   );
 
-  const nodeDetails = data as unknown as Record<string,any>;
+  const nodeDetails = (data as unknown) as Record<string, any>;
 
   const renderAppliedOverrides = () => {
-    if(isLoading) return <YBLoading/>;
+    const appliedOverides = nodeDetails?.data?.kubernetesOverrides ?? '';
+    if (isLoading) return <YBLoading />;
 
-    if(isError) return <Alert bsStyle="danger">Oops! Something went wrong. Please try again.</Alert>;
-    
-    return <textarea disabled={true} className='overrides-textarea'>{nodeDetails.data.kubernetesOverrides}</textarea>;
+    if (isError)
+      return <Alert bsStyle="danger">Oops! Something went wrong. Please try again.</Alert>;
+
+    if (!appliedOverides) return <Alert bsStyle="warning">No Kubernetes Overrides applied.</Alert>;
+
+    return (
+      <textarea disabled={true} className="overrides-textarea">
+        {appliedOverides}
+      </textarea>
+    );
   };
 
   return (
     <YBModal
-      title={<>Kubernetes Overrides <span>{`(${nodeId})`}</span></>}
+      title={
+        <>
+          Kubernetes Overrides <span>{`(${nodeId})`}</span>
+        </>
+      }
       visible={visible}
       onHide={onClose}
       showCancelButton={true}
       cancelLabel={'OK'}
     >
-      <Row>
-      {
-        renderAppliedOverrides()
-      }
-      </Row>
-      
+      <Row>{renderAppliedOverrides()}</Row>
     </YBModal>
   );
 };
-

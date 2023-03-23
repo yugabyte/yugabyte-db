@@ -409,6 +409,8 @@ message GetChangesResponsePB {
 message GetCheckpointRequestPB {
   optional bytes stream_id = 1;
   optional bytes tablet_id = 2;
+  // The table_id will be required in case of colocated tables.
+  optional bytes table_id = 3;
 }
 
 message GetCheckpointResponsePB {

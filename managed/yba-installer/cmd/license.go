@@ -18,12 +18,13 @@ var licensePath string
 
 var baseLicenseCmd = &cobra.Command{
 	Use:   "license",
-	Short: "Licensing commands for yugabyte",
+	Short: "Licensing commands for yugabyte. Manage the active license or validate a new license.",
 }
 
 var validateLicenseCmd = &cobra.Command{
-	Use:   "validate",
+	Use:   "validate [-l file]",
 	Short: "Validate yugabyte license.",
+	Long:  "Validate either the active license file, or provide a license using '-l'",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		var lic *license.License
@@ -46,13 +47,18 @@ var validateLicenseCmd = &cobra.Command{
 	},
 }
 
-var updateLicenseCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Add license to yba install",
-	Args:  cobra.NoArgs,
+var addLicenseCmd = &cobra.Command{
+	Use:     "add -l license_file",
+	Short:   "Add a license for YugabyteDB Anywhere.",
+	Long:    "Add a license for YugabyteDB Anywhere. This can also overwrite an existing license.",
+	Aliases: []string{"update"},
+	Args:    cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
+		if _, err := os.Stat(licensePath); err != nil {
+			log.Fatal("Invalid license path given. Please provide a valid license with --license-path")
+		}
 		InstallLicense()
-		log.Info("Updated license, services can be started now")
+		log.Info("Added license, services can be started now")
 	},
 }
 
@@ -72,13 +78,11 @@ func InstallLicense() {
 }
 
 func init() {
-	updateLicenseCmd.Flags().StringVarP(&licensePath, "license-path", "l", "", "path to license file")
-	updateLicenseCmd.MarkFlagRequired("license-path")
-	validateLicenseCmd.Flags().StringVarP(&licensePath, "license-path", "l", "",
-		"path to license file")
-	baseLicenseCmd.AddCommand(updateLicenseCmd)
+	baseLicenseCmd.AddCommand(addLicenseCmd)
 	baseLicenseCmd.AddCommand(validateLicenseCmd)
-	baseLicenseCmd.Flags().StringVarP(&licensePath, "license-path", "l", "",
-		"validate given license instead of installed license")
+	baseLicenseCmd.PersistentFlags().StringVarP(&licensePath, "license-path", "l", "",
+		"Path to a YugabyteDB Anywhere license file")
+	addLicenseCmd.MarkFlagRequired("license-path")
+
 	rootCmd.AddCommand(baseLicenseCmd)
 }

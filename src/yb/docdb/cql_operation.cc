@@ -68,7 +68,14 @@ DEFINE_UNKNOWN_bool(ycql_disable_index_updating_optimization, false,
             "the index data.");
 TAG_FLAG(ycql_disable_index_updating_optimization, advanced);
 
-DEFINE_UNKNOWN_bool(ycql_enable_packed_row, false, "Whether packed row is enabled for YCQL.");
+#ifdef NDEBUG
+constexpr bool kYcqlPackedRowEnabled = false;
+#else
+constexpr bool kYcqlPackedRowEnabled = true;
+#endif
+
+DEFINE_RUNTIME_bool(ycql_enable_packed_row, kYcqlPackedRowEnabled,
+                    "Whether packed row is enabled for YCQL.");
 
 DEFINE_UNKNOWN_uint64(
     ycql_packed_row_size_limit, 0,
@@ -1863,7 +1870,7 @@ Status QLReadOperation::PopulateResultSet(const std::unique_ptr<QLScanSpec>& spe
   int rscol_index = 0;
   for (const QLExpressionPB& expr : request_.selected_exprs()) {
     QLExprResult value;
-    RETURN_NOT_OK(EvalExpr(expr, table_row, value.Writer(), spec->schema()));
+    RETURN_NOT_OK(EvalExpr(expr, table_row, value.Writer(), &spec->schema()));
     resultset->AppendColumn(rscol_index, value.Value());
     rscol_index++;
   }

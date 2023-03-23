@@ -227,8 +227,6 @@ public class NodeManager extends DevopsBase {
     if (params.universeUUID == null) {
       throw new RuntimeException("NodeTaskParams missing Universe UUID.");
     }
-    Universe universe = Universe.getOrBadRequest(params.universeUUID);
-    NodeDetails node = universe.getNode(params.nodeName);
     UserIntent userIntent = getUserIntentFromParams(params);
     final String defaultAccessKeyCode = appConfig.getString("yb.security.default.access.key");
 
@@ -1138,6 +1136,8 @@ public class NodeManager extends DevopsBase {
           }
         }
         break;
+      default:
+        break;
     }
 
     // extra_gflags is the base set of gflags that is common to all tasks.
@@ -1495,6 +1495,13 @@ public class NodeManager extends DevopsBase {
             */
             if (taskParam.assignPublicIP) {
               commandArgs.add("--assign_public_ip");
+            }
+            if (cloudType.equals(Common.CloudType.aws) && taskParam.useSpotInstance) {
+              commandArgs.add("--use_spot_instance");
+              if (taskParam.spotPrice > 0.0) {
+                commandArgs.add("--spot_price");
+                commandArgs.add(Double.toString(taskParam.spotPrice));
+              }
             }
             if (config.getBoolean("yb.cloud.enabled")
                 && taskParam.assignPublicIP
@@ -1862,6 +1869,9 @@ public class NodeManager extends DevopsBase {
           if (taskParam.force) {
             commandArgs.add("--force");
           }
+          if (taskParam.useSystemd) {
+            commandArgs.add("--systemd_services");
+          }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }
@@ -2044,6 +2054,8 @@ public class NodeManager extends DevopsBase {
           commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
           break;
         }
+      default:
+        break;
     }
     addNodeAgentCommandArgs(universe, nodeTaskParam, commandArgs, sensitiveData);
     commandArgs.add(nodeTaskParam.nodeName);

@@ -54,6 +54,8 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/flush_manager.h"
 #include "yb/master/master-path-handlers.h"
+#include "yb/master/master_backup.service.h"
+#include "yb/master/master_backup_service.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_service.h"
 #include "yb/master/master_tablet_service.h"
@@ -61,11 +63,15 @@
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/secure_stream.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/server/rpc_server.h"
+#include "yb/server/secure.h"
+#include "yb/server/hybrid_clock.h"
+
 
 #include "yb/tablet/maintenance_manager.h"
 
@@ -78,6 +84,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/ntp_clock.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
@@ -90,6 +97,12 @@ TAG_FLAG(master_rpc_timeout_ms, experimental);
 
 DEFINE_UNKNOWN_int32(master_yb_client_default_timeout_ms, 60000,
              "Default timeout for the YBClient embedded into the master.");
+
+DEFINE_NON_RUNTIME_int32(master_backup_svc_queue_length, 50,
+             "RPC queue length for master backup service");
+TAG_FLAG(master_backup_svc_queue_length, advanced);
+
+DECLARE_string(cert_node_filename);
 
 METRIC_DEFINE_entity(cluster);
 
@@ -152,7 +165,7 @@ Master::Master(const MasterOptions& opts)
       state_(kStopped),
       auto_flags_manager_(new AutoFlagsManager("yb-master", fs_manager_.get())),
       ts_manager_(new TSManager()),
-      catalog_manager_(new enterprise::CatalogManager(this)),
+      catalog_manager_(new CatalogManager(this)),
       path_handlers_(new MasterPathHandlers(this)),
       flush_manager_(new FlushManager(this, catalog_manager())),
       init_future_(init_status_.get_future()),
@@ -269,6 +282,16 @@ Status Master::Start() {
 }
 
 Status Master::RegisterServices() {
+#if !defined(__APPLE__)
+  server::HybridClock::RegisterProvider(NtpClock::Name(), [](const std::string&) {
+    return std::make_shared<NtpClock>();
+  });
+#endif
+
+  std::unique_ptr<ServiceIf> master_backup_service(new MasterBackupServiceImpl(this));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_backup_svc_queue_length,
+                                                     std::move(master_backup_service)));
+
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterAdminService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterClientService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterClusterService(this)));
@@ -300,7 +323,7 @@ Status Master::RegisterServices() {
       std::make_unique<tserver::PgClientServiceImpl>(
           *master_tablet_server_,
           client_future(), clock(), std::bind(&Master::TransactionPool, this), metric_entity(),
-          &messenger()->scheduler(), nullptr /* xcluster_safe_time_map */)));
+          &messenger()->scheduler())));
 
   return Status::OK();
 }
@@ -312,6 +335,7 @@ void Master::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-clone", "Replica Info", "/tablet-replication");
   DisplayIconTile(output, "fa-clock-o", "TServer Clocks", "/tablet-server-clocks");
   DisplayIconTile(output, "fa-tasks", "Load Balancer", "/load-distribution");
+  DisplayIconTile(output, "fa-list-alt", "XCluster Config", "/xcluster-config");
 }
 
 Status Master::StartAsync() {
@@ -638,6 +662,33 @@ Status Master::get_ysql_db_oid_to_cat_version_info_map(
   }
   LOG(INFO) << "resp: " << resp->ShortDebugString();
   return Status::OK();
+}
+
+Status Master::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
+  RETURN_NOT_OK(DbServerBase::SetupMessengerBuilder(builder));
+
+  secure_context_ = VERIFY_RESULT(
+      server::SetupInternalSecureContext(options_.HostsString(), *fs_manager_, builder));
+
+  return Status::OK();
+}
+
+Status Master::ReloadKeysAndCertificates() {
+  if (!secure_context_) {
+    return Status::OK();
+  }
+
+  return server::ReloadSecureContextKeysAndCertificates(
+        secure_context_.get(),
+        fs_manager_->GetDefaultRootDir(),
+        server::SecureContextType::kInternal,
+        options_.HostsString());
+}
+
+std::string Master::GetCertificateDetails() {
+  if(!secure_context_) return "";
+
+  return secure_context_.get()->GetCertificateDetails();
 }
 
 } // namespace master

@@ -154,6 +154,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, 4);
     assertEquals(Success, taskInfo.getTaskState());
     b.setTaskUUID(taskInfo.getTaskUUID());
+    b.save();
 
     Backup backup = Backup.get(defaultCustomer.uuid, b.backupUUID);
     assertEquals(Backup.BackupState.Completed, backup.state);
@@ -203,6 +204,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, 4);
     assertEquals(Success, taskInfo.getTaskState());
     b.setTaskUUID(taskInfo.getTaskUUID());
+    b.save();
 
     Backup backup = Backup.get(defaultCustomer.uuid, b.backupUUID);
     // We will deleting any backup object associated with the universe.

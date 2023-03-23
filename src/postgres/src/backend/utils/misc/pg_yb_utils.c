@@ -143,7 +143,6 @@ YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version)
 		ereport(LOG,
 				(errmsg("set local catalog version: %" PRIu64,
 						yb_catalog_cache_version)));
-
 }
 
 void
@@ -167,6 +166,7 @@ int ybc_disable_pg_locking = -1;
 /* Forward declarations */
 static void YBCInstallTxnDdlHook();
 
+bool yb_enable_docdb_tracing = false;
 bool yb_read_from_followers = false;
 int32_t yb_follower_read_staleness_ms = 0;
 
@@ -1214,14 +1214,7 @@ YBDecrementDdlNestingLevel(bool is_catalog_version_increment,
 		 * if DDL txn commit succeeds.)
 		 */
 		if (increment_done)
-		{
-			yb_catalog_cache_version += 1;
-			yb_pgstat_set_catalog_version(yb_catalog_cache_version);
-			if (*YBCGetGFlags()->log_ysql_catalog_versions)
-				ereport(LOG,
-						(errmsg("%s: set local catalog version: %" PRIu64,
-								__func__, yb_catalog_cache_version)));
-		}
+			YbUpdateCatalogCacheVersion(YbGetCatalogCacheVersion() + 1);
 
 		List *handles = YBGetDdlHandles();
 		ListCell *lc = NULL;
@@ -1673,6 +1666,10 @@ void YBFlushBufferedOperations() {
 
 void YBGetAndResetOperationFlushRpcStats(uint64_t *count, uint64_t *wait_time) {
 	YBCPgGetAndResetOperationFlushRpcStats(count, wait_time);
+}
+
+bool YBEnableTracing() {
+  return yb_enable_docdb_tracing;
 }
 
 bool YBReadFromFollowersEnabled() {
@@ -2908,8 +2905,8 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 	{
 		// TemplateDb tables
 		case AuthMemRelationId:                           // pg_auth_members
-			sys_table_index_id = AuthMemMemRoleIndexId;
 			db_id = TemplateDbOid;
+			sys_table_index_id = AuthMemMemRoleIndexId;
 			break;
 		case AuthIdRelationId:                            // pg_authid
 			db_id = TemplateDbOid;
@@ -2920,14 +2917,10 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 			sys_table_index_id = DatabaseNameIndexId;
 			break;
 
-		case DbRoleSettingRelationId: switch_fallthrough(); // pg_db_role_setting
-		case YBCatalogVersionRelationId:                    // pg_yb_catalog_version
-			db_id = TemplateDbOid;
-			break;
-		case YbProfileRelationId:							// pg_yb_profile
-			db_id = TemplateDbOid;
-			break;
-		case YbRoleProfileRelationId:					  // pg_yb_role_profile
+		case DbRoleSettingRelationId:    switch_fallthrough(); // pg_db_role_setting
+		case YBCatalogVersionRelationId: switch_fallthrough(); // pg_yb_catalog_version
+		case YbProfileRelationId:        switch_fallthrough(); // pg_yb_profile
+		case YbRoleProfileRelationId:                          // pg_yb_role_profile
 			db_id = TemplateDbOid;
 			break;
 

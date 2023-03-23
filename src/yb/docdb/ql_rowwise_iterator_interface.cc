@@ -32,18 +32,6 @@ Result<bool> YQLRowwiseIteratorIf::SeekTuple(const Slice& tuple_id) {
   return STATUS(NotSupported, "This iterator cannot seek by tuple id");
 }
 
-Status YQLRowwiseIteratorIf::NextRow(const Schema& projection, QLTableRow* table_row) {
-  return DoNextRow(projection, table_row);
-}
-
-Status YQLRowwiseIteratorIf::NextRow(QLTableRow* table_row) {
-  return DoNextRow(boost::none, table_row);
-}
-
-Status YQLRowwiseIteratorIf::Iterate(const YQLScanCallback& callback) {
-  return STATUS(NotSupported, "This iterator does not support iterate with callback.");
-}
-
 HybridTime YQLRowwiseIteratorIf::TEST_MaxSeenHt() {
   return HybridTime::kInvalid;
 }

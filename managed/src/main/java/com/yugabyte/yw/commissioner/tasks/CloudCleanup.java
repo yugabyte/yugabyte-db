@@ -53,8 +53,7 @@ public class CloudCleanup extends CloudTaskBase {
   }
 
   public SubTaskGroup createRegionCleanupTask(String regionCode) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("Region cleanup task", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("Region cleanup task");
     CloudRegionCleanup.Params params = new CloudRegionCleanup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.regionCode = regionCode;
@@ -66,8 +65,7 @@ public class CloudCleanup extends CloudTaskBase {
   }
 
   public SubTaskGroup createAccessKeyCleanupTask(String regionCode) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("Access Key cleanup task", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("Access Key cleanup task");
     CloudAccessKeyCleanup.Params params = new CloudAccessKeyCleanup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.regionCode = regionCode;
@@ -79,7 +77,7 @@ public class CloudCleanup extends CloudTaskBase {
   }
 
   public SubTaskGroup createProviderCleanupTask() {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("TaskExecutor", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("Provider cleanup task");
     CloudTaskParams params = new CloudTaskParams();
     params.providerUUID = taskParams().providerUUID;
     CloudProviderCleanup task = createTask(CloudProviderCleanup.class);

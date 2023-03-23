@@ -47,6 +47,11 @@ TransactionStatusResult::TransactionStatusResult(
       << "Status: " << status << ", status_time: " << status_time;
 }
 
+TransactionStatusResult::TransactionStatusResult(
+    TransactionStatus status_, HybridTime status_time_, SubtxnSet aborted_subtxn_set_,
+    TabletId status_tablet_) : status(status_), status_time(status_time_),
+      aborted_subtxn_set(aborted_subtxn_set_), status_tablet(status_tablet_) {}
+
 namespace {
 
 void DupStatusTablet(const TabletId& tablet_id, TransactionMetadataPB* out) {

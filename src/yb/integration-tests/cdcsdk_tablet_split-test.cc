@@ -14,15 +14,7 @@
 
 namespace yb {
 namespace cdc {
-namespace enterprise {
 
-namespace {
-
-void DisableYsqlPackedRow() {
-  ASSERT_OK(SET_FLAG(ysql_enable_packed_row, false));
-}
-
-}
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentPersistencyAfterTabletSplit)) {
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
@@ -921,7 +913,6 @@ TEST_F(
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWithTwoTabletSplits)) {
-  DisableYsqlPackedRow();
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   FLAGS_aborted_intent_cleanup_ms = 1000;
@@ -1285,6 +1276,5 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionCommitAfterTabletS
   ASSERT_GE(child1_record_count + child2_record_count, 200);
 }
 
-}  // namespace enterprise
 }  // namespace cdc
 }  // namespace yb

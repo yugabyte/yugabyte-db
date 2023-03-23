@@ -322,8 +322,8 @@ class AllTypesItest : public YBTest {
     table_.AddInt64ColumnValue(req, "int64_val", int_val);
     std::string content = StringPrintf("hello %010x", int_val);
     table_.AddStringColumnValue(req, "string_val", content);
-    table_.AddBinaryColumnValue(req, "binary_val", content);
     table_.AddBoolColumnValue(req, "bool_val", int_val % 2);
+    table_.AddBinaryColumnValue(req, "binary_val", content);
     VLOG(1) << "Inserting row[" << split_idx << "," << row_idx << "]" << insert->ToString();
     session->Apply(insert);
     return Status::OK();

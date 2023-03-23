@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V33__14209__yb_terminated_queries.sql
-{ major => '33', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V35__13568__pg_get_backend_memory_contexts.sql
+{ major => '35', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

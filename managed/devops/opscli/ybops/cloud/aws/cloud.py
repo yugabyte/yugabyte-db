@@ -579,11 +579,11 @@ class AwsCloud(AbstractCloud):
                 instance.wait_until_stopped()
         except ClientError as e:
             logging.error(e)
+            raise YBOpsRuntimeError("Failed to start instance {}: {}".format(host_info["id"], e))
 
     def start_instance(self, host_info, server_ports):
         ec2 = boto3.resource('ec2', host_info["region"])
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             instance = ec2.Instance(id=host_info["id"])
             if instance.state['Name'] != 'running':
                 if instance.state['Name'] != 'pending':
@@ -600,8 +600,11 @@ class AwsCloud(AbstractCloud):
             self.wait_for_server_ports(host_info["private_ip"], host_info["id"], server_ports)
         except ClientError as e:
             logging.error(e)
-        finally:
-            sock.close()
+            if e.response.get("Error", {}).get("code") == "InsufficientInstanceCapacity":
+                raise YBOpsRecoverableError("Aws InsufficientInstanceCapacity error")
+            else:
+                raise YBOpsRuntimeError("Failed to start instance {}: {}".format(
+                    host_info["id"], e))
 
     def get_console_output(self, args):
         instance = self.get_host_info(args)

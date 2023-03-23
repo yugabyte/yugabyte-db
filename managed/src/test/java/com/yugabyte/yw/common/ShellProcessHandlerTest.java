@@ -34,7 +34,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 public class ShellProcessHandlerTest extends TestCase {
   private ShellProcessHandler shellProcessHandler;
 
-  @Mock play.Configuration appConfig;
+  @Mock Config appConfig;
 
   @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
 

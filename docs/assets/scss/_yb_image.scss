@@ -2,13 +2,25 @@
   display: inline-block;
   position: relative;
 
+  img {
+    margin: 0 !important;
+  }
+
   map {
     position: absolute;
     inset: 0;
 
-    .td-content p > code area {
+    @-moz-document url-prefix() {
+      position: static;
+    }
+
+    area {
       position: absolute;
       display: block;
+
+      @-moz-document url-prefix() {
+        position: static;
+      }
     }
   }
 }

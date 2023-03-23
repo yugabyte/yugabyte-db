@@ -14,6 +14,7 @@
 #include "yb/master/table_index.h"
 
 #include "gmock/gmock.h"
+#include "yb/common/colocated_util.h"
 #include "yb/master/master_util.h"
 #include <gtest/gtest.h>
 

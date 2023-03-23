@@ -104,6 +104,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     backupTableParams.customerUuid = defaultCustomer.uuid;
     defaultBackup = Backup.create(defaultCustomer.uuid, backupTableParams);
     defaultBackup.setTaskUUID(taskUUID);
+    defaultBackup.save();
 
     RestoreBackupParams restoreBackupParams = new RestoreBackupParams();
     restoreBackupParams.customerUUID = defaultCustomer.uuid;
@@ -514,6 +515,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   public void testFetchBackupsByTaskUUIDWithMultipleEntries() {
     Backup backup2 = Backup.create(defaultCustomer.uuid, backupTableParams);
     backup2.setTaskUUID(taskUUID);
+    backup2.save();
 
     JsonNode resultJson = fetchBackupsbyTaskId(defaultUniverse.universeUUID, taskUUID);
     assertEquals(2, resultJson.size());
@@ -528,8 +530,10 @@ public class BackupsControllerTest extends FakeDBApplication {
   public void testFetchBackupsByTaskUUIDWithDifferentTaskEntries() {
     Backup backup2 = Backup.create(defaultCustomer.uuid, backupTableParams);
     backup2.setTaskUUID(taskUUID);
+    backup2.save();
     Backup backup3 = Backup.create(defaultCustomer.uuid, backupTableParams);
     backup3.setTaskUUID(UUID.randomUUID());
+    backup3.save();
 
     JsonNode resultJson = fetchBackupsbyTaskId(defaultUniverse.universeUUID, taskUUID);
     assertEquals(2, resultJson.size());
@@ -1171,6 +1175,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     taskInfo.save();
 
     defaultBackup.setTaskUUID(taskUUID);
+    defaultBackup.save();
     ExecutorService executorService = Executors.newSingleThreadExecutor();
 
     Callable<Result> callable =
@@ -1213,6 +1218,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     taskInfo.save();
 
     defaultBackup.setTaskUUID(taskUUID);
+    defaultBackup.save();
     Result result =
         assertThrows(
                 PlatformServiceException.class, () -> stopBackup(null, defaultBackup.backupUUID))
@@ -1236,7 +1242,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEditBackupWithNonPositiveDeletionTime() {
+  public void testEditBackupWithNegativeDeletionTime() {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("timeBeforeDeleteFromPresentInMillis", -1L);
 
@@ -1244,18 +1250,26 @@ public class BackupsControllerTest extends FakeDBApplication {
         assertPlatformException(() -> editBackup(defaultUser, bodyJson, defaultBackup.backupUUID));
     assertEquals(BAD_REQUEST, result.status());
     assertBadRequest(
-        result, "Please provide either a positive expiry time or storage config to edit backup");
+        result,
+        "Please provide either a non negative expiry time or storage config to edit backup");
+  }
 
+  @Test
+  public void testEditBackupNeverExpire() {
+    defaultBackup.state = BackupState.Completed;
+    defaultBackup.update();
+    Backup backup = Backup.getOrBadRequest(defaultCustomer.uuid, defaultBackup.backupUUID);
+
+    ObjectNode bodyJson = Json.newObject();
     bodyJson.put("timeBeforeDeleteFromPresentInMillis", 0L);
-    result =
-        assertPlatformException(() -> editBackup(defaultUser, bodyJson, defaultBackup.backupUUID));
-    assertBadRequest(
-        result, "Please provide either a positive expiry time or storage config to edit backup");
+    Result result = editBackup(defaultUser, bodyJson, defaultBackup.backupUUID);
+    backup = Backup.getOrBadRequest(defaultCustomer.uuid, defaultBackup.backupUUID);
+
+    assert (backup.getExpiry() == null);
   }
 
   @Test
   public void testEditBackup() {
-
     defaultBackup.state = BackupState.Completed;
     defaultBackup.update();
     Backup backup = Backup.getOrBadRequest(defaultCustomer.uuid, defaultBackup.backupUUID);
@@ -1315,6 +1329,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     backup.updateStorageConfigUUID(invalidConfigUUID);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("timeBeforeDeleteFromPresentInMillis", "-1");
     Result result = editBackup(defaultUser, bodyJson, backup.backupUUID);
     assertOk(result);
     assertAuditEntry(1, defaultCustomer.uuid);
@@ -1376,6 +1391,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     backup.transitionState(BackupState.Completed);
     backup.updateStorageConfigUUID(invalidConfigUUID);
     customerConfig.setState(ConfigState.QueuedForDeletion);
+    customerConfig.save();
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     Result result =
@@ -1474,11 +1490,12 @@ public class BackupsControllerTest extends FakeDBApplication {
     UUID invalidConfigUUID = UUID.randomUUID();
     backup.updateStorageConfigUUID(invalidConfigUUID);
     ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("timeBeforeDeleteFromPresentInMillis", "0");
+    bodyJson.put("timeBeforeDeleteFromPresentInMillis", "-1");
     Result result =
         assertPlatformException(() -> editBackup(defaultUser, bodyJson, backup.backupUUID));
     assertBadRequest(
-        result, "Please provide either a positive expiry time or storage config to edit backup");
+        result,
+        "Please provide either a non negative expiry time" + " or storage config to edit backup");
     assertAuditEntry(0, defaultCustomer.uuid);
     backup.refresh();
     assertEquals(invalidConfigUUID, backup.storageConfigUUID);

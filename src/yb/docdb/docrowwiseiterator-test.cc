@@ -122,12 +122,11 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
     auto iter = std::make_unique<DocRowwiseIterator>(
         projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
         pending_op_counter, end_referenced_key_column_index);
-    RETURN_NOT_OK(iter->Init(YQL_TABLE_TYPE));
+    iter->Init(YQL_TABLE_TYPE);
     return iter;
   }
 
-  // CreateIteratorAndValidate functions create iterator and validate output of both Iterate() and
-  // HasNext/DoNextRow access patterns.
+  // CreateIteratorAndValidate functions create iterator and validate result.
   template <class T>
   void CreateIteratorAndValidate(
       const Schema &schema,
@@ -166,7 +165,6 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   void TestSimpleRangeScan();
   void SetupDocRowwiseIteratorData();
   void TestDocRowwiseIterator();
-  void TestDocRowwiseIteratorCallbackAPI();
   void TestDocRowwiseIteratorDeletedDocument();
   void TestDocRowwiseIteratorWithRowDeletes();
   void TestBackfillInsert();
@@ -392,23 +390,13 @@ Result<std::string> QLTableRowToString(
 Result<std::string> ConvertIteratorRowsToString(
     YQLRowwiseIteratorIf *iter,
     const Schema &schema,
-    bool use_iterate_callback = false,
     const Schema *projection = nullptr) {
   std::stringstream buffer;
-  if (use_iterate_callback) {
-    RETURN_NOT_OK(iter->Iterate([&](const QLTableRow &row) -> Result<ContinueScan> {
-      buffer << VERIFY_RESULT(QLTableRowToString(schema, row, projection));
-      buffer << "\n";
-
-      return ContinueScan::kTrue;
-    }));
-  } else {
-    QLTableRow row;
-    while (VERIFY_RESULT(iter->HasNext())) {
-      RETURN_NOT_OK(iter->NextRow(&row));
-      buffer << VERIFY_RESULT(QLTableRowToString(schema, row, projection));
-      buffer << "\n";
-    }
+  QLTableRow row;
+  while (VERIFY_RESULT(iter->HasNext())) {
+    RETURN_NOT_OK(iter->NextRow(&row));
+    buffer << VERIFY_RESULT(QLTableRowToString(schema, row, projection));
+    buffer << "\n";
   }
 
   return buffer.str();
@@ -417,14 +405,13 @@ Result<std::string> ConvertIteratorRowsToString(
 void ValidateIterator(
     YQLRowwiseIteratorIf *iter,
     const Schema &schema,
-    bool use_iterate_callback,
     const Schema *projection,
     const std::string &expected,
     const HybridTime &expected_max_seen_ht) {
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       expected,
       ASSERT_RESULT(
-          ConvertIteratorRowsToString(iter, schema, use_iterate_callback, projection)));
+          ConvertIteratorRowsToString(iter, schema, projection)));
 
   ASSERT_EQ(expected_max_seen_ht, iter->TEST_MaxSeenHt());
 }
@@ -440,14 +427,12 @@ void DocRowwiseIteratorTest::CreateIteratorAndValidate(
     const TransactionOperationContext &txn_op_context) {
   auto doc_read_context = DocReadContext::TEST_Create(schema);
 
-  for (bool use_iterate_callback : {false, true}) {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection ? *projection : schema, doc_read_context, txn_op_context, doc_db(),
-        CoarseTimePoint::max() /* deadline */, read_time, spec));
+  auto iter = ASSERT_RESULT(CreateIterator(
+      projection ? *projection : schema, doc_read_context, txn_op_context, doc_db(),
+      CoarseTimePoint::max() /* deadline */, read_time, spec));
 
-    ValidateIterator(
-        iter.get(), schema, use_iterate_callback, projection, expected, expected_max_seen_ht);
-  }
+  ValidateIterator(
+      iter.get(), schema, projection, expected, expected_max_seen_ht);
 }
 
 void DocRowwiseIteratorTest::CreateIteratorAndValidate(
@@ -457,15 +442,11 @@ void DocRowwiseIteratorTest::CreateIteratorAndValidate(
     const HybridTime &expected_max_seen_ht,
     const Schema *projection,
     const TransactionOperationContext &txn_op_context) {
+  auto iter = ASSERT_RESULT(CreateIterator(
+      projection ? *projection : schema, doc_read_context(), txn_op_context, doc_db(),
+      CoarseTimePoint::max() /* deadline */, read_time));
 
-  for (bool use_iterate_callback : {false, true}) {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection ? *projection : schema, doc_read_context(), txn_op_context, doc_db(),
-        CoarseTimePoint::max() /* deadline */, read_time));
-
-    ValidateIterator(
-        iter.get(), schema, use_iterate_callback, projection, expected, expected_max_seen_ht);
-  }
+  ValidateIterator(iter.get(), schema, projection, expected, expected_max_seen_ht);
 }
 
 void DocRowwiseIteratorTest::CreateIteratorAndValidate(
@@ -473,17 +454,15 @@ void DocRowwiseIteratorTest::CreateIteratorAndValidate(
     const std::string &expected,
     const HybridTime &expected_max_seen_ht,
     const TransactionOperationContext &txn_op_context) {
-  auto& projection = this->projection();
+  auto &projection = this->projection();
 
-  for (bool use_iterate_callback : {false, true}) {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context(), txn_op_context, doc_db(),
-        CoarseTimePoint::max() /* deadline */, read_time));
+  auto iter = ASSERT_RESULT(CreateIterator(
+      projection, doc_read_context(), txn_op_context, doc_db(),
+      CoarseTimePoint::max() /* deadline */, read_time));
 
-    ValidateIterator(
-        iter.get(), doc_read_context().schema, use_iterate_callback, &doc_read_context().schema,
-        expected, expected_max_seen_ht);
-  }
+  ValidateIterator(
+      iter.get(), doc_read_context().schema, &doc_read_context().schema, expected,
+      expected_max_seen_ht);
 }
 
 void DocRowwiseIteratorTest::TestClusteredFilterRange() {
@@ -865,138 +844,6 @@ void DocRowwiseIteratorTest::TestDocRowwiseIterator() {
         {string:"row2",int64:22222,null,int64:30000,string:"row2_e_prime"}
       )#",
       HybridTime::FromMicros(4000));
-}
-
-void DocRowwiseIteratorTest::TestDocRowwiseIteratorCallbackAPI() {
-  SetupDocRowwiseIteratorData();
-
-  QLValue value;
-  const auto& projection = this->projection();
-
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context(), kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000)));
-
-    size_t row_idx = 0;
-    YQLScanCallback callback = [&](const QLTableRow& row) -> Result<ContinueScan> {
-      switch (row_idx) {
-        case 0:
-          RETURN_NOT_OK(row.GetValue(projection.column_id(0), &value));
-          EXPECT_FALSE(value.IsNull());
-          EXPECT_EQ("row1_c", value.string_value());
-
-          RETURN_NOT_OK(row.GetValue(projection.column_id(1), &value));
-          EXPECT_FALSE(value.IsNull());
-          EXPECT_EQ(10000, value.int64_value());
-
-          RETURN_NOT_OK(row.GetValue(projection.column_id(2), &value));
-          EXPECT_FALSE(value.IsNull());
-          EXPECT_EQ("row1_e", value.string_value());
-          break;
-        case 1:
-          RETURN_NOT_OK(row.GetValue(projection.column_id(0), &value));
-          EXPECT_TRUE(value.IsNull()) << "Value: " << value.ToString();
-
-          RETURN_NOT_OK(row.GetValue(projection.column_id(1), &value));
-          EXPECT_FALSE(value.IsNull());
-          EXPECT_EQ(20000, value.int64_value());
-
-          RETURN_NOT_OK(row.GetValue(projection.column_id(2), &value));
-          EXPECT_FALSE(value.IsNull());
-          EXPECT_EQ("row2_e", value.string_value());
-          break;
-        default:
-          EXPECT_TRUE(false) << "Unexpected row";
-      }
-
-      row_idx++;
-      return ContinueScan::kTrue;
-    };
-
-    ASSERT_OK(iter->Iterate(std::move(callback)));
-    ASSERT_EQ(2, row_idx);
-    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
-  }
-
-  // Scan at a later hybrid_time.
-
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context(), kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000)));
-
-    size_t row_idx = 0;
-    YQLScanCallback callback = [&](const QLTableRow& row) -> Result<ContinueScan> {
-      switch (row_idx) {
-        case 0:
-          RETURN_NOT_OK(row.GetValue(projection.column_id(0), &value));
-          EXPECT_FALSE(value.IsNull());
-          EXPECT_EQ("row1_c", value.string_value());
-
-          RETURN_NOT_OK(row.GetValue(projection.column_id(1), &value));
-          EXPECT_FALSE(value.IsNull());
-          EXPECT_EQ(10000, value.int64_value());
-
-          RETURN_NOT_OK(row.GetValue(projection.column_id(2), &value));
-          EXPECT_FALSE(value.IsNull());
-          EXPECT_EQ("row1_e", value.string_value());
-          break;
-        case 1:
-          RETURN_NOT_OK(row.GetValue(projection.column_id(0), &value));
-          EXPECT_TRUE(value.IsNull()) << "Value: " << value.ToString();
-
-          RETURN_NOT_OK(row.GetValue(projection.column_id(1), &value));
-          EXPECT_FALSE(value.IsNull());
-          // These two rows have different values compared to the previous case.
-          EXPECT_EQ(30000, value.int64_value());
-
-          RETURN_NOT_OK(row.GetValue(projection.column_id(2), &value));
-          EXPECT_FALSE(value.IsNull());
-          EXPECT_EQ("row2_e_prime", value.string_value());
-          break;
-        default:
-          EXPECT_TRUE(false) << "Unexpected row";
-      }
-
-      row_idx++;
-      return ContinueScan::kTrue;
-    };
-
-    ASSERT_OK(iter->Iterate(std::move(callback)));
-    ASSERT_EQ(2, row_idx);
-    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
-  }
-
-
-  // Validate the callback function result.
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context(), kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000)));
-
-    YQLScanCallback callback = [&](const QLTableRow& row) -> Result<ContinueScan> {
-        return STATUS(NotSupported, "");
-    };
-
-    auto status = iter->Iterate(std::move(callback));
-    ASSERT_FALSE(status.ok());
-  }
-
-  {
-    auto iter = ASSERT_RESULT(CreateIterator(
-        projection, doc_read_context(), kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000)));
-
-    size_t row_idx = 0;
-    YQLScanCallback callback = [&](const QLTableRow& row) -> Result<ContinueScan> {
-        row_idx++;
-        return ContinueScan::kFalse;
-    };
-
-    ASSERT_OK(iter->Iterate(std::move(callback)));
-    ASSERT_EQ(1, row_idx);
-  }
 }
 
 void DocRowwiseIteratorTest::TestDocRowwiseIteratorDeletedDocument() {
@@ -2065,10 +1912,6 @@ TEST_F(DocRowwiseIteratorTest, ClusteredFilterEmptyInTest) {
 
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
   TestDocRowwiseIterator();
-}
-
-TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTestCallbackAPI) {
-  TestDocRowwiseIteratorCallbackAPI();
 }
 
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorDeletedDocumentTest) {
