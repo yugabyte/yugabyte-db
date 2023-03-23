@@ -180,11 +180,7 @@ Lists foreign tables (mnemonic: "external tables"). If *pattern* is specified, o
 
 Lists user mappings (mnemonic: "external users"). If *pattern* is specified, only those mappings whose user names match the pattern are listed. If the form `\deu+` is used, additional information about each mapping is shown.
 
-{{< note title="Caution" >}}
-
-`\deu+` might also display the user name and password of the remote user, so care should be taken not to disclose them.
-
-{{< /note >}}
+Note: `\deu+` might also display the user name and password of the remote user, so care should be taken not to disclose them.
 
 ##### \dew[+] [ [pattern](#patterns) ]
 
