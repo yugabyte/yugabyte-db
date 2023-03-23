@@ -2,7 +2,7 @@
 title: Launch and Manage
 headerTitle: Launch and Manage
 linkTitle: Launch and Manage
-description:
+description: Deploying and managing YugabyteDB
 headcontent:
 image: /images/section_icons/index/quick_start.png
 type: indexpage
