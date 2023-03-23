@@ -518,14 +518,15 @@ Status XClusterTestBase::WaitForValidSafeTimeOnAllTServers(
 
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
-          auto safe_time =
+          auto safe_time_result =
               tserver->server()->GetXClusterSafeTimeMap().GetSafeTime(namespace_id);
-          if (!safe_time) {
+          if (!safe_time_result || !*safe_time_result) {
             return false;
           }
-          CHECK(safe_time->is_valid());
+          CHECK(safe_time_result.get()->is_valid());
           return true;
-        }, safe_time_propagation_timeout_,
+        },
+        safe_time_propagation_timeout_,
         Format("Wait for safe_time of namespace $0 to be valid", namespace_id)));
   }
 

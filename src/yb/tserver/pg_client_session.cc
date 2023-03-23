@@ -893,27 +893,23 @@ Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
     return Status::OK();
   }
 
-  auto safe_time = xcluster_safe_time_map_->GetSafeTime(options.namespace_id());
+  auto safe_time = VERIFY_RESULT(xcluster_safe_time_map_->GetSafeTime(options.namespace_id()));
+  if (!safe_time) {
+    // No xCluster safe time for this namespace.
+    return Status::OK();
+  }
 
-  if (safe_time) {
-    RSTATUS_DCHECK(
-        !safe_time->is_special(), TryAgain,
-        Format("xCluster safe time for namespace $0 is invalid", options.namespace_id()));
+  RSTATUS_DCHECK(
+      !safe_time->is_special(), TryAgain,
+      Format("xCluster safe time for namespace $0 is invalid", options.namespace_id()));
 
-    // read_point is set for Distributed txns.
-    // Single shard implicit txn will not have read_point set and the serving tablet uses its latest
-    // time. If it read_point not set, or set to a time ahead of the xcluster safe time then we want
-    // to reset it back to the safe time.
-    if (read_point->GetReadTime().read.is_special() ||
-        read_point->GetReadTime().read > safe_time.get()) {
-      read_point->SetReadTime(ReadHybridTime::SingleTime(safe_time.get()), {} /* local_limits */);
-      VLOG_WITH_PREFIX(3) << "Reset read time to xCluster safe time: " << read_point->GetReadTime();
-    }
-  } else {
-    // NotFound is the only acceptable status
-    if (!safe_time.status().IsNotFound()) {
-      return safe_time.status();
-    }
+  // read_point is set for Distributed txns.
+  // Single shard implicit txn will not have read_point set and the serving tablet uses its latest
+  // time. If it read_point not set, or set to a time ahead of the xcluster safe time then we want
+  // to reset it back to the safe time.
+  if (read_point->GetReadTime().read.is_special() || read_point->GetReadTime().read > *safe_time) {
+    read_point->SetReadTime(ReadHybridTime::SingleTime(*safe_time), {} /* local_limits */);
+    VLOG_WITH_PREFIX(3) << "Reset read time to xCluster safe time: " << read_point->GetReadTime();
   }
 
   return Status::OK();
