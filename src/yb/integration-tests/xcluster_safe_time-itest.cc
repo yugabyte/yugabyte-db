@@ -182,14 +182,14 @@ class XClusterSafeTimeTest : public XClusterTestBase {
 
     return WaitFor(
         [&]() -> Result<bool> {
-          auto safe_time_status = GetSafeTime(tserver, namespace_id_);
-          if (!safe_time_status) {
-            CHECK(safe_time_status.status().IsNotFound() || safe_time_status.status().IsTryAgain());
-
+          auto safe_time_result = GetSafeTime(tserver, namespace_id_);
+          if (!safe_time_result) {
+            CHECK(safe_time_result.status().IsTryAgain());
             return false;
           }
-          auto safe_time = safe_time_status.get();
-          return safe_time.is_valid() && safe_time > min_safe_time;
+
+          auto safe_time = safe_time_result.get();
+          return *safe_time && safe_time->is_valid() && *safe_time > min_safe_time;
         },
         safe_time_propagation_timeout_,
         Format("Wait for safe_time to move above $0", min_safe_time.ToDebugString()));
@@ -199,8 +199,8 @@ class XClusterSafeTimeTest : public XClusterTestBase {
     auto* tserver = consumer_cluster()->mini_tablet_servers().front()->server();
     return WaitFor(
         [&]() -> Result<bool> {
-          auto safe_time_status = GetSafeTime(tserver, namespace_id_);
-          if (!safe_time_status.ok() && safe_time_status.status().IsNotFound()) {
+          auto safe_time_result = GetSafeTime(tserver, namespace_id_);
+          if (safe_time_result && !safe_time_result.get()) {
             return true;
           }
           return false;
@@ -242,7 +242,8 @@ TEST_F(XClusterSafeTimeTest, ComputeSafeTime) {
   auto ht_after_pause = GetProducerSafeTime();
   auto* tserver = consumer_cluster()->mini_tablet_servers().front()->server();
   auto safe_time_after_pause = ASSERT_RESULT(GetSafeTime(tserver, namespace_id_));
-  ASSERT_TRUE(safe_time_after_pause.is_valid());
+  ASSERT_TRUE(safe_time_after_pause);
+  ASSERT_TRUE(safe_time_after_pause->is_valid());
   ASSERT_GE(safe_time_after_pause, ht_before_pause);
   ASSERT_LT(safe_time_after_pause, ht_after_pause);
 
@@ -636,9 +637,9 @@ class XClusterConsistencyNoSafeTimeTest : public XClusterConsistencyTest {
       RETURN_NOT_OK(WaitFor(
           [&]() -> Result<bool> {
             auto safe_time = GetSafeTime(tserver->server(), namespace_id_);
-            CHECK(!safe_time);
 
-            if (safe_time.status().ToString().find(
+            if (!safe_time.ok() &&
+                safe_time.status().ToString().find(
                     "XCluster safe time not yet initialized for namespace") != string::npos) {
               return true;
             }

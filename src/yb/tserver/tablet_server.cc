@@ -198,6 +198,12 @@ TAG_FLAG(xcluster_svc_queue_length, advanced);
 DECLARE_string(cert_node_filename);
 DECLARE_bool(ysql_enable_table_mutation_counter);
 
+DEFINE_RUNTIME_bool(xcluster_external_transactions_ignore_safe_time, false,
+    "When enabled, xcluster external transactions will ignore the xCluster safe time. Enabling "
+    "this on can cause consistency issues.");
+TAG_FLAG(xcluster_external_transactions_ignore_safe_time, advanced);
+TAG_FLAG(xcluster_external_transactions_ignore_safe_time, unsafe);
+
 namespace yb {
 namespace tserver {
 
@@ -932,7 +938,14 @@ void TabletServer::UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap
 
 Result<bool> TabletServer::XClusterSafeTimeCaughtUpToCommitHt(
     const NamespaceId& namespace_id, HybridTime commit_ht) const {
-  return VERIFY_RESULT(xcluster_safe_time_map_.GetSafeTime(namespace_id)) > commit_ht;
+  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_xcluster_external_transactions_ignore_safe_time))) {
+    return true;
+  }
+
+  auto safe_time = VERIFY_RESULT(xcluster_safe_time_map_.GetSafeTime(namespace_id));
+  SCHECK(safe_time, TryAgain, "XCluster safe time not found for namespace $0", namespace_id);
+
+  return *safe_time > commit_ht;
 }
 
 Result<cdc::XClusterRole> TabletServer::TEST_GetXClusterRole() const {
