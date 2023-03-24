@@ -17,7 +17,7 @@ import subprocess
 from yb.rewrite_test_log import LogRewriterConf, LogRewriter
 
 
-def test_java_test_log_rewrite(tmp_path: pathlib.Path):
+def test_java_test_log_rewrite(tmp_path: pathlib.Path) -> None:
     input_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         'test_data',
@@ -36,7 +36,7 @@ def test_java_test_log_rewrite(tmp_path: pathlib.Path):
         build_root=os.path.join(yb_src_root, 'build', 'release-clang12-dynamic-ninja'),
         test_tmpdir=test_tmpdir,
         replace_original=False,
-        output_log_path=output_path,
+        output_log_path=str(output_path),
     )
     rewriter = LogRewriter(conf)
     rewriter.run()

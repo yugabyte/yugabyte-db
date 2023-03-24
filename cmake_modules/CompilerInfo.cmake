@@ -103,7 +103,7 @@ if("${COMPILER_FAMILY}" STREQUAL "gcc")
   set(IS_GCC TRUE)
 endif()
 
-yb_put_vars_into_cache(
+yb_put_string_vars_into_cache(
   COMPILER_FAMILY
   COMPILER_VERSION
   IS_APPLE_CLANG

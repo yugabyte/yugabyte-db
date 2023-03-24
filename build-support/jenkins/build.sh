@@ -429,15 +429,20 @@ if [[ ${YB_LINKING_TYPE} == *-lto ]]; then
 
   if [[ $( grep -E 'MemTotal: .* kB' /proc/meminfo ) =~ ^.*\ ([0-9]+)\ .*$ ]]; then
     total_mem_kb=${BASH_REMATCH[1]}
-    # LTO linking uses about 12.5 GB for building one binary. Try to avoid OOM.
-    yb_build_parallelism_for_lto=$(( total_mem_kb / (13 * 1024 * 1024) ))
+    gib_per_lto_process=17
+    yb_build_parallelism_for_lto=$(( total_mem_kb / (gib_per_lto_process * 1024 * 1024) ))
     if [[ ${yb_build_parallelism_for_lto} -lt 1 ]]; then
       yb_build_parallelism_for_lto=1
     fi
     log "Total memory size: ${total_mem_kb} KB," \
-        "using LTO linking parallelism ${yb_build_parallelism_for_lto}."
+        "using LTO linking parallelism ${yb_build_parallelism_for_lto} based on " \
+        "at least ${gib_per_lto_process} GiB per LTO process."
   else
     log "Warning: could not determine total amount of memory, using parallelism of 1 for LTO."
+    log "Contents of /proc/meminfo:"
+    set +e
+    cat /proc/meminfo >&2
+    set -e
     yb_build_parallelism_for_lto=1
   fi
   yb_build_cmd_line_for_lto+=( "-j${yb_build_parallelism_for_lto}" )
