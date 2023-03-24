@@ -23,6 +23,7 @@
 
 #include "yb/rocksdb/table/two_level_iterator.h"
 
+#include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/util/arena.h"
 
@@ -81,7 +82,7 @@ class TwoLevelIterator : public InternalIterator {
   bool IsKeyPinned() const override {
     return second_level_iter_.iter() ? second_level_iter_.IsKeyPinned() : false;
   }
-  bool ScanForward(
+  ScanForwardResult ScanForward(
       const Comparator* user_key_comparator, const Slice& upperbound,
       KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override;
 
@@ -156,26 +157,31 @@ void TwoLevelIterator::Prev() {
   SkipEmptyDataBlocksBackward();
 }
 
-bool TwoLevelIterator::ScanForward(
+ScanForwardResult TwoLevelIterator::ScanForward(
     const Comparator* user_key_comparator, const Slice& upperbound,
     KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
   LOG_IF(DFATAL, !Valid()) << "Iterator should be valid.";
 
+  ScanForwardResult result;
   do {
     if (!upperbound.empty() &&
         user_key_comparator->Compare(ExtractUserKey(second_level_iter_.key()), upperbound) >= 0) {
       break;
     }
 
-    if (!second_level_iter_.ScanForward(
-            user_key_comparator, upperbound, key_filter_callback, scan_callback)) {
-      return false;
+    auto current_result = second_level_iter_.ScanForward(
+        user_key_comparator, upperbound, key_filter_callback, scan_callback);
+    result.number_of_keys_visited += current_result.number_of_keys_visited;
+    if (!current_result.reached_upperbound) {
+      result.reached_upperbound = false;
+      return result;
     }
 
     SkipEmptyDataBlocksForward();
   } while (Valid());
 
-  return true;
+  result.reached_upperbound = true;
+  return result;
 }
 
 void TwoLevelIterator::SkipEmptyDataBlocksForward() {

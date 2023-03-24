@@ -323,11 +323,12 @@ class MemTableIterator : public InternalIterator {
     return true;
   }
 
-  bool ScanForward(
+  ScanForwardResult ScanForward(
       const Comparator* user_key_comparator, const Slice& upperbound,
       KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override {
     LOG_IF(DFATAL, !Valid()) << "Iterator should be valid.";
 
+    ScanForwardResult result;
     do {
       const auto user_key = ExtractUserKey(key());
       if (!upperbound.empty() && user_key_comparator->Compare(user_key, upperbound) >= 0) {
@@ -342,13 +343,16 @@ class MemTableIterator : public InternalIterator {
       }
 
       if (!skip && !(*scan_callback)(user_key, value())) {
-        return false;
+        result.reached_upperbound = false;
+        return result;
       }
 
+      result.number_of_keys_visited++;
       Next();
     } while (Valid());
 
-    return true;
+    result.reached_upperbound = true;
+    return result;
   }
 
  private:
