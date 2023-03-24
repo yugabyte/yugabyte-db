@@ -37,7 +37,7 @@ Read replicas require the following:
 
 ## Limitations
 
-- Geo-partitioned clusters do not support read replicas.
+- Partition-by-region clusters do not support read replicas.
 
 ## Add or edit read replicas
 
