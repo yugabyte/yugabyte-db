@@ -305,8 +305,12 @@ void PgDmlRead::SetDistinctScan(const PgExecParameters *exec_params) {
     size_t prefix_length = 0;
     for (const auto& col_ref : read_req_->col_refs()) {
       if (col_ref.has_column_id()) {
-        prefix_length =
-            std::max(prefix_length, CHECK_RESULT(bind_->FindColumn(col_ref.attno())) + 1);
+        auto col_idx = CHECK_RESULT(bind_->FindColumn(col_ref.attno()));
+        if (col_idx >= bind_->schema().num_key_columns()) {
+          continue;
+        }
+
+        prefix_length = std::max(prefix_length, col_idx + 1);
       }
     }
     read_req_->set_prefix_length(prefix_length);
