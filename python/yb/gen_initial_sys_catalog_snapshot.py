@@ -28,7 +28,7 @@ from yugabyte_pycommon import run_program, WorkDirContext, mkdir_p  # type: igno
 from yb.common_util import YB_SRC_ROOT, init_logging
 
 
-def main():
+def main() -> None:
     if os.environ.get('YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT', '0') == '1':
         logging.info('YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT is set, skipping initdb')
         return
