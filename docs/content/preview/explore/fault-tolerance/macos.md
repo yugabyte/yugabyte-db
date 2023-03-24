@@ -1,8 +1,8 @@
 ---
-title: High availability during failures (YugabyteDB Anywhere)
+title: High availability during failures in a local universe
 headerTitle: High availability during node and zone failures
 linkTitle: HA during failures
-description: Simulate fault tolerance and resilience in a local YugabyteDB database universe.
+description: Simulate fault tolerance and resilience in a local YugabyteDB database.
 headcontent: Keep serving requests through node, zone, and region failures
 menu:
   preview:
@@ -14,7 +14,7 @@ type: docs
 
 The following example demonstrates how YugabyteDB can continue to perform reads and writes even in case of node failures. In this scenario, you create a universe with a replication factor (RF) of 3, which allows a [fault tolerance](../../../architecture/docdb-replication/replication/#fault-tolerance) of 1. This means the universe remains available for both reads and writes even if a fault domain fails. However, if another were to fail (bringing the number of failures to two), writes would become unavailable on the universe to preserve data consistency.
 
-The examples are based on the YB Workload Simulator application, which uses the YugabyteDB JDBC [Smart Driver](../../../drivers-orms/smart-drivers/) configured with connection load balancing. The driver automatically balances application connections across the nodes in a universe and rebalances connections when a node fails.
+The examples are based on the YB Workload Simulator application, which uses the YugabyteDB JDBC [Smart Driver](../../../drivers-orms/smart-drivers/) configured with connection load balancing. The driver automatically balances application connections across the nodes in a universe and re-balances connections when a node fails.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>

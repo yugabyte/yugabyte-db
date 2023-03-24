@@ -1,5 +1,5 @@
 ---
-title: Create a VPC Network
+title: Create a VPC Network AWS
 headerTitle:
 linkTitle: Create a VPC Network
 description: Peer a VPC in AWS.
