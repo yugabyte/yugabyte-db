@@ -484,6 +484,11 @@ class PgClientServiceImpl::Impl {
 
   BOOST_PP_SEQ_FOR_EACH(PG_CLIENT_SESSION_METHOD_FORWARD, ~, PG_CLIENT_SESSION_METHODS);
 
+  size_t TEST_SessionsCount() {
+    SharedLock lock(mutex_);
+    return sessions_.size();
+  }
+
  private:
   client::YBClient& client() { return *client_future_.get(); }
 
@@ -617,6 +622,10 @@ void PgClientServiceImpl::Perform(
 
 void PgClientServiceImpl::InvalidateTableCache() {
   impl_->InvalidateTableCache();
+}
+
+size_t PgClientServiceImpl::TEST_SessionsCount() {
+  return impl_->TEST_SessionsCount();
 }
 
 #define YB_PG_CLIENT_METHOD_DEFINE(r, data, method) \
