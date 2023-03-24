@@ -27,6 +27,7 @@ import io
 import platform
 import argparse
 import uuid
+import hashlib
 
 import typing
 from typing import (
@@ -271,49 +272,6 @@ def ensure_yb_src_root_from_build_root(build_dir: str, verbose: bool = False) ->
 
 def is_macos() -> bool:
     return platform.system() == 'Darwin'
-
-
-def transform_path_for_logging(p: str) -> str:
-    """
-    Transforms a path before logging by replacing the home directory path with ~.
-
-    >>> transform_path_for_logging(os.path.expanduser('~/foo'))
-    '~/foo'
-    >>> transform_path_for_logging(os.path.expanduser('~'))
-    '~'
-    >>> transform_path_for_logging(os.path.realpath(os.path.expanduser('~')))
-    '~'
-    >>> transform_path_for_logging('/usr/bin')
-    '/usr/bin'
-    """
-    for home_dir in get_home_dir_aliases():
-        if p == home_dir:
-            return '~'
-
-        home_dir_prefix = home_dir + '/'
-        if p.startswith(home_dir_prefix):
-            return '~/%s' % p[len(home_dir_prefix):]
-
-    return p
-
-
-def write_json_file(
-        json_data: Any, output_path: str, description_for_log: Optional[str] = None) -> None:
-    with open(output_path, 'w') as output_file:
-        json.dump(json_data, output_file, indent=JSON_INDENTATION)
-        if description_for_log is not None:
-            logging.info("Wrote %s: %s",
-                         description_for_log, transform_path_for_logging(output_path))
-
-
-def read_json_file(input_path: str) -> Any:
-    try:
-        with open(input_path) as input_file:
-            return json.load(input_file)
-    except:  # noqa: E129
-        # We re-throw the exception anyway.
-        logging.error("Failed reading JSON file %s", input_path)
-        raise
 
 
 def read_file(file_path: str) -> str:
@@ -668,3 +626,19 @@ def ensure_enclosed_by(s: str, prefix: str, suffix: str) -> str:
     '[abc]'
     """
     return ensure_ends_with(ensure_starts_with(s, prefix), suffix)
+
+
+def are_files_equal(path1: str, path2: str) -> bool:
+    size1 = os.path.getsize(path1)
+    size2 = os.path.getsize(path2)
+    if size1 != size2:
+        return False
+    with open(path1, "rb") as file1, open(path2, "rb") as file2:
+        buf_size = 512 * 1024
+        while True:
+            chunk1 = file1.read(buf_size)
+            chunk2 = file2.read(buf_size)
+            if chunk1 != chunk2:
+                return False
+            if len(chunk1) == 0 and len(chunk2) == 0:
+                return True

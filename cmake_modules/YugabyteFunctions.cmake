@@ -42,18 +42,31 @@ macro(assert_vars_defined)
   unset(_var_name_tmp)
 endmacro()
 
+macro(yb_put_var_into_cache var_name data_type)
+  if(NOT DEFINED ${var_name})
+    message(FATAL_ERROR
+            "Variable ${var_name} is not defined, cannot put it into CMake cache.")
+  endif()
+  if(NOT "${data_type}" MATCHES "^(STRING|BOOL)$")
+    message(FATAL_ERROR
+            "Data type ${data_type} not allowed when putting variable ${var_name} into cache.")
+  endif()
+  set("${var_name}" "${${var_name}}" CACHE ${data_type}
+      "YugabyteDB configuration variable ${var_name} set using yb_put_var_into_cache" FORCE)
+endmacro()
+
 # Puts the given list of variables as INTERNAL CACHE variables.
 # See for more details:
 # - https://cmake.org/cmake/help/book/mastering-cmake/chapter/CMake%20Cache.html
 # - https://cmake.org/cmake/help/latest/command/set.html
-macro(yb_put_vars_into_cache)
+macro(yb_put_string_vars_into_cache)
   foreach(_var_name_tmp IN ITEMS ${ARGN})
     if(NOT DEFINED ${_var_name_tmp})
       message(FATAL_ERROR
               "Variable ${_var_name_tmp} is not defined, cannot put it into CMake cache.")
     endif()
     set("${_var_name_tmp}" "${${_var_name_tmp}}" CACHE INTERNAL
-        "Internal variable ${_var_name_tmp} (from yb_put_vars_into_cache)")
+        "Internal variable ${_var_name_tmp} (from yb_put_string_vars_into_cache)")
   endforeach()
   unset(_var_name_tmp)
 endmacro()
@@ -236,21 +249,23 @@ function(DETECT_BREW)
             "IS_GCC=${IS_GCC}, "
             "COMPILER_VERSION=${COMPILER_VERSION}, "
             "LINUXBREW_DIR=${LINUXBREW_DIR}")
-    if("${LINUXBREW_DIR}" STREQUAL "")
-      if(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/linuxbrew_path.txt")
-        file(STRINGS "${CMAKE_CURRENT_BINARY_DIR}/linuxbrew_path.txt" LINUXBREW_DIR)
-      else()
-        set(LINUXBREW_DIR "$ENV{HOME}/.linuxbrew-yb-build")
-      endif()
+
+    if("${LINUXBREW_DIR}" STREQUAL "" AND
+       EXISTS "${CMAKE_CURRENT_BINARY_DIR}/linuxbrew_path.txt")
+      file(STRINGS "${CMAKE_CURRENT_BINARY_DIR}/linuxbrew_path.txt" LINUXBREW_DIR)
     endif()
-    if(EXISTS "${LINUXBREW_DIR}/bin" AND
-       EXISTS "${LINUXBREW_DIR}/lib")
-      message("Linuxbrew found at ${LINUXBREW_DIR}")
-      set(ENV{YB_LINUXBREW_DIR} "${LINUXBREW_DIR}")
-      set(USING_LINUXBREW TRUE)
+    if("${LINUXBREW_DIR}" STREQUAL "")
+      set(USING_LINUXBREW FALSE)
+      message("Not using Linuxbrew")
     else()
-      message("Not using Linuxbrew: no valid Linuxbrew installation found at "
-              "${LINUXBREW_DIR}")
+      if(EXISTS "${LINUXBREW_DIR}/bin" AND EXISTS "${LINUXBREW_DIR}/lib")
+        message("Linuxbrew found at ${LINUXBREW_DIR}")
+        set(ENV{YB_LINUXBREW_DIR} "${LINUXBREW_DIR}")
+        set(USING_LINUXBREW TRUE)
+      else()
+        message(FATAL_ERROR
+                "Linuxbrew is enabled but ${LINUXBREW_DIR} is not a valid Linuxbrew directory")
+      endif()
     endif()
   endif()
 
@@ -302,7 +317,10 @@ function(_CHECK_LIB_DIR DIR_PATH DESCRIPTION)
   if (DIR_PATH STREQUAL "")
     message(FATAL_ERROR "Trying to add an empty ${DESCRIPTION}.")
   endif()
-  if(NOT EXISTS "${DIR_PATH}")
+  if(NOT EXISTS "${DIR_PATH}" AND
+     # The postgres/lib subdirectory of the build directory is a known case of a library directory
+     # that does not exist in the beginning of the build. Skip the message in that case.
+     NOT "${DIR_PATH}" STREQUAL "${YB_BUILD_ROOT}/postgres/lib")
     message(
       WARNING
       "Adding a non-existent ${DESCRIPTION} '${DIR_PATH}'. "
@@ -887,7 +905,7 @@ function(yb_add_lto_target original_exe_name output_exe_name symlink_as_names)
   endif()
 
   if("$ENV{YB_SKIP_FINAL_LTO_LINK}" STREQUAL "1")
-    message("Skipping adding LTO target ${output_exe_name} because the YB_SKIP_FINAL_LTO_LINK"
+    message("Skipping adding LTO target ${output_exe_name} because the YB_SKIP_FINAL_LTO_LINK "
             "environment variable is set to 1")
     return()
   endif()
