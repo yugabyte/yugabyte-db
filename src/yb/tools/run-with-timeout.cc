@@ -27,6 +27,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/result.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/thread.h"
 
 #ifdef __linux__
 #include <sys/resource.h>
@@ -42,12 +43,11 @@ using std::endl;
 using std::invalid_argument;
 using std::mutex;
 using std::string;
-using std::thread;
 using std::unique_lock;
 using std::vector;
-using std::chrono::steady_clock;
 using std::chrono::duration_cast;
 using std::chrono::milliseconds;
+using std::chrono::steady_clock;
 
 using yb::Subprocess;
 using yb::Status;
@@ -162,36 +162,40 @@ int main(int argc, char** argv) {
   bool finished = false;
   bool timed_out = false;
 
-  thread reaper_thread([timeout_sec, &subprocess, &lock, &finished_cond, &finished, &timed_out] {
-    if (timeout_sec == 0) {
-      return; // no timeout
-    }
+  scoped_refptr<yb::Thread> reaper_thread;
+  CHECK_OK(yb::Thread::Create(
+      "run-with-timeout", "reaper",
+      [timeout_sec, &subprocess, &lock, &finished_cond, &finished, &timed_out] {
+        if (timeout_sec == 0) {
+          return;  // no timeout
+        }
 
-    // Wait until the main thread notifies us that the process has finished running, or the
-    // timeout is reached.
-    auto wait_until_when = steady_clock::now() + std::chrono::seconds(timeout_sec);
+        // Wait until the main thread notifies us that the process has finished running, or the
+        // timeout is reached.
+        auto wait_until_when = steady_clock::now() + std::chrono::seconds(timeout_sec);
 
-    bool finished_local = false;
-    {
-      unique_lock<mutex> l(lock);
-      finished_cond.wait_until(l, wait_until_when, [&finished]{ return finished; });
-      finished_local = finished;
-    }
+        bool finished_local = false;
+        {
+          unique_lock<mutex> l(lock);
+          finished_cond.wait_until(l, wait_until_when, [&finished] { return finished; });
+          finished_local = finished;
+        }
 
-    const bool subprocess_is_running = subprocess.IsRunning();
-    LOG(INFO) << "Reaper thread: finished=" << finished_local
-              << ", subprocess_is_running=" << subprocess_is_running
-              << ", timeout_sec=" << timeout_sec;
+        const bool subprocess_is_running = subprocess.IsRunning();
+        LOG(INFO) << "Reaper thread: finished=" << finished_local
+                  << ", subprocess_is_running=" << subprocess_is_running
+                  << ", timeout_sec=" << timeout_sec;
 
-    if (!finished_local && subprocess_is_running) {
-      timed_out = true;
-      if (!SendSignalAndWait(&subprocess, SIGQUIT, "SIGQUIT", kWaitSecAfterSigQuit) &&
-          !SendSignalAndWait(&subprocess, SIGSEGV, "SIGSEGV", kWaitSecAfterSigSegv) &&
-          !SendSignalAndWait(&subprocess, SIGKILL, "SIGKILL", /* wait_sec */ 0)) {
-        LOG(ERROR) << "Failed to kill the process with SIGKILL (should not happen).";
-      }
-    }
-  });
+        if (!finished_local && subprocess_is_running) {
+          timed_out = true;
+          if (!SendSignalAndWait(&subprocess, SIGQUIT, "SIGQUIT", kWaitSecAfterSigQuit) &&
+              !SendSignalAndWait(&subprocess, SIGSEGV, "SIGSEGV", kWaitSecAfterSigSegv) &&
+              !SendSignalAndWait(&subprocess, SIGKILL, "SIGKILL", /* wait_sec */ 0)) {
+            LOG(ERROR) << "Failed to kill the process with SIGKILL (should not happen).";
+          }
+        }
+      },
+      &reaper_thread));
 
   int waitpid_ret_val = 0;
   CHECK_OK(subprocess.Wait(&waitpid_ret_val));
@@ -203,7 +207,7 @@ int main(int argc, char** argv) {
   }
 
   LOG(INFO) << "Waiting for reaper thread to join";
-  reaper_thread.join();
+  reaper_thread->Join();
   int exit_code = WIFEXITED(waitpid_ret_val) ? WEXITSTATUS(waitpid_ret_val) : 0;
   int term_sig = WIFSIGNALED(waitpid_ret_val) ? WTERMSIG(waitpid_ret_val) : 0;
   LOG(INFO) << "Child process returned exit code " << exit_code;

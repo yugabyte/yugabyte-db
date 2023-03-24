@@ -28,6 +28,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
+#include "yb/util/thread.h"
 
 using namespace yb::size_literals;
 
@@ -110,9 +111,8 @@ DumpEntry* GetNext(DumpEntry* entry) {
 class Dumper {
  public:
   Dumper() {
-    writer_thread_ = std::thread([this] {
-      this->Execute();
-    });
+    CHECK_OK(Thread::Create(
+        "transaction_Dump", "writer_thread", &Dumper::Execute, this, &writer_thread_));
   }
 
   ~Dumper() {
@@ -121,7 +121,9 @@ class Dumper {
       stop_.store(true, std::memory_order_release);
     }
     cond_.notify_one();
-    writer_thread_.join();
+    if (writer_thread_) {
+      writer_thread_->Join();
+    }
     while (auto* entry = queue_.Pop()) {
       free(entry);
     }
@@ -207,7 +209,7 @@ class Dumper {
 
   std::unique_ptr<DumpWriter> writer_;
   size_t current_file_size_ = 0;
-  std::thread writer_thread_;
+  scoped_refptr<Thread> writer_thread_;
   std::atomic<bool> stop_{false};
   MPSCQueue<DumpEntry> queue_;
   std::mutex mutex_;
