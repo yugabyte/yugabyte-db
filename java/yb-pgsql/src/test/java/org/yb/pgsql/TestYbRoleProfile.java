@@ -67,28 +67,27 @@ public class TestYbRoleProfile extends BasePgSQLTest {
 
   @Override
   protected Connection createTestRole() throws Exception {
-    try (Connection initialConnection = getConnectionBuilder()
-          .withUser(DEFAULT_PG_USER)
-          .withPassword(DEFAULT_PG_PASS)
-          .connect();
-      Statement statement = initialConnection.createStatement()) {
+    try (Connection initialConnection = getConnectionBuilder().withUser(DEFAULT_PG_USER)
+                                                              .withPassword(DEFAULT_PG_PASS)
+                                                              .connect();
+         Statement statement = initialConnection.createStatement()) {
       statement.execute(
-        String.format("CREATE ROLE %s SUPERUSER CREATEROLE CREATEDB BYPASSRLS LOGIN "
-                      + "PASSWORD '%s'", TEST_PG_USER, TEST_PG_PASS));
+          String.format("CREATE ROLE %s SUPERUSER CREATEROLE CREATEDB BYPASSRLS LOGIN "
+                        + "PASSWORD '%s'", TEST_PG_USER, TEST_PG_PASS));
     }
 
     return getConnectionBuilder().withPassword(TEST_PG_PASS).connect();
   }
 
-  private void attemptLogin(String username,
+  private void attemptLogin(
+      String username,
       String password,
       Pattern expectedErrorRe) throws Exception {
     try {
-      getConnectionBuilder()
-        .withTServer(0)
-        .withUser(username)
-        .withPassword(password)
-        .connect();
+      getConnectionBuilder().withTServer(0)
+                            .withUser(username)
+                            .withPassword(password)
+                            .connect();
       fail("Expected incorrect password");
     } catch (PSQLException e) {
       String msg = e.getMessage();
@@ -98,21 +97,22 @@ public class TestYbRoleProfile extends BasePgSQLTest {
   }
 
   private void login(String username, String password) throws Exception {
-    Connection connection = getConnectionBuilder()
-      .withTServer(0)
-      .withUser(username)
-      .withPassword(password)
-      .connect();
+    Connection connection = getConnectionBuilder().withTServer(0)
+                                                  .withUser(username)
+                                                  .withPassword(password)
+                                                  .connect();
 
     connection.close();
   }
 
-  private void assertProfileStateForUser(String username,
+  private void assertProfileStateForUser(
+      String username,
       int expectedFailedLogins,
       boolean expectedEnabled) throws Exception {
     try (Statement stmt = connection.createStatement()) {
       ResultSet result = stmt.executeQuery(
-          String.format("SELECT rolprfstatus, rolprffailedloginattempts " +
+          String.format(
+              "SELECT rolprfstatus, rolprffailedloginattempts " +
               "FROM pg_yb_role_profile rp " +
               "JOIN pg_roles rol ON rp.rolprfrole = rol.oid " +
               "WHERE rol.rolname = '%s'",
@@ -231,18 +231,15 @@ public class TestYbRoleProfile extends BasePgSQLTest {
     */
     recreateWithYsqlVersion(YsqlSnapshotVersion.EARLIEST);
 
-    try (Connection conn = getConnectionBuilder()
-        .withDatabase("template1")
-        .withTServer(0)
-        .withUser(DEFAULT_PG_USER)
-        .withPassword(DEFAULT_PG_PASS)
-        .connect();
+    try (Connection conn = getConnectionBuilder().withDatabase("template1")
+                                                 .withTServer(0)
+                                                 .withUser(DEFAULT_PG_USER)
+                                                 .withPassword(DEFAULT_PG_PASS)
+                                                 .connect();
          Statement stmt = conn.createStatement()) {
-          /* Validate that the connection is good. This is also useful for the cleanup */
-          // stmt.execute(String.format("CREATE USER %s PASSWORD '%s'", USERNAME, PASSWORD));
-
-          runInvalidQuery(stmt, "CREATE PROFILE p LIMIT FAILED_LOGIN_ATTEMPTS 3",
-                          "Login profile system catalogs do not exist");
+      runInvalidQuery(stmt,
+                      "CREATE PROFILE p LIMIT FAILED_LOGIN_ATTEMPTS 3",
+                      "Login profile system catalogs do not exist");
     }
   }
 
