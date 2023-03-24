@@ -28,6 +28,11 @@ namespace rocksdb {
 
 class Comparator;
 
+struct ScanForwardResult {
+  bool reached_upperbound = false;
+  uint64_t number_of_keys_visited = 0;
+};
+
 class InternalIterator : public Cleanable {
  public:
   InternalIterator() {}
@@ -117,11 +122,12 @@ class InternalIterator : public Cleanable {
   // Output: Returns bool when the upperbound is reached, otherwise returns false when either
   //  callback failed (i.e. returned false) or lower layer ran into some issue when reading data.
   //  status() call should be used to figure out the callback failure vs lower layer failure.
-  virtual bool ScanForward(
+  //  Result also includes the number of keys which were visited.
+  virtual ScanForwardResult ScanForward(
       const Comparator* user_key_comparator, const Slice& upperbound,
       KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
     LOG(FATAL) << "ScanForward is not supported yet";
-    return false;
+    return ScanForwardResult();
   }
 
  private:
