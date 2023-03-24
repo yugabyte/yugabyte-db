@@ -1,7 +1,7 @@
 ---
-title: Create a VPC Network
-headerTitle:
-linkTitle: Create a VPC Network
+title: Peer VPCs in AWS
+headerTitle: Peer VPCs
+linkTitle: Peer VPCs
 description: Peer a VPC in AWS.
 headcontent: Peer your cluster VPC with a VPC in AWS
 aliases:
@@ -9,8 +9,8 @@ aliases:
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-add-vpc-1-aws
-    parent: cloud-vpcs
-    weight: 40
+    parent: cloud-add-peering
+    weight: 50
 type: docs
 ---
 
@@ -36,7 +36,7 @@ YugabyteDB Managed supports virtual private cloud (VPC) networks on AWS and GCP.
 
 Using YugabyteDB Managed, you can create a VPC on AWS, deploy clusters in the VPC, and peer the VPC with application VPCs hosted on AWS.
 
-To create a VPC network in AWS, you need to complete the following tasks:
+To peer VPCs in AWS, you need to complete the following tasks:
 
 | Task | Notes |
 | :--- | :--- |
@@ -48,7 +48,7 @@ To create a VPC network in AWS, you need to complete the following tasks:
 
 With the exception of accepting the peering request in AWS, these tasks are performed in YugabyteDB Managed.
 
-For information on VPC network peering in AWS, refer to [VPC Peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html) in the AWS documentation.
+For information on VPC peering in AWS, refer to [VPC Peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html) in the AWS documentation.
 
 ## Create a VPC
 

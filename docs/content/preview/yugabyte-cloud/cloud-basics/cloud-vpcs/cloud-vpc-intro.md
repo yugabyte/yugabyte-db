@@ -1,14 +1,14 @@
 ---
-title: VPC network overview
+title: VPC peering overview
 headerTitle:
-linkTitle: Overview
-description: Requirements and considerations for setting up a VPC network.
-headcontent: What you need to know before setting up a VPC network
+linkTitle: Peering overview
+description: Requirements and considerations for setting up a VPC peering network.
+headcontent: What you need to know before peering VPCs
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-vpc-intro
-    parent: cloud-vpcs
-    weight: 10
+    parent: cloud-add-peering
+    weight: 40
 type: docs
 ---
 
@@ -22,7 +22,7 @@ A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges
 
 ## Advantages
 
-Deploying your cluster in a VPC network has the following advantages:
+Deploying your cluster in a peered network has the following advantages:
 
 - Lower network latency. Traffic uses only internal addresses, which provides lower latency than connectivity that uses external addresses.
 - Better security. Your services are never exposed to the public Internet.
@@ -30,7 +30,7 @@ Deploying your cluster in a VPC network has the following advantages:
 
 ## Pricing
 
-There's no additional charge for using a VPC. In most cases, using a VPC will reduce your data transfer costs. VPCs are not supported for Sandbox clusters.
+There's no additional charge for using a VPC or peering. In most cases, peering will reduce your data transfer costs. VPCs are not supported for Sandbox clusters.
 
 ## Limitations
 
@@ -45,7 +45,7 @@ If you need additional VPCs, contact {{% support-cloud %}}.
 
 ## Prerequisites
 
-Before setting up the VPC network, you'll need the following:
+Before setting up a peering network, you'll need the following:
 
 - The CIDR block you want to use for your VPC.
 
@@ -196,4 +196,4 @@ With the exception of 4, these tasks are performed in YugabyteDB Managed.
 
 ## Next step
 
-[Create a VPC network](../cloud-add-vpc-aws/)
+[Peer VPCs](../cloud-add-vpc-aws/)
