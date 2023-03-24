@@ -71,15 +71,13 @@ class TransactionLoader::Executor {
     }
     regular_iterator_ = CreateFullScanIterator(db.regular);
     intents_iterator_ = CreateFullScanIterator(db.intents);
-    auto& load_thread = loader_.load_thread_;
-    load_thread = std::thread(&Executor::Execute, this);
+    CHECK_OK(yb::Thread::Create(
+        "transaction_loader", "loader", &Executor::Execute, this, &loader_.load_thread_))
     return true;
   }
 
  private:
   void Execute() {
-    CDSAttacher attacher;
-
     SetThreadName("TransactionLoader");
 
     auto se = ScopeExit([this] {
@@ -390,8 +388,8 @@ void TransactionLoader::WaitAllLoaded() NO_THREAD_SAFETY_ANALYSIS {
 }
 
 void TransactionLoader::Shutdown() {
-  if (load_thread_.joinable()) {
-    load_thread_.join();
+  if (load_thread_) {
+    load_thread_->Join();
   }
 }
 
