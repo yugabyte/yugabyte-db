@@ -15,6 +15,8 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -30,6 +32,7 @@ import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.TaskInfo;
@@ -288,7 +291,8 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
 
     try {
       when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
-      when(mockTargetClient.getTablesList(null, true, null)).thenReturn(mockListTablesResponse);
+      when(mockTargetClient.getTablesList(eq(null), anyBoolean(), eq(null)))
+          .thenReturn(mockListTablesResponse);
     } catch (Exception e) {
       e.printStackTrace();
     }
@@ -714,7 +718,9 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
             Collections.singleton(exampleTableID3),
             null,
             sourceUniverse,
-            targetUniverse);
+            targetUniverse,
+            null,
+            ConfigType.Basic);
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;
@@ -774,7 +780,9 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
             Collections.singleton(exampleTableID3),
             null,
             sourceUniverse,
-            targetUniverse);
+            targetUniverse,
+            null,
+            ConfigType.Basic);
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;
@@ -832,7 +840,9 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
             Collections.singleton(exampleTableID3),
             null,
             sourceUniverse,
-            targetUniverse);
+            targetUniverse,
+            null,
+            ConfigType.Basic);
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;
@@ -907,7 +917,9 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
             Collections.singleton(exampleTableID3),
             null,
             sourceUniverse,
-            targetUniverse);
+            targetUniverse,
+            null,
+            ConfigType.Basic);
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;
@@ -1124,7 +1136,9 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
             Collections.singleton(exampleTableID3),
             null,
             sourceUniverse,
-            targetUniverse);
+            targetUniverse,
+            null,
+            ConfigType.Basic);
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;
@@ -1192,7 +1206,9 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
             Collections.singleton(exampleTableID3),
             null,
             sourceUniverse,
-            targetUniverse);
+            targetUniverse,
+            null,
+            ConfigType.Basic);
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;

@@ -151,18 +151,12 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
           }
           waitForXClusterOperation(client::isAlterUniverseReplicationDone);
 
-          // Persist that replicationSetupDone is true for the tables in taskParams. We have checked
-          // that taskParams().tableIdsToAdd exist in the xCluster config, so it will not throw an
-          // exception.
-          xClusterConfig.setReplicationSetupDone(tableIdsToAdd);
-          xClusterConfig.setStatusForTables(tableIdsToAdd, XClusterTableConfig.Status.Running);
-
           // Get the stream ids from the target universe and put it in the Platform DB for the
           // added tables to the xCluster config.
           CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
               getClusterConfig(client, targetUniverse.universeUUID);
-          updateStreamIdsFromTargetUniverseClusterConfig(
-              clusterConfig, xClusterConfig, tableIdsToAdd);
+          syncXClusterConfigWithReplicationGroup(
+              clusterConfig, xClusterConfig, tableIdsToAdd, true /* skipSyncTxnTable */);
 
           if (HighAvailabilityConfig.get().isPresent()) {
             // Note: We increment version twice for adding tables: once for setting up the .ALTER

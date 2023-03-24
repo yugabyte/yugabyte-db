@@ -19,6 +19,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
@@ -288,7 +289,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
     try {
       when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
-      when(mockClient.getTablesList(null, true, null)).thenReturn(mockListTablesResponse);
+      when(mockClient.getTablesList(eq(null), anyBoolean(), eq(null)))
+          .thenReturn(mockListTablesResponse);
     } catch (Exception e) {
       e.printStackTrace();
     }
@@ -844,10 +846,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
                 FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "PUT", editAPIEndpoint, user.createAuthToken(), editMultipleOperations));
     assertEquals(contentAsString(result), BAD_REQUEST, result.status());
-    assertResponseError(
-        "Exactly one edit request (either editName, editStatus, "
-            + "editTables) is allowed in one call.",
-        result);
+    assertResponseError("Exactly one edit request is allowed in one call", result);
     assertNoTasksCreated();
     assertAuditEntry(0, customer.uuid);
 
