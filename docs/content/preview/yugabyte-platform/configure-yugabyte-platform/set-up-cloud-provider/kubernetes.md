@@ -1,5 +1,5 @@
 ---
-..title: Configure the Kubernetes cloud provider
+title: Configure the Kubernetes cloud provider
 headerTitle: Configure the Kubernetes cloud provider
 linkTitle: Configure cloud providers
 description: Configure the Kubernetes cloud provider
