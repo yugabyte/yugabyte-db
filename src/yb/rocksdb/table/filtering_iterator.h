@@ -97,7 +97,7 @@ class FilteringIterator : public InternalIterator {
     return iterator_->GetProperty(std::move(prop_name), prop);
   }
 
-  bool ScanForward(
+  ScanForwardResult ScanForward(
       const Comparator* user_key_comparator, const Slice& upperbound,
       KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override {
     KeyFilterCallback kf_callback = [this, key_filter_callback](
