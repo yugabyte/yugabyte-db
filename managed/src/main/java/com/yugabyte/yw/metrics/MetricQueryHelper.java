@@ -303,7 +303,8 @@ public class MetricQueryHelper {
     if (metricQueryParams.getXClusterConfigUuid() != null) {
       XClusterConfig xClusterConfig =
           XClusterConfig.getOrBadRequest(metricQueryParams.getXClusterConfigUuid());
-      String tableIdRegex = String.join("|", xClusterConfig.getTables());
+      String tableIdRegex =
+          String.join("|", xClusterConfig.getTableIds(true /* includeTxnTableIfExists */));
       filterJson.put("table_id", tableIdRegex);
     }
     params.put("filters", Json.stringify(filterJson));

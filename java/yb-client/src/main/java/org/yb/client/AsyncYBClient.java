@@ -111,11 +111,13 @@ import org.yb.CommonTypes.YQLDatabase;
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
+import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClientOuterClass;
 import org.yb.master.MasterClientOuterClass.GetTableLocationsResponsePB;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.MasterTypes.MasterErrorPB;
 import org.yb.util.*;
 
 import javax.net.ssl.KeyManagerFactory;
@@ -1263,6 +1265,21 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     IsBootstrapRequiredRequest request =
         new IsBootstrapRequiredRequest(this.masterTable, tableIdsStreamIdMap);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * It sets the universe role for transactional xClusters.
+   *
+   * @param role The role to set the universe to
+   * @return A deferred object that yields a {@link ChangeXClusterRoleResponse} which contains
+   *         an {@link MasterErrorPB} object specifying whether the operation was successful
+   */
+  public Deferred<ChangeXClusterRoleResponse> changeXClusterRole(XClusterRole role) {
+    checkIsClosed();
+    ChangeXClusterRoleRequest request =
+        new ChangeXClusterRoleRequest(this.masterTable, role);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }

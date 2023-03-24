@@ -241,7 +241,8 @@ export interface Universe {
 export enum TableType {
   YQL_TABLE_TYPE = 'YQL_TABLE_TYPE',
   REDIS_TABLE_TYPE = 'REDIS_TABLE_TYPE',
-  PGSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE'
+  PGSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE',
+  TRANSACTION_STATUS_TABLE_TYPE = 'TRANSACTION_STATUS_TABLE_TYPE'
 }
 
 export interface YBTable {
@@ -381,7 +382,8 @@ export interface HAReplicationSchedule {
 export const TableTypeLabel: Record<TableType, string> = {
   YQL_TABLE_TYPE: 'YCQL',
   PGSQL_TABLE_TYPE: 'YSQL',
-  REDIS_TABLE_TYPE: 'REDIS'
+  REDIS_TABLE_TYPE: 'REDIS',
+  TRANSACTION_STATUS_TABLE_TYPE: 'SYSTEM',
 } as const;
 
 export interface MetricsData {
