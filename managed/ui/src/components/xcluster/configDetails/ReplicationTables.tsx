@@ -103,7 +103,8 @@ export function ReplicationTables({ xClusterConfig }: props) {
 
   const tablesInConfig = augmentTablesWithXClusterDetails(
     sourceUniverseTablesQuery.data,
-    xClusterConfig.tableDetails
+    xClusterConfig.tableDetails,
+    xClusterConfig.txnTableDetails
   );
   const isActiveTab = window.location.search === '?tab=tables';
   const sourceUniverse = sourceUniverseQuery.data;

@@ -64,7 +64,7 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
     // is deleted.
     Set<XClusterTableConfig> tableConfigsWithBootstrapId =
         xClusterConfig
-            .tables
+            .getTableDetails(true /* includeTxnTableIfExists */)
             .stream()
             .filter(tableConfig -> tableConfig.streamId != null)
             .collect(Collectors.toSet());
