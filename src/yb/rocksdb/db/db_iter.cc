@@ -878,16 +878,20 @@ bool DBIter::ScanForward(
 
   auto result =
       iter_->ScanForward(user_comparator_, upperbound, key_filter_callback, scan_callback);
+  RecordTick(statistics_, NUMBER_DB_NEXT, result.number_of_keys_visited);
+  RecordTick(statistics_, NUMBER_DB_NEXT_FOUND, result.number_of_keys_visited);
   if (iter_->Valid()) {
     FindNextUserEntry(/* skipping = */ false);
   } else {
     valid_ = false;
   }
 
-  VLOG_WITH_FUNC(4) << "ScanForward result: " << result << ", IsValid: " << valid_
+  VLOG_WITH_FUNC(4) << "ScanForward reached_upperbound: " << result.reached_upperbound
+                    << ", number of keys visited: " << result.number_of_keys_visited
+                    << ", IsValid: " << valid_
                     << ", Key: " << (valid_ ? saved_key_.GetKey().ToDebugHexString() : "");
 
-  return result;
+  return result.reached_upperbound;
 }
 
 Iterator* NewDBIterator(Env* env, const ImmutableCFOptions& ioptions,
