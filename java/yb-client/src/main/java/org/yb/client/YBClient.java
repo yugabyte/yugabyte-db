@@ -59,6 +59,7 @@ import org.yb.CommonTypes.TableType;
 import org.yb.CommonTypes.YQLDatabase;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
+import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterBackupOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
@@ -1814,6 +1815,12 @@ public class YBClient implements AutoCloseable {
     final HostAndPort hostAndPort, List<String> tableIds) throws Exception {
     Deferred<BootstrapUniverseResponse> d =
       asyncClient.bootstrapUniverse(hostAndPort, tableIds);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /** See {@link AsyncYBClient#changeXClusterRole(org.yb.cdc.CdcConsumer.XClusterRole)} */
+  public ChangeXClusterRoleResponse changeXClusterRole(XClusterRole role) throws Exception {
+    Deferred<ChangeXClusterRoleResponse> d = asyncClient.changeXClusterRole(role);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

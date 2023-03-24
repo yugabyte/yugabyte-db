@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
@@ -11,6 +10,7 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import java.io.File;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +18,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.CollectionUtils;
@@ -50,6 +51,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
         if (editFormData.name != null) {
+          String oldReplicationGroupName = xClusterConfig.getReplicationGroupName();
           // If TLS root certificates are different, create a directory containing the source
           // universe root certs with the new name.
           Optional<File> sourceCertificate =
@@ -57,6 +59,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
           sourceCertificate.ifPresent(
               cert ->
                   createTransferXClusterCertsCopyTasks(
+                      xClusterConfig,
                       targetUniverse.getNodes(),
                       XClusterConfig.getReplicationGroupName(
                           xClusterConfig.sourceUniverseUUID, editFormData.name),
@@ -72,12 +75,16 @@ public class EditXClusterConfig extends CreateXClusterConfig {
               cert ->
                   createTransferXClusterCertsRemoveTasks(
                       xClusterConfig,
+                      oldReplicationGroupName,
                       targetUniverse.getUniverseDetails().getSourceRootCertDirPath(),
                       false /* ignoreErrors */,
                       true /* skipRemoveTransactionalCert */));
         } else if (editFormData.status != null) {
           createSetReplicationPausedTask(editFormData.status)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        } else if (editFormData.sourceRole != null || editFormData.targetRole != null) {
+          createChangeXClusterRoleTask(
+              taskParams().getXClusterConfig(), editFormData.sourceRole, editFormData.targetRole);
         } else if (editFormData.tables != null) {
           if (!CollectionUtils.isEmpty(taskParams().getTableInfoList())) {
             createXClusterConfigSetStatusForTablesTask(
@@ -86,7 +93,9 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 sourceUniverse,
                 targetUniverse,
                 taskParams().getTableInfoList(),
-                taskParams().getMainTableIndexTablesMap());
+                taskParams().getMainTableIndexTablesMap(),
+                Collections.emptySet() /* tableIdsScheduledForBeingRemoved */,
+                taskParams().getTxnTableInfo());
           }
 
           if (!CollectionUtils.isEmpty(taskParams().getTableIdsToRemove())) {
@@ -126,8 +135,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                         getTableIds(taskParams().getTableInfoList()).stream(),
                         taskParams().getTableIdsToRemove().stream())
                     .collect(Collectors.toSet()),
-                ImmutableList.of(
-                    XClusterTableConfig.Status.Updating, XClusterTableConfig.Status.Bootstrapping));
+                X_CLUSTER_TABLE_CONFIG_PENDING_STATUS_LIST);
         xClusterConfig.setStatusForTables(tablesInPendingStatus, XClusterTableConfig.Status.Failed);
       }
       throw new RuntimeException(e);
@@ -143,11 +151,16 @@ public class EditXClusterConfig extends CreateXClusterConfig {
       Universe sourceUniverse,
       Universe targetUniverse,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
-      Map<String, List<String>> mainTableIndexTablesMap) {
+      Map<String, List<String>> mainTableIndexTablesMap,
+      Set<String> tableIdsScheduledForBeingRemoved,
+      @Nullable MasterDdlOuterClass.ListTablesResponsePB.TableInfo txnTableInfo) {
     Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
-        requestedNamespaceNameTablesInfoMapNeedBootstrap =
-            getRequestedNamespaceNameTablesInfoMapNeedBootstrap(
-                taskParams().getTableIdsToAdd(), requestedTableInfoList, mainTableIndexTablesMap);
+        dbToTablesInfoMapNeedBootstrap =
+            getDbToTablesInfoMapNeedBootstrap(
+                taskParams().getTableIdsToAdd(),
+                requestedTableInfoList,
+                mainTableIndexTablesMap,
+                null /* txnTableInfo */);
 
     // Replication for tables that do NOT need bootstrapping.
     Set<String> tableIdsNotNeedBootstrap =
@@ -167,19 +180,23 @@ public class EditXClusterConfig extends CreateXClusterConfig {
     // for all the tables in the DB including the new tables.
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
     Set<String> tableIdsDeleteReplication = new HashSet<>();
-    requestedNamespaceNameTablesInfoMapNeedBootstrap.forEach(
+    dbToTablesInfoMapNeedBootstrap.forEach(
         (namespaceName, tablesInfo) -> {
           Set<String> tableIdsNeedBootstrap = getTableIds(tablesInfo);
           Set<String> tableIdsNeedBootstrapInReplication =
               xClusterConfig.getTableIdsWithReplicationSetup(
                   tableIdsNeedBootstrap, true /* done */);
-          tableIdsDeleteReplication.addAll(tableIdsNeedBootstrapInReplication);
+          tableIdsDeleteReplication.addAll(
+              tableIdsNeedBootstrapInReplication
+                  .stream()
+                  .filter(tableId -> !tableIdsScheduledForBeingRemoved.contains(tableId))
+                  .collect(Collectors.toSet()));
         });
 
     // A replication group with no tables in it cannot exist in YBDB. If all the tables must be
     // removed from the replication group, remove the replication group.
     boolean isRestartWholeConfig =
-        tableIdsDeleteReplication.size()
+        tableIdsDeleteReplication.size() + tableIdsScheduledForBeingRemoved.size()
             >= xClusterConfig.getTableIdsWithReplicationSetup().size()
                 + tableIdsNotNeedBootstrap.size();
     log.info(
@@ -187,6 +204,9 @@ public class EditXClusterConfig extends CreateXClusterConfig {
         tableIdsDeleteReplication,
         isRestartWholeConfig);
     if (isRestartWholeConfig) {
+      createXClusterConfigSetStatusForTablesTask(
+          getTableIds(requestedTableInfoList, txnTableInfo), XClusterTableConfig.Status.Updating);
+
       // Delete the xCluster config.
       createDeleteXClusterConfigSubtasks(
           xClusterConfig, true /* keepEntry */, taskParams().isForced());
@@ -194,26 +214,15 @@ public class EditXClusterConfig extends CreateXClusterConfig {
       createXClusterConfigSetStatusTask(XClusterConfig.XClusterConfigStatusType.Updating);
 
       createXClusterConfigSetStatusForTablesTask(
-          tableIdsDeleteReplication, XClusterTableConfig.Status.Updating);
+          getTableIds(requestedTableInfoList, txnTableInfo), XClusterTableConfig.Status.Updating);
 
-      // Support mismatched TLS root certificates.
-      Optional<File> sourceCertificate =
-          getSourceCertificateIfNecessary(sourceUniverse, targetUniverse);
-      sourceCertificate.ifPresent(
-          cert ->
-              createTransferXClusterCertsCopyTasks(
-                  targetUniverse.getNodes(),
-                  xClusterConfig.getReplicationGroupName(),
-                  cert,
-                  targetUniverse.getUniverseDetails().getSourceRootCertDirPath()));
-
-      // Add the subtasks to set up replication for tables that need bootstrapping.
-      addSubtasksForTablesNeedBootstrap(
+      // Recreate the config including the new tables.
+      addSubtasksToCreateXClusterConfig(
           sourceUniverse,
           targetUniverse,
-          taskParams().getBootstrapParams(),
-          requestedNamespaceNameTablesInfoMapNeedBootstrap,
-          false /* isReplicationConfigCreated */);
+          requestedTableInfoList,
+          mainTableIndexTablesMap,
+          txnTableInfo);
     } else {
       createXClusterConfigModifyTablesTask(
           tableIdsDeleteReplication,
@@ -227,7 +236,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
           sourceUniverse,
           targetUniverse,
           taskParams().getBootstrapParams(),
-          requestedNamespaceNameTablesInfoMapNeedBootstrap,
+          dbToTablesInfoMapNeedBootstrap,
           true /* isReplicationConfigCreated */);
     }
   }

@@ -92,10 +92,13 @@ public class DeleteReplication extends XClusterConfigTaskBase {
             xClusterConfig.uuid,
             e.getMessage());
       }
+
       // After the RPC call, the corresponding stream ids on the source universe will be deleted
       // as well.
       xClusterConfig
-          .getTablesById(xClusterConfig.getTableIdsWithReplicationSetup())
+          .getTablesById(
+              xClusterConfig.getTableIdsWithReplicationSetup(
+                  xClusterConfig.getTableIds(true /* includeTxnTableIfExists */), true /* done */))
           .forEach(
               tableConfig -> {
                 tableConfig.status = XClusterTableConfig.Status.Validated;
@@ -105,10 +108,6 @@ public class DeleteReplication extends XClusterConfigTaskBase {
                 tableConfig.restoreTime = null;
               });
       xClusterConfig.update();
-
-      // Update DB to reflect this change.
-      xClusterConfig.setReplicationSetupDone(
-          xClusterConfig.getTables(), false /* replicationSetupDone */);
 
       if (HighAvailabilityConfig.get().isPresent()) {
         getUniverse(true).incrementVersion();
