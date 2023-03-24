@@ -330,13 +330,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   protected Connection createTestRole() throws Exception {
-    try (Connection initialConnection = getConnectionBuilder()
-          .withUser(DEFAULT_PG_USER)
-          .connect();
-      Statement statement = initialConnection.createStatement()) {
-      statement.execute(
-        String.format("CREATE ROLE %s SUPERUSER CREATEROLE CREATEDB BYPASSRLS LOGIN ",
-                      TEST_PG_USER));
+    try (Connection initialConnection = getConnectionBuilder().withUser(DEFAULT_PG_USER).connect();
+         Statement statement = initialConnection.createStatement()) {
+        statement.execute(
+            String.format("CREATE ROLE %s SUPERUSER CREATEROLE CREATEDB BYPASSRLS LOGIN ",
+                          TEST_PG_USER));
     }
 
     return getConnectionBuilder().connect();

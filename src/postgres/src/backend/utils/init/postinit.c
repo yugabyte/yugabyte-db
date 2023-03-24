@@ -80,10 +80,10 @@
 
 #include "pg_yb_utils.h"
 #include "catalog/pg_yb_catalog_version.h"
-#include "catalog/pg_yb_tablegroup.h"
-#include "catalog/yb_catalog_version.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
+#include "catalog/pg_yb_tablegroup.h"
+#include "catalog/yb_catalog_version.h"
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
@@ -702,7 +702,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 		if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 		{
 			YbRegisterSysTableForPrefetching(
-				YbProfileRelationId); // pg_yb_profile
+				YbProfileRelationId);		// pg_yb_profile
 			YbRegisterSysTableForPrefetching(
 				YbRoleProfileRelationId);	// pg_yb_role_profile
 		}

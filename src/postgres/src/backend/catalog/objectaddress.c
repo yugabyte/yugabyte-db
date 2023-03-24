@@ -2487,8 +2487,8 @@ check_object_ownership(Oid roleid, ObjectType objtype, ObjectAddress address,
 				ereport(ERROR,
 						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 						 errmsg("permission denied to drop profile"),
-						 errhint("Must be superuser or a member of the yb_db_admin "
-								 "role to drop a profile.")));
+						 errhint("Must be superuser or a member of the"
+								 " yb_db_admin role to drop a profile.")));
 			break;
 
 		default:
