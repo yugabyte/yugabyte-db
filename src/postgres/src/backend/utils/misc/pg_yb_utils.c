@@ -40,6 +40,7 @@
 #include "access/tupdesc.h"
 #include "access/xact.h"
 #include "executor/ybcExpr.h"
+#include "catalog/catalog.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
@@ -63,11 +64,10 @@
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
-#include "catalog/catalog.h"
-#include "catalog/yb_catalog_version.h"
-#include "catalog/yb_type.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
+#include "catalog/yb_catalog_version.h"
+#include "catalog/yb_type.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/variable.h"
@@ -1316,7 +1316,6 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		//   sed 's/,//g' | while read s; do echo -e "\t\tcase $s:"; done
 		// All T_Create... tags from nodes.h:
 
-		case T_YbCreateProfileStmt:
 		case T_CreateTableGroupStmt:
 		case T_CreateTableSpaceStmt:
 		case T_CreatedbStmt:
@@ -1325,6 +1324,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_DiscardStmt: // DISCARD ALL/SEQUENCES/TEMP affects only objects of current connection
 		case T_RuleStmt: // CREATE RULE
 		case T_TruncateStmt: // TRUNCATE changes system catalog in case of non-YB (i.e. TEMP) tables
+		case T_YbCreateProfileStmt:
 		{
 			/*
 			 * Simple add objects are not breaking changes, and they do not even require
@@ -1483,8 +1483,8 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_DropUserMappingStmt:
 			break;
 
-		case T_YbDropProfileStmt:
 		case T_DropStmt:
+		case T_YbDropProfileStmt:
 			*is_breaking_catalog_change = false;
 			break;
 

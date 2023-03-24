@@ -96,11 +96,11 @@ IsProfileHandlingRequired(UserAuth auth_method)
 Oid
 YbCreateProfile(YbCreateProfileStmt *stmt)
 {
-	Relation  rel;
-	Datum	  values[Natts_pg_yb_profile];
-	bool	  nulls[Natts_pg_yb_profile];
-	HeapTuple tuple;
-	Oid		  prfid;
+	Relation	rel;
+	Datum		values[Natts_pg_yb_profile];
+	bool		nulls[Natts_pg_yb_profile];
+	HeapTuple	tuple;
+	Oid			prfid;
 
 	CheckProfileCatalogsExist();
 
@@ -156,11 +156,11 @@ YbCreateProfile(YbCreateProfileStmt *stmt)
 Oid
 yb_get_profile_oid(const char *prfname, bool missing_ok)
 {
-	Oid			 result;
-	Relation	 rel;
+	Oid			result;
+	Relation	rel;
 	HeapScanDesc scandesc;
-	HeapTuple	 tuple;
-	ScanKeyData	 entry[1];
+	HeapTuple	tuple;
+	ScanKeyData	entry[1];
 
 	CheckProfileCatalogsExist();
 
@@ -194,10 +194,10 @@ yb_get_profile_oid(const char *prfname, bool missing_ok)
 HeapTuple
 yb_get_profile_tuple(Oid prfid)
 {
-	Relation	 rel;
+	Relation	rel;
 	HeapScanDesc scandesc;
-	HeapTuple	 tuple;
-	ScanKeyData	 entry[1];
+	HeapTuple	tuple;
+	ScanKeyData	entry[1];
 
 	CheckProfileCatalogsExist();
 
@@ -231,7 +231,7 @@ yb_get_profile_tuple(Oid prfid)
 char *
 yb_get_profile_name(Oid prfid)
 {
-	HeapTuple tuple;
+	HeapTuple	tuple;
 
 	tuple = yb_get_profile_tuple(prfid);
 
@@ -366,11 +366,11 @@ YbDropProfile(YbDropProfileStmt *stmt)
 static Oid
 yb_create_role_profile_map(Oid roleid, Oid prfid)
 {
-	Relation  rel;
-	Datum	  values[Natts_pg_yb_role_profile];
-	bool	  nulls[Natts_pg_yb_role_profile];
-	HeapTuple tuple;
-	Oid		  roleprfid;
+	Relation	rel;
+	Datum		values[Natts_pg_yb_role_profile];
+	bool		nulls[Natts_pg_yb_role_profile];
+	HeapTuple	tuple;
+	Oid			roleprfid;
 
 	CheckProfileCatalogsExist();
 
@@ -405,10 +405,10 @@ yb_create_role_profile_map(Oid roleid, Oid prfid)
 HeapTuple
 yb_get_role_profile_tuple_by_role_oid(Oid roleid)
 {
-	Relation	 rel;
+	Relation	rel;
 	HeapScanDesc scandesc;
-	HeapTuple	 tuple;
-	ScanKeyData	 entry[1];
+	HeapTuple	tuple;
+	ScanKeyData	entry[1];
 
 	CheckProfileCatalogsExist();
 
@@ -435,10 +435,10 @@ yb_get_role_profile_tuple_by_role_oid(Oid roleid)
 HeapTuple
 yb_get_role_profile_tuple_by_oid(Oid rolprfoid)
 {
-	Relation	 rel;
+	Relation	rel;
 	HeapScanDesc scandesc;
-	HeapTuple	 tuple;
-	ScanKeyData	 entry[1];
+	HeapTuple	tuple;
+	ScanKeyData	entry[1];
 
 	CheckProfileCatalogsExist();
 
@@ -474,8 +474,8 @@ yb_get_role_profile_tuple_by_oid(Oid rolprfoid)
  */
 void
 yb_update_role_profile(Oid roleid, const char *rolename, Datum *new_record,
-					bool *new_record_nulls, bool *new_record_repl,
-					bool missing_ok)
+					   bool *new_record_nulls, bool *new_record_repl,
+					   bool missing_ok)
 {
 	Relation	pg_yb_role_profile_rel;
 	TupleDesc	pg_yb_role_profile_dsc;
@@ -526,9 +526,9 @@ yb_update_role_profile(Oid roleid, const char *rolename, Datum *new_record,
 void
 YbCreateRoleProfile(Oid roleid, const char *rolename, const char *prfname)
 {
-	HeapTuple tuple;
+	HeapTuple	tuple;
 	Form_pg_yb_role_profile rolprfform;
-	Oid		oldprfid;
+	Oid			oldprfid;
 
 	/* Must be super user or yb_db_admin role */
 	if (!superuser() && !IsYbDbAdminUser(GetUserId()))
@@ -550,7 +550,7 @@ YbCreateRoleProfile(Oid roleid, const char *rolename, const char *prfname)
 
 	tuple = yb_get_role_profile_tuple_by_role_oid(roleid);
 
-	// If there is no entry for the role, then create a map and return.
+	/* If there is no entry for the role, then create a map and return. */
 	if (!HeapTupleIsValid(tuple))
 	{
 		yb_create_role_profile_map(roleid, prfid);
@@ -560,7 +560,7 @@ YbCreateRoleProfile(Oid roleid, const char *rolename, const char *prfname)
 	rolprfform = (Form_pg_yb_role_profile) GETSTRUCT(tuple);
 	oldprfid = rolprfform->rolprfprofile;
 
-	// Check if the role is already mapped to the same profile.
+	/* Check if the role is already mapped to the same profile. */
 	if (oldprfid == prfid)
 	{
 		elog(WARNING, "role \"%s\" is already associated with profile \"%s\"",
@@ -568,8 +568,10 @@ YbCreateRoleProfile(Oid roleid, const char *rolename, const char *prfname)
 		return;
 	}
 
-	// There is an entry for the role and it has be updated to point to
-	// another profile.
+	/*
+	 * There is an entry for the role and it has be updated to point to another
+	 * profile.
+	 */
 	Datum		new_record[Natts_pg_yb_role_profile];
 	bool		new_record_nulls[Natts_pg_yb_role_profile];
 	bool		new_record_repl[Natts_pg_yb_role_profile];
@@ -582,8 +584,8 @@ YbCreateRoleProfile(Oid roleid, const char *rolename, const char *prfname)
 	new_record_repl[Anum_pg_yb_role_profile_rolprfprofile - 1] = true;
 
 	yb_update_role_profile(roleid, rolename, new_record,
-						new_record_nulls,
-						new_record_repl, false);
+						   new_record_nulls,
+						   new_record_repl, false);
 
 	/* Record dependency on profile */
 	ybChangeDependencyOnProfile(roleid, prfid);
@@ -600,7 +602,7 @@ YbCreateRoleProfile(Oid roleid, const char *rolename, const char *prfname)
 void
 YbSetRoleProfileStatus(Oid roleid, const char *rolename, char status)
 {
-	HeapTuple rolprftuple;
+	HeapTuple	rolprftuple;
 	Form_pg_yb_role_profile rolprfform;
 	Datum		new_record[Natts_pg_yb_role_profile];
 	bool		new_record_nulls[Natts_pg_yb_role_profile];
@@ -612,7 +614,8 @@ YbSetRoleProfileStatus(Oid roleid, const char *rolename, char status)
 	if (!HeapTupleIsValid(rolprftuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("role \"%s\" is not associated with a profile", rolename)));
+				 errmsg("role \"%s\" is not associated with a profile",
+						rolename)));
 
 	rolprfform = (Form_pg_yb_role_profile) GETSTRUCT(rolprftuple);
 
@@ -649,18 +652,19 @@ YbSetRoleProfileStatus(Oid roleid, const char *rolename, char status)
 void
 YbResetFailedAttemptsIfAllowed(Oid roleid)
 {
-	HeapTuple rolprftuple;
+	HeapTuple	rolprftuple;
 	Form_pg_yb_role_profile rolprfform;
 
 	rolprftuple = yb_get_role_profile_tuple_by_role_oid(roleid);
 
 	if (!HeapTupleIsValid(rolprftuple))
-		// Role is not associated with a profile.
+		/* Role is not associated with a profile. */
 		return;
 
 	rolprfform = (Form_pg_yb_role_profile) GETSTRUCT(rolprftuple);
 
-	if (rolprfform->rolprfstatus == YB_ROLPRFSTATUS_OPEN && rolprfform->rolprffailedloginattempts > 0)
+	if (rolprfform->rolprfstatus == YB_ROLPRFSTATUS_OPEN
+		&& rolprfform->rolprffailedloginattempts > 0)
 		YBCExecuteUpdateLoginAttempts(roleid, 0, YB_ROLPRFSTATUS_OPEN);
 }
 
@@ -677,13 +681,13 @@ YbResetFailedAttemptsIfAllowed(Oid roleid)
 bool
 YbMaybeIncFailedAttemptsAndDisableProfile(Oid roleid)
 {
-	HeapTuple 				rolprftuple;
+	HeapTuple	rolprftuple;
 	Form_pg_yb_role_profile rolprfform;
-	Form_pg_yb_profile 		prfform;
-	HeapTuple 				prftuple;
-	int 					failed_attempts_limit;
-	int 					new_failed_attempts;
-	char 					rolprfstatus;
+	Form_pg_yb_profile prfform;
+	HeapTuple	prftuple;
+	int			failed_attempts_limit;
+	int			new_failed_attempts;
+	char		rolprfstatus;
 
 	rolprftuple = yb_get_role_profile_tuple_by_role_oid(roleid);
 
@@ -709,10 +713,10 @@ YbMaybeIncFailedAttemptsAndDisableProfile(Oid roleid)
 	failed_attempts_limit = DatumGetInt16(prfform->prfmaxfailedloginattempts);
 
 	/* Keep role enabled IFF role is enabled AND failed attempts < limit */
-	rolprfstatus = rolprfform->rolprfstatus == YB_ROLPRFSTATUS_OPEN &&
-						(new_failed_attempts < failed_attempts_limit) ?
-						YB_ROLPRFSTATUS_OPEN :
-						YB_ROLPRFSTATUS_LOCKED;
+	rolprfstatus = (rolprfform->rolprfstatus == YB_ROLPRFSTATUS_OPEN &&
+					(new_failed_attempts < failed_attempts_limit) ?
+					YB_ROLPRFSTATUS_OPEN :
+					YB_ROLPRFSTATUS_LOCKED);
 
 	YBCExecuteUpdateLoginAttempts(roleid, new_failed_attempts, rolprfstatus);
 

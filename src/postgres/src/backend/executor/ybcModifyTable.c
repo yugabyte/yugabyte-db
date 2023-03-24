@@ -600,8 +600,8 @@ bool YBCExecuteDelete(Relation rel,
 	if (ybctid == 0)
 	{
 		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_COLUMN), errmsg(
-					"Missing column ybctid in DELETE request to YugaByte database")));
+				(errcode(ERRCODE_UNDEFINED_COLUMN),
+				 errmsg("Missing column ybctid in DELETE request")));
 	}
 
 	/* Bind ybctid to identify the current row. */
@@ -821,8 +821,8 @@ bool YBCExecuteUpdate(Relation rel,
 
 	if (ybctid == 0)
 		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_COLUMN), errmsg(
-					"Missing column ybctid in UPDATE request")));
+				(errcode(ERRCODE_UNDEFINED_COLUMN),
+				 errmsg("Missing column ybctid in UPDATE request")));
 
 	YBCBindTupleId(update_stmt, ybctid);
 
@@ -1082,8 +1082,8 @@ YBCExecuteUpdateLoginAttempts(Oid roleid,
 
 	if (ybctid == 0)
 		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_COLUMN), errmsg(
-					"Missing column ybctid in UPDATE request")));
+				(errcode(ERRCODE_UNDEFINED_COLUMN),
+				 errmsg("Missing column ybctid in UPDATE request")));
 
 	YBCBindTupleId(update_stmt, ybctid);
 
@@ -1148,8 +1148,8 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 
 	if (tuple->t_ybctid == 0)
 		ereport(ERROR,
-		        (errcode(ERRCODE_UNDEFINED_COLUMN), errmsg(
-				        "Missing column ybctid in DELETE request to YugaByte database")));
+				(errcode(ERRCODE_UNDEFINED_COLUMN),
+				 errmsg("Missing column ybctid in DELETE request")));
 
 	/* Prepare DELETE statement. */
 	HandleYBStatus(YBCPgNewDelete(dboid,

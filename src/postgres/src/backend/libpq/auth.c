@@ -40,10 +40,10 @@
 #include "utils/builtins.h"
 #include "utils/timestamp.h"
 
-#include "pg_yb_utils.h"
 #include "access/htup_details.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/yb_profile.h"
+#include "pg_yb_utils.h"
 #include "utils/syscache.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -268,7 +268,7 @@ ClientAuthentication_hook_type ClientAuthentication_hook = NULL;
  * particular, if logdetail isn't NULL, we send that string to the log.
  */
 static void
-auth_failed(Port *port, int status, char *logdetail, bool role_is_locked_out)
+auth_failed(Port *port, int status, char *logdetail, bool yb_role_is_locked_out)
 {
 	const char *errstr;
 	char	   *cdetail;
@@ -351,11 +351,12 @@ auth_failed(Port *port, int status, char *logdetail, bool role_is_locked_out)
 		logdetail = cdetail;
 
 	ereport(FATAL,
-		(errcode(errcode_return),
-		 role_is_locked_out
-			? errmsg("role \"%s\" is locked. Contact your database administrator.", port->user_name)
-			: errmsg(errstr, port->user_name),
-		 logdetail ? errdetail_log("%s", logdetail) : 0));
+			(errcode(errcode_return),
+			 (yb_role_is_locked_out ? errmsg("role \"%s\" is locked. Contact"
+											 " your database administrator.",
+											 port->user_name)
+									: errmsg(errstr, port->user_name)),
+			 (logdetail ? errdetail_log("%s", logdetail) : 0)));
 
 	/* doesn't return */
 }
@@ -654,12 +655,10 @@ ClientAuthentication(Port *port)
 			profileTuple = yb_get_role_profile_tuple_by_role_oid(roleid);
 			if (HeapTupleIsValid(profileTuple))
 			{
-				Form_pg_yb_role_profile rolprfform = (Form_pg_yb_role_profile)
-											GETSTRUCT(profileTuple);
+				Form_pg_yb_role_profile rolprfform =
+					(Form_pg_yb_role_profile) GETSTRUCT(profileTuple);
 				if (rolprfform->rolprfstatus != YB_ROLPRFSTATUS_OPEN)
-				{
 					profile_is_disabled = true;
-				}
 			}
 			ReleaseSysCache(roleTuple);
 		}
@@ -674,7 +673,8 @@ ClientAuthentication(Port *port)
 		{
 			/* Do not increment login attempts if no password was supplied */
 			if (roleid != InvalidOid && status != STATUS_EOF)
-				profile_is_disabled = YbMaybeIncFailedAttemptsAndDisableProfile(roleid);
+				profile_is_disabled =
+					YbMaybeIncFailedAttemptsAndDisableProfile(roleid);
 			auth_failed(port, status, logdetail, profile_is_disabled);
 		}
 		return;
@@ -683,7 +683,7 @@ ClientAuthentication(Port *port)
 	if (status == STATUS_OK)
 		sendAuthRequest(port, AUTH_REQ_OK, NULL, 0);
 	else
-		auth_failed(port, status, logdetail, false);
+		auth_failed(port, status, logdetail, false /* yb_role_is_locked_out */);
 }
 
 
