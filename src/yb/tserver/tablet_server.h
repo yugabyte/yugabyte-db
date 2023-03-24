@@ -288,6 +288,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status ReloadKeysAndCertificates() override;
   std::string GetCertificateDetails() override;
 
+  PgClientServiceImpl* TEST_GetPgClientService() {
+    return pg_client_service_.lock().get();
+  }
+
  protected:
   virtual Status RegisterServices();
 
