@@ -1,4 +1,5 @@
 ---
+title: Slow queries in YugabyteDB Anywhere
 headerTitle: Slow Queries dashboard
 linkTitle: Slow Queries dashboard
 description: Slow Queries dashboard
