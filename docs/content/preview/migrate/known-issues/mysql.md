@@ -2,7 +2,7 @@
 title: MySQL source database
 linkTitle: MySQL
 headcontent: Known issues when migrating data from MySQL.
-description: Refer to the MySQL issues when migrating data using YugabyteDB Voyager.
+description: Known issues and suggested workarounds for migrating data from MySQL.
 menu:
   preview:
     identifier: mysql-issues
