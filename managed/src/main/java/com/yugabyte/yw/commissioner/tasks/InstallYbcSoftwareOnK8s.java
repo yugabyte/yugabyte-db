@@ -51,6 +51,9 @@ public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
       createWaitForYbcServerTask(allTservers);
       createUpdateYbcTask(taskParams().ybcSoftwareVersion)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // Marks update of this universe as a success only if all the tasks before it succeeded.
+      createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;

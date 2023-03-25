@@ -711,8 +711,11 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     when(mockReleaseManager.getReleaseByVersion("1.0.0.0"))
         .thenReturn(
             ReleaseManager.ReleaseMetadata.create("1.0.0.0")
-                .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-1.0.0.0-helm.tar.gz"));
+                .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-1.0.0.0-helm.tar.gz")
+                .withFilePath("/opt/yugabyte/releases/1.0.0.0/yb-1.0.0.0-x86_64-linux.tar.gz"));
     createTempFile(TMP_CHART_PATH, "ucctb_yugabyte-1.0.0.0-helm.tar.gz", "Sample helm chart data");
+    createTempFile(
+        "/opt/yugabyte/releases/1.0.0.0", "yb-1.0.0.0-x86_64-linux.tar.gz", "Sample package data");
 
     Provider p;
     switch (cloudType) {
@@ -790,6 +793,9 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
     InstanceType i =
         InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
+    releaseMetadata.filePath = "/yb/release.tar.gz";
+    when(mockReleaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     ObjectNode bodyJson = (ObjectNode) Json.toJson(taskParams);
