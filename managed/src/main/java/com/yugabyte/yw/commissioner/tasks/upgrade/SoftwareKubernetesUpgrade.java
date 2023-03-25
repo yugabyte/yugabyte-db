@@ -56,13 +56,14 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
               && !XClusterConfig.isUniverseXClusterParticipant(taskParams().universeUUID)) {
             createPromoteAutoFlagTask().setSubTaskGroupType(getTaskSubGroupType());
           }
-          // Mark the final software version on the universe
-          createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
-              .setSubTaskGroupType(getTaskSubGroupType());
+
           if (taskParams().enableYbc) {
             createUpdateYbcTask(taskParams().ybcSoftwareVersion)
                 .setSubTaskGroupType(getTaskSubGroupType());
           }
+          // Mark the final software version on the universe
+          createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
+              .setSubTaskGroupType(getTaskSubGroupType());
         });
   }
 }

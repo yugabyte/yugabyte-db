@@ -718,6 +718,14 @@ public class NodeManager extends DevopsBase {
               taskParam.ybcSoftwareVersion,
               ybcPackageDetails.getFirst(),
               ybcPackageDetails.getSecond());
+
+      if (releaseMetadata == null) {
+        throw new RuntimeException(
+            String.format(
+                "Ybc package metadata: %s cannot be empty with ybc enabled",
+                taskParam.ybcSoftwareVersion));
+      }
+
       ybcPackage = releaseMetadata.getFilePath(taskParam.getRegion());
       if (StringUtils.isBlank(ybcPackage)) {
         throw new RuntimeException("Ybc package cannot be empty with ybc enabled");
