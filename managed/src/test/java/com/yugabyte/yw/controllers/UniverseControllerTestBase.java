@@ -11,7 +11,11 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
@@ -66,6 +70,8 @@ import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
+import org.mockito.InjectMocks;
+import org.mockito.MockitoAnnotations;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
@@ -108,6 +114,8 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
   protected QueryHelper mockQueryHelper;
   protected ReleaseManager mockReleaseManager;
   protected RuntimeConfigFactory runtimeConfigFactory;
+  protected ReleaseManager.ReleaseMetadata mockReleaseMetadata;
+  protected ReleaseManager.ReleaseMetadata mockYbcReleaseMetadata;
 
   @Override
   protected Application provideApplication() {
@@ -237,6 +245,25 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
 
     when(mockRuntimeConfig.getString("yb.storage.path"))
         .thenReturn("/tmp/" + this.getClass().getSimpleName());
+
+    mockReleaseMetadata = spy(new ReleaseManager.ReleaseMetadata());
+    when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(mockReleaseMetadata);
+    doReturn("/opt/yugabyte/releases/2.17.4.0-b10/yb-2.17.4.0-b10-linux-x86_64.tar.gz")
+        .when(mockReleaseMetadata)
+        .getFilePath(any());
+    // when(mockReleaseMetadata.getFilePath(any()))
+    //     .thenReturn("/opt/yugabyte/releases/2.17.4.0-b10/yb-2.17.4.0-b10-linux-x86_64.tar.gz");
+
+    mockYbcReleaseMetadata = spy(new ReleaseManager.ReleaseMetadata());
+    mockYbcReleaseMetadata.filePath =
+        "/opt/yugabyte/ybc/releases/1.0.0-b18/ybc-1.0.0-b18-linux-x86_64.tar.gz";
+    when(mockReleaseManager.getYbcReleaseByVersion(any(), any(), any()))
+        .thenReturn(mockYbcReleaseMetadata);
+    doReturn("/opt/yugabyte/ybc/releases/1.0.0-b18/ybc-1.0.0-b18-linux-x86_64.tar.gz")
+        .when(mockYbcReleaseMetadata)
+        .getFilePath(any());
+    // when(mockYbcReleaseMetadata.getFilePath(any()))
+    //     .thenReturn("/opt/yugabyte/ybc/releases/1.0.0-b18/ybc-1.0.0-b18-linux-x86_64.tar.gz");
   }
 
   @After
