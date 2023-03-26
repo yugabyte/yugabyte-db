@@ -28,7 +28,8 @@ namespace tserver {
 
 class WriteRequestPB;
 class WriteResponsePB;
-
+class GetCompatibleSchemaVersionRequestPB;
+class GetCompatibleSchemaVersionResponsePB;
 } // namespace tserver
 
 namespace cdc {
@@ -38,6 +39,11 @@ class GetChangesRequestPB;
 class GetChangesResponsePB;
 
 typedef std::function<void(const Status&, tserver::WriteResponsePB&&)> WriteCDCRecordCallback;
+typedef std::function < void(
+                            const Status&,
+                            tserver::GetCompatibleSchemaVersionRequestPB&&,
+                            tserver::GetCompatibleSchemaVersionResponsePB&&)>
+    GetSchemaVersionMappingsCDCRecordCallback;
 
 // deadline - operation deadline, i.e. timeout.
 // tablet - tablet to write the CDC record to.
@@ -50,6 +56,15 @@ MUST_USE_RESULT rpc::RpcCommandPtr CreateCDCWriteRpc(
     client::YBClient* client,
     tserver::WriteRequestPB* req,
     WriteCDCRecordCallback callback,
+    bool use_local_tserver);
+
+
+MUST_USE_RESULT rpc::RpcCommandPtr CreateGetCompatibleSchemaVersionRpc(
+    CoarseTimePoint deadline,
+    client::internal::RemoteTablet* tablet,
+    client::YBClient* client,
+    tserver::GetCompatibleSchemaVersionRequestPB* req,
+    GetSchemaVersionMappingsCDCRecordCallback callback,
     bool use_local_tserver);
 
 

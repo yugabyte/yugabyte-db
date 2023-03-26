@@ -229,6 +229,27 @@ Status SchemaPackingStorage::LoadFromPB(
   return InsertSchemas(schemas, false, OverwriteSchemaPacking::kFalse);
 }
 
+Result<SchemaVersion> SchemaPackingStorage::GetSchemaPackingVersion(
+    TableType table_type,
+    const Schema& schema) const {
+  SchemaPacking packing(table_type, schema);
+  SchemaVersion max_compatible_schema_version = 0;
+  bool found = false;
+  // Find the highest possible schema version for which there
+  // is a match as that will be the latest schema version.
+  for (const auto& [version, schema_packing] : version_to_schema_packing_)  {
+    if (packing == schema_packing) {
+      found = true;
+      if (version > max_compatible_schema_version) {
+        max_compatible_schema_version = version;
+      }
+    }
+  }
+
+  SCHECK(found, NotFound, "Schema packing not found: ");
+  return max_compatible_schema_version;
+}
+
 Status SchemaPackingStorage::MergeWithRestored(
     SchemaVersion schema_version, const SchemaPB& schema,
     const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas,

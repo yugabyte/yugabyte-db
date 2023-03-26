@@ -100,6 +100,8 @@ class XClusterTestBase : public YBTest {
       YBClient* client, const std::string& namespace_name, const std::string& table_name,
       uint32_t num_tablets, const client::YBSchema* schema);
 
+  virtual Status SetupUniverseReplication(const std::vector<std::string>& table_ids);
+
   virtual Status SetupUniverseReplication(
       const std::vector<std::shared_ptr<client::YBTable>>& tables, bool leader_only = true);
 
@@ -115,11 +117,15 @@ class XClusterTestBase : public YBTest {
       const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
       bool leader_only = true, const std::vector<std::string>& bootstrap_ids = {});
 
+  Status SetupUniverseReplication(
+      MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
+      const std::string& universe_id, const std::vector<std::string>& table_ids,
+      bool leader_only = true, const std::vector<std::string>& bootstrap_ids = {});
+
   Status SetupNSUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, const std::string& producer_ns_name,
-      const YQLDatabase& producer_ns_type,
-      bool leader_only = true);
+      const YQLDatabase& producer_ns_type, bool leader_only = true);
 
   Status VerifyUniverseReplication(master::GetUniverseReplicationResponsePB* resp);
 

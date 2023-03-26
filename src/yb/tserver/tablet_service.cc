@@ -248,12 +248,12 @@ using consensus::UnsafeChangeConfigResponsePB;
 using consensus::VoteRequestPB;
 using consensus::VoteResponsePB;
 
-using std::unique_ptr;
 using google::protobuf::RepeatedPtrField;
 using rpc::RpcContext;
 using std::shared_ptr;
-using std::vector;
 using std::string;
+using std::unique_ptr;
+using std::vector;
 using strings::Substitute;
 using tablet::ChangeMetadataOperation;
 using tablet::Tablet;
@@ -1328,6 +1328,63 @@ void TabletServiceImpl::Truncate(const TruncateRequestPB* req,
 
   // Submit the truncate tablet op. The RPC will be responded to asynchronously.
   tablet.peer->Submit(std::move(operation), tablet.leader_term);
+}
+
+void TabletServiceImpl::GetCompatibleSchemaVersion(
+    const GetCompatibleSchemaVersionRequestPB* req,
+    GetCompatibleSchemaVersionResponsePB* resp,
+    rpc::RpcContext context) {
+  VLOG(1) << "Full request: " << req->DebugString();
+  auto tablet = LookupLeaderTabletOrRespond(
+      server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+  if (!tablet) {
+    return;
+  }
+
+  Schema req_schema;
+  Status s = SchemaFromPB(req->schema(), &req_schema);
+  if (!s.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), s, TabletServerErrorPB::INVALID_SCHEMA, &context);
+    return;
+  }
+
+  tablet::TableInfoPtr table_info = nullptr;
+  if (req->schema().has_colocated_table_id()) {
+    auto result = tablet.peer->tablet_metadata()->GetTableInfo(
+        {} /* table_id */, req->schema().colocated_table_id().colocation_id());
+    if (!result.ok()) {
+      SetupErrorAndRespond(
+          resp->mutable_error(), result.status(), TabletServerErrorPB::TABLET_NOT_FOUND, &context);
+      return;
+    }
+
+    table_info = *result;
+  } else {
+    table_info = tablet.peer->tablet_metadata()->primary_table_info();
+  }
+
+  const Schema& consumer_schema = table_info->schema();
+  SchemaVersion schema_version = table_info->schema_version;
+
+  // Check is the current schema already matches. If not,
+  // check if there is a compatible schema packing and return
+  // the associated schema version.
+  if (!req_schema.EquivalentForDataCopy(consumer_schema)) {
+    auto result = table_info->GetSchemaPackingVersion(req_schema);
+    if (result.ok()) {
+      schema_version = *result;
+    } else {
+      SetupErrorAndRespond(
+          resp->mutable_error(), result.status(), TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
+      return;
+    }
+  }
+
+  // Set the compatible consumer schema version and respond.
+  VLOG_WITH_FUNC(2) << Format("Compatible schema version $0 for schema $1 found on tablet $2.",
+                              schema_version, req_schema.ToString(), req->tablet_id());
+  resp->set_compatible_schema_version(schema_version);
+  context.RespondSuccess();
 }
 
 void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
