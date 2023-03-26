@@ -520,7 +520,7 @@ public class NodeAgentManager {
     if (!Files.exists(newCertDirPath)) {
       throw new IllegalStateException(
           String.format(
-              "New cert directory %s does not exist for node agent {}",
+              "New cert directory %s does not exist for node agent %s",
               newCertDirPath, nodeAgent.uuid));
     }
     // Point to the new directory and persist in the DB before deleting.

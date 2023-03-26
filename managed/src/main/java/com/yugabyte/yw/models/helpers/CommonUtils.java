@@ -728,7 +728,7 @@ public class CommonUtils {
       Scanner scanner = new Scanner(shellResponse.message);
       int i = 0;
       while (scanner.hasNextLine()) {
-        data = new String(scanner.nextLine());
+        data = scanner.nextLine();
         if (i++ == 3) {
           break;
         }

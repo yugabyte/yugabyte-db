@@ -505,7 +505,7 @@ public class TaskExecutor {
     // Parent task runnable to which this group belongs.
     private volatile RunnableTask runnableTask;
     // Group position which is same as that of the subtasks.
-    private volatile int position;
+    private int position;
     // Optional executor service for the subtasks.
     private ExecutorService executorService;
     private SubTaskGroupType subTaskGroupType = SubTaskGroupType.Invalid;

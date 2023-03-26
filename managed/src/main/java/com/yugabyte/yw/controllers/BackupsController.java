@@ -949,9 +949,8 @@ public class BackupsController extends AuthenticatedController {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format(
-              "Got error setting throttle params for universe {}, error: {}",
-              universeUUID.toString(),
-              e.getMessage()));
+              "Got error setting throttle params for universe %s, error: %s",
+              universeUUID.toString(), e.getMessage()));
     }
     auditService()
         .createAuditEntryWithReqBody(
@@ -987,9 +986,8 @@ public class BackupsController extends AuthenticatedController {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format(
-              "Got error getting throttle params for universe {}, error: {}",
-              universeUUID.toString(),
-              e.getMessage()));
+              "Got error getting throttle params for universe %s, error: %s",
+              universeUUID.toString(), e.getMessage()));
     }
   }
 }

@@ -26,7 +26,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomWsClientFactory;
-import com.yugabyte.yw.common.LdapUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
@@ -67,7 +66,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.text.ParseException;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -267,7 +266,7 @@ public class SessionController extends AbstractPlatformController {
     if (startDateStr != null) {
       try {
         SessionHandler.DATE_FORMAT.parse(startDateStr);
-      } catch (ParseException e) {
+      } catch (DateTimeParseException e) {
         LOG.error("Invalid start date: {}", startDateStr);
         throw new PlatformServiceException(BAD_REQUEST, "Invalid start date given");
       }
@@ -275,7 +274,7 @@ public class SessionController extends AbstractPlatformController {
     if (endDateStr != null) {
       try {
         SessionHandler.DATE_FORMAT.parse(endDateStr);
-      } catch (ParseException e) {
+      } catch (DateTimeParseException e) {
         LOG.error("Invalid start date: {}", endDateStr);
         throw new PlatformServiceException(BAD_REQUEST, "Invalid end date given");
       }
