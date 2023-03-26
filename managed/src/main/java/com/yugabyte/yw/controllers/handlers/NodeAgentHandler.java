@@ -47,7 +47,7 @@ public class NodeAgentHandler {
   }
 
   @AllArgsConstructor
-  public class NodeAgentDownloadFile {
+  public static class NodeAgentDownloadFile {
     @Getter String ContentType;
     @Getter InputStream Content;
     @Getter String FileName;

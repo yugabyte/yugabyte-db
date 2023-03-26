@@ -671,7 +671,7 @@ public class YbcBackupUtil {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format(
-              "%s Unable to generate backup keys metadata. error : ",
+              "%s Unable to generate backup keys metadata. error : %s",
               getBaseLogMessage(tableParams.backupUuid, tableParams.getKeyspace()),
               e.getMessage()));
     }

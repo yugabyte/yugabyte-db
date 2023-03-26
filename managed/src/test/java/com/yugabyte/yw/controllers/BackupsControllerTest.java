@@ -1597,9 +1597,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     assertInternalServerError(
         result,
         String.format(
-            "Got error setting throttle params for universe {}, error: {}",
-            universe.universeUUID.toString(),
-            "some failure"));
+            "Got error setting throttle params for universe %s, error: %s",
+            universe.universeUUID.toString(), "some failure"));
   }
 
   @Test
@@ -1641,9 +1640,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     assertInternalServerError(
         result,
         String.format(
-            "Got error getting throttle params for universe {}, error: {}",
-            universe.universeUUID.toString(),
-            "some failure"));
+            "Got error getting throttle params for universe %s, error: %s",
+            universe.universeUUID.toString(), "some failure"));
   }
 
   @Test

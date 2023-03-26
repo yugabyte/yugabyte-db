@@ -215,7 +215,7 @@ public class YbcManager {
       if (!downloadSuccessMarkerResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
         throw new Exception(
             String.format(
-                "Failed to send download success marker request, failure status: {}",
+                "Failed to send download success marker request, failure status: %s",
                 downloadSuccessMarkerResponse.getStatus().getCode().name()));
       }
       BackupServiceTaskResultRequest downloadSuccessMarkerResultRequest =
@@ -239,7 +239,7 @@ public class YbcManager {
       if (!downloadSuccessMarkerResultResponse.getTaskStatus().equals(ControllerStatus.OK)) {
         throw new RuntimeException(
             String.format(
-                "Failed to download success marker, failure status: {}",
+                "Failed to download success marker, failure status: %s",
                 downloadSuccessMarkerResultResponse.getTaskStatus().name()));
       }
       LOG.info("Task {} on YB-Controller to fetch success marker is successful", taskID);
@@ -439,7 +439,7 @@ public class YbcManager {
       if (!throttleParametersGetResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
         throw new RuntimeException(
             String.format(
-                "Getting throttle params failed with exception: {}",
+                "Getting throttle params failed with exception: %s",
                 throttleParametersGetResponse.getStatus()));
       }
       ControllerObjectTaskThrottleParameters throttleParams =
