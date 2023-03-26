@@ -114,8 +114,8 @@ public class AttachDetachController extends AuthenticatedController {
           BAD_REQUEST,
           String.format(
               "Detach universe is not allowed if universe is currently updating, unhealthy, "
-                  + "or in paused state. UpdateInProgress =  {}, UpdateSucceeded = {}, "
-                  + "UniversePaused = {}",
+                  + "or in paused state. UpdateInProgress = %b, UpdateSucceeded = %b, "
+                  + "UniversePaused = %b",
               universe.getUniverseDetails().updateInProgress,
               universe.getUniverseDetails().updateSucceeded,
               universe.getUniverseDetails().universePaused));

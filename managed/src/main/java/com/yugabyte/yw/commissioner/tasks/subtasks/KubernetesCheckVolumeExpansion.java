@@ -91,7 +91,7 @@ public class KubernetesCheckVolumeExpansion extends AbstractTaskBase {
     if (!allowsExpansion) {
       throw new RuntimeException(
           String.format(
-              "StorageClass {} should allow volume expansion for this operation", scName));
+              "StorageClass %s should allow volume expansion for this operation", scName));
     }
 
     // verify there are no orphan PVCs
