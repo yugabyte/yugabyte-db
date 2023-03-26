@@ -58,25 +58,21 @@ namespace tserver {
 
 // Updates the packed row encoded in the value with the local schema version
 // without decoding the value. In case of a non-packed row, return as is.
-Status UpdatePackedRowWithConsumerSchemaVersion(const Slice& key,
-                                                const Slice& value,
-                                                SchemaVersion schema_version,
-                                                ValueBuffer *out) {
+Status UpdatePackedRow(const Slice& key,
+    const Slice& value,
+    const cdc::XClusterSchemaVersionMap& schema_versions_map,
+    ValueBuffer *out) {
   CHECK(out != nullptr);
   VLOG(3) << "Original value with producer schema version=" << value.ToDebugHexString();
 
   Slice value_slice = value;
   auto control_fields = VERIFY_RESULT(docdb::ValueControlFields::Decode(&value_slice));
-  bool has_coprefix = VERIFY_RESULT(docdb::DocKey::EncodedSize(key,
-                                                               docdb::DocKeyPart::kUpToId)) != 0;
 
   // Don't perform any changes to the value for the following cases:
   // 1. Non-packed rows
-  // 2. Unknown or uninitialized schema version
-  // 3. Colocated tables - These are not supported yet.
+  // 2. We don't have a schema version map of producer to consumer schema versions
   if (!value_slice.TryConsumeByte(docdb::ValueEntryTypeAsChar::kPackedRow) ||
-      schema_version == cdc::kInvalidSchemaVersion ||
-      has_coprefix) {
+      schema_versions_map.empty()) {
     // Return the whole value without changes
     out->Truncate(0);
     out->Reserve(value.size());
@@ -84,7 +80,8 @@ Status UpdatePackedRowWithConsumerSchemaVersion(const Slice& key,
     return Status::OK();
   }
 
-  auto status = ReplaceSchemaVersionInPackedValue(value_slice, control_fields, schema_version, out);
+  auto status = ReplaceSchemaVersionInPackedValue(
+      value_slice, control_fields, schema_versions_map, out);
 
   if (status.ok()) {
     VLOG(3) << "Updated value with consumer schema version=" << out->AsSlice().ToDebugHexString();
@@ -96,18 +93,18 @@ Status UpdatePackedRowWithConsumerSchemaVersion(const Slice& key,
 Status CombineExternalIntents(
     const tablet::TransactionStatePB& transaction_state,
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs,
-    google::protobuf::RepeatedPtrField<docdb::KeyValuePairPB> *out,
-    SchemaVersion last_compatible_consumer_schema_version ) {
+    google::protobuf::RepeatedPtrField<docdb::KeyValuePairPB>* out,
+    const cdc::XClusterSchemaVersionMap& schema_versions_map) {
 
   class Provider : public docdb::ExternalIntentsProvider {
    public:
     Provider(
         const Uuid& involved_tablet,
         const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>* pairs,
-        SchemaVersion consumer_schema_version,
+        const cdc::XClusterSchemaVersionMap& schema_versions_map,
         docdb::KeyValuePairPB* out)
         : involved_tablet_(involved_tablet), pairs_(*pairs),
-          consumer_schema_version(consumer_schema_version), out_(out) {
+          schema_versions_map(schema_versions_map), out_(out) {
     }
 
     void SetKey(const Slice& slice) override {
@@ -136,8 +133,7 @@ Status CombineExternalIntents(
 
       Slice key(input.key());
       Slice value(input.value().binary_value());
-      status = UpdatePackedRowWithConsumerSchemaVersion(key, value, consumer_schema_version,
-                                                        &updated_value);
+      status = UpdatePackedRow(key, value, schema_versions_map, &updated_value);
       if (!status.ok()) {
         LOG(WARNING) << "Could not update packed row with consumer schema version";
         return boost::none;
@@ -149,7 +145,7 @@ Status CombineExternalIntents(
    private:
     Uuid involved_tablet_;
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs_;
-    SchemaVersion consumer_schema_version;
+    const cdc::XClusterSchemaVersionMap& schema_versions_map;
     docdb::KeyValuePairPB* out_;
     int next_idx_ = 0;
     ValueBuffer updated_value;
@@ -160,7 +156,7 @@ Status CombineExternalIntents(
   SCHECK_EQ(transaction_state.tablets().size(), 1, InvalidArgument, "Wrong tablets number");
   auto status_tablet = VERIFY_RESULT(Uuid::FromHexString(transaction_state.tablets()[0]));
 
-  Provider provider(status_tablet, &pairs, last_compatible_consumer_schema_version, out->Add());
+  Provider provider(status_tablet, &pairs, schema_versions_map, out->Add());
   docdb::CombineExternalIntents(txn_id, &provider);
   return provider.GetOutcome();
 }
@@ -187,7 +183,7 @@ Status AddRecord(const ProcessRecordInfo& process_record_info,
         record.transaction_state(),
         record.changes(),
         write_batch->mutable_write_pairs(),
-        process_record_info.last_compatible_consumer_schema_version);
+        process_record_info.schema_versions_map);
   }
 
   for (const auto& kv_pair : record.changes()) {
@@ -198,8 +194,8 @@ Status AddRecord(const ProcessRecordInfo& process_record_info,
     Slice key(kv_pair.key());
     Slice value(kv_pair.value().binary_value());
     ValueBuffer updated_value;
-    RETURN_NOT_OK(UpdatePackedRowWithConsumerSchemaVersion(
-        key, value, process_record_info.last_compatible_consumer_schema_version, &updated_value));
+    RETURN_NOT_OK(UpdatePackedRow(
+        key, value, process_record_info.schema_versions_map, &updated_value));
 
     const Slice& updated_value_slice = updated_value.AsSlice();
     write_pair->set_value(updated_value_slice.cdata(), updated_value_slice.size());

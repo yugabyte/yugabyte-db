@@ -25,6 +25,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/gutil/map-util.h"
 #include "yb/util/coding_consts.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/status.h"
@@ -180,18 +181,21 @@ Result<bool> RowPacker::AddValue(
 // Note: Value starts with the schema version (does not contain control fields, value type).
 Status ReplaceSchemaVersionInPackedValue(const Slice& value,
                                          const ValueControlFields& control_fields,
-                                         SchemaVersion schema_version,
+                                         const cdc::XClusterSchemaVersionMap schema_versions_map,
                                          ValueBuffer *out) {
   CHECK(out != nullptr);
   out->Truncate(0);
   control_fields.AppendEncoded(out);
   out->Reserve(out->size() + 1 + kMaxVarint32Length + value.size());
   out->PushBack(ValueEntryTypeAsChar::kPackedRow);
-  util::FastAppendUnsignedVarInt(schema_version, out);
 
-  // Consume the bytes for existing schema version and append the rest of the value
+  // Consume the bytes for existing schema version and append the mapped schema version and
+  // rest of the value.
   Slice value_slice = value;
-  RETURN_NOT_OK(util::FastDecodeUnsignedVarInt(&value_slice));
+  auto schema_version = (SchemaVersion)VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&value_slice));
+  auto mapped_version = FindOrNull(schema_versions_map, schema_version);
+  SCHECK(mapped_version, NotFound, "Schema version mapping for $0 not found", schema_version);
+  util::FastAppendUnsignedVarInt(*mapped_version, out);
   out->Append(value_slice);
   return Status::OK();
 }

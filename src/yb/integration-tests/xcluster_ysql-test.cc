@@ -105,6 +105,7 @@ DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_uint64(TEST_pg_auth_key);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 DECLARE_uint64(ysql_packed_row_size_limit);
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_bool(enable_replicate_transaction_status_table);
@@ -149,6 +150,8 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
   void ValidateSimpleReplicationWithPackedRowsUpgrade(
       std::vector<uint32_t> consumer_tablet_counts, std::vector<uint32_t> producer_tablet_counts,
       uint32_t num_tablet_servers = 1, bool range_partitioned = false);
+
+  void TestReplicationWithPackedColumnsAndSchemaVersionMismatch(bool colocated);
 
   Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1) {
     // In this test, the tservers in each cluster share the same postgres proxy. As each tserver
@@ -431,6 +434,24 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
       cluster, table.namespace_name(), table.pgschema_name(), table.table_name() + "_mv");
   }
 
+  void BumpUpSchemaVersionsWithAlters(const std::vector<std::shared_ptr<client::YBTable>>& tables) {
+    // Perform some ALTERs to bump up the schema versions and cause schema version mismatch
+    // between producer and consumer before setting up replication.
+    {
+      for (const auto& consumer_table : tables) {
+        auto tbl = consumer_table->name();
+        for (size_t i = 0; i < 4; i++) {
+          auto p_conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+          ASSERT_OK(p_conn.ExecuteFormat("ALTER TABLE $0 OWNER TO yugabyte;", tbl.table_name()));
+          if (i % 2 == 0) {
+            auto c_conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+            ASSERT_OK(c_conn.ExecuteFormat("ALTER TABLE $0 OWNER TO yugabyte;", tbl.table_name()));
+          }
+        }
+      }
+    }
+  }
+
   void TestColocatedDatabaseReplication() {
     SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
     constexpr auto kRecordBatch = 5;
@@ -484,6 +505,8 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     }
     producer_tables.push_back(non_colocated_producer_table);
     consumer_tables.push_back(non_colocated_consumer_table);
+
+    BumpUpSchemaVersionsWithAlters(consumer_tables);
 
     // 1. Write some data to all tables.
     for (const auto& producer_table : producer_tables) {
@@ -543,7 +566,7 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
       return true;
     };
     ASSERT_OK(WaitFor([&]() -> Result<bool> { return data_replicated_correctly(count, true); },
-                      MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+                      MonoDelta::FromSeconds(20 * kTimeMultiplier), "IsDataReplicatedCorrectly"));
     // Ensure that the non colocated table is not replicated.
     auto non_coloc_results = ScanToStrings(non_colocated_consumer_table->name(),
                                            &consumer_cluster_);
@@ -571,7 +594,7 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
         consumer_cluster(), kNTabletsPerColocatedTable + kNTabletsPerTable));
     // Check that all data is replicated for the new table as well.
     ASSERT_OK(WaitFor([&]() -> Result<bool> { return data_replicated_correctly(count, false); },
-                      MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+                      MonoDelta::FromSeconds(20 * kTimeMultiplier), "IsDataReplicatedCorrectly"));
 
     // 6. Add additional data to all tables
     for (const auto& producer_table : producer_tables) {
@@ -582,15 +605,14 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
 
     // 7. Verify all tables are properly replicated.
     ASSERT_OK(WaitFor([&]() -> Result<bool> { return data_replicated_correctly(count, false); },
-                      MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+                      MonoDelta::FromSeconds(20 * kTimeMultiplier), "IsDataReplicatedCorrectly"));
 
     // Test Add Colocated Table, which is an ALTER operation.
     std::shared_ptr<client::YBTable> new_colocated_producer_table, new_colocated_consumer_table;
 
     // Add a Colocated Table on the Producer for an existing Replication stream.
+    uint32_t idx = static_cast<uint32_t>(tables_vector.size()) + 1;
     {
-      std::vector<YBTableName> tables;
-      uint32_t idx = static_cast<uint32_t>(tables_vector.size()) + 1;
       const int co_id = (idx) * 111111;
       auto table = ASSERT_RESULT(CreateYsqlTable(&producer_cluster_, kNamespaceName, "",
           Format("test_table_$0", idx), boost::none, kNTabletsPerColocatedTable, true, co_id));
@@ -602,8 +624,6 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
 
     {
       // Matching schema to consumer should succeed.
-      std::vector<YBTableName> tables;
-      uint32_t idx = static_cast<uint32_t>(tables_vector.size()) + 1;
       const int co_id = (idx) * 111111;
       auto table = ASSERT_RESULT(CreateYsqlTable(&consumer_cluster_, kNamespaceName, "",
           Format("test_table_$0", idx), boost::none, kNTabletsPerColocatedTable, true, co_id));
@@ -611,7 +631,6 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     }
 
     // 5. Verify the new schema Producer entries are added to Consumer.
-    count += kRecordBatch;
     ASSERT_OK(WaitFor([&]() -> Result<bool> {
       LOG(INFO) << "Checking records for table " << new_colocated_consumer_table->name().ToString();
       auto consumer_results = ScanToStrings(new_colocated_consumer_table->name(),
@@ -628,7 +647,23 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
         }
       }
       return true;
-    }, MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+    }, MonoDelta::FromSeconds(20 * kTimeMultiplier), "IsDataReplicatedCorrectly"));
+
+    // 6. Drop the new table and ensure that data is getting replicated correctly for
+    // the other tables
+    ASSERT_OK(DropYsqlTable(&producer_cluster_, kNamespaceName, "", Format("test_table_$0", idx)));
+    LOG(INFO) << Format("Dropped test_table_$0 on Producer side", idx);
+
+    // 7. Add additional data to the original tables.
+    for (const auto& producer_table : producer_tables) {
+      LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
+      WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
+    }
+    count += kRecordBatch;
+
+    // 8. Verify all tables are properly replicated.
+    ASSERT_OK(WaitFor([&]() -> Result<bool> { return data_replicated_correctly(count, false); },
+                      MonoDelta::FromSeconds(20 * kTimeMultiplier), "IsDataReplicatedCorrectly"));
   }
 };
 
@@ -1640,39 +1675,11 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
   // Resume Replication.
   ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
 
-  // 3. Verify ALTER was parsed by Consumer, which stopped replication and hasn't read the new data.
-  auto is_consumer_halted_on_ddl = [&]() -> Result<bool> {
-    master::SysClusterConfigEntryPB cluster_info;
-    auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
-    RETURN_NOT_OK(cm.GetClusterConfig(&cluster_info));
-    auto& producer_map = cluster_info.consumer_registry().producer_map();
-    auto producer_entry = FindOrNull(producer_map, kUniverseId);
-    if (producer_entry) {
-      CHECK_EQ(producer_entry->stream_map().size(), 1);
-      auto& stream_entry = producer_entry->stream_map().begin()->second;
-      return stream_entry.has_producer_schema() &&
-          stream_entry.producer_schema().has_pending_schema();
-    }
-    return false;
-  };
-  auto wait_for_consumer_halted_on_ddl = [&]() -> Status {
-    return WaitFor(is_consumer_halted_on_ddl, MonoDelta::FromSeconds(20),
-                   "IsConsumerHaltedOnDDL");
-  };
-  ASSERT_OK(wait_for_consumer_halted_on_ddl());
-
   // We read the first batch of writes with the old schema, but not the new schema writes.
   LOG(INFO) << "Consumer count after Producer ALTER halted polling = "
             << EXPECT_RESULT(data_replicated_correctly(count));
 
   // 4. ALTER Table on the Consumer.
-  {
-    // Mismatching schema to producer should fail.
-    auto tbl = consumer_table->name();
-    auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
-    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BAD_$1 VARCHAR",
-                                  tbl.table_name(), new_column));
-  }
   {
     // Matching schema to producer should succeed.
     auto tbl = consumer_table->name();
@@ -1701,7 +1708,6 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
   WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
 
   // 3. Verify ALTER was parsed by Consumer, which stopped replication and hasn't read the new data.
-  ASSERT_OK(wait_for_consumer_halted_on_ddl());
   LOG(INFO) << "Consumer count after Producer ALTER halted polling = "
             << EXPECT_RESULT(data_replicated_correctly(count));
 
@@ -1709,9 +1715,6 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
   {
     auto tbl = consumer_table->name();
     auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
-    // Mismatching schema to producer should fail.
-    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 RENAME COLUMN $1 TO $2_BAD",
-                                  tbl.table_name(), new_column, new_column));
     // Matching schema to producer should succeed.
     ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 RENAME COLUMN $1 TO $2_new",
                                  tbl.table_name(), new_column, new_column));
@@ -1740,7 +1743,6 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
   WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
 
   // 3. Verify ALTER was parsed by Consumer, which stopped replication and hasn't read the new data.
-  ASSERT_OK(wait_for_consumer_halted_on_ddl());
   LOG(INFO) << "Consumer count after Producer ALTER halted polling = "
             << EXPECT_RESULT(data_replicated_correctly(count));
 
@@ -1748,15 +1750,6 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
   {
     auto tbl = consumer_table->name();
     auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
-    // Out-of-order Schema Application in comparison to producer should fail.
-    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_2 VARCHAR", tbl.table_name()));
-    // Matching subset of producer should fail, insufficient to resume replication.
-    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_1 VARCHAR, "
-                                                 "ADD COLUMN BATCH_2 VARCHAR", tbl.table_name()));
-    // Mismatching schema to producer should fail.
-    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_1 VARCHAR, "
-                                                 "ADD COLUMN BATCH_2 VARCHAR, "
-                                                 "ADD COLUMN BATCH_3 VARCHAR", tbl.table_name()));
     // Subsequent Matching schema to producer should succeed.
     ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_1 VARCHAR, "
                                                 "ADD COLUMN BATCH_2 VARCHAR, "
@@ -1787,14 +1780,12 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
   //  2. Expectations: Replication should add Data 1x, then block because IDs don't match.
   //                   DROP is non-blocking,
   //                   re-ADD blocks until IDs match even though the  Name & Type match.
-  ASSERT_OK(wait_for_consumer_halted_on_ddl());
   LOG(INFO) << "Consumer count after Producer ALTER halted polling = "
             << EXPECT_RESULT(data_replicated_correctly(count));
   {
     auto tbl = consumer_table->name();
     auto tname = tbl.table_name();
     auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
-    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 VARCHAR", tname, new_column));
     ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN $1", tname, new_column));
     ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 VARCHAR", tname, new_column));
   }
@@ -1819,13 +1810,10 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
   }
 
   //  2. Run on Consumer: ADD NewInt, DROP NewCol
-  ASSERT_OK(wait_for_consumer_halted_on_ddl());
   {
     auto tbl = consumer_table->name();
     auto tname = tbl.table_name();
     auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
-    // Reverse Order should fail.
-    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 INT", tname, new_int_col));
     // But subsequently running the same order should pass.
     ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN $1", tname, new_column));
     ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 INT", tname, new_int_col));
@@ -1836,30 +1824,6 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
   ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(count); },
       MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
 
-  /***************************/
-  /****** FORCE RESUME *******/
-  /***************************/
-  auto missing_column = "missing";
-  // 1. ALTER Table to Add a Column on Producer.
-  {
-    auto tbl = producer_table->name();
-    auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
-    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 VARCHAR",
-        tbl.table_name(), missing_column));
-  }
-
-  // 2. Write more data so we have some entries with the new schema.
-  WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
-  // 3. Verify ALTER was parsed by Consumer, which stopped replication and hasn't read the new data.
-  ASSERT_OK(wait_for_consumer_halted_on_ddl());
-  LOG(INFO) << "Consumer count after Producer ALTER halted polling = "
-            << EXPECT_RESULT(data_replicated_correctly(count));
-  // 4. Force Resume on the Consumer.
-  SetAtomicFlag(false, &FLAGS_xcluster_wait_on_ddl_alter);
-  // 5. Verify Replication continued and new schema Producer entries are added to Consumer.
-  count += kRecordBatch;
-  ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(count); },
-            MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
 }
 
 TEST_F(XClusterYsqlTest, ReplicationWithCreateIndexDDL) {
@@ -2094,6 +2058,19 @@ TEST_F(XClusterYsqlTest, LegacyColocatedDatabaseReplication) {
   TestColocatedDatabaseReplication();
 }
 
+TEST_F(XClusterYsqlTest, ColocatedDatabaseReplicationWithPacked) {
+  FLAGS_ysql_enable_packed_row = true;
+  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+  TestColocatedDatabaseReplication();
+}
+
+TEST_F(XClusterYsqlTest, LegacyColocatedDatabaseReplicationWithPacked) {
+  FLAGS_ysql_enable_packed_row = true;
+  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+  FLAGS_ysql_legacy_colocated_database_creation = true;
+  TestColocatedDatabaseReplication();
+}
+
 TEST_F(XClusterYsqlTest, ColocatedDatabaseDifferentColocationIds) {
   auto colocated_tables = ASSERT_RESULT(SetUpWithParams({}, {}, 3, 1, true /* colocated */));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
@@ -2226,33 +2203,9 @@ TEST_F(XClusterYsqlTest, TablegroupReplication) {
     producer_new_table.push_back(new_tablegroup_producer_table);
   }
 
-  // TODO (#14234): Verify that Replication stops once we support tablegroups.
-/*
-  // Verify that Replication stopped.
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    master::SysClusterConfigEntryPB cluster_info;
-    auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
-    RETURN_NOT_OK(cm.GetClusterConfig(&cluster_info));
-    auto& producer_map = cluster_info.consumer_registry().producer_map();
-    auto producer_entry = FindOrNull(producer_map, kUniverseId);
-    if (producer_entry) {
-      auto stream_map_iter = producer_entry->stream_map().begin();
-      return stream_map_iter != producer_entry->stream_map().end() &&
-             stream_map_iter->second.has_producer_schema() &&
-             stream_map_iter->second.producer_schema().has_pending_schema();
-    }
-    return false;
-  }, MonoDelta::FromSeconds(20), "IsConsumerHaltedOnDDL"));
-*/
-
   for (const auto& producer_table : producer_tables) {
     WriteWorkload(105, 110, &producer_cluster_, producer_table->name());
   }
-
-  ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(consumer_tables, 110); },
-    MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
-
-  // TODO (#14234): Try to add a bad table. Ensure we're stopped.
 
   // Add the compatible table.  Ensure that writes to the table are now replicated.
   std::vector<std::shared_ptr<client::YBTable>> consumer_new_table;
@@ -2264,22 +2217,6 @@ TEST_F(XClusterYsqlTest, TablegroupReplication) {
     ASSERT_OK(consumer_client()->OpenTable(tables[0], &new_tablegroup_consumer_table));
     consumer_new_table.push_back(new_tablegroup_consumer_table);
   }
-
-  // Verify that Replication is NOT halted.
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    master::SysClusterConfigEntryPB cluster_info;
-    auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
-    RETURN_NOT_OK(cm.GetClusterConfig(&cluster_info));
-    auto& producer_map = cluster_info.consumer_registry().producer_map();
-    auto producer_entry = FindOrNull(producer_map, kUniverseId);
-    if (producer_entry) {
-      auto stream_map_iter = producer_entry->stream_map().begin();
-      return stream_map_iter != producer_entry->stream_map().end() &&
-          (!stream_map_iter->second.has_producer_schema() ||
-           !stream_map_iter->second.producer_schema().has_pending_schema());
-    }
-    return false;
-  }, MonoDelta::FromSeconds(20), "IsConsumerResumedAfterDDL"));
 
   // Replication should work on this new table.
   WriteWorkload(0, 10, &producer_cluster_, producer_new_table.begin()->get()->name());
@@ -2769,33 +2706,36 @@ TEST_F(XClusterYsqlTest, SetupReplicationWithMaterializedViews) {
   LOG(INFO) << "Replication verification failed : " << status.ToString();
 }
 
-TEST_F(XClusterYsqlTest, ReplicationWithPackedColumnsAndSchemaVersionMismatch) {
+void XClusterYsqlTest::TestReplicationWithPackedColumnsAndSchemaVersionMismatch(bool colocated) {
   FLAGS_ysql_enable_packed_row = true;
+  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
-  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1, 1, colocated));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
-  // 1. Setup Replication, write some records and validate
   auto producer_table = tables[0];
   auto consumer_table = tables[1];
+  auto tbl = consumer_table->name();
 
-  // 2. Perform some ALTERs to bump up the schema versions and cause mismatch before setting up
-  // replication
+  BumpUpSchemaVersionsWithAlters({consumer_table});
+
   {
-    auto tbl = consumer_table->name();
-    for (size_t i = 0; i < 4; i++) {
-      auto c_conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
-      ASSERT_OK(c_conn.ExecuteFormat("ALTER TABLE $0 OWNER TO yugabyte;", tbl.table_name()));
-      if (i % 2 == 0) {
-        auto p_conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
-        ASSERT_OK(p_conn.ExecuteFormat("ALTER TABLE $0 OWNER TO yugabyte;", tbl.table_name()));
-      }
-    }
+    // Perform a DDL so that there are already some change metadata ops in the WAL to process
+    auto p_conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(p_conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN pre_setup TEXT", tbl.table_name()));
+
+    auto c_conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(c_conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN pre_setup TEXT", tbl.table_name()));
+  }
+
+  auto producer_table_id = producer_table->id();
+  if (colocated) {
+    producer_table_id = ASSERT_RESULT(GetColocatedDatabaseParentTableId());
   }
 
   ASSERT_OK(SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table}));
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table_id}));
 
   ASSERT_NO_FATALS(WriteGenerateSeries(0, 50, &producer_cluster_, producer_table->name()));
 
@@ -2803,18 +2743,17 @@ TEST_F(XClusterYsqlTest, ReplicationWithPackedColumnsAndSchemaVersionMismatch) {
   ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
   ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
   ASSERT_EQ(resp.entry().tables_size(), 1);
-  ASSERT_EQ(resp.entry().tables(0), producer_table->id());
+  ASSERT_EQ(resp.entry().tables(0), producer_table_id);
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 
-  // 3. Alter the table on the Consumer side by adding a column
+  // Alter the table on the Consumer side by adding a column
   {
-    string new_col = "new_column";
-    auto tbl = consumer_table->name();
+    string new_col = "new_col";
     auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
     ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 TEXT", tbl.table_name(), new_col));
   }
 
-  // 4. Verify single value inserts are replicated correctly and can be read
+  // Verify single value inserts are replicated correctly and can be read
   ASSERT_NO_FATALS(WriteWorkload(51, 52, &producer_cluster_, producer_table->name()));
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 
@@ -2822,37 +2761,59 @@ TEST_F(XClusterYsqlTest, ReplicationWithPackedColumnsAndSchemaVersionMismatch) {
   ASSERT_NO_FATALS(WriteGenerateSeries(52, 100, &producer_cluster_, producer_table->name()));
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 
-  // 6. Verify transactional inserts are replicated correctly and can be read
+  // Verify transactional inserts are replicated correctly and can be read
   WriteTransactionalWorkload(101, 150, &producer_cluster_, producer_table->name());
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 
-  // 7. Alter the table on the producer side by adding the same column and insert some rows
+  // Alter the table on the producer side by adding the same column and insert some rows
   // and verify
   {
-    string new_col = "new_column";
-    auto tbl = producer_table->name();
+    string new_col = "new_col";
     auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
     ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 TEXT", tbl.table_name(), new_col));
   }
 
-  // 8. Verify single value inserts are replicated correctly and can be read
+  // Verify single value inserts are replicated correctly and can be read
   ASSERT_NO_FATALS(WriteWorkload(151, 152, &producer_cluster_, producer_table->name()));
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 
-  // 9. Verify batch inserts are replicated correctly and can be read
+  // Verify batch inserts are replicated correctly and can be read
   ASSERT_NO_FATALS(WriteGenerateSeries(152, 200, &producer_cluster_, producer_table->name()));
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 
-  // 10. Verify transactional inserts are replicated correctly and can be read
+  // Verify transactional inserts are replicated correctly and can be read
   WriteTransactionalWorkload(201, 250, &producer_cluster_, producer_table->name());
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 
   {
-    auto tbl = producer_table->name();
+    // Verify I/U/D
     auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
-    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES(251,'Hello')", tbl.table_name()));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES(251,'Hello', 'World')", tbl.table_name()));
+    ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+    ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET new_col = 'Hi' WHERE key = 251", tbl.table_name()));
+    ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+    ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE key = 251", tbl.table_name()));
     ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
   }
+
+  // Bump up schema version on Producer and verify.
+  {
+    auto alter_owner_str = Format("ALTER TABLE $0 OWNER TO yugabyte;", tbl.table_name());
+    auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat(alter_owner_str));
+    ASSERT_NO_FATALS(WriteWorkload(251, 300, &producer_cluster_, producer_table->name()));
+    ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  }
+}
+
+TEST_F(XClusterYsqlTest, ReplicationWithPackedColumnsAndSchemaVersionMismatch) {
+  TestReplicationWithPackedColumnsAndSchemaVersionMismatch(false /* colocated */);
+}
+
+TEST_F(XClusterYsqlTest, ReplicationWithPackedColumnsAndSchemaVersionMismatchColocated) {
+  TestReplicationWithPackedColumnsAndSchemaVersionMismatch(true /* colocated */);
 }
 
 void PrepareChangeRequest(

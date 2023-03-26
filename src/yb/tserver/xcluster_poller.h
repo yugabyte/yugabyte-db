@@ -71,6 +71,11 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
   void SetSchemaVersion(SchemaVersion cur_version,
                         SchemaVersion last_compatible_consumer_schema_version);
 
+  void UpdateSchemaVersions(const cdc::XClusterSchemaVersionMap& schema_versions);
+
+  void UpdateColocatedSchemaVersionMap(
+      const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map);
+
   std::string LogPrefixUnlocked() const;
 
   HybridTime GetSafeTime() const EXCLUDES(safe_time_lock_);
@@ -95,6 +100,8 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
 
   cdc::ProducerTabletInfo producer_tablet_info_;
   cdc::ConsumerTabletInfo consumer_tablet_info_;
+  cdc::XClusterSchemaVersionMap schema_version_map_ GUARDED_BY(data_mutex_);
+  cdc::ColocatedSchemaVersionMap colocated_schema_version_map_ GUARDED_BY(data_mutex_);
 
   // Although this is processing serially, it might be on a different thread in the ThreadPool.
   // Using mutex to guarantee cache flush, preventing TSAN warnings.
