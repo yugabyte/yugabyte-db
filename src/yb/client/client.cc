@@ -1606,6 +1606,9 @@ Status YBClient::UpdateConsumerOnProducerMetadata(
     const string& producer_id,
     const CDCStreamId& stream_id,
     const tablet::ChangeMetadataRequestPB& meta_info,
+    uint32_t colocation_id,
+    uint32_t producer_schema_version,
+    uint32_t consumer_schema_version,
     master::UpdateConsumerOnProducerMetadataResponsePB *resp) {
   if (producer_id.empty()) {
     return STATUS(InvalidArgument, "Producer id is required.");
@@ -1620,6 +1623,9 @@ Status YBClient::UpdateConsumerOnProducerMetadata(
   master::UpdateConsumerOnProducerMetadataRequestPB req;
   req.set_producer_id(producer_id);
   req.set_stream_id(stream_id);
+  req.set_colocation_id(colocation_id);
+  req.set_producer_schema_version(producer_schema_version);
+  req.set_consumer_schema_version(consumer_schema_version);
   req.mutable_producer_change_metadata_request()->CopyFrom(meta_info);
 
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, (*resp), UpdateConsumerOnProducerMetadata);
