@@ -247,9 +247,9 @@ class TransactionState {
 
   std::string ToString() const {
     return Format("{ id: $0 last_touch: $1 status: $2 involved_tablets: $3 replicating: $4 "
-                      " request_queue: $5 first_entry_raft_index: $6 }",
-                  id_, last_touch_, TransactionStatus_Name(status_),
-                  involved_tablets_, replicating_, request_queue_, first_entry_raft_index_);
+                      " request_queue: $5 first_entry_raft_index: $6, is_external: $7 }",
+                  id_, last_touch_, TransactionStatus_Name(status_), involved_tablets_,
+                  replicating_, request_queue_, first_entry_raft_index_, is_external_);
   }
 
   // Whether this transaction expired at specified time.

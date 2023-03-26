@@ -112,6 +112,8 @@ class SchemaPackingStorage {
 
   Result<const SchemaPacking&> GetPacking(SchemaVersion schema_version) const;
   Result<const SchemaPacking&> GetPacking(Slice* packed_row) const;
+  Result<SchemaVersion> GetSchemaPackingVersion(
+      TableType table_type, const Schema& schema) const;
 
   void AddSchema(SchemaVersion version, const Schema& schema);
 

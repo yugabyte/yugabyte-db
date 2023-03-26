@@ -179,6 +179,11 @@ Result<YBTableName> XClusterTestBase::CreateTable(
   return table;
 }
 
+Status XClusterTestBase::SetupUniverseReplication(const std::vector<string>& table_ids) {
+  return SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, table_ids);
+}
+
 Status XClusterTestBase::SetupUniverseReplication(
     const std::vector<std::shared_ptr<client::YBTable>>& tables, bool leader_only) {
   return SetupUniverseReplication(kUniverseId, tables, leader_only);
@@ -201,6 +206,20 @@ Status XClusterTestBase::SetupUniverseReplication(
     MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
     const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
     bool leader_only, const std::vector<string>& bootstrap_ids) {
+  std::vector<string> table_ids;
+  for (const auto& table : tables) {
+    table_ids.push_back(table->id());
+  }
+
+  return SetupUniverseReplication(
+      producer_cluster, consumer_cluster, consumer_client, universe_id, table_ids, leader_only,
+      bootstrap_ids);
+}
+
+Status XClusterTestBase::SetupUniverseReplication(
+    MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
+    const std::string& universe_id, const std::vector<string>& table_ids, bool leader_only,
+    const std::vector<string>& bootstrap_ids) {
   // If we have certs for encryption in FLAGS_certs_dir then we need to copy it over to the
   // universe_id subdirectory in FLAGS_certs_for_cdc_dir.
   if (!FLAGS_certs_for_cdc_dir.empty() && !FLAGS_certs_dir.empty()) {
@@ -234,13 +253,13 @@ Status XClusterTestBase::SetupUniverseReplication(
   auto hp_vec = VERIFY_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, req.mutable_producer_master_addresses());
 
-  req.mutable_producer_table_ids()->Reserve(narrow_cast<int>(tables.size()));
-  for (const auto& table : tables) {
-    req.add_producer_table_ids(table->id());
+  req.mutable_producer_table_ids()->Reserve(narrow_cast<int>(table_ids.size()));
+  for (const auto& table_id : table_ids) {
+    req.add_producer_table_ids(table_id);
   }
 
   SCHECK(
-      bootstrap_ids.empty() || bootstrap_ids.size() == tables.size(), InvalidArgument,
+      bootstrap_ids.empty() || bootstrap_ids.size() == table_ids.size(), InvalidArgument,
       "Bootstrap Ids for all tables should be provided");
 
   for (const auto& bootstrap_id : bootstrap_ids) {

@@ -18,8 +18,11 @@
 #include <unordered_map>
 #include <boost/functional/hash.hpp>
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/common_types.fwd.h"
 #include "yb/common/entity_ids_types.h"
+#include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/util/format.h"
 #include "yb/gutil/strings/stringpiece.h"
 
@@ -31,7 +34,14 @@ typedef std::unordered_map<ReplicationErrorPb, std::string> ReplicationErrorMap;
 typedef std::unordered_map<CDCStreamId, ReplicationErrorMap> StreamReplicationErrorMap;
 typedef std::unordered_map<TabletId, StreamReplicationErrorMap> TabletReplicationErrorMap;
 
+typedef std::unordered_map<SchemaVersion, SchemaVersion> XClusterSchemaVersionMap;
+typedef std::unordered_map<uint32_t, XClusterSchemaVersionMap> ColocatedSchemaVersionMap;
+typedef std::unordered_map<CDCStreamId, XClusterSchemaVersionMap> StreamSchemaVersionMap;
+typedef std::unordered_map<CDCStreamId, ColocatedSchemaVersionMap> StreamColocatedSchemaVersionMap;
+
 constexpr uint32_t kInvalidSchemaVersion = std::numeric_limits<uint32_t>::max();
+
+typedef std::pair<uint32_t, uint32_t> SchemaVersionMapping;
 
 struct ConsumerTabletInfo {
   std::string tablet_id;

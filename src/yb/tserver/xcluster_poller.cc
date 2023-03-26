@@ -154,8 +154,19 @@ bool XClusterPoller::CheckOffline() { return shutdown_.load(); }
   RETURN_WHEN_OFFLINE(); \
   std::lock_guard<std::mutex> l(data_mutex_);
 
-void XClusterPoller::SetSchemaVersion(
-    SchemaVersion cur_version, SchemaVersion last_compatible_consumer_schema_version) {
+void XClusterPoller::UpdateSchemaVersions(const cdc::XClusterSchemaVersionMap& schema_versions) {
+  std::lock_guard<std::mutex> l(data_mutex_);
+  schema_version_map_ = schema_versions;
+}
+
+void XClusterPoller::UpdateColocatedSchemaVersionMap(
+    const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map) {
+  std::lock_guard<std::mutex> l(data_mutex_);
+  colocated_schema_version_map_ = colocated_schema_version_map;
+}
+
+void XClusterPoller::SetSchemaVersion(SchemaVersion cur_version,
+                                 SchemaVersion last_compatible_consumer_schema_version) {
   RETURN_WHEN_OFFLINE();
 
   if (last_compatible_consumer_schema_version_ < last_compatible_consumer_schema_version ||
@@ -345,6 +356,7 @@ void XClusterPoller::DoHandlePoll(Status status, std::shared_ptr<cdc::GetChanges
 
   // Success Case: ApplyChanges() from Poll
   output_client_->SetLastCompatibleConsumerSchemaVersion(last_compatible_consumer_schema_version_);
+  output_client_->UpdateSchemaVersionMappings(schema_version_map_, colocated_schema_version_map_);
   WARN_NOT_OK(output_client_->ApplyChanges(resp_.get()), "Could not ApplyChanges");
 }
 
@@ -364,10 +376,12 @@ void XClusterPoller::DoHandleApplyChanges(XClusterOutputClientResponse response)
     // Repeat the ApplyChanges step, with exponential backoff
     apply_failures_ =
         std::min(apply_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
-    int64_t delay = (1 << apply_failures_) -1;
+    int64_t delay = (1 << apply_failures_) - 1;
+    VLOG_WITH_PREFIX_UNLOCKED(1) << "Retrying ApplyChanges after sleeping for  " << delay;
     SleepFor(MonoDelta::FromMilliseconds(delay));
     output_client_->SetLastCompatibleConsumerSchemaVersion(
         last_compatible_consumer_schema_version_);
+    output_client_->UpdateSchemaVersionMappings(schema_version_map_, colocated_schema_version_map_);
     WARN_NOT_OK(output_client_->ApplyChanges(resp_.get()), "Could not ApplyChanges");
     return;
   }
