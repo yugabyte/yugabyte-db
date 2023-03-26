@@ -68,42 +68,32 @@ import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.ProviderValidator;
 import io.ebean.annotation.Transactional;
+import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Secret;
-import java.util.ArrayList;
 import io.fabric8.kubernetes.client.utils.Serialization;
-import java.io.IOException;
-import java.io.File;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import java.util.Random;
-
 import javax.persistence.PersistenceException;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.Application;
 import play.Configuration;
 import play.Environment;
 import play.libs.Json;
-import scala.reflect.internal.tpe.TypeMaps.ContainsCollector;
-import java.io.BufferedReader;
-import java.io.FileReader;
-import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.PodSpec;
-import io.fabric8.kubernetes.api.model.Container;
-import com.yugabyte.yw.common.KubernetesManagerFactory;
-
-import play.Application;
-import play.Play;
 
 public class CloudProviderHandler {
   public static final String YB_FIREWALL_TAGS = "YB_FIREWALL_TAGS";
@@ -579,14 +569,7 @@ public class CloudProviderHandler {
 
       return formData;
     } catch (RuntimeException e) {
-      LOG.error(
-          e.getClass()
-              + ": "
-              + e.getMessage()
-              + ": "
-              + e.getCause()
-              + "\n"
-              + e.getStackTrace().toString());
+      LOG.error(e.getClass() + ": " + e.getMessage(), e);
       throw e; // new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
   } // Performs region and zone discovery based on

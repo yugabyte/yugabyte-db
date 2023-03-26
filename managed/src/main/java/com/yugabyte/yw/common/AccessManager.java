@@ -297,13 +297,15 @@ public class AccessManager extends DevopsBase {
       log.error(ioe.getMessage(), ioe);
       throw new RuntimeException("Could not create AccessKey", ioe);
     } finally {
-      try {
-        File tmpKeyFile = new File(tempFile.toString());
-        if (tmpKeyFile.exists()) {
-          Files.delete(tempFile);
+      if (tempFile != null) {
+        try {
+          File tmpKeyFile = new File(tempFile.toString());
+          if (tmpKeyFile.exists()) {
+            Files.delete(tempFile);
+          }
+        } catch (IOException e) {
+          log.error(e.getMessage(), e);
         }
-      } catch (IOException e) {
-        log.error(e.getMessage(), e);
       }
     }
 

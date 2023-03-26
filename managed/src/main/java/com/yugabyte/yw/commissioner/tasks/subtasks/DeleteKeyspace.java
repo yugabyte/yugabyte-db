@@ -123,7 +123,7 @@ public class DeleteKeyspace extends UniverseTaskBase {
     } else {
       String errMsg =
           String.format(
-              "Invalid table type: %s. Cannot delete keyspace {}", tableType, keyspaceName);
+              "Invalid table type: %s. Cannot delete keyspace %s", tableType, keyspaceName);
       throw new RuntimeException(errMsg);
     }
   }
