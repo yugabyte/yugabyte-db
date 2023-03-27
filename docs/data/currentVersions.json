@@ -5,9 +5,9 @@
       "series": "v2.17",
       "alias": "preview",
       "display": "v2.17 (Preview)",
-      "version": "2.17.1.0",
-      "versionShort": "2.17.1",
-      "appVersion": "2.17.1.0-b439",
+      "version": "2.17.2.0",
+      "versionShort": "2.17.2",
+      "appVersion": "2.17.2.0-b216",
       "isStable": false,
       "initialRelease": "2022-12-08"
     },
