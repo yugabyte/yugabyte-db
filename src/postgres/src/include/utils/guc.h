@@ -253,7 +253,7 @@ extern bool yb_enable_memory_tracking;
 extern int	log_min_error_statement;
 extern PGDLLIMPORT int log_min_messages;
 extern PGDLLIMPORT int client_min_messages;
-extern int log_min_duration_sample;
+extern int	log_min_duration_sample;
 extern int	log_min_duration_statement;
 extern int	log_temp_files;
 extern double log_statement_sample_rate;
