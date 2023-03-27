@@ -9,12 +9,14 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -81,7 +83,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           if (taskParams().isSoftwareUpdateViaVm) {
             // Promote Auto flags on compatible versions.
             if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.promoteAutoFlag)
-                && CommonUtils.isAutoFlagSupported(newVersion)) {
+                && CommonUtils.isAutoFlagSupported(newVersion)
+                && !XClusterConfig.isUniverseXClusterParticipant(taskParams().universeUUID)) {
               createCheckSoftwareVersionTask(nodeSet, newVersion)
                   .setSubTaskGroupType(getTaskSubGroupType());
               createPromoteAutoFlagTask().setSubTaskGroupType(getTaskSubGroupType());
