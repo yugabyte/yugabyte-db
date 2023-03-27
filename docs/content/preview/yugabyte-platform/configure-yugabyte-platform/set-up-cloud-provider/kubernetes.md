@@ -198,7 +198,7 @@ Continue configuring your Kubernetes provider as follows:
     - Specify at **provider level** in the provider form. If specified, this configuration file is used for all availability zones in all regions.
     - Specify at **zone level** in the region form. This is required for **multi-az** or **multi-region** deployments. If the zone is in a different Kubernetes cluster than YugabyteDB Anywhere, a zone-specific `kubeconfig` file needs to be passed.
 3. In the **Service Account** field, provide the name of the [service account](#service-account) which has necessary access to manage the cluster (see [Create cluster](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster)).
-4. In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry, in which case refer to steps described in [Pull and push YugabyteDB Docker images to private container registry](../../../install-yugabyte-platform/prerequisites#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
+4. In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry, in which case refer to steps described in [Pull and push YugabyteDB Docker images to private container registry](../../../install-yugabyte-platform/prepare-environment/kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
 5. Use **Pull Secret File** to upload the pull secret to download the image of the Enterprise YugabyteDB that is in a private repository. Your Yugabyte sales representative should have provided this secret.
 
 ## Configure region and zones
