@@ -28,7 +28,7 @@ To get the Apache Atlas server file, you need to build the Apache Atlas source u
 
 1. Clone the [source](https://github.com/apache/atlas) from GitHub to your local setup. Checkout checkout to the latest stable release tag ( For example: release-2.3.0), and follow the steps in the README to build the files.
 
-1. After the source files are packaged, the Apache Atlas server tar should be available in the folder `distro/target`.
+1. After the source files are packaged, the Atlas server tar should be available in the `distro/target` folder.
 
 1. Unzip the tar file using the following command:
 
@@ -156,7 +156,7 @@ Perform the following steps to run the Atlas server:
     bin/atlas_stop.py
     ```
 
-1. Stop the Solr node using the following command:
+1. Stop SolrCloud using the following command:
 
     ```sh
     bin/solr stop -all
