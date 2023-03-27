@@ -4264,6 +4264,64 @@ TEST_P(DocDBTestWrapper, InterleavedRecordsScanForward) {
   )#");
 }
 
+TEST_P(DocDBTestWrapper, ScanForwardWithDuplicateKeys) {
+  constexpr int kNumKeys = 9;
+  auto dwb = MakeDocWriteBatch();
+  for (int i = 1; i <= kNumKeys; ++i) {
+    ASSERT_OK(WriteSimple(i));
+  }
+
+  ValidateScanForwardAndRegularIterator(doc_db());
+
+  // Move first kNumKeys records to SST file.
+  ASSERT_OK(FlushRocksDbAndWait());
+
+  // Add same records again in memtable.
+  for (int i = 1; i <= kNumKeys; ++i) {
+    ASSERT_OK(WriteSimple(i));
+  }
+
+  // Validate that ScanForward API scans all keys.
+  rocksdb::ReadOptions read_opts;
+  read_opts.query_id = rocksdb::kDefaultQueryId;
+  unique_ptr<rocksdb::Iterator> iter(doc_db().regular->NewIterator(read_opts));
+  iter->SeekToFirst();
+  size_t scanned_keys = 0;
+  rocksdb::ScanCallback scan_callback = [&scanned_keys](
+                                            const Slice& key, const Slice& value) -> bool {
+    scanned_keys++;
+    return true;
+  };
+
+  ScanForwardWithMetricCheck(
+          iter.get(), regular_db_options_.statistics.get(), Slice(),
+          /*key_filter_callback=*/nullptr, &scan_callback, kNumKeys * 2);
+
+  ASSERT_EQ(kNumKeys * 2, scanned_keys);
+
+  // DocDB debug dump to str uses ScanForward API therefore we see duplicate keys in below output.
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+    SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+    SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+    SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
+    SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
+    SubDocKey(DocKey([], ["row3", 33333]), [ColumnId(10); HT{ physical: 3000 }]) -> 3
+    SubDocKey(DocKey([], ["row3", 33333]), [ColumnId(10); HT{ physical: 3000 }]) -> 3
+    SubDocKey(DocKey([], ["row4", 44444]), [ColumnId(10); HT{ physical: 4000 }]) -> 4
+    SubDocKey(DocKey([], ["row4", 44444]), [ColumnId(10); HT{ physical: 4000 }]) -> 4
+    SubDocKey(DocKey([], ["row5", 55555]), [ColumnId(10); HT{ physical: 5000 }]) -> 5
+    SubDocKey(DocKey([], ["row5", 55555]), [ColumnId(10); HT{ physical: 5000 }]) -> 5
+    SubDocKey(DocKey([], ["row6", 66666]), [ColumnId(10); HT{ physical: 6000 }]) -> 6
+    SubDocKey(DocKey([], ["row6", 66666]), [ColumnId(10); HT{ physical: 6000 }]) -> 6
+    SubDocKey(DocKey([], ["row7", 77777]), [ColumnId(10); HT{ physical: 7000 }]) -> 7
+    SubDocKey(DocKey([], ["row7", 77777]), [ColumnId(10); HT{ physical: 7000 }]) -> 7
+    SubDocKey(DocKey([], ["row8", 88888]), [ColumnId(10); HT{ physical: 8000 }]) -> 8
+    SubDocKey(DocKey([], ["row8", 88888]), [ColumnId(10); HT{ physical: 8000 }]) -> 8
+    SubDocKey(DocKey([], ["row9", 99999]), [ColumnId(10); HT{ physical: 9000 }]) -> 9
+    SubDocKey(DocKey([], ["row9", 99999]), [ColumnId(10); HT{ physical: 9000 }]) -> 9
+  )#");
+}
+
 void Append(const char* a, const char* b, std::string* out) {
   out->append(a, b);
 }

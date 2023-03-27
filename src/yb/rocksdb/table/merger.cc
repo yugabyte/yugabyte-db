@@ -341,6 +341,30 @@ class MergingIterator : public InternalIterator {
         const auto next_user_key = rocksdb::ExtractUserKey(next_iterator->key());
         if (upperbound.empty() || user_key_comparator->Compare(next_user_key, upperbound) < 0) {
           next_upperbound = next_user_key;
+
+          // Handle the duplicate keys. Currently YB RegularDB only has duplicate keys for
+          // TransactionApplyState.
+          if (key == next_user_key) {
+            bool skip_key = false;
+            if (key_filter_callback) {
+              auto kf_result =
+                  (*key_filter_callback)(/*prefixed_key=*/Slice(), /*shared_bytes=*/0, key);
+              skip_key = kf_result.skip_key;
+            }
+
+            if (!skip_key) {
+              if (!(*scan_callback)(key, value())) {
+                result.reached_upperbound = false;
+                return result;
+              }
+            }
+
+            Next();
+            result.number_of_keys_visited++;
+            if (!Valid()) {
+              break;
+            }
+          }
         }
       }
 
