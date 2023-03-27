@@ -2193,7 +2193,7 @@ check_log_duration(char *msec_str, bool was_logged)
 		int			usecs;
 		int			msecs;
 		bool		exceeded_duration;
-		bool 		exceeded_sample_duration;
+		bool		exceeded_sample_duration;
 		bool		in_sample = false;
 
 		TimestampDifference(GetCurrentStatementStartTimestamp(),
@@ -2208,8 +2208,8 @@ check_log_duration(char *msec_str, bool was_logged)
 		 */
 		exceeded_duration = (log_min_duration_statement == 0 ||
 							 (log_min_duration_statement > 0 &&
-					 		  (secs > log_min_duration_statement / 1000 ||
-					  		   secs * 1000 + msecs >= log_min_duration_statement)));
+							  (secs > log_min_duration_statement / 1000 ||
+							   secs * 1000 + msecs >= log_min_duration_statement)));
 
 		exceeded_sample_duration = (log_min_duration_sample == 0 ||
 									(log_min_duration_sample > 0 &&
@@ -2221,7 +2221,6 @@ check_log_duration(char *msec_str, bool was_logged)
 		 * log_statement_sample_rate <= 1 and avoid unecessary random() call
 		 * if log_statement_sample_rate = 1.
 		 */
-
 		if (exceeded_sample_duration)
 			in_sample = log_statement_sample_rate != 0 &&
 				(log_statement_sample_rate == 1 ||
