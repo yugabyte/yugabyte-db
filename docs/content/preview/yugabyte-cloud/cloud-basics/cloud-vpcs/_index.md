@@ -20,11 +20,15 @@ A Virtual Private Cloud (VPC) network allows applications running on instances o
 
 Use VPC networks to lower network latencies, make your application and database infrastructure more secure, and reduce network data transfer costs.
 
-In YugabyteDB Managed, a VPC network consists of the following:
+In YugabyteDB Managed, a VPC network consists of the following components:
 
-- The [VPC](cloud-add-vpc/), where you can deploy clusters. The VPC reserves a block of IP addresses on the cloud provider; and either
-- A [peering connection](cloud-add-peering/), which links the cluster VPC to an application VPC on the same cloud provider; or
-- A [private service endpoint](cloud-add-endpoint/), which links the cluster to another private endpoint on the same cloud provider.
+| Component | Description |
+| :--- | :--- |
+| [VPC](cloud-add-vpc/) | A VPC reserves a block of IP addresses on the cloud provider.<br />You deploy your cluster in a VPC. |
+| [Peering connection](cloud-add-peering/) | Links the cluster VPC to an application VPC on the same cloud provider.<br />A peering connection is created for a VPC. |
+| [Private service endpoint](cloud-add-endpoint/) | Links the cluster endpoint to an application VPC endpoint, using the cloud provider's private linking service.<br />A private service endpoint (PSE) is added to a cluster; the cluster must be deployed in a VPC. |
+
+Typically, you would either have a VPC network with peering, or use PSEs.
 
 VPCs, peering connections, and private service endpoints are managed on the **VPC Network** tab of the **Network Access** page.
 
