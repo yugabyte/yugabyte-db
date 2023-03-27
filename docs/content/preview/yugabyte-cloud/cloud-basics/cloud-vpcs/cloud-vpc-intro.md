@@ -185,6 +185,7 @@ To create a VPC network, you need to complete the following tasks:
 With the exception of 4, these tasks are performed in YugabyteDB Managed.
 -->
 
-## Next step
+## Next steps
 
-[Peer VPCs](../cloud-add-vpc-aws/)
+- [Peering connections](../cloud-add-peering/)
+- [Private service endpoints](../cloud-add-endpoint/)
