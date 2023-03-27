@@ -123,7 +123,7 @@ export const Restore: FC<RestoreProps> = ({ universeUUID, type }) => {
       <div className="search-filter-options">
         <div className="search-placeholder">
           <YBSearchInput
-            placeHolder="Search universe name"
+            placeHolder={`Search ${type === 'ACCOUNT_LEVEL' ? 'target' : 'source'} universe name`}
             onEnterPressed={(val: string) => setSearchText(val)}
           />
         </div>
