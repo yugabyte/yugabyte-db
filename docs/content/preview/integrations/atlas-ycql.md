@@ -6,7 +6,7 @@ menu:
   preview_integrations:
     identifier: ycql-atlas
     parent: integrations
-    weight: 572
+    weight: 571
 type: docs
 ---
 
