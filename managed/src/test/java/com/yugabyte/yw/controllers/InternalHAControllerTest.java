@@ -488,6 +488,8 @@ public class InternalHAControllerTest extends FakeDBApplication {
     JsonNode body = Json.newObject().put("leader_address", "http://1.2.3.4");
     Result demoteResult = doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
     assertOk(demoteResult);
+    JsonNode response = Json.parse(contentAsString(demoteResult));
+    assertEquals("UNKNOWN", response.get("ybaVersion").asText());
     haConfigJson = getHAConfig();
     config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     assertFalse(config.isLocalLeader());

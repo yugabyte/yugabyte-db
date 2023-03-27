@@ -20,9 +20,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.controllers.HAAuthenticator;
 import com.yugabyte.yw.controllers.ReverseInternalHAController;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.Gauge;
 import java.io.File;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +43,9 @@ public class PlatformInstanceClient {
 
   public static final String YB_HA_WS_KEY = "yb.ha.ws";
   private static final Logger LOG = LoggerFactory.getLogger(PlatformInstanceClient.class);
+  private static final String HA_INSTANCE_VERSION_MISMATCH_NAME = "yba_ha_inst_version_mismatch";
+  private static final String HA_INSTANCE_ADDR_LABEL = "instance_addr";
+  private static final Gauge HA_YBA_VERSION_MISMATCH_GAUGE;
 
   @Getter(onMethod_ = {@VisibleForTesting})
   private final ApiHelper apiHelper;
@@ -49,11 +56,22 @@ public class PlatformInstanceClient {
 
   private final ReverseInternalHAController controller;
 
-  public PlatformInstanceClient(ApiHelper apiHelper, String clusterKey, String remoteAddress) {
+  private final ConfigHelper configHelper;
+
+  static {
+    HA_YBA_VERSION_MISMATCH_GAUGE =
+        Gauge.build(HA_INSTANCE_VERSION_MISMATCH_NAME, "Has Instance version mismatched")
+            .labelNames(HA_INSTANCE_ADDR_LABEL)
+            .register(CollectorRegistry.defaultRegistry);
+  }
+
+  public PlatformInstanceClient(
+      ApiHelper apiHelper, String clusterKey, String remoteAddress, ConfigHelper configHelper) {
     this.apiHelper = apiHelper;
     this.remoteAddress = remoteAddress;
     this.requestHeader = ImmutableMap.of(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, clusterKey);
     this.controller = new ReverseInternalHAController(func(this::getPrefix));
+    this.configHelper = configHelper;
   }
 
   private String getPrefix() {
@@ -114,7 +132,9 @@ public class PlatformInstanceClient {
    */
   public void demoteInstance(String localAddr, long timestamp) {
     ObjectNode formData = Json.newObject().put("leader_address", localAddr);
-    this.makeRequest(this.controller.demoteLocalLeader(timestamp), formData);
+    final JsonNode response =
+        this.makeRequest(this.controller.demoteLocalLeader(timestamp), formData);
+    maybeGenerateVersionMismatchEvent(response.get("ybaVersion"));
   }
 
   public boolean syncBackups(String leaderAddr, String senderAddr, File backupFile) {
@@ -129,6 +149,20 @@ public class PlatformInstanceClient {
       return false;
     } else {
       return true;
+    }
+  }
+
+  private void maybeGenerateVersionMismatchEvent(JsonNode remoteVersion) {
+    if (remoteVersion == null || remoteVersion.toString().isEmpty()) {
+      return;
+    }
+    String localVersion =
+        configHelper.getConfig(ConfigType.YugawareMetadata).getOrDefault("version", "").toString();
+
+    if (!localVersion.equals(remoteVersion.toString())) {
+      HA_YBA_VERSION_MISMATCH_GAUGE.labels(remoteAddress).set(1);
+    } else {
+      HA_YBA_VERSION_MISMATCH_GAUGE.labels(remoteAddress).set(0);
     }
   }
 
