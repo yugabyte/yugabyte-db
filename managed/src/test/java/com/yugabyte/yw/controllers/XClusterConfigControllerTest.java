@@ -170,7 +170,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
             null,
             true,
             CommonTypes.TableType.YQL_TABLE_TYPE,
-            Collections.emptyList());
+            Collections.emptyList(),
+            false);
     GetTableSchemaResponse mockTableSchemaResponseTable2 =
         new GetTableSchemaResponse(
             0,
@@ -182,7 +183,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
             null,
             true,
             CommonTypes.TableType.YQL_TABLE_TYPE,
-            Collections.emptyList());
+            Collections.emptyList(),
+            false);
     try {
       lenient()
           .when(mockClient.getTableSchemaByUUID(exampleTableID1))
