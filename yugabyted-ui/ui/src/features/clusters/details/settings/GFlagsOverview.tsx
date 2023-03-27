@@ -1,7 +1,8 @@
-import React, { FC, useMemo } from 'react';
+import React, { FC, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { makeStyles, Paper, Typography } from '@material-ui/core';
-import { YBTable } from '@app/components';
+import { Box, makeStyles, MenuItem, Paper, Typography } from '@material-ui/core';
+import { YBSelect, YBTable } from '@app/components';
+import { useGetClusterNodesQuery } from '@app/api/src';
 
 const useStyles = makeStyles((theme) => ({
   paperContainer: {
@@ -11,7 +12,7 @@ const useStyles = makeStyles((theme) => ({
     width: '100%'
   },
   heading: {
-    marginBottom: theme.spacing(5),
+    marginBottom: theme.spacing(1),
   },
 }));
 
@@ -21,6 +22,14 @@ interface GFlagsOverviewProps {
 export const GFlagsOverview: FC<GFlagsOverviewProps> = () => {
   const classes = useStyles();
   const { t } = useTranslation();
+
+  const { data: nodesResponse } = useGetClusterNodesQuery();
+  const nodesNamesList = [
+    { label: t('clusterDetail.overview.allRegions'), value: '' },
+    ...(nodesResponse?.data.map((node) => ({ label: node.name, value: node.name })) ?? [])
+  ];
+
+  const [nodeName, setNodeName] = useState<string | undefined>('');
 
   const gflagData = useMemo(() => [
     {
@@ -72,6 +81,21 @@ export const GFlagsOverview: FC<GFlagsOverviewProps> = () => {
       <Typography variant="h4" className={classes.heading}>
         {t('clusterDetail.settings.gflags.title')}
       </Typography>
+      <Box display="flex" justifyContent="end">
+        <YBSelect
+          /* className={classes.selectBox} */
+          value={nodeName}
+          onChange={(e) => setNodeName(e.target.value)}
+        >
+          {nodesNamesList?.map((el) => {
+            return (
+              <MenuItem key={el.label} value={el.value}>
+                {el.label}
+              </MenuItem>
+            );
+          })}
+        </YBSelect>
+      </Box>
       <YBTable
         data={gflagData}
         columns={gflagColumns}
