@@ -149,7 +149,7 @@ Result<DocHybridTime> GetTableTombstoneTime(
   // Question: what will break if we allow later commit at ht <= scan_ht ? Need to write down
   // detailed example.
 
-Result<boost::optional<SubDocument>> TEST_GetSubDocument(
+Result<std::optional<SubDocument>> TEST_GetSubDocument(
     const Slice& sub_doc_key,
     const DocDB& doc_db,
     const rocksdb::QueryId query_id,
@@ -164,18 +164,25 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
                   iter->read_time().ToString());
   iter->SeekToLastDocKey();
 
+  iter->Seek(sub_doc_key);
+  if (!iter->valid()) {
+    return std::nullopt;
+  }
+  auto fetched = VERIFY_RESULT(iter->FetchKey());
+  if (!fetched.key.starts_with(sub_doc_key)) {
+    return std::nullopt;
+  }
+
   SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE);
   DocDBTableReader doc_reader(
       iter.get(), deadline, projection, TableType::YQL_TABLE_TYPE, schema_packing_storage);
   RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(VERIFY_RESULT(docdb::GetTableTombstoneTime(
       sub_doc_key, doc_db, txn_op_context, deadline, read_time))));
-
-  iter->Seek(sub_doc_key);
   SubDocument result;
   if (VERIFY_RESULT(doc_reader.Get(sub_doc_key, &result))) {
     return result;
   }
-  return boost::none;
+  return std::nullopt;
 }
 
 DocDBTableReader::DocDBTableReader(
@@ -445,16 +452,17 @@ class DocDBTableReader::GetHelperBase {
     DVLOG_WITH_PREFIX_AND_FUNC(4) << "Pos: " << reader_.iter_->DebugPosToString();
 
     root_key_entry_->AppendRawBytes(root_doc_key_);
-    reader_.iter_->SeekForward(root_key_entry_);
+
+    auto key_result = VERIFY_RESULT(reader_.iter_->FetchKey());
+    DCHECK(key_result.key.starts_with(root_doc_key_));
 
     Slice value;
     DocHybridTime doc_ht = reader_.table_tombstone_time_;
-    RETURN_NOT_OK(reader_.iter_->FindLatestRecord(root_doc_key_, &doc_ht, &value));
-
-    if (!reader_.iter_->valid()) {
-      *root_write_time = reader_.table_tombstone_time_;
-      return Status::OK();
+    if (key_result.write_time >= doc_ht && root_doc_key_.size() == key_result.key.size()) {
+      doc_ht = key_result.write_time;
+      value = reader_.iter_->value();
     }
+
     auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value));
 
     auto value_type = DecodeValueEntryType(value);
