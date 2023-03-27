@@ -68,7 +68,7 @@ To create a VPC, do the following:
 1. Click **Create VPC** to display the **Create VPC** sheet.
 1. Enter a name for the VPC.
 1. Choose the provider (AWS).
-1. Select the region. Typically, the same region that hosts the VPC with which you want to peer.
+1. Select the [region](../cloud-vpc-intro/#choose-the-region-for-your-vpc). Typically, the same region that hosts the VPC with which you want to peer.
 1. [Specify the CIDR address](../cloud-vpc-intro/#set-the-cidr-and-size-your-vpc). Ensure the following:
     - the address _does not overlap_ with that of the application VPC.
     - the address _does not overlap_ with the VPCs that will be used for the other regions of a multi-region cluster.

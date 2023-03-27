@@ -22,9 +22,9 @@ Use VPC networks to lower network latencies, make your application and database 
 
 In YugabyteDB Managed, a VPC network consists of the following:
 
-- The _VPC_, where you can deploy clusters. The VPC reserves a block of IP addresses on the cloud provider; and either
-- A _peering connection_, which links the cluster VPC to an application VPC on the same cloud provider; or
-- A _private service endpoint_, which links the cluster to another private endpoint on the same cloud provider.
+- The [VPC](cloud-add-vpc/), where you can deploy clusters. The VPC reserves a block of IP addresses on the cloud provider; and either
+- A [peering connection](cloud-add-peering/), which links the cluster VPC to an application VPC on the same cloud provider; or
+- A [private service endpoint](cloud-add-endpoint/), which links the cluster to another private endpoint on the same cloud provider.
 
 VPCs, peering connections, and private service endpoints are managed on the **VPC Network** tab of the **Network Access** page.
 
@@ -39,13 +39,25 @@ VPC networking is not supported in Sandbox clusters.
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="./cloud-vpc-intro/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
+        <div class="title">Overview</div>
+      </div>
+      <div class="body">
+        How to choose the region for and size a VPC.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="./cloud-add-vpc/">
       <div class="head">
         <img class="icon" src="/images/section_icons/index/deploy.png" aria-hidden="true" />
         <div class="title">VPCs</div>
       </div>
       <div class="body">
-        Manage VPCs for your clusters.
+        Manage your account VPCs.
       </div>
     </a>
   </div>
@@ -83,18 +95,6 @@ VPC networking is not supported in Sandbox clusters.
 ### Peering VPCs
 
 <div class="row">
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="./cloud-vpc-intro/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
-        <div class="title">Peering overview</div>
-      </div>
-      <div class="body">
-        VPC peering in YugabyteDB Managed.
-      </div>
-    </a>
-  </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="./cloud-add-vpc-aws/">

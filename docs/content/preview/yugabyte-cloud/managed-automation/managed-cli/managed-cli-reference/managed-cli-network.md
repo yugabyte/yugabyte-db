@@ -64,15 +64,6 @@ List the network endpoints of the specified cluster. This includes public and pr
 | --region | Return endpoints only from the specified region. |
 | --accessibility | Return endpoints only with the specified accessibility type. `PUBLIC`, `PRIVATE`, or `PRIVATE_SERVICE_ENDPOINT`.
 
-### endpoint describe
-
-Fetch detailed information about a specified private service endpoint.
-
-| Flag | Description |
-| :--- | :--- |
-| --cluster-name | Required. The name of the cluster for which to list the endpoints. |
-| --endpoint-id | Required. The endpoint to describe. |
-
 ### endpoint create
 
 Create a private service endpoint for a specified cluster.
@@ -82,7 +73,15 @@ Create a private service endpoint for a specified cluster.
 | --cluster-name | Required. The name of the cluster for which you want to create the endpoint. |
 | --region | Required. Region in which you want to create the endpoint. |
 | --accessibility-type | Required. The type of endpoint to create. `PUBLIC`, `PRIVATE`, or `PRIVATE_SERVICE_ENDPOINT`. |
-| --security-principals | Required for `PRIVATE_SERVICE_ENDPOINT`. A comma-separated list of AWS Amazon Resource Names (ARNs). |
+| --security-principals | Required for `PRIVATE_SERVICE_ENDPOINT`. A comma-separated list of Amazon Resource Names (ARNs) of security principals to be granted access to this endpoint. |
+
+### endpoint describe
+
+Fetch detailed information about a specified private service endpoint.
+
+| Flag | Description |
+| :--- | :--- |
+| --endpoint-id | Required. The ID of the endpoint to describe. |
 
 ### endpoint update
 
@@ -90,10 +89,8 @@ Update the configuration of a specified private service endpoint.
 
 | Flag | Description |
 | :--- | :--- |
-| --cluster-name | Required. The name of the cluster where the endpoint is configured. |
-| --region | Required. Region in which you want to create the endpoint. |
-| --accessibility-type | Required. The type of endpoint to create. `PUBLIC`, `PRIVATE`, or `PRIVATE_SERVICE_ENDPOINT`. |
-| --security-principals | Required for `PRIVATE_SERVICE_ENDPOINT`. A comma-separated list of AWS Amazon Resource Names (ARNs). |
+| --endpoint-id | Required. The ID of the endpoint to update. |
+| --security-principals | A comma-separated list of ARNs of security principals to be granted access to this endpoint. |
 
 ### endpoint delete
 
@@ -101,5 +98,4 @@ Delete a specified private service endpoint.
 
 | Flag | Description |
 | :--- | :--- |
-| --cluster-name | Required. The name of the cluster with the endpoint you want to delete. |
-| --endpoint-id | Required. The endpoint to delete. |
+| --endpoint-id | Required. The ID of the endpoint to delete. |
