@@ -195,7 +195,7 @@ export const GeneralOverview: FC<GeneralOverviewProps> = () => {
         </Grid>
         <Grid item xs={2}>
           <Typography variant="subtitle2" className={classes.label}>
-            {t('clusterDetail.overview.totalMemory')}
+            {t('clusterDetail.overview.usedMemory')}
           </Typography>
           <Typography variant="body2" className={classes.value}>
             {getRamUsageText(totalRamUsageMb)}

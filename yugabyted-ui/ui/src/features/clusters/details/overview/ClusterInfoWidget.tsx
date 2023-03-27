@@ -138,7 +138,7 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
               </Grid>
               <Grid item xs={4}>
                 <Typography variant="subtitle2" className={classes.label}>
-                  {t('clusterDetail.overview.totalMemory')}
+                  {t('clusterDetail.overview.usedMemory')}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
                   {getRamUsageText(totalRamUsageMb)}

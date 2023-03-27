@@ -717,6 +717,7 @@
         "totalRam": "Total RAM",
         "totalvCPU": "Total vCPU",
         "totalMemory": "Total Memory",
+        "usedMemory": "Used Memory",
         "totalDiskSize": "Total Disk Size",
         "authentication": "Authentication",
         "databaseVersion": "Database Version",
