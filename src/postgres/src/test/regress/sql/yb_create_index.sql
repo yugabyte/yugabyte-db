@@ -474,6 +474,17 @@ CREATE UNIQUE INDEX NONCONCURRENTLY ON test_index_nonconcurrently (i);
 
 DROP TABLE test_index_nonconcurrently;
 
+-- Verify that creating indexes on a YB table does not update table stats.
+CREATE TABLE test_stats (i INT);
+INSERT INTO test_stats VALUES (1), (2), (3);
+ANALYZE test_stats;
+SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
+CREATE INDEX CONCURRENTLY ON test_stats(i);
+SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
+CREATE INDEX NONCONCURRENTLY ON test_stats(i);
+SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
+DROP TABLE test_stats;
+
 -- Test creating temp index using lsm.
 CREATE TEMP TABLE test_temp_lsm (i int);
 CREATE INDEX ON test_temp_lsm USING lsm (i);
