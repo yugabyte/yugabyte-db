@@ -239,7 +239,8 @@ public class AttachDetachControllerTest extends FakeDBApplication {
             null,
             true,
             CommonTypes.TableType.YQL_TABLE_TYPE,
-            Collections.emptyList());
+            Collections.emptyList(),
+            false);
 
     try {
       lenient()
