@@ -1,8 +1,8 @@
-import React, { Component, FC } from 'react';
+import React, { Component, FC, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, makeStyles, Paper, Typography } from '@material-ui/core';
 import { Layer, Rectangle, Sankey } from 'recharts';
-import type { ClusterData } from '@app/api/src';
+import { AXIOS_INSTANCE, ClusterData, useGetClusterNodesQuery } from '@app/api/src';
 
 const useStyles = makeStyles((theme) => ({
   container: {
@@ -16,6 +16,7 @@ const useStyles = makeStyles((theme) => ({
     height: '150px',
     padding: theme.spacing(1, 1, 2, 1),
     transform: 'rotate(90deg)',
+    pointerEvents: 'none'
   },
 }));
 
@@ -23,7 +24,7 @@ interface VCpuUsageChartProps {
   cluster: ClusterData,
 }
 
-const data = {
+/* const data = {
   "nodes": [
     { "name": "cores", "translateKey": "clusterDetail.performance.metrics" },
     { "name": "cluster_vpn...1-n5" },
@@ -47,13 +48,60 @@ const data = {
     { "source": 0, "target": 8, "value":  3 },
     { "source": 0, "target": 9, "value":  2 },
   ]
-};
+}; */
 
 export const VCpuUsageChartV: FC<VCpuUsageChartProps> = ({ cluster }) => {
   const classes = useStyles();
   const { t } = useTranslation();
+  const { data: nodesResponse } = useGetClusterNodesQuery();
 
   const totalCores = cluster.spec?.cluster_info?.node_info.num_cores ?? 0;
+
+  const [nodeCpuUsage, setNodeCpuUsage] = React.useState<number[]>([]);
+  React.useEffect(() => {
+    if (!nodesResponse) {
+      return;
+    }
+
+    const populateCpu = async () => {
+      const getNodeCpu = async (nodeName: string) => {
+        try {
+          const cpu = await AXIOS_INSTANCE.get('/metrics?metrics=CPU_USAGE_SYSTEM%2CCPU_USAGE_USER&node_name=' + nodeName)
+            .then(({ data }) => (Number(data.data[0].values[1]) || 0) + (Number(data.data[1].values[1]) || 0))
+            .catch(err => { console.error(err); return 0; })
+          return cpu;
+        } catch (err) {
+          console.error(err);
+          return 0;
+        }
+      }
+      
+      const cpuUsage: number[] = [];
+      for (let i = 0; i < nodesResponse.data.length; i++) {
+        const node = nodesResponse.data[i].name;
+        const nodeCPU = await getNodeCpu(node);
+        cpuUsage.push(nodeCPU);
+      }
+
+      setNodeCpuUsage(cpuUsage);
+    }
+
+    populateCpu();
+  }, [nodesResponse])
+
+  const data = useMemo(() => {
+    return {
+      nodes: [
+        { "name": "cores", "translateKey": "clusterDetail.performance.metrics" },
+        ...(nodesResponse?.data.map(({ name }) => ({ name })) ?? [])
+      ],
+      links: nodesResponse?.data.map((_, index) => ({ 
+        "source": 0,
+        "target": index + 1,
+        "value": !nodeCpuUsage[index] || nodeCpuUsage[index] < 1 ? 1 : Math.round(nodeCpuUsage[index] * 100) / 100 }
+      )) ?? [],
+    }
+  }, [nodeCpuUsage, nodesResponse])
 
   return (
     <Paper className={classes.container}>
@@ -69,9 +117,8 @@ export const VCpuUsageChartV: FC<VCpuUsageChartProps> = ({ cluster }) => {
             right: 35,
             bottom: 6,
           }}
-          node={<CpuSankeyNode translate={t} 
-            nodeCount={data["nodes"].length - 1}
-            totalCores={totalCores} /> 
+          node={<CpuSankeyNode translate={t} totalCores={totalCores} 
+            totalCpu={data["links"].reduce((acc, curr) => acc + curr.value, 0)} /> 
           }
           nodeWidth={4}
           nodePadding={50}
@@ -86,10 +133,10 @@ export const VCpuUsageChartV: FC<VCpuUsageChartProps> = ({ cluster }) => {
 
 
 function CpuSankeyNode(props: any) {
-  const { x, y, width, height, index, payload, translate: t, nodeCount, totalCores } = props;
+  const { x, y, width, height, index, payload, translate: t, totalCores, totalCpu } = props;
   const isOut = index === 0 /* x + width + 6 > containerWidth */;
+  const cpuUsage = Math.ceil(totalCpu * totalCores / 100);
 
-  console.log(x + width + 15, y + height * 1.5 + width * 1.5 + 3)
   return (
     <Layer key={`CustomNode${index}`}>
       <Rectangle 
@@ -123,7 +170,7 @@ function CpuSankeyNode(props: any) {
           
           <tspan fill="#97A5B0">{t(payload.translateKey + ".totalVCpu").toUpperCase()}</tspan>
           <tspan y={y + height / 2 + width / 2} dy={20} x={x - 35} fill="#000" 
-            fontWeight={700} fontSize="15">{nodeCount} {payload.name}
+            fontWeight={700} fontSize="15">{cpuUsage} {payload.name}
           </tspan>
           <tspan fill="#444" fillOpacity={1}>&nbsp;/ {totalCores} {payload.name}</tspan>
         </text>
