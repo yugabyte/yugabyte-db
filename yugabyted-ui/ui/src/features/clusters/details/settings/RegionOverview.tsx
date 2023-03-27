@@ -1,9 +1,10 @@
 import React, { FC, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, makeStyles, Paper, Typography } from '@material-ui/core';
-import { countryToFlag } from '@app/helpers';
+import { countryToFlag, roundDecimal } from '@app/helpers';
 import { YBTable } from '@app/components';
 import type { MUISortOptions } from 'mui-datatables';
+import { ClusterFaultTolerance, useGetClusterNodesQuery, useGetClusterQuery } from '@app/api/src';
 
 const useStyles = makeStyles((theme) => ({
   paperContainer: {
@@ -16,6 +17,30 @@ const useStyles = makeStyles((theme) => ({
     marginBottom: theme.spacing(5),
   },
 }));
+
+const regionCountryCodes: { [k: string]: string } = {
+  'us-east-2':      'us',
+  'us-east-1':      'us',
+  'us-west-1':      'us',
+  'us-west-2':      'us',
+  'af-south-1':     'za',
+  'ap-south-1':     'in',
+  'ap-northeast-3': 'jp',
+  'ap-southeast-1': 'sg',
+  'ap-southeast-2': 'au',
+  'ap-northeast-1': 'jp',
+  'ca-central-1':   'ca',
+  'eu-central-1':   'de',
+  'eu-west-1':      'ie',
+  'eu-west-2':      'gb',
+  'eu-south-1':     'it',
+  'eu-west-3':      'fr',
+  'eu-north-1':     'se',
+  'me-south-1':     'bh',
+  'sa-east-1':      'br',
+  'us-gov-east-1':  'us',
+  'us-gov-west-1':  'us',
+}
 
 const RegionNameComponent = () => ({ name, code }: { name: string, code?: string }) => {
   return (
@@ -32,62 +57,52 @@ export const RegionOverview: FC<RegionOverviewProps> = () => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  /* const { data: clusterData } = useGetClusterQuery();
+  const { data: clusterData } = useGetClusterQuery();
   const cluster = clusterData?.data;
   const clusterSpec = cluster?.spec;
 
-  const regionData = clusterSpec?.cluster_region_info?.map((region, index) => ({
-    region: {
-      name: region.placement_info.cloud_info.region,
-      code: region.placement_info.cloud_info.code,
-    },
-    nodeCount: region.placement_info.num_nodes,
-    vCpuPerNode: '4',
-    ramPerNode: '8 GB',
-    diskPerNode: '120 GB',
-    vpc: 'us-west-production',
-  })) ?? []; */
+  const isZone = clusterSpec?.cluster_info.fault_tolerance === ClusterFaultTolerance.Zone;
+  const totalCores = clusterSpec?.cluster_info?.node_info.num_cores ?? 0;
+  const totalDiskSize = clusterSpec?.cluster_info.node_info.disk_size_gb ?? 0;
+  const totalRamUsageMb = clusterSpec?.cluster_info.node_info.memory_mb ?? 0;
 
-  const regionData = useMemo(() => [
-    {
-      region: {
-        name: 'N. Virginia (us-east-1)',
-        code: 'us',
-      },
-      nodeCount: '3',
-      vCpuPerNode: '4',
-      ramPerNode: '8 GB',
-      diskPerNode: '120 GB',
-      vpc: 'us-west-production',
-    },
-    {
-      region: {
-        name: 'N. California (us-west-1)',
-        code: 'us',
-      },
-      nodeCount: '3',
-      vCpuPerNode: '4',
-      ramPerNode: '8 GB',
-      diskPerNode: '120 GB',
-      vpc: 'eu-central-production',
-    },
-    {
-      region: {
-        name: 'Mumbai (ap-south-1)',
-        code: 'in',
-      },
-      nodeCount: '3',
-      vCpuPerNode: '4',
-      ramPerNode: '8 GB',
-      diskPerNode: '120 GB',
-      vpc: 'ap-southeast-production',
-    }
-  ], []);
+  // Get text for ram usage
+  const getRamUsageText = (ramUsageMb: number) => {
+    ramUsageMb = roundDecimal(ramUsageMb)
+    return t('units.MB', { value: ramUsageMb });
+  }
+
+  // Get text for disk usage
+  const getDiskSizeText = (diskSizeGb: number) => {
+    diskSizeGb = roundDecimal(diskSizeGb)
+    return t('units.GB', { value: diskSizeGb });
+  }
+
+  // Get nodes
+  const { data: nodesResponse } = useGetClusterNodesQuery();
+  const regionData = useMemo(() => {
+    const set = new Set<string>();
+    nodesResponse?.data.forEach(node => set.add(node.cloud_info.region + "#" + node.cloud_info.zone));
+    return Array.from(set).map(regionZone => {
+      const [region, zone] = regionZone.split('#');
+      return {
+        region: {
+          name: `${region} (${zone})`,
+          code: regionCountryCodes[zone] ?? 'xx',
+        },
+        nodeCount: nodesResponse?.data.filter(node => 
+          node.cloud_info.region === region && node.cloud_info.zone === zone).length,
+        vCpuPerNode: totalCores,
+        ramPerNode: getRamUsageText(totalRamUsageMb),
+        diskPerNode: getDiskSizeText(totalDiskSize),
+      }
+    })
+  }, [nodesResponse, totalCores, totalRamUsageMb, totalDiskSize])
 
   const regionColumns = [
     {
       name: 'region',
-      label: t('clusterDetail.settings.regions.region'),
+      label: isZone ? t('clusterDetail.settings.regions.zone') : t('clusterDetail.settings.regions.region'),
       options: {
         customBodyRender: RegionNameComponent(),
         setCellProps: () => ({ style: { padding: '8px 0px' } }),
@@ -95,15 +110,15 @@ export const RegionOverview: FC<RegionOverviewProps> = () => {
       },
       customColumnSort: (order: MUISortOptions['direction']) => {
         return (obj1: { data: any }, obj2: { data: any }) => {
-            let val1 = obj1.data.name;
-            let val2 = obj2.data.name;
-            let compareResult =
-                val2 < val1
-                    ? 1
-                    : val2 == val1
-                    ? 0
-                    : -1;
-            return compareResult * (order === 'asc' ? 1 : -1);
+          let val1 = obj1.data.name;
+          let val2 = obj2.data.name;
+          let compareResult =
+            val2 < val1
+              ? 1
+              : val2 == val1
+                ? 0
+                : -1;
+          return compareResult * (order === 'asc' ? 1 : -1);
         };
       },
     },
@@ -139,20 +154,12 @@ export const RegionOverview: FC<RegionOverviewProps> = () => {
         setCellHeaderProps: () => ({ style: { padding: '8px 0px' } }),
       }
     },
-    {
-      name: 'vpc',
-      label: t('clusterDetail.settings.regions.vpcName'),
-      options: {
-        setCellProps: () => ({ style: { padding: '8px 0px' } }),
-        setCellHeaderProps: () => ({ style: { padding: '8px 0px' } }),
-      }
-    },
   ];
 
   return (
     <Paper className={classes.paperContainer}>
       <Typography variant="h5" className={classes.heading}>
-        {t('clusterDetail.settings.regions.title')}
+        {isZone ? t('clusterDetail.settings.regions.zonesTitle') : t('clusterDetail.settings.regions.title')}
       </Typography>
       <YBTable
         data={regionData}

@@ -1199,7 +1199,9 @@
         },
         "regions": {
           "title": "Regions",
+          "zonesTitle": "Zones",
           "region": "Region",
+          "zone": "Zone",
           "nodes": "Nodes",
           "vCPU_per_node": "vCPU / Node",
           "ram_per_node": "RAM / Node",
