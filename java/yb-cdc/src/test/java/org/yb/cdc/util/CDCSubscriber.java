@@ -227,7 +227,7 @@ public class CDCSubscriber {
     LOG.debug("Checkpointing type is: " + checkpointingType);
     if (dbStreamId == null || dbStreamId.isEmpty()) {
       LOG.debug("Creating a new CDC DB stream");
-      dbStreamId = syncClient.createCDCStream(table, "yugabyte", FORMAT,
+      dbStreamId = syncClient.createCDCStream(table, namespaceName, FORMAT,
                                               checkpointingType, recordType).getStreamId();
 
       LOG.debug(String.format("Created a new DB stream id: %s", dbStreamId));
