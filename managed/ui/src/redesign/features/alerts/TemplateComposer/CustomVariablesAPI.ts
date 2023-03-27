@@ -19,7 +19,8 @@ import {
 
 export enum ALERT_TEMPLATES_QUERY_KEY {
   fetchAlertTemplateVariables = 'fetchAlertTemplateVariables',
-  fetchAlertConfigurationList = 'fetchAlertConfigurationList'
+  fetchAlertConfigurationList = 'fetchAlertConfigurationList',
+  getAlertChannelTemplates = 'getAlertChannelTemplates'
 }
 
 export const fetchAlertTemplateVariables = () => {

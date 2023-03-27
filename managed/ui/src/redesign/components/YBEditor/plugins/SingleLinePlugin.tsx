@@ -50,6 +50,7 @@ export const useSingleLinePlugin: IYBSlatePlugin = ({ editor, enabled }) => {
     init,
     renderElement,
     onKeyDown,
-    renderLeaf
+    renderLeaf,
+    isEnabled: () => enabled
   };
 };

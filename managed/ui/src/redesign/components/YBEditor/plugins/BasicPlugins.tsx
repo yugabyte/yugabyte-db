@@ -9,15 +9,22 @@
 
 import React from 'react';
 
+import { Text } from 'slate';
+import { jsx } from 'slate-hyperscript';
+import { CustomElement, CustomText, DOMElement, TextDecorators } from './custom-types';
 import { IYBSlatePlugin, SlateRenderElementProps, SlateRenderLeafProps } from './IPlugin';
-import { CustomElement, TextDecorators } from './custom-types';
-import { toggleBlock, toggleMark } from './PluginUtils';
+import { nonActivePluginReturnType, toggleBlock, toggleMark } from './PluginUtils';
 
+const PLUGIN_NAME = 'Basic';
 /**
  * basic plugin - supports basic functionalities like bold, italics, underline etc..
  */
-export const useBasicPlugins: IYBSlatePlugin = ({ editor }) => {
+export const useBasicPlugins: IYBSlatePlugin = ({ enabled, editor }) => {
   const editorRef = editor;
+
+  if (!enabled) {
+    return { name: PLUGIN_NAME, ...nonActivePluginReturnType };
+  }
 
   /**
    * custom function to add/remove marks like bold, italics etc
@@ -38,7 +45,7 @@ export const useBasicPlugins: IYBSlatePlugin = ({ editor }) => {
     switch (element.type) {
       case 'paragraph':
         return (
-          <p {...attributes} style={{ textAlign: element.align as any }}>
+          <p {...attributes} style={{ textAlign: element.align }}>
             {children}
           </p>
         );
@@ -78,9 +85,72 @@ export const useBasicPlugins: IYBSlatePlugin = ({ editor }) => {
   };
 
   return {
-    name: 'Basic Plugin',
+    name: PLUGIN_NAME,
     renderElement,
     onKeyDown,
-    renderLeaf
+    isEnabled: () => enabled,
+    renderLeaf,
+    defaultComponents: [],
+    serialize,
+    deSerialize
   };
+};
+
+const serialize = (node: CustomElement | CustomText, children: string) => {
+  if (Text.isText(node)) {
+    if (node.bold || node.italic || node.strikethrough || node.underline) {
+      let string = node.text;
+      if (node.bold) {
+        string = `<strong>${string}</strong>`;
+      }
+      if (node.italic) {
+        string = `<em>${string}</em>`;
+      }
+      if (node.underline) {
+        string = `<u>${string}</u>`;
+      }
+      if (node.strikethrough) {
+        string = `<s>${string}</s>`;
+      }
+      return string;
+    }
+
+    return node.text;
+  }
+
+  switch (node.type) {
+    case 'paragraph':
+      return `<p align="${node.align}">${children}</p>`;
+    case 'heading':
+      return `<h1>${children}</h1>`;
+    default:
+      return undefined;
+  }
+};
+
+const deSerialize = (
+  el: DOMElement,
+  markAttributes = {},
+  children: Element[] | Node[]
+): CustomElement | CustomText | undefined => {
+  switch (el.nodeName) {
+    case 'P':
+      return jsx('element', { type: 'paragraph', align: el.getAttribute('align') }, children);
+    case 'H1':
+      return jsx('element', { type: 'heading' }, children);
+    case 'STRONG':
+      return jsx('text', { ...markAttributes, bold: true, text: el.textContent }, children);
+    case 'EM':
+      return jsx('text', { ...markAttributes, italic: true, text: el.textContent }, children);
+    case 'U':
+      return jsx('text', { ...markAttributes, underline: true, text: el.textContent }, children);
+    case 'S':
+      return jsx(
+        'text',
+        { ...markAttributes, strikethrough: true, text: el.textContent },
+        children
+      );
+    default:
+      return undefined;
+  }
 };

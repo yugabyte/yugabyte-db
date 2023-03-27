@@ -8,7 +8,7 @@
  */
 
 import { RenderElementProps, RenderLeafProps } from 'slate-react';
-import { CustomElement, CustomText, IYBEditor } from './custom-types';
+import { CustomElement, CustomText, DOMElement, IYBEditor } from './custom-types';
 
 export interface SlateRenderElementProps extends RenderElementProps {
   element: CustomElement;
@@ -45,6 +45,42 @@ export type IYBSlatePluginReturnProps = {
    */
 
   onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => boolean;
+
+  /**
+   * defaults components like popup, menu to be rendered in the editor
+   */
+
+  /**
+   * component to be attached default to the dom. like popup, menu
+   */
+  defaultComponents?: { (): JSX.Element }[];
+
+  /**
+   * serializes slatejs elements to HTML
+   * @param node slatejs element
+   * @param children generated html string from the slatejs element for the children
+   * @returns HTML string
+   */
+  serialize?: (node: CustomText | CustomElement, children: string) => string | undefined;
+
+  /**
+   * deSerialize html element to slatejs Element
+   * @param el Dom Element
+   * @param markAttributes text attributes like bold, italics
+   * @param children child elements
+   * @returns slatejs element or undefined
+   */
+  deSerialize?: (
+    el: DOMElement,
+    markAttributes: Omit<CustomText, 'text'>,
+    children: Element[] | Node[]
+  ) => CustomElement | CustomText | undefined;
+
+  /**
+   * returns whether the plugin is enabled
+   * @returns true if the plugin is enabled
+   */
+  isEnabled: () => boolean;
 };
 
 export type IYBSlatePlugin = (props: IYBSlatePluginInputProps) => IYBSlatePluginReturnProps;
