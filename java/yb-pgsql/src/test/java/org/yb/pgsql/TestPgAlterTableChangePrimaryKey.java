@@ -1127,14 +1127,9 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("ALTER TABLE nopk ALTER id SET STATISTICS 1234");
       stmt.executeUpdate("ANALYZE nopk");
       stmt.executeUpdate("ALTER TABLE nopk DROP COLUMN drop_me");
-      // TODO(fizaa): ALTER TABLE ADD PRIMARY KEY sets reltuples to 0 (see GH #15884).
-      // To avoid test failures until the issue is fixed, set reltuples to 0 before adding the pk.
-      executeSystemTableDml(stmt, "UPDATE pg_class SET reltuples = 0 WHERE relname = 'nopk'"
-                            + " AND relnamespace = 'public'::regnamespace");
       statisticsVerification(stmt);
       alterAddPrimaryKeyId(stmt, "nopk");
       statisticsVerification(stmt);
-      stmt.executeUpdate("ANALYZE nopk");
       alterDropPrimaryKey(stmt, "nopk");
       statisticsVerification(stmt);
     }
