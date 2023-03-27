@@ -116,6 +116,9 @@ main(int argc, char **argv)
 	spec_yyparse();
 	testspec = &parseresult;
 
+	/* Release the scanner memory */
+	spec_scanner_finish();
+
 	/* Create a lookup table of all steps. */
 	nallsteps = 0;
 	for (i = 0; i < testspec->nsessions; i++)
