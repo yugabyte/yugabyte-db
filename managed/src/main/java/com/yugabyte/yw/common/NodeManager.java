@@ -1509,7 +1509,8 @@ public class NodeManager extends DevopsBase {
             }
             if (taskParam.useSpotInstance
                 && (cloudType.equals(Common.CloudType.aws)
-                    || cloudType.equals(Common.CloudType.gcp))) {
+                    || cloudType.equals(Common.CloudType.gcp)
+                    || cloudType.equals(Common.CloudType.azu))) {
               commandArgs.add("--use_spot_instance");
               // GCP doesn't allow setting max prices for spot instances
               if (taskParam.spotPrice > 0.0 && !cloudType.equals(Common.CloudType.gcp)) {
