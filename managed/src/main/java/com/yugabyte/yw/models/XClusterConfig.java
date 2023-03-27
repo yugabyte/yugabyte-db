@@ -37,6 +37,7 @@ import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.yb.CommonTypes;
 import org.yb.master.MasterDdlOuterClass;
 
@@ -791,5 +792,9 @@ public class XClusterConfig extends Model {
     Set<T> intersection = new HashSet<>(firstSet);
     intersection.retainAll(secondSet);
     return intersection;
+  }
+
+  public static boolean isUniverseXClusterParticipant(UUID universeUUID) {
+    return !CollectionUtils.isEmpty(getByUniverseUuid(universeUUID));
   }
 }

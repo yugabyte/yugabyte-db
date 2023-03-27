@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import javax.inject.Inject;
 
@@ -51,7 +52,8 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           }
           // Promote Auto flags on compatible versions.
           if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.promoteAutoFlag)
-              && CommonUtils.isAutoFlagSupported(taskParams().ybSoftwareVersion)) {
+              && CommonUtils.isAutoFlagSupported(taskParams().ybSoftwareVersion)
+              && !XClusterConfig.isUniverseXClusterParticipant(taskParams().universeUUID)) {
             createPromoteAutoFlagTask().setSubTaskGroupType(getTaskSubGroupType());
           }
           // Mark the final software version on the universe
