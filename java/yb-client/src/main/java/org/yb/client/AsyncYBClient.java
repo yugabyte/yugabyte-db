@@ -313,7 +313,7 @@ public class AsyncYBClient implements AutoCloseable {
     this.bootstrap = b.createBootstrap(eventLoopGroup);
     this.masterAddresses = b.masterAddresses;
     this.masterTable = new YBTable(this, MASTER_TABLE_NAME_PLACEHOLDER,
-        MASTER_TABLE_NAME_PLACEHOLDER, null, null);
+        MASTER_TABLE_NAME_PLACEHOLDER, null, null, false);
     this.defaultOperationTimeoutMs = b.defaultOperationTimeoutMs;
     this.defaultAdminOperationTimeoutMs = b.defaultAdminOperationTimeoutMs;
     this.certFile = b.certFile;
@@ -1541,7 +1541,8 @@ public class AsyncYBClient implements AutoCloseable {
             response.getSchema(),
             response.getPartitionSchema(),
             response.getTableType(),
-            response.getNamespace());
+            response.getNamespace(),
+            response.isColocated());
         return helper.attemptOpen(response.isCreateTableDone(), table, name);
       }
     });
@@ -1568,7 +1569,8 @@ public class AsyncYBClient implements AutoCloseable {
             response.getSchema(),
             response.getPartitionSchema(),
             response.getTableType(),
-            response.getNamespace());
+            response.getNamespace(),
+            response.isColocated());
         return helper.attemptOpen(response.isCreateTableDone(), table, tableUUID);
       }
     });
