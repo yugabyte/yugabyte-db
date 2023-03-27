@@ -16,7 +16,7 @@ A private service endpoint can be used to connect a YugabyteDB Managed VPC with 
 
 ## Limitations
 
-- Currently, private service endpoints are only supported on AWS.
+- Currently, private service endpoints are only supported for [AWS PrivateLink](https://docs.aws.amazon.com/vpc/latest/privatelink/what-is-privatelink.html).
 - Currently, private service endpoints must be created and managed using [ybm CLI](../../../managed-automation/managed-cli/).
 
 ## Prerequisites
