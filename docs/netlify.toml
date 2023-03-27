@@ -595,6 +595,12 @@
   to = "/preview/migrate/"
   force = true
 
+# Redirect for Reference connectors
+
+[[redirects]]
+  from = "/:version/reference/connectors/*"
+  to = "/preview/integrations/apache-kafka/"
+
 # A few redirects to head off issues with version_menu_pagelinks
 
 [[redirects]]
