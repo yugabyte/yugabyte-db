@@ -121,6 +121,14 @@ lazy val root = (project in file("."))
 scalaVersion := "2.12.10"
 version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
+// These are needed to prevent (reduce possibility?) or incremental compilation infinite loop issue:
+// https://github.com/sbt/sbt/issues/6183
+// https://github.com/sbt/zinc/issues/1120
+incOptions := incOptions.value.withRecompileAllFraction(.1)
+// After 2 transitive steps, do more aggressive invalidation
+// https://github.com/sbt/zinc/issues/911
+incOptions := incOptions.value.withTransitiveStep(2)
+
 
 libraryDependencies ++= Seq(
   javaJdbc,
