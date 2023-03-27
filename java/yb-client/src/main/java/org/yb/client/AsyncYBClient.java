@@ -2147,10 +2147,10 @@ public class AsyncYBClient implements AutoCloseable {
       // this will save us a Master lookup.
       RemoteTablet tablet = getTablet(tableId, partitionKey);
       if (tablet != null && clientFor(tablet) != null) {
-
         return Deferred.fromResult(null);  // Looks like no lookup needed.
       }
     }
+
 
     int numTablets = numTabletsInTable;
     if (numTabletsInTable != DEFAULT_MAX_TABLETS) {
@@ -2424,18 +2424,30 @@ public class AsyncYBClient implements AutoCloseable {
       Slice tabletId = rt.tabletId;
 
       // If we already know about this one, just refresh the locations
+      // But in case of colocated tables, it is possible that we may already know about this one
+      // tablet, but we still need to update the relevant table to tablet mapping.
       RemoteTablet currentTablet = tablet2client.get(tabletId);
       if (currentTablet != null) {
         currentTablet.refreshServers(tabletPb);
-        continue;
+        // Only in case the current tablet ID matches the one in request, it would mean that the
+        // fetched tablet is a duplicate tablet, otherwise consider it the colocated case and move
+        // ahead with processing.
+        if (currentTablet.tableId.equals(tableId)) {
+          continue;
+        }
       }
 
       // Putting it here first doesn't make it visible because tabletsCache is always looked up
       // first.
       RemoteTablet oldRt = tablet2client.putIfAbsent(tabletId, rt);
       if (oldRt != null) {
-        // someone beat us to it
-        continue;
+        // Only move ahead if the table IDs match, meaning that the oldRt belongs to the same
+        // table-tablet combination, otherwise it is possible that we are fetching the same tablet
+        // for different tables in case of colocation - in this case, move ahead to process further.
+        if (oldRt.tableId.equals(tableId)) {
+          // someone beat us to it
+          continue;
+        }
       }
       LOG.info("Discovered tablet {} for table {} with partition {}",
                tabletId.toString(Charset.defaultCharset()), tableName, rt.getPartition());
@@ -2495,6 +2507,7 @@ public class AsyncYBClient implements AutoCloseable {
 
   RemoteTablet getFirstTablet(String tableId) {
     ConcurrentSkipListMap<byte[], RemoteTablet> tablets = tabletsCache.get(tableId);
+
     if (tablets == null) {
       return null;
     }
