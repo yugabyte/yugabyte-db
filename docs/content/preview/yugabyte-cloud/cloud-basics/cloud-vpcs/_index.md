@@ -85,7 +85,7 @@ VPC networking is not supported in Sandbox clusters.
         <div class="title">Private service endpoints</div>
       </div>
       <div class="body">
-        Manage VPC private service endpoints.
+        Manage private service endpoints.
       </div>
     </a>
   </div>
