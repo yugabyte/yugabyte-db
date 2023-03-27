@@ -136,6 +136,7 @@
     "redux-promise": "0.5.3",
     "slate": "0.91.4",
     "slate-history": "0.86.0",
+    "slate-hyperscript": "0.77.0",
     "slate-react": "0.91.10",
     "typescript": "4.9.3",
     "typy": "3.3.0",
