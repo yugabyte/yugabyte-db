@@ -11,6 +11,7 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonGetter;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
@@ -35,6 +36,7 @@ import javax.persistence.Id;
 import javax.persistence.ManyToOne;
 import javax.persistence.Temporal;
 import javax.persistence.TemporalType;
+import javax.persistence.Transient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -89,6 +91,12 @@ public class PlatformInstance extends Model {
 
   public void setAddress(String address) {
     this.address = address;
+  }
+
+  @Transient public String ybaVersion = null;
+
+  public void updateYbaVersionForLocalInstance(String version) {
+    ybaVersion = version;
   }
 
   @JsonGetter("config_uuid")
