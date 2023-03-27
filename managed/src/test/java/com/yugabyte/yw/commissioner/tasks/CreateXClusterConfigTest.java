@@ -163,7 +163,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
             null,
             true,
             CommonTypes.TableType.YQL_TABLE_TYPE,
-            Collections.emptyList());
+            Collections.emptyList(),
+            false);
     GetTableSchemaResponse mockTableSchemaResponseTable2 =
         new GetTableSchemaResponse(
             0,
@@ -175,7 +176,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
             null,
             true,
             CommonTypes.TableType.YQL_TABLE_TYPE,
-            Collections.emptyList());
+            Collections.emptyList(),
+            false);
     try {
       lenient()
           .when(mockClient.getTableSchemaByUUID(exampleTableID1))
