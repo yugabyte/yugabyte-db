@@ -30,14 +30,24 @@ export type HeadingElement = {
 };
 export type ListItemElement = {
   align?: string;
-  type: string;
+  type: 'list-item';
   children: Descendant[];
+};
+
+export type AlertVariableElement = {
+  type: 'alertVariable';
+  variableType: 'Custom' | 'System';
+  view: 'EDIT' | 'PREVIEW' | 'NO_VALUE';
+  variableName: string;
+  variableValue: string;
+  children: CustomText[];
 };
 
 export type IYBEditor = BaseEditor & ReactEditor & HistoryEditor;
 
-export type CustomElement = HeadingElement | Paragraph | ListItemElement;
+export type CustomElement = HeadingElement | Paragraph | AlertVariableElement | ListItemElement;
 
+export type DOMElement = Element;
 declare module 'slate' {
   interface CustomTypes {
     Editor: IYBEditor;
