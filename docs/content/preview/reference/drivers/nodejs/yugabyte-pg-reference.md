@@ -1,5 +1,5 @@
 ---
-title: YugabyteDB node-postgres Smart Driver
+title: YugabyteDB node-postgres Smart Driver reference
 headerTitle: Node.js Drivers
 linkTitle: Node.js Drivers
 description: YugabyteDB node-postgres smart driver for YSQL

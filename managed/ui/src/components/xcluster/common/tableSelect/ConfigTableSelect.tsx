@@ -176,7 +176,8 @@ export const ConfigTableSelect = ({
 
   const tablesInConfig = augmentTablesWithXClusterDetails(
     sourceUniverseTablesQuery.data,
-    xClusterConfig.tableDetails
+    xClusterConfig.tableDetails,
+    xClusterConfig.txnTableDetails
   );
 
   const tablesForSelection = tablesInConfig.filter(

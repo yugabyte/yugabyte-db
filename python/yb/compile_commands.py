@@ -11,11 +11,9 @@
 # under the License.
 
 import os
-import sys
 import logging
 import json
 import re
-import subprocess
 
 from typing import List, Dict, Set, Union, Any, Optional
 
@@ -24,10 +22,9 @@ from yugabyte_pycommon import WorkDirContext  # type: ignore
 
 from yb.common_util import (
     YB_SRC_ROOT,
-    read_json_file,
-    write_json_file,
     get_absolute_path_aliases
 )
+from yb.json_util import read_json_file, write_json_file
 from yb.postgres_build_util import POSTGRES_BUILD_SUBDIR
 
 # We build PostgreSQL code in a separate directory (postgres_build) rsynced from the source tree to

@@ -2,7 +2,7 @@
 title: PostgreSQL source database
 linkTitle: PostgreSQL
 headcontent: Known issues when migrating data from PostgreSQL.
-description: Refer to the PostgreSQL issues when migrating data using YugabyteDB Voyager.
+description: Known issues and suggested workarounds for migrating data from PostgreSQL.
 menu:
   preview:
     identifier: postgresql-issues

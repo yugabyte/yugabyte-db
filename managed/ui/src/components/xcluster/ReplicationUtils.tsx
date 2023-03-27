@@ -18,7 +18,7 @@ import {
 } from './constants';
 import { api } from '../../redesign/helpers/api';
 import { getUniverseStatus } from '../universes/helpers/universeHelpers';
-import { UnavailableUniverseStates } from '../../redesign/helpers/constants';
+import {UnavailableUniverseStates, YBTableRelationType} from '../../redesign/helpers/constants';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { SortOrder } from '../../redesign/helpers/constants';
 
@@ -29,7 +29,7 @@ import {
   XClusterTable,
   XClusterTableDetails
 } from './XClusterTypes';
-import { Universe, YBTable } from '../../redesign/helpers/dtos';
+import {TableType, Universe, YBTable} from '../../redesign/helpers/dtos';
 
 import './ReplicationUtils.scss';
 
@@ -408,7 +408,8 @@ export const getXClusterConfigTableType = (
  */
 export const augmentTablesWithXClusterDetails = (
   ybTable: YBTable[],
-  xClusterConfigTables: XClusterTableDetails[]
+  xClusterConfigTables: XClusterTableDetails[],
+  txnTableDetails: XClusterTableDetails | undefined
 ): XClusterTable[] => {
   const ybTableMap = new Map<string, YBTable>();
   ybTable.forEach((table) => {
@@ -416,7 +417,7 @@ export const augmentTablesWithXClusterDetails = (
     const adaptedTableUUID = adaptTableUUID(tableUUID);
     ybTableMap.set(adaptedTableUUID, { ...tableDetails, tableUUID: adaptedTableUUID });
   });
-  return xClusterConfigTables.reduce((tables: XClusterTable[], table) => {
+  const tables = xClusterConfigTables.reduce((tables: XClusterTable[], table) => {
     const ybTableDetails = ybTableMap.get(table.tableId);
     if (ybTableDetails) {
       const { tableId, ...xClusterTableDetails } = table;
@@ -428,4 +429,19 @@ export const augmentTablesWithXClusterDetails = (
     }
     return tables;
   }, []);
+  if (txnTableDetails) {
+    const { tableId: txnTableId, ...txnTable } = txnTableDetails;
+    tables.push({
+      isIndexTable:false,
+      keySpace: "system",
+      pgSchemaName: "",
+      relationType: YBTableRelationType.SYSTEM_TABLE_RELATION,
+      sizeBytes: -1,
+      tableName: "transactions",
+      tableType: TableType.TRANSACTION_STATUS_TABLE_TYPE,
+      tableUUID: txnTableId,
+      ...txnTable
+    });
+  }
+  return tables;
 };

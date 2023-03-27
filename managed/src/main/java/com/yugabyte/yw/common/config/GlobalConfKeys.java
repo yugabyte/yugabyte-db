@@ -544,4 +544,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow universes to be detached from a source platform and attached to dest platform",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> transactionalXClusterEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.transactional.enabled",
+          ScopeType.GLOBAL,
+          "Whether YBA supports transactional xCluster configs",
+          "It indicates whether YBA should support transactional xCluster configs",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

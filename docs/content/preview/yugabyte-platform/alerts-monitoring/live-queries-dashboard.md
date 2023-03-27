@@ -1,4 +1,5 @@
 ---
+title: Live queries in YugabyteDB Anywhere
 headerTitle: Live Queries dashboard
 linkTitle: Live Queries dashboard
 description: Live Queries dashboard

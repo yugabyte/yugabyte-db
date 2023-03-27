@@ -1,4 +1,5 @@
 ---
+title: Continuous availability
 headerTitle: Continuous availability
 linkTitle: Continuous availability
 description: Simulate fault tolerance and resilience in a local YugabyteDB database universe.

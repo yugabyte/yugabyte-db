@@ -75,6 +75,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/thread.h"
 #include "yb/util/trace.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -122,7 +123,7 @@ DEFINE_UNKNOWN_int32(update_metrics_interval_ms, kUpdateIntervalMs,
 DEFINE_UNKNOWN_bool(enable_cdc_state_table_caching, true,
     "Enable caching the cdc_state table schema.");
 
-DEFINE_UNKNOWN_bool(enable_cdc_client_tablet_caching, false,
+DEFINE_RUNTIME_bool(enable_cdc_client_tablet_caching, true,
     "Enable caching the tablets found by client.");
 
 DEFINE_UNKNOWN_bool(enable_collect_cdc_metrics, true, "Enable collecting cdc metrics.");
@@ -670,8 +671,10 @@ CDCServiceImpl::CDCServiceImpl(
       get_changes_rpc_sem_(std::max(
           1.0, floor(FLAGS_rpc_workers_limit * (1 - FLAGS_cdc_get_changes_free_rpc_ratio)))),
       impl_(new Impl(context_.get(), &mutex_)) {
-  update_peers_and_metrics_thread_.reset(
-      new std::thread(&CDCServiceImpl::UpdatePeersAndMetrics, this));
+  CHECK_OK(Thread::Create(
+      "cdc_service", "update_peers_and_metrics", &CDCServiceImpl::UpdatePeersAndMetrics, this,
+      &update_peers_and_metrics_thread_));
+
   LOG_IF(WARNING, get_changes_rpc_sem_.GetValue() == 1) << "only 1 thread available for GetChanges";
 }
 
@@ -3712,7 +3715,7 @@ void CDCServiceImpl::Shutdown() {
       cdc_state_table_ = nullptr;
     }
     if (update_peers_and_metrics_thread_) {
-      update_peers_and_metrics_thread_->join();
+      update_peers_and_metrics_thread_->Join();
     }
     impl_->async_client_init_ = nullptr;
     impl_->ClearCaches();

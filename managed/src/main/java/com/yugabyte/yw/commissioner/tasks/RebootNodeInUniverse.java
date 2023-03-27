@@ -115,16 +115,18 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
       }
 
       // Start the tserver.
-      createTServerTaskForNode(currentNode, "start")
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+      if (currentNode.isTserver) {
+        createTServerTaskForNode(currentNode, "start")
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-      // Wait for the tablet server to be responsive.
-      createWaitForServersTasks(Collections.singleton(currentNode), ServerType.TSERVER)
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        // Wait for the tablet server to be responsive.
+        createWaitForServersTasks(Collections.singleton(currentNode), ServerType.TSERVER)
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-      createWaitForServerReady(
-              currentNode, ServerType.TSERVER, getSleepTimeForProcess(ServerType.TSERVER))
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        createWaitForServerReady(
+                currentNode, ServerType.TSERVER, getSleepTimeForProcess(ServerType.TSERVER))
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+      }
 
       if (universe.isYbcEnabled()) {
         createStartYbcTasks(Arrays.asList(currentNode))

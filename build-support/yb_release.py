@@ -234,7 +234,8 @@ def main():
         force=args.force,
         commit=args.commit,
         build_root=build_root,
-        package_name=args.package_name)
+        package_name=args.package_name,
+        skip_yugabyted_ui=args.skip_yugabyted_ui_build)
 
     system = platform.system().lower()
     packager_args = dict(

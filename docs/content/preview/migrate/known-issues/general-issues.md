@@ -2,7 +2,7 @@
 title: General known issues
 linkTitle: General
 headcontent: Known issues when migrating data from MySQL, Oracle, or PostgreSQL.
-description: Refer to the known issues when migrating data using YugabyteDB Voyager and suggested workarounds.
+description: Known issues and suggested workarounds for migrating data from MySQL, Oracle, or PostgreSQL.
 menu:
   preview:
     identifier: general-issues

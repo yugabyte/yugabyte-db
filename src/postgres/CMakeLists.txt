@@ -151,7 +151,7 @@ if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
   endif()
 endif()
 
-yb_put_vars_into_cache(
+yb_put_string_vars_into_cache(
   POSTGRES_FINAL_C_FLAGS
   POSTGRES_FINAL_CXX_FLAGS
   POSTGRES_FINAL_LD_FLAGS

@@ -122,10 +122,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final String MASTERS_FLAG = "FLAGS_pggate_master_addresses";
   private static final String YB_ENABLED_IN_PG_ENV_VAR_NAME = "YB_ENABLED_IN_POSTGRES";
 
-  // Error message templates
-  private static final String UNEXPECTED_ERR_MESSAGE = "Unexpected Error Message. Got: '%s', "
-      + "Expected to contain one of the error messages: %s.";
-
   // Metric names.
   protected static final String METRIC_PREFIX = "handler_latency_yb_ysqlserver_SQLProcessor_";
   protected static final String SELECT_STMT_METRIC = METRIC_PREFIX + "SelectStmt";
@@ -1749,47 +1745,58 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   /**
-   * @param statement The statement used to execute the query.
-   * @param query The query string.
-   * @param errorSubstring A (case-insensitive) substring of the expected error message.
+   * @param statement       The statement used to execute the query.
+   * @param query           The query string.
+   * @param errorSubstrings An array of (case-insensitive) substrings of the expected error
+   *                        messages.
    */
-  protected void runInvalidQuery(Statement statement, String query, String errorSubstring) {
-    try {
-      statement.execute(query);
-      fail(String.format("Statement did not fail: %s", query));
-    } catch (SQLException e) {
-      if (StringUtils.containsIgnoreCase(e.getMessage(), errorSubstring)) {
-        LOG.info("Expected exception", e);
-      } else {
-        fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: '%s'",
-                           e.getMessage(), errorSubstring));
-      }
-    }
+  protected void runInvalidQuery(Statement statement, String query, String... errorSubstrings) {
+    runInvalidQuery(statement, query, false, errorSubstrings);
   }
 
   /**
-   * @param statement The statement used to execute the query.
-   * @param query The query string.
-   * @param errorSubstrings An array of (case-insensitive) substrings of the
-   * expected error messages.
+   * @param statement       The statement used to execute the query.
+   * @param query           The query string.
+   * @param matchAll        A flag to indicate whether all errorSubstrings must be present (true)
+   *                       or if only one is sufficient (false).
+   * @param errorSubstrings An array of (case-insensitive) substrings of the expected error
+   *                        messages.
    */
-  protected void runInvalidQuery(Statement statement, String query, String[] errorSubstrings) {
+  protected void runInvalidQuery(Statement statement, String query, boolean matchAll,
+                                 String... errorSubstrings) {
     try {
       statement.execute(query);
       fail(String.format("Statement did not fail: %s", query));
     } catch (SQLException e) {
-      for (String errorSubstring : errorSubstrings) {
-        if (StringUtils.containsIgnoreCase(e.getMessage(), errorSubstring)) {
-          LOG.info("Expected exception", e);
-          return;
-        }
-      }
+      if (matchAll) {
+        List<String> missingSubstrings = new ArrayList<>();
 
-      final String expectedErrMsg = Arrays.asList(errorSubstrings).stream().map(i -> "'" + i + "'")
-          .collect(Collectors.joining(", "));
-      final String failMessage = String.format(UNEXPECTED_ERR_MESSAGE, e.getMessage(),
-          expectedErrMsg);
-      fail(failMessage);
+        for (String errorSubstring : errorSubstrings) {
+          if (!StringUtils.containsIgnoreCase(e.getMessage(), errorSubstring)) {
+            missingSubstrings.add(errorSubstring);
+          }
+        }
+
+        if (!missingSubstrings.isEmpty()) {
+          String missingSubstringsStr = missingSubstrings.stream().map(s -> "'" + s + "'")
+            .collect(Collectors.joining(", "));
+          fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: %s",
+            e.getMessage(), missingSubstringsStr));
+        }
+      } else {
+        for (String errorSubstring : errorSubstrings) {
+          if (StringUtils.containsIgnoreCase(e.getMessage(), errorSubstring)) {
+            LOG.info("Expected exception", e);
+            return;
+          }
+        }
+
+        final String expectedErrMsg = Arrays.asList(errorSubstrings).stream().map(i -> "'" + i +
+            "'").collect(Collectors.joining(", "));
+        final String failMessage = String.format("Unexpected Error Message. Got: '%s', Expected " +
+          "to contain one of the error messages: %s.", e.getMessage(), expectedErrMsg);
+        fail(failMessage);
+      }
     }
   }
 
@@ -2161,12 +2168,20 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return rpc_count_after - rpc_count_before;
   }
 
+  /** Creates a new tserver and returns its id. **/
+  protected int spawnTServer() throws Exception {
+    int tserverId = miniCluster.getNumTServers();
+    miniCluster.startTServer(getTServerFlags());
+    return tserverId;
+  }
+
+  /** Creates a new tserver with additional flags and returns its id. **/
   protected int spawnTServerWithFlags(Map<String, String> additionalFlags) throws Exception {
     Map<String, String> tserverFlags = getTServerFlags();
     tserverFlags.putAll(additionalFlags);
-    int tserver = miniCluster.getNumTServers();
+    int tserverId = miniCluster.getNumTServers();
     miniCluster.startTServer(tserverFlags);
-    return tserver;
+    return tserverId;
   }
 
   /**

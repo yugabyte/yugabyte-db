@@ -752,7 +752,7 @@ TEST_F_EX(PgIndexBackfillTest,
           "relation \"$0\" already exists", kIndexName);
       const std::vector<std::string> allowed_msgs{
         "Catalog Version Mismatch",
-        "conflicts with higher priority transaction",
+        "could not serialize access due to concurrent update",
         "Restart read required",
         "Transaction aborted",
         "Transaction metadata missing",

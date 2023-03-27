@@ -36,6 +36,7 @@ import java.math.BigDecimal;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
+import java.net.Socket;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
@@ -923,5 +924,14 @@ public class Util {
           u.setUniverseDetails(universeDetails);
         };
     return Universe.saveDetails(universe.universeUUID, updater, false);
+  }
+
+  public static boolean isAddressReachable(String host, int port) {
+    try (Socket socket = new Socket()) {
+      socket.connect(new InetSocketAddress(host, port), 3000);
+      return true;
+    } catch (IOException e) {
+    }
+    return false;
   }
 }

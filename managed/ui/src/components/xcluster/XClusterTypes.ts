@@ -40,6 +40,7 @@ export interface XClusterConfig {
   sourceUniverseUUID?: string;
   status: XClusterConfigStatus;
   tableDetails: XClusterTableDetails[];
+  txnTableDetails: XClusterTableDetails;
   tables: string[];
   targetUniverseUUID?: string;
   uuid: string;

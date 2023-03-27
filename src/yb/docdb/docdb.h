@@ -77,6 +77,7 @@
 namespace yb {
 
 class Histogram;
+class Counter;
 
 namespace docdb {
 
@@ -110,6 +111,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
     const scoped_refptr<Histogram>& write_lock_latency,
+    const scoped_refptr<Counter>& failed_batch_lock,
     const IsolationLevel isolation_level,
     const OperationKind operation_kind,
     const RowMarkType row_mark_type,

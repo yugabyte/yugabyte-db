@@ -1,10 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -13,10 +13,11 @@ import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Restore;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import java.io.File;
@@ -24,17 +25,18 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
-import play.libs.Json;
 
 @Slf4j
 public class CreateXClusterConfig extends XClusterConfigTaskBase {
@@ -65,13 +67,15 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         createXClusterConfigSetStatusTask(XClusterConfigStatusType.Updating);
 
         createXClusterConfigSetStatusForTablesTask(
-            getTableIds(taskParams().getTableInfoList()), XClusterTableConfig.Status.Updating);
+            getTableIds(taskParams().getTableInfoList(), taskParams().getTxnTableInfo()),
+            XClusterTableConfig.Status.Updating);
 
         addSubtasksToCreateXClusterConfig(
             sourceUniverse,
             targetUniverse,
             taskParams().getTableInfoList(),
-            taskParams().getMainTableIndexTablesMap());
+            taskParams().getMainTableIndexTablesMap(),
+            taskParams().getTxnTableInfo());
 
         createXClusterConfigSetStatusTask(XClusterConfigStatusType.Running)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
@@ -96,9 +100,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       // Set tables in updating status to failed.
       Set<String> tablesInPendingStatus =
           xClusterConfig.getTableIdsInStatus(
-              getTableIds(taskParams().getTableInfoList()),
-              ImmutableList.of(
-                  XClusterTableConfig.Status.Updating, XClusterTableConfig.Status.Bootstrapping));
+              getTableIds(taskParams().getTableInfoList(), taskParams().getTxnTableInfo()),
+              X_CLUSTER_TABLE_CONFIG_PENDING_STATUS_LIST);
       xClusterConfig.setStatusForTables(tablesInPendingStatus, XClusterTableConfig.Status.Failed);
       throw new RuntimeException(e);
     } finally {
@@ -113,7 +116,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       Universe sourceUniverse,
       Universe targetUniverse,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
-      Map<String, List<String>> mainTableIndexTablesMap) {
+      Map<String, List<String>> mainTableIndexTablesMap,
+      @Nullable MasterDdlOuterClass.ListTablesResponsePB.TableInfo txnTableInfo) {
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
 
     // Support mismatched TLS root certificates.
@@ -122,17 +126,19 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     sourceCertificate.ifPresent(
         cert ->
             createTransferXClusterCertsCopyTasks(
+                xClusterConfig,
                 targetUniverse.getNodes(),
                 xClusterConfig.getReplicationGroupName(),
                 cert,
                 targetUniverse.getUniverseDetails().getSourceRootCertDirPath()));
 
     Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
-        requestedNamespaceNameTablesInfoMapNeedBootstrap =
-            getRequestedNamespaceNameTablesInfoMapNeedBootstrap(
+        dbToTablesInfoMapNeedBootstrap =
+            getDbToTablesInfoMapNeedBootstrap(
                 getTableIds(requestedTableInfoList),
                 requestedTableInfoList,
-                mainTableIndexTablesMap);
+                mainTableIndexTablesMap,
+                txnTableInfo);
 
     // Replication for tables that do NOT need bootstrapping.
     Set<String> tableIdsNotNeedBootstrap =
@@ -152,7 +158,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         sourceUniverse,
         targetUniverse,
         taskParams().getBootstrapParams(),
-        requestedNamespaceNameTablesInfoMapNeedBootstrap,
+        dbToTablesInfoMapNeedBootstrap,
         !tableIdsNotNeedBootstrap.isEmpty());
   }
 
@@ -161,19 +167,30 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       Universe targetUniverse,
       XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
       Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
-          requestedNamespaceNameTablesInfoMapNeedBootstrap,
+          dbToTablesInfoMapNeedBootstrap,
       boolean isReplicationConfigCreated) {
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
 
-    for (String namespaceName : requestedNamespaceNameTablesInfoMapNeedBootstrap.keySet()) {
+    // Remove the txn InfoTable if it is present, and we are going to create an xCluster config.
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> txnTableInfoList =
+        dbToTablesInfoMapNeedBootstrap.remove(TRANSACTION_STATUS_TABLE_NAMESPACE);
+    if (Objects.nonNull(txnTableInfoList)
+        && !txnTableInfoList.isEmpty()
+        && !isReplicationConfigCreated) {
+      MasterDdlOuterClass.ListTablesResponsePB.TableInfo txnTableInfo = txnTableInfoList.get(0);
+      createBootstrapProducerTask(getTableIds(Collections.singleton(txnTableInfo)))
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingProducer);
+      log.info("Subtask to BootstrapProducer the txn table created");
+    }
+
+    for (String namespaceName : dbToTablesInfoMapNeedBootstrap.keySet()) {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoListNeedBootstrap =
-          requestedNamespaceNameTablesInfoMapNeedBootstrap.get(namespaceName);
+          dbToTablesInfoMapNeedBootstrap.get(namespaceName);
       if (tablesInfoListNeedBootstrap.isEmpty()) {
         throw new RuntimeException(
             String.format(
                 "tablesInfoListNeedBootstrap in namespaceName %s is empty", namespaceName));
       }
-      CommonTypes.TableType tableType = tablesInfoListNeedBootstrap.get(0).getTableType();
       Set<String> tableIdsNeedBootstrap = getTableIds(tablesInfoListNeedBootstrap);
       log.info(
           "Creating subtasks to set up replication using bootstrap for tables {} in "
@@ -195,6 +212,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       // Assign the created backup UUID for the tables in the DB.
       xClusterConfig.setBackupForTables(tableIdsNeedBootstrap, backup);
 
+      CommonTypes.TableType tableType = tablesInfoListNeedBootstrap.get(0).getTableType();
       if (tableType == CommonTypes.TableType.YQL_TABLE_TYPE) {
         // If the table type is YCQL, delete the tables from the target universe, because if the
         // tables exist, the restore subtask will fail.
@@ -212,7 +230,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                 .stream()
                 .filter(
                     tableInfo ->
-                        tableNamesNeedBootstrap.contains(tableInfo.getName())
+                        tableType.equals(tableInfo.getTableType())
+                            && tableNamesNeedBootstrap.contains(tableInfo.getName())
                             && tableInfo.getNamespace().getName().equals(namespaceName))
                 .map(MasterDdlOuterClass.ListTablesResponsePB.TableInfo::getName)
                 .collect(Collectors.toList());
@@ -258,67 +277,92 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
   }
 
   protected Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
-      getRequestedNamespaceNameTablesInfoMapNeedBootstrap(
+      getDbToTablesInfoMapNeedBootstrap(
           Set<String> tableIds,
           List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
-          Map<String, List<String>> mainTableIndexTablesMap) {
+          Map<String, List<String>> mainTableIndexTablesMap,
+          @Nullable MasterDdlOuterClass.ListTablesResponsePB.TableInfo txnTableInfo) {
     if (requestedTableInfoList.isEmpty()) {
       log.warn("requestedTablesInfoList is empty");
       return Collections.emptyMap();
     }
-    // At least one entry exists in requestedNamespaceNameTablesInfoMap and each list in any entry
-    // has at least one TableInfo object.
+    // At least one entry exists in requestedTableInfoList.
     CommonTypes.TableType tableType = requestedTableInfoList.get(0).getTableType();
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
 
-    checkBootstrapRequiredForReplicationSetup(getTableIdsNeedBootstrap(tableIds));
+    Set<String> tableIdsToCheckNeedBootstrap = getTableIdsNeedBootstrap(tableIds);
+    if (Objects.nonNull(txnTableInfo)) {
+      tableIdsToCheckNeedBootstrap.add(getTableId(txnTableInfo));
+    }
+    checkBootstrapRequiredForReplicationSetup(tableIdsToCheckNeedBootstrap);
 
     Set<String> tableIdsNeedBootstrap = getTableIdsNeedBootstrap(tableIds);
-    groupByNamespaceName(requestedTableInfoList)
-        .forEach(
-            (namespaceName, tablesInfoList) -> {
-              Set<String> tableIdsInNamespace = getTableIds(tablesInfoList);
-              // If at least one YSQL table needs bootstrap, it must be done for all tables in that
-              // keyspace.
-              if (tableType == CommonTypes.TableType.PGSQL_TABLE_TYPE
-                  && !getTablesNeedBootstrap(tableIdsInNamespace).isEmpty()) {
-                xClusterConfig.setNeedBootstrapForTables(
-                    tableIdsInNamespace, true /* needBootstrap */);
-              }
-              // If a main table or an index table of a main table needs bootstrapping, it must be
-              // done for the main table and all of its index tables due to backup/restore
-              // restrictions.
-              mainTableIndexTablesMap.forEach(
-                  (mainTableId, indexTableIds) -> {
-                    if (tableIdsNeedBootstrap.contains(mainTableId)
-                        || indexTableIds.stream().anyMatch(tableIdsNeedBootstrap::contains)) {
-                      xClusterConfig.setNeedBootstrapForTables(
-                          Collections.singleton(mainTableId), true /* needBootstrap */);
-                      xClusterConfig.setNeedBootstrapForTables(
-                          indexTableIds, true /* needBootstrap */);
-                    }
-                  });
-            });
+    Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>> dbToTableInfoListMap =
+        groupByNamespaceName(requestedTableInfoList);
+    dbToTableInfoListMap.forEach(
+        (namespaceName, tablesInfoList) -> {
+          Set<String> tableIdsInNamespace = getTableIds(tablesInfoList);
+          // If at least one YSQL table needs bootstrap, it must be done for all tables in that
+          // keyspace.
+          if (tableType == CommonTypes.TableType.PGSQL_TABLE_TYPE
+              && !getTablesNeedBootstrap(tableIdsInNamespace).isEmpty()) {
+            xClusterConfig.setNeedBootstrapForTables(tableIdsInNamespace, true /* needBootstrap */);
+          }
+          // If a main table or an index table of a main table needs bootstrapping, it must be
+          // done for the main table and all of its index tables due to backup/restore
+          // restrictions.
+          mainTableIndexTablesMap.forEach(
+              (mainTableId, indexTableIds) -> {
+                if (tableIdsNeedBootstrap.contains(mainTableId)
+                    || indexTableIds.stream().anyMatch(tableIdsNeedBootstrap::contains)) {
+                  xClusterConfig.setNeedBootstrapForTables(
+                      Collections.singleton(mainTableId), true /* needBootstrap */);
+                  xClusterConfig.setNeedBootstrapForTables(indexTableIds, true /* needBootstrap */);
+                }
+              });
+        });
 
     // Get tables requiring bootstrap again in case previous statement has made any changes.
     Set<String> tableIdsNeedBootstrapAfterChanges =
         getTableIdsNeedBootstrap(getTableIds(requestedTableInfoList));
 
     Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
-        requestedNamespaceNameTablesInfoMapNeedBootstrap =
-            groupByNamespaceName(
-                requestedTableInfoList
-                    .stream()
-                    .filter(
-                        tableInfo ->
-                            tableIdsNeedBootstrapAfterChanges.contains(
-                                tableInfo.getId().toStringUtf8()))
-                    .collect(Collectors.toList()));
+        dbToTablesInfoMapNeedBootstrap =
+            requestedTableInfoList
+                .stream()
+                .filter(
+                    tableInfo ->
+                        tableIdsNeedBootstrapAfterChanges.contains(
+                            tableInfo.getId().toStringUtf8()))
+                .collect(Collectors.groupingBy(tableInfo -> tableInfo.getNamespace().getName()));
 
-    log.debug(
-        "requestedNamespaceNameTablesInfoMapNeedBootstrap is {}",
-        requestedNamespaceNameTablesInfoMapNeedBootstrap);
-    return requestedNamespaceNameTablesInfoMapNeedBootstrap;
+    if (Objects.nonNull(txnTableInfo)) {
+      // Txn table needs bootstrapping if at least another table needs bootstrapping.
+      if (!tableIdsNeedBootstrapAfterChanges.isEmpty()) {
+        log.debug(
+            "Setting txn table to be bootstrapping because there is at least one user table "
+                + "that needs bootstrapping");
+        xClusterConfig.setNeedBootstrapForTables(
+            getTableIds(Collections.singleton(txnTableInfo)), true /* needBootstrap */);
+      }
+      if (xClusterConfig.getTxnTableDetails().needBootstrap) {
+        // If txn needs bootstrapping, then all DBs needs bootstrapping because YBDB does not
+        // support specifying bootstrap id for only txn table id.
+        dbToTableInfoListMap.forEach(
+            (namespace, tableInfoList) -> {
+              xClusterConfig.setNeedBootstrapForTables(
+                  getTableIds(tableInfoList), true /* needBootstrap */);
+              dbToTablesInfoMapNeedBootstrap.put(namespace, tableInfoList);
+            });
+        log.info("txn table needs bootstrapping and thus it will bootstrap all DBs");
+        dbToTablesInfoMapNeedBootstrap.put(
+            txnTableInfo.getNamespace().getName(), Collections.singletonList(txnTableInfo));
+        log.info("txn table added for bootstrapping");
+      }
+    }
+
+    log.debug("dbToTablesInfoMapNeedBootstrap is {}", dbToTablesInfoMapNeedBootstrap);
+    return dbToTablesInfoMapNeedBootstrap;
   }
 
   static BackupRequestParams getBackupRequestParams(

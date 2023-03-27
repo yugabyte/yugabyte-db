@@ -676,7 +676,7 @@ std::string PqEscapeIdentifier(const std::string& input) {
 
 bool HasTransactionError(const Status& status) {
   const auto& message = status.ToString();
-  return message.find("conflicts with higher priority transaction:") != std::string::npos ||
+  return message.find("could not serialize access due to concurrent update") != std::string::npos ||
          message.find("Transaction aborted:") != std::string::npos ||
          message.find("expired or aborted by a conflict:") != std::string::npos ||
          message.find("Unknown transaction, could be recently aborted:") != std::string::npos;
