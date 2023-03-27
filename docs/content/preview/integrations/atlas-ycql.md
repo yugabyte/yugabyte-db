@@ -1,5 +1,5 @@
 ---
-title: Apache Atlas with YCQL API
+title: Apache Atlas
 linkTitle: Apache Atlas
 description: Use Apache Atlas with YCQL API
 menu:
@@ -9,9 +9,10 @@ menu:
     weight: 571
 type: docs
 ---
+[Apache Atlas](https://atlas.apache.org/) is an enterprise-scale open data management service which provides governance for Hadoop and the entire enterprise data ecosystem.
+[Solr](https://solr.apache.org/) is an open-source indexing platform that serves as an indexing backend to run Apache Atlas.
 
-Solr is needed as an indexing backend to run Apache Atlas. I will clarify this in the document as well.
-This tutorial describes how to set up Apache Atlas to work with YugabyteDB and run the quick start provided by it.
+This tutorial describes how to set up Apache Atlas with YugabyteDB and run the quick start provided by the Atlas service.
 
 ## Prerequisites
 
@@ -21,9 +22,9 @@ To use [Apache Atlas](https://doc.akka.io/docs/akka-persistence-r2dbc/current/ov
 
 - [Apache Solr 5.5.1](https://solr.apache.org/guide/6_6/installing-solr.html) is installed.
 
-## Build The Apache Atlas Project
+## Build the Apache Atlas Project
 
-To get the Apache Atlas server file, you need to build the Apache Atlas source first. To do that:
+To get the Apache Atlas server file, you need to build the Apache Atlas source using the following steps:
 
 1. Clone the [source](https://github.com/apache/atlas) from GitHub to your local setup. Checkout checkout to the latest stable release tag ( For example: release-2.3.0), and follow the steps in the README to build the files.
 
@@ -35,7 +36,7 @@ To get the Apache Atlas server file, you need to build the Apache Atlas source f
     tar -xzvf apache-atlas-2.3.0-server.tar.gz
     ```
 
-## Run Apache Atlas With YugabyteDB
+## Run Apache Atlas
 
 Perform the following steps to run the Atlas server:
 
@@ -82,7 +83,7 @@ Perform the following steps to run the Atlas server:
     bin/atlas_start.py
     ```
 
-You should see the following output:
+    You should see the following output:
 
     ```output
     Starting Atlas server on host: localhost
@@ -94,8 +95,8 @@ You should see the following output:
 1. To ensure the server has started successfully, run the following command:
 
     ```sh
-     #The default username and password for atlas is admin
-      curl -u username:password http://localhost:21000/api/atlas/admin/version
+    # The default username and password for atlas is admin
+    curl -u username:password http://localhost:21000/api/atlas/admin/version
     ```
 
     You should see the following output:
@@ -143,7 +144,7 @@ You should see the following output:
     Sample data added to Apache Atlas Server.
     ```
 
-1. You can also verify if the keyspaces `janusgraph` and `atlas_audit` got created using the ycqlsh shell as follows:
+1. You can also verify if the keyspaces `janusgraph` and `atlas_audit` got created using the [ycqlsh](../../admin/ysqlsh/#starting-ysqlsh) shell as follows:
 
     ```output
     DESC KEYSPACES;
