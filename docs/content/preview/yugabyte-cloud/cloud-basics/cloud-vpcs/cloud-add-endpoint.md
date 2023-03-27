@@ -12,42 +12,95 @@ menu:
 type: docs
 ---
 
-A private service endpoint can be used to connect a YugabyteDB Managed VPC with other services on the same cloud provider - typically one that hosts an application that you want to have access to your cluster. A VPC must be created before you can configure a private service endpoint.
+A private service endpoint (PSE) can be used to connect a YugabyteDB Managed VPC with other services on the same cloud provider - typically one that hosts an application that you want to have access to your cluster. A VPC must be created before you can configure a PSE.
 
 ## Limitations
 
-- Currently, private service endpoints are only supported for [AWS PrivateLink](https://docs.aws.amazon.com/vpc/latest/privatelink/what-is-privatelink.html).
-- Currently, private service endpoints must be created and managed using [ybm CLI](../../../managed-automation/managed-cli/).
+- Currently, PSEs are only supported for [AWS PrivateLink](https://docs.aws.amazon.com/vpc/latest/privatelink/what-is-privatelink.html).
+- Currently, PSEs must be created and managed using [ybm CLI](../../../managed-automation/managed-cli/).
 
 ## Prerequisites
 
-Before you can create a private service endpoint, you need to do the following:
+Before you can create a PSE, you need to do the following:
 
 - Install and configure ybm CLI. Refer to [Install and configure](../../../managed-automation/managed-cli/managed-cli-overview/).
 - Create an API key. Refer to [API keys](../../../managed-automation/managed-apikeys/).
 - Create a VPC. Refer to [Create a VPC](../cloud-add-vpc/#create-a-vpc).
 - Create a YugabyteDB cluster in the VPC. Refer to [Create a cluster](../../create-clusters/).
 
-In addition, you need the following information:
+In addition, to use AWS PrivateLink, you need the following:
 
+- An AWS user account with an IAM user policy that grants permissions to create, modify, describe, and delete endpoints.
 - The Amazon resource names (ARN) of security principals to which to grant access to the endpoint.
 
-## Create a private service endpoint
+## Create a PSE for AWS PrivateLink
 
-To create a private service endpoint using ybm, do the following:
+### Create a PSE in YugabyteDB Managed
+
+To create a PSE, do the following:
 
 1. Enter the following command:
 
     ```sh
     ybm cluster network endpoint create \
       --cluster-name yugabytedb_cluster \
-      --region resource_region \
+      --region cluster_region \
       --accessibility-type PRIVATE_SERVICE_ENDPOINT \
       --security-principals amazon_resource_names
     ```
 
     where
 
-    - `yugabytedb_cluster` is the name of your cluster
-    - `resource_region` is the region where you want to place the endpoint. Must match one of the regions where your cluster is deployed. For example, `us-west-2`.
-    - `amazon_resource_names` is a comma-separated list of the ARNs of security principals that you want to grant access
+    - `yugabytedb_cluster` is the name of your cluster.
+    - `cluster_region` is the cluster region where you want to place the endpoint. Must match one of the regions where your cluster is deployed. For example, `us-west-2`.
+    - `amazon_resource_names` is a comma-separated list of the ARNs of security principals that you want to grant access.
+
+    Note the endpoint ID in the response.
+
+    You can also display the endpoint ID by entering the following command:
+
+    ```sh
+    ybm cluster network endpoint list --cluster-name <cluster name>
+    ```
+
+    This outputs the endpoint IDs of the cluster's PSEs.
+
+1. Display the service name of the PSE by entering the following command:
+
+    ```sh
+    ybm cluster network endpoint describe --endpoint-id <endpoint-id>
+    ```
+
+    Note the service name of the endpoint you want to link to your client application VPC.
+
+### Create a VPC endpoint in AWS
+
+1. Open the Amazon VPC console at https://console.aws.amazon.com/vpc/.
+
+1. In the navigation pane, choose **Endpoints**.
+
+1. Choose **Create endpoint**.
+
+1. Enter a name for the endpoint.
+
+1. In the **Service Category** field, select **Find service by name**.
+
+1. In the **Service Name** field, enter the Service Name of your YugabyteDB Managed private service endpoint.
+
+1. Click **Verify**.
+
+1. In the **VPC** field, enter the ID of your client application VPC.
+
+1. Enter the following information:
+
+    - Name tag - enter a name for the endpoint.
+    - Service category - choose Find service by name.
+    - Service - enter the service name of your YugabyteDB Managed private service endpoint.
+    - VPC - select your application VPC.
+    - Subnets - select the Availability Zone and then select the private subnet.
+    - Security group - select the security group for the VPC endpoint.
+    - Policy - select Full access to allow all operations by all principals on all resources over the VPC endpoint.
+
+1. Choose **Create endpoint**.
+
+The initial status is Pending. After the link is validated, the status is Available. This can take a few minutes.
