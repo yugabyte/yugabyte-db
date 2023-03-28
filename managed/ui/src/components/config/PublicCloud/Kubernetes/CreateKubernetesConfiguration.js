@@ -17,10 +17,14 @@ import { readUploadedFile } from '../../../../utils/UniverseUtils';
 import { KUBERNETES_PROVIDERS, REGION_DICT } from '../../../../config';
 import AddRegionList from './AddRegionList';
 import { ACCEPTABLE_CHARS } from '../../constants';
+import {
+  QUAY_IMAGE_REGISTRY,
+  REDHAT_IMAGE_REGISTRY
+} from '../../../configRedesign/providerRedesign/forms/k8s/constants';
 
 const convertStrToCode = (s) => s.trim().toLowerCase().replace(/\s/g, '-');
-const quayImageRegistry = 'quay.io/yugabyte/yugabyte';
-const redhatImageRegistry = 'registry.connect.redhat.com/yugabytedb/yugabyte';
+const quayImageRegistry = QUAY_IMAGE_REGISTRY;
+const redhatImageRegistry = REDHAT_IMAGE_REGISTRY;
 
 class CreateKubernetesConfiguration extends Component {
   createProviderConfig = (vals, setSubmitting) => {
@@ -133,8 +137,13 @@ class CreateKubernetesConfiguration extends Component {
     this.props
       .fetchKubenetesConfig()
       .then((resp) => {
-        const { KUBECONFIG_PULL_SECRET_NAME, KUBECONFIG_PULL_SECRET_CONTENT, KUBECONFIG_IMAGE_REGISTRY, KUBECONFIG_PROVIDER} = resp.data.config;
-        const { regionList, name} = resp.data;
+        const {
+          KUBECONFIG_PULL_SECRET_NAME,
+          KUBECONFIG_PULL_SECRET_CONTENT,
+          KUBECONFIG_IMAGE_REGISTRY,
+          KUBECONFIG_PROVIDER
+        } = resp.data.config;
+        const { regionList, name } = resp.data;
         const fileObj = new File([KUBECONFIG_PULL_SECRET_CONTENT], KUBECONFIG_PULL_SECRET_NAME, {
           type: 'text/plain',
           lastModified: new Date().getTime()
@@ -144,7 +153,6 @@ class CreateKubernetesConfiguration extends Component {
         setFieldValue('imageRegistry', KUBECONFIG_IMAGE_REGISTRY);
         const provider = _.find(KUBERNETES_PROVIDERS, { code: KUBECONFIG_PROVIDER.toLowerCase() });
         setFieldValue('providerType', { label: provider.name, value: provider.code });
-
 
         const parsedRegionList = regionList.map((r) => {
           let regionCode = {};

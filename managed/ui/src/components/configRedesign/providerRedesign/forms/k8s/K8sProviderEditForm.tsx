@@ -73,7 +73,7 @@ export const K8sProviderEditForm = ({ providerConfig }: K8sProviderEditFormProps
       kubernetesPullSecret: providerConfig.details.cloudInfo.kubernetes.kubernetesPullSecret,
       kubernetesServiceAccount:
         providerConfig.details.cloudInfo.kubernetes.kubernetesServiceAccount,
-      kubernetesStorageClasses: providerConfig.details.cloudInfo.kubernetes.kubernetesStorageClasses
+      kubernetesStorageClass: providerConfig.details.cloudInfo.kubernetes.kubernetesStorageClass
     })
   };
   const formMethods = useForm<K8sProviderEditFormFieldValues>({
@@ -122,19 +122,19 @@ export const K8sProviderEditForm = ({ providerConfig }: K8sProviderEditFormProps
                 />
               </FormField>
               <FormField>
-                <FieldLabel>Service Account Name</FieldLabel>
+                <FieldLabel>Image Registry</FieldLabel>
                 <YBInputField
                   control={formMethods.control}
-                  name="kubernetesServiceAccount"
+                  name="kubernetesImageRegistry"
                   fullWidth
                   disabled={true}
                 />
               </FormField>
               <FormField>
-                <FieldLabel>Image Registry</FieldLabel>
+                <FieldLabel>Service Account Name</FieldLabel>
                 <YBInputField
                   control={formMethods.control}
-                  name="kubernetesImageRegistry"
+                  name="kubernetesServiceAccount"
                   fullWidth
                   disabled={true}
                 />
