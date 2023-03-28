@@ -984,7 +984,7 @@ Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
     } else {
       table_row->Clear();
     }
-    data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
+    data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
   }
 
   return Status::OK();
@@ -1129,9 +1129,9 @@ Result<size_t> PgsqlReadOperation::Execute(const YQLStorageIf& ql_storage,
   VTRACE(1, "Fetched $0 rows. $1 paging state", fetched_rows, (has_paging_state ? "No" : "Has"));
   SCHECK(table_iter_ != nullptr, InternalError, "table iterator is invalid");
 
-  *restart_read_ht = table_iter_->RestartReadHt();
+  *restart_read_ht = VERIFY_RESULT(table_iter_->RestartReadHt());
   if (index_iter_) {
-    restart_read_ht->MakeAtLeast(index_iter_->RestartReadHt());
+    restart_read_ht->MakeAtLeast(VERIFY_RESULT(index_iter_->RestartReadHt()));
   }
   return fetched_rows;
 }

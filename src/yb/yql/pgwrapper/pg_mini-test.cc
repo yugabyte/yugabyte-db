@@ -2027,20 +2027,26 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SmallRead), PgMiniBigPrefetchTest)
   Run(kRows, kBlockSize, kReads);
 }
 
-TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Scan), PgMiniBigPrefetchTest) {
-  constexpr int kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
-  constexpr int kBlockSize = 1000;
-  constexpr int kReads = 3;
+namespace {
 
-  Run(kRows, kBlockSize, kReads, /* compact= */ false, /*select*/ true);
+constexpr int kScanRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
+constexpr int kScanBlockSize = 1000;
+constexpr int kScanReads = 3;
+
+}
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Scan), PgMiniBigPrefetchTest) {
+  FLAGS_ysql_enable_packed_row = false;
+  Run(kScanRows, kScanBlockSize, kScanReads, /* compact= */ false, /* select= */ true);
+}
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ScanWithPackedRow), PgMiniBigPrefetchTest) {
+  FLAGS_ysql_enable_packed_row = true;
+  Run(kScanRows, kScanBlockSize, kScanReads, /* compact= */ false, /* select= */ true);
 }
 
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ScanWithCompaction), PgMiniBigPrefetchTest) {
-  constexpr int kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
-  constexpr int kBlockSize = 1000;
-  constexpr int kReads = 3;
-
-  Run(kRows, kBlockSize, kReads, /* compact= */ true, /*select*/ true);
+  Run(kScanRows, kScanBlockSize, kScanReads, /* compact= */ true, /* select= */ true);
 }
 
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigValue), PgMiniSingleTServerTest) {

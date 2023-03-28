@@ -34,7 +34,7 @@ namespace docdb {
 class DocWriteBatchCache {
  public:
   struct Entry {
-    DocHybridTime doc_hybrid_time;
+    EncodedDocHybridTime doc_hybrid_time;
     ValueEntryType value_type = ValueEntryType::kInvalid;
     UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp;
     // We found a key which matched the exact key_prefix_ we were searching for (excluding the
@@ -54,7 +54,7 @@ class DocWriteBatchCache {
 
   // Same thing, but doesn't use an already created entry.
   void Put(const KeyBytes& key_bytes,
-           DocHybridTime gen_ht,
+           const EncodedDocHybridTime& gen_ht,
            ValueEntryType key_entry_type,
            UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp,
            bool found_exact_key_prefix = true) {

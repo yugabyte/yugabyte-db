@@ -51,9 +51,42 @@ constexpr int64_t kNothingFound = -1;
 
 YB_STRONGLY_TYPED_BOOL(CheckExistOnly);
 
+// The struct that stores encoded doc hybrid time and decode it on demand.
+class LazyDocHybridTime {
+ public:
+  void Assign(const EncodedDocHybridTime& value) {
+    encoded_ = value;
+    decoded_ = DocHybridTime();
+  }
+
+  const EncodedDocHybridTime& encoded() const {
+    return encoded_;
+  }
+
+  EncodedDocHybridTime* RawPtr() {
+    decoded_ = DocHybridTime();
+    return &encoded_;
+  }
+
+  Result<DocHybridTime> decoded() const {
+    if (!decoded_.is_valid()) {
+      decoded_ = VERIFY_RESULT(encoded_.Decode());
+    }
+    return decoded_;
+  }
+
+  std::string ToString() const {
+    return encoded_.ToString();
+  }
+
+ private:
+  EncodedDocHybridTime encoded_;
+  mutable DocHybridTime decoded_;
+};
+
 // Shared information about packed row. I.e. common for all columns in this row.
 struct PackedRowData {
-  DocHybridTime doc_ht;
+  LazyDocHybridTime doc_ht;
   ValueControlFields control_fields;
 };
 
@@ -68,14 +101,13 @@ struct PackedColumnData {
 };
 
 Expiration GetNewExpiration(
-    const Expiration& parent_exp, const MonoDelta& ttl,
-    const DocHybridTime& new_write_time) {
+    const Expiration& parent_exp, MonoDelta ttl, HybridTime new_write_ht) {
   Expiration new_exp = parent_exp;
   // We may need to update the TTL in individual columns.
-  if (new_write_time.hybrid_time() >= new_exp.write_ht) {
+  if (new_write_ht >= new_exp.write_ht) {
     // We want to keep the default TTL otherwise.
     if (ttl != ValueControlFields::kMaxTtl) {
-      new_exp.write_ht = new_write_time.hybrid_time();
+      new_exp.write_ht = new_write_ht;
       new_exp.ttl = ttl;
     } else if (new_exp.ttl.IsNegative()) {
       new_exp.ttl = -new_exp.ttl;
@@ -84,7 +116,7 @@ Expiration GetNewExpiration(
 
   // If the hybrid time is kMin, then we must be using default TTL.
   if (new_exp.write_ht == HybridTime::kMin) {
-    new_exp.write_ht = new_write_time.hybrid_time();
+    new_exp.write_ht = new_write_ht;
   }
 
   return new_exp;
@@ -128,12 +160,11 @@ Result<DocHybridTime> GetTableTombstoneTime(
     iter->Seek(table_id_encoded);
 
     Slice value;
-    DocHybridTime doc_ht = DocHybridTime::kMin;
+    EncodedDocHybridTime doc_ht(EncodedDocHybridTime::kMin);
     RETURN_NOT_OK(iter->FindLatestRecord(table_id_encoded, &doc_ht, &value));
     if (VERIFY_RESULT(Value::IsTombstoned(value))) {
-      SCHECK_NE(doc_ht, DocHybridTime::kInvalid, Corruption,
-                "Invalid hybrid time for table tombstone");
-      return doc_ht;
+      SCHECK(!doc_ht.empty(), Corruption, "Invalid hybrid time for table tombstone");
+      return doc_ht.Decode();
     }
   }
   return DocHybridTime::kInvalid;
@@ -176,7 +207,7 @@ Result<std::optional<SubDocument>> TEST_GetSubDocument(
   SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE);
   DocDBTableReader doc_reader(
       iter.get(), deadline, projection, TableType::YQL_TABLE_TYPE, schema_packing_storage);
-  RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(VERIFY_RESULT(docdb::GetTableTombstoneTime(
+  RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(VERIFY_RESULT(GetTableTombstoneTime(
       sub_doc_key, doc_db, txn_op_context, deadline, read_time))));
   SubDocument result;
   if (VERIFY_RESULT(doc_reader.Get(sub_doc_key, &result))) {
@@ -212,7 +243,7 @@ void DocDBTableReader::SetTableTtl(const Schema& table_schema) {
 
 Status DocDBTableReader::UpdateTableTombstoneTime(DocHybridTime doc_ht) {
   if (doc_ht.is_valid()) {
-    table_tombstone_time_ = doc_ht;
+    table_tombstone_time_.Assign(doc_ht);
   }
   return Status::OK();
 }
@@ -220,7 +251,7 @@ Status DocDBTableReader::UpdateTableTombstoneTime(DocHybridTime doc_ht) {
 // Scan state entry. See state_ description below for details.
 struct StateEntry {
   KeyBytes key_entry; // Represents the part of the key that is related to this state entry.
-  DocHybridTime write_time;
+  LazyDocHybridTime write_time;
   Expiration expiration;
   KeyEntryValue key_value; // Decoded key_entry.
   SubDocument* out;
@@ -242,7 +273,7 @@ class DocDBTableReader::GetHelperBase {
   virtual ~GetHelperBase() {}
 
  protected:
-  Result<bool> DoRun(Expiration* root_expiration, DocHybridTime* root_write_time) {
+  Result<bool> DoRun(Expiration* root_expiration, LazyDocHybridTime* root_write_time) {
     IntentAwareIteratorPrefixScope prefix_scope(root_doc_key_, reader_.iter_);
 
     RETURN_NOT_OK(Prepare(root_expiration, root_write_time));
@@ -316,7 +347,8 @@ class DocDBTableReader::GetHelperBase {
     DVLOG_WITH_PREFIX_AND_FUNC(4)
         << "check_exist_only: " << check_exist_only << ", key: "
         << SubDocKey::DebugSliceToString(key_result.key) << ", write time: "
-        << key_result.write_time << ", value: " << reader_.iter_->value().ToDebugHexString();
+        << key_result.write_time.ToString() << ", value: "
+        << reader_.iter_->value().ToDebugHexString();
     DCHECK(key_result.key.starts_with(root_doc_key_));
     auto subkeys = key_result.key.WithoutPrefix(root_doc_key_.size());
 
@@ -380,7 +412,7 @@ class DocDBTableReader::GetHelperBase {
   // Process DB entry.
   // Return true if entry value was accepted.
   virtual Result<bool> ProcessEntry(
-      Slice subkeys, Slice value_slice, const DocHybridTime& write_time,
+      Slice subkeys, Slice value_slice, const EncodedDocHybridTime& write_time,
       CheckExistOnly check_exist_only) = 0;
 
   Result<bool> NextColumn() {
@@ -418,17 +450,19 @@ class DocDBTableReader::GetHelperBase {
       control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value));
     }
     const auto& write_time = packed_column_data_.row->doc_ht;
-    auto expiration = GetNewExpiration(parent_exp, control_fields.ttl, write_time);
-    if (IsObsolete(expiration)) {
-      return false;
+    Expiration expiration;
+    if (TtlCheckRequired()) {
+      expiration = GetNewExpiration(
+          parent_exp, control_fields.ttl, VERIFY_RESULT(write_time.decoded()).hybrid_time());
+      if (IsObsolete(expiration)) {
+        return false;
+      }
     }
     return TryDecodeValue(
         control_fields.has_timestamp()
             ? control_fields.timestamp
             : packed_column_data_.row->control_fields.timestamp,
-        write_time.hybrid_time(),
-        expiration,
-        value, get_value_address());
+        write_time, expiration, value, get_value_address());
   }
 
   // Updates information about the current column packed data.
@@ -448,7 +482,7 @@ class DocDBTableReader::GetHelperBase {
 
   virtual bool CheckForRootValue() = 0;
 
-  Status Prepare(Expiration* root_expiration, DocHybridTime* root_write_time) {
+  Status Prepare(Expiration* root_expiration, LazyDocHybridTime* root_write_time) {
     DVLOG_WITH_PREFIX_AND_FUNC(4) << "Pos: " << reader_.iter_->DebugPosToString();
 
     root_key_entry_->AppendRawBytes(root_doc_key_);
@@ -457,9 +491,11 @@ class DocDBTableReader::GetHelperBase {
     DCHECK(key_result.key.starts_with(root_doc_key_));
 
     Slice value;
-    DocHybridTime doc_ht = reader_.table_tombstone_time_;
-    if (key_result.write_time >= doc_ht && root_doc_key_.size() == key_result.key.size()) {
-      doc_ht = key_result.write_time;
+    LazyDocHybridTime doc_ht;
+    doc_ht.Assign(reader_.table_tombstone_time_);
+    if (root_doc_key_.size() == key_result.key.size() &&
+        key_result.write_time >= doc_ht.encoded()) {
+      doc_ht.Assign(key_result.write_time);
       value = reader_.iter_->value();
     }
 
@@ -472,14 +508,18 @@ class DocDBTableReader::GetHelperBase {
       packed_row_.Assign(value);
       packed_row_data_.doc_ht = doc_ht;
       packed_row_data_.control_fields = control_fields;
-      *root_expiration = GetNewExpiration(*root_expiration, ValueControlFields::kMaxTtl, doc_ht);
+      if (TtlCheckRequired()) {
+        *root_expiration = GetNewExpiration(
+            *root_expiration, ValueControlFields::kMaxTtl,
+            VERIFY_RESULT(doc_ht.decoded()).hybrid_time());
+      }
     } else if (value_type != ValueEntryType::kTombstone && value_type != ValueEntryType::kInvalid) {
       // Used in tests only
       RETURN_NOT_OK(SetRootValue(value_type, value));
     }
 
     DVLOG_WITH_PREFIX_AND_FUNC(4)
-        << "Write time: " << doc_ht << ", control fields: " << control_fields.ToString();
+        << "Write time: " << doc_ht.ToString() << ", control fields: " << control_fields.ToString();
     *root_write_time = doc_ht;
     return Status::OK();
   }
@@ -515,18 +555,21 @@ class DocDBTableReader::GetHelperBase {
   }
 
   Result<bool> TryDecodeValue(
-      UserTimeMicros timestamp, HybridTime write_time,
-      const Expiration& expiration, const Slice& value_slice, PrimitiveValue* out) {
+      UserTimeMicros timestamp, const LazyDocHybridTime& write_time, const Expiration& expiration,
+      const Slice& value_slice, PrimitiveValue* out) {
     if (!out) {
       return DecodeValueEntryType(value_slice) != ValueEntryType::kTombstone;
     }
     RETURN_NOT_OK(out->DecodeFromValue(value_slice));
-    if (timestamp != ValueControlFields::kInvalidTimestamp) {
-      out->SetWriteTime(timestamp);
-    } else {
-      out->SetWriteTime(write_time.GetPhysicalValueMicros());
+    if (TtlCheckRequired()) {
+      auto write_ht = VERIFY_RESULT(write_time.decoded()).hybrid_time();
+      if (timestamp != ValueControlFields::kInvalidTimestamp) {
+        out->SetWriteTime(timestamp);
+      } else {
+        out->SetWriteTime(write_ht.GetPhysicalValueMicros());
+      }
+      out->SetTtl(GetTtlRemainingSeconds(reader_.iter_->read_time().read, write_ht, expiration));
     }
-    out->SetTtl(GetTtlRemainingSeconds(reader_.iter_->read_time().read, write_time, expiration));
 
     return !out->IsTombstone();
   }
@@ -541,6 +584,11 @@ class DocDBTableReader::GetHelperBase {
 
   std::string LogPrefix() const {
     return DocKey::DebugSliceToString(root_doc_key_) + ": ";
+  }
+
+  bool TtlCheckRequired() const {
+    // TODO(scanperf) also avoid checking TTL for YCQL tables w/o TTL.
+    return reader_.table_type_ == TableType::YQL_TABLE_TYPE;
   }
 
   DocDBTableReader& reader_;
@@ -579,7 +627,7 @@ class DocDBTableReader::GetHelper : public DocDBTableReader::GetHelperBase {
       : DocDBTableReader::GetHelperBase(reader, root_doc_key, IsFlatDoc::kFalse), result_(*result) {
     state_.emplace_back(StateEntry {
       .key_entry = KeyBytes(),
-      .write_time = DocHybridTime(),
+      .write_time = LazyDocHybridTime(),
       .expiration = reader_.table_expiration_,
       .key_value = {},
       .out = &result_,
@@ -606,10 +654,10 @@ class DocDBTableReader::GetHelper : public DocDBTableReader::GetHelperBase {
 
  private:
   Result<bool> ProcessEntry(
-      Slice subkeys, Slice value_slice, const DocHybridTime& write_time,
+      Slice subkeys, Slice value_slice, const EncodedDocHybridTime& write_time,
       CheckExistOnly check_exist_only) override {
     subkeys = CleanupState(subkeys);
-    if (state_.back().write_time >= write_time) {
+    if (state_.back().write_time.encoded() >= write_time) {
       DVLOG_WITH_PREFIX_AND_FUNC(4)
           << "State: " << AsString(state_) << ", write_time: " << write_time;
       return false;
@@ -634,8 +682,10 @@ class DocDBTableReader::GetHelper : public DocDBTableReader::GetHelperBase {
   }
 
   Status AllocateNewStateEntries(
-      Slice subkeys, const DocHybridTime& write_time, CheckExistOnly check_exist_only,
+      Slice subkeys, const EncodedDocHybridTime& write_time, CheckExistOnly check_exist_only,
       MonoDelta ttl) {
+    LazyDocHybridTime lazy_write_time;
+    lazy_write_time.Assign(write_time);
     while (!subkeys.empty()) {
       auto start = subkeys.data();
       state_.emplace_back();
@@ -643,9 +693,12 @@ class DocDBTableReader::GetHelper : public DocDBTableReader::GetHelperBase {
       auto& entry = state_.back();
       RETURN_NOT_OK(entry.key_value.DecodeFromKey(&subkeys));
       entry.key_entry.AppendRawBytes(Slice(start, subkeys.data()));
-      entry.write_time = subkeys.empty() ? write_time : parent.write_time;
+      entry.write_time = subkeys.empty() ? lazy_write_time : parent.write_time;
       entry.out = check_exist_only ? nullptr : &parent.out->AllocateChild(entry.key_value);
-      entry.expiration = GetNewExpiration(parent.expiration, ttl, write_time);
+      if (TtlCheckRequired()) {
+        entry.expiration = GetNewExpiration(
+            parent.expiration, ttl, VERIFY_RESULT(entry.write_time.decoded()).hybrid_time());
+      }
     }
     return Status::OK();
   }
@@ -658,10 +711,11 @@ class DocDBTableReader::GetHelper : public DocDBTableReader::GetHelperBase {
     DVLOG_WITH_PREFIX_AND_FUNC(4)
         << "State: " << AsString(state_) << ", value: " << value_slice.ToDebugHexString()
         << ", obsolete: " << IsObsolete(current.expiration);
-    if (!IsObsolete(current.expiration)) {
+
+    if (!TtlCheckRequired() || !IsObsolete(current.expiration)) {
       if (VERIFY_RESULT(TryDecodeValue(
-              control_fields.timestamp, current.write_time.hybrid_time(), current.expiration,
-              value_slice, current.out))) {
+              control_fields.timestamp, current.write_time, current.expiration, value_slice,
+              current.out))) {
         last_found_ = column_index_;
         return true;
       }
@@ -754,30 +808,38 @@ class DocDBTableReader::FlatGetHelper : public DocDBTableReader::GetHelperBase {
   std::string GetResultAsString() const override { return AsString(result_); }
 
  private:
+  // Return true if entry is more recent than packed row.
   Result<bool> ProcessEntry(
-      Slice /* subkeys */, Slice value_slice, const DocHybridTime& write_time,
+      Slice /* subkeys */, Slice value_slice, const EncodedDocHybridTime& write_time,
       CheckExistOnly check_exist_only) override {
-    if (row_write_time_ >= write_time) {
-      DVLOG_WITH_PREFIX_AND_FUNC(4) << "write_time: " << write_time;
+    if (row_write_time_.encoded() >= write_time) {
+      DVLOG_WITH_PREFIX_AND_FUNC(4) << "write_time: " << write_time.ToString();
       return false;
     }
 
+    LazyDocHybridTime lazy_write_time;
+    lazy_write_time.Assign(write_time);
+
     auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_slice));
     auto* column_value = check_exist_only ? nullptr : &result_[column_index_];
-    auto column_expiration = GetNewExpiration(row_expiration_, control_fields.ttl, write_time);
 
-    DVLOG_WITH_PREFIX_AND_FUNC(4) << "column_index_: " << column_index_
-                                  << ", value: " << value_slice.ToDebugHexString();
-    if (!IsObsolete(column_expiration)) {
-      if (VERIFY_RESULT(TryDecodeValue(
-              control_fields.timestamp, write_time.hybrid_time(), column_expiration,
-              value_slice, column_value))) {
-        last_found_ = column_index_;
+    Expiration column_expiration;
+    if (TtlCheckRequired()) {
+      column_expiration = GetNewExpiration(
+          row_expiration_, control_fields.ttl,
+          VERIFY_RESULT(lazy_write_time.decoded()).hybrid_time());
+
+      DVLOG_WITH_PREFIX_AND_FUNC(4) << "column_index_: " << column_index_
+                                    << ", value: " << value_slice.ToDebugHexString();
+      if (IsObsolete(column_expiration)) {
         return true;
       }
-      if (reader_.table_type_ == TableType::PGSQL_TABLE_TYPE) {
-        return true;
-      }
+    }
+
+    if (VERIFY_RESULT(TryDecodeValue(
+            control_fields.timestamp, lazy_write_time, column_expiration, value_slice,
+            column_value))) {
+      last_found_ = column_index_;
     }
 
     return true;
@@ -803,7 +865,7 @@ class DocDBTableReader::FlatGetHelper : public DocDBTableReader::GetHelperBase {
   std::vector<PrimitiveValue>& result_;
 
   KeyBytes row_key_;
-  DocHybridTime row_write_time_;
+  LazyDocHybridTime row_write_time_;
   Expiration row_expiration_;
 };
 
