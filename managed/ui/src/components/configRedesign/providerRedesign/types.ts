@@ -249,19 +249,19 @@ interface GCPCloudInfo extends GCPCloudInfoBase {
 }
 
 interface K8sCloudInfoBase {
-  kubeConfigName: string;
   kubernetesImageRegistry: string;
   kubernetesProvider: string;
-  kubernetesPullSecretName: string;
-  kubernetesServiceAccount: string;
 
+  kubeConfigName?: string;
+  kubernetesPullSecretName?: string;
+  kubernetesServiceAccount?: string;
   kubernetesImagePullSecretName?: string;
-  kubernetesStorageClasses?: string;
+  kubernetesStorageClass?: string;
 }
 interface K8sCloudInfoMutation extends K8sCloudInfoBase {
-  kubernetesPullSecretContent: string;
+  kubernetesPullSecretContent?: string;
 
-  kubeConfigContent: string; // Kube Config can be specified at the Provider, Region and Zone level
+  kubeConfigContent?: string; // Kube Config can be specified at the Provider, Region and Zone level
 }
 interface K8sCloudInfo extends K8sCloudInfoBase {
   kubernetesPullSecret: string; // filepath
