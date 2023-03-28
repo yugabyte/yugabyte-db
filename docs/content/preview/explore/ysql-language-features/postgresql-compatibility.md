@@ -24,7 +24,7 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | Unsupported PostgreSQL feature      | Track feature request GitHub issue |
 | ----------- | ----------- |
 | LOCK TABLE to obtain a table-level lock | [5384](https://github.com/yugabyte/yugabyte-db/issues/5384)|
-| Inheritance    | [5956](https://github.com/yugabyte/yugabyte-db/issues/5956)|
+| Table inheritance    | [5956](https://github.com/yugabyte/yugabyte-db/issues/5956)|
 | Exclusion constraints | [3944](https://github.com/yugabyte/yugabyte-db/issues/3944)|
 | Deferrable constraints | [1709](https://github.com/yugabyte/yugabyte-db/issues/1709)|
 | GiST indexes | [1337](https://github.com/yugabyte/yugabyte-db/issues/1337)|

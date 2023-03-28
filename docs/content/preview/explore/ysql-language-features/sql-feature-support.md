@@ -45,7 +45,7 @@ To understand which standard SQL features we support, refer to the following tab
 | Altering tables | ✓ (Partial) | [ALTER TABLE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/) |
 | Altering databases | ✓ | [ALTER DATABASE](../../../api/ysql/the-sql-language/statements/ddl_alter_db/) |
 | Altering a column's name | ✓ | |
-| Altering a column's default value | ✗ | |
+| Altering a column's default value | ✓ | |
 | Altering a column's data type | ✓ (Partial) | |
 | Adding columns | ✓ | [ADD COLUMN](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#add-column-column-name-data-type-constraint-constraints) |
 | Removing columns | ✓ | [DROP COLUMN](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#drop-column-column-name-restrict-cascade) |
