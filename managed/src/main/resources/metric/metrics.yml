@@ -1370,6 +1370,24 @@ tserver_glog_info_messages:
         "glog_warning_messages_irate": "Warning"
         "glog_error_messages_irate": "Error"
 
+tserver_uptime_min:
+  metric: "server_uptime_ms"
+  function: "max_over_time|bottomk.9|min"
+  range : true
+  operator: "/ 60000"
+  filters:
+    metric_id: "yb.tabletserver"
+  group_by: "exported_instance"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Uptime"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "server_uptime_ms": "Uptime"
+      ticksuffix: "&nbsp;min"
+
 node_up:
   metric: "up"
   function: "avg"
@@ -2864,6 +2882,24 @@ master_lsm_rocksdb_compaction_time:
       alias:
         "rocksdb_compaction_times_micros.avg": "Avg"
       ticksuffix: "&nbsp;\u00B5s"
+
+master_uptime_min:
+  metric: "server_uptime_ms"
+  function: "max_over_time|min"
+  range : true
+  operator: "/ 60000"
+  filters:
+    metric_id: "yb.master"
+  group_by: "exported_instance"
+  panel_group: "Master"
+  layout:
+    title: "Uptime"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "server_uptime_ms": "Uptime"
+      ticksuffix: "&nbsp;min"
 
 table_write_latency:
   metric: "ql_write_latency.avg"
