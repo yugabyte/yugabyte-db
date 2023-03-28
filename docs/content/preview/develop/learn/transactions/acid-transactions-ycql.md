@@ -11,23 +11,10 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-
-  <li >
-    <a href="../acid-transactions-ysql/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li >
-    <a href="../acid-transactions-ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-
-</ul>
+{{<tabs>}}
+{{<tabitem href="../acid-transactions-ysql/" text="YSQL" icon="postgres" >}}
+{{<tabitem href="../acid-transactions-ycql/" text="YCQL" icon="cassandra" active="true" >}}
+{{</tabs>}}
 
 In YugabyteDB, a transaction is a sequence of operations performed as a single logical unit of work. A transaction has four key properties - **Atomicity**, **Consistency**, **Isolation**, and **Durability** - commonly abbreviated as **ACID**.
 

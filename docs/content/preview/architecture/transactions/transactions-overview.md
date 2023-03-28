@@ -11,11 +11,24 @@ menu:
 type: docs
 ---
 
-Transactions and strong consistency are a fundamental requirement for any RDBMS. DocDB has been designed for strong consistency. It supports fully distributed atomicity, consistency, isolation, durability (ACID) transactions across rows, multiple tablets, and multiple nodes at any scale. Transactions can span across tables in DocDB.
+Transactions and strong consistency are a fundamental requirement for any RDBMS. DocDB has been designed for strong consistency. It supports fully distributed [ACID](#acid-properties) transactions across rows, multiple tablets, and multiple nodes at any scale. Transactions can span across tables in DocDB.
 
 A transaction is a sequence of operations performed as a single logical unit of work. The intermediate states of the database as a result of applying the operations inside a transaction are not visible to other concurrent transactions, and if a failure occurs that prevents the transaction from completing, then none of the steps affect the database.
 
 Note that all update operations inside DocDB are considered to be transactions, including operations that update only one row, as well as those that update multiple rows that reside on different nodes. If `autocommit` mode is enabled, each statement is executed as one transaction.
+
+## ACID properties
+
+A transaction has four key properties - **Atomicity**, **Consistency**, **Isolation**, and **Durability** - commonly abbreviated as **ACID**.
+
+- **Atomicity** All the work in a transaction is treated as a single atomic unit - either all of it is performed or none of it is.
+
+- **Consistency** A completed transaction leaves the database in a consistent internal state. This can either be all the operations in the transactions succeeding or none of them succeeding.
+
+- **Isolation** This property determines how/when changes made by one transaction become visible to the other. For example, a *serializable* isolation level guarantees that two concurrent transactions appear as if one executed after the other (that is, as if they occur in a completely isolated fashion). YugabyteDB supports *Snapshot*, *Serializable*, and *Read Committed* isolation levels. Read more about the different [levels of isolation](../isolation-levels/).
+
+- **Durability** The results of the transaction are permanently stored in the system. The modifications must persist even in the instance of power loss or system failures.
+
 
 ## Time synchronization
 
