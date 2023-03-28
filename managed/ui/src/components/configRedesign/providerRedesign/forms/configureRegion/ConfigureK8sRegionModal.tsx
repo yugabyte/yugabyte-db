@@ -39,7 +39,7 @@ interface K8sRegionCloudInfoFormValues {
   kubeDomain?: string;
   kubeNamespace?: string;
   kubePodAddressTemplate?: string;
-  kubernetesStorageClasses?: string;
+  kubernetesStorageClass?: string;
   overrides?: string;
 }
 
