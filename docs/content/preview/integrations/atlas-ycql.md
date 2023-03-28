@@ -10,6 +10,7 @@ menu:
 type: docs
 ---
 [Apache Atlas](https://atlas.apache.org/) is an enterprise-scale open data management service which provides governance for Hadoop and the entire enterprise data ecosystem.
+
 [Solr](https://solr.apache.org/) is an open-source indexing platform that serves as an indexing backend to run Apache Atlas.
 
 This tutorial describes how to set up Apache Atlas with YugabyteDB and run the quick start provided by the Atlas service.
@@ -146,18 +147,26 @@ Perform the following steps to run the Atlas server:
 
 1. You can also verify if the keyspaces `janusgraph` and `atlas_audit` got created using the [ycqlsh](../../admin/ysqlsh/#starting-ysqlsh) shell as follows:
 
+    ```sql
+    ycqlsh> DESC KEYSPACES;
+    ```
+
+    You should see the following output:
+
     ```output
-    DESC KEYSPACES;
+    atlas_audit  system_auth  system_schema  janusgraph  system
     ```
 
-1. Stop the Atlas server using the following command:
+## Clean up
 
-    ```sh
-    bin/atlas_stop.py
-    ```
+You can stop the Atlas server using the following command:
 
-1. Stop SolrCloud using the following command:
+  ```sh
+  bin/atlas_stop.py
+  ```
 
-    ```sh
-    bin/solr stop -all
-    ```
+You can stop SolrCloud using the following command:
+
+  ```sh
+  bin/solr stop -all
+  ```
