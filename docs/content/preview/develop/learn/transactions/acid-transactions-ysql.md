@@ -19,9 +19,9 @@ type: docs
 {{<tabitem href="../acid-transactions-ycql/" text="YCQL" icon="cassandra" >}}
 {{</tabs>}}
 
-In YugabyteDB, a transaction is a sequence of operations performed as a single logical unit of work. The essential point of a transaction is that it bundles multiple steps into a single, all-or-nothing operation. The intermediate states between the steps are not visible to other concurrent transactions, and if some failure occurs that prevents the transaction from completing, then none of the steps affect the database at all. 
+In YugabyteDB, a transaction is a sequence of operations performed as a single logical unit of work. The essential point of a transaction is that it bundles multiple steps into a single, all-or-nothing operation. The intermediate states between the steps are not visible to other concurrent transactions, and if some failure occurs that prevents the transaction from completing, then none of the steps affect the database at all.
 
-In YugabyteDB, a transaction is the set of commands within the `BEGIN - COMMIT` block. For example,
+In YugabyteDB, a transaction is the set of commands inside a `BEGIN - COMMIT` block. For example,
 
 ```plpgsql
 BEGIN;
@@ -30,16 +30,15 @@ BEGIN;
 COMMIT;
 ```
 
-The `BEGIN` and `COMMIT` block is needed when you have multiple statements to be executed as part of a transaction. YugabyteDB treats every ad-hoc individual SQL statement as being executed within a transaction.
+The `BEGIN` and `COMMIT` block is needed when you have multiple statements to be executed as part of a transaction. YugabyteDB treats every ad-hoc individual SQL statement as being executed in a transaction.
 
-In case you decide to cancel the transaction and not commit it, you can issue a `ROLLBACK` instead of a `COMMIT`. You can also control the rollback of just few statements using `SAVEPOINT`. After rolling back to a savepoint, it continues to be defined, so you can roll back to it several times. 
+If you decide to cancel the transaction and not commit it, you can issue a `ROLLBACK` instead of a `COMMIT`. You can also control the rollback of a subset of statements using `SAVEPOINT`. After rolling back to a savepoint, it continues to be defined, so you can roll back to it several times.
 
-As all transactions in YugabyteDB are guaranteed to be [ACID](../../../../architecture/transactions/transactions-overview#acid-properties) compliant, errors could occur during transaction processing for various reasons. YugabyteDB returns different [error codes](../transactions-errorcodes-ysql) for each of the cases with detailed reason. Applications would have to be designed to do [error handling](../transactions-high-availability-ysql) correctly for high availability.
+As all transactions in YugabyteDB are guaranteed to be [ACID](../../../../architecture/transactions/transactions-overview#acid-properties) compliant, errors can occur during transaction processing for various reasons. YugabyteDB returns different [error codes](../transactions-errorcodes-ysql) for each case with details. Applications need to be designed to do [error handling](../transactions-high-availability-ysql) correctly for high availability.
 
-{{<tip title="In Action">}}
-You can get a good glimpse of how transactions are used via examples in our [explore transactions](../../../../explore/transactions/distributed-transactions-ysql) section.
+{{<tip title="In action">}}
+For an example of how a transaction is run, see [Distributed transactions](../../../../explore/transactions/distributed-transactions-ysql).
 {{</tip>}}
-
 
 ## Commands
 
@@ -48,14 +47,14 @@ The following commands are typically involved in a transaction flow:
 | Command | Description | Example |
 | ------: | :---------- | :------ |
 |[BEGIN](../../../../api/ysql/the-sql-language/statements/txn_begin) | Start a transaction. This is the first statement in a transaction. | *BEGIN TRANSACTION* |
-|[SET](../../../../api/ysql/the-sql-language/statements/cmd_set) | Set session level transaction settings | SET idle_in_transaction_session_timeout = 10000 |
-|[SHOW](../../../../api/ysql/the-sql-language/statements/cmd_show) | Display session level transaction settings | SHOW idle_in_transaction_session_timeout |
+|[SET](../../../../api/ysql/the-sql-language/statements/cmd_set) | Set session-level transaction settings | SET idle_in_transaction_session_timeout = 10000 |
+|[SHOW](../../../../api/ysql/the-sql-language/statements/cmd_show) | Display session-level transaction settings | SHOW idle_in_transaction_session_timeout |
 |[SET TRANSACTION](../../../../api/ysql/the-sql-language/statements/txn_set) | Set the isolation level. | SET TRANSACTION SERIALIZABLE |
 |[SAVEPOINT](../../../../api/ysql/the-sql-language/statements/savepoint_create) | Create a checkpoint. | SAVEPOINT yb_save|
 |[ROLLBACK TO SAVEPOINT](../../../../api/ysql/the-sql-language/statements/savepoint_rollback) | Rollback to a specific savepoint. | ROLLBACK TO SAVEPOINT yb_save |
 |[RELEASE SAVEPOINT](../../../../api/ysql/the-sql-language/statements/savepoint_release) | Destroy a savepoint. | RELEASE yb_save |
-|[ROLLBACK](../../../../api/ysql/the-sql-language/statements/txn_rollback) | Cancel a transaction. This would be  | ROLLBACK |
-|[COMMIT](../../../../api/ysql/the-sql-language/statements/txn_commit) | Apply the transaction to the tables. | COMMIT
+|[ROLLBACK](../../../../api/ysql/the-sql-language/statements/txn_rollback) | Cancel a transaction. | ROLLBACK |
+|[COMMIT](../../../../api/ysql/the-sql-language/statements/txn_commit) | Apply the transaction to the tables. | COMMIT |
 
 ## Session-level settings
 
@@ -67,53 +66,49 @@ These settings impact all transactions in the current session only.
 
 ### default_transaction_read_only
 
-Turning this setting `ON/TRUE/1` would make all the transactions in the current session read-only. This would be very useful when you want to run reports or setup [follower reads](../transactions-performance-ysql#read-from-followers). 
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../transactions-performance-ysql#read-from-followers).
 
-```plpgsql 
+```plpgsql
 SET default_transaction_read_only = TRUE;
 ```
 
 ### default_transaction_isolation
 
-Setting this to one of `serializable | repeatable read | read committed ` - will set the default isolation level for all transactions in the current session.
+Set this to one of `serializable`, `repeatable read`, or `read committed `. This sets the default isolation level for all transactions in the current session.
 
-```plpgsql 
+```plpgsql
 SET default_transaction_isolation = 'serializable';
 ```
 
 ### default_transaction_deferrable
 
-Turning this setting `ON/TRUE/1` would make all the transactions in the current session [deferrable](../../../../api/ysql/the-sql-language/statements/txn_set/#deferrable-mode-1). This will ensure that the transactions are not canceled by a serialization failure.
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session [deferrable](../../../../api/ysql/the-sql-language/statements/txn_set/#deferrable-mode-1). This ensures that the transactions are not canceled by a serialization failure.
 
-```plpgsql 
+```plpgsql
 SET default_transaction_deferrable = TRUE;
 ```
 
 {{<note title="Note">}}
- The `DEFERRABLE` transaction property has no effect unless the transaction is also `SERIALIZABLE` and `READ ONLY`.
+The `DEFERRABLE` transaction property has no effect unless the transaction is also `SERIALIZABLE` and `READ ONLY`.
 {{</note>}}
 
+### idle_in_transaction_session_timeout
 
-### idle_in_transaction_session_timeout 
-
-Setting this to a duration (for example, `'10s or 1000'`) will limit delays in transaction statements. Default time units is milliseconds. See [Idle timeout](../transactions-performance-ysql#handle-idle-applications).
-
+Set this to a duration (for example, `'10s or 1000'`) to limit delays in transaction statements. Default time units is milliseconds. See [Handle idle transactions](../transactions-performance-ysql#handle-idle-applications).
 
 ### yb_transaction_priority_lower_bound
 
-Setting this to values in the range: `[0.0 - 1.0]` will set the lower bound of the dynamic priority assignment. See [Optimistic concurrency control](../transactions-performance-ysql#optimistic-concurrency-control)
-
+Set this to values in the range `[0.0 - 1.0]` to set the lower bound of the dynamic priority assignment. See [Optimistic concurrency control](../transactions-performance-ysql#optimistic-concurrency-control).
 
 ### yb_transaction_priority_upper_bound
 
-Setting this to values in the range: `[0.0 - 1.0]` will set the upper bound of the dynamic priority assignment. See [Optimistic concurrency control](../transactions-performance-ysql#optimistic-concurrency-control)
-
+Set this to values in the range `[0.0 - 1.0]` to set the upper bound of the dynamic priority assignment. See [Optimistic concurrency control](../transactions-performance-ysql#optimistic-concurrency-control).
 
 ## Isolation levels
 
-Isolation level defines the level of data visibility to the transaction.YugabytedDB supports [multi-version concurrency control (MVCC)](../../../../architecture/transactions/transactions-overview/#multi-version-concurrency-control), which enables isolation to concurrent transactions without the need for locking.
+Isolation level defines the level of data visibility to the transaction. YugabytedDB supports [multi-version concurrency control (MVCC)](../../../../architecture/transactions/transactions-overview/#multi-version-concurrency-control), which enables isolation to concurrent transactions without the need for locking.
 
-YugabyteDB supports three kinds of isolation levels to support different application needs. 
+YugabyteDB supports three kinds of isolation levels to support different application needs.
 
 ### Repeatable Read (Snapshot)
 
@@ -130,7 +125,6 @@ In [Read Committed](../../../../explore/transactions/isolation-levels/#read-comm
 {{<tip title="Examples">}}
 See [isolation level examples](../../../../explore/transactions/isolation-levels/) to understand the effect of these different levels of isolation.
 {{</tip>}}
-
 
 ## Row-level locking
 
@@ -150,9 +144,8 @@ YugabyteDB supports the following types of explicit row locks:
 - FOR KEY SHARE - Shared lock that does not block other `FOR SHARE`, `FOR KEY SHARE`, and `FOR NO KEY UPDATE` commands.
 
 {{<tip title="Examples">}}
-See [explicit locking](../../../../explore/transactions/explicit-locking) section, for more details and examples related to these locking policies.
+For more details and examples related to these locking policies, see [Explicit locking](../../../../explore/transactions/explicit-locking).
 {{</tip>}}
-
 
 ## Learn more
 
@@ -160,5 +153,5 @@ See [explicit locking](../../../../explore/transactions/explicit-locking) sectio
 - [Transaction error handling](../transactions-high-availability-ysql) - Methods to handle various error codes to design highly available applications.
 - [Transaction isolation levels](../../../../architecture/transactions/isolation-levels/) - Various isolation levels supported by YugabyteDB.
 - [Concurrency control](../../../../architecture/transactions/concurrency-control/) - Policies to handle conflicts between transactions.
-- [Transaction priorities](../../../../architecture/transactions/concurrency-control/) - Priority buckets for transactions.
+- [Transaction priorities](../../../../architecture/transactions/transaction-priorities/) - Priority buckets for transactions.
 - [Transaction options](../../../../explore/transactions/distributed-transactions-ysql/#transaction-options) - Options supported by transactions.

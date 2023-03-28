@@ -1,8 +1,8 @@
 ---
 title: HA of Transactions in YSQL
-headerTitle: High Availability
-linkTitle: High Availability
-description: Learn how to handle design highly available Transactions in YSQL.
+headerTitle: Design highly available applications in YSQL
+linkTitle: High availability
+description: Learn how to design highly available Transactions in YSQL.
 
 menu:
   preview:
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB returns different [error codes](../transactions-errorcodes-ysql) for the various scenarios that go wrong during transaction processing.It is important that  applications are designed to handle various error scenarios correctly to be highly available and that your users dont face the impact of issues. Although most errors are common across multiple isolation levels, some errors are very specific to certain [transaction isolation levels](../../../../explore/transactions/isolation-levels/). 
+YugabyteDB returns different [error codes](../transactions-errorcodes-ysql) for the various scenarios that go wrong during transaction processing. It is important for applications to be designed to handle various error scenarios correctly so as to be highly available and so that users aren't impacted. Although most errors are common across multiple isolation levels, some errors are very specific to certain [transaction isolation levels](../../../../explore/transactions/isolation-levels/).
 
 In general, the error codes can be classified into the following three types:
 
@@ -23,7 +23,7 @@ In general, the error codes can be classified into the following three types:
     WARNING:  25001: there is already a transaction in progress
     ```
 
-    Most client libraries hide warnings but you might notice the messages when you execute statements directly from a terminal. The statement execution can continue without interruption but would need to be modified to avoid the re-occurence of the message.
+    Most client libraries hide warnings, but you might notice the messages when you execute statements directly from a terminal. The statement execution can continue without interruption but would need to be modified to avoid the re-occurence of the message.
 
 1. ERROR: Errors are returned when a transaction cannot continue and has to be restarted by the client. For example:
 
@@ -44,7 +44,6 @@ In general, the error codes can be classified into the following three types:
     At this point, the application should reconnect to the server.
 
 The examples in the following sections illustrate failure scenarios and techniques you can use to handle these failures in your applications.
-
 
 ## Prerequisites
 
@@ -287,5 +286,5 @@ Time: 4.417 ms
 
 - [Transaction isolation levels](../../../../architecture/transactions/isolation-levels/) - Various isolation levels supported by YugabyteDB.
 - [Concurrency control](../../../../architecture/transactions/concurrency-control/) - Policies to handle conflicts between transactions.
-- [Transaction priorities](../../../../architecture/transactions/concurrency-control/) - Priority buckets for transactions.
+- [Transaction priorities](../../../../architecture/transactions/transaction-priorities/) - Priority buckets for transactions.
 - [Transaction options](../../../../explore/transactions/distributed-transactions-ysql/#transaction-options) - Options supported by transactions.
