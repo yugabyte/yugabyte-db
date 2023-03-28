@@ -313,8 +313,9 @@ THREAD_POOL_METRICS_DEFINE(server, full_compaction_pool,
     "Thread pool for tserver-triggered full compaction jobs.");
 
 THREAD_POOL_METRICS_DEFINE(
-    server, wait_queue_resume_waiter_pool,
-    "Thread pool for wait queue to resume waiting operations.");
+    server, waiting_txn_pool,
+    "Thread pool for wait queue to resume waiting transactions and also for forwarding wait-for "
+        "edges to the transaction coordinator/deadlock detector.");
 
 ROCKSDB_PRIORITY_THREAD_POOL_METRICS_DEFINE(server);
 
@@ -454,8 +455,8 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
               .set_min_threads(1)
               .unlimited_threads()
               .set_metrics(THREAD_POOL_METRICS_INSTANCE(
-                  server_->metric_entity(), wait_queue_resume_waiter_pool))
-              .Build(&wait_queue_pool_));
+                  server_->metric_entity(), waiting_txn_pool))
+              .Build(&waiting_txn_pool_));
   ts_split_op_apply_ = METRIC_ts_split_op_apply.Instantiate(server_->metric_entity(), 0);
   ts_post_split_compaction_added_ =
       METRIC_ts_post_split_compaction_added.Instantiate(server_->metric_entity(), 0);
@@ -524,7 +525,8 @@ Status TSTabletManager::Init() {
 
   if (FLAGS_enable_wait_queues) {
     waiting_txn_registry_ = std::make_unique<docdb::LocalWaitingTxnRegistry>(
-        client_future(), scoped_refptr<server::Clock>(server_->clock()));
+        client_future(), scoped_refptr<server::Clock>(server_->clock()), fs_manager_->uuid(),
+        waiting_txn_pool());
   }
 
   deque<RaftGroupMetadataPtr> metas;
@@ -1571,7 +1573,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         return server->TransactionManager();
       },
       .waiting_txn_registry = waiting_txn_registry_.get(),
-      .wait_queue_pool = wait_queue_pool_.get(),
+      .wait_queue_pool = waiting_txn_pool_.get(),
       .full_compaction_pool = full_compaction_pool(),
       .post_split_compaction_added = ts_post_split_compaction_added_
     };
@@ -1791,8 +1793,8 @@ void TSTabletManager::CompleteShutdown() {
   if (full_compaction_pool_) {
     full_compaction_pool_->Shutdown();
   }
-  if (wait_queue_pool_) {
-    wait_queue_pool_->Shutdown();
+  if (waiting_txn_pool_) {
+    waiting_txn_pool_->Shutdown();
   }
 
   {
