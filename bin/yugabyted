@@ -2610,15 +2610,16 @@ class ControlScript(object):
                                 "process is not responding."
 
             enabled_security_features = []
+            if self.configs.temp_data.get("yugabyted_cmd") == "status":
+                encryption_enabled = self.is_encryption_at_rest_enabled()
+                if encryption_enabled is None:
+                    Output.log("Error checking status of " +
+                        "encryption-at-rest.")
+                elif encryption_enabled:
+                        enabled_security_features.append("Encryption-at-rest")
+
             is_secure = self.configs.saved_data.get("secure")
             if is_secure:
-                if self.configs.temp_data.get("yugabyted_cmd") == "status":
-                    encryption_enabled = self.is_encryption_at_rest_enabled()
-                    if encryption_enabled is None:
-                        Output.log("Error checking status of " +
-                            "encryption-at-rest.")
-                    if encryption_enabled:
-                        enabled_security_features.append("Encryption-at-rest")
                 if self.is_leader_master_secure(master_web_addrs):
                     enabled_security_features.append("Encryption-in-transit")
                 if self.configs.saved_data.get("ysql_enable_auth") and \
