@@ -41,14 +41,20 @@ public class V230_5__AccessKeyCleanup extends BaseJdbcMigration {
                 .select("keyInfo")
                 .asDto(TmpAccessKeyDto.class)
                 .findOneOrEmpty();
-        optAcccessKey.ifPresent(
-            latestKey -> {
-              provider.details.mergeFrom(latestKey.keyInfo);
-              log.debug(
-                  "Migrated KeyInfo fields to ProviderDetails:\n"
-                      + Json.toJson(provider.details).toPrettyString());
-              provider.save();
-            });
+
+        // PLAT-8027:
+        // Do not overwrite if non-default ssh port in provider.details
+        // because the provider is already created with new schema.
+        if (provider.details.sshPort == 22) {
+          optAcccessKey.ifPresent(
+              latestKey -> {
+                provider.details.mergeFrom(latestKey.keyInfo);
+                log.debug(
+                    "Migrated KeyInfo fields to ProviderDetails:\n"
+                        + Json.toJson(provider.details).toPrettyString());
+                provider.save();
+              });
+        }
       }
     }
   }
