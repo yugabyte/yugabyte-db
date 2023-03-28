@@ -159,6 +159,10 @@ DEFINE_test_flag(bool, simulate_already_present_in_remote_bootstrap, false,
                  "If true, return an AlreadyPresent error in remote bootstrap after starting the "
                  "remote bootstrap client.");
 
+DEFINE_test_flag(bool, pause_before_remote_bootstrap, false,
+                 "If true, pause after copying the superblock but before "
+                 "RemoteBootstrapClient::Start.");
+
 DEFINE_test_flag(double, fault_crash_in_split_before_log_flushed, 0.0,
                  "Fraction of the time when the tablet will crash immediately before flushing a "
                  "parent tablet's kSplit operation.");
@@ -1152,10 +1156,13 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 
   auto rb_client = std::make_unique<RemoteBootstrapClient>(tablet_id, fs_manager_);
 
-  // Download and persist the remote superblock in TABLET_DATA_COPYING state.
   if (replacing_tablet) {
     RETURN_NOT_OK(rb_client->SetTabletToReplace(meta, leader_term));
   }
+
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_remote_bootstrap);
+
+  // Download and persist the remote superblock in TABLET_DATA_COPYING state.
   RETURN_NOT_OK(rb_client->Start(bootstrap_peer_uuid,
                                  &server_->proxy_cache(),
                                  bootstrap_peer_addr,

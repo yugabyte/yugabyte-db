@@ -472,6 +472,10 @@ Status WaitUntilTabletInState(TServerDetails* ts,
                               const MonoDelta& timeout,
                               const MonoDelta& list_tablets_timeout = 10s);
 
+Status WaitForTabletConfigChange(const master::TabletInfoPtr tablet,
+                                 const std::string& ts_uuid,
+                                 consensus::ChangeConfigType type);
+
 // Wait until the specified tablet is in RUNNING state.
 Status WaitUntilTabletRunning(TServerDetails* ts,
                               const TabletId& tablet_id,

@@ -1256,6 +1256,20 @@ Status WaitUntilTabletInState(TServerDetails* ts,
                                      tablet::RaftGroupStatePB_Name(last_state), s.ToString()));
 }
 
+Status WaitForTabletConfigChange(const master::TabletInfoPtr tablet,
+                                 const std::string& ts_uuid,
+                                 consensus::ChangeConfigType type) {
+  CHECK(type == consensus::REMOVE_SERVER || type == consensus::ADD_SERVER);
+  const bool is_remove = type == consensus::REMOVE_SERVER;
+  return WaitFor([&]() -> Result<bool> {
+      const auto replica_map = tablet->GetReplicaLocations();
+      const bool contains = (replica_map->find(ts_uuid) != replica_map->end());
+      return is_remove || contains;
+    },
+    20s * kTimeMultiplier,
+    Format("Waiting for replica $0 to be $1", ts_uuid, is_remove ? "removed" : "added"));
+}
+
 // Wait until the specified tablet is in RUNNING state.
 Status WaitUntilTabletRunning(TServerDetails* ts,
                               const std::string& tablet_id,
