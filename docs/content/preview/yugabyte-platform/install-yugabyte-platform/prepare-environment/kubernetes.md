@@ -63,9 +63,9 @@ Preparing the environment involves a number of steps. Before you start, consult 
 
 ## Install kube-state-metrics
 
-To be able to make use of the YugabyteDB Anywhere [node metrics](../../../troubleshoot/universe-issues/#node), specifically the ones related to CPU, you need to install the [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics) version 1.9 add-on in your Kubernetes cluster.
+To be able to make use of the YugabyteDB Anywhere [node metrics](../../../troubleshoot/universe-issues/#node), specifically the ones related to CPU, you need to install the [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics) version 1.9.5 or higher (Recommended 2.8.1) in your Kubernetes cluster.
 
-Since this add-on might already be installed and running, you should perform a check by executing the following command:
+The kube-state-metrics might be already installed and running. You should perform a check by executing the following command:
 
 ```sh
 kubectl get svc kube-state-metrics -n kube-system
@@ -78,7 +78,7 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 ```
 
 ```sh
-helm install -n kube-system --version 2.13.2 kube-state-metrics prometheus-community/kube-state-metrics
+helm install -n kube-system --version 5.0.0 kube-state-metrics prometheus-community/kube-state-metrics
 ```
 
 ## Configure storage class
