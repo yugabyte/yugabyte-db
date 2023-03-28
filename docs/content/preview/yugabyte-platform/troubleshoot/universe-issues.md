@@ -401,7 +401,11 @@ You can create a support bundle as follows:
 
   The **Support Bundles** dialog allows you to either download the bundle or delete it if it is no longer needed. By default, bundles expire after ten days to free up space.
 
-## Collect core dumps in Kubernetes environments
+## Debug crashing YugabyteDB pods in Kubernetes
+
+If the YugabyteDB pods of your universe are crashing, you can debug them with the help of following instructions.
+
+### Collect core dumps in Kubernetes environments
 
 When dealing with Kubernetes-based installations of YugabyteDB Anywhere, you might need to retrieve core dump files in case of a crash within the Kubernetes pod. For more information, see [Specify ulimit and remember the location of core dumps](../../install-yugabyte-platform/prerequisites#specify-ulimit-and-remember-the-location-of-core-dumps).
 
@@ -428,6 +432,38 @@ The value of `core_pattern` can be a literal path or it can contain a pipe symbo
   ```
 
 - If the value of `core_pattern` contains a `|` pipe symbol (for example, `|/usr/share/apport/apport -p%p -s%s -c%c -d%d -P%P -u%u -g%g -- %E`), the core dump is being redirected to a specific collector on the underlying Kubernetes node, with the location depending on the exact collector. In this case, it is your responsibility to identify the location to which these files are written and retrieve them.
+
+### Use debug hooks with YugabyteDB in Kubernetes
+
+You can add your own commands to pre and post debug hooks to troubleshoot crashing YB-Master or YB-TServer pods. These commands are run before the database process starts and after the database process terminates or crashes.
+
+For example, to modify the debug hooks of a YB-Master, you will run following commands:
+
+```sh
+kubectl edit configmap -n <namespace> ybuni1-asia-south1-a-lbrl-master-hooks
+```
+
+This will open the configmap YAML in your editor.
+
+To add multiple commands to pre hook of `yb-master-0`, you can modify the `yb-master-0-pre_debug_hook.sh` key as follows:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ybuni1-asia-south1-a-lbrl-master-hooks
+data:
+  yb-master-0-post_debug_hook.sh: 'echo ''hello-from-post'' '
+  yb-master-0-pre_debug_hook.sh: |
+    echo "Running the pre hook"
+    ls /var/yugabyte/cores/
+    sleep 30m
+    # other commands here…
+  yb-master-1-post_debug_hook.sh: 'echo ''hello-from-post'' '
+  yb-master-1-pre_debug_hook.sh: 'echo ''hello-from-pre'' '
+```
+
+Once you save the file, the updated commands will be executed on the next restart of `yb-master-0`.
 
 ## Perform the follower lag check during upgrades
 
