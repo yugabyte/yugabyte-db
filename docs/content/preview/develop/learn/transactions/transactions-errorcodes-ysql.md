@@ -1,7 +1,7 @@
 ---
 title: Transaction Error Codes in YSQL
-headerTitle: Transaction Error Codes
-linkTitle: Error Codes
+headerTitle: Transaction error codes in YSQL
+linkTitle: Error codes
 description: Understand the error codes returned during a transactions.
 aliases:
   - /preview/develop/learn/acid-transactions/error-codes
@@ -13,13 +13,13 @@ menu:
 type: docs
 ---
 
-Due to the strong [ACID](../acid-transactions-ysql) properties guaranteed by YugabyteDB, failures during transactions are inevitable. You need to design your applications to take appropriate actions on the failed statements to ensure they are highly available. YugabyteDB returns various [error codes](#transaction-error-codes) for errors that occur during transaction processing.
+Due to the strong [ACID](../../../../architecture/transactions/transactions-overview/#acid-properties) properties guaranteed by YugabyteDB, failures during transactions are inevitable. You need to design your applications to take appropriate action on failed statements to ensure they are highly available. YugabyteDB returns various error codes for errors that occur during transaction processing.
 
 The following error codes typically occur during transaction processing.
 
 ### 25001: Active SQL transaction
 
-This error occurs when certain statements that should be run inside a transaction block are executed in a transaction block, typically because they have non-rollback-able side effects or do internal commits. For example, issuing a `BEGIN` statement inside a transaction.
+This error occurs when certain statements that should be run outside a transaction block, typically because they have non-rollback-able side effects or do internal commits, are executed inside a transaction block. For example, issuing a `BEGIN` statement inside a transaction.
 
 ```output
 WARNING:  25001: there is already a transaction in progress

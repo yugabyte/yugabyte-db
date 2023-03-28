@@ -1,8 +1,8 @@
 ---
-title: Performance Tuning of Transactions in YSQL
-headerTitle: Performance Tuning
-linkTitle: Performance Tuning
-description: Learn how to use speed up Transactions in YSQL on YugabyteDB.
+title: Performance Tuning Transactions in YSQL
+headerTitle: Performance tuning in YSQL
+linkTitle: Performance tuning
+description: Learn how to speed up Transactions in YSQL on YugabyteDB.
 menu:
   preview:
     identifier: transactions-performance-ysql
@@ -11,17 +11,17 @@ menu:
 type: docs
 ---
 
-YugabyteDB being versatile distributed database, can be deployed in various configurations and is used for a variety of use cases. Let's see some best practices and tips that can hugely improve the performance of a YugabyteDB cluster.
+As a versatile distributed database, YugabyteDB can be deployed in a variety of configurations for a variety of use cases. Let's see some best practices and tips that can hugely improve the performance of a YugabyteDB cluster.
 
 {{<note title="Setup">}}
-All the examples mentioned below would need the [prerequisite schema and cluster](../transactions-high-availability-ysql#prerequisites) setup prior to execution.
+To run the following examples, first set up a cluster and database schema as described in [Prerequisites](../transactions-high-availability-ysql#prerequisites).
 {{</note>}}
 
-## Fast Single-row transactions
+## Fast single-row transactions
 
-YugabytedDB has specific optimizations to improve the performance of transactions in certain scenarios where transactions operate on a single row. These transactions are referred to as [single-row or fast path](../../../../architecture/transactions/single-row-transactions/) transactions. These are much faster than [distributed](../../../../architecture/transactions/distributed-txns/) transactions that impact a set of rows distributed across shards that are themselves spread across multiple nodes distributed across a data center, region or globally.
+YugabytedDB has specific optimizations to improve the performance of transactions in certain scenarios where transactions operate on a single row. These transactions are referred to as [single-row or fast path](../../../../architecture/transactions/single-row-transactions/) transactions. These are much faster than [distributed](../../../../architecture/transactions/distributed-txns/) transactions that impact a set of rows distributed across shards that are themselves spread across multiple nodes distributed across a data center, region, or globally.
 
-For example, consider a common scenario in transactions where a single row is updated and the new value is fetched. This is usually done in multiple steps like:
+For example, consider a common scenario in transactions where a single row is updated and the new value is fetched. This is usually done in multiple steps as follows:
 
 ```plpgsql
 BEGIN;
@@ -31,14 +31,15 @@ SELECT v FROM txndemo WHERE k=1;
 COMMIT;
 ```
 
-The issue with the above code block is, when the rows are locked in the first `SELECT` statement, YugabyteDB does not know what rows are going to be modified in the further commands. So, naturally it would consider it to be [distributed transaction](../../../../architecture/transactions/distributed-txns/). But if it is just a single statement, YugabyteDB would have been able to confidently figure out that it was a single-row transaction. To update a row and return it's new value, we can do it in a single statement using the `RETURNING` clause as follows:
+In this formulation, when the rows are locked in the first `SELECT` statement, YugabyteDB does not know what rows are going to be modified in subsequent commands. As a result, it considers the transaction to be distributed.
+
+However, if you write it as a single statement, YugabyteDB can confidently treat it as a single-row transaction. To update a row and return its new value using a single statement, use the `RETURNING` clause as follows:
 
 ```plpgsql
 UPDATE txndemo SET v = v + 3 WHERE k=1 RETURNING v;
 ```
 
-Now, YugabyteDB will treat this as a [single-row](../../../../architecture/transactions/single-row-transactions/) transaction and would execute much faster. This also saves one round trip and immediately fetches the updated value.
-
+YugabyteDB treats this as a single-row transaction, which executes much faster. This also saves one round trip and immediately fetches the updated value.
 
 ## Minimize conflict errors
 
@@ -50,23 +51,22 @@ For example, if concurrent transactions are inserting the same row, this could c
 INSERT INTO txndemo VALUES (1,10) DO NOTHING;
 ```
 
-With [DO NOTHING](../../../../api/ysql/the-sql-language/statements/dml_insert/#conflict-action-1), the server does not throw an error, resulting in one less round-trip between the application and the server.
+With [DO NOTHING](../../../../api/ysql/the-sql-language/statements/dml_insert/#conflict-action-1), the server does not throw an error, resulting in one less round trip between the application and the server.
 
-You can also simulate an `upsert` by using `DO UPDATE SET` instead of doing a `insert`, fail, and `update` scenario, as follows:
+You can also simulate an `upsert` by using `DO UPDATE SET` instead of doing a `INSERT`, fail, and `UPDATE`, as follows:
 
 ```plpgsql
 INSERT INTO txndemo VALUES (1,10) 
         DO UPDATE SET v=10 WHERE k=1;
 ```
 
-Now, the server automatically updates the row when it fails to insert. Again, this results in one less round-trip between the application and the server.
-
+Now, the server automatically updates the row when it fails to insert. Again, this results in one less round trip between the application and the server.
 
 ## Avoid long waits
 
 In [READ COMMITTED isolation level](../../../../architecture/transactions/read-committed/), clients do not need to retry or handle serialization errors. During conflicts, the server retries indefinitely based on the [retry options](../../../../architecture/transactions/read-committed/#performance-tuning) and [Wait-On-Conflict](../../../../architecture/transactions/concurrency-control/#wait-on-conflict) policy.
 
-To avoid getting stuck in a wait loop because of starvation, it is recommended to use a reasonable timeout for the statements similar to the following:
+To avoid getting stuck in a wait loop because of starvation, you should use a reasonable timeout for the statements, similar to the following:
 
 ```plpgsql
 SET statement_timeout = '10s';
@@ -135,32 +135,34 @@ SET yb_transaction_priority_upper_bound=1.0;
 
 This ensures that the priority assigned to your transaction is in the range `[0.9-1.0]` and thereby making it a high priority transaction.
 
+## Minimize round trips
 
-## Minimizing round trips
-
-A transaction block executed from the client has multiple statements would involve multiple round trips between the client and the server. These round trips can be avoided if these transactions are wrapped in a [stored procedure](../../../../api/ysql/the-sql-language/statements/ddl_create_function/). The whole stored procedures is executed within the server which could involve loops and error handling. Stored procedures can be invoked from the client like:
+A transaction block executed from the client that has multiple statements would involve multiple round trips between the client and the server. These round trips can be avoided if these transactions are wrapped in a [stored procedure](../../../../api/ysql/the-sql-language/statements/ddl_create_function/). A stored procedure is executed in the server and can incorporate loops and error handling. Stored procedures can be invoked from the client as follows:
 
 ```sql
 CALL stored_procedure_name(argument_list);
 ```
 
-Depending one the complexity of your transaction block, this could vastly improve the performance.
+Depending on the complexity of your transaction block, this can vastly improve the performance.
 
+## Place leaders in one region
 
-## Leaders in one region
+In a [multi-region](../../../../explore/multi-region-deployments/) setup, a transaction would have to reach out to the tablet leaders spread across multiple regions. In this scenario, the transaction can incur high inter-regional latencies that could multiply with the number of statements that have to travel cross-region.
 
-In a [multi-region](../../../../explore/multi-region-deployments/) setup, a transaction would have to reach out the tablet leaders spread across multiple regions. In such a scenario, the transaction could incur high inter-regional latencies that could multiply with the no.of statements that have to go cross-region. 
+Cross-region trips can be avoided by placing all the tablet leaders in one region using the [set_preferred_zones](../../../../admin/yb-admin/#set-preferred-zones) command in [yb-admin](../../../../admin/yb-admin).
 
-The cross-region trips can be avoided by enforcing all the leaders to be in one region using the [set_preferred_zones](../../../../admin/yb-admin/#set-preferred-zones) command in [yb-admin](../../../../admin/yb-admin) or using the checking the appropriate [Preferred check boxes](../../../../yugabyte-platform/manage-deployments/edit-universe/) on the **Edit Universe** page in [YugabyteDB Platform](../../../../yugabyte-platform/)
-
+You can also do this by [marking the zones as Preferred](../../../../yugabyte-platform/manage-deployments/edit-universe/) on the **Edit Universe** page in [YugabyteDB Anywhere](../../../../yugabyte-platform/), or [setting the region as preferred](../../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/#preferred-region) in YugabyteDB Managed.
 
 ## Read from followers
 
-All reads in YugabyteDB are handled by the leader to ensure that the applications fetch the latest data, even though the data is replicated to the followers. Replication is fast, but not instantaneous. So all the followers may not have the latest data at the read time. But there are a few scenarios where reading from the leader is not necessary, like:
-1. The data does not change often (eg. Movie Database)
-1. The application does not need the latest data. (eg. Yesterday’s report)
+All reads in YugabyteDB are handled by the leader to ensure that applications fetch the latest data, even though the data is replicated to the followers. While replication is fast, it is not instantaneous, and the followers may not have the latest data at the read time. But in some scenarios, reading from the leader is not necessary. For example:
 
-In such scenarios, you can enable [Follower Reads](../../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/) in YugabyteDB to read from followers instead of going to the leader, which could be far away in a different region. To enable this, all you have to do is to set the transaction to be read_only and turn ON a session-level setting `yb_read_from_followers` like:
+- The data does not change often (for example, a movie database).
+- The application does not need the latest data (for example, reading yesterday's report).
+
+In such scenarios, you can enable [follower reads](../../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/) to read from followers instead of going to the leader, which could be far away in a different region.
+
+To enable follower reads, set the transaction to be `READ ONLY` and turn on the session-level setting `yb_read_from_followers`. For example:
 
 ```plpgsql
 SET yb_read_from_followers = true;
@@ -170,9 +172,8 @@ COMMIT;
 ```
 
 {{<note title="Note">}}
-Follower reads works only for reads. All **writes** will still go to the leader.
+Follower reads only affects reads. All writes are still handled by the leader.
 {{</note>}}
-
 
 ## Learn more
 
@@ -180,5 +181,5 @@ Follower reads works only for reads. All **writes** will still go to the leader.
 - [Transaction error handling](../transactions-high-availability-ysql) - Methods to handle various error codes to design highly available applications.
 - [Transaction isolation levels](../../../../architecture/transactions/isolation-levels/) - Various isolation levels supported by YugabyteDB.
 - [Concurrency control](../../../../architecture/transactions/concurrency-control/) - Policies to handle conflicts between transactions.
-- [Transaction priorities](../../../../architecture/transactions/concurrency-control/) - Priority buckets for transactions.
+- [Transaction priorities](../../../../architecture/transactions/transaction-priorities/) - Priority buckets for transactions.
 - [Transaction options](../../../../explore/transactions/distributed-transactions-ysql/#transaction-options) - Options supported by transactions.
