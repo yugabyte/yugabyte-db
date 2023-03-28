@@ -33,8 +33,6 @@ DECLARE_int64(max_concurrent_snapshot_rpcs_per_tserver);
 namespace yb {
 namespace master {
 
-YB_STRONGLY_TYPED_BOOL(ForClient);
-
 struct TabletSnapshotOperation {
   TabletId tablet_id;
   SnapshotScheduleId schedule_id;
