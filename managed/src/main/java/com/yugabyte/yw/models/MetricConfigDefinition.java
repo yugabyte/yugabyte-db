@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.metrics.MetricQueryContext;
 import com.yugabyte.yw.metrics.MetricSettings;
 import com.yugabyte.yw.metrics.NodeAggregation;
+import com.yugabyte.yw.metrics.SplitMode;
 import com.yugabyte.yw.metrics.TimeAggregation;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -252,6 +253,14 @@ public class MetricConfigDefinition {
         if (functionName.startsWith("quantile_over_time")) {
           String percentile = functionName.split("[.]")[1];
           queryStr = String.format("quantile_over_time(0.%s, %s)", percentile, queryStr);
+        } else if (functionName.startsWith("topk") || functionName.startsWith("bottomk")) {
+          if (settings.getSplitMode() != SplitMode.NONE) {
+            // TopK/BottomK is requested explicitly. Just ignore default split.
+            continue;
+          }
+          String fun = functionName.split("[.]")[0];
+          String count = functionName.split("[.]")[1];
+          queryStr = String.format(fun + "(%s, %s)", count, queryStr);
         } else {
           queryStr = String.format("%s(%s)", functionName, queryStr);
         }
