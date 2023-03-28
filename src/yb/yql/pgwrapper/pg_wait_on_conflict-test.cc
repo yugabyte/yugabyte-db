@@ -948,6 +948,66 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestWaiterTxnReRunConflictResol
       conn3.Execute("UPDATE foo SET v2=v2+1000 WHERE k=2").ok() && status_future.get().ok());
 }
 
+TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(ParallelUpdatesDetectDeadlock)) {
+  // Tests that wait-for dependencies of a distributed waiter txn waiting at different tablets, and
+  // possibly different tablet servers, are not overwritten at the deadlock detector.
+  constexpr int kNumKeys = 20;
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "INSERT INTO foo SELECT generate_series(0, $0), 0", kNumKeys * 5));
+
+  for (int deadlock_idx = 1; deadlock_idx <= kNumKeys; ++deadlock_idx) {
+    auto update_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(update_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(update_conn.Fetch("SELECT * FROM foo WHERE k=0 FOR UPDATE"));
+
+    CountDownLatch locked_key(kNumKeys);
+    CountDownLatch did_deadlock(1);
+
+    TestThreadHolder thread_holder;
+    for (int key_idx = 1; key_idx <= kNumKeys; ++key_idx) {
+      thread_holder.AddThreadFunctor([this, &did_deadlock, &locked_key, key_idx, deadlock_idx] {
+        auto conn = ASSERT_RESULT(Connect());
+        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM foo WHERE k=$0 FOR UPDATE", key_idx));
+        LOG(INFO) << "Thread " << key_idx << " locked key";
+        locked_key.CountDown();
+
+        ASSERT_TRUE(locked_key.WaitFor(5s * kTimeMultiplier));
+        if (deadlock_idx == key_idx) {
+          std::this_thread::sleep_for(5s * kTimeMultiplier);
+          // Try acquring a lock on 0, and introduce a deadlock (as update_conn will also try to
+          // acquire locks on all keys including key_idx, which is locked by this thread).
+          auto s = conn.Fetch("SELECT * FROM foo WHERE k=0 FOR UPDATE");
+          if (!s.ok()) {
+            LOG(INFO) << "Thread " << key_idx << " failed to lock 0 " << s;
+            did_deadlock.CountDown();
+            ASSERT_OK(conn.RollbackTransaction());
+            return;
+          }
+          LOG(INFO) << "Thread " << key_idx << " locked 0";
+        }
+
+        ASSERT_TRUE(did_deadlock.WaitFor(15s * kTimeMultiplier));
+        ASSERT_OK(conn.CommitTransaction());
+      });
+    }
+
+    ASSERT_TRUE(locked_key.WaitFor(5s * kTimeMultiplier));
+    // Enforces new wait-for relations from different tablets. Deadlock would only be detected when
+    // the wait-for relation corresponding to deadlock_idx is not overwritten.
+    auto s = update_conn.ExecuteFormat("UPDATE foo SET v=20 WHERE k > 0 AND k <= $0", kNumKeys);
+    if (s.ok()) {
+      EXPECT_EQ(did_deadlock.count(), 0);
+      ASSERT_OK(update_conn.CommitTransaction());
+    } else {
+      LOG(INFO) << "Thread 0 failed to update " << s;
+      did_deadlock.CountDown();
+    }
+  }
+}
+
 class PgWaitQueuePackedRowTest : public PgWaitQueuesTest {
   void SetUp() override {
     FLAGS_ysql_enable_packed_row = true;

@@ -1033,11 +1033,15 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
 
   void RemoveInactiveTransactions(Waiters* waiters) override {
     std::lock_guard<std::mutex> lock(managed_mutex_);
-    for (auto it = waiters->begin(); it != waiters->end();) {
-      if (managed_transactions_.contains(it->first)) {
-        ++it;
-      } else {
-        it = waiters->erase(it);
+    auto& sorted_txn_map = waiters->get<TransactionIdTag>();
+    for (auto it = sorted_txn_map.begin(); it != sorted_txn_map.end();) {
+      auto next_it = sorted_txn_map.upper_bound(it->txn_id());
+      if (managed_transactions_.contains(it->txn_id())) {
+        it = next_it;
+        continue;
+      }
+      for (; it != next_it;) {
+        it = sorted_txn_map.erase(it);
       }
     }
   }

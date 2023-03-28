@@ -244,6 +244,10 @@ message UpdateTransactionWaitingForStatusRequestPB {
   optional bytes tablet_id = 2;
 
   repeated WaitingTransaction waiting_transactions = 3;
+
+  optional bytes tserver_uuid = 4;
+
+  optional bool is_full_update = 5 [ default = false];
 }
 
 message UpdateTransactionWaitingForStatusResponsePB {
