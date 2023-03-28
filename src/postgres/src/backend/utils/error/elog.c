@@ -4725,6 +4725,30 @@ yb_message_from_status_data(StringInfo buf, const char *fmt, const size_t nargs,
 	appendStringInfoString(buf, fmt);
 }
 
+#define YB_EVALUATE_STATUS_DATA_MESSAGE(field, fmt, nargs, args, dump_stacks) \
+	do { \
+		AssertMacro(!IsMultiThreadedMode()); \
+		MemoryContext oldcontext; \
+		StringInfoData	buf; \
+		oldcontext = MemoryContextSwitchTo(edata->assoc_context); \
+		\
+		/* Internationalize the error format string */ \
+		if (!in_error_recursion_trouble()) \
+			fmt = dgettext(edata->domain, fmt); \
+		initStringInfo(&buf); \
+		yb_message_from_status_data(&buf, fmt, nargs, args); \
+		if (dump_stacks && IsYugaByteEnabled() && \
+			yb_debug_report_error_stacktrace) \
+		{ \
+			appendStringInfoString(&buf, "\n"); \
+			appendStringInfoString(&buf, YBCGetStackTrace()); \
+		} \
+		if (edata->field) \
+			pfree(edata->field); \
+		edata->field = buf.data; \
+		MemoryContextSwitchTo(oldcontext); \
+	} while(0)
+
 /*
  * yb_errmsg_from_status_data - set error message from Status data
  *
@@ -4746,33 +4770,36 @@ yb_errmsg_from_status_data(const char *fmt, const size_t nargs,
 						   const char **args)
 {
 	Assert(!IsMultiThreadedMode());
+	Assert(fmt != NULL);
+
 	ErrorData  *edata = &errordata[errordata_stack_depth];
-	MemoryContext oldcontext;
-	StringInfoData	buf;
 
 	recursion_depth++;
 	CHECK_STACK_DEPTH();
-	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
 
 	edata->message_id = fmt;
-	/* Internationalize the error format string */
-	if (!in_error_recursion_trouble())
-		fmt = dgettext(edata->domain, fmt);
-	initStringInfo(&buf);
-	yb_message_from_status_data(&buf, fmt, nargs, args);
+	YB_EVALUATE_STATUS_DATA_MESSAGE(message, fmt, nargs, args, true);
 
-	/* In YB debug mode, add stack trace info (to first msg only) */
-	if (IsYugaByteEnabled() && yb_debug_report_error_stacktrace) {
-		appendStringInfoString(&buf, "\n");
-		appendStringInfoString(&buf, YBCGetStackTrace());
-	}
-
-	/* Save the completed message into the stack item */
-	if (edata->message)
-		pfree(edata->message);
-	edata->message = buf.data;
-
-	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
-	return 0;					/* return value does not matter */
+	return 0; /* return value does not matter */
+}
+
+int
+yb_detail_from_status_data(const char *fmt, const size_t nargs,
+						   const char **args)
+{
+	Assert(!IsMultiThreadedMode());
+
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+
+	if (fmt == NULL)
+		return 0;
+
+	recursion_depth++;
+	CHECK_STACK_DEPTH();
+
+	YB_EVALUATE_STATUS_DATA_MESSAGE(detail, fmt, nargs, args, false);
+
+	recursion_depth--;
+	return 0; /* return value does not matter */
 }

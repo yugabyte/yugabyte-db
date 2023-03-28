@@ -881,6 +881,8 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SerializableReadOnly)) {
     ASSERT_TRUE(result.status().IsNetworkError()) << result.status();
     ASSERT_EQ(PgsqlError(result.status()), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)
         << result.status();
+    ASSERT_STR_CONTAINS(
+        result.status().ToString(), "could not serialize access due to concurrent update");
     ASSERT_STR_CONTAINS(result.status().ToString(), "conflicts with higher priority transaction");
   }
 }
@@ -2395,6 +2397,8 @@ void PgMiniTest::TestConcurrentDeleteRowAndUpdateColumn(bool select_before_updat
   auto status = conn1.Execute("UPDATE t SET j = 21 WHERE i = 2");
   if (select_before_update) {
     ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(
+        status.message().ToBuffer(), "could not serialize access due to concurrent update");
     ASSERT_STR_CONTAINS(status.message().ToBuffer(), "Value write after transaction start");
     return;
   }

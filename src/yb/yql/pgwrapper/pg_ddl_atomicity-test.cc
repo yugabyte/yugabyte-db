@@ -483,7 +483,7 @@ class PgDdlAtomicityParallelDdlTest : public PgDdlAtomicitySanityTest {
     const auto msg = s.message().ToBuffer();
     static const auto allowed_msgs = {
       "Catalog Version Mismatch"s,
-      "conflicts with higher priority transaction"s,
+      "could not serialize access due to concurrent update"s,
       "Restart read required"s,
       "Transaction aborted"s,
       "Transaction metadata missing"s,
