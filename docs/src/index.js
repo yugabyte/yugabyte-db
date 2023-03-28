@@ -155,6 +155,11 @@ function yugabyteActiveLeftNav() {
 }
 
 $(document).ready(() => {
+  const isSafari = /Safari/.test(navigator.userAgent) && /Apple Computer/.test(navigator.vendor);
+  if (isSafari) {
+    $('body').addClass('is-safari');
+  }
+
   let searchValue = '';
 
   /**
