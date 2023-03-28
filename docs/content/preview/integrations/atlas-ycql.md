@@ -69,7 +69,7 @@ Perform the following steps to run the Atlas server:
     #atlas.graph.storage.hbase.regions-per-server=1
     ```
 
-1. Change the `atlas.graph.index.search.solr.zookeeper-url` in the `conf/atlas-application.properties` file to point to zookeeper started by Solr. The default value is: `localhost:9983`. An example Solr URL is as follows:
+1. Change the `atlas.graph.index.search.solr.zookeeper-url` in the `conf/atlas-application.properties` file to point to ZooKeeper started by Solr. The default value is `localhost:9983`. An example Solr URL is as follows:
 
     ```conf
     #Solr
