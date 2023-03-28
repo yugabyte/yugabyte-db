@@ -20,7 +20,7 @@ To use [Apache Atlas](https://doc.akka.io/docs/akka-persistence-r2dbc/current/ov
 
 - YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../quick-start/).
 
-- [Apache Solr 5.5.1](https://solr.apache.org/guide/6_6/installing-solr.html) is installed.
+- [Apache Solr 5.5.1](https://solr.apache.org/guide/6_6/installing-solr.html) installed.
 
 ## Build the Apache Atlas Project
 
