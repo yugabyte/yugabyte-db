@@ -80,8 +80,7 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // Init scan iterator.
   void Init(TableType table_type, const Slice& sub_doc_key = Slice());
   // Init QL read scan.
-  Status Init(const QLScanSpec& spec);
-  Status Init(const PgsqlScanSpec& spec);
+  Status Init(const YQLScanSpec& spec);
 
   // This must always be called before NextRow. The implementation actually finds the
   // first row to scan, and NextRow expects the RocksDB iterator to already be properly
@@ -137,13 +136,6 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   Status DoInit(const T& spec);
   void ConfigureForYsql();
   void InitResult();
-
-  void InitScanChoices(
-      const DocQLScanSpec& doc_spec, const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key);
-
-  void InitScanChoices(
-      const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
-      const KeyBytes& upper_doc_key);
 
   // For reverse scans, moves the iterator to the first kv-pair of the previous row after having
   // constructed the current row. For forward scans nothing is necessary because GetSubDocument
