@@ -110,7 +110,9 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   bool valid() override;
   Slice value() override;
   const ReadHybridTime& read_time() const override { return read_time_; }
-  HybridTime max_seen_ht() const override { return max_seen_ht_; }
+  Result<HybridTime> RestartReadHt() const override;
+
+  HybridTime TEST_MaxSeenHt() const;
 
   // Iterate through Next() until a row containing a full record (non merge record) is found, or the
   // key changes.
@@ -121,7 +123,7 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // If the key changes, latest_record_ht is set to the write time of the last merge record seen,
   // result_value is set to its value, and final_key is set to the key.
   Status NextFullValue(
-      DocHybridTime* latest_record_ht,
+      EncodedDocHybridTime* latest_record_ht,
       Slice* result_value,
       Slice* final_key = nullptr);
 
@@ -130,7 +132,7 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // not be a full record, but instead a merge record (e.g. a TTL row).
   Status FindLatestRecord(
       const Slice& key_without_ht,
-      DocHybridTime* max_overwrite_time,
+      EncodedDocHybridTime* max_overwrite_time,
       Slice* result_value = nullptr);
 
   // Finds the oldest record for a particular key that is larger than the
@@ -221,14 +223,13 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
 
   // Seeks to the appropriate intent-prefix and returns the associated
   // DocHybridTime.
-  Result<DocHybridTime> FindMatchingIntentRecordDocHybridTime(const Slice& key_without_ht);
+  Result<EncodedDocHybridTime> FindMatchingIntentRecordDocHybridTime(const Slice& key_without_ht);
 
   // Returns the DocHybridTime associated with the current regular record
   // pointed to, if it matches the key that is passed as the argument.
   // If the current record does not match the passed key, invalid hybrid time
   // is returned.
-  Result<DocHybridTime> GetMatchingRegularRecordDocHybridTime(
-      const Slice& key_without_ht);
+  Result<EncodedDocHybridTime> GetMatchingRegularRecordDocHybridTime(const Slice& key_without_ht);
 
   // Whether current entry is regular key-value pair.
   bool IsEntryRegular(bool descending = false);
@@ -255,14 +256,7 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
 
   bool SatisfyBounds(const Slice& slice);
 
-  bool ResolvedIntentFromSameTransaction() const {
-    return intent_dht_from_same_txn_ != DocHybridTime::kMin;
-  }
-
-  DocHybridTime GetIntentDocHybridTime() const {
-    return ResolvedIntentFromSameTransaction() ? intent_dht_from_same_txn_
-                                               : resolved_intent_txn_dht_;
-  }
+  const EncodedDocHybridTime& GetIntentDocHybridTime(bool* same_transaction = nullptr);
 
   // Returns true if iterator currently points to some record.
   bool HasCurrentEntry();
@@ -276,14 +270,7 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   bool NextRegular(Direction direction);
 
   const ReadHybridTime read_time_;
-  const std::string encoded_read_time_read_;
-  const std::string encoded_read_time_local_limit_;
-  const std::string encoded_read_time_global_limit_;
-
-  // The encoded hybrid time to use to filter records in regular RocksDB. This is the maximum of
-  // read_time and local_limit (in terms of hybrid time comparison), and this slice points to
-  // one of the strings above.
-  Slice encoded_read_time_regular_limit_;
+  const EncodedReadHybridTime encoded_read_time_;
 
   const TransactionOperationContext txn_op_context_;
   docdb::BoundedRocksDbIterator intent_iter_;
@@ -292,7 +279,7 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // the stack and record time satisfies read_time_ criteria.
   bool iter_valid_ = false;
   Status status_;
-  HybridTime max_seen_ht_ = HybridTime::kMin;
+  EncodedDocHybridTime max_seen_ht_{DocHybridTime::kMin};
 
   // Upperbound for seek. If we see regular or intent record past this bound, it will be ignored.
   Slice upperbound_;
@@ -308,8 +295,8 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   KeyBytes resolved_intent_key_prefix_;
   // DocHybridTime of resolved_intent_sub_doc_key_encoded_ is set to commit time or intent time in
   // case of intent is written by current transaction (stored in txn_op_context_).
-  DocHybridTime resolved_intent_txn_dht_;
-  DocHybridTime intent_dht_from_same_txn_ = DocHybridTime::kMin;
+  EncodedDocHybridTime resolved_intent_txn_dht_;
+  EncodedDocHybridTime intent_dht_from_same_txn_{EncodedDocHybridTime::kMin};
   KeyBytes resolved_intent_sub_doc_key_encoded_;
   KeyBytes resolved_intent_value_;
 

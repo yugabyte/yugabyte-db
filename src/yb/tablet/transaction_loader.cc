@@ -270,7 +270,7 @@ class TransactionLoader::Executor {
           << intents_iterator_.key().ToDebugHexString() << " => "
           << intents_iterator_.value().ToDebugHexString() << ": " << decoded_key.status();
       if (decoded_key.ok() && docdb::HasStrong(decoded_key->intent_types)) {
-        last_batch_data->hybrid_time = decoded_key->doc_ht.hybrid_time();
+        last_batch_data->hybrid_time = CHECK_RESULT(decoded_key->doc_ht.Decode()).hybrid_time();
         Slice rev_key_slice(intents_iterator_.value());
         // Required by the transaction sealing protocol.
         if (!rev_key_slice.empty() && rev_key_slice[0] == docdb::KeyEntryTypeAsChar::kBitSet) {

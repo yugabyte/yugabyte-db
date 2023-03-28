@@ -512,17 +512,12 @@ void DocRowwiseIterator::SkipRow() {
   row_ready_ = false;
 }
 
-HybridTime DocRowwiseIterator::RestartReadHt() {
-  auto max_seen_ht = db_iter_->max_seen_ht();
-  if (max_seen_ht.is_valid() && max_seen_ht > db_iter_->read_time().read) {
-    VLOG(4) << "Restart read: " << max_seen_ht << ", original: " << db_iter_->read_time();
-    return max_seen_ht;
-  }
-  return HybridTime::kInvalid;
+Result<HybridTime> DocRowwiseIterator::RestartReadHt() {
+  return db_iter_->RestartReadHt();
 }
 
 HybridTime DocRowwiseIterator::TEST_MaxSeenHt() {
-  return db_iter_->max_seen_ht();
+  return db_iter_->TEST_MaxSeenHt();
 }
 
 bool DocRowwiseIterator::IsNextStaticColumn() const {

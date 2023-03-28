@@ -33,6 +33,15 @@ bool HasExpiredTTL(const HybridTime& key_hybrid_time, const MonoDelta &ttl,
       key_hybrid_time, read_hybrid_time, ttl) > 0;
 }
 
+Result<bool> HasExpiredTTL(const EncodedDocHybridTime& key_hybrid_time, const MonoDelta& ttl,
+                           const HybridTime& read_hybrid_time) {
+  if (ttl.Equals(ValueControlFields::kMaxTtl) || ttl.Equals(ValueControlFields::kResetTtl)) {
+    return false;
+  }
+  return server::HybridClock::CompareHybridClocksToDelta(
+      VERIFY_RESULT(key_hybrid_time.Decode()).hybrid_time(), read_hybrid_time, ttl) > 0;
+}
+
 bool HasExpiredTTL(const HybridTime& expiration_time, const HybridTime& read_hybrid_time) {
   if (expiration_time == kNoExpiration || expiration_time == kUseDefaultTTL) {
     return false;
