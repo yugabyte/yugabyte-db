@@ -30,7 +30,7 @@ var upgradeCmd = &cobra.Command{
 
 		yugawareVersion, err := yugaware.InstalledVersionFromMetadata()
 		if err != nil {
-			log.Fatal("Cannot reconfigure: " + err.Error())
+			log.Fatal("Cannot upgrade: " + err.Error())
 		}
 		if !common.LessVersions(yugawareVersion, ybactl.Version) {
 			log.Fatal("yba-ctl version must be greater then the installed YugabyteDB Anywhere version")
@@ -38,8 +38,9 @@ var upgradeCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		state, err := ybactlstate.LoadState()
+		// Can have no stateif upgrading from a version before state existed
 		if err != nil {
-			log.Fatal("unable to load yba installer state: " + err.Error())
+			state = ybactlstate.New()
 		}
 		results := preflight.Run(preflight.UpgradeChecks, skippedPreflightChecks...)
 		if preflight.ShouldFail(results) {

@@ -40,7 +40,7 @@ func (vj versionJSON) ParseVersion() (version string, err error) {
 // InstalledVersionFromMetadata gets the version of yba by parsing the version json from the install
 // root.
 func InstalledVersionFromMetadata() (string, error) {
-	jsonPath := filepath.Join(common.GetInstallerSoftwareDir(), versionMetadataJSON)
+	jsonPath := filepath.Join(common.GetActiveSymlink(), "yba_installer", versionMetadataJSON)
 	jsonFile, err := os.Open(jsonPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
