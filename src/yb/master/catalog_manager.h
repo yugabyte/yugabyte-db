@@ -794,7 +794,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // API to check that all tservers that shouldn't have leader load do not.
   Status AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
-                                           AreLeadersOnPreferredOnlyResponsePB* resp);
+                                   AreLeadersOnPreferredOnlyResponsePB* resp) override;
 
   // Return the placement uuid of the primary cluster containing this master.
   Result<std::string> placement_uuid() const;
@@ -957,13 +957,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const ReplicationInfoPB& table_replication_info,
       const TablespaceId& tablespace_id) override;
 
-  Result<ReplicationInfoPB> GetTableReplicationInfo(
-      const scoped_refptr<const TableInfo>& table) const;
-
   Result<size_t> GetTableReplicationFactor(const TableInfoPtr& table) const override;
 
   Result<boost::optional<TablespaceId>> GetTablespaceForTable(
-      const scoped_refptr<TableInfo>& table) override;
+      const scoped_refptr<TableInfo>& table) const override;
 
   void ProcessTabletStorageMetadata(
       const std::string& ts_uuid,
@@ -1883,8 +1880,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<TSDescriptorVector> FindTServersForPlacementBlock(
       const PlacementBlockPB& placement_block,
       const TSDescriptorVector& ts_descs);
-
-  bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info) const;
 
   Status ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info) const;
 

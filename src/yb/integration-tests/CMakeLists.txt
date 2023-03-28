@@ -126,6 +126,7 @@ ADD_YB_TEST(cdcsdk_gflag-test)
 # ADD_YB_TEST(non_gtest_failures-test.sh)
 
 # Not sure if we really need RUN_SERIAL here as this might not be a resource-intensive test.
+ADD_YB_TEST(are_leaders_on_preferred_only-itest)
 ADD_YB_TEST(compaction-test)
 ADD_YB_TEST(compressed_stream-test)
 ADD_YB_TEST(logging-test)

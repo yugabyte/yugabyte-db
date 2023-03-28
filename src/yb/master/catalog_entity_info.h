@@ -996,6 +996,8 @@ class XClusterSafeTimeInfo : public MetadataCowWrapper<PersistentXClusterSafeTim
   const std::string fake_id_;
 };
 
+bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
+
 }  // namespace master
 }  // namespace yb
 

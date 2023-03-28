@@ -20,9 +20,9 @@ namespace enterprise {
 TEST(TestCatalogManagerEnterprise, TestLeaderLoadBalancedAffinitizedLeaders) {
   // Note that this is essentially using transaction_tables_use_preferred_zones = true
   ReplicationInfoPB replication_info;
+  const std::vector<std::string> az_list = {"a", "b", "c"};
   SetupClusterConfigEnt(
-      {"a", "b", "c"} /* az list */, {} /* read only */, {{"a"}} /* affinitized leaders */,
-      &replication_info);
+      az_list, {} /* read only */, {{"a"}} /* affinitized leaders */, &replication_info);
 
   std::shared_ptr<TSDescriptor> ts0 = SetupTSEnt("0000", "a", "");
   std::shared_ptr<TSDescriptor> ts1 = SetupTSEnt("1111", "a", "");
@@ -38,26 +38,33 @@ TEST(TestCatalogManagerEnterprise, TestLeaderLoadBalancedAffinitizedLeaders) {
 
   TSDescriptorVector ts_descs = {ts0, ts1, ts2, ts3, ts4};
 
-  ts0->set_leader_count(8);
-  ts1->set_leader_count(8);
-  ts2->set_leader_count(0);
-  ts3->set_leader_count(0);
-  ts4->set_leader_count(1);
-  ASSERT_NOK(CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info));
+  scoped_refptr<TableInfo> table(new TableInfo(CURRENT_TEST_NAME() /* table_id */));
+  std::vector<scoped_refptr<TabletInfo>> tablets;
+  CreateTable(az_list, 1 /* num_replicas */, false /* setup_placement */, table.get(), &tablets);
 
-  ts4->set_leader_count(0);
-  ASSERT_OK(CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info));
+  SimulateSetLeaderReplicas(tablets, {2, 1, 1, 0, 0} /* leader_counts */, ts_descs);
 
-  ts0->set_leader_count(12);
-  ts1->set_leader_count(4);
-  ASSERT_OK(CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info));
+  ASSERT_NOK(CatalogManagerUtil::AreLeadersOnPreferredOnly(
+      ts_descs, replication_info, nullptr /* tablespace_manager */, {table}));
+
+  SimulateSetLeaderReplicas(tablets, {4, 0, 0, 0, 0} /* leader_counts */, ts_descs);
+
+  ASSERT_OK(
+      CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info, nullptr, {table}));
+
+  SimulateSetLeaderReplicas(tablets, {3, 1, 0, 0, 0} /* leader_counts */, ts_descs);
+
+  ASSERT_OK(
+      CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info, nullptr, {table}));
 }
 
 TEST(TestCatalogManagerEnterprise, TestLeaderLoadBalancedReadOnly) {
   // Note that this is essentially using transaction_tables_use_preferred_zones = true
   ReplicationInfoPB replication_info;
-  SetupClusterConfigEnt({"a", "b", "c"} /* az list */, {"d"} /* read only */,
-                        {} /* affinitized leaders */, &replication_info);
+  const std::vector<std::string> az_list = {"a", "b", "c"};
+  SetupClusterConfigEnt(
+      az_list /* az list */, {"d"} /* read only */, {} /* affinitized leaders */,
+      &replication_info);
 
   std::shared_ptr<TSDescriptor> ts0 = SetupTSEnt("0000", "a", "");
   std::shared_ptr<TSDescriptor> ts1 = SetupTSEnt("1111", "b", "");
@@ -71,14 +78,19 @@ TEST(TestCatalogManagerEnterprise, TestLeaderLoadBalancedReadOnly) {
 
   TSDescriptorVector ts_descs = {ts0, ts1, ts2, ts3};
 
-  ts0->set_leader_count(8);
-  ts1->set_leader_count(8);
-  ts2->set_leader_count(8);
-  ts3->set_leader_count(0);
-  ASSERT_OK(CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info));
+  scoped_refptr<TableInfo> table(new TableInfo(CURRENT_TEST_NAME() /* table_id */));
+  std::vector<scoped_refptr<TabletInfo>> tablets;
+  CreateTable(az_list, 1 /* num_replicas */, false /* setup_placement */, table.get(), &tablets);
 
-  ts3->set_leader_count(1);
-  ASSERT_NOK(CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info));
+  SimulateSetLeaderReplicas(tablets, {2, 1, 1, 0} /* leader_counts */, ts_descs);
+
+  ASSERT_OK(
+      CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info, nullptr, {table}));
+
+  SimulateSetLeaderReplicas(tablets, {1, 1, 1, 1} /* leader_counts */, ts_descs);
+
+  ASSERT_NOK(
+      CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info, nullptr, {table}));
 }
 
 TEST(TestCatalogManagerEnterprise, TestLoadBalancedReadOnlySameAz) {

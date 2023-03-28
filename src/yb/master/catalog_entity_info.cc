@@ -981,6 +981,18 @@ const std::string& PersistentTableInfo::indexed_table_id() const {
 }
 
 
+bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info) {
+  const auto& live_placement_info = replication_info.live_replicas();
+  if (!(live_placement_info.placement_blocks().empty() && live_placement_info.num_replicas() <= 0 &&
+        live_placement_info.placement_uuid().empty()) ||
+      !replication_info.read_replicas().empty() ||
+      !replication_info.affinitized_leaders().empty() ||
+      !replication_info.multi_affinitized_leaders().empty()) {
+    return true;
+  }
+  return false;
+}
+
 // ================================================================================================
 // DeletedTableInfo
 // ================================================================================================

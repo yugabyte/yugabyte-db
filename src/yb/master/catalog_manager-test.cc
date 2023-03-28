@@ -225,43 +225,6 @@ TEST(TestCatalogManager, TestLoadBalancedPerAZ) {
   ASSERT_OK(CatalogManagerUtil::IsLoadBalanced(ts_descs));
 }
 
-TEST(TestCatalogManager, TestLeaderLoadBalanced) {
-  // AreLeadersOnPreferredOnly should always return true.
-  // Note that this is essentially using transaction_tables_use_preferred_zones = true
-  ReplicationInfoPB replication_info;
-  SetupClusterConfig({"a", "b", "c"}, &replication_info);
-
-  std::shared_ptr<TSDescriptor> ts0 = SetupTS("0000", "a");
-  std::shared_ptr<TSDescriptor> ts1 = SetupTS("1111", "b");
-  std::shared_ptr<TSDescriptor> ts2 = SetupTS("2222", "c");
-
-  ASSERT_TRUE(ts0->IsAcceptingLeaderLoad(replication_info));
-  ASSERT_TRUE(ts1->IsAcceptingLeaderLoad(replication_info));
-  ASSERT_TRUE(ts2->IsAcceptingLeaderLoad(replication_info));
-
-  TSDescriptorVector ts_descs = {ts0, ts1, ts2};
-
-  ts0->set_leader_count(24);
-  ts1->set_leader_count(0);
-  ts2->set_leader_count(0);
-  ASSERT_OK(CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info));
-
-  ts0->set_leader_count(10);
-  ts1->set_leader_count(8);
-  ts2->set_leader_count(6);
-  ASSERT_OK(CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info));
-
-  ts0->set_leader_count(9);
-  ts1->set_leader_count(8);
-  ts2->set_leader_count(7);
-  ASSERT_OK(CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info));
-
-  ts0->set_leader_count(8);
-  ts1->set_leader_count(8);
-  ts2->set_leader_count(8);
-  ASSERT_OK(CatalogManagerUtil::AreLeadersOnPreferredOnly(ts_descs, replication_info));
-}
-
 TEST(TestCatalogManager, TestGetPlacementUuidFromRaftPeer) {
   // Test a voter peer is assigned a live placement.
   ReplicationInfoPB replication_info;
@@ -551,5 +514,6 @@ TEST(TestCatalogManager, TestSetPreferredZones) {
     ASSERT_OK(CatalogManagerUtil::CheckValidLeaderAffinity(replication_info));
   }
 }
+
 }  // namespace master
 } // namespace yb

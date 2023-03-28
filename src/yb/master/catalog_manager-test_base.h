@@ -59,8 +59,9 @@ inline scoped_refptr<TabletInfo> CreateTablet(
   return tablet;
 }
 
-void CreateTable(const std::vector<std::string> split_keys, const int num_replicas, bool setup_placement,
-                 TableInfo* table, std::vector<scoped_refptr<TabletInfo>>* tablets) {
+void CreateTable(
+    const std::vector<std::string> split_keys, const int num_replicas, bool setup_placement,
+    TableInfo* table, std::vector<scoped_refptr<TabletInfo>>* tablets) {
   const size_t kNumSplits = split_keys.size();
   for (size_t i = 0; i <= kNumSplits; i++) {
     const std::string& start_key = (i == 0) ? "" : split_keys[i - 1];
@@ -149,6 +150,25 @@ std::shared_ptr<TSDescriptor> SetupTS(const std::string& uuid, const std::string
   std::shared_ptr<TSDescriptor> ts(new enterprise::TSDescriptor(node.permanent_uuid()));
   CHECK_OK(ts->Register(node, reg, CloudInfoPB(), nullptr));
   return ts;
+}
+
+void SimulateSetLeaderReplicas(
+    const std::vector<scoped_refptr<TabletInfo>>& tablets,
+    const std::vector<unsigned>& leader_counts, const TSDescriptorVector& ts_descs) {
+  CHECK(ts_descs.size() == leader_counts.size());
+  int tablet_idx = 0;
+  for (int i = 0; i < static_cast<int>(ts_descs.size()); ++i) {
+    for (int j = 0; j < static_cast<int>(leader_counts[i]); ++j) {
+      auto replicas = std::make_shared<TabletReplicaMap>();
+      TabletReplica new_leader_replica;
+      NewReplica(
+          ts_descs[i].get(), tablet::RaftGroupStatePB::RUNNING, PeerRole::LEADER,
+          &new_leader_replica);
+      InsertOrDie(replicas.get(), ts_descs[i]->permanent_uuid(), new_leader_replica);
+      tablets[tablet_idx++]->SetReplicaLocations(replicas);
+    }
+    ts_descs[i]->set_leader_count(leader_counts[i]);
+  }
 }
 
 template<class ClusterLoadBalancerMockedClass>
