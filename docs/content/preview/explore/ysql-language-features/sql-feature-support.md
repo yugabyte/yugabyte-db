@@ -85,7 +85,6 @@ To understand which standard SQL features we support, refer to the following tab
 | Expression indexes | ✓ | [Expression indexes](../../indexes-constraints/expression-index-ysql/) |
 | Multi-column indexes | ✓  | |
 | Covering indexes | ✓  | [Covering indexes](../../indexes-constraints/covering-index-ysql/) |
-| Full-text indexes | ✗ | |
 | GiST indexes | ✗ | |
 | BRIN indexes | ✗ | |
 | B-tree indexes | ✓ | B-tree index is treated as an LSM index. |
