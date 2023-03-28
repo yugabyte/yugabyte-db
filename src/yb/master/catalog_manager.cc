@@ -2002,7 +2002,7 @@ std::shared_ptr<YsqlTablespaceManager> CatalogManager::GetTablespaceManager() co
 }
 
 Result<boost::optional<TablespaceId>> CatalogManager::GetTablespaceForTable(
-    const scoped_refptr<TableInfo>& table) {
+    const scoped_refptr<TableInfo>& table) const {
 
   auto tablespace_manager = GetTablespaceManager();
   return tablespace_manager->GetTablespaceForTable(table);
@@ -2031,18 +2031,6 @@ Result<boost::optional<ReplicationInfoPB>> CatalogManager::GetTablespaceReplicat
   }
 
   return tablespace_manager->GetTablespaceReplicationInfo(tablespace_id);
-}
-
-bool CatalogManager::IsReplicationInfoSet(const ReplicationInfoPB& replication_info) const {
-  const auto& live_placement_info = replication_info.live_replicas();
-  if (!(live_placement_info.placement_blocks().empty() && live_placement_info.num_replicas() <= 0 &&
-        live_placement_info.placement_uuid().empty()) ||
-      !replication_info.read_replicas().empty() ||
-      !replication_info.affinitized_leaders().empty() ||
-      !replication_info.multi_affinitized_leaders().empty()) {
-    return true;
-  }
-  return false;
 }
 
 Status CatalogManager::ValidateTableReplicationInfo(
@@ -2642,25 +2630,6 @@ Status CatalogManager::TEST_SendTestRetryRequest(
   return ScheduleTask(task);
 }
 
-Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
-    const TabletInfo& tablet_info) const {
-  auto table = tablet_info.table();
-  {
-    auto table_lock = table->LockForRead();
-    if (table_lock->pb.has_replication_info()) {
-      return table_lock->pb.replication_info();
-    }
-  }
-
-  auto replication_info_opt = VERIFY_RESULT(
-      GetTablespaceManager()->GetTableReplicationInfo(table));
-  if (replication_info_opt) {
-    return replication_info_opt.value();
-  }
-
-  return ClusterConfig()->LockForRead()->pb.replication_info();
-}
-
 bool CatalogManager::ShouldSplitValidCandidate(
     const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const {
   if (drive_info.may_have_orphaned_post_split_data) {
@@ -2674,16 +2643,18 @@ bool CatalogManager::ShouldSplitValidCandidate(
   TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
 
   size_t num_servers = 0;
-  auto table_replication_info_or_status = GetTableReplicationInfo(tablet_info);
+  auto table_replication_info = CatalogManagerUtil::GetTableReplicationInfo(
+      tablet_info.table(),
+      GetTablespaceManager(),
+      ClusterConfig()->LockForRead()->pb.replication_info());
 
   // If there is custom placement information present then
   // only count the tservers which the table has access to
   // according to the placement policy
-  if (table_replication_info_or_status.ok()
-      && table_replication_info_or_status->has_live_replicas()) {
-    auto pb = table_replication_info_or_status->live_replicas();
-    auto valid_tservers_res = FindTServersForPlacementInfo(
-      table_replication_info_or_status->live_replicas(), ts_descs);
+  if (table_replication_info.has_live_replicas()) {
+    auto pb = table_replication_info.live_replicas();
+    auto valid_tservers_res =
+        FindTServersForPlacementInfo(table_replication_info.live_replicas(), ts_descs);
     if (!valid_tservers_res.ok()) {
       num_servers = ts_descs.size();
     } else {
@@ -11123,15 +11094,12 @@ Status CatalogManager::AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnly
     }
   }
 
-  // Only need to fetch if txn tables are not using preferred zones.
   vector<TableInfoPtr> tables;
-  if (!FLAGS_transaction_tables_use_preferred_zones) {
-    tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
-  }
+  tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
 
   auto l = ClusterConfig()->LockForRead();
   Status s = CatalogManagerUtil::AreLeadersOnPreferredOnly(
-      ts_descs, l->pb.replication_info(), tables);
+      ts_descs, l->pb.replication_info(), GetTablespaceManager(), tables);
   if (!s.ok()) {
     return SetupError(
         resp->mutable_error(), MasterErrorPB::CAN_RETRY_ARE_LEADERS_ON_PREFERRED_ONLY_CHECK, s);

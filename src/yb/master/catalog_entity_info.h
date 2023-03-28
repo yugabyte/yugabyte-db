@@ -945,6 +945,8 @@ struct SplitTabletIds {
   }
 };
 
+bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
+
 }  // namespace master
 }  // namespace yb
 

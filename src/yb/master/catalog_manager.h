@@ -761,8 +761,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                     IsLoadBalancerIdleResponsePB* resp);
 
   // API to check that all tservers that shouldn't have leader load do not.
-  Status AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
-                                           AreLeadersOnPreferredOnlyResponsePB* resp);
+  Status AreLeadersOnPreferredOnly(
+      const AreLeadersOnPreferredOnlyRequestPB* req,
+      AreLeadersOnPreferredOnlyResponsePB* resp) override;
 
   // Return the placement uuid of the primary cluster containing this master.
   Result<string> placement_uuid() const;
@@ -922,7 +923,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TablespaceId& tablespace_id) override;
 
   Result<boost::optional<TablespaceId>> GetTablespaceForTable(
-      const scoped_refptr<TableInfo>& table) override;
+      const scoped_refptr<TableInfo>& table) const override;
 
   void ProcessTabletStorageMetadata(
       const std::string& ts_uuid,
@@ -1085,8 +1086,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   //
   // This method is thread-safe.
   Status InitSysCatalogAsync();
-
-  Result<ReplicationInfoPB> GetTableReplicationInfo(const TabletInfo& tablet_info) const;
 
   // Helper for creating the initial TableInfo state
   // Leaves the table "write locked" with the new info in the
@@ -1438,8 +1437,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // If there is no unblacklisted master in an affinity zone, chooses an arbitrary master to step
   // down to.
   Status SysCatalogRespectLeaderAffinity();
-
-  bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info) const;
 
   virtual Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) override {
     // Default value.

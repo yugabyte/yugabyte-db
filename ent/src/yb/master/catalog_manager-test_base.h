@@ -87,6 +87,26 @@ void SetupClusterConfigEnt(
     }
   }
 }
+
+void SimulateSetLeaderReplicas(
+    const std::vector<scoped_refptr<TabletInfo>>& tablets,
+    const std::vector<unsigned>& leader_counts, const TSDescriptorVector& ts_descs) {
+  CHECK(ts_descs.size() == leader_counts.size());
+  int tablet_idx = 0;
+  for (int i = 0; i < static_cast<int>(ts_descs.size()); ++i) {
+    for (int j = 0; j < static_cast<int>(leader_counts[i]); ++j) {
+      auto replicas = std::make_shared<TabletReplicaMap>();
+      TabletReplica new_leader_replica;
+      NewReplica(
+          ts_descs[i].get(), tablet::RaftGroupStatePB::RUNNING, PeerRole::LEADER,
+          &new_leader_replica);
+      InsertOrDie(replicas.get(), ts_descs[i]->permanent_uuid(), new_leader_replica);
+      tablets[tablet_idx++]->SetReplicaLocations(replicas);
+    }
+    ts_descs[i]->set_leader_count(leader_counts[i]);
+  }
+}
+
 }  // namespace enterprise
 }  // namespace master
 }  // namespace yb

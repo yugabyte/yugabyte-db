@@ -53,7 +53,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   }
 
   Result<ReplicationInfoPB> GetTableReplicationInfo(
-      const scoped_refptr<TableInfo>& table) const override {
+      const scoped_refptr<const TableInfo>& table) const override {
     return replication_info_;
   }
 

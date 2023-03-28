@@ -199,26 +199,11 @@ std::vector<std::pair<TabletId, std::string>> GetLeadersOnTSToMove(
 } // namespace
 
 Result<ReplicationInfoPB> ClusterLoadBalancer::GetTableReplicationInfo(
-    const scoped_refptr<TableInfo>& table) const {
-
-  // Return custom placement policy if it exists.
-  {
-    auto l = table->LockForRead();
-    if (catalog_manager_->IsReplicationInfoSet(l->pb.replication_info())) {
-      return l->pb.replication_info();
-    }
-  }
-
-  // Custom placement policy does not exist. Check whether this table
-  // has a tablespace associated with it, if so, return the placement info
-  // for that tablespace.
-  auto replication_info = VERIFY_RESULT(tablespace_manager_->GetTableReplicationInfo(table));
-  if (replication_info) {
-    return replication_info.value();
-  }
-
-  // No custom policy or tablespace specified for table.
-  return GetClusterReplicationInfo();
+    const scoped_refptr<const TableInfo>& table) const {
+  return CatalogManagerUtil::GetTableReplicationInfo(
+      table,
+      catalog_manager_->GetTablespaceManager(),
+      catalog_manager_->ClusterConfig()->LockForRead()->pb.replication_info());
 }
 
 void ClusterLoadBalancer::InitTablespaceManager() {

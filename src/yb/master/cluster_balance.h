@@ -105,7 +105,7 @@ class ClusterLoadBalancer {
 
   // Return the replication info for 'table'.
   virtual Result<ReplicationInfoPB> GetTableReplicationInfo(
-      const scoped_refptr<TableInfo>& table) const;
+      const scoped_refptr<const TableInfo>& table) const;
 
   //
   // Catalog manager indirection methods.
