@@ -111,7 +111,7 @@ Perform the following steps to run the Atlas server:
     bin/quick_start.py
     ```
 
-    When prompted for a username and password, enter `admin`. After it completes, you should see the following output:
+    When prompted for a username and password, enter `admin`. After the script completes, you should see the following output:
 
     ```output
     Creating sample types:
