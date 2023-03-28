@@ -97,6 +97,7 @@ export const MetricTypesWithOperations = {
       'tserver_handler_latency',
       'tserver_threads_running',
       'tserver_threads_started',
+      'tserver_uptime_min',
       'tserver_consensus_rpcs_per_sec',
       'tserver_change_config',
       'tserver_remote_bootstraps',
@@ -123,6 +124,7 @@ export const MetricTypesWithOperations = {
     metrics: [
       'master_overall_rpc_rate',
       'master_latency',
+      'master_uptime_min',
       'master_get_tablet_location',
       'master_tsservice_reads',
       'master_tsservice_reads_latency',
