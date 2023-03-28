@@ -297,7 +297,7 @@
   }
 }
 
-.content-parent {
+body:not(.is-safari) .content-parent {
   container-type: inline-size;
   container-name: content-area;
 }
