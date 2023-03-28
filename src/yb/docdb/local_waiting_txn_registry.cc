@@ -60,6 +60,20 @@ struct WaitingTransactionData {
   rpc::Rpcs::Handle rpc_handle;
 };
 
+// Container for holding StatusTabletData and it's corresponding ThreadPoolToken. StatusTabletData
+// instance is automatically destroyed when there are no active waiter transactions waiting on it.
+// This is done by a thread from the wait-queue threadpool that resumes waiter transactions.
+//
+// Note: The same wait-queue threadpool is used to send partial/full wait-for updates from
+// LocalWaitingTxnRegistry. As a result, thread_pool_token cannot be moved to StatusTabletData as it
+// will result in a thread from the wait-queue pool calling Shutdown on another token created from
+// the same pool, leading to a deadlock. Instead, StatusTabletEntry instances are cleared in
+// LocalWaitingTxnRegistry::SendWaitForGraph which runs from a poller thread.
+struct StatusTabletEntry {
+  std::weak_ptr<StatusTabletData> status_tablet_data;
+  std::unique_ptr<ThreadPoolToken> thread_pool_token;
+};
+
 void AttachWaitingTransaction(
     const WaitingTransactionData& data, tserver::UpdateTransactionWaitingForStatusRequestPB* req) {
   auto* txn = req->add_waiting_transactions();
@@ -85,15 +99,53 @@ void AttachWaitingTransaction(
 // LocalWaitingTxnRegistry which returns a wrapped WaitingTransactionData to clients to keep alive.
 class StatusTabletData {
  public:
-  explicit StatusTabletData(rpc::Rpcs* rpcs, client::YBClient* client):
-      rpcs_(rpcs), client_(client), rpc_handle_(rpcs_->InvalidHandle()) {}
+  explicit StatusTabletData(
+      rpc::Rpcs* rpcs, client::YBClient* client, const TabletId& status_tablet_id,
+      const std::string& tserver_uuid, ThreadPoolToken* thread_pool_token) :
+        rpcs_(rpcs), client_(client), status_tablet_id_(status_tablet_id),
+        rpc_handle_(rpcs_->InvalidHandle()), tserver_uuid_(tserver_uuid),
+        thread_pool_token_(DCHECK_NOTNULL(thread_pool_token)) {}
 
   void AddWaitingTransactionData(const std::shared_ptr<WaitingTransactionData>& waiter) {
     UniqueLock<decltype(mutex_)> tablet_lock(mutex_);
     waiters.emplace_back(waiter);
   }
 
-  Status SendFullUpdate(const TabletId& status_tablet_id, HybridTime now) {
+  void SendPartialUpdate(std::weak_ptr<WaitingTransactionData> waiter, HybridTime now) {
+    if (!FLAGS_enable_deadlock_detection) {
+      return;
+    }
+    auto blocked = waiter.lock();
+    if (!blocked) {
+      return;
+    }
+
+    tserver::UpdateTransactionWaitingForStatusRequestPB req;
+    AttachWaitingTransaction(*blocked, &req);
+    req.set_tablet_id(status_tablet_id_);
+    req.set_propagated_hybrid_time(now.ToUint64());
+    req.set_tserver_uuid(tserver_uuid_);
+    req.set_is_full_update(false);
+    WARN_NOT_OK(
+        rpcs_->RegisterAndStartStatus(client::UpdateTransactionWaitingForStatus(
+            TransactionRpcDeadline(),
+            nullptr /* tablet */,
+            client_,
+            &req,
+            [this, blocked](const auto& status, const auto& req) {
+              rpcs_->Unregister(&blocked->rpc_handle);
+            }), &blocked->rpc_handle),
+        Format("Failed to register waiter with transaction coordinator for status tablet $0",
+              status_tablet_id_));
+  }
+
+  Status SendPartialUpdateAsync(const std::weak_ptr<WaitingTransactionData>& waiter,
+                                const HybridTime& now) {
+    return thread_pool_token_->SubmitFunc(
+        std::bind(&StatusTabletData::SendPartialUpdate, this, waiter, now));
+  }
+
+  void SendFullUpdate(HybridTime now) {
     tserver::UpdateTransactionWaitingForStatusRequestPB req;
     UniqueLock<decltype(mutex_)> l(mutex_);
 
@@ -110,11 +162,15 @@ class StatusTabletData {
       return true;
     }, &waiters);
 
+    // Initiating an rpc call within the scope of the mutex (post reading latest status tablet data)
+    // ensures that this full update contains all data from partial updates that it follows.
     if (req.waiting_transactions_size() > 0) {
       DCHECK(!has_pending_request)
           << "req should only have waiting transactions if there is no pending request.";
-      req.set_tablet_id(status_tablet_id);
+      req.set_tablet_id(status_tablet_id_);
       req.set_propagated_hybrid_time(now.ToUint64());
+      req.set_tserver_uuid(tserver_uuid_);
+      req.set_is_full_update(true);
       auto did_send = rpcs_->RegisterAndStart(
           client::UpdateTransactionWaitingForStatus(
             TransactionRpcDeadline(),
@@ -129,31 +185,41 @@ class StatusTabletData {
       if (did_send) {
         VLOG(1) << "Sent UpdateTransactionWaitingForStatusRequestPB - "
                 << req.ShortDebugString();
-        return Status::OK();
+        return;
       }
-      return STATUS(InternalError, "Failed to register waiter with transaction coordinator");
+      LOG_WITH_FUNC(WARNING) << "Couldn't send full wait-for update for status tablet "
+          << status_tablet_id_;
+      return;
     }
 
     VLOG(4)
         << "Not sending UpdateTransactionWaitingForStatusRequestPB for"
-        << " status_tablet: " << status_tablet_id
+        << " status_tablet: " << status_tablet_id_
         << " waiting_transactions_size: " << req.waiting_transactions_size();
-    return Status::OK();
+  }
+
+  Status SendFullUpdateAsync(const HybridTime& now) {
+    return thread_pool_token_->SubmitFunc(std::bind(&StatusTabletData::SendFullUpdate, this, now));
   }
 
  private:
   rpc::Rpcs* const rpcs_;
   client::YBClient* client_;
   mutable rw_spinlock mutex_;
+  const TabletId status_tablet_id_;
   std::vector<std::weak_ptr<const WaitingTransactionData>> waiters GUARDED_BY(mutex_);
   rpc::Rpcs::Handle rpc_handle_ GUARDED_BY(mutex_);
+  const std::string tserver_uuid_;
+  ThreadPoolToken* thread_pool_token_;
 };
 
 class LocalWaitingTxnRegistry::Impl {
  public:
   explicit Impl(
-      const std::shared_future<client::YBClient*>& client_future, const server::ClockPtr& clock)
-      : client_future_(client_future), clock_(clock) {}
+      const std::shared_future<client::YBClient*>& client_future, const server::ClockPtr& clock,
+      const std::string& tserver_uuid, ThreadPool* thread_pool) :
+        client_future_(client_future), clock_(clock), tserver_uuid_(tserver_uuid),
+        thread_pool_(DCHECK_NOTNULL(thread_pool)) {}
 
   // A wrapper for WaitingTransactionData which determines the lifetime of the
   // LocalWaitingTxnRegistry's metadata associated with this waiter. When this wrapper is
@@ -187,35 +253,29 @@ class LocalWaitingTxnRegistry::Impl {
     return std::make_unique<WaitingTransactionDataWrapper>(this);
   }
 
-  void SendWaitForGraph() {
+  void SendWaitForGraph() EXCLUDES(mutex_) {
     if (!FLAGS_enable_deadlock_detection) {
       return;
     }
 
-    std::unordered_map<TabletId, StatusTabletDataPtr> to_poll;
-    {
-      UniqueLock<decltype(mutex_)> l(mutex_);
-      if (shutting_down_) {
-        YB_LOG_EVERY_N_SECS(INFO, 1)
-            << "Skipping LocalWaitingTxnRegistry::SendWaitForGraph. Shutting down.";
-        return;
-      }
-      auto it = status_tablets_.begin();
-      while (it != status_tablets_.end()) {
-        if (auto data = it->second.lock()) {
-          to_poll.emplace(it->first, data);
-          ++it;
-        } else {
-          VLOG_WITH_FUNC(1) << "Erasing status tablet data for " << it->first << ".";
-          it = status_tablets_.erase(it);
-        }
-      }
+    UniqueLock<decltype(mutex_)> l(mutex_);
+    if (shutting_down_) {
+      YB_LOG_EVERY_N_SECS(INFO, 1)
+          << "Skipping LocalWaitingTxnRegistry::SendWaitForGraph. Shutting down.";
+      return;
     }
-
-    for (const auto& [status_tablet_id, data] : to_poll) {
-      WARN_NOT_OK(
-          data->SendFullUpdate(status_tablet_id, clock_->Now()),
-          Format("Failed to send WaitFor poll to status tablet: $0", status_tablet_id));
+    auto it = status_tablets_.begin();
+    while (it != status_tablets_.end()) {
+      if (auto data = it->second.status_tablet_data.lock()) {
+        WARN_NOT_OK(
+            data->SendFullUpdateAsync(clock_->Now()),
+            Format("Failed to submit async full wait-for update for status tablet: $0",
+                    it->first));
+        ++it;
+      } else {
+        VLOG_WITH_FUNC(1) << "Erasing status tablet data for " << it->first << ".";
+        it = status_tablets_.erase(it);
+      }
     }
   }
 
@@ -233,8 +293,10 @@ class LocalWaitingTxnRegistry::Impl {
   }
 
  private:
-  std::shared_ptr<StatusTabletData> NewStatusTabletData() {
-    return std::make_shared<StatusTabletData>(&rpcs_, &client());
+  std::shared_ptr<StatusTabletData> NewStatusTabletData(const TabletId& status_tablet_id,
+                                                        ThreadPoolToken* thread_pool_token) {
+    return std::make_shared<StatusTabletData>(
+        &rpcs_, &client(), status_tablet_id, tserver_uuid_, thread_pool_token);
   }
 
   Result<std::shared_ptr<StatusTabletData>> GetOrAdd(const TabletId& status_tablet_id) {
@@ -246,27 +308,37 @@ class LocalWaitingTxnRegistry::Impl {
 
     auto it = status_tablets_.find(status_tablet_id);
     if (it != status_tablets_.end()) {
-      if (auto existing_data = it->second.lock()) {
+      if (auto existing_data = it->second.status_tablet_data.lock()) {
         VLOG_WITH_FUNC(4) << "Re-using existing status tablet data " << status_tablet_id;
         return existing_data;
       }
       VLOG_WITH_FUNC(4) << "Overwriting existing status tablet data " << status_tablet_id;
-      auto new_data = NewStatusTabletData();
-      it->second = new_data;
+
+      // Note: Resetting it->second would lead to destruction of the thread_pool_token in
+      // StatusTabletEntry, which would lead to a deadlock when this function is called from
+      // wait-queue threadpool. Refer StatusTabletEntry structure for details.
+      auto* thread_pool_token = it->second.thread_pool_token.get();
+      auto new_data = NewStatusTabletData(status_tablet_id, thread_pool_token);
+      it->second.status_tablet_data = new_data;
       return new_data;
     }
 
     VLOG_WITH_FUNC(4) << "Inserting new status tablet data " << status_tablet_id;
-
-    auto new_data = NewStatusTabletData();
-    auto did_insert = status_tablets_.emplace(status_tablet_id, new_data).second;
+    auto thread_pool_token = thread_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
+    auto new_data = NewStatusTabletData(status_tablet_id, thread_pool_token.get());
+    auto status_tablet_entry = StatusTabletEntry {
+      .status_tablet_data = new_data,
+      .thread_pool_token = std::move(thread_pool_token),
+    };
+    auto did_insert =
+      status_tablets_.emplace(status_tablet_id, std::move(status_tablet_entry)).second;
     DCHECK(did_insert);
     return new_data;
   }
 
   Status RegisterWaitingFor(
       const TransactionId& waiting, std::shared_ptr<ConflictDataManager> blockers,
-      const TabletId& status_tablet_id, WaitingTransactionDataWrapper* wrapper) {
+      const TabletId& status_tablet_id, WaitingTransactionDataWrapper* wrapper) EXCLUDES(mutex_) {
     DCHECK(!status_tablet_id.empty());
     auto shared_tablet_data = VERIFY_RESULT(GetOrAdd(status_tablet_id));
 
@@ -278,43 +350,22 @@ class LocalWaitingTxnRegistry::Impl {
       .rpc_handle = rpcs_.InvalidHandle(),
     });
 
+    // Waiting txn data needs to be attached before submitting a task of type SendPartialUpdateAsync
+    // (partial update) to the queue. If not, this record could be erased at the deadlock detector
+    // by a full update that is enqueued after this partial update, but is processed before the
+    // updated waiter data is attached to the tablet. Doing it this way ensures that a full update
+    // includes data from all partial updates that it follows.
+    shared_tablet_data->AddWaitingTransactionData(blocked_data);
+
     // Immediately trigger an update for this status tablet.
     // TODO(wait-queues): We probably don't need to send this immediately, vs. allowing this waiter
     // to be sent with the next full update. This also aligns with postgres' approach of only
     // starting deadlock detection after 1s.
     // See: https://github.com/yugabyte/yugabyte-db/issues/13576
-    RETURN_NOT_OK(SendUpdate(status_tablet_id, blocked_data));
+    RETURN_NOT_OK(shared_tablet_data->SendPartialUpdateAsync(blocked_data, clock_->Now()));
 
-    shared_tablet_data->AddWaitingTransactionData(blocked_data);
     wrapper->SetData(std::move(blocked_data));
-
     return Status::OK();
-  }
-
-  Status SendUpdate(
-      const TabletId& status_tablet, const std::shared_ptr<WaitingTransactionData>& data) {
-    tserver::UpdateTransactionWaitingForStatusRequestPB req;
-    if (!FLAGS_enable_deadlock_detection) {
-      return Status::OK();
-    }
-
-    AttachWaitingTransaction(*data, &req);
-    req.set_tablet_id(status_tablet);
-    req.set_propagated_hybrid_time(clock_->Now().ToUint64());
-    auto s = rpcs_.RegisterAndStartStatus(
-        client::UpdateTransactionWaitingForStatus(
-          TransactionRpcDeadline(),
-          nullptr /* tablet */,
-          &client(),
-          &req,
-          [this, data](const auto& status, const auto& req) {
-            rpcs_.Unregister(&data->rpc_handle);
-          }),
-        &data->rpc_handle);
-    if (!s.ok()) {
-      s = s.CloneAndAppend("Failed to register waiter with transaction coordinator");
-    }
-    return s;
   }
 
   client::YBClient& client() { return *client_future_.get(); }
@@ -327,14 +378,19 @@ class LocalWaitingTxnRegistry::Impl {
 
   mutable rw_spinlock mutex_;
 
-  std::unordered_map<TabletId, std::weak_ptr<StatusTabletData>> status_tablets_ GUARDED_BY(mutex_);
+  std::unordered_map<TabletId, StatusTabletEntry> status_tablets_ GUARDED_BY(mutex_);
 
   bool shutting_down_ GUARDED_BY(mutex_) = false;
+
+  const std::string tserver_uuid_;
+
+  ThreadPool* thread_pool_;
 };
 
 LocalWaitingTxnRegistry::LocalWaitingTxnRegistry(
-    const std::shared_future<client::YBClient*>& client_future, const server::ClockPtr& clock):
-    impl_(new Impl(client_future, clock)) {}
+    const std::shared_future<client::YBClient*>& client_future, const server::ClockPtr& clock,
+    const std::string& tserver_uuid, ThreadPool* thread_pool) :
+      impl_(new Impl(client_future, clock, tserver_uuid, thread_pool)) {}
 
 LocalWaitingTxnRegistry::~LocalWaitingTxnRegistry() {}
 
