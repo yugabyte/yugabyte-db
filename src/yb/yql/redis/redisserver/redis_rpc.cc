@@ -287,6 +287,7 @@ void RedisInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now();
   auto total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
 
+  auto trace_ = trace();
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces
           || (trace_ && trace_->must_print())
           || total_time > FLAGS_rpc_slow_query_threshold_ms)) {
@@ -306,6 +307,7 @@ string RedisInboundCall::ToString() const {
 
 bool RedisInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
                               rpc::RpcCallInProgressPB* resp) {
+  auto trace_ = trace();
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
   }
