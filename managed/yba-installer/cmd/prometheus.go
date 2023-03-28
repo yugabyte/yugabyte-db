@@ -109,6 +109,9 @@ func (prom Prometheus) Start() error {
 		if out := shell.Run(common.Systemctl, "daemon-reload"); !out.SucceededOrLog() {
 			return out.Error
 		}
+		if out := shell.Run(common.Systemctl, "enable", "prometheus"); !out.SucceededOrLog() {
+			return out.Error
+		}
 		if out := shell.Run(common.Systemctl, "start", "prometheus"); !out.SucceededOrLog() {
 			return out.Error
 		}
