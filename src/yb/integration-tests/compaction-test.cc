@@ -41,7 +41,6 @@
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/types.h"
-#undef TEST_SYNC_POINT
 #include "yb/rocksdb/util/task_metrics.h"
 
 #include "yb/server/hybrid_clock.h"

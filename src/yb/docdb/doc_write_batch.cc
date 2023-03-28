@@ -172,8 +172,8 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
     }
   }
 
-  bool expired = HasExpiredTTL(
-          key_data.write_time.hybrid_time(), control_fields.ttl, doc_iter->read_time().read);
+  bool expired = VERIFY_RESULT(HasExpiredTTL(
+      key_data.write_time, control_fields.ttl, doc_iter->read_time().read));
 
   VLOG_WITH_FUNC(4)
       << "Value: " << recent_value.ToDebugHexString() << ", control_fields: "
@@ -272,7 +272,7 @@ Result<bool> DocWriteBatch::SetPrimitiveInternalHandleUserTimestamp(
       << AsString(current_entry_.value_type) << ", user_timestamp: "
       << current_entry_.user_timestamp << ", control fields: " << control_fields.ToString()
       << ", doc_hybrid_time: "
-      << current_entry_.doc_hybrid_time.hybrid_time().GetPhysicalValueMicros();
+      << current_entry_.doc_hybrid_time;
 
   if (!current_entry_.found_exact_key_prefix) {
     return true;
@@ -286,14 +286,14 @@ Result<bool> DocWriteBatch::SetPrimitiveInternalHandleUserTimestamp(
   }
 
   // Look at the hybrid time instead.
-  const DocHybridTime& doc_hybrid_time = current_entry_.doc_hybrid_time;
-  if (!doc_hybrid_time.hybrid_time().is_valid()) {
+  const auto& doc_hybrid_time = current_entry_.doc_hybrid_time;
+  if (doc_hybrid_time.empty()) {
     return true;
   }
 
   return control_fields.timestamp >= 0 &&
          implicit_cast<size_t>(control_fields.timestamp) >=
-             doc_hybrid_time.hybrid_time().GetPhysicalValueMicros();
+             VERIFY_RESULT(doc_hybrid_time.Decode()).hybrid_time().GetPhysicalValueMicros();
 }
 
 namespace {
@@ -334,7 +334,7 @@ Status DocWriteBatch::SetPrimitiveInternal(
   IntraTxnWriteId ht_write_id = write_id
       ? *write_id
       : VERIFY_RESULT(checked_narrow_cast<IntraTxnWriteId>(put_batch_.size()));
-  DocHybridTime hybrid_time(HybridTime::kMax, ht_write_id);
+  EncodedDocHybridTime hybrid_time(DocHybridTime(HybridTime::kMax, ht_write_id));
 
   auto num_subkeys = doc_path.num_subkeys();
   for (size_t subkey_index = 0; subkey_index < num_subkeys; ++subkey_index) {
@@ -493,7 +493,7 @@ Status DocWriteBatch::DoSetPrimitive(
     std::optional<IntraTxnWriteId> write_id) {
   DOCDB_DEBUG_LOG("Called SetPrimitive with doc_path=$0, value=$1",
                   doc_path.ToString(), value.ToString());
-  current_entry_.doc_hybrid_time = DocHybridTime::kMin;
+  current_entry_.doc_hybrid_time.Assign(EncodedDocHybridTime::kMin);
   const bool is_deletion = value.custom_value_type() == ValueEntryType::kTombstone;
 
   key_prefix_ = doc_path.encoded_doc_key();
@@ -800,8 +800,8 @@ Status DocWriteBatch::ReplaceCqlInList(
   // collection item found in DocDB as if there were no higher-level overwrite or invalidation of
   // it.
   auto current_key_is_init_marker = current_key.key.compare(key_prefix_) == 0;
-  auto collection_write_time = current_key_is_init_marker
-      ? current_key.write_time : DocHybridTime::kMin;
+  const auto& collection_write_time = current_key_is_init_marker
+      ? current_key.write_time : DocHybridTime::EncodedMin();
 
   Slice value_slice;
   SubDocKey found_key;
@@ -833,7 +833,7 @@ Status DocWriteBatch::ReplaceCqlInList(
       has_expired = true;
     } else {
       entry_ttl = ComputeTTL(entry_ttl, default_ttl);
-      has_expired = HasExpiredTTL(key_data.write_time.hybrid_time(), entry_ttl, read_ht.read);
+      has_expired = VERIFY_RESULT(HasExpiredTTL(key_data.write_time, entry_ttl, read_ht.read));
     }
 
     if (has_expired) {

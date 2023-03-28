@@ -412,7 +412,6 @@ Result<uint32_t> GetEntries(const SegmentSequence& segments) {
   uint32_t num_entries = 0;
   for (const scoped_refptr<log::ReadableLogSegment>& segment : segments) {
     auto read_entries = segment->ReadEntries();
-    RETURN_NOT_OK(read_entries.status);
     num_entries += read_entries.entries.size();
   }
   return num_entries;

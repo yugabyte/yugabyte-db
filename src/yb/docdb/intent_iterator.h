@@ -153,8 +153,8 @@ class IntentIterator {
 struct DecodeStrongWriteIntentResult {
   Slice intent_prefix;
   Slice intent_value;
-  DocHybridTime intent_time;
-  DocHybridTime value_time;
+  EncodedDocHybridTime intent_time;
+  EncodedDocHybridTime value_time;
   IntentTypeSet intent_types;
 
   // Whether this intent from the same transaction as specified in context.
@@ -181,7 +181,7 @@ struct DecodeStrongWriteIntentResult {
   //     must compare the intent's commit time with global_limit and potentially perform a read
   //     restart, because the transaction that wrote the intent might have been committed before our
   //     read transaction begin.
-  HybridTime MaxAllowedValueTime(const ReadHybridTime& read_time) const;
+  const EncodedDocHybridTime& MaxAllowedValueTime(const EncodedReadHybridTime& read_time) const;
 };
 
 inline std::ostream& operator<<(std::ostream& out, const DecodeStrongWriteIntentResult& result) {

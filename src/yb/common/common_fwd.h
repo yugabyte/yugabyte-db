@@ -28,6 +28,7 @@ class ClockBase;
 class ColumnId;
 class ColumnSchema;
 class DocHybridTime;
+class EncodedDocHybridTime;
 class HybridTime;
 class IndexInfo;
 class IndexMap;
