@@ -20,6 +20,8 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/hybrid_time.h"
 
+#include "yb/docdb/docdb_fwd.h"
+
 #include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
 
@@ -30,6 +32,9 @@ namespace docdb {
 // time and the hybrid_time we're reading at.
 bool HasExpiredTTL(const HybridTime& key_hybrid_time, const MonoDelta& ttl,
                    const HybridTime& read_hybrid_time);
+
+Result<bool> HasExpiredTTL(const EncodedDocHybridTime& key_hybrid_time, const MonoDelta& ttl,
+                           const HybridTime& read_hybrid_time);
 
 // Determines whether an expiration time has already passed (with special cases).
 bool HasExpiredTTL(const HybridTime& expiration_time, const HybridTime& read_hybrid_time);

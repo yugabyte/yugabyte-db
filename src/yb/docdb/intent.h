@@ -67,7 +67,7 @@ typedef EnumBitSet<IntentType> IntentTypeSet;
 struct DecodedIntentKey {
   Slice intent_prefix;
   IntentTypeSet intent_types;
-  DocHybridTime doc_ht;
+  EncodedDocHybridTime doc_ht;
 
   std::string ToString() const {
     return Format("{ intent_prefix: $0 intent_types: $1 doc_ht: $2 }",
