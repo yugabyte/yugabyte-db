@@ -26,7 +26,7 @@ To use [Apache Atlas](https://doc.akka.io/docs/akka-persistence-r2dbc/current/ov
 
 To get the Apache Atlas server file, you need to build the Apache Atlas source using the following steps:
 
-1. Clone the [source](https://github.com/apache/atlas) from GitHub to your local setup. Checkout checkout to the latest stable release tag ( For example: release-2.3.0), and follow the steps in the README to build the files.
+1. Clone the [source](https://github.com/apache/atlas) from GitHub to your local setup. Checkout to the latest stable release tag (for example, release-2.3.0) and follow the steps in the README to build the files.
 
 1. After the source files are packaged, the Atlas server tar should be available in the `distro/target` folder.
 
