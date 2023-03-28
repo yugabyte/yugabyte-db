@@ -316,8 +316,9 @@ string YBInboundCall::ToString() const {
 bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
                            RpcCallInProgressPB* resp) {
   header_.ToPB(resp->mutable_header());
-  if (req.include_traces() && trace_) {
-    resp->set_trace_buffer(trace_->DumpToString(true));
+  auto my_trace = trace();
+  if (req.include_traces() && my_trace) {
+    resp->set_trace_buffer(my_trace->DumpToString(true));
   }
   resp->set_elapsed_millis(MonoTime::Now().GetDeltaSince(timing_.time_received)
       .ToMilliseconds());
@@ -335,20 +336,22 @@ void YBInboundCall::LogTrace() const {
       // The traces may also be too large to fit in a log message.
       LOG(WARNING) << ToString() << " took " << total_time << "ms (client timeout "
                    << header_.timeout_ms << "ms).";
-      if (trace_) {
-        LOG(WARNING) << "Trace:\n" << trace_->DumpToString(1, true);
+      auto my_trace = trace();
+      if (my_trace) {
+        LOG(WARNING) << "Trace:\n" << my_trace->DumpToString(1, true);
       }
       return;
     }
   }
 
+  auto my_trace = trace();
   if (PREDICT_FALSE(
-          (trace_ && trace_->must_print()) ||
+          (my_trace && my_trace->must_print()) ||
           FLAGS_rpc_dump_all_traces ||
           total_time > FLAGS_rpc_slow_query_threshold_ms)) {
     LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
-    if (trace_) {
-      trace_->Dump(&LOG(INFO), true);
+    if (my_trace) {
+      my_trace->Dump(&LOG(INFO), true);
     }
   }
 }
