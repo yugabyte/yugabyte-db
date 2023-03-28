@@ -63,9 +63,9 @@ Preparing the environment involves a number of steps. Before you start, consult 
 
 ## Install kube-state-metrics
 
-To be able to make use of the YugabyteDB Anywhere [node metrics](../../../troubleshoot/universe-issues/#node), specifically the ones related to CPU, you need to install the [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics) version 1.9.5 or higher (Recommended 2.8.1) in your Kubernetes cluster.
+To be able to make use of the YugabyteDB Anywhere [node metrics](../../../troubleshoot/universe-issues/#node), specifically the ones related to CPU, you need to install the [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics) version 2.5 or later (2.8.1 is recommended) in your Kubernetes cluster.
 
-The kube-state-metrics might be already installed and running. You should perform a check by executing the following command:
+The kube-state-metrics might already be installed and running. You should perform a check by executing the following command:
 
 ```sh
 kubectl get svc kube-state-metrics -n kube-system
