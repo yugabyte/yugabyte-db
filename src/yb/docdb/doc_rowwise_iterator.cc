@@ -204,19 +204,6 @@ void DocRowwiseIterator::Init(TableType table_type, const Slice& sub_doc_key) {
   InitResult();
 }
 
-void DocRowwiseIterator::InitScanChoices(
-    const DocQLScanSpec& doc_spec, const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key) {
-  scan_choices_ =
-      ScanChoices::Create(doc_read_context_.schema, doc_spec, lower_doc_key, upper_doc_key);
-}
-
-void DocRowwiseIterator::InitScanChoices(
-    const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
-    const KeyBytes& upper_doc_key) {
-  scan_choices_ =
-      ScanChoices::Create(doc_read_context_.schema, doc_spec, lower_doc_key, upper_doc_key);
-}
-
 template <class T>
 Status DocRowwiseIterator::DoInit(const T& doc_spec) {
   CheckInitOnce();
@@ -260,8 +247,8 @@ Status DocRowwiseIterator::DoInit(const T& doc_spec) {
     history_cutoff_ = doc_db_.retention_policy->StatelessRetentionDirective().history_cutoff;
   }
 
-  InitScanChoices(
-      doc_spec,
+  scan_choices_ = ScanChoices::Create(
+      doc_read_context_.schema, doc_spec,
       !is_forward_scan_ && has_bound_key_ ? bound_key_ : lower_doc_key,
       is_forward_scan_ && has_bound_key_ ? bound_key_ : upper_doc_key);
   if (is_forward_scan_) {
@@ -279,15 +266,14 @@ Status DocRowwiseIterator::DoInit(const T& doc_spec) {
   return Status::OK();
 }
 
-Status DocRowwiseIterator::Init(const QLScanSpec& spec) {
-  table_type_ = TableType::YQL_TABLE_TYPE;
-  return DoInit(down_cast<const DocQLScanSpec&>(spec));
-}
+Status DocRowwiseIterator::Init(const YQLScanSpec& spec) {
+  table_type_ = spec.client_type() == YQL_CLIENT_CQL ? TableType::YQL_TABLE_TYPE
+                                                     : TableType::PGSQL_TABLE_TYPE;
+  if (table_type_ == TableType::PGSQL_TABLE_TYPE) {
+    ConfigureForYsql();
+  }
 
-Status DocRowwiseIterator::Init(const PgsqlScanSpec& spec) {
-  table_type_ = TableType::PGSQL_TABLE_TYPE;
-  ConfigureForYsql();
-  return DoInit(down_cast<const DocPgsqlScanSpec&>(spec));
+  return DoInit(spec);
 }
 
 void DocRowwiseIterator::ConfigureForYsql() {

@@ -76,11 +76,7 @@ class ScanChoices {
   }
 
   static ScanChoicesPtr Create(
-      const Schema& schema, const DocQLScanSpec& doc_spec, const KeyBytes& lower_doc_key,
-      const KeyBytes& upper_doc_key);
-
-  static ScanChoicesPtr Create(
-      const Schema& schema, const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
+      const Schema& schema, const YQLScanSpec& doc_spec, const KeyBytes& lower_doc_key,
       const KeyBytes& upper_doc_key);
 
  protected:
@@ -274,24 +270,15 @@ class HybridScanChoices : public ScanChoices {
       bool is_forward_scan,
       const std::vector<ColumnId>& options_col_ids,
       const std::shared_ptr<std::vector<OptionList>>& options,
-      const std::vector<ColumnId>& range_bounds_col_ids,
       const QLScanRange* range_bounds,
       const ColGroupHolder& col_groups,
       const size_t prefix_length);
 
   HybridScanChoices(
       const Schema& schema,
-      const DocPgsqlScanSpec& doc_spec,
+      const YQLScanSpec& doc_spec,
       const KeyBytes& lower_doc_key,
-      const KeyBytes& upper_doc_key,
-      const size_t prefix_length);
-
-  HybridScanChoices(
-      const Schema& schema,
-      const DocQLScanSpec& doc_spec,
-      const KeyBytes& lower_doc_key,
-      const KeyBytes& upper_doc_key,
-      const size_t prefix_length);
+      const KeyBytes& upper_doc_key);
 
   Result<bool> SkipTargetsUpTo(const Slice& new_target) override;
   Status DoneWithCurrentTarget() override;
