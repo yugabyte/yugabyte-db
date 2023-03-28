@@ -1,8 +1,8 @@
 ---
 title: HA of Transactions in YSQL
-headerTitle: Build highly available applications in YSQL
-linkTitle: High availability
-description: Learn how to design highly available Transactions in YSQL.
+headerTitle: High Availability
+linkTitle: High Availability
+description: Learn how to handle design highly available Transactions in YSQL.
 
 menu:
   preview:
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB returns different [error codes](../transactions-errorcodes-ysql) for the various scenarios that go wrong during transaction processing. Applications need to be designed to handle these scenarios correctly to be highly available, so that users aren't impacted. Although most errors are common across multiple isolation levels, some errors are very specific to certain [transaction isolation levels](../../../../explore/transactions/isolation-levels/).
+YugabyteDB returns different [error codes](../transactions-errorcodes-ysql) for the various scenarios that go wrong during transaction processing.It is important that  applications are designed to handle various error scenarios correctly to be highly available and that your users dont face the impact of issues. Although most errors are common across multiple isolation levels, some errors are very specific to certain [transaction isolation levels](../../../../explore/transactions/isolation-levels/). 
 
 In general, the error codes can be classified into the following three types:
 
@@ -23,7 +23,7 @@ In general, the error codes can be classified into the following three types:
     WARNING:  25001: there is already a transaction in progress
     ```
 
-    Most client libraries hide warnings, but you might notice the messages when you execute statements directly from a terminal. The statement execution can continue without interruption but would need to be modified to avoid the re-occurence of the message.
+    Most client libraries hide warnings but you might notice the messages when you execute statements directly from a terminal. The statement execution can continue without interruption but would need to be modified to avoid the re-occurence of the message.
 
 1. ERROR: Errors are returned when a transaction cannot continue and has to be restarted by the client. For example:
 
@@ -45,6 +45,7 @@ In general, the error codes can be classified into the following three types:
 
 The examples in the following sections illustrate failure scenarios and techniques you can use to handle these failures in your applications.
 
+
 ## Prerequisites
 
 Follow the [setup instructions](../../../../explore#tabs-00-00) to start a single local YugabytedDB instance, and create a table as follows:
@@ -65,17 +66,19 @@ Follow the [setup instructions](../../../../explore#tabs-00-00) to start a singl
     INSERT INTO txndemo VALUES (1,10),(2,10),(3,10),(4,10),(5,10);
     ```
 
-## Automatic retries
+## Transaction retries
 
-YugabyteDB retries failed transactions automatically on the server side whenever possible without client intervention as per the [concurrency control policies](../../../../architecture/transactions/concurrency-control/#best-effort-internal-retries-for-first-statement-in-a-transaction). This is the case even for single statements, which are implicitly considered as transactions. In [Read Committed](/#statement-timeout) isolation mode, the server retries indefinitely.
+### Automatic retries
+
+YugabyteDB will retry failed transactions automatically on the server side whenever possible without client intervention as per the [concurrency control policies](../../../../architecture/transactions/concurrency-control/#best-effort-internal-retries-for-first-statement-in-a-transaction). These happen even on single statements, which are implicitly considered as transactions. In [Read Committed](/#statement-timeout) isolation mode, the server retries indefinitely.
 
 In some scenarios, a server-side retry is not suitable. For example, the retry limit has been reached or the transaction is not in a valid state. In these cases, it is the client's responsibility to retry the transaction at the application layer.
 
-## Client-side retry
+### Client-side retry
 
 Most transaction errors that happen due to conflicts and deadlocks can be restarted by the client. The following scenarios describe the causes for failures, and the required methods to be handled by the applications.
 
-Execute the transaction in a `try..catch` block in a loop. When a re-tryable failure happens, issue [ROLLBACK](../../../../api/ysql/the-sql-language/statements/txn_rollback) and then retry the transaction. To avoid overloading the server and ending up in an indefinite loop, wait for a period of time between retries and limit the number of retries. The following illustrates a typical client-side retry implementation:
+Execute the transaction in a `try..catch` block in a loop. When a re-tryable failure happens, issue `ROLLBACK` and then retry the transaction. To avoid overloading the server and ending up in an indefinite loop, wait for a period of time between retires and limit the number of retries. The following illustrates a typical client-side retry implementation:
 
 ```python
 max_attempts = 10   # max no.of retries
@@ -102,7 +105,7 @@ while attempt < max_attempts:
 
 If the `COMMIT` is successful, the program exits the loop. `attempt < max_attempts` limits the number of retries to `max_attempts`, and the amount of time the code waits before the next retry also increases with `sleep_time *= backoff`. Choose values as appropriate for your application.
 
-##### 40001 - SerializationFailure
+### 40001 - SerializationFailure
 
 SerializationFailure errors happen when multiple transactions are updating the same set of keys (conflict) or when transactions are waiting on each other (deadlock). The error messages could be one of the following types:
 
@@ -118,17 +121,78 @@ SerializationFailure errors happen when multiple transactions are updating the s
     ERROR:  40001: Operation expired: Heartbeat: Transaction XXXX expired or aborted by a conflict
     ```
 
-The correct way to handle this error is with a retry loop with exponential backoff, as described in [Client-side retry](#client-side-retry). When the [UPDATE](../../../../api/ysql/the-sql-language/statements/cmd_update) or [COMMIT](../../../../api/ysql/the-sql-language/statements/txn_commit) fails because of `SerializationFailure`, the code retries after waiting for `sleep_time` seconds, up to `max_attempts`.
+The correct way to handle this error is with a retry loop with exponential backoff, as described in [Client-side retry](#client-side-retry). For example:
+
+```python
+connstr = 'postgresql://yugabyte@localhost:5433/yugabyte'
+cxn = psycopg2.connect(connstr)
+
+max_attempts = 10   # max no.of retries
+sleep_time = 0.002  # 2 ms - base sleep time
+backoff = 2         # exponential multiplier
+
+attempt = 0
+while attempt < max_attempts:
+    attempt += 1
+    try :
+        cursor = cxn.cursor()
+        cursor.execute("BEGIN ISOLATION LEVEL SERIALIZABLE");
+        cursor.execute("UPDATE txndemo SET v=20 WHERE k=1;");
+        cursor.execute("COMMIT");
+        break
+    except psycopg2.errors.SerializationFailure as e:
+        print(e)
+        cursor.execute("ROLLBACK")
+        if attempt < max_attempts:
+            time.sleep(sleep_time)
+            sleep_time *= backoff
+```
+
+When the `UPDATE` or `COMMIT` fails because of `SerializationFailure`, the code retries after waiting for `sleep_time` seconds, up to `max_attempts`.
 
 {{<tip title="Read Committed">}}
 In read committed isolation level, as the server retries internally, the client does not need to worry about handling SerializationFailure. Only transactions operating in repeated read and serializable levels need to handle serialization failures.
 {{</tip>}}
 
-Another way to handle these failures is to rollback to a checkpoint before the failed statement and proceed further as described in [Savepoints](#savepoints).
+### 25P02 - InFailedSqlTransaction
 
-## Savepoints
+This error occurs when a statement is issued after there's already an error in a transaction. The error message would be similar to the following:
 
-[Savepoints](../../../../api/ysql/the-sql-language/statements/savepoint_create) are named checkpoints that can be used to rollback just a few statements, and then proceed with the transaction, rather than aborting the entire transaction when there is an error.
+```output
+ERROR:  25P02: current transaction is aborted, commands ignored until end of transaction block
+```
+
+The only valid statements at this point would be `ROLLBACK` or `COMMIT`. To handle this error, resolve the actual error and then issue a rollback. Consider the following scenario:
+
+```python
+connstr = 'postgresql://yugabyte@localhost:5433/yugabyte'
+cxn = psycopg2.connect(connstr)
+cursor = cxn.cursor()
+try:
+    cursor.execute("BEGIN")
+    try:
+        # forcing an error with invalid syntax
+        cursor.execute("INVALID TXN STATEMENT;")
+    except Exception as e:
+        # ignoring the Syntax Error (!! WRONG !!)
+        # Syntax errors should NOT be ignored. - Only for demo
+        pass
+
+    # the transaction is in an invalid state
+    cursor.execute("UPDATE txndemo SET v=20 WHERE k=1")
+    cursor.execute("COMMIT")
+except psycopg2.errors.InFailedSqlTransaction as e:
+  print(e)
+  cursor.execute("ROLLBACK")
+```
+
+The `INVALID TXN STATEMENT` would throw a `SyntaxError` exception. The code (in-correctly) catches this and ignores it. The next `update` statement, even though valid, will fail with an `InFailedSqlTransaction` exception. This could be avoided by handling the actual error and issuing a `ROLLBACK`. In this case, a retry would not help as it is a SyntaxError, but there might be scenarios where the transaction would succeed when retried.
+
+Another way would be to rollback to a checkpoint before the failed statement and proceed further as described in [Use savepoints](#use-savepoints).
+
+### Use savepoints
+
+[Savepoints](../../../../api/ysql/the-sql-language/statements/savepoint_create) are named checkpoints that are helpful to rollback just a few statements in case of error scenarios and proceed the transaction further rather than aborting the entire transaction.
 
 Consider the following example that inserts a row `[k=1, v=30]`:
 
@@ -158,13 +222,14 @@ except Exception as e:
   cursor.execute("ROLLBACK")
 ```
 
-If the row `[k=1]` already exists in the table, the [INSERT](../../../../api/ysql/the-sql-language/statements/cmd_insert) would result in a UniqueViolation exception. Technically, the transaction would be in an error state and further statements would result in a [25P02: In failed SQL transaction](#25P02-in-failed-sql-transaction) error. You have to catch the exception and rollback. But instead of rolling back the entire transaction, you can rollback to the previously declared savepoint `before_insert`, and update the value of the row with `k=1`. Then you can continue with other statements in the transaction.
+If the row `[k=1]` already exists in the table, the `INSERT` would result in a UniqueViolation exception. Technically, the transaction would be in an error state and further statements would result in a [25P02: In failed SQL transaction](#25P02-in-failed-sql-transaction) error. You have to catch the exception and rollback. But instead of rolling back the entire transaction, you can rollback to the previously declared savepoint `before_insert`, and update the value of the row with `k=1`. Then you can continue with other statements in the transaction.
+
 
 ## Non-retriable errors
 
 Although most transactions can be retried in most error scenarios, there are cases where retrying a transaction will not resolve an issue. For example, errors can occur when statements are issued out of place. These statements have to be fixed in code to continue further.
 
-##### 25001 - Specify transaction isolation level
+### 25001 - Specify transaction isolation level
 
 Transaction level isolation should be specified before the first statement of the transaction is executed. If not the following error occurs:
 
@@ -195,9 +260,9 @@ ERROR:  25001: SET TRANSACTION ISOLATION LEVEL must be called before any query
 Time: 3.808 ms
 ```
 
-##### 25006 - Modify a row in a read-only transaction
+### 25006 - Modify a row in a read-only transaction
 
-This error occurs when a row is modified after specifying a transaction to be [READ ONLY](../../../../api/ysql/the-sql-language/statements/txn_set/#read-only-mode) as follows:
+This error occurs when a row is modified after specifying a transaction to be `READ ONLY` as follows:
 
 ```plpgsql
 BEGIN READ ONLY;
@@ -217,64 +282,10 @@ ERROR:  25006: cannot execute UPDATE in a read-only transaction
 Time: 4.417 ms
 ```
 
-##### 25P02 - InFailedSqlTransaction
-
-This error occurs when a statement is issued after there's already an error in a transaction. The error message would be similar to the following:
-
-```output
-ERROR:  25P02: current transaction is aborted, commands ignored until end of transaction block
-```
-
-Consider the following scenario:
-
-```plpgsql
-BEGIN;
-```
-
-```output
-BEGIN
-Time: 0.393 ms
-```
-
-```plpgsql
-INVALID TXN STATEMENT;
-```
-
-```output
-ERROR:  42601: syntax error at or near "INVALID"
-Time: 2.523 ms
-```
-
-```plpgsql
-SELECT * from txndemo where k=1;
-```
-
-```output
-ERROR:  25P02: current transaction is aborted, commands ignored until end of transaction block
-Time: 17.074 ms
-```
-
-The only valid statements at this point would be [ROLLBACK](../../../../api/ysql/the-sql-language/statements/txn_rollback) or [COMMIT](../../../../api/ysql/the-sql-language/statements/txn_commit).
-
-## Observability
-
-YugabyteDB exports a lot of [observable metrics](../../../../explore/observability) so that you can see what is going in your cluster. These metrics can be exported to [Prometheus](../../../../explore/observability/prometheus-integration/macos/) and visualized in [Grafana](../../../../explore/observability/grafana-dashboard/grafana/). Many of these metrics are also displayed as charts in YugabyteDB Anywhere and YugabyteDB Managed. The following are key transaction related metrics.
-
-##### transactions_running
-
-Shows the number of transactions that are currently active. This provides an overview of how transaction intensive the cluster currently is.
-
-##### transaction_conflicts
-
-Describes the number of times transactions have conflicted with other transactions. An increase in the number of conflicts could directly result in increased latency of your applications.
-
-##### expired_transactions
-
-Shows the number of transactions that did not complete because the status tablet did not receive enough number of heartbeats from the node to which the client was connected. This usually happens if that node or process managing the transaction has crashed.
 
 ## Learn more
 
 - [Transaction isolation levels](../../../../architecture/transactions/isolation-levels/) - Various isolation levels supported by YugabyteDB.
 - [Concurrency control](../../../../architecture/transactions/concurrency-control/) - Policies to handle conflicts between transactions.
-- [Transaction priorities](../../../../architecture/transactions/transaction-priorities/) - Priority buckets for transactions.
+- [Transaction priorities](../../../../architecture/transactions/concurrency-control/) - Priority buckets for transactions.
 - [Transaction options](../../../../explore/transactions/distributed-transactions-ysql/#transaction-options) - Options supported by transactions.
