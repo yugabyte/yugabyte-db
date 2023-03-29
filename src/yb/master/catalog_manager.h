@@ -1097,7 +1097,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       RestoreSnapshotScheduleResponsePB* resp,
       rpc::RpcContext* rpc);
 
-  Status InitCDCConsumer(
+  Status InitXClusterConsumer(
       const std::vector<CDCConsumerStreamInfo>& consumer_info,
       const std::string& master_addrs,
       const std::string& producer_universe_uuid,
@@ -2503,6 +2503,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Helper functions for GetTableSchemaCallback, GetTablegroupSchemaCallback
   // and GetColocatedTabletSchemaCallback.
 
+  // Helper container to track colocationid and the producer to consumer schema version mapping.
+  typedef std::vector<std::tuple<ColocationId, SchemaVersion, SchemaVersion>>
+      ColocationSchemaVersions;
+
   // Validates a single table's schema with the corresponding table on the consumer side, and
   // updates consumer_table_id with the new table id. Return the consumer table schema if the
   // validation is successful.
@@ -2515,7 +2519,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status AddValidatedTableToUniverseReplication(
       scoped_refptr<UniverseReplicationInfo> universe,
       const TableId& producer_table,
-      const TableId& consumer_table);
+      const TableId& consumer_table,
+      const SchemaVersion& producer_schema_version,
+      const SchemaVersion& consumer_schema_version,
+      const ColocationSchemaVersions& colocated_schema_versions);
+
+  Status AddSchemaVersionMappingToUniverseReplication(
+      scoped_refptr<UniverseReplicationInfo> universe,
+      const ColocationId& consumer_table,
+      const SchemaVersion& producer_schema_version,
+      const SchemaVersion& consumer_schema_version);
 
   // If all tables have been validated, creates a CDC stream for each table.
   Status CreateCdcStreamsIfReplicationValidated(
@@ -2526,7 +2539,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       scoped_refptr<UniverseReplicationInfo> universe,
       const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
       const TableId& producer_table,
-      const TableId& consumer_table);
+      const TableId& consumer_table,
+      const ColocationSchemaVersions& colocated_schema_versions);
 
   void GetTableSchemaCallback(
       const std::string& universe_id, const std::shared_ptr<client::YBTableInfo>& producer_info,

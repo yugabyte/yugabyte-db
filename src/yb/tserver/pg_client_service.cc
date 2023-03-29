@@ -187,7 +187,7 @@ class PgClientServiceImpl::Impl {
       TransactionPoolProvider transaction_pool_provider,
       rpc::Scheduler* scheduler,
       const XClusterSafeTimeMap* xcluster_safe_time_map,
-      std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter,
+      PgMutationCounter* pg_node_level_mutation_counter,
       MetricEntity* metric_entity)
       : tablet_server_(tablet_server.get()),
         client_future_(client_future),
@@ -484,6 +484,11 @@ class PgClientServiceImpl::Impl {
 
   BOOST_PP_SEQ_FOR_EACH(PG_CLIENT_SESSION_METHOD_FORWARD, ~, PG_CLIENT_SESSION_METHODS);
 
+  size_t TEST_SessionsCount() {
+    SharedLock lock(mutex_);
+    return sessions_.size();
+  }
+
  private:
   client::YBClient& client() { return *client_future_.get(); }
 
@@ -587,7 +592,7 @@ class PgClientServiceImpl::Impl {
 
   const XClusterSafeTimeMap* xcluster_safe_time_map_;
 
-  std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter_;
+  PgMutationCounter* pg_node_level_mutation_counter_;
 
   PgResponseCache response_cache_;
 
@@ -602,7 +607,7 @@ PgClientServiceImpl::PgClientServiceImpl(
     const scoped_refptr<MetricEntity>& entity,
     rpc::Scheduler* scheduler,
     const XClusterSafeTimeMap* xcluster_safe_time_map,
-    std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter)
+    PgMutationCounter* pg_node_level_mutation_counter)
     : PgClientServiceIf(entity),
       impl_(new Impl(
           tablet_server, client_future, clock, std::move(transaction_pool_provider), scheduler,
@@ -617,6 +622,10 @@ void PgClientServiceImpl::Perform(
 
 void PgClientServiceImpl::InvalidateTableCache() {
   impl_->InvalidateTableCache();
+}
+
+size_t PgClientServiceImpl::TEST_SessionsCount() {
+  return impl_->TEST_SessionsCount();
 }
 
 #define YB_PG_CLIENT_METHOD_DEFINE(r, data, method) \

@@ -128,7 +128,7 @@ public class NodeManager extends DevopsBase {
 
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
-  @Inject play.Configuration appConfig;
+  @Inject Config appConfig;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
@@ -718,6 +718,14 @@ public class NodeManager extends DevopsBase {
               taskParam.ybcSoftwareVersion,
               ybcPackageDetails.getFirst(),
               ybcPackageDetails.getSecond());
+
+      if (releaseMetadata == null) {
+        throw new RuntimeException(
+            String.format(
+                "Ybc package metadata: %s cannot be empty with ybc enabled",
+                taskParam.ybcSoftwareVersion));
+      }
+
       ybcPackage = releaseMetadata.getFilePath(taskParam.getRegion());
       if (StringUtils.isBlank(ybcPackage)) {
         throw new RuntimeException("Ybc package cannot be empty with ybc enabled");
@@ -1496,9 +1504,12 @@ public class NodeManager extends DevopsBase {
             if (taskParam.assignPublicIP) {
               commandArgs.add("--assign_public_ip");
             }
-            if (cloudType.equals(Common.CloudType.aws) && taskParam.useSpotInstance) {
+            if (taskParam.useSpotInstance
+                && (cloudType.equals(Common.CloudType.aws)
+                    || cloudType.equals(Common.CloudType.gcp))) {
               commandArgs.add("--use_spot_instance");
-              if (taskParam.spotPrice > 0.0) {
+              // GCP doesn't allow setting max prices for spot instances
+              if (taskParam.spotPrice > 0.0 && !cloudType.equals(Common.CloudType.gcp)) {
                 commandArgs.add("--spot_price");
                 commandArgs.add(Double.toString(taskParam.spotPrice));
               }

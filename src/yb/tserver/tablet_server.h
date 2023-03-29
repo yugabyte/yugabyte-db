@@ -263,7 +263,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   const XClusterSafeTimeMap& GetXClusterSafeTimeMap() const;
 
-  const std::shared_ptr<PgMutationCounter> GetPgNodeLevelMutationCounter();
+  PgMutationCounter& GetPgNodeLevelMutationCounter();
 
   void UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
 
@@ -287,6 +287,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status ReloadKeysAndCertificates() override;
   std::string GetCertificateDetails() override;
+
+  PgClientServiceImpl* TEST_GetPgClientService() {
+    return pg_client_service_.lock().get();
+  }
 
  protected:
   virtual Status RegisterServices();
@@ -385,7 +389,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   XClusterSafeTimeMap xcluster_safe_time_map_;
 
-  std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter_;
+  PgMutationCounter pg_node_level_mutation_counter_;
 
   PgConfigReloader pg_config_reloader_;
 

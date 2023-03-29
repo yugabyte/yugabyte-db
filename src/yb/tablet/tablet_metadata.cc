@@ -227,6 +227,12 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
   return Status::OK();
 }
 
+Result<SchemaVersion> TableInfo::GetSchemaPackingVersion(
+    const Schema& schema) const {
+  return doc_read_context->schema_packing_storage.GetSchemaPackingVersion(
+      table_type, schema);
+}
+
 Status TableInfo::MergeSchemaPackings(
     const TableInfoPB& pb, docdb::OverwriteSchemaPacking overwrite) {
   // If we are merging in the case of an out of cluster restore,
@@ -1185,7 +1191,7 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
   }
   std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
-  auto [iter, inserted] = tables.emplace(table_id, new_table_info);
+  auto[iter, inserted] = tables.emplace(table_id, new_table_info);
   SetLastChangeMetadataOperationOpIdUnlocked(op_id);
   if (inserted) {
     VLOG_WITH_PREFIX(1) << "Added table with schema version " << schema_version << "\n"

@@ -95,7 +95,7 @@ public class NodeAgentControllerTest extends FakeDBApplication {
   }
 
   private Result registerNodeAgent(NodeAgentForm formData) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+    return doRequestWithAuthTokenAndBody(
         "POST",
         "/api/customers/" + customer.uuid + "/node_agents",
         user.createAuthToken(),
@@ -103,24 +103,24 @@ public class NodeAgentControllerTest extends FakeDBApplication {
   }
 
   private Result getNodeAgent(UUID nodeAgentUuid, String jwt) {
-    return FakeApiHelper.doRequestWithJWT(
+    return doRequestWithJWT(
         "GET", "/api/customers/" + customer.uuid + "/node_agents/" + nodeAgentUuid, jwt);
   }
 
   private Result updateNodeState(UUID nodeAgentUuid, NodeAgentForm formData, String jwt) {
     String uri = "/api/customers/" + customer.uuid + "/node_agents/" + nodeAgentUuid + "/state";
-    return FakeApiHelper.doRequestWithJWTAndBody("PUT", uri, jwt, Json.toJson(formData));
+    return doRequestWithJWTAndBody("PUT", uri, jwt, Json.toJson(formData));
   }
 
   private Result createNode(UUID zoneUuid, NodeInstanceData details, String jwt) {
     String uri = "/api/customers/" + customer.uuid + "/zones/" + zoneUuid + "/nodes";
     NodeInstanceFormData formData = new NodeInstanceFormData();
     formData.nodes = Lists.newArrayList(details);
-    return FakeApiHelper.doRequestWithJWTAndBody("POST", uri, jwt, Json.toJson(formData));
+    return doRequestWithJWTAndBody("POST", uri, jwt, Json.toJson(formData));
   }
 
   private Result unregisterNodeAgent(UUID nodeAgentUuid, String jwt) {
-    return FakeApiHelper.doRequestWithJWT(
+    return doRequestWithJWT(
         "DELETE", "/api/customers/" + customer.uuid + "/node_agents/" + nodeAgentUuid, jwt);
   }
 

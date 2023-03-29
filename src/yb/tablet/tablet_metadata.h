@@ -149,6 +149,7 @@ struct TableInfo {
 
   const Schema& schema() const;
 
+  Result<SchemaVersion> GetSchemaPackingVersion(const Schema& schema) const;
 
   const std::string& LogPrefix() const {
     return log_prefix;

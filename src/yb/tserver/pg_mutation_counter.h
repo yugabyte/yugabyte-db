@@ -21,20 +21,20 @@
 
 #include "yb/gutil/thread_annotations.h"
 
-#include "yb/util/locks.h"
-
 namespace yb {
 namespace tserver {
 
+using TableMutationCounts = std::unordered_map<TableId, std::atomic<uint64_t>>;
+
 class PgMutationCounter {
  public:
-    void Increase(const TableId& table_id, uint64 mutation_count) EXCLUDES(mutex_);
-    std::unordered_map<TableId, std::atomic_uint64_t> GetAndClear() EXCLUDES(mutex_);
+  void Increase(const TableId& table_id, uint64_t mutation_count) EXCLUDES(mutex_);
+  TableMutationCounts GetAndClear() EXCLUDES(mutex_);
  private:
-    std::shared_mutex mutex_;
-    // Table id is not stored as oid as that will require conversion in each table of each
-    // transaction.
-    std::unordered_map<TableId, std::atomic_uint64_t> table_mutation_counts_ GUARDED_BY(mutex_);
+  std::shared_mutex mutex_;
+  // Table id is not stored as oid as that will require conversion in each table of each
+  // transaction.
+  TableMutationCounts table_mutation_counts_ GUARDED_BY(mutex_);
 };
 
 }  // namespace tserver

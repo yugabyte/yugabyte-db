@@ -20,7 +20,7 @@ import javax.inject.Singleton;
 
 @Singleton
 public class EncryptionAtRestUniverseKeyCache {
-  private class EncryptionAtRestUniverseKeyCacheEntry {
+  private static class EncryptionAtRestUniverseKeyCacheEntry {
     private String keyRef;
     private String keyVal;
 

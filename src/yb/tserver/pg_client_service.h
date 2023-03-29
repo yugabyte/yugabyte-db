@@ -79,7 +79,7 @@ class PgClientServiceImpl : public PgClientServiceIf {
       const scoped_refptr<MetricEntity>& entity,
       rpc::Scheduler* scheduler,
       const XClusterSafeTimeMap* xcluster_safe_time_map = nullptr,
-      std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter = nullptr);
+      PgMutationCounter* pg_node_level_mutation_counter = nullptr);
 
   ~PgClientServiceImpl();
 
@@ -87,6 +87,8 @@ class PgClientServiceImpl : public PgClientServiceIf {
       const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) override;
 
   void InvalidateTableCache();
+
+  size_t TEST_SessionsCount();
 
 #define YB_PG_CLIENT_METHOD_DECLARE(r, data, method) \
   void method( \

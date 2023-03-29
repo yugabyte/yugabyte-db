@@ -63,7 +63,7 @@ Result<DocHybridTime> GetTableTombstoneTime(
 
 // This version of GetSubDocument creates a new iterator every time. This is not recommended for
 // multiple calls to subdocs that are sequential or near each other, in e.g. doc_rowwise_iterator.
-Result<boost::optional<SubDocument>> TEST_GetSubDocument(
+Result<std::optional<SubDocument>> TEST_GetSubDocument(
     const Slice& sub_doc_key,
     const DocDB& doc_db,
     const rocksdb::QueryId query_id,
@@ -125,7 +125,7 @@ class DocDBTableReader {
   const SchemaPackingStorage& schema_packing_storage_;
 
   std::vector<KeyBytes> encoded_projection_;
-  DocHybridTime table_tombstone_time_ = DocHybridTime::kMin;
+  EncodedDocHybridTime table_tombstone_time_{EncodedDocHybridTime::kMin};
   Expiration table_expiration_;
 };
 

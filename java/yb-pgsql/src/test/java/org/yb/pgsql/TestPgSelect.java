@@ -346,15 +346,19 @@ public class TestPgSelect extends BasePgSQLTest {
     try (Statement statement = connection.createStatement()) {
       createSimpleTable("aggtest");
 
-      // Pushdown COUNT/MAX/MIN/SUM for INTEGER/FLOAT.
+      // Pushdown COUNT/MAX/MIN/SUM/AVG for INTEGER.
       verifyStatementPushdownMetric(
-          statement, "SELECT COUNT(vi), MAX(vi), MIN(vi), SUM(vi) FROM aggtest", true);
+          statement, "SELECT COUNT(vi), MAX(vi), MIN(vi), SUM(vi), AVG(vi) FROM aggtest", true);
+      // Pushdown COUNT/MAX/MIN/SUM for FLOAT.
       verifyStatementPushdownMetric(
           statement, "SELECT COUNT(r), MAX(r), MIN(r), SUM(r) FROM aggtest", true);
-
-      // Don't pushdown if non-supported aggregate is provided (e.g. AVG, at least for now).
+      // Don't pushdown AVG for FLOAT.
       verifyStatementPushdownMetric(
-          statement, "SELECT COUNT(vi), AVG(vi) FROM aggtest", false);
+          statement, "SELECT AVG(r) FROM aggtest", false);
+
+      // Don't pushdown if non-supported aggregate is provided (e.g. BIT_AND, at least for now).
+      verifyStatementPushdownMetric(
+          statement, "SELECT COUNT(vi), BIT_AND(vi) FROM aggtest", false);
 
       // Pushdown COUNT(*).
       verifyStatementPushdownMetric(
@@ -377,6 +381,10 @@ public class TestPgSelect extends BasePgSQLTest {
       // Don't pushdown for BIGINT SUM.
       verifyStatementPushdownMetric(
           statement, "SELECT SUM(h) FROM aggtest", false);
+
+      // Don't pushdown for BIGINT AVG.
+      verifyStatementPushdownMetric(
+          statement, "SELECT AVG(h) FROM aggtest", false);
 
       // Pushdown COUNT/MIN/MAX for text.
       verifyStatementPushdownMetric(
@@ -405,9 +413,9 @@ public class TestPgSelect extends BasePgSQLTest {
       verifyStatementPushdownMetric(
           statement, "SELECT COUNT(n), COUNT(d) FROM aggtest2", true);
 
-      // Don't pushdown SUM/MAX/MIN for NUMERIC/DECIMAL types.
+      // Don't pushdown SUM/MAX/MIN/AVG for NUMERIC/DECIMAL types.
       for (String col : Arrays.asList("n", "d")) {
-        for (String agg : Arrays.asList("SUM", "MAX", "MIN")) {
+        for (String agg : Arrays.asList("SUM", "MAX", "MIN", "AVG")) {
           verifyStatementPushdownMetric(
               statement, "SELECT " + agg + "(" + col + ") FROM aggtest2", false);
         }

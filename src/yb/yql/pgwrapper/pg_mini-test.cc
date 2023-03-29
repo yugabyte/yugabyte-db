@@ -38,6 +38,10 @@
 
 #include "yb/server/skewed_clock.h"
 
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/pg_client_service.h"
+#include "yb/tserver/tablet_server.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
@@ -103,6 +107,8 @@ DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 
 DECLARE_bool(rocksdb_disable_compactions);
+DECLARE_uint64(pg_client_session_expiration_ms);
+DECLARE_uint64(pg_client_heartbeat_interval_ms);
 
 namespace yb {
 namespace pgwrapper {
@@ -243,6 +249,36 @@ class PgMiniMasterFailoverTest : public PgMiniTest {
     return 3;
   }
 };
+
+class PgMiniPgClientServiceCleanupTest : public PgMiniTest {
+ public:
+  void SetUp() override {
+    FLAGS_pg_client_session_expiration_ms = 5000;
+    FLAGS_pg_client_heartbeat_interval_ms = 2000;
+    PgMiniTestBase::SetUp();
+  }
+
+  size_t NumTabletServers() override {
+    return 1;
+  }
+};
+
+TEST_F_EX(PgMiniTest, VerifyPgClientServiceCleanupQueue, PgMiniPgClientServiceCleanupTest) {
+  constexpr size_t kTotalConnections = 30;
+  std::vector<PGConn> connections;
+  connections.reserve(kTotalConnections);
+  for (size_t i = 0; i < kTotalConnections; ++i) {
+    connections.push_back(ASSERT_RESULT(Connect()));
+  }
+  auto* client_service =
+      cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientService();
+  ASSERT_EQ(connections.size(), client_service->TEST_SessionsCount());
+
+  connections.erase(connections.begin() + connections.size() / 2, connections.end());
+  ASSERT_OK(WaitFor([client_service, expected_count = connections.size()]() {
+    return client_service->TEST_SessionsCount() == expected_count;
+  }, 4 * FLAGS_pg_client_session_expiration_ms * 1ms, "client session cleanup", 1s));
+}
 
 // Try to change this to test follower reads.
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(FollowerReads)) {
@@ -2027,20 +2063,26 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SmallRead), PgMiniBigPrefetchTest)
   Run(kRows, kBlockSize, kReads);
 }
 
-TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Scan), PgMiniBigPrefetchTest) {
-  constexpr int kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
-  constexpr int kBlockSize = 1000;
-  constexpr int kReads = 3;
+namespace {
 
-  Run(kRows, kBlockSize, kReads, /* compact= */ false, /*select*/ true);
+constexpr int kScanRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
+constexpr int kScanBlockSize = 1000;
+constexpr int kScanReads = 3;
+
+}
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Scan), PgMiniBigPrefetchTest) {
+  FLAGS_ysql_enable_packed_row = false;
+  Run(kScanRows, kScanBlockSize, kScanReads, /* compact= */ false, /* select= */ true);
+}
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ScanWithPackedRow), PgMiniBigPrefetchTest) {
+  FLAGS_ysql_enable_packed_row = true;
+  Run(kScanRows, kScanBlockSize, kScanReads, /* compact= */ false, /* select= */ true);
 }
 
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ScanWithCompaction), PgMiniBigPrefetchTest) {
-  constexpr int kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
-  constexpr int kBlockSize = 1000;
-  constexpr int kReads = 3;
-
-  Run(kRows, kBlockSize, kReads, /* compact= */ true, /*select*/ true);
+  Run(kScanRows, kScanBlockSize, kScanReads, /* compact= */ true, /* select= */ true);
 }
 
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigValue), PgMiniSingleTServerTest) {

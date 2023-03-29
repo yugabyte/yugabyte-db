@@ -69,6 +69,8 @@ public class YBTable {
   private final String tableId;
   private final TableType tableType;
 
+  private final boolean colocated;
+
   private static final String OBSERVER = "OBSERVER";
   private static final String PRE_OBSERVER = "PRE_OBSERVER";
 
@@ -79,7 +81,8 @@ public class YBTable {
    * @param schema this table's schema
    */
   YBTable(AsyncYBClient client, String name, String tableId, Schema schema,
-          PartitionSchema partitionSchema, TableType tableType, String keyspace) {
+          PartitionSchema partitionSchema, TableType tableType, String keyspace,
+          boolean colocated) {
     this.schema = schema;
     this.partitionSchema = partitionSchema;
     this.client = client;
@@ -87,12 +90,13 @@ public class YBTable {
     this.tableId = tableId;
     this.tableType = tableType;
     this.keyspace = keyspace;
+    this.colocated = colocated;
   }
 
   YBTable(AsyncYBClient client, String name, String tableId,
-          Schema schema, PartitionSchema partitionSchema) {
+          Schema schema, PartitionSchema partitionSchema, boolean colocated) {
     this(client, name, tableId, schema, partitionSchema, TableType.YQL_TABLE_TYPE,
-         null);
+         null, colocated);
   }
 
   /**
@@ -129,6 +133,14 @@ public class YBTable {
    */
   public String getName() {
     return this.name;
+  }
+
+  /**
+   * Get whether the table is colocated.
+   * @return true if table is colocated, false otherwise.
+   */
+  public boolean isColocated() {
+    return this.colocated;
   }
 
   /**

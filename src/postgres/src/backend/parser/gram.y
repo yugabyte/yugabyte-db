@@ -4850,7 +4850,7 @@ DropTableSpaceStmt: DROP TABLESPACE name
 /*****************************************************************************
  *
  *		QUERY:
- *             CREATE PROFILE name LIMIT FAILED_LOGIN_ATTEMPTS <number>
+ *				CREATE PROFILE name LIMIT FAILED_LOGIN_ATTEMPTS <number>
  *
  *****************************************************************************/
 
@@ -4876,7 +4876,7 @@ YbCreateProfileStmt: CREATE PROFILE name LIMIT FAILED_LOGIN_ATTEMPTS Iconst
 /*****************************************************************************
  *
  *		QUERY:
- *             DROP PROFILE [IF EXISTS] name
+ *				DROP PROFILE [IF EXISTS] name
  *
  *****************************************************************************/
 

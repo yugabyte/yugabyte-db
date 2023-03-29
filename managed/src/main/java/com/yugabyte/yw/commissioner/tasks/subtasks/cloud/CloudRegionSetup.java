@@ -20,9 +20,9 @@ import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import java.util.ArrayList;
@@ -31,16 +31,19 @@ import java.util.Map;
 import java.util.Optional;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import play.api.Play;
-import play.libs.Json;
 import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 
 @Slf4j
 public class CloudRegionSetup extends CloudTaskBase {
 
+  private final CloudQueryHelper queryHelper;
+
   @Inject
-  protected CloudRegionSetup(BaseTaskDependencies baseTaskDependencies) {
+  protected CloudRegionSetup(
+      BaseTaskDependencies baseTaskDependencies, CloudQueryHelper queryHelper) {
     super(baseTaskDependencies);
+    this.queryHelper = queryHelper;
   }
 
   public static class Params extends CloudTaskParams {
@@ -56,7 +59,6 @@ public class CloudRegionSetup extends CloudTaskBase {
 
   @Override
   public void run() {
-    CloudQueryHelper queryHelper = Play.current().injector().instanceOf(CloudQueryHelper.class);
     String regionCode = taskParams().regionCode;
     Provider provider = getProvider();
     if (Region.getByCode(getProvider(), regionCode) != null) {

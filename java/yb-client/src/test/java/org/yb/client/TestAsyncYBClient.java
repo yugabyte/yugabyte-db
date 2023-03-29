@@ -108,7 +108,7 @@ public class TestAsyncYBClient extends BaseYBClientTest {
     // Test that a tablet full of unreachable replicas won't make us retry.
     try {
       YBTable badTable = new YBTable(client, "Invalid table name",
-          "Invalid table ID", null, null);
+          "Invalid table ID", null, null, false);
       client.discoverTablets(badTable, builder.build());
       fail("This should have failed quickly");
     } catch (Exception ex) {

@@ -5,13 +5,11 @@ package com.yugabyte.yw.models;
 import static com.yugabyte.yw.models.Backup.BackupState.Failed;
 import static com.yugabyte.yw.models.Backup.BackupState.InProgress;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -26,10 +24,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
@@ -241,37 +235,6 @@ public class BackupTest extends FakeDBApplication {
     b.save();
     b.refresh();
     assertEquals(taskUUID, b.taskUUID);
-  }
-
-  @Test
-  public void testSetTaskUUID() throws InterruptedException {
-    Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    Backup b =
-        ModelFactory.createBackup(defaultCustomer.uuid, u.universeUUID, s3StorageConfig.configUUID);
-    UUID taskUUID1 = UUID.randomUUID();
-    UUID taskUUID2 = UUID.randomUUID();
-    ExecutorService service = Executors.newFixedThreadPool(2);
-    AtomicBoolean success1 = new AtomicBoolean();
-    AtomicBoolean success2 = new AtomicBoolean();
-    service.submit(
-        () -> {
-          success1.set(b.setTaskUUID(taskUUID1));
-          b.save();
-        });
-    service.submit(
-        () -> {
-          success2.set(b.setTaskUUID(taskUUID2));
-          b.save();
-        });
-    service.awaitTermination(3, TimeUnit.SECONDS);
-    b.refresh();
-    if (success1.get() && !success2.get()) {
-      assertEquals(taskUUID2, b.taskUUID);
-    } else {
-      assertFalse(success1.get());
-      assertTrue(success2.get());
-      assertEquals(taskUUID2, b.taskUUID);
-    }
   }
 
   @Test

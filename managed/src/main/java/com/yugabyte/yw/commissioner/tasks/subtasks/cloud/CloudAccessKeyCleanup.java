@@ -16,12 +16,16 @@ import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.models.Region;
 import javax.inject.Inject;
-import play.api.Play;
 
 public class CloudAccessKeyCleanup extends CloudTaskBase {
+
+  private final AccessManager accessManager;
+
   @Inject
-  protected CloudAccessKeyCleanup(BaseTaskDependencies baseTaskDependencies) {
+  protected CloudAccessKeyCleanup(
+      BaseTaskDependencies baseTaskDependencies, AccessManager accessManager) {
     super(baseTaskDependencies);
+    this.accessManager = accessManager;
   }
 
   public static class Params extends CloudTaskParams {
@@ -42,7 +46,6 @@ public class CloudAccessKeyCleanup extends CloudTaskBase {
       throw new RuntimeException("Region " + regionCode + " not setup.");
     }
 
-    AccessManager accessManager = Play.current().injector().instanceOf(AccessManager.class);
     accessManager.deleteKey(region.uuid, accessKeyCode);
   }
 }

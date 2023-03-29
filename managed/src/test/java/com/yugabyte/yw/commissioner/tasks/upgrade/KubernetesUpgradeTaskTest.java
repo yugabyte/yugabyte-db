@@ -126,10 +126,6 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
           .thenReturn(
               new PromoteAutoFlagsResponse(
                   0, "uuid", PromoteAutoFlagsResponsePB.getDefaultInstance()));
-
-      ObjectNode objectNode = Json.newObject();
-      objectNode.put("version_number", "new-version");
-      lenient().when(mockApiHelper.getRequest(anyString())).thenReturn(objectNode);
       String masterLeaderName = "yb-master-0.yb-masters.demo-universe.svc.cluster.local";
       if (placementInfo.cloudList.get(0).regionList.get(0).azList.size() > 1) {
         masterLeaderName = "yb-master-0.yb-masters.demo-universe-az-2.svc.cluster.local";

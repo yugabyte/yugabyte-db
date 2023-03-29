@@ -349,7 +349,7 @@ struct PerformData {
   rpc::RpcContext context;
   PgClientSessionOperations ops;
   client::YBTransactionPtr transaction;
-  std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter;
+  PgMutationCounter* pg_node_level_mutation_counter;
   SubTransactionId subtxn_id;
   PgTableCache* table_cache;
   PgClientSession::UsedReadTimePtr used_read_time;
@@ -383,10 +383,9 @@ struct PerformData {
         return status.CloneAndAddErrorCode(OpIndex(idx));
       }
       // In case of write operation, increase mutation counter
-      if (op->type() == client::YBOperation::Type::PGSQL_WRITE &&
-          GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
+      if (!op->read_only() && GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
           pg_node_level_mutation_counter) {
-        const TableId& table_id = down_cast<const client::YBPgsqlWriteOp&>(*op).table()->id();
+        const auto& table_id = down_cast<const client::YBPgsqlWriteOp&>(*op).table()->id();
 
         VLOG(4) << SessionLogPrefix(session_id) << "Increasing "
                 << (transaction ? "transaction's mutation counters"
@@ -397,7 +396,7 @@ struct PerformData {
         // level aggregate. Otherwise increase the transaction level aggregate.
         if (!transaction) {
           pg_node_level_mutation_counter->Increase(table_id, 1);
-        } else if (transaction) {
+        } else {
           transaction->IncreaseMutationCounts(subtxn_id, table_id, 1);
         }
       }
@@ -454,8 +453,8 @@ PgClientSession::PgClientSession(
     uint64_t id, client::YBClient* client, const scoped_refptr<ClockBase>& clock,
     std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
     PgTableCache* table_cache, const XClusterSafeTimeMap* xcluster_safe_time_map,
-    std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter,
-    PgResponseCache* response_cache, PgSequenceCache* sequence_cache)
+    PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
+    PgSequenceCache* sequence_cache)
     : id_(id),
       client_(*client),
       clock_(clock),
@@ -777,10 +776,10 @@ Status PgClientSession::FinishTransaction(
     } else if (GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
                pg_node_level_mutation_counter_) {
       // Gather # of mutated rows for each table (count only the committed sub-transactions).
-      const auto& table_mutations = txn_value->GetTableMutationCounts();
+      auto table_mutations = txn_value->GetTableMutationCounts();
       VLOG_WITH_PREFIX(4) << "Incrementing global mutation count using table to mutations map: "
                           << AsString(table_mutations) << " for txn: " << txn_value->id();
-      for(auto& [table_id, mutation_count] : table_mutations) {
+      for(const auto& [table_id, mutation_count] : table_mutations) {
         pg_node_level_mutation_counter_->Increase(table_id, mutation_count);
       }
     }
@@ -816,7 +815,7 @@ Status PgClientSession::Perform(
   VLOG_WITH_PREFIX(5) << "using in_txn_limit_ht: " << in_txn_limit;
   auto session_info = VERIFY_RESULT(SetupSession(*req, context->GetClientDeadline(), in_txn_limit));
   auto* session = session_info.first.session.get();
-  auto transaction = session_info.first.transaction;
+  auto& transaction = session_info.first.transaction;
 
   if (options.trace_requested()) {
     context->EnsureTraceCreated();
@@ -831,13 +830,12 @@ Status PgClientSession::Perform(
   ADOPT_TRACE(context->trace());
 
   auto ops = VERIFY_RESULT(PrepareOperations(req, session, &context->sidecars(), &table_cache_));
-  auto ops_count = ops.size();
-  auto data = std::make_shared<PerformData>(PerformData {
+  auto shared_data = std::make_shared<PerformData>(PerformData {
     .session_id = id_,
     .resp = resp,
     .context = std::move(*context),
     .ops = std::move(ops),
-    .transaction = transaction,
+    .transaction = std::move(transaction),
     .pg_node_level_mutation_counter = pg_node_level_mutation_counter_,
     .subtxn_id = options.active_sub_transaction_id(),
     .table_cache = &table_cache_,
@@ -846,11 +844,12 @@ Status PgClientSession::Perform(
     .used_in_txn_limit = in_txn_limit
   });
 
-  session->FlushAsync([this, data, transaction, ops_count](client::FlushStatus* flush_status) {
+  session->FlushAsync([this, data = std::move(shared_data)](client::FlushStatus* flush_status) {
     data->FlushDone(flush_status);
-    if (transaction) {
+    const auto ops_count = data->ops.size();
+    if (data->transaction) {
       VLOG_WITH_PREFIX(2) << "FlushAsync of " << ops_count << " ops completed with transaction id "
-                          << transaction->id();
+                          << data->transaction->id();
     } else {
       VLOG_WITH_PREFIX(2) << "FlushAsync of " << ops_count << " ops completed for non-distributed "
                           << "transaction";

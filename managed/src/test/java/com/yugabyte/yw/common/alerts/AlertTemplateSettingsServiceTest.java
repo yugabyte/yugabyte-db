@@ -134,10 +134,10 @@ public class AlertTemplateSettingsServiceTest extends FakeDBApplication {
   public void testValidation() {
     testValidation(
         settings -> settings.setCustomerUUID(null),
-        "errorJson: {\"customerUUID\":[\"may not be null\"]}");
+        "errorJson: {\"customerUUID\":[\"must not be null\"]}");
 
     testValidation(
-        settings -> settings.setTemplate(null), "errorJson: {\"template\":[\"may not be null\"]}");
+        settings -> settings.setTemplate(null), "errorJson: {\"template\":[\"must not be null\"]}");
 
     testValidation(
         settings -> settings.setTemplate(StringUtils.repeat("a", 1001)),

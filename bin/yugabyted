@@ -2346,7 +2346,7 @@ class ControlScript(object):
         placement_constraint_list = placement_constraint.split(',')
         placement_locations_list = placement_locations.values()
         for constraint in placement_constraint_list:
-            if constraint.lower() in placement_locations_list:
+            if constraint in placement_locations_list:
                 is_valid = True
             else:
                 is_valid = False
@@ -2610,15 +2610,16 @@ class ControlScript(object):
                                 "process is not responding."
 
             enabled_security_features = []
+            if self.configs.temp_data.get("yugabyted_cmd") == "status":
+                encryption_enabled = self.is_encryption_at_rest_enabled()
+                if encryption_enabled is None:
+                    Output.log("Error checking status of " +
+                        "encryption-at-rest.")
+                elif encryption_enabled:
+                        enabled_security_features.append("Encryption-at-rest")
+
             is_secure = self.configs.saved_data.get("secure")
             if is_secure:
-                if self.configs.temp_data.get("yugabyted_cmd") == "status":
-                    encryption_enabled = self.is_encryption_at_rest_enabled()
-                    if encryption_enabled is None:
-                        Output.log("Error checking status of " +
-                            "encryption-at-rest.")
-                    if encryption_enabled:
-                        enabled_security_features.append("Encryption-at-rest")
                 if self.is_leader_master_secure(master_web_addrs):
                     enabled_security_features.append("Encryption-in-transit")
                 if self.configs.saved_data.get("ysql_enable_auth") and \
@@ -3159,10 +3160,9 @@ class ControlScript(object):
                     self.configs.temp_data["fault_tolerance"] = args.fault_tolerance.lower()
                 else:
                     has_errors = True
-                    Output.print_out(
+                    Output.print_out(Output.make_red("ERROR") + ": " +
                         "Incorrect fault_tolerance value specified. " +
-                        "Please specify one of the following - zone, region or cloud ".format(
-                            args.fault_tolerance.lower()))
+                        "Please specify one of the following - zone, region or cloud ")
 
             if args.constraint_value is not None:
                 data_constraints = args.constraint_value.split(",")
@@ -3247,10 +3247,9 @@ class ControlScript(object):
                     self.configs.saved_data["fault_tolerance"] = args.fault_tolerance.lower()
                 else:
                     has_errors = True
-                    Output.print_out(
+                    Output.print_out(Output.make_red("ERROR") + ": " +
                         "Incorrect fault_tolerance value specified. " +
-                        "Please specify one of the following - zone, region or cloud ".format(
-                            args.fault_tolerance.lower()))
+                        "Please specify one of the following - zone, region or cloud ")
 
             if args.listen is not None:
                 if args.advertise_address is not None and args.listen != args.advertise_address:

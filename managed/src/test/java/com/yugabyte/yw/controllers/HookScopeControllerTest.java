@@ -25,7 +25,6 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
@@ -110,7 +109,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
     List<Http.MultipartFormData.Part<Source<ByteString, ?>>> bodyData =
         getCreateHookMultiPartData(name, executionLang, hookText, useSudo);
     String uri = "/api/customers/" + defaultCustomer.uuid + "/hooks";
-    return FakeApiHelper.doRequestWithAuthTokenAndMultipartData(
+    return doRequestWithAuthTokenAndMultipartData(
         "POST", uri, superAdminUser.createAuthToken(), bodyData, mat);
   }
 
@@ -126,8 +125,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
     if (providerUUID != null) bodyJson.put("providerUUID", providerUUID.toString());
     if (universeUUID != null) bodyJson.put("universeUUID", universeUUID.toString());
     if (clusterUUID != null) bodyJson.put("clusterUUID", clusterUUID.toString());
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
-        "POST", baseRoute, user.createAuthToken(), bodyJson);
+    return doRequestWithAuthTokenAndBody("POST", baseRoute, user.createAuthToken(), bodyJson);
   }
 
   @Test
@@ -281,8 +279,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
   public void testListHookScopes() {
     createHookScope(TriggerType.PreNodeProvision, null, null, superAdminUser);
     createHookScope(TriggerType.PreNodeProvision, defaultProvider.uuid, null, superAdminUser);
-    Result result =
-        FakeApiHelper.doRequestWithAuthToken("GET", baseRoute, superAdminUser.createAuthToken());
+    Result result = doRequestWithAuthToken("GET", baseRoute, superAdminUser.createAuthToken());
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertTrue(json.size() == 2);
@@ -294,9 +291,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
     createHookScope(TriggerType.PreNodeProvision, defaultProvider.uuid, null, superAdminUser);
     Result result =
         assertPlatformException(
-            () ->
-                FakeApiHelper.doRequestWithAuthToken(
-                    "GET", baseRoute, defaultUser.createAuthToken()));
+            () -> doRequestWithAuthToken("GET", baseRoute, defaultUser.createAuthToken()));
     assertUnauthorized(result, "Only Super Admins can perform this operation.");
   }
 
@@ -307,8 +302,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
     String uuid = json.get("uuid").asText();
     String uri = baseRoute + "/" + uuid;
 
-    Result deleteResult =
-        FakeApiHelper.doRequestWithAuthToken("DELETE", uri, superAdminUser.createAuthToken());
+    Result deleteResult = doRequestWithAuthToken("DELETE", uri, superAdminUser.createAuthToken());
     assertOk(deleteResult);
     assertAuditEntry(2, defaultCustomer.uuid);
   }
@@ -322,8 +316,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
 
     Result deleteResult =
         assertPlatformException(
-            () ->
-                FakeApiHelper.doRequestWithAuthToken("DELETE", uri, defaultUser.createAuthToken()));
+            () -> doRequestWithAuthToken("DELETE", uri, defaultUser.createAuthToken()));
     assertUnauthorized(deleteResult, "Only Super Admins can perform this operation.");
     assertAuditEntry(1, defaultCustomer.uuid);
   }
@@ -344,11 +337,11 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
     // Attaching the hook with non super admin should fail
     result =
         assertPlatformException(
-            () -> FakeApiHelper.doRequestWithAuthToken("POST", uri, defaultUser.createAuthToken()));
+            () -> doRequestWithAuthToken("POST", uri, defaultUser.createAuthToken()));
     assertUnauthorized(result, "Only Super Admins can perform this operation.");
 
     // Attach the hook to the hook scope
-    result = FakeApiHelper.doRequestWithAuthToken("POST", uri, superAdminUser.createAuthToken());
+    result = doRequestWithAuthToken("POST", uri, superAdminUser.createAuthToken());
     json = Json.parse(contentAsString((result)));
     json = json.get("hooks");
     String returnedHookUUID = json.get(0).get("uuid").asText();
@@ -359,12 +352,11 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
     // Detaching the hook with non super admin should fail
     result =
         assertPlatformException(
-            () ->
-                FakeApiHelper.doRequestWithAuthToken("DELETE", uri, defaultUser.createAuthToken()));
+            () -> doRequestWithAuthToken("DELETE", uri, defaultUser.createAuthToken()));
     assertUnauthorized(result, "Only Super Admins can perform this operation.");
 
     // Detach the hook from the hook scope
-    result = FakeApiHelper.doRequestWithAuthToken("DELETE", uri, superAdminUser.createAuthToken());
+    result = doRequestWithAuthToken("DELETE", uri, superAdminUser.createAuthToken());
     json = Json.parse(contentAsString((result)));
     json = json.get("hooks");
     assertTrue(json.size() == 0); // hook was removed
@@ -373,9 +365,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
     // Detaching the hook again should fail
     result =
         assertPlatformException(
-            () ->
-                FakeApiHelper.doRequestWithAuthToken(
-                    "DELETE", uri, superAdminUser.createAuthToken()));
+            () -> doRequestWithAuthToken("DELETE", uri, superAdminUser.createAuthToken()));
     assertBadRequest(
         result, "Hook " + hookUUID + " is not attached to hook scope " + hookScopeUUID);
     assertAuditEntry(4, defaultCustomer.uuid);

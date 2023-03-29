@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.time.Duration;
 import java.util.Random;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -30,7 +31,9 @@ public class WaitForYbcServer extends UniverseTaskBase {
 
   @Inject YbcClientService ybcService;
 
-  private int MAX_NUM_RETRIES = 10;
+  private int MAX_NUM_RETRIES = 20;
+  private static final long INITIAL_SLEEP_TIME_IN_MS = 1000L;
+  private static final long INCREMENTAL_SLEEP_TIME_IN_MS = 2000L;
 
   @Inject
   protected WaitForYbcServer(BaseTaskDependencies baseTaskDependencies) {
@@ -87,8 +90,12 @@ public class WaitForYbcServer extends UniverseTaskBase {
             break;
           } else if (pingResp == null) {
             numTries++;
-            log.info("Node IP: {} Ping not complete. Sleeping for 30s", nodeIp);
-            Thread.sleep(30000L);
+            long waitTimeInMillis =
+                INITIAL_SLEEP_TIME_IN_MS + INCREMENTAL_SLEEP_TIME_IN_MS * (numTries - 1);
+            log.info(
+                "Node IP: {} Ping not complete. Sleeping for {} millis", nodeIp, waitTimeInMillis);
+            Duration duration = Duration.ofMillis(waitTimeInMillis);
+            waitFor(duration);
             if (numTries <= MAX_NUM_RETRIES) {
               log.info("Node IP: {} Ping not complete. Continuing", nodeIp);
               continue;
@@ -108,7 +115,6 @@ public class WaitForYbcServer extends UniverseTaskBase {
             break;
           }
         } while (true);
-
       } catch (Exception e) {
         log.error("{} hit error : {}", getName(), e.getMessage());
         throw new RuntimeException(e);

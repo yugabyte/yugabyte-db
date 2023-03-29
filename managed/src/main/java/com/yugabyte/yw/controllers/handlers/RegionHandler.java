@@ -25,8 +25,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import javax.inject.Singleton;
 import play.libs.Json;
 
+@Singleton
 public class RegionHandler {
 
   @Inject NetworkManager networkManager;

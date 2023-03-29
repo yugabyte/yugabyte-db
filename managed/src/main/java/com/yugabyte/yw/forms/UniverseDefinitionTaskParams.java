@@ -525,7 +525,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // setup and will be in-place of privateIP
     @Deprecated @ApiModelProperty() public boolean useHostname = false;
 
-    @ApiModelProperty() public boolean useSystemd = false;
+    @ApiModelProperty() public Boolean useSystemd = false;
 
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match

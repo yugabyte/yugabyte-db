@@ -55,6 +55,13 @@ message ProducerSchemaPB {
   uint32 last_compatible_consumer_schema_version = 4;
 }
 
+message SchemaVersionsPB {
+  uint32 current_producer_schema_version = 1;
+  uint32 current_consumer_schema_version = 2;
+  uint32 old_producer_schema_version = 3;
+  uint32 old_consumer_schema_version = 4;
+}
+
 message StreamEntryPB {
   // Map from consumer to producer tablet id.
   map<string, ProducerTabletListPB> consumer_producer_tablet_map = 1;
@@ -62,6 +69,12 @@ message StreamEntryPB {
   string producer_table_id = 3;
   bool local_tserver_optimized = 4;
   ProducerSchemaPB producer_schema = 5;
+
+  // Producer consumer schema versions
+  SchemaVersionsPB schema_versions = 6;
+
+  // Mapping of colocation_id to producer/consumer schema versions
+  map<uint32, SchemaVersionsPB> colocated_schema_versions = 7;
 }
 
 message ProducerEntryPB {

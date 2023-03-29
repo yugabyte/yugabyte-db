@@ -29,6 +29,7 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/docdb_compaction_context.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_path.h"
@@ -52,9 +53,12 @@
 
 #include "yb/rocksdb/db.h"
 
+#include "yb/tablet/tablet_metrics.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
@@ -250,6 +254,10 @@ Status DocRowwiseIterator::DoInit(const T& doc_spec) {
     if (has_bound_key_) {
       bound_key_ = std::move(lower_doc_key);
     }
+  }
+
+  if (doc_db_.retention_policy) {
+    history_cutoff_ = doc_db_.retention_policy->StatelessRetentionDirective().history_cutoff;
   }
 
   InitScanChoices(
@@ -453,9 +461,12 @@ Result<bool> DocRowwiseIterator::HasNext() {
     if (!doc_found_res.ok()) {
       has_next_status_ = doc_found_res.status();
       return has_next_status_;
-    } else {
-      doc_found = *doc_found_res;
     }
+    doc_found = *doc_found_res;
+    // Use the write_time of the entire row.
+    // May lose some precision by not examining write time of every column.
+    RETURN_NOT_OK(IncrementKeyFoundStats(!doc_found, key_data));
+
     if (scan_choices_ && !is_static_column) {
       has_next_status_ = scan_choices_->DoneWithCurrentTarget();
       RETURN_NOT_OK(has_next_status_);
@@ -466,6 +477,23 @@ Result<bool> DocRowwiseIterator::HasNext() {
   }
   row_ready_ = true;
   return true;
+}
+
+Status DocRowwiseIterator::IncrementKeyFoundStats(
+    const bool obsolete, const Result<FetchKeyResult>& key_data) {
+  if (doc_db_.metrics) {
+    doc_db_.metrics->docdb_keys_found->Increment();
+    if (obsolete) {
+      doc_db_.metrics->docdb_obsolete_keys_found->Increment();
+      auto dht = VERIFY_RESULT(key_data->write_time.Decode());
+      if (dht.hybrid_time() < history_cutoff_) {
+        // If the obsolete key found was written before the history cutoff, then count
+        // record this in addition (since it can be removed via compaction).
+        doc_db_.metrics->docdb_obsolete_keys_found_past_cutoff->Increment();
+      }
+    }
+  }
+  return Status::OK();
 }
 
 string DocRowwiseIterator::ToString() const {
@@ -512,17 +540,12 @@ void DocRowwiseIterator::SkipRow() {
   row_ready_ = false;
 }
 
-HybridTime DocRowwiseIterator::RestartReadHt() {
-  auto max_seen_ht = db_iter_->max_seen_ht();
-  if (max_seen_ht.is_valid() && max_seen_ht > db_iter_->read_time().read) {
-    VLOG(4) << "Restart read: " << max_seen_ht << ", original: " << db_iter_->read_time();
-    return max_seen_ht;
-  }
-  return HybridTime::kInvalid;
+Result<HybridTime> DocRowwiseIterator::RestartReadHt() {
+  return db_iter_->RestartReadHt();
 }
 
 HybridTime DocRowwiseIterator::TEST_MaxSeenHt() {
-  return db_iter_->max_seen_ht();
+  return db_iter_->TEST_MaxSeenHt();
 }
 
 bool DocRowwiseIterator::IsNextStaticColumn() const {

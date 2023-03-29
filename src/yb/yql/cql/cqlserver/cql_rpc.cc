@@ -331,6 +331,7 @@ void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_p
 void CQLInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now();
   auto total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
+  auto trace_ = trace();
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces
           // rpcs with an invalid request may have a null request_
           || (trace_ && request_ && request_->trace_requested())
@@ -353,6 +354,7 @@ std::string CQLInboundCall::ToString() const {
 bool CQLInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
                             rpc::RpcCallInProgressPB* resp) {
 
+  auto trace_ = trace();
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
   }

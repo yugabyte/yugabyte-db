@@ -3976,6 +3976,17 @@ TEST_P(DocDBTestWrapper, DISABLED_DumpDB) {
   LOG(INFO) << "TXN meta: " << txn_meta << ", rev key: " << rev_key << ", intents: " << intent;
 }
 
+void ScanForwardWithMetricCheck(
+    rocksdb::Iterator* iter, const rocksdb::Statistics* regular_db_statistics,
+    const Slice& upperbound, rocksdb::KeyFilterCallback* key_filter_callback,
+    rocksdb::ScanCallback* scan_callback, uint64_t expected_number_of_keys_visited) {
+  auto initial_stats = regular_db_statistics->getTickerCount(rocksdb::NUMBER_DB_NEXT);
+  ASSERT_TRUE(iter->ScanForward(upperbound, key_filter_callback, scan_callback));
+  ASSERT_EQ(
+      expected_number_of_keys_visited,
+      regular_db_statistics->getTickerCount(rocksdb::NUMBER_DB_NEXT) - initial_stats);
+}
+
 TEST_P(DocDBTestWrapper, SetHybridTimeFilter) {
   auto dwb = MakeDocWriteBatch();
   for (int i = 1; i <= 4; ++i) {
@@ -4024,7 +4035,9 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilter) {
       return true;
     };
     if (j == 0) {
-      ASSERT_TRUE(iter->ScanForward(Slice(), /*key_filter_callback=*/ nullptr, &scan_callback));
+      ScanForwardWithMetricCheck(
+          iter.get(), regular_db_options_.statistics.get(), Slice(),
+          /*key_filter_callback=*/nullptr, &scan_callback, 4);
     } else {
       int kf_calls = 0;
       rocksdb::KeyFilterCallback kf_callback = [&kf_calls](
@@ -4033,7 +4046,9 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilter) {
         kf_calls++;
         return rocksdb::KeyFilterCallbackResult{.skip_key = false, .cache_key = false};
       };
-      ASSERT_TRUE(iter->ScanForward(Slice(), &kf_callback, &scan_callback));
+      ScanForwardWithMetricCheck(
+          iter.get(), regular_db_options_.statistics.get(), Slice(), &kf_callback, &scan_callback,
+          4);
       ASSERT_EQ(2, kf_calls);
     }
     ASSERT_EQ(2, scanned_keys);
@@ -4132,14 +4147,17 @@ TEST_P(DocDBTestWrapper, IteratorScanForwardUpperbound) {
         scanned_keys = 0;
 
         auto encoded_doc_key = DocKey(KeyEntryValues(Format("row$0", i), 11111 * i)).Encode();
-        ASSERT_TRUE(
-            iter->ScanForward(encoded_doc_key, /*key_filter_callback=*/ nullptr, &scan_callback));
+        ScanForwardWithMetricCheck(
+            iter.get(), regular_db_options_.statistics.get(), encoded_doc_key,
+            /*key_filter_callback=*/nullptr, &scan_callback, i - 1);
         ASSERT_EQ(i - 1, scanned_keys);
 
         ASSERT_TRUE(iter->Valid());
         ASSERT_EQ(encoded_doc_key.AsSlice(), iter->key().Prefix(encoded_doc_key.size()));
 
-        ASSERT_TRUE(iter->ScanForward(Slice(), /*key_filter_callback=*/ nullptr, &scan_callback));
+        ScanForwardWithMetricCheck(
+            iter.get(), regular_db_options_.statistics.get(), Slice(),
+            /*key_filter_callback=*/nullptr, &scan_callback, kNumKeys - i + 1);
         ASSERT_EQ(kNumKeys, scanned_keys);
 
         ASSERT_FALSE(iter->Valid());

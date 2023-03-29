@@ -24,7 +24,6 @@ import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultAccessor;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase.KMSEngineType;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultTransit;
-import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,7 +35,7 @@ public class HashicorpEARServiceUtil {
   public static final String HC_VAULT_EKE_NAME = "key_yugabyte";
 
   /** Creates Secret Engine object with VaultAccessor. */
-  private static class VaultSecretEngineBuilder {
+  public static class VaultSecretEngineBuilder {
     private static final Logger LOG = LoggerFactory.getLogger(VaultSecretEngineBuilder.class);
 
     private static VaultSecretEngineBase buildSecretEngine(

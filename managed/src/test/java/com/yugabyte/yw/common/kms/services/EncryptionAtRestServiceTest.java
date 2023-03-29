@@ -101,6 +101,12 @@ class TestEncryptionAtRestService extends EncryptionAtRestService<TestAlgorithm>
   public byte[] encryptKeyWithService(UUID configUUID, byte[] universeKey) {
     return null;
   }
+
+  @Override
+  public void refreshKmsWithService(UUID configUUID, ObjectNode authConfig) throws Exception {
+    // Does nothing here
+    throw new UnsupportedOperationException("Unimplemented method 'refreshKmsWithService'");
+  }
 }
 
 @RunWith(MockitoJUnitRunner.class)

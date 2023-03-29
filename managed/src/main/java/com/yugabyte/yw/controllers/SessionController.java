@@ -23,10 +23,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomWsClientFactory;
-import com.yugabyte.yw.common.LdapUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
@@ -67,7 +67,8 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.text.ParseException;
+import java.time.format.DateTimeParseException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -85,7 +86,6 @@ import org.apache.commons.io.input.ReversedLinesFileReader;
 import org.pac4j.play.java.Secure;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.Configuration;
 import play.Environment;
 import play.data.Form;
 import play.libs.Json;
@@ -106,7 +106,7 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private ValidatingFormFactory formFactory;
 
-  @Inject private Configuration appConfig;
+  @Inject private Config appConfig;
 
   @Inject private ConfigHelper configHelper;
 
@@ -208,8 +208,7 @@ public class SessionController extends AbstractPlatformController {
   @ApiOperation(value = "getLogs", response = LogData.class)
   @With(TokenAuthenticator.class)
   public Result getLogs(Integer maxLines) {
-    String appHomeDir = appConfig.getString("application.home", ".");
-    String logDir = appConfig.getString("log.override.path", String.format("%s/logs", appHomeDir));
+    String logDir = appConfig.getString("log.override.path");
     File file = new File(String.format("%s/application.log", logDir));
     // TODO(bogdan): This is not really pagination friendly as it re-reads everything all the time.
     // TODO(bogdan): Need to figure out if there's a rotation-friendly log-reader..
@@ -267,7 +266,7 @@ public class SessionController extends AbstractPlatformController {
     if (startDateStr != null) {
       try {
         SessionHandler.DATE_FORMAT.parse(startDateStr);
-      } catch (ParseException e) {
+      } catch (DateTimeParseException e) {
         LOG.error("Invalid start date: {}", startDateStr);
         throw new PlatformServiceException(BAD_REQUEST, "Invalid start date given");
       }
@@ -275,7 +274,7 @@ public class SessionController extends AbstractPlatformController {
     if (endDateStr != null) {
       try {
         SessionHandler.DATE_FORMAT.parse(endDateStr);
-      } catch (ParseException e) {
+      } catch (DateTimeParseException e) {
         LOG.error("Invalid start date: {}", endDateStr);
         throw new PlatformServiceException(BAD_REQUEST, "Invalid end date given");
       }
@@ -308,16 +307,19 @@ public class SessionController extends AbstractPlatformController {
         .setCookie(
             Http.Cookie.builder(AUTH_TOKEN, authToken)
                 .withSecure(ctx().request().secure())
+                .withHttpOnly(false)
                 .build());
     response()
         .setCookie(
             Http.Cookie.builder("customerId", cust.uuid.toString())
                 .withSecure(ctx().request().secure())
+                .withHttpOnly(false)
                 .build());
     response()
         .setCookie(
             Http.Cookie.builder("userId", user.uuid.toString())
                 .withSecure(ctx().request().secure())
+                .withHttpOnly(false)
                 .build());
     ctx().args.put("isAudited", true);
     Audit.create(
@@ -423,6 +425,7 @@ public class SessionController extends AbstractPlatformController {
           .setCookie(
               Http.Cookie.builder(API_TOKEN, apiToken)
                   .withSecure(ctx().request().secure())
+                  .withHttpOnly(false)
                   .build());
       ctx().args.put("isAudited", true);
       Audit.create(
@@ -496,7 +499,8 @@ public class SessionController extends AbstractPlatformController {
         .setCookie(
             Http.Cookie.builder(API_TOKEN, apiToken)
                 .withSecure(ctx().request().secure())
-                .withMaxAge(FOREVER)
+                .withMaxAge(Duration.ofHours(FOREVER))
+                .withHttpOnly(false)
                 .build());
     auditService()
         .createAuditEntryWithReqBody(
@@ -523,7 +527,7 @@ public class SessionController extends AbstractPlatformController {
   public Result register(Boolean generateApiToken) {
     CustomerRegisterFormData data =
         formFactory.getFormDataOrBadRequest(CustomerRegisterFormData.class).get();
-    boolean multiTenant = appConfig.getBoolean("yb.multiTenant", false);
+    boolean multiTenant = appConfig.getBoolean("yb.multiTenant");
     boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     int customerCount = Customer.getAll().size();
     if (!multiTenant && customerCount >= 1) {
@@ -575,10 +579,12 @@ public class SessionController extends AbstractPlatformController {
         .setCookie(
             Http.Cookie.builder(AUTH_TOKEN, sessionInfo.authToken)
                 .withSecure(ctx().request().secure())
+                .withHttpOnly(false)
                 .build());
     // When there is no authenticated user in context; we just pretend that the user
     // created himself for auditing purpose.
-    ctx().args.putIfAbsent("user", userService.getUserWithFeatures(cust, user));
+    RequestContext.putIfAbsent(
+        TokenAuthenticator.USER, userService.getUserWithFeatures(cust, user));
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -729,7 +735,7 @@ public class SessionController extends AbstractPlatformController {
   }
 
   private Users getCurrentUser() {
-    UserWithFeatures userWithFeatures = (UserWithFeatures) Http.Context.current().args.get("user");
+    UserWithFeatures userWithFeatures = RequestContext.get(TokenAuthenticator.USER);
     return userWithFeatures.getUser();
   }
 }

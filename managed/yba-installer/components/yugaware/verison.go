@@ -41,7 +41,6 @@ func (vj versionJSON) ParseVersion() (version string, err error) {
 // root.
 func InstalledVersionFromMetadata() (string, error) {
 	jsonPath := filepath.Join(common.GetInstallerSoftwareDir(), versionMetadataJSON)
-	fmt.Println(jsonPath)
 	jsonFile, err := os.Open(jsonPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {

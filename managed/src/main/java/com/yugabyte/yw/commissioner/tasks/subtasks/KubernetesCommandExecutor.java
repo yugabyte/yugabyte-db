@@ -610,7 +610,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Yaml yaml = new Yaml();
 
     // TODO: decide if the user wants to expose all the services or just master.
-    overrides = yaml.load(application.resourceAsStream("k8s-expose-all.yml"));
+    overrides = yaml.load(environment.resourceAsStream("k8s-expose-all.yml"));
 
     Provider provider = Provider.get(taskParams().providerUUID);
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
@@ -965,6 +965,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           Collections.singletonMap(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
       GFlagsUtil.mergeCSVs(
           tserverOverrides, DEFAULT_YSQL_HBA_CONF_MAP, GFlagsUtil.YSQL_HBA_CONF_CSV);
+      tserverOverrides.putIfAbsent(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
     }
     if (primaryClusterIntent.enableYCQL && primaryClusterIntent.enableYCQLAuth) {
       tserverOverrides.put("use_cassandra_authentication", "true");

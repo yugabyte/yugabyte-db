@@ -233,11 +233,12 @@ void BlockIter::SeekToRestart(uint32_t index) {
   ParseNextKey();
 }
 
-bool BlockIter::ScanForward(
+ScanForwardResult BlockIter::ScanForward(
     const Comparator* user_key_comparator, const Slice& upperbound,
     KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
   LOG_IF(DFATAL, !Valid()) << "Iterator should be valid.";
 
+  ScanForwardResult result;
   do {
     const auto user_key = ExtractUserKey(key_.GetKey());
     if (!upperbound.empty() && user_key_comparator->Compare(user_key, upperbound) >= 0) {
@@ -253,14 +254,17 @@ bool BlockIter::ScanForward(
 
     if (!skip_key) {
       if (!(*scan_callback)(user_key, value_)) {
-        return false;
+        result.reached_upperbound = false;
+        return result;
       }
     }
 
+    result.number_of_keys_visited++;
     Next();
   } while (Valid());
 
-  return true;
+  result.reached_upperbound = true;
+  return result;
 }
 
 namespace {

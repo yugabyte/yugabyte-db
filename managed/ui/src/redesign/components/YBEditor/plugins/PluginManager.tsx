@@ -6,19 +6,18 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import React, { useState } from 'react';
+import React from 'react';
+import { useMount } from 'react-use';
 
 import { useBasicPlugins } from './BasicPlugins';
 import { IYBEditor } from './custom-types';
-import { useAlertVariablesPlugin } from './CustomVariablesPlugin';
-import { SlateRenderElementProps, SlateRenderLeafProps } from './IPlugin';
+import { useAlertVariablesPlugin } from './AlertVariablesPlugin';
+import {
+  IYBSlatePluginReturnProps,
+  SlateRenderElementProps,
+  SlateRenderLeafProps
+} from './IPlugin';
 import { useSingleLinePlugin } from './SingleLinePlugin';
-
-export enum Plugins_List {
-  'Basic',
-  'AlertVariables',
-  'SingleLine'
-}
 
 export type LoadPlugins = {
   basic?: boolean;
@@ -34,11 +33,18 @@ export function useEditorPlugin(editor: IYBEditor, loadPlugins: LoadPlugins) {
   /**
    * Initialise the plugins
    */
-  const [pluginsList] = useState([
+  let pluginsList: IYBSlatePluginReturnProps[] = [
     useBasicPlugins({ editor, enabled: loadPlugins.basic }),
     useAlertVariablesPlugin({ editor, enabled: loadPlugins.alertVariablesPlugin }),
     useSingleLinePlugin({ editor, enabled: loadPlugins.singleLine })
-  ]);
+  ];
+
+  useMount(() => {
+    pluginsList = pluginsList.filter((p) => p.isEnabled());
+
+    pluginsList.forEach((p) => p?.init?.(editor));
+    editor['pluginsList'] = pluginsList; //store the list of loaded plugin's reference
+  });
 
   /**
    * Loops through all the plugins and find the suitable plugin to render the element
@@ -71,5 +77,9 @@ export function useEditorPlugin(editor: IYBEditor, loadPlugins: LoadPlugins) {
     return pluginsList.some((p) => p.onKeyDown(e));
   }
 
-  return { renderElement, onKeyDown, renderLeaf };
+  function getDefaultComponents() {
+    return pluginsList.map((p) => p.defaultComponents);
+  }
+
+  return { renderElement, onKeyDown, renderLeaf, getDefaultComponents };
 }

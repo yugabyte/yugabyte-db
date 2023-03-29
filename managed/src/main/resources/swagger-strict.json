@@ -2617,7 +2617,7 @@
       "properties" : {
         "components" : {
           "items" : {
-            "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo" ],
+            "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo" ],
             "type" : "string"
           },
           "type" : "array"
@@ -9032,7 +9032,7 @@
         "components" : {
           "description" : "List of components to be included in the support bundle",
           "items" : {
-            "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo" ],
+            "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo" ],
             "type" : "string"
           },
           "type" : "array"
@@ -14519,6 +14519,44 @@
         "tags" : [ "Encryption at rest" ]
       }
     },
+    "/api/v1/customers/{cUUID}/kms_configs/{configUUID}/refresh" : {
+      "put" : {
+        "description" : "",
+        "operationId" : "refreshKMSConfig",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "configUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          },
+          "500" : {
+            "description" : "If there is an error refreshing the KMS config.",
+            "schema" : {
+              "$ref" : "#/definitions/YBPError"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Refresh KMS Config",
+        "tags" : [ "Encryption at rest" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/kms_configs/{kmsProvider}" : {
       "post" : {
         "description" : "",
@@ -16926,7 +16964,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo" ],
+                "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo" ],
                 "type" : "string"
               },
               "type" : "array"

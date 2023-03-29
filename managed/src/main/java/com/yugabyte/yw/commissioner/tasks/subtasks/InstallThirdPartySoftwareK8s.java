@@ -1,12 +1,7 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import java.io.File;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -14,7 +9,11 @@ import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
+import java.io.File;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -27,13 +26,13 @@ public class InstallThirdPartySoftwareK8s extends AbstractTaskBase {
   private final long UPLOAD_XXSUM_PACKAGE_TIMEOUT_SEC = 60;
   private final String PACKAGE_PERMISSIONS = "755";
   private NodeUniverseManager nodeUniverseManager;
-  private play.Configuration appConfig;
+  private Config appConfig;
 
   @Inject
   public InstallThirdPartySoftwareK8s(
       BaseTaskDependencies baseTaskDependencies,
       NodeUniverseManager nodeUniverseManager,
-      play.Configuration appConfig) {
+      Config appConfig) {
     super(baseTaskDependencies);
     this.nodeUniverseManager = nodeUniverseManager;
     this.appConfig = appConfig;

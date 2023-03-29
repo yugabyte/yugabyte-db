@@ -18,6 +18,9 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.SetMultimap;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.AddOnClusterDelete;
@@ -28,6 +31,7 @@ import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -43,6 +47,7 @@ import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.DiskIncreaseFormData;
@@ -87,6 +92,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import javax.inject.Singleton;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -94,6 +100,7 @@ import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Http.Status;
 
+@Singleton
 public class UniverseCRUDHandler {
 
   private static final Logger LOG = LoggerFactory.getLogger(UniverseCRUDHandler.class);
@@ -102,7 +109,7 @@ public class UniverseCRUDHandler {
 
   @Inject EncryptionAtRestManager keyManager;
 
-  @Inject play.Configuration appConfig;
+  @Inject Config appConfig;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
@@ -116,6 +123,8 @@ public class UniverseCRUDHandler {
   @Inject UpgradeUniverseHandler upgradeUniverseHandler;
 
   @Inject YbcManager ybcManager;
+
+  @Inject ReleaseManager releaseManager;
 
   private enum OpType {
     CONFIGURE,
@@ -525,6 +534,62 @@ public class UniverseCRUDHandler {
               StringUtils.isNotBlank(taskParams.ybcSoftwareVersion)
                   ? taskParams.ybcSoftwareVersion
                   : ybcManager.getStableYbcVersion();
+        }
+      }
+
+      if (taskParams.enableYbc) {
+        if (userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+          ReleaseManager.ReleaseMetadata releaseMetadata =
+              releaseManager.getYbcReleaseByVersion(
+                  taskParams.ybcSoftwareVersion,
+                  OsType.LINUX.toString().toLowerCase(),
+                  Architecture.x86_64.name().toLowerCase());
+          if (releaseMetadata == null) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Ybc package metadata for version: %s cannot be empty with ybc enabled",
+                    taskParams.ybcSoftwareVersion));
+          }
+
+          String ybcPackage = releaseMetadata.filePath;
+          if (StringUtils.isBlank(ybcPackage)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Ybc package for version: %s cannot be empty with ybc enabled",
+                    taskParams.ybcSoftwareVersion));
+          }
+        } else {
+          for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
+            ReleaseManager.ReleaseMetadata ybReleaseMetadata =
+                releaseManager.getReleaseByVersion(userIntent.ybSoftwareVersion);
+            AvailabilityZone az = AvailabilityZone.getOrBadRequest(nodeDetails.azUuid);
+            String ybServerPackage = ybReleaseMetadata.getFilePath(az.region);
+            Pair<String, String> ybcPackageDetails =
+                Util.getYbcPackageDetailsFromYbServerPackage(ybServerPackage);
+            ReleaseManager.ReleaseMetadata ybcReleaseMetadata =
+                releaseManager.getYbcReleaseByVersion(
+                    taskParams.ybcSoftwareVersion,
+                    ybcPackageDetails.getFirst(),
+                    ybcPackageDetails.getSecond());
+            if (ybcReleaseMetadata == null) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST,
+                  String.format(
+                      "Ybc package metadata for version: %s cannot be empty with ybc enabled",
+                      taskParams.ybcSoftwareVersion));
+            }
+
+            String ybcPackage = ybcReleaseMetadata.getFilePath(az.region);
+            if (StringUtils.isBlank(ybcPackage)) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST,
+                  String.format(
+                      "Ybc package for version: %s cannot be empty with ybc enabled",
+                      taskParams.ybcSoftwareVersion));
+            }
+          }
         }
       }
 
@@ -1789,7 +1854,7 @@ public class UniverseCRUDHandler {
       Cluster cluster, Set<NodeDetails> existingNodes, Set<NodeDetails> inputNodes) {
     AtomicInteger inputNodesInToBeRemoved = new AtomicInteger();
     Set<String> forbiddenIps =
-        Arrays.stream(appConfig.getString("yb.security.forbidden_ips", "").split("[, ]"))
+        Arrays.stream(appConfig.getString("yb.security.forbidden_ips").split("[, ]"))
             .filter(StringUtils::isNotBlank)
             .collect(Collectors.toSet());
 

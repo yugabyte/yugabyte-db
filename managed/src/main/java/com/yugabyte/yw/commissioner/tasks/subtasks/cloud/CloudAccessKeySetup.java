@@ -21,17 +21,20 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import javax.inject.Inject;
-import play.api.Play;
 
 public class CloudAccessKeySetup extends CloudTaskBase {
 
-  private TemplateManager templateManager;
+  private final TemplateManager templateManager;
+  private final AccessManager accessManager;
 
   @Inject
   protected CloudAccessKeySetup(
-      BaseTaskDependencies baseTaskDependencies, TemplateManager templateManager) {
+      BaseTaskDependencies baseTaskDependencies,
+      TemplateManager templateManager,
+      AccessManager accessManager) {
     super(baseTaskDependencies);
     this.templateManager = templateManager;
+    this.accessManager = accessManager;
   }
 
   public static class Params extends CloudBootstrap.Params {
@@ -51,7 +54,6 @@ public class CloudAccessKeySetup extends CloudTaskBase {
     if (region == null) {
       throw new RuntimeException("Region " + regionCode + " not setup.");
     }
-    AccessManager accessManager = Play.current().injector().instanceOf(AccessManager.class);
     String accessKeyCode =
         Strings.isNullOrEmpty(taskParams().keyPairName)
             ? AccessKey.getDefaultKeyCode(provider)
