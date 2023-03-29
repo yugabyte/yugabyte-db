@@ -24,11 +24,10 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | Unsupported PostgreSQL feature      | Track feature request GitHub issue |
 | ----------- | ----------- |
 | LOCK TABLE to obtain a table-level lock | [5384](https://github.com/yugabyte/yugabyte-db/issues/5384)|
-| Inheritance    | [5956](https://github.com/yugabyte/yugabyte-db/issues/5956)|
+| Table inheritance    | [5956](https://github.com/yugabyte/yugabyte-db/issues/5956)|
 | Exclusion constraints | [3944](https://github.com/yugabyte/yugabyte-db/issues/3944)|
 | Deferrable constraints | [1709](https://github.com/yugabyte/yugabyte-db/issues/1709)|
 | GiST indexes | [1337](https://github.com/yugabyte/yugabyte-db/issues/1337)|
-| Kerberos/GSSAPI | [7854](https://github.com/yugabyte/yugabyte-db/issues/7854)|
 | Events (Listen/Notify) | [1872](https://github.com/yugabyte/yugabyte-db/issues/1872)|
 | Drop primary key constraints |[8735](https://github.com/yugabyte/yugabyte-db/issues/8735)|
 | XML Functions | [1043](https://github.com/yugabyte/yugabyte-db/issues/1043)|
@@ -40,10 +39,10 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | GENERATED ALWAYS AS STORED columns | [10695](https://github.com/yugabyte/yugabyte-db/issues/10695)|
 | Multicolumn GIN indexes| [10652](https://github.com/yugabyte/yugabyte-db/issues/10652)|
 | CREATE ACCESS METHOD | [10693](https://github.com/yugabyte/yugabyte-db/issues/10693)|
-| ASC/DESC/HASH on GIN indexes | [10653](https://github.com/yugabyte/yugabyte-db/issues/10653)|
+| DESC/HASH on GIN indexes (ASC supported) | [10653](https://github.com/yugabyte/yugabyte-db/issues/10653)|
 | CREATE SCHEMA with elements | [10865](https://github.com/yugabyte/yugabyte-db/issues/10865)|
 | Index on citext column | [9698](https://github.com/yugabyte/yugabyte-db/issues/9698)|
 | ABSTIME type | [15637](https://github.com/yugabyte/yugabyte-db/issues/15637)|
-| transaction ids (xid) | [15638](https://github.com/yugabyte/yugabyte-db/issues/15638)|
+| transaction ids (xid) <br/> YugabyteDB uses [Hybrid logical clocks](../../../architecture/transactions/transactions-overview/#hybrid-logical-clocks) instead of transaction ids. | [15638](https://github.com/yugabyte/yugabyte-db/issues/15638)|
 | DDL operations within transaction| [1404](https://github.com/yugabyte/yugabyte-db/issues/1404)|
-| Track ALTER TABLE variants| [1124](https://github.com/yugabyte/yugabyte-db/issues/1124)|
+| Some ALTER TABLE variants| [1124](https://github.com/yugabyte/yugabyte-db/issues/1124)|
