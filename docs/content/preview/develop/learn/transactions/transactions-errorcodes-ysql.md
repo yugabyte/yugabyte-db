@@ -17,7 +17,8 @@ Due to the strong [ACID](../../../../architecture/transactions/transactions-over
 
 The following error codes typically occur during transaction processing.
 
-### 25001: Active SQL transaction
+
+## 25001: Active SQL transaction
 
 This error occurs when certain statements that should be run outside a transaction block, typically because they have non-rollback-able side effects or do internal commits, are executed inside a transaction block. For example, issuing a `BEGIN` statement inside a transaction.
 
@@ -25,7 +26,8 @@ This error occurs when certain statements that should be run outside a transacti
 WARNING:  25001: there is already a transaction in progress
 ```
 
-### 25006: Read only SQL transaction
+
+## 25006: Read only SQL transaction
 
 This error occurs when certain statements are executed in a read only transaction that violate the read only constraint. For example, modifying records inside a read only transaction.
 
@@ -33,7 +35,8 @@ This error occurs when certain statements are executed in a read only transactio
 ERROR:  25006: cannot execute UPDATE in a read-only transaction
 ```
 
-### 25P01: No active SQL Transaction
+
+## 25P01: No active SQL Transaction
 
 This error occurs when certain statements that should be executed in a transaction are executed outside of a transaction. For example, issuing a `ROLLBACK` outside a transaction.
 
@@ -41,7 +44,8 @@ This error occurs when certain statements that should be executed in a transacti
 WARNING:  25P01: there is no transaction in progress
 ```
 
-### 25P02: In failed SQL transaction
+
+## 25P02: In failed SQL transaction
 
 This error occurs when statements have failed inside a transaction and another statement other than `COMMIT` or `ROLLBACK` is executed.
 
@@ -49,7 +53,8 @@ This error occurs when statements have failed inside a transaction and another s
 ERROR:  25P02: current transaction is aborted, commands ignored until end of transaction block
 ```
 
-### 25P03: Idle in transaction session timeout
+
+## 25P03: Idle in transaction session timeout
 
 This occurs when an application stays idle longer than `idle_in_transaction_session_timeout` in the middle of a transaction.
 
@@ -57,7 +62,8 @@ This occurs when an application stays idle longer than `idle_in_transaction_sess
 FATAL:  25P03: terminating connection due to idle-in-transaction timeout
 ```
 
-### 40001: Serialization failure
+
+## 40001: Serialization failure
 
 This error occurs when a transaction cannot be applied or progress further because of other conflicting transactions. For example, when multiple transactions are modifying the same key.
 
@@ -65,7 +71,8 @@ This error occurs when a transaction cannot be applied or progress further becau
 ERROR:  40001: Operation expired: Transaction XXXX expired or aborted by a conflict
 ```
 
-### 2D000: Invalid transaction termination
+
+## 2D000: Invalid transaction termination
 
 This error occurs when a transaction is terminated either by a `COMMIT` or a `ROLLBACK` in an invalid location. For example, when a `COMMIT` is issued inside a stored procedure that is called from inside a transaction.
 
@@ -73,13 +80,15 @@ This error occurs when a transaction is terminated either by a `COMMIT` or a `RO
 ERROR:  2D000: invalid transaction termination
 ```
 
-### 3B001: Invalid savepoint specification
+
+## 3B001: Invalid savepoint specification
 
 This error occurs when you try to `ROLLBACK` to or `RELEASE` a savepoint that has not been defined.
 
 ```output
 ERROR:  3B001: savepoint "FIRST_SAVE" does not exist
 ```
+
 
 ## Learn more
 
