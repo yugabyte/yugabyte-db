@@ -76,7 +76,7 @@ In some scenarios, a server-side retry is not suitable. For example, the retry l
 
 Most transaction errors that happen due to conflicts and deadlocks can be restarted by the client. The following scenarios describe the causes for failures, and the required methods to be handled by the applications.
 
-Execute the transaction in a `try..catch` block in a loop. When a re-tryable failure happens, issue `ROLLBACK` and then retry the transaction. To avoid overloading the server and ending up in an indefinite loop, wait for a period of time between retires and limit the number of retries. The following illustrates a typical client-side retry implementation:
+Execute the transaction in a `try..catch` block in a loop. When a re-tryable failure happens, issue [ROLLBACK](../../../../api/ysql/the-sql-language/statements/txn_rollback) and then retry the transaction. To avoid overloading the server and ending up in an indefinite loop, wait for a period of time between retires and limit the number of retries. The following illustrates a typical client-side retry implementation:
 
 ```python
 max_attempts = 10   # max no.of retries
@@ -119,72 +119,11 @@ SerializationFailure errors happen when multiple transactions are updating the s
     ERROR:  40001: Operation expired: Heartbeat: Transaction XXXX expired or aborted by a conflict
     ```
 
-The correct way to handle this error is with a retry loop with exponential backoff, as described in [Client-side retry](#client-side-retry). For example:
-
-```python
-connstr = 'postgresql://yugabyte@localhost:5433/yugabyte'
-cxn = psycopg2.connect(connstr)
-
-max_attempts = 10   # max no.of retries
-sleep_time = 0.002  # 2 ms - base sleep time
-backoff = 2         # exponential multiplier
-
-attempt = 0
-while attempt < max_attempts:
-    attempt += 1
-    try :
-        cursor = cxn.cursor()
-        cursor.execute("BEGIN ISOLATION LEVEL SERIALIZABLE");
-        cursor.execute("UPDATE txndemo SET v=20 WHERE k=1;");
-        cursor.execute("COMMIT");
-        break
-    except psycopg2.errors.SerializationFailure as e:
-        print(e)
-        cursor.execute("ROLLBACK")
-        if attempt < max_attempts:
-            time.sleep(sleep_time)
-            sleep_time *= backoff
-```
-
-When the `UPDATE` or `COMMIT` fails because of `SerializationFailure`, the code retries after waiting for `sleep_time` seconds, up to `max_attempts`.
+The correct way to handle this error is with a retry loop with exponential backoff, as described in [Client-side retry](#client-side-retry). When the [UPDATE](../../../../api/ysql/the-sql-language/statements/cmd_update) or [COMMIT](../../../../api/ysql/the-sql-language/statements/txn_commit) fails because of `SerializationFailure`, the code retries after waiting for `sleep_time` seconds, up to `max_attempts`.
 
 {{<tip title="Read Committed">}}
 In read committed isolation level, as the server retries internally, the client does not need to worry about handling SerializationFailure. Only transactions operating in repeated read and serializable levels need to handle serialization failures.
 {{</tip>}}
-
-##### 25P02 - InFailedSqlTransaction
-
-This error occurs when a statement is issued after there's already an error in a transaction. The error message would be similar to the following:
-
-```output
-ERROR:  25P02: current transaction is aborted, commands ignored until end of transaction block
-```
-
-The only valid statements at this point would be `ROLLBACK` or `COMMIT`. To handle this error, resolve the actual error and then issue a rollback. Consider the following scenario:
-
-```python
-connstr = 'postgresql://yugabyte@localhost:5433/yugabyte'
-cxn = psycopg2.connect(connstr)
-cursor = cxn.cursor()
-try:
-    cursor.execute("BEGIN")
-    try:
-        # forcing an error with invalid syntax
-        cursor.execute("INVALID TXN STATEMENT;")
-    except Exception as e:
-        # ignoring the Syntax Error (!! WRONG !!)
-        # Syntax errors should NOT be ignored. - Only for demo
-        pass
-
-    # the transaction is in an invalid state
-    cursor.execute("UPDATE txndemo SET v=20 WHERE k=1")
-    cursor.execute("COMMIT")
-except psycopg2.errors.InFailedSqlTransaction as e:
-  print(e)
-  cursor.execute("ROLLBACK")
-```
-
-The `INVALID TXN STATEMENT` would throw a `SyntaxError` exception. The code (in-correctly) catches this and ignores it. The next `update` statement, even though valid, will fail with an `InFailedSqlTransaction` exception. This could be avoided by handling the actual error and issuing a `ROLLBACK`. In this case, a retry would not help as it is a SyntaxError, but there might be scenarios where the transaction would succeed when retried.
 
 Another way would be to rollback to a checkpoint before the failed statement and proceed further as described in [Use savepoints](#use-savepoints).
 
@@ -220,7 +159,7 @@ except Exception as e:
   cursor.execute("ROLLBACK")
 ```
 
-If the row `[k=1]` already exists in the table, the `INSERT` would result in a UniqueViolation exception. Technically, the transaction would be in an error state and further statements would result in a [25P02: In failed SQL transaction](#25P02-in-failed-sql-transaction) error. You have to catch the exception and rollback. But instead of rolling back the entire transaction, you can rollback to the previously declared savepoint `before_insert`, and update the value of the row with `k=1`. Then you can continue with other statements in the transaction.
+If the row `[k=1]` already exists in the table, the [INSERT](../../../../api/ysql/the-sql-language/statements/cmd_insert) would result in a UniqueViolation exception. Technically, the transaction would be in an error state and further statements would result in a [25P02: In failed SQL transaction](#25P02-in-failed-sql-transaction) error. You have to catch the exception and rollback. But instead of rolling back the entire transaction, you can rollback to the previously declared savepoint `before_insert`, and update the value of the row with `k=1`. Then you can continue with other statements in the transaction.
 
 
 ## Non-retriable errors
@@ -260,7 +199,7 @@ Time: 3.808 ms
 
 ##### 25006 - Modify a row in a read-only transaction
 
-This error occurs when a row is modified after specifying a transaction to be `READ ONLY` as follows:
+This error occurs when a row is modified after specifying a transaction to be [READ ONLY](../../../../api/ysql/the-sql-language/statements/txn_set/#read-only-mode) as follows:
 
 ```plpgsql
 BEGIN READ ONLY;
@@ -280,6 +219,44 @@ ERROR:  25006: cannot execute UPDATE in a read-only transaction
 Time: 4.417 ms
 ```
 
+##### 25P02 - InFailedSqlTransaction
+
+This error occurs when a statement is issued after there's already an error in a transaction. The error message would be similar to the following:
+
+```output
+ERROR:  25P02: current transaction is aborted, commands ignored until end of transaction block
+```
+
+Consider the following scenario:
+
+```plpgsql
+BEGIN;
+```
+
+```output
+BEGIN
+Time: 0.393 ms
+```
+
+```plpgsql
+INVALID TXN STATEMENT;
+```
+
+```output
+ERROR:  42601: syntax error at or near "INVALID"
+Time: 2.523 ms
+```
+
+```plpgsql
+SELECT * from txndemo where k=1;
+```
+
+```
+ERROR:  25P02: current transaction is aborted, commands ignored until end of transaction block
+Time: 17.074 ms
+```
+
+The only valid statements at this point would be [ROLLBACK](../../../../api/ysql/the-sql-language/statements/txn_rollback) or [COMMIT](../../../../api/ysql/the-sql-language/statements/txn_commit).
 
 ## Observability
 
@@ -291,7 +268,7 @@ This metric represents the no.of transactions that are currently active. This wo
 
 ##### transaction_conflicts
 
-This metric represents the no.of transactions waiting on other transactions. An increase in the number of conflicts, could directly result in increased latency of your applications.
+This metric represents the no.of times transactions have conflicted with other transactions. An increase in the number of conflicts, could directly result in increased latency of your applications.
 
 ##### expired_transactions
 

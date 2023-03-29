@@ -32,15 +32,15 @@ SELECT v FROM txndemo WHERE k=1;
 COMMIT;
 ```
 
-In this formulation, when the rows are locked in the first `SELECT` statement, YugabyteDB does not know what rows are going to be modified in subsequent commands. As a result, it considers the transaction to be distributed.
+In this formulation, when the rows are locked in the first [SELECT](../../../../api/ysql/the-sql-language/statements/cmd_select)  statement, YugabyteDB does not know what rows are going to be modified in subsequent commands. As a result, it considers the transaction to be distributed.
 
-However, if you write it as a single statement, YugabyteDB can confidently treat it as a single-row transaction. To update a row and return its new value using a single statement, use the `RETURNING` clause as follows:
+However, if you write it as a single statement, YugabyteDB can confidently treat it as a single-row transaction. To update a row and return its new value using a single statement, use the [RETURNING](../../../../api/ysql/the-sql-language/statements/cmd_update)  clause as follows:
 
 ```plpgsql
 UPDATE txndemo SET v = v + 3 WHERE k=1 RETURNING v;
 ```
 
-YugabyteDB treats this as a single-row transaction, which executes much faster. This also saves one round trip and immediately fetches the updated value.
+YugabyteDB treats this as a single-row transaction, which executes much faster. This also saves four round trips and immediately fetches the updated value.
 
 
 ## Minimize conflict errors
@@ -55,7 +55,7 @@ INSERT INTO txndemo VALUES (1,10) DO NOTHING;
 
 With [DO NOTHING](../../../../api/ysql/the-sql-language/statements/dml_insert/#conflict-action-1), the server does not throw an error, resulting in one less round trip between the application and the server.
 
-You can also simulate an `upsert` by using `DO UPDATE SET` instead of doing a `INSERT`, fail, and `UPDATE`, as follows:
+You can also simulate an `upsert` by using `DO UPDATE SET` instead of doing a [INSERT](../../../../api/ysql/the-sql-language/statements/cmd_insert) , fail, and [UPDATE](../../../../api/ysql/the-sql-language/statements/cmd_update) , as follows:
 
 ```plpgsql
 INSERT INTO txndemo VALUES (1,10) 
@@ -104,12 +104,12 @@ SHOW idle_in_transaction_session_timeout;
  10s
 ```
 
-Setting this timeout can avoid deadlock scenarios where applications acquire locks and then hang unintentionally.
+Setting this timeout can avoid scenarios where applications acquire locks and block other transactions unintentionally for a long time.
 
 
 ## Long scans and batch jobs
 
-When a transaction is in `SERIALIZABLE` isolation level and `READ ONLY` mode, if the transaction property `DEFERRABLE` is set, then that transaction executes with much lower overhead and is never canceled because of a serialization failure. This can be used for batch or long-running jobs, which need a consistent snapshot of the database without interfering or being interfered with by other transactions. For example:
+When a transaction is in [SERIALIZABLE](../../../../explore/transactions/isolation-levels/#serializable-isolation) isolation level and [READ ONLY](../../../../api/ysql/the-sql-language/statements/txn_set/#read-only-mode) mode, if the transaction property [DEFERRABLE](../../../../api/ysql/the-sql-language/statements/txn_set/#deferrable-mode-1) is set, then that transaction executes with much lower overhead and is never canceled because of a serialization failure. This can be used for batch or long-running jobs, which need a consistent snapshot of the database without interfering or being interfered with by other transactions. For example:
 
 ```plpgsql
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE;
@@ -117,32 +117,10 @@ SELECT * FROM very_large_table;
 COMMIT;
 ```
 
-## Server side cursors
 
-Cursors allow applications to efficiently scan through and process large data sets, without having to re-execute the query again and again. Additionally, cursors allow distributed data processing on the application side. Multiple queries can be executed to a single database backend, which allows processing subsets of the data in parallel. For example, to fetch results in batches of `10`, one would normally use `LIMIT 10` and increment the `OFFSET` by `10` on every query like:
+## Fail-on-conflict concurrency control
 
-```plpgsql
-SELECT * FROM txndemo ORDER BY k DESC LIMIT 10 OFFSET 10;
-```
-
-But this would result in re-executing the query and loading the data from disk every time. This can be avoided using [cursors](../../../../explore/ysql-language-features/advanced-features/cursor/) which would maintain the pointer to the current position of the query on the server side. You could create a cursor like:
-
-```
-DECLARE fast_scan CURSOR FOR SELECT * FROM txndemo ORDER BY k DESC;
-```
-
-and fetch the next `10` items as:
-
-```
-FETCH 10 FROM fast_scan;
-```
-
-This would vastly reduce the time taken for multiple fetches.
-
-
-## Optimistic concurrency control
-
-As noted, all transactions are dynamically assigned a priority. This is a value in the range of `[0.0, 1.0]`. The current priority can be fetched using the `yb_transaction_priority` setting as follows:
+In the default [concurrency control](../../../../architecture/transactions/concurrency-control#fail-on-conflict), all transactions are dynamically assigned a priority. This is a value in the range of `[0.0, 1.0]`. The current priority can be fetched using the `yb_transaction_priority` setting as follows:
 
 ```plpgsql
 SHOW yb_transaction_priority;
@@ -203,13 +181,19 @@ All reads in YugabyteDB are handled by the leader to ensure that applications fe
 
 In such scenarios, you can enable [follower reads](../../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/) to read from followers instead of going to the leader, which could be far away in a different region.
 
-To enable follower reads, set the transaction to be `READ ONLY` and turn on the session-level setting `yb_read_from_followers`. For example:
+To enable follower reads, set the transaction to be [READ ONLY](../../../../api/ysql/the-sql-language/statements/txn_set/#read-only-mode) and turn on the session-level setting `yb_read_from_followers`. For example:
 
 ```plpgsql
 SET yb_read_from_followers = true;
 BEGIN TRANSACTION READ ONLY;
 ...
 COMMIT;
+```
+
+This will read data from the closest follower or leader. As replicas may not be up-to-date with all updates, by design, this will return only stale data (default: 30s). This is the case even if the read goes to a leader. The staleness value can be changed using another setting like:
+
+```plpgsql
+SET yb_follower_read_staleness_ms = 10000; -- 10s
 ```
 
 {{<note title="Note">}}

@@ -20,12 +20,18 @@ The following error codes typically occur during transaction processing.
 
 ## 25001: Active SQL transaction
 
-This error occurs when certain statements that should be run outside a transaction block, typically because they have non-rollback-able side effects or do internal commits, are executed inside a transaction block. For example, issuing a `BEGIN` statement inside a transaction.
+This error occurs when certain statements that should be run outside a transaction block, typically because they have non-rollback-able side effects or do internal commits, are executed inside a transaction block. For example, 
+attempting to [create a database](../../../../api/ysql/the-sql-language/statements/ddl_create_database/) inside a transaction would result in :
+
+```output
+ERROR:  25001: CREATE DATABASE cannot run inside a transaction block
+```
+
+Issuing a [BEGIN](../../../../api/ysql/the-sql-language/statements/txn_begin) statement inside a transaction would result in:
 
 ```output
 WARNING:  25001: there is already a transaction in progress
 ```
-
 
 ## 25006: Read only SQL transaction
 
@@ -38,7 +44,7 @@ ERROR:  25006: cannot execute UPDATE in a read-only transaction
 
 ## 25P01: No active SQL Transaction
 
-This error occurs when certain statements that should be executed in a transaction are executed outside of a transaction. For example, issuing a `ROLLBACK` outside a transaction.
+This error occurs when certain statements that should be executed in a transaction are executed outside of a transaction. For example, issuing a [ROLLBACK](../../../../api/ysql/the-sql-language/statements/txn_rollback) outside a transaction.
 
 ```output
 WARNING:  25P01: there is no transaction in progress
@@ -47,7 +53,7 @@ WARNING:  25P01: there is no transaction in progress
 
 ## 25P02: In failed SQL transaction
 
-This error occurs when statements have failed inside a transaction and another statement other than `COMMIT` or `ROLLBACK` is executed.
+This error occurs when statements have failed inside a transaction and another statement other than  [COMMIT](../../../../api/ysql/the-sql-language/statements/txn_commit) or  [ROLLBACK](../../../../api/ysql/the-sql-language/statements/txn_rollback) is executed.
 
 ```output
 ERROR:  25P02: current transaction is aborted, commands ignored until end of transaction block
@@ -71,10 +77,14 @@ This error occurs when a transaction cannot be applied or progress further becau
 ERROR:  40001: Operation expired: Transaction XXXX expired or aborted by a conflict
 ```
 
+```output
+ERROR:  40001: Operation failed. Try again: XXXX Conflicts with higher priority transaction: YYYY
+```
+
 
 ## 2D000: Invalid transaction termination
 
-This error occurs when a transaction is terminated either by a `COMMIT` or a `ROLLBACK` in an invalid location. For example, when a `COMMIT` is issued inside a stored procedure that is called from inside a transaction.
+This error occurs when a transaction is terminated either by a  [COMMIT](../../../../api/ysql/the-sql-language/statements/txn_commit) or a  [ROLLBACK](../../../../api/ysql/the-sql-language/statements/txn_rollback) in an invalid location. For example, when a [COMMIT](../../../../api/ysql/the-sql-language/statements/txn_commit) is issued inside a stored procedure that is called from inside a transaction.
 
 ```output
 ERROR:  2D000: invalid transaction termination
@@ -83,7 +93,7 @@ ERROR:  2D000: invalid transaction termination
 
 ## 3B001: Invalid savepoint specification
 
-This error occurs when you try to `ROLLBACK` to or `RELEASE` a savepoint that has not been defined.
+This error occurs when you try to [ROLLBACK](../../../../api/ysql/the-sql-language/statements/txn_rollback) to or [RELEASE](../../../../api/ysql/the-sql-language/statements/savepoint_release) a savepoint that has not been defined.
 
 ```output
 ERROR:  3B001: savepoint "FIRST_SAVE" does not exist

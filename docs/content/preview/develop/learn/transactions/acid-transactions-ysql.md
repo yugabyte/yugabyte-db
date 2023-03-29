@@ -24,7 +24,7 @@ type: docs
 
 In YugabyteDB, a transaction is a sequence of operations performed as a single logical unit of work. The essential point of a transaction is that it bundles multiple steps into a single, all-or-nothing operation. The intermediate states between the steps are not visible to other concurrent transactions, and if some failure occurs that prevents the transaction from completing, then none of the steps affect the database at all.
 
-In YugabyteDB, a transaction is the set of commands inside a `BEGIN - COMMIT` block. For example,
+In YugabyteDB, a transaction is the set of commands inside a [BEGIN](../../../../api/ysql/the-sql-language/statements/txn_begin) - [COMMIT](../../../../api/ysql/the-sql-language/statements/txn_commit) block. For example,
 
 ```plpgsql
 BEGIN;
@@ -33,11 +33,11 @@ BEGIN;
 COMMIT;
 ```
 
-The `BEGIN` and `COMMIT` block is needed when you have multiple statements to be executed as part of a transaction. YugabyteDB treats every ad-hoc individual SQL statement as being executed in a transaction.
+The [BEGIN](../../../../api/ysql/the-sql-language/statements/txn_begin) and [COMMIT](../../../../api/ysql/the-sql-language/statements/txn_commit) block is needed when you have multiple statements to be executed as part of a transaction. YugabyteDB treats every ad-hoc individual SQL statement as being executed in a transaction.
 
-If you decide to cancel the transaction and not commit it, you can issue a `ROLLBACK` instead of a `COMMIT`. You can also control the rollback of a subset of statements using `SAVEPOINT`. After rolling back to a savepoint, it continues to be defined, so you can roll back to it several times.
+If you decide to cancel the transaction and not commit it, you can issue a [ROLLBACK](../../../../api/ysql/the-sql-language/statements/txn_rollback) instead of a [COMMIT](../../../../api/ysql/the-sql-language/statements/txn_commit). You can also control the rollback of a subset of statements using a [SAVEPOINT](../../../../api/ysql/the-sql-language/statements/savepoint_create). After rolling back to a savepoint, it continues to be defined, so you can roll back to it several times.
 
-As all transactions in YugabyteDB are guaranteed to be [ACID](../../../../architecture/transactions/transactions-overview#acid-properties) compliant, errors can occur during transaction processing for various reasons. YugabyteDB returns different [error codes](../transactions-errorcodes-ysql) for each case with details. Applications need to be designed to do [error handling](../transactions-high-availability-ysql) correctly for high availability.
+As all transactions in YugabyteDB are guaranteed to be [ACID](../../../../architecture/transactions/transactions-overview#acid-properties) compliant, errors can be thrown during transaction processing to ensure correctness guarantees are not violated. YugabyteDB returns different [error codes](../transactions-errorcodes-ysql) for each case with details. Applications need to be designed to do [error handling](../transactions-high-availability-ysql) correctly for high availability.
 
 {{<tip title="In action">}}
 For an example of how a transaction is run, see [Distributed transactions](../../../../explore/transactions/distributed-transactions-ysql).
@@ -77,7 +77,7 @@ SET default_transaction_read_only = TRUE;
 
 ##### default_transaction_isolation
 
-Set this to one of `serializable`, `repeatable read`, or `read committed `. This sets the default isolation level for all transactions in the current session.
+Set this to one of [serializable](../../../../explore/transactions/isolation-levels/#serializable-isolation), [repeatable read](../../../../explore/transactions/isolation-levels/#snapshot-isolation), or [read committed](../../../../explore/transactions/isolation-levels/#read-committed-isolation). This sets the default isolation level for all transactions in the current session.
 
 ```plpgsql
 SET default_transaction_isolation = 'serializable';
@@ -92,7 +92,7 @@ SET default_transaction_deferrable = TRUE;
 ```
 
 {{<note title="Note">}}
-The `DEFERRABLE` transaction property has no effect unless the transaction is also `SERIALIZABLE` and `READ ONLY`.
+The [DEFERRABLE](../../../../api/ysql/the-sql-language/statements/txn_set/#deferrable-mode-1) transaction property has no effect unless the transaction is also [SERIALIZABLE](../../../../explore/transactions/isolation-levels/#serializable-isolation) and [READ ONLY](../../../../api/ysql/the-sql-language/statements/txn_set/#read-only-mode).
 {{</note>}}
 
 ##### idle_in_transaction_session_timeout
@@ -101,11 +101,11 @@ Set this to a duration (for example, `'10s or 1000'`) to limit delays in transac
 
 ##### yb_transaction_priority_lower_bound
 
-Set this to values in the range `[0.0 - 1.0]` to set the lower bound of the dynamic priority assignment. See [Optimistic concurrency control](../transactions-performance-ysql#optimistic-concurrency-control).
+Set this to values in the range `[0.0 - 1.0]` to set the lower bound of the dynamic priority assignment. See [Fail-on-conflict concurrency control](../transactions-performance-ysql#fail-on-conflict-concurrency-control).
 
 ##### yb_transaction_priority_upper_bound
 
-Set this to values in the range `[0.0 - 1.0]` to set the upper bound of the dynamic priority assignment. See [Optimistic concurrency control](../transactions-performance-ysql#optimistic-concurrency-control).
+Set this to values in the range `[0.0 - 1.0]` to set the upper bound of the dynamic priority assignment. See [Fail-on-conflict concurrency control](../transactions-performance-ysql#fail-on-conflict-concurrency-control).
 
 ## Isolation levels
 
@@ -115,7 +115,7 @@ YugabyteDB supports three kinds of isolation levels to support different applica
 
 ##### Repeatable Read (Snapshot)
 
-In [Repeatable Read / Snapshot](../../../../explore/transactions/isolation-levels/#snapshot-isolation) isolation level, only the data that is committed before the transaction began is visible to the transaction. Although updates done in the transaction are visible to any query in the transaction, the transaction does not see any changes made by other concurrent transactions. Effectively, the transaction sees the snapshot of the database as of the start of the transaction. Applications using this isolation level should be designed to retry on serialization failures.
+In [Repeatable Read / Snapshot](../../../../explore/transactions/isolation-levels/#snapshot-isolation) isolation level, only the data that is committed before the transaction began is visible to the transaction. Although updates that have been done in the transaction are visible to any query in the transaction, the transaction does not see any changes made by other concurrent transactions. Effectively, the transaction sees the snapshot of the database as of the start of the transaction. Applications using this isolation level should be designed to retry on serialization failures.
 
 ##### Read Committed
 
@@ -131,7 +131,7 @@ See [isolation level examples](../../../../explore/transactions/isolation-levels
 
 ## Row-level locking
 
-Typically `SELECT` statements do not automatically lock the rows fetched during a transaction. Depending on your application needs, you might have to lock the rows retrieved during `SELECT`. YugabyteDB supports [explicit row-level locking](../../../../explore/transactions/explicit-locking) for such cases and ensures that no two transactions can hold locks on the same row. Lock acquisition conflicts are resolved according to [concurrency control](../../../../architecture/transactions/concurrency-control/) policies.
+Typically [SELECT](../../../../api/ysql/the-sql-language/statements/cmd_select) statements do not automatically lock the rows fetched during a transaction. Depending on your application needs, you might have to lock the rows retrieved during [SELECT](../../../../api/ysql/the-sql-language/statements/cmd_select). YugabyteDB supports [explicit row-level locking](../../../../explore/transactions/explicit-locking) for such cases and ensures that no two transactions can hold locks on the same row. Lock acquisition conflicts are resolved according to [concurrency control](../../../../architecture/transactions/concurrency-control/) policies.
 
 Lock acquisition has the following format:
 
