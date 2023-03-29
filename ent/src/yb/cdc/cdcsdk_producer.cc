@@ -216,7 +216,7 @@ Status PopulateBeforeImage(
   const auto log_prefix = tablet->LogPrefix();
   docdb::DocReadContext doc_read_context(log_prefix, schema, schema_version);
   docdb::DocRowwiseIterator iter(
-      schema, doc_read_context, TransactionOperationContext(), docdb,
+      schema, *tablet->GetDocReadContext(), TransactionOperationContext(), docdb,
       CoarseTimePoint::max() /* deadline */, read_time);
 
   const docdb::DocKey& doc_key = decoded_primary_key.doc_key();
@@ -229,7 +229,7 @@ Status PopulateBeforeImage(
   auto result = iter.HasNext();
   if (result.ok() && *result) {
     RETURN_NOT_OK(iter.NextRow(&row));
-  } else if (FLAGS_cdc_before_image_mandatory) {
+  } else {
     return result.ok()
                ? STATUS_FORMAT(
                      InternalError,
