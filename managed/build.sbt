@@ -139,7 +139,6 @@ libraryDependencies ++= Seq(
   "com.google.inject.extensions" % "guice-multibindings" % "4.2.3",
   "org.postgresql" % "postgresql" % "42.3.3",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
-  //"ch.qos.logback" % "logback-classic" % "1.3.6",
   "org.codehaus.janino" % "janino" % "3.1.9",
   "org.apache.commons" % "commons-compress" % "1.21",
   "org.apache.commons" % "commons-csv" % "1.9.0",
