@@ -205,7 +205,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Yaml yaml = new Yaml();
     Map<String, Object> expectedOverrides = new HashMap<>();
     if (exposeAll) {
-      expectedOverrides = yaml.load(app.resourceAsStream("k8s-expose-all.yml"));
+      expectedOverrides = yaml.load(app.environment().resourceAsStream("k8s-expose-all.yml"));
     }
     double burstVal = 1.2;
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(defaultProvider);

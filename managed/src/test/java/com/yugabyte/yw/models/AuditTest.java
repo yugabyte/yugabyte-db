@@ -8,20 +8,17 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 import static play.test.Helpers.contextComponents;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.controllers.RequestContext;
+import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -46,16 +43,11 @@ public class AuditTest extends FakeDBApplication {
 
     customer = ModelFactory.testCustomer("tc1", "Test Customer 1");
     user = ModelFactory.testUser(customer);
-    Map<String, String> flashData = Collections.emptyMap();
-    Map<String, Object> argData = ImmutableMap.of("user", new UserWithFeatures().setUser(user));
-    request = mock(Http.Request.class);
-    Long id = 2L;
-    play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
-    context =
-        new Http.Context(id, header, request, flashData, flashData, argData, contextComponents());
+    request =
+        new Http.RequestBuilder().method("PUT").path("/api/customer/test/universe/test").build();
+    context = new Http.Context(request, contextComponents());
     Http.Context.current.set(context);
-    when(request.method()).thenReturn("PUT");
-    when(request.path()).thenReturn("/api/customer/test/universe/test");
+    RequestContext.put(TokenAuthenticator.USER, new UserWithFeatures().setUser(user));
   }
 
   public Audit createEntry(UUID taskUUID, Users user) {

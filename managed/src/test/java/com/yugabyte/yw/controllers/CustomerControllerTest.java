@@ -30,7 +30,6 @@ import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
-import static play.test.Helpers.route;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -42,7 +41,6 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -622,7 +620,7 @@ public class CustomerControllerTest extends FakeDBApplication {
         .when(mockMetricQueryHelper)
         .query(anyList(), anyMap(), anyMap(), anyBoolean());
     Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody(
+        doRequestWithAuthTokenAndBody(
             "POST", baseRoute + customer.uuid + "/metrics", authToken, params);
     verify(mockMetricQueryHelper)
         .query(metricKeys.capture(), queryParams.capture(), anyMap(), anyBoolean());
@@ -669,7 +667,7 @@ public class CustomerControllerTest extends FakeDBApplication {
         .when(mockMetricQueryHelper)
         .query(anyList(), anyMap(), anyMap(), anyBoolean());
     Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody(
+        doRequestWithAuthTokenAndBody(
             "POST", baseRoute + customer.uuid + "/metrics", authToken, params);
     verify(mockMetricQueryHelper)
         .query(metricKeys.capture(), queryParams.capture(), anyMap(), anyBoolean());
@@ -723,7 +721,7 @@ public class CustomerControllerTest extends FakeDBApplication {
         .when(mockMetricQueryHelper)
         .query(anyList(), anyMap(), anyMap(), anyBoolean());
     Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody(
+        doRequestWithAuthTokenAndBody(
             "POST", baseRoute + customer.uuid + "/metrics", authToken, params);
     verify(mockMetricQueryHelper)
         .query(metricKeys.capture(), queryParams.capture(), anyMap(), anyBoolean());
@@ -1034,7 +1032,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     params.put("nodeNames", nodeNames);
     ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
     ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
-    FakeApiHelper.doRequestWithAuthTokenAndBody(
+    doRequestWithAuthTokenAndBody(
         "POST", baseRoute + customer.uuid + "/metrics", authToken, params);
     verify(mockMetricQueryHelper)
         .query(metricKeys.capture(), queryParams.capture(), any(), anyBoolean());
@@ -1046,7 +1044,7 @@ public class CustomerControllerTest extends FakeDBApplication {
 
   private Result getHostInfo(UUID customerUUID) {
     String uri = baseRoute + customerUUID + "/host_info";
-    return FakeApiHelper.doRequestWithAuthToken("GET", uri, user.createAuthToken());
+    return doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
 
   @Test

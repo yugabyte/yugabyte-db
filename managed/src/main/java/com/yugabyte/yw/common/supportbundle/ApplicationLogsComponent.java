@@ -43,12 +43,7 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
   @Override
   public void downloadComponent(
       Customer customer, Universe universe, Path bundlePath, NodeDetails node) throws IOException {
-    String appHomeDir =
-        config.hasPath("application.home") ? config.getString("application.home") : ".";
-    String logDir =
-        config.hasPath("log.override.path")
-            ? config.getString("log.override.path")
-            : String.format("%s/logs", appHomeDir);
+    String logDir = config.getString("log.override.path");
     String destDir = bundlePath.toString() + "/" + "application_logs";
     Path destPath = Paths.get(destDir);
     Files.createDirectories(destPath);
@@ -69,13 +64,9 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
       throws IOException, ParseException {
 
     // Get application configured locations
-    String appHomeDir =
-        config.hasPath("application.home") ? config.getString("application.home") : ".";
+    String appHomeDir = config.getString("application.home");
     log.info("[ApplicationLogsComponent] appHomeDir = '{}'", appHomeDir);
-    String logDir =
-        config.hasPath("log.override.path")
-            ? config.getString("log.override.path")
-            : String.format("%s/logs", appHomeDir);
+    String logDir = config.getString("log.override.path");
     Path logPath = Paths.get(logDir);
     String logDirAbsolute = logPath.toAbsolutePath().toString();
     log.info("[ApplicationLogsComponent] logDir = '{}'", logDir);

@@ -33,10 +33,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AbstractInitializer;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
-import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
@@ -64,7 +64,7 @@ public class AWSInitializer extends AbstractInitializer {
 
   @Inject Environment environment;
 
-  @Inject ConfigHelper configHelper;
+  @Inject Config config;
 
   /**
    * Entry point to initialize AWS. This will create the various InstanceTypes and their
@@ -632,8 +632,7 @@ public class AWSInitializer extends AbstractInitializer {
   }
 
   private boolean isInstanceTypeSupported(Map<String, String> productAttributes) {
-    return configHelper
-        .getAWSInstancePrefixesSupported()
+    return InstanceType.getAWSInstancePrefixesSupported(config)
         .stream()
         .anyMatch(productAttributes.getOrDefault("instanceType", "")::startsWith);
   }

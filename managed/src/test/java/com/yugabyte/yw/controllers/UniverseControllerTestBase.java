@@ -91,7 +91,6 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
 
   @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
   @Mock RuntimeConfGetter mockConfGetter;
-  @Mock protected play.Configuration mockAppConfig;
 
   private HealthChecker healthChecker;
   protected Customer customer;
@@ -116,6 +115,10 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
   protected RuntimeConfigFactory runtimeConfigFactory;
   protected ReleaseManager.ReleaseMetadata mockReleaseMetadata;
   protected ReleaseManager.ReleaseMetadata mockYbcReleaseMetadata;
+
+  protected GuiceApplicationBuilder appOverrides(GuiceApplicationBuilder applicationBuilder) {
+    return applicationBuilder;
+  }
 
   @Override
   protected Application provideApplication() {
@@ -142,11 +145,14 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     when(mockRuntimeConfig.getInt("yb.fs_stateless.max_files_count_persist")).thenReturn(100);
     when(mockRuntimeConfig.getBoolean("yb.fs_stateless.suppress_error")).thenReturn(true);
     when(mockRuntimeConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 10000);
+    when(mockRuntimeConfig.getString("yb.storage.path"))
+        .thenReturn("/tmp/" + this.getClass().getSimpleName());
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockRuntimeConfig);
 
-    return new GuiceApplicationBuilder()
+    return appOverrides(new GuiceApplicationBuilder())
         .disable(GuiceModule.class)
         .configure(testDatabase())
+        .configure("yb.storage.path", "/tmp/" + this.getClass().getSimpleName())
         .overrides(bind(YBClientService.class).toInstance(mockService))
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
         .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
@@ -158,7 +164,6 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
         .overrides(bind(ShellProcessHandler.class).toInstance(mockShellProcessHandler))
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
         .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
-        .overrides(bind(play.Configuration.class).toInstance(mockAppConfig))
         .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .overrides(
             bind(RuntimeConfigFactory.class)
@@ -239,12 +244,6 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     kmsConfig = ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", kmsConfigReq);
     authToken = user.createAuthToken();
     runtimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
-
-    when(mockAppConfig.getString("yb.storage.path"))
-        .thenReturn("/tmp/" + this.getClass().getSimpleName());
-
-    when(mockRuntimeConfig.getString("yb.storage.path"))
-        .thenReturn("/tmp/" + this.getClass().getSimpleName());
 
     mockReleaseMetadata = spy(new ReleaseManager.ReleaseMetadata());
     when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(mockReleaseMetadata);

@@ -870,7 +870,7 @@ public class BackupsController extends AuthenticatedController {
             Customer.get(customerUUID).getFeatures(), "universes.details.backups.storageLocation");
     boolean isStorageLocMasked = custStorageLoc != null && custStorageLoc.asText().equals("hidden");
     if (!isStorageLocMasked) {
-      UserWithFeatures user = (UserWithFeatures) ctx().args.get("user");
+      UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
       JsonNode userStorageLoc =
           CommonUtils.getNodeProperty(
               user.getFeatures(), "universes.details.backups.storageLocation");

@@ -39,7 +39,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.AccessManager;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -92,18 +91,18 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             + providerUUID
             + "/access_keys/"
             + keyCode;
-    return FakeApiHelper.doRequestWithAuthToken("GET", uri, defaultUser.createAuthToken());
+    return doRequestWithAuthToken("GET", uri, defaultUser.createAuthToken());
   }
 
   private Result listAccessKey(UUID providerUUID) {
     String uri =
         "/api/customers/" + defaultCustomer.uuid + "/providers/" + providerUUID + "/access_keys";
-    return FakeApiHelper.doRequestWithAuthToken("GET", uri, defaultUser.createAuthToken());
+    return doRequestWithAuthToken("GET", uri, defaultUser.createAuthToken());
   }
 
   private Result listAccessKeyForAllProviders() {
     String uri = "/api/customers/" + defaultCustomer.uuid + "/access_keys";
-    return FakeApiHelper.doRequestWithAuthToken("GET", uri, defaultUser.createAuthToken());
+    return doRequestWithAuthToken("GET", uri, defaultUser.createAuthToken());
   }
 
   private Result createAccessKey(
@@ -179,7 +178,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
                 "keyFile", "test.pem", "application/octet-stream", keyFile));
       }
 
-      return FakeApiHelper.doRequestWithAuthTokenAndMultipartData(
+      return doRequestWithAuthTokenAndMultipartData(
           "POST", uri, defaultUser.createAuthToken(), bodyData, mat);
     } else {
       ObjectNode bodyJson = Json.newObject();
@@ -206,8 +205,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
         }
         bodyJson.putArray("ntpServers").addAll(arrayNode);
       }
-      return FakeApiHelper.doRequestWithAuthTokenAndBody(
-          "POST", uri, defaultUser.createAuthToken(), bodyJson);
+      return doRequestWithAuthTokenAndBody("POST", uri, defaultUser.createAuthToken(), bodyJson);
     }
   }
 
@@ -219,7 +217,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             + providerUUID
             + "/access_keys/"
             + keyCode;
-    return FakeApiHelper.doRequestWithAuthToken("DELETE", uri, defaultUser.createAuthToken());
+    return doRequestWithAuthToken("DELETE", uri, defaultUser.createAuthToken());
   }
 
   @Test
