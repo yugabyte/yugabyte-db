@@ -124,7 +124,7 @@ Global / onChangedBuildSource := ReloadOnSourceChanges
 
 libraryDependencies ++= Seq(
   javaJdbc,
-  ehcache,
+  caffeine,
   javaWs,
   filters,
   guice,
@@ -158,17 +158,17 @@ libraryDependencies ++= Seq(
   "com.azure" % "azure-security-keyvault-keys" % "4.5.0",
   "com.azure" % "azure-storage-blob" % "12.19.1",
   "javax.mail" % "mail" % "1.4.7",
+  "javax.validation" % "validation-api" % "2.0.1.Final",
   "io.prometheus" % "simpleclient" % "0.11.0",
   "io.prometheus" % "simpleclient_hotspot" % "0.11.0",
   "io.prometheus" % "simpleclient_servlet" % "0.11.0",
   "org.glassfish.jaxb" % "jaxb-runtime" % "2.3.2",
-  "org.pac4j" %% "play-pac4j" % "7.0.1",
-  "org.pac4j" % "pac4j-oauth" % "3.7.0" exclude("commons-io" , "commons-io"),
-  "org.pac4j" % "pac4j-oidc" % "3.7.0" exclude("commons-io" , "commons-io"),
-  "com.typesafe.play" %% "play-json" % "2.6.14",
+  "org.pac4j" %% "play-pac4j" % "9.0.2",
+  "org.pac4j" % "pac4j-oauth" % "4.5.7" exclude("commons-io" , "commons-io"),
+  "org.pac4j" % "pac4j-oidc" % "4.5.7" exclude("commons-io" , "commons-io"),
+  "com.typesafe.play" %% "play-json" % "2.9.4",
   "commons-validator" % "commons-validator" % "1.7",
   "org.apache.velocity" % "velocity-engine-core" % "2.3",
-  "com.fasterxml.jackson.core" % "jackson-core" % "2.10.5",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
   "com.jayway.jsonpath" % "json-path" % "2.6.0",
   "commons-io" % "commons-io" % "2.8.0",
@@ -212,9 +212,6 @@ libraryDependencies ++= Seq(
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
 )
 
-excludeDependencies ++= Seq(
-  ExclusionRule("org.hibernate.validator", "hibernate-validator")
-)
 // Clear default resolvers.
 appResolvers := None
 bootResolvers := None
@@ -441,18 +438,33 @@ libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b21"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
-  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.9.10",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
   "net.minidev" % "json-smart" % "2.4.8",
   "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
 )
 
-dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.19.4"
+dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.21.2"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
 // SSO functionality only works on the older version of nimbusds.
 // Azure library upgrade tries to upgrade nimbusds to latest version.
 dependencyOverrides += "com.nimbusds" % "oauth2-oidc-sdk" % "7.1.1"
-dependencyOverrides +=  "com.fasterxml.jackson.core" % "jackson-databind" % "2.13.4.2"
+
+val jacksonVersion         = "2.14.2"
+
+val jacksonOverrides = Seq(
+  "com.fasterxml.jackson.core"       % "jackson-core",
+  "com.fasterxml.jackson.core"       % "jackson-annotations",
+  "com.fasterxml.jackson.core"       % "jackson-databind",
+  "com.fasterxml.jackson.datatype"   % "jackson-datatype-jdk8",
+  "com.fasterxml.jackson.datatype"   % "jackson-datatype-jsr310",
+  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor",
+  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml",
+  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml",
+  "com.fasterxml.jackson.module"     % "jackson-module-parameter-names",
+  "com.fasterxml.jackson.module"     %% "jackson-module-scala",
+).map(_ % jacksonVersion)
+
+dependencyOverrides ++= jacksonOverrides
 
 excludeDependencies += "org.eclipse.jetty" % "jetty-io"
 excludeDependencies += "org.eclipse.jetty" % "jetty-server"

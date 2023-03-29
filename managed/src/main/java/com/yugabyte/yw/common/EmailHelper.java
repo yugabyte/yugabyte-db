@@ -121,6 +121,7 @@ public class EmailHelper {
         props.put("mail.smtp.auth", "false");
       }
       props.put("mail.smtp.starttls.enable", String.valueOf(smtpData.useTLS));
+      props.put("mail.smtp.ssl.protocols", "TLSv1.3 TLSv1.2 TLSv1.1 TLSv1");
       String smtpServer =
           StringUtils.isEmpty(smtpData.smtpServer)
               ? runtimeConfig.getString("yb.health.default_smtp_server")

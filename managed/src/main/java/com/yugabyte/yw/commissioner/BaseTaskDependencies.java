@@ -11,14 +11,15 @@ package com.yugabyte.yw.commissioner;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.RestoreManagerYb;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -45,4 +46,6 @@ public class BaseTaskDependencies {
   private final TableManagerYb tableManagerYb;
   private final PlatformExecutorFactory executorFactory;
   private final TaskExecutor taskExecutor;
+  private final HealthChecker healthChecker;
+  private final NodeManager nodeManager;
 }

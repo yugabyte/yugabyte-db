@@ -69,7 +69,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
     String method = "GET";
     String url = "/api/customers/" + customerUUID + "/schedules";
 
-    return FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
+    return doRequestWithAuthToken(method, url, authToken);
   }
 
   private Result deleteSchedule(UUID scheduleUUID, UUID customerUUID) {
@@ -77,14 +77,14 @@ public class ScheduleControllerTest extends FakeDBApplication {
     String method = "DELETE";
     String url = "/api/customers/" + customerUUID + "/schedules/" + scheduleUUID;
 
-    return FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
+    return doRequestWithAuthToken(method, url, authToken);
   }
 
   private Result deleteScheduleYb(UUID scheduleUUID, UUID customerUUID) {
     String authToken = defaultUser.createAuthToken();
     String method = "DELETE";
     String url = "/api/customers/" + customerUUID + "/schedules/" + scheduleUUID + "/delete";
-    return FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
+    return doRequestWithAuthToken(method, url, authToken);
   }
 
   private Result editSchedule(UUID scheduleUUID, UUID customerUUID, JsonNode body) {
@@ -92,21 +92,21 @@ public class ScheduleControllerTest extends FakeDBApplication {
     String method = "PUT";
     String url = "/api/customers/" + customerUUID + "/schedules/" + scheduleUUID;
 
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, body);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, body);
   }
 
   private Result getPagedSchedulesList(UUID customerUUID, JsonNode body) {
     String authToken = defaultUser.createAuthToken();
     String method = "POST";
     String url = "/api/customers/" + customerUUID + "/schedules/page";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, body);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, body);
   }
 
   private Result createBackupSchedule(ObjectNode bodyJson, Users user) {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "POST";
     String url = "/api/customers/" + defaultCustomer.uuid + "/create_backup_schedule";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   @Test
@@ -462,8 +462,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
     bodyJson.put("cronExpression", "5 * * * *");
     bodyJson.put("isFullBackup", true);
     Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody(
-            "PUT", url, defaultUser.createAuthToken(), bodyJson);
+        doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson);
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(result));
     UUID scheduleUUID = UUID.fromString(resultJson.path("scheduleUUID").asText());

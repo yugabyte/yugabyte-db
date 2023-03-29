@@ -16,7 +16,6 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -114,7 +113,6 @@ import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
-import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupRequestParams.ParallelBackupState;
@@ -190,7 +188,6 @@ import org.yb.client.YBClient;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
 import org.yb.util.ServerInfo;
-import play.api.Play;
 import play.libs.Json;
 
 @Slf4j
@@ -3039,7 +3036,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   // Check if the node present in taskParams has a backing instance alive on the IaaS.
-  public static boolean instanceExists(NodeTaskParams taskParams) {
+  public boolean instanceExists(NodeTaskParams taskParams) {
     ImmutableMap.Builder<String, String> expectedTags = ImmutableMap.builder();
     Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
     NodeDetails node = universe.getNodeOrBadRequest(taskParams.getNodeName());
@@ -3066,9 +3063,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   // It returns 3 states - empty for not found, false for not matching and true for matching.
-  public static Optional<Boolean> instanceExists(
+  public Optional<Boolean> instanceExists(
       NodeTaskParams taskParams, Map<String, String> expectedTags) {
-    NodeManager nodeManager = Play.current().injector().instanceOf(NodeManager.class);
     log.info("Expected tags: {}", expectedTags);
     ShellResponse response =
         nodeManager.nodeCommand(NodeManager.NodeCommandType.List, taskParams).processErrors();
@@ -3162,7 +3158,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     preflightTaskParams.extraDependencies.installNodeExporter =
         taskParams().extraDependencies.installNodeExporter;
     // Create the process to fetch information about the node from the cloud provider.
-    NodeManager nodeManager = Play.current().injector().instanceOf(NodeManager.class);
     log.info("Running preflight checks for node {}.", preflightTaskParams.nodeName);
     ShellResponse response =
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Precheck, preflightTaskParams);
@@ -3184,8 +3179,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected boolean isServerAlive(NodeDetails node, ServerType server, String masterAddrs) {
-    YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
-
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = ybService.getClient(masterAddrs, certificate);
@@ -3299,8 +3292,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         || taskType == TaskType.DeleteXClusterConfig);
   }
 
-  private static int getClusterConfigVersion(Universe universe) {
-    final YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
+  private int getClusterConfigVersion(Universe universe) {
     final String hostPorts = universe.getMasterAddresses();
     final String certificate = universe.getCertificateNodetoNode();
     int version;
@@ -3316,11 +3308,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return version;
   }
 
-  private static boolean versionsMatch(UUID universeUUID) {
+  private boolean versionsMatch(UUID universeUUID) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     Universe.UNIVERSE_KEY_LOCK.acquireLock(universeUUID);
     try {
-      final int clusterConfigVersion = UniverseTaskBase.getClusterConfigVersion(universe);
+      final int clusterConfigVersion = getClusterConfigVersion(universe);
       // For backwards compatibility (see V56__Alter_Universe_Version.sql)
       if (universe.version == -1) {
         universe.version = clusterConfigVersion;
@@ -3351,7 +3343,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *     Platform and the cluster config version on the master diverge.
    * @param mode version check mode
    */
-  private static void checkUniverseVersion(UUID universeUUID, VersionCheckMode mode) {
+  private void checkUniverseVersion(UUID universeUUID, VersionCheckMode mode) {
     if (mode == VersionCheckMode.NEVER) {
       return;
     }
@@ -3367,15 +3359,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected void checkUniverseVersion() {
-    UniverseTaskBase.checkUniverseVersion(
+    checkUniverseVersion(
         taskParams().universeUUID,
         confGetter.getConfForScope(getUniverse(), UniverseConfKeys.universeVersionCheckMode));
   }
 
   /** Increment the cluster config version */
-  private static synchronized void incrementClusterConfigVersion(UUID universeUUID) {
+  private synchronized void incrementClusterConfigVersion(UUID universeUUID) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
     final String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = ybService.getClient(hostPorts, certificate);
@@ -3404,7 +3395,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param updater the universe updater to run
    * @return the updated universe
    */
-  protected static Universe saveUniverseDetails(
+  protected Universe saveUniverseDetails(
       UUID universeUUID,
       boolean shouldIncrementVersion,
       UniverseUpdater updater,
@@ -3425,12 +3416,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected Universe saveUniverseDetails(
       UUID universeUUID, UniverseUpdater updater, boolean checkExist) {
-    return UniverseTaskBase.saveUniverseDetails(
+    return saveUniverseDetails(
         universeUUID, shouldIncrementVersion(universeUUID), updater, checkExist);
   }
 
   protected Universe saveUniverseDetails(UUID universeUUID, UniverseUpdater updater) {
-    return UniverseTaskBase.saveUniverseDetails(
+    return saveUniverseDetails(
         universeUUID, shouldIncrementVersion(universeUUID), updater, false /* checkExist */);
   }
 
@@ -3449,7 +3440,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   // Use this if it is already in transaction or the field changes are not yet written to the DB.
   protected void preTaskActions(Universe universe) {
-    HealthChecker healthChecker = Play.current().injector().instanceOf(HealthChecker.class);
     UniverseDefinitionTaskParams details = universe.getUniverseDetails();
     if ((details != null) && details.updateInProgress) {
       log.debug("Cancelling any active health-checks for universe {}", universe.universeUUID);

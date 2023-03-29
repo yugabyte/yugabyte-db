@@ -15,7 +15,6 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.InstanceTypeResp;
@@ -65,8 +64,6 @@ public class InstanceTypeController extends AuthenticatedController {
 
   @Inject RuntimeConfGetter confGetter;
 
-  @Inject ConfigHelper configHelper;
-
   /**
    * GET endpoint for listing instance types
    *
@@ -92,7 +89,6 @@ public class InstanceTypeController extends AuthenticatedController {
         InstanceType.findByProvider(
                 provider,
                 config,
-                configHelper,
                 confGetter.getConfForScope(provider, ProviderConfKeys.allowUnsupportedInstances))
             .stream()
             .collect(toMap(it -> it.getInstanceTypeCode(), identity()));

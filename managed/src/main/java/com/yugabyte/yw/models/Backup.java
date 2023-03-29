@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.BackupFilter;
@@ -940,7 +941,7 @@ public class Backup extends Model {
   public static BackupPagedApiResponse createResponse(BackupPagedResponse response) {
 
     CustomerConfigService customerConfigService =
-        Play.current().injector().instanceOf(CustomerConfigService.class);
+        StaticInjectorHolder.injector().instanceOf(CustomerConfigService.class);
     List<Backup> backups = response.getEntities();
     List<BackupResp> backupList =
         backups

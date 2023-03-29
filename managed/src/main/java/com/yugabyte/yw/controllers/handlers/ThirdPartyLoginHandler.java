@@ -15,6 +15,8 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.user.UserService;
+import com.yugabyte.yw.controllers.RequestContext;
+import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import org.pac4j.core.profile.CommonProfile;
@@ -81,14 +83,14 @@ public class ThirdPartyLoginHandler {
   }
 
   void invalidateSession(Context ctx) {
-    final PlayWebContext context = new PlayWebContext(ctx, playSessionStore);
+    final PlayWebContext context = new PlayWebContext(ctx.request(), playSessionStore);
     final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
     profileManager.logout();
     playSessionStore.destroySession(context);
   }
 
   CommonProfile getProfile(Context ctx) {
-    final PlayWebContext context = new PlayWebContext(ctx, playSessionStore);
+    final PlayWebContext context = new PlayWebContext(ctx.request(), playSessionStore);
     final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
     return profileManager
         .get(true)
@@ -100,17 +102,17 @@ public class ThirdPartyLoginHandler {
 
   public void onLoginSuccess(Context ctx, Users user) {
     Customer cust = Customer.get(user.customerUUID);
-    ctx.args.put("customer", cust);
-    ctx.args.put("user", userService.getUserWithFeatures(cust, user));
     ctx.response()
         .setCookie(
             Cookie.builder("customerId", cust.uuid.toString())
                 .withSecure(ctx.request().secure())
+                .withHttpOnly(false)
                 .build());
     ctx.response()
         .setCookie(
             Cookie.builder("userId", user.uuid.toString())
                 .withSecure(ctx.request().secure())
+                .withHttpOnly(false)
                 .build());
   }
 }

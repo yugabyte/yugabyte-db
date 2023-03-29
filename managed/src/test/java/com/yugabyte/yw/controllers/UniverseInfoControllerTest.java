@@ -16,8 +16,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertNotFound;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithCustomHeaders;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -36,6 +34,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
@@ -58,19 +57,19 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
@@ -83,6 +82,13 @@ import play.mvc.Result;
 public class UniverseInfoControllerTest extends UniverseControllerTestBase {
   @Mock PlatformExecutorFactory mockPlatformExecutorFactory;
   @Mock WSClient mockWsClient;
+
+  Config config;
+
+  @Before
+  public void setUpTest() {
+    config = app.injector().instanceOf(Config.class);
+  }
 
   @Test
   public void testGetMasterLeaderWithValidParams() {
@@ -192,8 +198,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
 
   @Test
   public void testDownloadNodeLogs() throws IOException {
-    Path logPath =
-        Paths.get(mockAppConfig.getString("yb.storage.path") + "/" + "10.0.0.1-logs.tar.gz");
+    Path logPath = Paths.get(config.getString("yb.storage.path") + "/" + "10.0.0.1-logs.tar.gz");
     byte[] fakeLog = createFakeLog(logPath);
     when(mockShellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
         .thenReturn(new ShellResponse());
