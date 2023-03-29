@@ -522,20 +522,18 @@ Status XClusterTestBase::WaitForSetupUniverseReplicationCleanUp(string producer_
 }
 
 Status XClusterTestBase::WaitForValidSafeTimeOnAllTServers(
-    const NamespaceId& namespace_id, Cluster* cluster) {
+    const NamespaceId& namespace_id, Cluster* cluster, boost::optional<CoarseTimePoint> deadline) {
   if (!cluster) {
     cluster = &consumer_cluster_;
   }
-
+  if (!deadline) {
+    deadline = PropagationDeadline();
+  }
+  const auto description = Format("Wait for safe_time of namespace $0 to be valid", namespace_id);
+  RETURN_NOT_OK(
+      WaitForRoleChangeToPropogateToAllTServers(cdc::XClusterRole::STANDBY, cluster, deadline));
   for (auto& tserver : cluster->mini_cluster_->mini_tablet_servers()) {
-    RETURN_NOT_OK(WaitFor(
-        [&]() -> Result<bool> {
-          auto xcluster_role = tserver->server()->TEST_GetXClusterRole();
-          return xcluster_role && xcluster_role.get() == cdc::XClusterRole::STANDBY;
-        },
-        safe_time_propagation_timeout_, "Wait for cluster to be in STANDBY"));
-
-    RETURN_NOT_OK(WaitFor(
+    RETURN_NOT_OK(Wait(
         [&]() -> Result<bool> {
           auto safe_time_result =
               tserver->server()->GetXClusterSafeTimeMap().GetSafeTime(namespace_id);
@@ -545,8 +543,30 @@ Status XClusterTestBase::WaitForValidSafeTimeOnAllTServers(
           CHECK(safe_time_result.get()->is_valid());
           return true;
         },
-        safe_time_propagation_timeout_,
-        Format("Wait for safe_time of namespace $0 to be valid", namespace_id)));
+        *deadline,
+        description));
+  }
+
+  return Status::OK();
+}
+
+Status XClusterTestBase::WaitForRoleChangeToPropogateToAllTServers(
+    cdc::XClusterRole expected_role, Cluster* cluster, boost::optional<CoarseTimePoint> deadline) {
+  if (!cluster) {
+    cluster = &consumer_cluster_;
+  }
+  if (!deadline) {
+    deadline = PropagationDeadline();
+  }
+  const auto description = Format("Wait for cluster to be in $0", XClusterRole_Name(expected_role));
+  for (auto& tserver : cluster->mini_cluster_->mini_tablet_servers()) {
+    RETURN_NOT_OK(Wait(
+        [&]() -> Result<bool> {
+          auto xcluster_role = tserver->server()->TEST_GetXClusterRole();
+          return xcluster_role && xcluster_role.get() == expected_role;
+        },
+        *deadline,
+        description));
   }
 
   return Status::OK();

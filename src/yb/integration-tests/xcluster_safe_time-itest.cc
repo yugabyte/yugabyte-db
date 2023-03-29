@@ -191,7 +191,7 @@ class XClusterSafeTimeTest : public XClusterTestBase {
           auto safe_time = safe_time_result.get();
           return *safe_time && safe_time->is_valid() && *safe_time > min_safe_time;
         },
-        safe_time_propagation_timeout_,
+        propagation_timeout_,
         Format("Wait for safe_time to move above $0", min_safe_time.ToDebugString()));
   }
 
@@ -205,7 +205,7 @@ class XClusterSafeTimeTest : public XClusterTestBase {
           }
           return false;
         },
-        safe_time_propagation_timeout_,
+        propagation_timeout_,
         Format("Wait for safe_time to get removed"));
   }
 
@@ -645,7 +645,7 @@ class XClusterConsistencyNoSafeTimeTest : public XClusterConsistencyTest {
             }
             return false;
           },
-          safe_time_propagation_timeout_,
+          propagation_timeout_,
           Format("Wait for safe_time of namespace $0 to be in-valid", namespace_id_)));
     }
 

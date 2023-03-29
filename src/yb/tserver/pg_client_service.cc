@@ -186,7 +186,7 @@ class PgClientServiceImpl::Impl {
       const scoped_refptr<ClockBase>& clock,
       TransactionPoolProvider transaction_pool_provider,
       rpc::Scheduler* scheduler,
-      const XClusterSafeTimeMap* xcluster_safe_time_map,
+      const std::optional<XClusterContext>& xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter,
       MetricEntity* metric_entity)
       : tablet_server_(tablet_server.get()),
@@ -195,7 +195,7 @@ class PgClientServiceImpl::Impl {
         transaction_pool_provider_(std::move(transaction_pool_provider)),
         table_cache_(client_future),
         check_expired_sessions_(scheduler),
-        xcluster_safe_time_map_(xcluster_safe_time_map),
+        xcluster_context_(xcluster_context),
         pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
         response_cache_(metric_entity) {
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
@@ -214,7 +214,7 @@ class PgClientServiceImpl::Impl {
     auto session_id = ++session_serial_no_;
     auto session = std::make_shared<LockablePgClientSession>(
         session_id, &client(), clock_, transaction_pool_provider_, &table_cache_,
-        xcluster_safe_time_map_, pg_node_level_mutation_counter_, &response_cache_,
+        xcluster_context_, pg_node_level_mutation_counter_, &response_cache_,
         &sequence_cache_);
     resp->set_session_id(session_id);
 
@@ -590,7 +590,7 @@ class PgClientServiceImpl::Impl {
 
   rpc::ScheduledTaskTracker check_expired_sessions_;
 
-  const XClusterSafeTimeMap* xcluster_safe_time_map_;
+  const std::optional<XClusterContext> xcluster_context_;
 
   PgMutationCounter* pg_node_level_mutation_counter_;
 
@@ -606,12 +606,12 @@ PgClientServiceImpl::PgClientServiceImpl(
     TransactionPoolProvider transaction_pool_provider,
     const scoped_refptr<MetricEntity>& entity,
     rpc::Scheduler* scheduler,
-    const XClusterSafeTimeMap* xcluster_safe_time_map,
+    const std::optional<XClusterContext>& xcluster_context,
     PgMutationCounter* pg_node_level_mutation_counter)
     : PgClientServiceIf(entity),
       impl_(new Impl(
           tablet_server, client_future, clock, std::move(transaction_pool_provider), scheduler,
-          xcluster_safe_time_map, pg_node_level_mutation_counter, entity.get())) {}
+          xcluster_context, pg_node_level_mutation_counter, entity.get())) {}
 
 PgClientServiceImpl::~PgClientServiceImpl() = default;
 

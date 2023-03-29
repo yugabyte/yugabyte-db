@@ -514,6 +514,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
       }
       RETURN_NOT_OK(server_->SetConfigVersionAndConsumerRegistry(
           cluster_config_version, &resp.consumer_registry()));
+      server_->SetXClusterDDLOnlyMode(resp.consumer_registry().role() != cdc::XClusterRole::ACTIVE);
     } else if (resp.has_cluster_config_version()) {
       RETURN_NOT_OK(
           server_->SetConfigVersionAndConsumerRegistry(resp.cluster_config_version(), nullptr));
