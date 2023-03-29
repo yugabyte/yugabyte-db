@@ -293,7 +293,7 @@ The output would be similar to the following:
                 "level": "info",
                 "value": 2048
             },
-...
+…
 ```
 
 {{< note title="Note" >}}
@@ -456,14 +456,28 @@ data:
   yb-master-0-post_debug_hook.sh: 'echo ''hello-from-post'' '
   yb-master-0-pre_debug_hook.sh: |
     echo "Running the pre hook"
-    ls /var/yugabyte/cores/
-    sleep 30m
+    du -sh /mnt/disk0/yb-data/
+    sleep 5m
     # other commands here…
   yb-master-1-post_debug_hook.sh: 'echo ''hello-from-post'' '
   yb-master-1-pre_debug_hook.sh: 'echo ''hello-from-pre'' '
 ```
 
 Once you save the file, the updated commands will be executed on the next restart of `yb-master-0`.
+
+You can run the following command to check the output of your debug hook:
+
+```sh
+kubectl logs -n <namespace> ybuni1-asia-south1-a-lbrl-yb-master-0 -c yb-master
+```
+
+Expect an output similar to the following:
+
+```output
+…
+2023-03-29 06:40:09,553 [INFO] k8s_parent.py: Executing operation: ybuni1-asia-south1-a-lbrl-yb-master-0_pre_debug_hook filepath: /opt/debug_hooks_config/yb-master-0-pre_debug_hook.sh
+2023-03-29 06:45:09,627 [INFO] k8s_parent.py: Output from hook b'Running the pre hook\n44M\t/mnt/disk0/yb-data/\n'
+```
 
 ## Perform the follower lag check during upgrades
 
