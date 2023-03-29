@@ -325,7 +325,7 @@ This can change after [#11573](https://github.com/yugabyte/yugabyte-db/issues/11
 
 Semantics of Read Committed isolation adheres only with the [Wait-on-Conflict](../concurrency-control/#wait-on-conflict-beta-preview-faq-general-what-is-the-definition-of-the-beta-feature-tag) concurrency control policy. This is because a Read Committed transaction has to wait for other transactions to commit or rollback in case of a conflict, and then perform the re-check steps to make progress.
 
-As the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy doesn't make sense for Read Committed, even if this policy is set for use on the cluster (by having the TServer flag `enable_wait_queues=false`), transactions in Read Committed isolation will still provide `Wait-on-Conflict` semantics. For providing `Wait-on-Conflict` semantics without wait queues, YugabyteDB relies on an indefinite retry-backoff mechanism with exponential delays when conflicts are detected. The retries are at the statement level. Each retry will use a newer snapshot of the database in anticipation that the conflicts might not occur. This is done because if the read time of the new snapshot is higher than the commit time of the earlier conflicting transaction T2, the conflicts with T2 would essentially be voided since T1's statement and T2 would no longer be "concurrent".
+As the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy doesn't make sense for Read Committed, even if this policy is set for use on the cluster (by having the YB-TServer flag `enable_wait_queues=false`), transactions in Read Committed isolation will still provide `Wait-on-Conflict` semantics. For providing `Wait-on-Conflict` semantics without wait queues, YugabyteDB relies on an indefinite retry-backoff mechanism with exponential delays when conflicts are detected. The retries are at the statement level. Each retry will use a newer snapshot of the database in anticipation that the conflicts might not occur. This is done because if the read time of the new snapshot is higher than the commit time of the earlier conflicting transaction T2, the conflicts with T2 would essentially be voided as T1's statement and T2 would no longer be "concurrent".
 
 However, when Read Committed isolation provides Wait-on-Conflict semantics without wait queues, the following limitations exist:
 
@@ -335,9 +335,9 @@ However, when Read Committed isolation provides Wait-on-Conflict semantics witho
 
 ## Usage
 
-By setting the YB-TServer g-flag `yb_enable_read_committed_isolation=true`, the syntactic `Read Committed` isolation in YSQL maps to the Read Committed implementation in DocDB. If set to `false`, it has the earlier behavior of mapping syntactic `Read Committed` on YSQL to Snapshot isolation in DocDB, meaning it behaves as `Repeatable Read`.
+By setting the YB-TServer flag `yb_enable_read_committed_isolation=true`, the syntactic `Read Committed` isolation in YSQL maps to the Read Committed implementation in DocDB. If set to `false`, it has the earlier behavior of mapping syntactic `Read Committed` on YSQL to Snapshot isolation in DocDB, meaning it behaves as `Repeatable Read`.
 
-The following ways can be used to start a Read Committed transaction after setting the g-flag:
+The following ways can be used to start a Read Committed transaction after setting the flag:
 
 1. `START TRANSACTION isolation level read committed [read write | read only];`
 1. `BEGIN [TRANSACTION] isolation level read committed [read write | read only];`
@@ -356,7 +356,7 @@ CREATE TABLE test (k int primary key, v int);
 
 ### Avoid deadlocks in Read Committed transactions
 
-When wait queues are not enabled, that is, `enable_wait_queues=false`, configure a statement timeout to avoid deadlocks. A different statement timeout can be set for each session using the `statement_timeout` session variable. Also, a single statement timeout can be applied globally to all sessions by setting the `statement_timeout` session variable in `ysql_pg_conf_csv` YB-TServer gflag on cluster startup.
+When wait queues are not enabled, that is, `enable_wait_queues=false`, configure a statement timeout to avoid deadlocks. A different statement timeout can be set for each session using the `statement_timeout` session variable. Also, a single statement timeout can be applied globally to all sessions by setting the `statement_timeout` session variable in `ysql_pg_conf_csv` YB-TServer flag on cluster startup.
 
 ```sql
 truncate table test;
@@ -1573,6 +1573,6 @@ If a statement in the Read Committed isolation level faces a conflict, it is ret
 * `retry_min_backoff` is the minimum backoff in milliseconds between retries.
 * `retry_backoff_multiplier` is the multiplier used to calculate the next retry backoff.
 
-You can set these parameters on a per-session basis, or in the `ysql_pg_conf_csv` YB-TServer g-flag on cluster startup.
+You can set these parameters on a per-session basis, or in the `ysql_pg_conf_csv` YB-TServer flag on cluster startup.
 
 If the [Wait-on-Conflict](../concurrency-control/#wait-on-conflict) concurrency control policy is enabled, there won't be a need to manually tune these parameters for performance. Statements will restart only when all conflicting transactions have committed or rolled back, instead of retrying with an exponential backoff.
