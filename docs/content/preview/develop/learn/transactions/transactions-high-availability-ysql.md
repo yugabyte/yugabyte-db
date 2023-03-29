@@ -281,7 +281,7 @@ Time: 4.417 ms
 ```
 
 
-## Observability - (Work in progress[TODO])
+## Observability
 
 YugabyteDB exports a lot of [observable metrics](../../../../explore/observability) for you to see what is going in your cluster. These metrics can be exported to [Prometheus](../../../../explore/observability/prometheus-integration/macos/) and visualized in [Grafana](../../../../explore/observability/grafana-dashboard/grafana/). These metrics are also available on the UI in YBAnywhere Platform. Let's look into some key transaction related metrics.
 
@@ -295,7 +295,7 @@ This metric represents the no.of transactions waiting on other transactions. An 
 
 ##### expired_transactions
 
-This metric represents the no.of transactions that did not complete because the status tablet did not receive enough number of heartbeats from the node to which the client had connected to. This usually happens if the transaction could not be completed in a specific time.  
+This metric represents the no.of transactions that did not complete because the status tablet did not receive enough number of heartbeats from the node to which the client had connected to. This usually happens if that node or process managing the transaction has crashed.
 
 ## Learn more
 
