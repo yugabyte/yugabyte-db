@@ -278,6 +278,7 @@ TEST_F(XClusterDRTest, Failover) {
       ASSERT_RESULT(BootstrapAndSnapshotSourceCluster());
 
   ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::ACTIVE, source_cluster_));
+  ASSERT_OK(WaitForRoleChangeToPropogateToAllTServers(cdc::XClusterRole::ACTIVE, source_cluster_));
 
   // 6. Write some more data on new source.
   WriteBatchOnSource();

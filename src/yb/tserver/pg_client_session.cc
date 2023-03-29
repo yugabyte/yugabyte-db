@@ -452,7 +452,7 @@ HybridTime GetInTxnLimit(const PgPerformOptionsPB& options, ClockBase* clock) {
 PgClientSession::PgClientSession(
     uint64_t id, client::YBClient* client, const scoped_refptr<ClockBase>& clock,
     std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
-    PgTableCache* table_cache, const XClusterSafeTimeMap* xcluster_safe_time_map,
+    PgTableCache* table_cache, const std::optional<XClusterContext>& xcluster_context,
     PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
     PgSequenceCache* sequence_cache)
     : id_(id),
@@ -460,7 +460,7 @@ PgClientSession::PgClientSession(
       clock_(clock),
       transaction_pool_provider_(transaction_pool_provider.get()),
       table_cache_(*table_cache),
-      xcluster_safe_time_map_(xcluster_safe_time_map),
+      xcluster_context_(xcluster_context),
       pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
       response_cache_(*response_cache),
       sequence_cache_(*sequence_cache) {}
@@ -746,7 +746,7 @@ Status PgClientSession::SetActiveSubTransaction(
 Status PgClientSession::FinishTransaction(
     const PgFinishTransactionRequestPB& req, PgFinishTransactionResponsePB* resp,
     rpc::RpcContext* context) {
-  saved_priority_ = boost::none;
+  saved_priority_ = std::nullopt;
   auto kind = req.ddl_mode() ? PgClientSessionKind::kDdl : PgClientSessionKind::kPlain;
   auto& txn = Transaction(kind);
   if (!txn) {
@@ -804,6 +804,14 @@ Status PgClientSession::Perform(
   VLOG_WITH_PREFIX(5) << "Perform req=" << req->ShortDebugString();
   PgResponseCache::Setter setter;
   auto& options = *req->mutable_options();
+  if (!options.ddl_mode() && xcluster_context_ && xcluster_context_->is_xcluster_read_only_mode()) {
+    for (const auto& op : req->ops()) {
+      if (op.has_write()) {
+        return STATUS(
+            InvalidArgument, "Data modification by DML is forbidden with STANDBY xCluster role");
+      }
+    }
+  }
   if (options.has_caching_info()) {
     setter = VERIFY_RESULT(response_cache_.Get(options.mutable_caching_info(), resp, context));
     if (!setter) {
@@ -887,12 +895,13 @@ void PgClientSession::ProcessReadTimeManipulation(ReadTimeManipulation manipulat
 Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
     const PgPerformOptionsPB& options, ConsistentReadPoint* read_point) {
   // Early exit if namespace not provided or atomic reads not enabled
-  if (options.namespace_id().empty() || xcluster_safe_time_map_ == nullptr ||
+  if (options.namespace_id().empty() || !xcluster_context_ ||
       !options.use_xcluster_database_consistency()) {
     return Status::OK();
   }
 
-  auto safe_time = VERIFY_RESULT(xcluster_safe_time_map_->GetSafeTime(options.namespace_id()));
+  auto safe_time =
+      VERIFY_RESULT(xcluster_context_->safe_time_map().GetSafeTime(options.namespace_id()));
   if (!safe_time) {
     // No xCluster safe time for this namespace.
     return Status::OK();
@@ -1066,7 +1075,7 @@ Status PgClientSession::BeginTransactionIfNecessary(
 
   if (saved_priority_) {
     priority = *saved_priority_;
-    saved_priority_ = boost::none;
+    saved_priority_ = std::nullopt;
   }
   txn->SetPriority(priority);
   session->SetTransaction(txn);
