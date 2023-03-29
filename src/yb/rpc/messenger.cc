@@ -649,6 +649,26 @@ Status Messenger::QueueEventOnAllReactors(
   return overall_status;
 }
 
+Status Messenger::QueueEventOnFilteredConnections(
+    ServerEventListPtr server_event, const SourceLocation& source_location,
+    ConnectionFilter connection_filter) {
+  shared_lock<rw_spinlock> guard(lock_.get_lock());
+  Status overall_status;
+  for (const auto& reactor : reactors_) {
+    auto queuing_status =
+        reactor->QueueEventOnFilteredConnections(server_event, source_location, connection_filter);
+    if (!queuing_status.ok()) {
+      LOG(DFATAL) << "Failed to queue a server event on filtered connections of a reactor: "
+                  << queuing_status;
+      if (overall_status.ok()) {
+        // Use the first error status.
+        overall_status = std::move(queuing_status);
+      }
+    }
+  }
+  return overall_status;
+}
+
 void Messenger::RemoveScheduledTask(ScheduledTaskId id) {
   CHECK_GT(id, 0);
   std::lock_guard<std::mutex> guard(mutex_scheduled_tasks_);
