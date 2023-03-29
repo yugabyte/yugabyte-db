@@ -45,7 +45,7 @@ Serializable     | Serializable | Not possible | Not possible | Not possible | N
 
 <sup>$</sup> Read committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Read committed isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot isolation).
 
-The default isolation level for the YSQL API is essentially Snapshot (that is, the same as PostgreSQL's `REPEATABLE READ`) because `READ COMMITTED`, which is the YSQL API's and PostgreSQL's syntactic default, maps to Snapshot isolation (unless the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`).
+The default isolation level for the YSQL API is essentially Snapshot (that is, the same as PostgreSQL's `REPEATABLE READ`) because `READ COMMITTED`, which is the YSQL API and PostgreSQL syntactic default, maps to Snapshot isolation (unless the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`).
 
 To set the transaction isolation level of a transaction, use the command `SET TRANSACTION`.
 
