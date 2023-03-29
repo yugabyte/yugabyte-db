@@ -71,7 +71,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
 
   private Result getReleasesProvider(UUID customerUUID, UUID providerUUID) {
     String uri = "/api/customers/" + customerUUID + "/providers/" + providerUUID + "/releases";
-    return FakeApiHelper.doRequestWithAuthToken("GET", uri, user.createAuthToken());
+    return doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
 
   private Result getReleases(UUID customerUUID, boolean includeMetadata) {
@@ -79,27 +79,27 @@ public class ReleaseControllerTest extends FakeDBApplication {
     if (includeMetadata) {
       uri = uri + "?includeMetadata=true";
     }
-    return FakeApiHelper.doRequestWithAuthToken("GET", uri, user.createAuthToken());
+    return doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
 
   private Result refreshReleases(UUID customerUUID) {
     String uri = "/api/customers/" + customerUUID + "/releases";
-    return FakeApiHelper.doRequestWithAuthToken("PUT", uri, user.createAuthToken());
+    return doRequestWithAuthToken("PUT", uri, user.createAuthToken());
   }
 
   private Result createRelease(UUID customerUUID, JsonNode body) {
     String uri = "/api/customers/" + customerUUID + "/releases";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, user.createAuthToken(), body);
+    return doRequestWithAuthTokenAndBody("POST", uri, user.createAuthToken(), body);
   }
 
   private Result updateRelease(UUID customerUUID, String version, JsonNode body) {
     String uri = "/api/customers/" + customerUUID + "/releases/" + version;
-    return FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", uri, user.createAuthToken(), body);
+    return doRequestWithAuthTokenAndBody("PUT", uri, user.createAuthToken(), body);
   }
 
   private Result deleteRelease(UUID customerUUID, String version) {
     String uri = "/api/customers/" + customerUUID + "/releases/" + version;
-    return FakeApiHelper.doRequestWithAuthToken("DELETE", uri, user.createAuthToken());
+    return doRequestWithAuthToken("DELETE", uri, user.createAuthToken());
   }
 
   private void mockReleaseData(boolean multiple) {

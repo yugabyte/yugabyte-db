@@ -157,6 +157,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getExecutorFactory())
         .thenReturn(app.injector().instanceOf(PlatformExecutorFactory.class));
     when(mockBaseTaskDependencies.getTaskExecutor()).thenReturn(taskExecutor);
+    when(mockBaseTaskDependencies.getHealthChecker()).thenReturn(mockHealthChecker);
+    when(mockBaseTaskDependencies.getNodeManager()).thenReturn(mockNodeManager);
   }
 
   @Override

@@ -56,7 +56,7 @@ import play.libs.Json;
 @RunWith(MockitoJUnitRunner.class)
 public class TableManagerTest extends FakeDBApplication {
 
-  @Mock play.Configuration mockAppConfig;
+  @Mock Config mockAppConfig;
 
   @Mock ShellProcessHandler shellProcessHandler;
 

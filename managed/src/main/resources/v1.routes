@@ -437,9 +437,9 @@ GET    /customers/:cUUID/tasks/:tUUID/audit_user                               c
 
 GET     /index                                                                 com.yugabyte.yw.controllers.ApiDiscoveryController.index()
 
-GET    /callback                                                               @org.pac4j.play.CallbackController.callback()
-POST   /callback                                                               @org.pac4j.play.CallbackController.callback()
-GET    /third_party_logout                                                     @org.pac4j.play.LogoutController.logout()
+GET    /callback                                                               @org.pac4j.play.CallbackController.callback(req: Request)
+POST   /callback                                                               @org.pac4j.play.CallbackController.callback(req: Request)
+GET    /third_party_logout                                                     @org.pac4j.play.LogoutController.logout(req: Request)
 
 # HA Backup API
 PUT    /settings/ha/config/:cUUID/replication_schedule/start                   com.yugabyte.yw.controllers.PlatformReplicationController.startPeriodicBackup(cUUID: java.util.UUID)

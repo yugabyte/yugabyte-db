@@ -58,7 +58,7 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
   private String createClusterKey() {
     String authToken = user.createAuthToken();
     Result createClusterKeyResult =
-        FakeApiHelper.doRequestWithAuthToken("GET", "/api/settings/ha/generate_key", authToken);
+        doRequestWithAuthToken("GET", "/api/settings/ha/generate_key", authToken);
     assertOk(createClusterKeyResult);
 
     return Json.parse(contentAsString(createClusterKeyResult)).get("cluster_key").asText();
@@ -69,7 +69,7 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     String uri = "/api/settings/ha/config";
     String clusterKey = createClusterKey();
     JsonNode body = Json.newObject().put("cluster_key", clusterKey);
-    Result createResult = FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
+    Result createResult = doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
     assertOk(createResult);
 
     return Json.parse(contentAsString(createResult));
@@ -84,14 +84,14 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
             .put("address", address)
             .put("is_local", isLocal)
             .put("is_leader", isLeader);
-    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
+    return doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
   }
 
   private Result deletePlatformInstance(UUID configUUID, UUID instanceUUID) {
     String authToken = user.createAuthToken();
     String uri =
         "/api/settings/ha/config/" + configUUID.toString() + "/instance/" + instanceUUID.toString();
-    return FakeApiHelper.doRequestWithAuthToken("DELETE", uri, authToken);
+    return doRequestWithAuthToken("DELETE", uri, authToken);
   }
 
   private Result demotePlatformInstance(UUID configUUID, UUID instanceUUID) {
@@ -102,7 +102,7 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
             + "/instance/"
             + instanceUUID.toString()
             + "/demote";
-    return FakeApiHelper.doRequestWithAuthToken("POST", uri, authToken);
+    return doRequestWithAuthToken("POST", uri, authToken);
   }
 
   @Test
@@ -268,8 +268,7 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     String authToken = user.createAuthToken();
     JsonNode body = Json.newObject().put("backup_file", "/foo/bar");
     Result promoteResult =
-        assertPlatformException(
-            () -> FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body));
+        assertPlatformException(() -> doRequestWithAuthTokenAndBody("POST", uri, authToken, body));
     assertBadRequest(promoteResult, "Could not find backup file");
   }
 
@@ -292,8 +291,7 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     String authToken = user.createAuthToken();
     JsonNode body = Json.newObject().put("backup_file", "/foo/bar");
     Result promoteResult =
-        assertPlatformException(
-            () -> FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body));
+        assertPlatformException(() -> doRequestWithAuthTokenAndBody("POST", uri, authToken, body));
     assertBadRequest(promoteResult, "Could not find leader instance");
   }
 

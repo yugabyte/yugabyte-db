@@ -79,9 +79,9 @@ public class V231__ProviderDetailsPersistTest extends FakeDBApplication {
     assertNotNull(gcpProvider.details);
     GCPCloudInfo gcpCloudInfo = gcpProvider.details.cloudInfo.gcp;
     assertNotNull(gcpCloudInfo);
-    assertEquals("GCP Project ID", gcpCloudInfo.gceProject);
-    assertEquals("GCP Custom network", gcpCloudInfo.destVpcId);
-    assertNotNull(gcpCloudInfo.gceApplicationCredentials);
+    assertEquals("GCP Project ID", gcpCloudInfo.getGceProject());
+    assertEquals("GCP Custom network", gcpCloudInfo.getDestVpcId());
+    assertNotNull(gcpCloudInfo.getGceApplicationCredentials());
 
     // AWS Provider Check
     assertNotNull(awsProvider.details);

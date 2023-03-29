@@ -1,7 +1,6 @@
 package com.yugabyte.yw.common.config;
 
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -10,7 +9,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
-import static play.test.Helpers.route;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
@@ -57,7 +55,7 @@ public class ConfKeysTest extends FakeDBApplication {
         fakeRequest("PUT", String.format(KEY, defaultCustomer.uuid, scopeUUID, path))
             .header("X-AUTH-TOKEN", authToken)
             .bodyText(newVal);
-    return route(app, request);
+    return route(request);
   }
 
   private String getConfVal(ConfKeyInfo<?> keyInfo) {

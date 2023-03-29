@@ -50,8 +50,6 @@ public class TemplateManagerTest extends FakeDBApplication {
 
   @Mock ShellProcessHandler shellProcessHandler;
 
-  @Mock play.Configuration mockAppConfig;
-
   @Mock RuntimeConfigFactory runtimeConfigFactory;
 
   @Mock Config mockConfig;
@@ -101,8 +99,8 @@ public class TemplateManagerTest extends FakeDBApplication {
   public void setUp() {
     testCustomer = ModelFactory.testCustomer();
     testProvider = ModelFactory.onpremProvider(testCustomer);
-    when(mockAppConfig.getString(YB_STORAGE_PATH_KEY)).thenReturn(YB_STORAGE_PATH_VALUE);
-    when(mockAppConfig.getString(YB_THIRDPARTY_KEY)).thenReturn(YB_THIRDPARTY_VALUE);
+    when(mockConfig.getString(YB_STORAGE_PATH_KEY)).thenReturn(YB_STORAGE_PATH_VALUE);
+    when(mockConfig.getString(YB_THIRDPARTY_KEY)).thenReturn(YB_THIRDPARTY_VALUE);
     when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
   }
 
