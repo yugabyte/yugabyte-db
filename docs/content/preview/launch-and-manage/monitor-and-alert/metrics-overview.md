@@ -2,7 +2,7 @@
 title: YugabyteDB metrics
 headerTitle: Metrics
 linkTitle: Metrics
-headcontent: YugabyteDB's commonly used metrics to monitor and manage.
+headcontent: Monitor and manage clusters with YugabyteDB's frequently used metrics.
 description: Learn about YugabyteDB's database metrics, and how to select and use the metrics relevant to your situation
 menu:
   preview:
@@ -50,25 +50,27 @@ YugabyteDB has four major types of metrics per node: Server, Table, Tablet, and 
 
 These metric names are generally of the form `<metric_category>_<server_type>_<service_type>_<service_method>` where:
 
-- `metric_category` (optional) can be one of the following:
+1. `metric_category` (optional) can be one of the following:
 
-  - `handler_latency` - The latency seen by the logical architecture block.
-  - `rpcs_in_queue` - The number of RPCs in the queue for service.
-  - `service_request_bytes` - The number of bytes a service sends to other services in a request. This metric type is beneficial in a very limited number of cases.
-  - `service_response_bytes` - The number of bytes a service receives from other services in a     request. This metric type is beneficial in a very limited number of cases.
-  - `proxy_request_bytes` - The number of request bytes sent by the proxy in a request to a service. Anything a client requires that the local tablet server cannot provide is proxied to the correct service, which can be a master (via the master leader) or another tablet server, changes to the followers, and awaiting a majority alias consensus to be reached. This metric type is beneficial in a very limited number of cases.
-  - `proxy_response_bytes` - The number of response bytes the proxy receives from a service. Anything a client requires that the local tablet server cannot provide is proxied to the correct service, which can be a master (via the master leader) or another tablet server, changes to the followers, and awaiting a majority alias consensus to be reached. This metric type is beneficial in a very limited number of cases.
+    - `handler_latency` - The latency seen by the logical architecture block.
+    - `rpcs_in_queue` - The number of RPCs in the queue for service.
+    - `service_request_bytes` - The number of bytes a service sends to other services in a request. This metric type is beneficial in a very limited number of cases.
+    - `service_response_bytes` - The number of bytes a service receives from other services in a request. This metric type is beneficial in a very limited number of cases.
+    - `proxy_request_bytes` - The number of request bytes sent by the proxy in a request to a service. Anything a client requires that the local tablet server cannot provide is proxied to the correct service, which can be a master (via the master leader) or another tablet server, changes to the followers, and awaiting a majority alias consensus to be reached. This metric type is beneficial in a very limited number of cases.
+    - `proxy_response_bytes` - The number of response bytes the proxy receives from a service. Anything a client requires that the local tablet server cannot provide is proxied to the correct service, which can be a master (via the master leader) or another tablet server, changes to the followers, and awaiting a majority alias consensus to be reached. This metric type is beneficial in a very limited number of cases.
 
-- `server_type` can be one of the following:
+1. `server_type` can be one of the following:
 
-  - `yb_tserver` - YB-TServer metrics
-  - `yb_master` - YB-Master metrics
-  - `yb_ycqlserver` - YCQL metrics
-  - `yb_ysqlserver` - YSQL metrics
-  - `yb_consesus` - RAFT consensus metrics
-  - `yb_cdc` - Change Data Capture metrics
+    - `yb_tserver` - YB-TServer metrics
+    - `yb_master` - YB-Master metrics
+    - `yb_ycqlserver` - YCQL metrics
+    - `yb_ysqlserver` - YSQL metrics
+    - `yb_consesus` - RAFT consensus metrics
+    - `yb_cdc` - Change Data Capture metrics
 
-- `service_method` (optional) identifies service methods, which are specific functions performed by the service.
+1. `service_type` is the logical service name for a given server type.
+
+1. `service_method` (optional) identifies service methods, which are specific functions performed by the service.
 
 {{< note title= "Note">}}
 
