@@ -16,13 +16,16 @@ import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.common.NetworkManager;
 import javax.inject.Inject;
-import play.api.Play;
 import play.libs.Json;
 
 public class CloudSetup extends CloudTaskBase {
+
+  private final NetworkManager networkManager;
+
   @Inject
-  protected CloudSetup(BaseTaskDependencies baseTaskDependencies) {
+  protected CloudSetup(BaseTaskDependencies baseTaskDependencies, NetworkManager networkManager) {
     super(baseTaskDependencies);
+    this.networkManager = networkManager;
   }
 
   @Override
@@ -32,7 +35,6 @@ public class CloudSetup extends CloudTaskBase {
 
   @Override
   public void run() {
-    NetworkManager networkManager = Play.current().injector().instanceOf(NetworkManager.class);
     // TODO(bogdan): we do not actually do anything with this response, so can NOOP if not
     // creating any elements?
     JsonNode response =

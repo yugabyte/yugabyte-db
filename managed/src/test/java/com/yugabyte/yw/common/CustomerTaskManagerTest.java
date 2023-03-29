@@ -9,24 +9,20 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.mockStatic;
 
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.ebean.Ebean;
 import java.util.List;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.MockedStatic;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.client.YBClient;
-import play.api.Play;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -57,7 +53,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   @Ignore
   public void testFailPendingTasksNoneExist() throws Exception {
     universe = ModelFactory.createUniverse(customer.getCustomerId());
-    taskManager = spy(Play.current().injector().instanceOf(CustomerTaskManager.class));
+    taskManager = spy(app.injector().instanceOf(CustomerTaskManager.class));
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
       if (targetType.equals(CustomerTask.TargetType.Universe)) targetUUID = universe.universeUUID;
@@ -77,7 +73,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   @Ignore
   public void testHandlePendingTasksForCompletedCustomerTask() throws Exception {
     universe = ModelFactory.createUniverse(customer.getCustomerId());
-    taskManager = spy(Play.current().injector().instanceOf(CustomerTaskManager.class));
+    taskManager = spy(app.injector().instanceOf(CustomerTaskManager.class));
     mockClient = mock(YBClient.class);
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
@@ -106,7 +102,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   @Ignore
   public void testFailPendingTasksForRunningTaskInfo() throws Exception {
     universe = ModelFactory.createUniverse(customer.getCustomerId());
-    taskManager = spy(Play.current().injector().instanceOf(CustomerTaskManager.class));
+    taskManager = spy(app.injector().instanceOf(CustomerTaskManager.class));
     mockClient = mock(YBClient.class);
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
@@ -138,7 +134,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   @Ignore
   public void testFailPendingTasksForCompletedTaskInfo() throws Exception {
     universe = ModelFactory.createUniverse(customer.getCustomerId());
-    taskManager = spy(Play.current().injector().instanceOf(CustomerTaskManager.class));
+    taskManager = spy(app.injector().instanceOf(CustomerTaskManager.class));
     mockClient = mock(YBClient.class);
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();

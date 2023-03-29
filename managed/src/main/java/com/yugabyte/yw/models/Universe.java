@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.concurrent.KeyLock;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -933,7 +934,8 @@ public class Universe extends Model {
   public HostAndPort getMasterLeader() {
     final String masterAddresses = getMasterAddresses();
     final String cert = getCertificateNodetoNode();
-    final YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
+    final YBClientService ybService =
+        StaticInjectorHolder.injector().instanceOf(YBClientService.class);
     final YBClient client = ybService.getClient(masterAddresses, cert);
     try {
       return client.getLeaderMasterHostAndPort();

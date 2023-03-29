@@ -3,6 +3,7 @@
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.name.Names;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudModules;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
@@ -10,6 +11,7 @@ import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.commissioner.PerfAdvisorNodeManager;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
 import com.yugabyte.yw.commissioner.RefreshKmsService;
@@ -34,6 +36,7 @@ import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TemplateManager;
+import com.yugabyte.yw.common.YBALifeCycle;
 import com.yugabyte.yw.common.YamlWrapper;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
@@ -49,6 +52,7 @@ import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
@@ -57,7 +61,6 @@ import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.ybflyway.YBFlywayInit;
-import com.yugabyte.yw.commissioner.PerfAdvisorNodeManager;
 import com.yugabyte.yw.controllers.MetricGrafanaController;
 import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
@@ -73,16 +76,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.validator.routines.DomainValidator;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.pac4j.core.client.Clients;
-import org.pac4j.core.config.Config;
 import org.pac4j.core.http.url.DefaultUrlResolver;
 import org.pac4j.oidc.client.OidcClient;
 import org.pac4j.oidc.config.OidcConfiguration;
-import org.pac4j.oidc.profile.OidcProfile;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import org.yb.perf_advisor.module.PerfAdvisor;
 import org.yb.perf_advisor.query.NodeManagerInterface;
-import play.Configuration;
 import play.Environment;
 
 /**
@@ -94,16 +94,17 @@ import play.Environment;
 public class Module extends AbstractModule {
 
   private final Environment environment;
-  private final Configuration config;
+  private final Config config;
   private final String[] TLD_OVERRIDE = {"local"};
 
-  public Module(Environment environment, Configuration config) {
+  public Module(Environment environment, Config config) {
     this.environment = environment;
     this.config = config;
   }
 
   @Override
   public void configure() {
+    bind(StaticInjectorHolder.class).asEagerSingleton();
     bind(Long.class)
         .annotatedWith(Names.named("AppStartupTimeMs"))
         .toInstance(System.currentTimeMillis());
@@ -140,9 +141,11 @@ public class Module extends AbstractModule {
     bind(YsqlQueryExecutor.class).asEagerSingleton();
     bind(YcqlQueryExecutor.class).asEagerSingleton();
     bind(PlaySessionStore.class).to(PlayCacheSessionStore.class);
+    bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class);
+    bind(NodeManagerInterface.class).to(PerfAdvisorNodeManager.class);
 
     // We only needed to bind below ones for Platform mode.
-    if (config.getString("yb.mode", "PLATFORM").equals("PLATFORM")) {
+    if (config.getString("yb.mode").equals("PLATFORM")) {
       bind(PerfAdvisor.class).asEagerSingleton();
       bind(SwamperHelper.class).asEagerSingleton();
       bind(NodeManager.class).asEagerSingleton();
@@ -177,7 +180,6 @@ public class Module extends AbstractModule {
       bind(PlatformReplicationManager.class).asEagerSingleton();
       bind(PlatformReplicationHelper.class).asEagerSingleton();
       bind(GFlagsValidation.class).asEagerSingleton();
-      bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class);
       bind(TaskExecutor.class).asEagerSingleton();
       bind(ShellKubernetesManager.class).asEagerSingleton();
       bind(NativeKubernetesManager.class).asEagerSingleton();
@@ -187,7 +189,6 @@ public class Module extends AbstractModule {
       bind(AccessKeyRotationUtil.class).asEagerSingleton();
       bind(GcpEARServiceUtil.class).asEagerSingleton();
       bind(YbcUpgrade.class).asEagerSingleton();
-      bind(NodeManagerInterface.class).to(PerfAdvisorNodeManager.class);
       bind(PerfAdvisorScheduler.class).asEagerSingleton();
       requestStaticInjection(CertificateInfo.class);
       requestStaticInjection(HealthCheck.class);
@@ -195,7 +196,7 @@ public class Module extends AbstractModule {
   }
 
   @Provides
-  protected OidcClient<OidcProfile, OidcConfiguration> provideOidcClient(
+  protected OidcClient<OidcConfiguration> provideOidcClient(
       RuntimeConfigFactory runtimeConfigFactory) {
     com.typesafe.config.Config config = runtimeConfigFactory.globalRuntimeConf();
     String securityType = config.getString("yb.security.type");
@@ -216,10 +217,11 @@ public class Module extends AbstractModule {
   }
 
   @Provides
-  protected Config providePac4jConfig(OidcClient<OidcProfile, OidcConfiguration> oidcClient) {
+  protected org.pac4j.core.config.Config providePac4jConfig(
+      OidcClient<OidcConfiguration> oidcClient) {
     final Clients clients = new Clients("/api/v1/callback", oidcClient);
     clients.setUrlResolver(new DefaultUrlResolver(true));
-    final Config config = new Config(clients);
+    final org.pac4j.core.config.Config config = new org.pac4j.core.config.Config(clients);
     config.setHttpActionAdapter(new PlatformHttpActionAdapter());
     return config;
   }

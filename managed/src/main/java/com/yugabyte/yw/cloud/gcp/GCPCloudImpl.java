@@ -130,7 +130,7 @@ public class GCPCloudImpl implements CloudAPI {
   private Compute buildComputeClient(GCPCloudInfo cloudInfo)
       throws GeneralSecurityException, IOException {
     ObjectMapper mapper = Json.mapper();
-    JsonNode gcpCredentials = cloudInfo.gceApplicationCredentials;
+    JsonNode gcpCredentials = cloudInfo.getGceApplicationCredentials();
     GoogleCredentials credentials =
         GoogleCredentials.fromStream(
             new ByteArrayInputStream(mapper.writeValueAsBytes(gcpCredentials)));

@@ -5,78 +5,54 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.NOT_FOUND;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsBytes;
 import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.route;
-import static play.test.Helpers.fakeRequest;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyBoolean;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.doReturn;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.TestHelper;
-import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.SupportBundle;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.BundleDetails;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
-
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.LinkedHashMap;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
-import java.util.EnumSet;
-import java.text.SimpleDateFormat;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Result;
-import play.mvc.Http;
 
 @RunWith(MockitoJUnitRunner.class)
 public class SupportBundleControllerTest extends FakeDBApplication {
-  @Mock play.Configuration mockAppConfig;
 
   private Customer customer;
   private Users user;
@@ -100,7 +76,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
 
   private Result listSupportBundles(UUID customerUUID, UUID universeUUID) {
     String uri = "/api/customers/%s/universes/%s/support_bundle";
-    return FakeApiHelper.doRequestWithAuthToken(
+    return doRequestWithAuthToken(
         "GET",
         String.format(uri, customerUUID.toString(), universeUUID.toString()),
         user.createAuthToken());
@@ -108,7 +84,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
 
   private Result getSupportBundle(UUID customerUUID, UUID universeUUID, UUID supportBundleUUID) {
     String uri = "/api/customers/%s/universes/%s/support_bundle/%s";
-    return FakeApiHelper.doRequestWithAuthToken(
+    return doRequestWithAuthToken(
         "GET",
         String.format(
             uri, customerUUID.toString(), universeUUID.toString(), supportBundleUUID.toString()),
@@ -117,7 +93,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
 
   private Result createSupportBundle(UUID customerUUID, UUID universeUUID, ObjectNode bodyJson) {
     String uri = "/api/customers/%s/universes/%s/support_bundle";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+    return doRequestWithAuthTokenAndBody(
         "POST",
         String.format(uri, customerUUID.toString(), universeUUID.toString()),
         user.createAuthToken(),
@@ -126,7 +102,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
 
   private Result deleteSupportBundle(UUID customerUUID, UUID universeUUID, UUID supportBundleUUID) {
     String uri = "/api/customers/%s/universes/%s/support_bundle/%s";
-    return FakeApiHelper.doRequestWithAuthToken(
+    return doRequestWithAuthToken(
         "DELETE",
         String.format(
             uri, customerUUID.toString(), universeUUID.toString(), supportBundleUUID.toString()),
@@ -136,7 +112,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
   private Result downloadSupportBundle(
       UUID customerUUID, UUID universeUUID, UUID supportBundleUUID) {
     String uri = "/api/customers/%s/universes/%s/support_bundle/%s/download";
-    return FakeApiHelper.doRequestWithAuthToken(
+    return doRequestWithAuthToken(
         "GET",
         String.format(
             uri, customerUUID.toString(), universeUUID.toString(), supportBundleUUID.toString()),
@@ -145,7 +121,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
 
   private Result listSupportBundleComponents(UUID customerUUID) {
     String uri = "/api/customers/%s/support_bundle/components";
-    return FakeApiHelper.doRequestWithAuthToken(
+    return doRequestWithAuthToken(
         "GET", String.format(uri, customerUUID.toString()), user.createAuthToken());
   }
 

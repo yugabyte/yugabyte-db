@@ -26,13 +26,11 @@ import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
-import static play.test.Helpers.route;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
@@ -47,12 +45,11 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Model;
-
 import java.util.Calendar;
-import java.util.concurrent.TimeUnit;
 import java.util.Optional;
-import java.util.stream.IntStream;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -248,7 +245,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             "Success",
             100.0);
     String url = "/api/customers/" + customer.uuid + "/tasks";
-    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, authToken);
+    Result result = doRequestWithAuthToken("GET", url, authToken);
     //    assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(result.status(), is(OK));
@@ -284,7 +281,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
         createSubTask(taskUUID, 0, TaskType.AnsibleSetupServer, TaskInfo.State.Failure);
 
     String url = "/api/customers/" + customer.uuid + "/tasks/" + taskUUID + "/failed";
-    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, authToken);
+    Result result = doRequestWithAuthToken("GET", url, authToken);
     assertThat(result.status(), is(OK));
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.isObject(), is(true));
@@ -341,7 +338,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             10.0);
 
     String url = "/api/customers/" + customer.uuid + "/tasks";
-    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, authToken);
+    Result result = doRequestWithAuthToken("GET", url, authToken);
     assertThat(result.status(), is(OK));
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.isObject(), is(true));
@@ -386,7 +383,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
         10.0);
 
     String url = "/api/customers/" + customer.uuid + "/tasks_list";
-    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, authToken);
+    Result result = doRequestWithAuthToken("GET", url, authToken);
     assertThat(result.status(), is(OK));
     JsonNode universeTasks = Json.parse(contentAsString(result));
 
@@ -429,7 +426,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
         "Running",
         90.0);
     String url = "/api/customers/" + customer.uuid + "/tasks_list?uUUID=" + universe.universeUUID;
-    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, authToken);
+    Result result = doRequestWithAuthToken("GET", url, authToken);
     assertThat(result.status(), is(OK));
     JsonNode universeTasks = Json.parse(contentAsString(result));
 
@@ -452,8 +449,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             "Success",
             100.0);
     Result result =
-        FakeApiHelper.doRequestWithAuthToken(
-            "GET", "/api/customers/" + customer.uuid + "/tasks", authToken);
+        doRequestWithAuthToken("GET", "/api/customers/" + customer.uuid + "/tasks", authToken);
     CustomerTask.find.query().where().eq("task_uuid", taskUUID.toString()).findOne();
     assertThat(result.status(), is(OK));
     JsonNode json = Json.parse(contentAsString(result));
@@ -478,7 +474,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     String markedCompletionTime = null;
     for (int idx = 0; idx < 2; idx++) {
       String url = "/api/customers/" + customer.uuid + "/tasks";
-      Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, authToken);
+      Result result = doRequestWithAuthToken("GET", url, authToken);
       assertThat(result.status(), is(OK));
       assertAuditEntry(0, customer.uuid);
       JsonNode tasksJson = Json.parse(contentAsString(result));
@@ -519,7 +515,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
         "Running",
         90.0);
     Result result =
-        FakeApiHelper.doRequestWithAuthToken(
+        doRequestWithAuthToken(
             "GET",
             "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID + "/tasks",
             authToken);
@@ -571,8 +567,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             "Success",
             100.0);
     Result result =
-        FakeApiHelper.doRequestWithAuthToken(
-            "GET", "/api/customers/" + customer.uuid + "/tasks", authToken);
+        doRequestWithAuthToken("GET", "/api/customers/" + customer.uuid + "/tasks", authToken);
     CustomerTask ct =
         CustomerTask.find.query().where().eq("task_uuid", taskUUID.toString()).findOne();
     assertThat(result.status(), is(OK));
@@ -601,7 +596,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
         taskUUID, 0, TaskType.AnsibleSetupServer, TaskInfo.State.Success, responseJson);
     when(mockCommissioner.getStatusOrBadRequest(taskUUID)).thenReturn(responseJson);
     Result result =
-        FakeApiHelper.doRequestWithAuthToken(
+        doRequestWithAuthToken(
             "GET", "/api/customers/" + customer.uuid + "/tasks/" + taskUUID, authToken);
 
     assertThat(result.status(), is(OK));
@@ -632,7 +627,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () ->
-                FakeApiHelper.doRequestWithAuthToken(
+                doRequestWithAuthToken(
                     "GET", "/api/customers/" + customer.uuid + "/tasks/" + taskUUID, authToken));
 
     assertThat(result.status(), is(BAD_REQUEST));
@@ -649,7 +644,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     UUID taskUUID = UUID.randomUUID();
     UUID customerUUID = UUID.randomUUID();
     Result result =
-        FakeApiHelper.doRequestWithAuthToken(
+        doRequestWithAuthToken(
             "GET", "/api/customers/" + customerUUID + "/tasks/" + taskUUID, authToken);
 
     assertThat(result.status(), is(FORBIDDEN));
@@ -676,8 +671,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     when(mockCommissioner.buildTaskStatus(any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
     Result result =
-        FakeApiHelper.doRequestWithAuthToken(
-            "GET", "/api/customers/" + customer.uuid + "/tasks", authToken);
+        doRequestWithAuthToken("GET", "/api/customers/" + customer.uuid + "/tasks", authToken);
     assertThat(result.status(), is(OK));
     JsonNode json = Json.parse(contentAsString(result));
     JsonNode universeTasks = json.get(universe.universeUUID.toString());

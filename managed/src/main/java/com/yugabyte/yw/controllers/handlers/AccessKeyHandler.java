@@ -24,12 +24,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
+import javax.inject.Singleton;
 import play.mvc.Http.MultipartFormData;
 import play.mvc.Http.MultipartFormData.FilePart;
 import play.mvc.Http.RequestBody;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Singleton
 public class AccessKeyHandler {
 
   @Inject AccessManager accessManager;

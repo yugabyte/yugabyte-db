@@ -67,13 +67,10 @@ import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes.RelationType;
-import play.api.Play;
 import play.mvc.Http.Status;
 
 @Slf4j
 public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase {
-
-  public YBClientService ybService;
 
   private static final int POLL_TIMEOUT_SECONDS = 300;
   private static final int PARTITION_SIZE_FOR_IS_BOOTSTRAP_REQUIRED_API = 8;
@@ -137,7 +134,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   @Override
   public void initialize(ITaskParams params) {
     super.initialize(params);
-    ybService = Play.current().injector().instanceOf(YBClientService.class);
   }
 
   @Override

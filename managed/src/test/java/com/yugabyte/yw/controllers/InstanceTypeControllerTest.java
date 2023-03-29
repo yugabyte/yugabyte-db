@@ -4,9 +4,9 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
-import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.core.IsNull.notNullValue;
@@ -32,7 +32,6 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -85,7 +84,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       UUID providerUUID, int status, String... zones) {
     String zoneParams = Arrays.stream(zones).collect(Collectors.joining("&zone=", "?zone=", ""));
     Result result =
-        FakeApiHelper.doRequest(
+        doRequest(
             "GET",
             "/api/customers/"
                 + customer.uuid
@@ -99,7 +98,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
 
   private JsonNode doCreateInstanceTypeAndVerify(UUID providerUUID, JsonNode bodyJson, int status) {
     Result result =
-        FakeApiHelper.doRequestWithBody(
+        doRequestWithBody(
             "POST",
             "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/instance_types",
             bodyJson);
@@ -111,7 +110,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   private JsonNode doGetInstanceTypeAndVerify(
       UUID providerUUID, String instanceTypeCode, int status) {
     Result result =
-        FakeApiHelper.doRequest(
+        doRequest(
             "GET",
             "/api/customers/"
                 + customer.uuid
@@ -126,7 +125,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   private JsonNode doDeleteInstanceTypeAndVerify(
       UUID providerUUID, String instanceTypeCode, int status) {
     Result result =
-        FakeApiHelper.doRequest(
+        doRequest(
             "DELETE",
             "/api/customers/"
                 + customer.uuid

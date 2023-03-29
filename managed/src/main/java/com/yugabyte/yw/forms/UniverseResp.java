@@ -16,6 +16,7 @@ import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -34,7 +35,7 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.yaml.snakeyaml.Yaml;
-import play.Play;
+import play.Environment;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 // TODO is this description accurate?
@@ -232,13 +233,13 @@ public class UniverseResp {
         log.warn("CertUUID cannot be null when TLS is enabled");
       }
       if (isKubernetesProvider) {
+        Environment environment = StaticInjectorHolder.injector().instanceOf(Environment.class);
         String certContent = certUUID == null ? "" : CertificateHelper.getCertPEM(certUUID);
         Yaml yaml = new Yaml();
         String sampleAppCommandTxt =
             yaml.dump(
                 yaml.load(
-                    Play.application()
-                        .resourceAsStream("templates/k8s-sample-app-command-pod.yml")));
+                    environment.resourceAsStream("templates/k8s-sample-app-command-pod.yml")));
         sampleAppCommandTxt =
             sampleAppCommandTxt
                 .replace("<root_cert_content>", certContent)
@@ -247,8 +248,7 @@ public class UniverseResp {
         String secretCommandTxt =
             yaml.dump(
                 yaml.load(
-                    Play.application()
-                        .resourceAsStream("templates/k8s-sample-app-command-secret.yml")));
+                    environment.resourceAsStream("templates/k8s-sample-app-command-secret.yml")));
         secretCommandTxt =
             secretCommandTxt
                 .replace("<root_cert_content>", certContent)

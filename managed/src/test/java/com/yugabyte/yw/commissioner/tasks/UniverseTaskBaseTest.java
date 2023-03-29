@@ -32,6 +32,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
@@ -70,7 +71,6 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import play.api.Play;
 
 @RunWith(JUnitParamsRunner.class)
 public class UniverseTaskBaseTest extends FakeDBApplication {
@@ -89,7 +89,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
   @Before
   public void setup() {
     when(baseTaskDependencies.getTaskExecutor())
-        .thenReturn(Play.current().injector().instanceOf(TaskExecutor.class));
+        .thenReturn(app.injector().instanceOf(TaskExecutor.class));
     when(baseTaskDependencies.getExecutorFactory()).thenReturn(platformExecutorFactory);
     when(platformExecutorFactory.createExecutor(any(), any())).thenReturn(executorService);
     universeTaskBase = new TestUniverseTaskBase();
@@ -259,8 +259,9 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
       fail();
     }
     doReturn(response).when(mockNodeManager).nodeCommand(any(), any());
+    InstanceExistCheck instanceExistCheck = app.injector().instanceOf(InstanceExistCheck.class);
     Optional<Boolean> optional =
-        UniverseTaskBase.instanceExists(
+        instanceExistCheck.instanceExists(
             taskParams,
             ImmutableMap.of(
                 "universe_uuid",
@@ -294,8 +295,9 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
       fail();
     }
     doReturn(response).when(mockNodeManager).nodeCommand(any(), any());
+    InstanceExistCheck instanceExistCheck = app.injector().instanceOf(InstanceExistCheck.class);
     Optional<Boolean> optional =
-        UniverseTaskBase.instanceExists(
+        instanceExistCheck.instanceExists(
             taskParams,
             ImmutableMap.of("universe_uuid", "blah", "node_uuid", taskParams.nodeUuid.toString()));
     assertEquals(true, optional.isPresent());
@@ -310,8 +312,9 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     taskParams.nodeName = "node_test_1";
     ShellResponse response = new ShellResponse();
     doReturn(response).when(mockNodeManager).nodeCommand(any(), any());
+    InstanceExistCheck instanceExistCheck = app.injector().instanceOf(InstanceExistCheck.class);
     Optional<Boolean> optional =
-        UniverseTaskBase.instanceExists(
+        instanceExistCheck.instanceExists(
             taskParams,
             ImmutableMap.of(
                 "universe_uuid",

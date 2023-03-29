@@ -18,9 +18,9 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Provider;
 import javax.inject.Inject;
-import play.api.Play;
 
 public class CloudInitializer extends CloudTaskBase {
   @Inject
@@ -43,13 +43,13 @@ public class CloudInitializer extends CloudTaskBase {
     AbstractInitializer initializer;
     switch (Common.CloudType.valueOf(cloudProvider.code)) {
       case aws:
-        initializer = Play.current().injector().instanceOf(AWSInitializer.class);
+        initializer = StaticInjectorHolder.injector().instanceOf(AWSInitializer.class);
         break;
       case gcp:
-        initializer = Play.current().injector().instanceOf(GCPInitializer.class);
+        initializer = StaticInjectorHolder.injector().instanceOf(GCPInitializer.class);
         break;
       case azu:
-        initializer = Play.current().injector().instanceOf(AZUInitializer.class);
+        initializer = StaticInjectorHolder.injector().instanceOf(AZUInitializer.class);
         break;
       default:
         throw new RuntimeException(cloudProvider.code + " does not have an initializer.");

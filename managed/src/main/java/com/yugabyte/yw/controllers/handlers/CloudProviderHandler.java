@@ -85,16 +85,17 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.inject.Singleton;
 import javax.persistence.PersistenceException;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.Application;
-import play.Configuration;
 import play.Environment;
 import play.libs.Json;
 
+@Singleton
 public class CloudProviderHandler {
   public static final String YB_FIREWALL_TAGS = "YB_FIREWALL_TAGS";
   public static final String SKIP_KEYPAIR_VALIDATION_KEY = "yb.provider.skip_keypair_validation";
@@ -122,7 +123,6 @@ public class CloudProviderHandler {
   @Inject private CloudAPI.Factory cloudAPIFactory;
   @Inject private ProviderValidator providerValidator;
   @Inject private KubernetesManagerFactory kubernetesManagerFactory;
-  @Inject private Configuration appConfig;
   @Inject private Config config;
   @Inject private CloudQueryHelper queryHelper;
   @Inject private AccessKeyRotationUtil accessKeyRotationUtil;
@@ -457,7 +457,7 @@ public class CloudProviderHandler {
 
   private void updateGCPProviderConfig(Provider provider, Map<String, String> config) {
     GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
-    JsonNode gcpCredentials = gcpCloudInfo.gceApplicationCredentials;
+    JsonNode gcpCredentials = gcpCloudInfo.getGceApplicationCredentials();
     if (gcpCredentials != null) {
       String gcpCredentialsFile =
           accessManager.createGCPCredentialsFile(provider.uuid, gcpCredentials);
@@ -519,8 +519,8 @@ public class CloudProviderHandler {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, "No region and zone information found.");
       }
-      String storageClass = appConfig.getString("yb.kubernetes.storageClass");
-      String pullSecretName = appConfig.getString("yb.kubernetes.pullSecretName");
+      String storageClass = config.getString("yb.kubernetes.storageClass");
+      String pullSecretName = config.getString("yb.kubernetes.pullSecretName");
       if (storageClass == null || pullSecretName == null) {
         LOG.error("Required configuration keys from yb.kubernetes.* are missing.");
         throw new PlatformServiceException(
@@ -704,8 +704,7 @@ public class CloudProviderHandler {
   public String getRegionNameFromCode(String code) {
     LOG.info("Code is:", code);
     String regionFile = "k8s_regions.json";
-    Application app = play.Play.application();
-    InputStream inputStream = app.resourceAsStream(regionFile);
+    InputStream inputStream = environment.resourceAsStream(regionFile);
     JsonNode jsonNode = Json.parse(inputStream);
     JsonNode nameNode = jsonNode.get(code);
     if (nameNode == null || nameNode.isMissingNode()) {
@@ -1003,7 +1002,7 @@ public class CloudProviderHandler {
            * Preferences for GCP Project. 1. User provided project name. 2. `project_id` present in
            * gcp credentials user provided. 3. Metadata query to fetch the same.
            */
-          ObjectNode credentialJSON = (ObjectNode) gcpCloudInfo.gceApplicationCredentials;
+          ObjectNode credentialJSON = (ObjectNode) gcpCloudInfo.getGceApplicationCredentials();
           if (credentialJSON != null && credentialJSON.has("project_id")) {
             gcpCloudInfo.setGceProject(credentialJSON.get("project_id").asText());
           }
@@ -1025,7 +1024,7 @@ public class CloudProviderHandler {
           gcpCloudInfo.setHostVpcId(network);
           // If destination VPC network is not specified, then we will use the
           // host VPC as for both hostVpcId and destVpcId.
-          if (gcpCloudInfo.destVpcId == null) {
+          if (gcpCloudInfo.getDestVpcId() == null) {
             gcpCloudInfo.setDestVpcId(network);
           }
           if (StringUtils.isBlank(gcpCloudInfo.getGceProject())) {
