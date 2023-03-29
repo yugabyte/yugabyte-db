@@ -605,7 +605,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean isMultiAz,
       Provider provider,
       boolean isReadOnlyCluster,
-      boolean newNamingStyle) {
+      boolean newNamingStyle,
+      boolean enableYbc) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -681,7 +682,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 config,
                 universeOverrides,
                 azOverrides,
-                isReadOnlyCluster));
+                isReadOnlyCluster,
+                enableYbc));
         podsWait.addSubTask(
             createKubernetesCheckPodNumTask(
                 universeName,
