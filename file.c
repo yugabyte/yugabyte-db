@@ -1159,14 +1159,54 @@ utl_file_fcopy(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("end_line must be positive (%d passed)", end_line)));
 
-	srcfile = AllocateFile(srcpath, "rt");
+#ifndef WIN32
+
+	srcfile = fopen(srcpath, "rt");
+
+#else
+
+	if (pg_database_encoding_max_length() > 1)
+	{
+		wchar_t	   *_srcpath = to_wchar(srcpath);
+		wchar_t	   *_mode = to_wchar("rt");
+
+		srcfile = _wfopen(_srcpath, _mode);
+
+		pfree(_srcpath);
+		pfree(_mode);
+	}
+	else
+		srcfile = fopen(srcpath, "rt");
+
+#endif
+
 	if (srcfile == NULL)
 	{
 		/* failed to open src file. */
 		IO_EXCEPTION();
 	}
 
-	dstfile = AllocateFile(dstpath, "wt");
+#ifndef WIN32
+
+	dstfile = fopen(dstpath, "wt");
+
+#else
+
+	if (pg_database_encoding_max_length() > 1)
+	{
+		wchar_t	   *_dstpath = to_wchar(dstpath);
+		wchar_t	   *_mode = to_wchar("wt");
+
+		dstfile = _wfopen(_dstpath, _mode);
+
+		pfree(_dstpath);
+		pfree(_mode);
+	}
+	else
+		dstfile = fopen(dstpath, "wt");
+
+#endif
+
 	if (dstfile == NULL)
 	{
 		/* failed to open dst file. */
@@ -1177,8 +1217,8 @@ utl_file_fcopy(PG_FUNCTION_ARGS)
 	if (copy_text_file(srcfile, dstfile, start_line, end_line))
 		IO_EXCEPTION();
 
-	FreeFile(srcfile);
-	FreeFile(dstfile);
+	fclose(srcfile);
+	fclose(dstfile);
 
 	PG_RETURN_VOID();
 }
@@ -1257,15 +1297,13 @@ utl_file_fgetattr(PG_FUNCTION_ARGS)
 
 	fullname = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
 
+#ifndef WIN32
+
 	if (stat(fullname, &st) == 0)
 	{
 		values[0] = BoolGetDatum(true);
 		values[1] = Int64GetDatum(st.st_size);
-#ifndef WIN32
 		values[2] = Int32GetDatum(st.st_blksize);
-#else
-		values[2] = 512;	/* NTFS block size */
-#endif
 	}
 	else
 	{
@@ -1273,6 +1311,44 @@ utl_file_fgetattr(PG_FUNCTION_ARGS)
 		nulls[1] = true;
 		nulls[2] = true;
 	}
+
+#else
+
+	if (pg_database_encoding_max_length() > 1)
+	{
+		wchar_t	   *_fullname = to_wchar(fullname);
+		struct _stat  _st;
+
+		if (_wstat(_fullname, &_st) == 0)
+		{
+			values[0] = BoolGetDatum(true);
+			values[1] = Int64GetDatum(_st.st_size);
+			values[2] = 512;	/* NTFS block size */
+
+		}
+		else
+		{
+			values[0] = BoolGetDatum(false);
+			nulls[1] = true;
+			nulls[2] = true;
+		}
+
+		pfree(_fullname);
+	}
+	else if (stat(fullname, &st) == 0)
+	{
+		values[0] = BoolGetDatum(true);
+		values[1] = Int64GetDatum(st.st_size);
+		values[2] = 512;	/* NTFS block size */
+	}
+	else
+	{
+		values[0] = BoolGetDatum(false);
+		nulls[1] = true;
+		nulls[2] = true;
+	}
+
+#endif
 
 	tuple = heap_form_tuple(tupdesc, values, nulls);
 	result = HeapTupleGetDatum(tuple);
