@@ -45,22 +45,22 @@ The following table includes a list of supported data type mappings for migratin
 | BINARY_DOUBLE | DOUBLE PRECISION |
 | NUMBER | NUMERIC |
 | NUMBER(3) | SMALLINT |
-| NUMBER(3,2) | REAL |
+| NUMBER(3,2) | NUMERIC(3,2) |
 | NUMBER(2,7) | NUMERIC |
-| NUMBER(6,-2) | REAL |
-| BLOB | BYTEA | Currently, import data is not supported for BLOB/CLOB. Only the schema migration is allowed. |
-| CLOB | TEXT | Currently, import data is not supported for BLOB/CLOB. Only the schema migration is allowed. |
-| NCLOB | TEXT | Currently, import data is not supported for BLOB/CLOB. Only the schema migration is allowed. |
-| BFILE | BYTEA | Analysis of BFILES is still in progress and is currently unsupported. |
-| ROWID | OID | Currently, import schema is not supported. Failed SQL statements can be found in `export-dir/schema/failed.sql` |
-| UROWID [(size)] | OID | Currently, import schema is not supported. Failed SQL statements can be found in `export-dir/schema/failed.sql` |
-| SYS.AnyData | ANYDATA | Currently, import schema is not supported. Failed SQL statements can be found in `export-dir/schema/failed.sql` |
-| SYS.AnyType | ANYTYPE | Currently, import schema is not supported. Failed SQL statements can be found in `export-dir/schema/failed.sql` |
-| SYS.AnyDataSet | ANYDATASET | Currently, import schema is not supported. Failed SQL statements can be found in `export-dir/schema/failed.sql` |
-| XMLType | XML | Currently, import schema is not supported. Failed SQL statements can be found in `export-dir/schema/failed.sql` |
-| URIType | URITYPE | Currently, import schema is not supported. Failed SQL statements can be found in `export-dir/schema/failed.sql` |
+| NUMBER(6,-2) | NUMERIC(6,-2) | Results in an error because negative scale is currently not supported. Refer to the [GitHub issue](https://github.com/yugabyte/yb-voyager/issues/779) for more details.
+| BLOB | BYTEA | Data is ignored during export. Only the schema migration is allowed. Please use another mechanism to load the values. |
+| CLOB | TEXT | Data migration is allowed to a limit of 235MB per file. |
+| NCLOB | TEXT | Data migration is allowed to a limit of 235MB per file. |
+| BFILE | BYTEA | Not supported. |
+| ROWID | OID | Currently, import schema is supported. Data import results in an error. |
+| UROWID [(size)] | OID | Currently, import schema is supported. Data import results in an error. |
+| SYS.AnyData | ANYDATA | Not supported. |
+| SYS.AnyType | ANYTYPE | Not supported. |
+| SYS.AnyDataSet | ANYDATASET | Not supported. |
+| XMLType | XML | Currently, import schema is supported. Data import results in an error. |
+| URIType | URITYPE | Not supported. |
 
-#### ANSI supported data types
+### ANSI supported data types
 
 The following table list the ANSI supported data types that can be mapped to YugabyteDB:
 
