@@ -55,7 +55,7 @@ The following instructions are for CentOS 7.
 
 ## Install necessary packages
 
-Update and install basic development packages:
+Update and install basic development packages as follows:
 
 ```sh
 sudo yum update -y
