@@ -378,7 +378,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isMultiAZ,
           provider,
           isReadOnlyCluster,
-          newNamingStyle);
+          newNamingStyle,
+          universe.isYbcEnabled());
       createModifyBlackListTask(
               new ArrayList<>(tserversToRemove), false /* isAdd */, false /* isLeaderBlacklist */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
