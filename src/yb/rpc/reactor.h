@@ -196,6 +196,11 @@ class Reactor {
       ServerEventListPtr server_event, const SourceLocation& source_location)
       EXCLUDES_REACTOR_THREAD;
 
+  // Queues a server event on all the connections which pass the filter.
+  Status QueueEventOnFilteredConnections(
+      ServerEventListPtr server_event, const SourceLocation& source_location,
+      ConnectionFilter connection_filter);
+
   // Queue a new incoming connection. Takes ownership of the underlying fd from
   // 'socket', but not the Socket object itself.
   // If the reactor is already shut down, takes care of closing the socket.
