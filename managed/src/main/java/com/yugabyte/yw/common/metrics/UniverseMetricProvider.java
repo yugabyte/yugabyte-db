@@ -107,16 +107,6 @@ public class UniverseMetricProvider implements MetricsProvider {
                     PlatformMetrics.UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAY,
                     encryptionKeyExpiryDays));
           }
-          Double sshKeyExpiryDays =
-              accessKeyRotationUtil.getSSHKeyExpiryDays(universe, allAccessKeys);
-          if (sshKeyExpiryDays != null) {
-            universeGroup.metric(
-                createUniverseMetric(
-                    customer,
-                    universe,
-                    PlatformMetrics.UNIVERSE_SSH_KEY_EXPIRY_DAY,
-                    sshKeyExpiryDays));
-          }
           universeGroup.metric(
               createUniverseMetric(
                   customer,
@@ -132,6 +122,16 @@ public class UniverseMetricProvider implements MetricsProvider {
                     universe,
                     PlatformMetrics.UNIVERSE_PRIVATE_ACCESS_KEY_STATUS,
                     statusValue(validPermission)));
+            Double sshKeyExpiryDays =
+                accessKeyRotationUtil.getSSHKeyExpiryDays(universe, allAccessKeys);
+            if (sshKeyExpiryDays != null) {
+              universeGroup.metric(
+                  createUniverseMetric(
+                      customer,
+                      universe,
+                      PlatformMetrics.UNIVERSE_SSH_KEY_EXPIRY_DAY,
+                      sshKeyExpiryDays));
+            }
           }
 
           if (universe.getUniverseDetails().nodeDetailsSet != null) {
