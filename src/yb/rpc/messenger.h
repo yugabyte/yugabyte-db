@@ -224,6 +224,10 @@ class Messenger : public ProxyContext {
   Status QueueEventOnAllReactors(
       ServerEventListPtr server_event, const SourceLocation& source_location);
 
+  Status QueueEventOnFilteredConnections(
+      ServerEventListPtr server_event, const SourceLocation& source_location,
+      ConnectionFilter connection_filter);
+
   // Dump the current RPCs into the given protobuf.
   Status DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                          DumpRunningRpcsResponsePB* resp);

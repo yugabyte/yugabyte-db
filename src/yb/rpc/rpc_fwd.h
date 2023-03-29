@@ -119,6 +119,8 @@ typedef std::shared_ptr<ServiceIf> ServiceIfPtr;
 
 typedef std::function<int(const std::string&, const std::string&)> Publisher;
 
+using ConnectionFilter = std::function<bool(const ConnectionPtr&)>;
+
 // SteadyTimePoint is something like MonoTime, but 3rd party libraries know it and don't know about
 // our private MonoTime.
 typedef std::chrono::steady_clock::time_point SteadyTimePoint;

@@ -15,6 +15,10 @@ package org.yb.cql;
 
 import com.datastax.driver.core.Host;
 import com.google.common.net.HostAndPort;
+
+import java.util.Collections;
+import java.util.HashMap;
+
 import org.junit.Test;
 import org.yb.minicluster.MiniYBCluster;
 
@@ -25,9 +29,12 @@ import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestEditCQLNodes extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestEditCQLNodes.class);
 
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
@@ -35,14 +42,16 @@ public class TestEditCQLNodes extends BaseCQLTest {
     builder.tserverHeartbeatTimeoutMs(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000 / 2);
   }
 
-  @Test
-  public void testEditCQLNodes() throws Exception {
+  private void internalTestEditCQLNodes(boolean limitToSubscribedConns) throws Exception {
     assertEquals(miniCluster.getCQLContactPoints().size(),
       cluster.getMetadata().getAllHosts().size());
     assertEquals(NUM_TABLET_SERVERS, cluster.getMetadata().getAllHosts().size());
 
     // Add a new node.
-    miniCluster.startTServer(null);
+    miniCluster.startTServer(new HashMap<String, String>() {{
+        put("cql_limit_nodelist_refresh_to_subscribed_conns",
+            String.valueOf(limitToSubscribedConns));
+      }});
 
     // Wait for node list refresh.
     Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 2 * 1000);
@@ -63,9 +72,42 @@ public class TestEditCQLNodes extends BaseCQLTest {
     // Wait for node list refresh.
     Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 2 * 1000);
 
+    // Verify we have one less node. Note that we don't assert here since it is not guaranteed here
+    // that we will have one less node on the driver side. This can happen if the node that was
+    // removed was the one with which the driver had the control connection with. In that case, the
+    // driver waits a little longer (default 16 sec) before establishing a new control connection.
+    if (miniCluster.getCQLContactPoints().size() == cluster.getMetadata().getAllHosts().size()) {
+      assertEquals(NUM_TABLET_SERVERS, cluster.getMetadata().getAllHosts().size());
+      return;
+    }
+
+    // Wait a little more in case the removed node was the one with which the driver had the
+    // control connection.
+    Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 4 * 1000);
+
     // Verify we have one less node.
     assertEquals(miniCluster.getCQLContactPoints().size(),
       cluster.getMetadata().getAllHosts().size());
+    assertEquals(NUM_TABLET_SERVERS, cluster.getMetadata().getAllHosts().size());
   }
 
+  @Test
+  public void testEditCQLNodes() throws Exception {
+    LOG.info("Start test: " + getCurrentTestMethodName());
+    internalTestEditCQLNodes(/*limitToSubscribedConns=*/ true);
+  }
+
+  @Test
+  public void testEditCQLNodesSendToAllConnectionsGFlag() throws Exception {
+    LOG.info("Start test: " + getCurrentTestMethodName());
+    destroyMiniCluster();
+    // Testing cql_limit_nodelist_refresh_to_subscribed_conns flag disabled. It is enabled by
+    // default.
+    createMiniCluster(
+        Collections.emptyMap(),
+        Collections.singletonMap("cql_limit_nodelist_refresh_to_subscribed_conns", "false"));
+    setUpCqlClient();
+
+    internalTestEditCQLNodes(/*limitToSubscribedConns=*/ false);
+  }
 }

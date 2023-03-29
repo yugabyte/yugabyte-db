@@ -400,6 +400,24 @@ Status Reactor::QueueEventOnAllConnections(
   }, source_location);
 }
 
+Status Reactor::QueueEventOnFilteredConnections(
+    ServerEventListPtr server_event, const SourceLocation& source_location,
+    ConnectionFilter connection_filter) {
+  return ScheduleReactorFunctor([server_event = std::move(server_event),
+      connection_filter = std::move(connection_filter)](Reactor* reactor) {
+        ReactorThreadRoleGuard guard;
+        for (const ConnectionPtr& conn : reactor->server_conns_) {
+          if (connection_filter(conn)) {
+            auto queuing_status = conn->QueueOutboundData(server_event);
+            LOG_IF(DFATAL, !queuing_status.ok())
+                << "Could not queue a server event in "
+                << __PRETTY_FUNCTION__ << ": " << queuing_status;
+          }
+        }
+      },
+      source_location);
+}
+
 Status Reactor::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                                 DumpRunningRpcsResponsePB* resp) {
   return RunOnReactorThread([&req, resp](Reactor* reactor) -> Status {
