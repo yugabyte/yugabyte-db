@@ -11,6 +11,9 @@ menu:
     identifier: acid-transactions-1-ysql
     parent: learn
     weight: 566
+rightNav:
+  hideH3: true
+  hideH4: true
 type: docs
 ---
 
@@ -64,7 +67,7 @@ The following session-level settings affect transactions and can be configured t
 These settings impact all transactions in the current session only.
 {{</note>}}
 
-### default_transaction_read_only
+##### default_transaction_read_only
 
 Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../transactions-performance-ysql#read-from-followers).
 
@@ -72,7 +75,7 @@ Turn this setting `ON/TRUE/1` to make all the transactions in the current sessio
 SET default_transaction_read_only = TRUE;
 ```
 
-### default_transaction_isolation
+##### default_transaction_isolation
 
 Set this to one of `serializable`, `repeatable read`, or `read committed `. This sets the default isolation level for all transactions in the current session.
 
@@ -80,7 +83,7 @@ Set this to one of `serializable`, `repeatable read`, or `read committed `. This
 SET default_transaction_isolation = 'serializable';
 ```
 
-### default_transaction_deferrable
+##### default_transaction_deferrable
 
 Turn this setting `ON/TRUE/1` to make all the transactions in the current session [deferrable](../../../../api/ysql/the-sql-language/statements/txn_set/#deferrable-mode-1). This ensures that the transactions are not canceled by a serialization failure.
 
@@ -92,15 +95,15 @@ SET default_transaction_deferrable = TRUE;
 The `DEFERRABLE` transaction property has no effect unless the transaction is also `SERIALIZABLE` and `READ ONLY`.
 {{</note>}}
 
-### idle_in_transaction_session_timeout
+##### idle_in_transaction_session_timeout
 
 Set this to a duration (for example, `'10s or 1000'`) to limit delays in transaction statements. Default time units is milliseconds. See [Handle idle transactions](../transactions-performance-ysql#handle-idle-applications).
 
-### yb_transaction_priority_lower_bound
+##### yb_transaction_priority_lower_bound
 
 Set this to values in the range `[0.0 - 1.0]` to set the lower bound of the dynamic priority assignment. See [Optimistic concurrency control](../transactions-performance-ysql#optimistic-concurrency-control).
 
-### yb_transaction_priority_upper_bound
+##### yb_transaction_priority_upper_bound
 
 Set this to values in the range `[0.0 - 1.0]` to set the upper bound of the dynamic priority assignment. See [Optimistic concurrency control](../transactions-performance-ysql#optimistic-concurrency-control).
 
@@ -110,15 +113,15 @@ Isolation level defines the level of data visibility to the transaction. Yugabyt
 
 YugabyteDB supports three kinds of isolation levels to support different application needs.
 
-### Repeatable Read (Snapshot)
+##### Repeatable Read (Snapshot)
 
 In [Repeatable Read / Snapshot](../../../../explore/transactions/isolation-levels/#snapshot-isolation) isolation level, only the data that is committed before the transaction began is visible to the transaction. Although updates done in the transaction are visible to any query in the transaction, the transaction does not see any changes made by other concurrent transactions. Effectively, the transaction sees the snapshot of the database as of the start of the transaction. Applications using this isolation level should be designed to retry on serialization failures.
 
-### Read Committed
+##### Read Committed
 
 In [Read Committed](../../../../explore/transactions/isolation-levels/#read-committed-isolation) isolation level (currently in beta), each statement of the transaction sees the latest data committed by any concurrent transaction just before the execution of the statement. If another transaction has modified a row related to the current transaction, the current transaction waits for the other transaction to commit or rollback its changes. Here, the server internally waits and retries on conflicts, so applications need not worry about retrying on serialization failures.
 
-### Serializable
+##### Serializable
 
 [Serializable](../../../../explore/transactions/isolation-levels/#serializable-isolation) isolation level is the strictest. It has the effect of all transactions being executed in a serial manner, one after the other rather than in parallel. Applications using this isolation level should be designed to retry on serialization failures.
 
@@ -137,14 +140,15 @@ SELECT * FROM txndemo WHERE k=1 FOR UPDATE;
 ```
 
 YugabyteDB supports the following types of explicit row locks:
-
-- FOR UPDATE - Strongest and exclusive lock. Prevents all other locks on these rows till the transaction ends.
-- FOR NO KEY UPDATE - Weaker than `FOR UPDATE` and exclusive. Will not block `FOR KEY SHARE` commands.
-- FOR SHARE - Shared lock that does not block other `FOR SHARE` and `FOR KEY SHARE` commands.
-- FOR KEY SHARE - Shared lock that does not block other `FOR SHARE`, `FOR KEY SHARE`, and `FOR NO KEY UPDATE` commands.
+| Lock | Description |
+| ---: | ----------- |
+| **FOR UPDATE** | Strongest and exclusive lock. Prevents all other locks on these rows till the transaction ends.|
+| **FOR&nbsp;NO&nbsp;KEY&nbsp;UPDATE** | Weaker than `FOR UPDATE` and exclusive. Will not block `FOR KEY SHARE` commands.|
+| **FOR SHARE** | Shared lock that does not block other `FOR SHARE` and `FOR KEY SHARE` commands.|
+| **FOR KEY SHARE** | Shared lock that does not block other `FOR SHARE`, `FOR KEY SHARE`, and `FOR NO KEY UPDATE` commands.|
 
 {{<tip title="Examples">}}
-For more details and examples related to these locking policies, see [Explicit locking](../../../../explore/transactions/explicit-locking).
+For more details and examples related to these locking policies, see [Explicit locking](../../../../explore/transactions/explicit|locking).
 {{</tip>}}
 
 ## Learn more

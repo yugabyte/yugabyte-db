@@ -65,15 +65,14 @@ Follow the [setup instructions](../../../../explore#tabs-00-00) to start a singl
     INSERT INTO txndemo VALUES (1,10),(2,10),(3,10),(4,10),(5,10);
     ```
 
-## Transaction retries
 
-### Automatic retries
+## Automatic retries
 
 YugabyteDB will retry failed transactions automatically on the server side whenever possible without client intervention as per the [concurrency control policies](../../../../architecture/transactions/concurrency-control/#best-effort-internal-retries-for-first-statement-in-a-transaction). These happen even on single statements, which are implicitly considered as transactions. In [Read Committed](/#statement-timeout) isolation mode, the server retries indefinitely.
 
 In some scenarios, a server-side retry is not suitable. For example, the retry limit has been reached or the transaction is not in a valid state. In these cases, it is the client's responsibility to retry the transaction at the application layer.
 
-### Client-side retry
+## Client-side retry
 
 Most transaction errors that happen due to conflicts and deadlocks can be restarted by the client. The following scenarios describe the causes for failures, and the required methods to be handled by the applications.
 
@@ -102,9 +101,9 @@ while attempt < max_attempts:
             sleep_time *= backoff
 ```
 
-If the `COMMIT` is successful, the program exits the loop. `attempt < max_attempts` limits the number of retries to `max_attempts`, and the amount of time the code waits before the next retry also increases with `sleep_time *= backoff`. Choose values as appropriate for your application.
+If the `COMMIT` is successful, the program exits the loop. `attempt < max_attempts` limits the number of retries to `max_attempts`, and the amount of time the code waits before the next retry also increases with `sleep_time *= backoff`. Choose values as appropriate for your application. Let's look at how to handle some common transaction errors.
 
-### 40001 - SerializationFailure
+##### 40001 - SerializationFailure
 
 SerializationFailure errors happen when multiple transactions are updating the same set of keys (conflict) or when transactions are waiting on each other (deadlock). The error messages could be one of the following types:
 
@@ -153,7 +152,7 @@ When the `UPDATE` or `COMMIT` fails because of `SerializationFailure`, the code 
 In read committed isolation level, as the server retries internally, the client does not need to worry about handling SerializationFailure. Only transactions operating in repeated read and serializable levels need to handle serialization failures.
 {{</tip>}}
 
-### 25P02 - InFailedSqlTransaction
+##### 25P02 - InFailedSqlTransaction
 
 This error occurs when a statement is issued after there's already an error in a transaction. The error message would be similar to the following:
 
@@ -189,7 +188,7 @@ The `INVALID TXN STATEMENT` would throw a `SyntaxError` exception. The code (in-
 
 Another way would be to rollback to a checkpoint before the failed statement and proceed further as described in [Use savepoints](#use-savepoints).
 
-### Use savepoints
+## Savepoints
 
 [Savepoints](../../../../api/ysql/the-sql-language/statements/savepoint_create) are named checkpoints that are helpful to rollback just a few statements in case of error scenarios and proceed the transaction further rather than aborting the entire transaction.
 
@@ -228,7 +227,7 @@ If the row `[k=1]` already exists in the table, the `INSERT` would result in a U
 
 Although most transactions can be retried in most error scenarios, there are cases where retrying a transaction will not resolve an issue. For example, errors can occur when statements are issued out of place. These statements have to be fixed in code to continue further.
 
-### 25001 - Specify transaction isolation level
+##### 25001 - Specify transaction isolation level
 
 Transaction level isolation should be specified before the first statement of the transaction is executed. If not the following error occurs:
 
@@ -259,7 +258,7 @@ ERROR:  25001: SET TRANSACTION ISOLATION LEVEL must be called before any query
 Time: 3.808 ms
 ```
 
-### 25006 - Modify a row in a read-only transaction
+##### 25006 - Modify a row in a read-only transaction
 
 This error occurs when a row is modified after specifying a transaction to be `READ ONLY` as follows:
 
@@ -281,6 +280,22 @@ ERROR:  25006: cannot execute UPDATE in a read-only transaction
 Time: 4.417 ms
 ```
 
+
+## Observability - (Work in progress[TODO])
+
+YugabyteDB exports a lot of [observable metrics](../../../../explore/observability) for you to see what is going in your cluster. These metrics can be exported to [Prometheus](../../../../explore/observability/prometheus-integration/macos/) and visualized in [Grafana](../../../../explore/observability/grafana-dashboard/grafana/). These metrics are also available on the UI in YBAnywhere Platform. Let's look into some key transaction related metrics.
+
+##### transactions_running
+
+This metric represents the no.of transactions that are currently active. This would give a great overview how transaction intensive the cluster currently is. 
+
+##### transaction_conflicts
+
+This metric represents the no.of transactions waiting on other transactions. An increase in the number of conflicts, could directly result in increased latency of your applications.
+
+##### expired_transactions
+
+This metric represents the no.of transactions that did not complete because the status tablet did not receive enough number of heartbeats from the node to which the client had connected to. This usually happens if the transaction could not be completed in a specific time.  
 
 ## Learn more
 
