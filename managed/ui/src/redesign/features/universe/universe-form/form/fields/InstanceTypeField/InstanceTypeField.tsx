@@ -21,6 +21,7 @@ import {
 } from './InstanceTypeFieldHelper';
 import { NodeType } from '../../../../../../utils/dtos';
 import {
+  AvailabilityZone,
   CloudType,
   InstanceType,
   InstanceTypeWithGroup,
@@ -35,7 +36,8 @@ import {
   MASTER_INSTANCE_TYPE_FIELD,
   MASTER_DEVICE_INFO_FIELD,
   MASTER_PLACEMENT_FIELD,
-  SPOT_INSTANCE_FIELD
+  SPOT_INSTANCE_FIELD,
+  PLACEMENTS_FIELD
 } from '../../../utils/constants';
 import { useFormFieldStyles } from '../../../universeMainStyle';
 
@@ -67,15 +69,16 @@ export const InstanceTypeField = ({
   const { t } = useTranslation();
   const nodeTypeTag = isDedicatedMasterField ? NodeType.Master : NodeType.TServer;
 
+  // To set value based on master or tserver field in dedicated mode
+  const UPDATE_FIELD = isDedicatedMasterField ? MASTER_INSTANCE_TYPE_FIELD : INSTANCE_TYPE_FIELD;
+
   //watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
   const deviceInfo = isDedicatedMasterField
     ? useWatch({ name: MASTER_DEVICE_INFO_FIELD })
     : useWatch({ name: DEVICE_INFO_FIELD });
   const masterPlacement = useWatch({ name: MASTER_PLACEMENT_FIELD });
-
-  // To set value based on master or tserver field in dedicated mode
-  const UPDATE_FIELD = isDedicatedMasterField ? MASTER_INSTANCE_TYPE_FIELD : INSTANCE_TYPE_FIELD;
+  const zones = useWatch({ name: PLACEMENTS_FIELD }).map((zone: AvailabilityZone) => zone.name);
 
   const handleChange = (e: ChangeEvent<{}>, option: any) => {
     setValue(UPDATE_FIELD, option?.instanceTypeCode, { shouldValidate: true });
@@ -90,17 +93,27 @@ export const InstanceTypeField = ({
   );
 
   const { data, isLoading, refetch } = useQuery(
-    [QUERY_KEY.getInstanceTypes, provider?.uuid],
-    () => api.getInstanceTypes(provider?.uuid),
+    [QUERY_KEY.getInstanceTypes, provider?.uuid, JSON.stringify(zones)],
+    () => api.getInstanceTypes(provider?.uuid, zones),
     {
-      enabled: !!provider?.uuid,
+      enabled: !!provider?.uuid && zones.length > 0,
       onSuccess: (data) => {
+        if (!data.length) return;
+
+        const currentInstanceType = getValues(UPDATE_FIELD);
+
+        //do instance type exists on the last fetched list
+        const instanceExists = (instanceType: string) =>
+          !!data.find(
+            (instance: InstanceType) => instance.instanceTypeCode === instanceType // default instance type exists in the list
+          );
+
         // set default/first item as instance type after provider changes
-        if (!getValues(UPDATE_FIELD) && provider?.code && data.length) {
-          const defaultInstanceType =
-            getDefaultInstanceType(provider.code, providerRuntimeConfigs) ??
-            data[0].instanceTypeCode;
-          setValue(UPDATE_FIELD, defaultInstanceType, { shouldValidate: true });
+        if (!currentInstanceType || !instanceExists(currentInstanceType)) {
+          const defaultInstanceType = getDefaultInstanceType(provider.code, providerRuntimeConfigs);
+          if (instanceExists(defaultInstanceType))
+            setValue(UPDATE_FIELD, defaultInstanceType, { shouldValidate: true });
+          else setValue(UPDATE_FIELD, data[0].instanceTypeCode, { shouldValidate: true });
         }
       }
     }
