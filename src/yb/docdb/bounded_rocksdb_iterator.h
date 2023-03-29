@@ -75,6 +75,8 @@ class BoundedRocksDbIterator : public rocksdb::Iterator {
     iterator_.reset();
   }
 
+  void UseFastNext(bool value) override;
+
  private:
   std::unique_ptr<rocksdb::Iterator> iterator_;
   const KeyBounds* key_bounds_;
