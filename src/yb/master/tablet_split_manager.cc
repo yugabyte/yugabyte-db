@@ -232,6 +232,11 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
         "Tablet splitting is not supported for system table: $0 with table_id: $1",
         table.name(), table.id());
   }
+  if (table.id() == kPgSequencesDataTableId) {
+    return STATUS_FORMAT(
+        NotSupported, "Tablet splitting is not supported for Sequences table: $0 with table_id: $1",
+        table.name(), table.id());
+  }
   if (table.GetTableType() == REDIS_TABLE_TYPE) {
     VLOG(1) << Format("Tablet splitting is not supported for YEDIS tables, table_id: $0",
                       table.id());
