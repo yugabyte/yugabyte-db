@@ -12,14 +12,18 @@
 //
 
 #include <algorithm>
+#include <chrono>
 #include <map>
 #include <string>
+#include <vector>
+#include <unordered_set>
 #include <utility>
-#include <chrono>
+
 #include <boost/assign.hpp>
-#include "yb/integration-tests/xcluster_ysql_test_base.h"
-#include "yb/util/flags.h"
+
 #include <gtest/gtest.h>
+
+#include "yb/integration-tests/xcluster_ysql_test_base.h"
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/common.pb.h"
@@ -214,9 +218,9 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     return yb_tables;
   }
 
-  Status CreateDatabase(Cluster* cluster,
-                        const std::string& namespace_name = kNamespaceName,
-                        bool colocated = false) {
+  static Status CreateDatabase(Cluster* cluster,
+                               const std::string& namespace_name = kNamespaceName,
+                               bool colocated = false) {
     auto conn = EXPECT_RESULT(cluster->Connect());
     EXPECT_OK(conn.ExecuteFormat("CREATE DATABASE $0$1",
                                  namespace_name, colocated ? " colocation = true" : ""));
@@ -1293,6 +1297,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
   ASSERT_OK(consumer_client()->AddTransactionStatusTablet(global_txn_table_id));
   // Reset the role and data before setting up replication again.
   ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::ACTIVE));
+  ASSERT_OK(WaitForRoleChangeToPropogateToAllTServers(cdc::XClusterRole::ACTIVE));
   ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(producer_table->name().namespace_name()));
     return conn.ExecuteFormat("delete from $0;", producer_table->name().table_name());
@@ -3227,4 +3232,132 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
   ASSERT_OK(consumer_client()->DeleteNamespace(kNamespaceName, YQL_DATABASE_PGSQL));
 }
 
-} // namespace yb
+class XClusterYsqlTestReadOnly : public XClusterYsqlTest {
+  using Connections = std::vector<pgwrapper::PGConn>;
+
+ protected:
+  void SetUp() override {
+    FLAGS_enable_replicate_transaction_status_table = true;
+    XClusterYsqlTest::SetUp();
+  }
+
+  static const std::string kTableName;
+
+  Result<Connections> PrepareClusters() {
+    RETURN_NOT_OK(Initialize(3 /* replication factor */));
+    const std::vector<std::string> namespaces{kNamespaceName, "test_namespace2"};
+    for (const auto& namespace_name : namespaces) {
+      RETURN_NOT_OK(RunOnBothClusters([&namespace_name](Cluster* cluster) -> Status {
+        RETURN_NOT_OK(CreateDatabase(cluster, namespace_name));
+        auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+        return conn.ExecuteFormat("CREATE TABLE $0(id INT PRIMARY KEY, balance INT)", kTableName);
+      }));
+    }
+    auto table_names = VERIFY_RESULT(producer_client()->ListTables(kTableName));
+    auto tables = std::vector<std::shared_ptr<client::YBTable>>();
+    tables.reserve(table_names.size());
+    for (const auto& table_name : table_names) {
+      tables.push_back(VERIFY_RESULT(producer_client()->OpenTable(table_name.table_id())));
+      namespace_ids_.insert(table_name.namespace_id());
+    }
+    const auto universe_id = VERIFY_RESULT(GetUniverseId(&producer_cluster_));
+    RETURN_NOT_OK(SetupUniverseReplication(universe_id, tables));
+    master::GetUniverseReplicationResponsePB resp;
+    RETURN_NOT_OK(VerifyUniverseReplication(universe_id, &resp));
+    return ConnectConsumers(namespaces);
+  }
+
+  Status SetRoleToStandbyAndWaitForValidSafeTime() {
+    RETURN_NOT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
+    auto deadline = PropagationDeadline();
+    for (const auto& namespace_id : namespace_ids_) {
+      RETURN_NOT_OK(
+          WaitForValidSafeTimeOnAllTServers(namespace_id, nullptr /* cluster */, deadline));
+    }
+    return Status::OK();
+  }
+
+  Status SetRoleToActive() {
+    RETURN_NOT_OK(ChangeXClusterRole(cdc::XClusterRole::ACTIVE));
+    return WaitForRoleChangeToPropogateToAllTServers(cdc::XClusterRole::ACTIVE);
+  }
+
+ private:
+  Result<Connections> ConnectConsumers(const std::vector<std::string>& namespaces) {
+    Connections connections;
+    connections.reserve(namespaces.size());
+    for (const auto& namespace_name : namespaces) {
+      connections.push_back(VERIFY_RESULT(consumer_cluster_.ConnectToDB(namespace_name)));
+    }
+    return connections;
+  }
+
+  std::unordered_set<std::string> namespace_ids_;
+};
+
+const std::string XClusterYsqlTestReadOnly::kTableName{"test_table"};
+
+TEST_F_EX(XClusterYsqlTest, DmlOperationsBlockedOnStandbyCluster, XClusterYsqlTestReadOnly) {
+  auto consumer_conns = ASSERT_RESULT(PrepareClusters());
+  auto query_patterns = {
+      "INSERT INTO $0 VALUES($1, 100)",
+      "UPDATE $0 SET balance = 0 WHERE id = $1",
+      "DELETE FROM $0 WHERE id = $1"};
+  std::vector<std::string> queries;
+  queries.reserve(query_patterns.size());
+  for (const auto& pattern : query_patterns) {
+    queries.push_back(Format(pattern, kTableName, 1));
+  }
+
+  for (auto& conn : consumer_conns) {
+    for (const auto& query : queries) {
+      ASSERT_OK(conn.Execute(query));
+    }
+  }
+
+  ASSERT_OK(SetRoleToStandbyAndWaitForValidSafeTime());
+
+  // Test that INSERT, UPDATE, and DELETE operations fail while the cluster is on STANDBY mode.
+  for (auto& conn : consumer_conns) {
+    for (const auto& query : queries) {
+      const auto status = conn.Execute(query);
+      ASSERT_NOK(status);
+      ASSERT_STR_CONTAINS(
+          status.ToString(), "Data modification by DML is forbidden with STANDBY xCluster role");
+    }
+    ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", kTableName));
+  }
+
+  ASSERT_OK(SetRoleToActive());
+
+  // Test that DML operations are allowed again once the cluster is set to ACTIVE mode.
+  for (auto& conn : consumer_conns) {
+    for (const auto& query : queries) {
+      ASSERT_OK(conn.Execute(query));
+    }
+  }
+}
+
+TEST_F_EX(XClusterYsqlTest, DdlAndReadOperationsAllowedOnStandbyCluster, XClusterYsqlTestReadOnly) {
+  auto consumer_conns = ASSERT_RESULT(PrepareClusters());
+  ASSERT_OK(SetRoleToStandbyAndWaitForValidSafeTime());
+  constexpr auto* kNewTestTableName = "new_test_table";
+  constexpr auto* kNewDBPrefix = "test_db_";
+
+  for (size_t i = 0; i < consumer_conns.size(); ++i) {
+    auto& conn = consumer_conns[i];
+    // Test that creating databases is still allowed.
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0$1", kNewDBPrefix, i));
+    // Test that altering databases is still allowed.
+    ASSERT_OK(conn.ExecuteFormat("ALTER DATABASE $0$1 RENAME TO renamed_$0$1", kNewDBPrefix, i));
+    // Test that creating tables is still allowed.
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (id INT, balance INT)", kNewTestTableName));
+    // Test that altering tables is still allowed.
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD name VARCHAR(60)", kNewTestTableName));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP balance", kNewTestTableName));
+    // Test that reading from tables is still allowed.
+    ASSERT_RESULT(conn.FetchFormat("SELECT * FROM $0", kNewTestTableName));
+  }
+}
+
+}  // namespace yb

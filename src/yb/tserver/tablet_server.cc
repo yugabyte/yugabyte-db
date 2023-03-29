@@ -525,7 +525,7 @@ Status TabletServer::RegisterServices() {
   auto pg_client_service = std::make_shared<PgClientServiceImpl>(
       *this, tablet_manager_->client_future(), clock(),
       std::bind(&TabletServer::TransactionPool, this), metric_entity(),
-      &messenger()->scheduler(), &xcluster_safe_time_map_,
+      &messenger()->scheduler(), XClusterContext(xcluster_safe_time_map_, xcluster_read_only_mode_),
       &pg_node_level_mutation_counter_);
   pg_client_service_ = pg_client_service;
   LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
@@ -1134,5 +1134,10 @@ Status TabletServer::SetCDCServiceEnabled() {
   }
   return Status::OK();
 }
+
+void TabletServer::SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode) {
+  xcluster_read_only_mode_.store(is_xcluster_read_only_mode, std::memory_order_release);
+}
+
 }  // namespace tserver
 }  // namespace yb
