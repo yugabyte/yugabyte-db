@@ -208,7 +208,7 @@ public class ConfigHelperTest extends FakeDBApplication {
       createTempFile(TMP_STORAGE_PATH + filePath, diskFileName, UUID.randomUUID().toString());
     }
     for (String diskFileName : diskFileNames) {
-      String filePath = "/node-agent/" + customer.uuid + "/" + UUID.randomUUID() + "/0/";
+      String filePath = "/node-agent/certs/" + customer.uuid + "/" + UUID.randomUUID() + "/0/";
       createTempFile(TMP_STORAGE_PATH + filePath, diskFileName, UUID.randomUUID().toString());
     }
     configHelper.syncFileData(TMP_STORAGE_PATH, false);
@@ -222,7 +222,8 @@ public class ConfigHelperTest extends FakeDBApplication {
     }
     for (String dbFileName : dbFileNames) {
       UUID parentUUID = UUID.randomUUID();
-      String filePath = "/node-agent/" + customer.uuid + "/" + parentUUID + "/0/" + dbFileName;
+      String filePath =
+          "/node-agent/certs/" + customer.uuid + "/" + parentUUID + "/0/" + dbFileName;
       String content = Base64.getEncoder().encodeToString(UUID.randomUUID().toString().getBytes());
       FileData.create(parentUUID, filePath, dbFileName, content);
     }

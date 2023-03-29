@@ -47,7 +47,7 @@ public class ConfigHelper {
       ImmutableList.of(
           "m3.", "c5.", "c5d.", "c4.", "c3.", "i3.", "t2.", "t3.", "t4g.", "m6i.", "m5.");
   private static final List<String> FILE_DIRECTORY_TO_SYNC =
-      ImmutableList.of("keys", "certs", "licenses", "node-agent");
+      ImmutableList.of("keys", "certs", "licenses", "node-agent/certs");
 
   public List<String> getAWSInstancePrefixesSupported() {
     if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
