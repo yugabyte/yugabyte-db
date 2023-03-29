@@ -36,6 +36,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <atomic>
 
 #include "yb/consensus/metadata.pb.h"
 #include "yb/cdc/cdc_fwd.h"
@@ -55,6 +56,7 @@
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
+#include "yb/tserver/xcluster_context.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
@@ -292,6 +294,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return pg_client_service_.lock().get();
   }
 
+  void SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode);
+
  protected:
   virtual Status RegisterServices();
 
@@ -388,6 +392,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   HostPort pgsql_proxy_bind_address_;
 
   XClusterSafeTimeMap xcluster_safe_time_map_;
+
+  std::atomic<bool> xcluster_read_only_mode_{false};
 
   PgMutationCounter pg_node_level_mutation_counter_;
 
