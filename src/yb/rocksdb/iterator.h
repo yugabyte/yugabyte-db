@@ -181,6 +181,10 @@ class Iterator : public Cleanable {
     assert(false);
     return false;
   }
+
+  virtual void UseFastNext(bool value) {
+    assert(false);
+  }
 };
 
 // Return an empty iterator (yields nothing).

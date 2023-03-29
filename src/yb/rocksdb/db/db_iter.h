@@ -77,6 +77,7 @@ class ArenaWrappedDBIter : public Iterator {
   virtual Slice key() const override;
   virtual Slice value() const override;
   virtual Status status() const override;
+  void UseFastNext(bool value) override;
 
   void RegisterCleanup(CleanupFunction function, void* arg1, void* arg2);
   virtual Status PinData();
