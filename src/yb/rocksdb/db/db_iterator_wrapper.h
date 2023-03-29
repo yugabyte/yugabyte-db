@@ -71,6 +71,10 @@ class DBIteratorWrapper : public Iterator {
     return wrapped_->ScanForward(upperbound, key_filter_callback, scan_callback);
   }
 
+  void UseFastNext(bool value) override {
+    wrapped_->UseFastNext(value);
+  }
+
  protected:
   std::unique_ptr<Iterator> wrapped_;
 };

@@ -2073,11 +2073,13 @@ constexpr int kScanReads = 3;
 
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Scan), PgMiniBigPrefetchTest) {
   FLAGS_ysql_enable_packed_row = false;
+  FLAGS_ysql_enable_packed_row_for_colocated_table = false;
   Run(kScanRows, kScanBlockSize, kScanReads, /* compact= */ false, /* select= */ true);
 }
 
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ScanWithPackedRow), PgMiniBigPrefetchTest) {
   FLAGS_ysql_enable_packed_row = true;
+  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
   Run(kScanRows, kScanBlockSize, kScanReads, /* compact= */ false, /* select= */ true);
 }
 
