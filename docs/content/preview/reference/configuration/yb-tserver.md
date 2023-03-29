@@ -529,7 +529,7 @@ Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNC
 
 Default: `READ COMMITTED`<sup>$</sup>
 
-<sup>$</sup> Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Read Committed Isolation is supported only if the YB-TServer gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+<sup>$</sup> Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --ysql_disable_index_backfill
 
@@ -539,9 +539,21 @@ For details on how online index backfill works, see the [Online Index Backfill](
 
 Default: `false`
 
+##### --ysql_sequence_cache_method
+
+Specifies where to cache sequence values.
+
+Valid values are `connection` and `server`.
+
+This flag requires the YB-TServer `yb_enable_sequence_pushdown` flag to be true (the default). Otherwise, the default behavior will occur regardless of this flag's value.
+
+For details on caching values on the server and switching between cache methods, see the semantics on the [nextval](../../../api/ysql/exprs/func_nextval/) page.
+
+Default: `connection`
+
 ##### --ysql_sequence_cache_minval
 
-Specify the minimum number of sequence values to cache in the client for every sequence object.
+Specifies the minimum number of sequence values to cache in the client for every sequence object.
 
 To turn off the default size of cache flag, set the flag to `0`.
 
@@ -875,7 +887,7 @@ Default: `0`
 
 ##### --ysql_enable_packed_row_for_colocated_table
 
-Whether packed row is enabled for colocated tables in YSQL. The colocated table has an additional GFlag to mitigate [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143).
+Whether packed row is enabled for colocated tables in YSQL. The colocated table has an additional flag to mitigate [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143).
 
 Default: `false`
 
