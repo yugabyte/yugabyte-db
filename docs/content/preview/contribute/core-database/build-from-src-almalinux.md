@@ -97,7 +97,7 @@ sudo dnf install -y cmake3
 
 {{% readfile "includes/java.md" %}}
 
-Install the following packages to satisfy those requirements:
+Install the following packages to satisfy the preceding requirements:
 
 ```sh
 sudo dnf install -y java-1.8.0-openjdk maven

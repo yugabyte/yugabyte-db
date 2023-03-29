@@ -96,7 +96,7 @@ sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
 
 {{% readfile "includes/java.md" %}}
 
-Install the following packages to satisfy those requirements:
+Install the following packages to satisfy the preceding requirements:
 
 ```sh
 sudo yum install -y java-1.8.0-openjdk rh-maven35
