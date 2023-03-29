@@ -1010,8 +1010,29 @@ utl_file_fremove(PG_FUNCTION_ARGS)
 
 	fullname = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
 
+#ifndef WIN32
+
 	if (unlink(fullname) != 0)
 		IO_EXCEPTION();
+
+#else
+
+	if (pg_database_encoding_max_length() > 1)
+	{
+		wchar_t	   *_fullname = to_wchar(fullname);
+
+		if (_wunlink(_fullname) != 0)
+			IO_EXCEPTION();
+
+		pfree(_fullname);
+	}
+	else
+	{
+		if (unlink(fullname) != 0)
+			IO_EXCEPTION();
+	}
+
+#endif
 
 	PG_RETURN_VOID();
 }
@@ -1040,6 +1061,8 @@ utl_file_frename(PG_FUNCTION_ARGS)
 	srcpath = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
 	dstpath = get_safe_path(PG_GETARG_TEXT_P(2), PG_GETARG_TEXT_P(3));
 
+#ifndef WIN32
+
 	if (!overwrite)
 	{
 		struct stat	st;
@@ -1052,6 +1075,47 @@ utl_file_frename(PG_FUNCTION_ARGS)
 	/* rename() overwrites existing files. */
 	if (rename(srcpath, dstpath) != 0)
 		IO_EXCEPTION();
+
+#else
+
+	if (pg_database_encoding_max_length() > 1)
+	{
+		wchar_t	   *_dstpath = to_wchar(dstpath);
+		wchar_t	   *_srcpath = to_wchar(srcpath);
+
+		if (!overwrite)
+		{
+			struct _stat  _st;
+			if (_wstat(_dstpath, &_st) == 0)
+				CUSTOM_EXCEPTION(WRITE_ERROR, "File exists");
+			else if (errno != ENOENT)
+				IO_EXCEPTION();
+		}
+
+		/* rename() overwrites existing files. */
+		if (_wrename(_srcpath, _dstpath) != 0)
+			IO_EXCEPTION();
+
+		pfree(_dstpath);
+		pfree(_srcpath);
+	}
+	else
+	{
+		if (!overwrite)
+		{
+			struct stat	st;
+			if (stat(dstpath, &st) == 0)
+				CUSTOM_EXCEPTION(WRITE_ERROR, "File exists");
+			else if (errno != ENOENT)
+				IO_EXCEPTION();
+		}
+
+		/* rename() overwrites existing files. */
+		if (rename(srcpath, dstpath) != 0)
+			IO_EXCEPTION();
+	}
+
+#endif
 
 	PG_RETURN_VOID();
 }
