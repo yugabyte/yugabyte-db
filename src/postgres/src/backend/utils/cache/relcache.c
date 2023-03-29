@@ -100,11 +100,11 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
-#include "pg_yb_utils.h"
 #include "access/yb_scan.h"
-#include "catalog/yb_catalog_version.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
+#include "catalog/yb_catalog_version.h"
+#include "pg_yb_utils.h"
 
 #define RELCACHE_INIT_FILEMAGIC		0x573266	/* version ID value */
 
@@ -239,24 +239,49 @@ do { \
 			 (RELATION)->rd_id); \
 } while(0)
 
+/*
+ * YBIsDBCatalogVersionMode() implies IsYugaByteEnabled(). When in per-db
+ * catalog version mode, each database maintains a separate catalog version
+ * that applies to both shared relations and non-shared relations. We can
+ * no longer store only one shared init file for all databases as we do in
+ * the global catalog version mode where there is only one catalog version.
+ * Just like for non-shared relations, for shared relations each database
+ * also needs a separate shared init file. From a shared init file for a
+ * specific database, we read the stored per-db catalog version. We also
+ * read the stored per-db catalog version from a non-shared init file. They
+ * are compared with each other and also against the catalog version read
+ * from other sources (e.g., master). The newest per-db version will be used.
+ * If shared or non-shared init file is found obsolete it will be unlinked.
+ * Note that in per-db catalog version mode, ".db" suffix is appended to
+ * the file name so when we switch between two modes we will not mix up
+ * their cache init files.
+ */
 #define RelCacheInitFileName(filename, shared) \
 do { \
 	if (shared) \
 	{ \
-		snprintf(filename, sizeof(filename), "global/%s", \
-				 RELCACHE_INIT_FILENAME); \
+		if (YBIsDBCatalogVersionMode()) \
+			snprintf(filename, sizeof(filename), "global/%d_%s.db", \
+				MyDatabaseId, RELCACHE_INIT_FILENAME); \
+		else \
+			snprintf(filename, sizeof(filename), "global/%s", \
+				RELCACHE_INIT_FILENAME); \
 	} \
 	else \
 	{ \
 		if (IsYugaByteEnabled()) \
 		{ \
-			snprintf(filename, sizeof(filename), "%d_%s", \
-			         MyDatabaseId, RELCACHE_INIT_FILENAME); \
+			if (YBIsDBCatalogVersionMode()) \
+				snprintf(filename, sizeof(filename), "%d_%s.db", \
+						 MyDatabaseId, RELCACHE_INIT_FILENAME); \
+			else \
+				snprintf(filename, sizeof(filename), "%d_%s", \
+						 MyDatabaseId, RELCACHE_INIT_FILENAME); \
 		} \
 		else \
 		{ \
 			snprintf(filename, sizeof(filename), "%s/%s", \
-			         DatabasePath, RELCACHE_INIT_FILENAME); \
+					 DatabasePath, RELCACHE_INIT_FILENAME); \
 		} \
 	} \
 } while (0)
@@ -283,6 +308,56 @@ do { \
 	} \
 } while (0)
 
+/*
+ * Derived from RelationCacheInsert. Used in per-database catalog version
+ * mode to only allow new shared relations or to replace fake nailed
+ * shared relation entries.
+ * Background: in per-database catalog version mode, there is one shared
+ * relcache init file for each database. As a result, even if the shared
+ * relcache init file for MyDatabaseId already exists, when it is attempted
+ * to be read by Postgres before MyDatabaseId is resolved, we do not know
+ * which shared relcache init file to read from. The current Postgres flow
+ * will think the shared relcache init file does not exist, and therefore
+ * will insert some fake nailed shared relation entries into the relcache
+ * (see those calls to formrdesc, relowner == InvalidOid means a fake entry).
+ * Later after we resolve MyDatabaseId, we attempt to read the appropriate
+ * shared relcache init file. In case it succeeds, the relcache already has
+ * faked nailed shared relation entries from the previous attempt that failed,
+ * so they need to be replaced by the real entries read from the init file.
+ */
+#define YbSharedRelationCacheReinsert(RELATION)	\
+do { \
+	Assert(!IsBootstrapProcessingMode()); \
+	RelIdCacheEnt *hentry; bool found; \
+	hentry = (RelIdCacheEnt *) hash_search(RelationIdCache, \
+										   (void *) &((RELATION)->rd_id), \
+										   HASH_ENTER, &found); \
+	if (found) \
+	{ \
+		Relation _old_rel = hentry->reldesc; \
+		hentry->reldesc = (RELATION); \
+		/* We should only find fake nailed shared relation cache entries. */ \
+		Assert(_old_rel->rd_isnailed); \
+		Assert(_old_rel->rd_rel->relisshared); \
+		Assert(_old_rel->rd_refcnt == 1); \
+		Assert(!OidIsValid(_old_rel->rd_rel->relowner)); \
+		/*
+		 * Calling RelationDecrementReferenceCount on a fake nailed
+		 * relation hits assertion failure because it expects a resource
+		 * owner, but a fake entry's relowner is InvalidOid. Simply set
+		 * rd_refcnt to 0 for RelationDestroyRelation to work.
+		 */ \
+		_old_rel->rd_refcnt = 0; \
+		RelationDestroyRelation(_old_rel, false); \
+		/* The new relation must be valid nailed shared relation */ \
+		Assert(RELATION->rd_isnailed); \
+		Assert(RELATION->rd_rel->relisshared); \
+		Assert(RELATION->rd_refcnt == 1); \
+		Assert(OidIsValid(RELATION->rd_rel->relowner)); \
+	} \
+	else \
+		hentry->reldesc = (RELATION); \
+} while(0)
 
 /*
  * Special cache for opclass-related information
@@ -2228,6 +2303,7 @@ YbRunWithPrefetcher(
 			HandleYBStatus(status);
 			return;
 		}
+		YBCFreeStatus(status);
 		// Reset catalog caches before next attempt
 		ResetCatalogCaches();
 	}
@@ -4946,12 +5022,16 @@ RelationCacheInitializePhase2(void)
 		if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 		{
 			formrdesc("pg_yb_profile", YbProfileRelation_Rowtype_Id, true,
-					true, Natts_pg_yb_profile, Desc_pg_yb_profile);
-			formrdesc("pg_yb_role_profile", YbRoleProfileRelation_Rowtype_Id, true,
-					true, Natts_pg_yb_role_profile, Desc_pg_yb_role_profile);
+					  true, Natts_pg_yb_profile, Desc_pg_yb_profile);
+			formrdesc("pg_yb_role_profile", YbRoleProfileRelation_Rowtype_Id,
+					  true, true, Natts_pg_yb_role_profile,
+					  Desc_pg_yb_role_profile);
 		}
 
-#define NUM_CRITICAL_SHARED_RELS    (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist ? 7 : 5)   /* fix if you change list above */
+#define NUM_CRITICAL_SHARED_RELS	(*YBCGetGFlags()->ysql_enable_profile && \
+									 YbLoginProfileCatalogsExist \
+									 ? 7 \
+									 : 5)	/* fix if you change list above */
 	}
 
 	MemoryContextSwitchTo(oldcxt);
@@ -4992,6 +5072,24 @@ RelationCacheInitializePhase3(void)
 	 * switch to cache memory context
 	 */
 	oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+
+	if (YBIsDBCatalogVersionMode())
+	{
+		/*
+		 * load_relcache_init_file(true) has been called earlier when
+		 * MyDatabaseId is not known yet. That makes Postgres think
+		 * that the shared relcache init file does not exist and therefore
+		 * it sets needNewCacheFile to true.
+		 */
+		Assert(needNewCacheFile);
+
+		/*
+		 * Now that we know MyDatabaseId, call load_relcache_init_file(true)
+		 * again and re-compute needNewCacheFile.
+		 */
+		Assert(OidIsValid(MyDatabaseId));
+		needNewCacheFile = !load_relcache_init_file(true);
+	}
 
 	/*
 	 * Try to load the local relcache cache file.  If unsuccessful, bootstrap
@@ -6886,13 +6984,26 @@ load_relcache_init_file(bool shared)
 	uint64      ybc_stored_cache_version = 0;
 
 	/*
-	 * Disable shared init file in per database catalog version mode because
-	 * MyDatabaseId isn't known yet and different databases have different
-	 * catalog versions of their own. At this time we cannot compose the
+	 * Disable shared init file in per database catalog version mode when
+	 * MyDatabaseId isn't known yet. Different databases have different
+	 * catalog versions of their own. At this point we cannot compose the
 	 * correct init file name for the to-be-resolved MyDatabaseId.
 	 */
-	if (shared && YBIsDBCatalogVersionMode())
+	if (YBIsDBCatalogVersionMode() && !OidIsValid(MyDatabaseId))
+	{
+		/*
+		 * Here in per-database catalog version modme, when MyDatabaseId isn't
+		 * resolved yet we only expect this function is called for shared
+		 * relations. This is because of the order in which we attempt to
+		 * call load_relcache_init_file:
+		 * (1) in phase 2 we only attempt shared relations;
+		 * (2) MyDatabaseId is resolved;
+		 * (3) in phase 3 we re-attempt shared relations, and then attempt
+		 * non-shared relations.
+		 */
+		Assert(shared);
 		return false;
+	}
 
 	/*
 	 * YB mode uses local-tserver prefetching instead of relcache file.
@@ -7273,7 +7384,10 @@ load_relcache_init_file(bool shared)
 	 */
 	for (relno = 0; relno < num_rels; relno++)
 	{
-		RelationCacheInsert(rels[relno], false);
+		if (shared && YBIsDBCatalogVersionMode())
+			YbSharedRelationCacheReinsert(rels[relno]);
+		else
+			RelationCacheInsert(rels[relno], false);
 	}
 
 	pfree(rels);
@@ -7323,12 +7437,8 @@ write_relcache_init_file(bool shared)
 	RelIdCacheEnt *idhentry;
 	int			i;
 
-	/*
-	 * Disable shared init file in per database catalog version mode because
-	 * it will never be read in load_relcache_init_file.
-	 */
 	if (shared && YBIsDBCatalogVersionMode())
-		return;
+		Assert(OidIsValid(MyDatabaseId));
 
 	/*
 	 * If we have already received any relcache inval events, there's no

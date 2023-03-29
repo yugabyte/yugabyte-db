@@ -66,16 +66,12 @@
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/mock_env.h"
 #include "yb/rocksdb/util/mutexlock.h"
-
-#include "yb/util/string_util.h"
-// SyncPoint is not supported in Released Windows Mode.
-#if !(defined NDEBUG) || !defined(OS_WIN)
-#include "yb/rocksdb/util/sync_point.h"
-#endif  // !(defined NDEBUG) || !defined(OS_WIN)
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
+#include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_util.h" // For ASSERT_OK
 
 namespace rocksdb {

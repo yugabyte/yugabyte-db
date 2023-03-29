@@ -421,7 +421,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable detailed security logs",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static ConfKeyInfo<Boolean> fsStatelessSuppressError =
+  public static ConfKeyInfo<Boolean> supressError =
       new ConfKeyInfo<>(
           "yb.fs_stateless.suppress_error",
           ScopeType.GLOBAL,
@@ -429,15 +429,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "If set, suppresses exceptions to be thrown as part of FS <-> DB sync on YBA startup",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
-  public static ConfKeyInfo<Long> fsStatelessMaxFileSizeBytes =
+  public static ConfKeyInfo<Long> maxFileSizeBytes =
       new ConfKeyInfo<>(
           "yb.fs_stateless.max_file_size_bytes",
           ScopeType.GLOBAL,
           "Max File Size",
           "Maximum size of file that can be persisted in DB",
-          ConfDataType.LongType,
+          ConfDataType.BytesType,
           ImmutableList.of(ConfKeyTags.BETA));
-  public static ConfKeyInfo<Integer> fsStatelessMaxFilesCountPersist =
+  public static ConfKeyInfo<Integer> maxFilesCountPersist =
       new ConfKeyInfo<>(
           "yb.fs_stateless.max_files_count_persist",
           ScopeType.GLOBAL,
@@ -445,7 +445,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Maximum number of files that can be persisted in DB",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.BETA));
-  public static ConfKeyInfo<Boolean> disableSyncDbToFsStartup =
+  public static ConfKeyInfo<Boolean> syncDBStateToFS =
       new ConfKeyInfo<>(
           "yb.fs_stateless.disable_sync_db_to_fs_startup",
           ScopeType.GLOBAL,
@@ -542,6 +542,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Allow universes to be detached/attached",
           "Allow universes to be detached from a source platform and attached to dest platform",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> transactionalXClusterEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.transactional.enabled",
+          ScopeType.GLOBAL,
+          "Whether YBA supports transactional xCluster configs",
+          "It indicates whether YBA should support transactional xCluster configs",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

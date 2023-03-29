@@ -278,7 +278,7 @@ static char *prepareGID;
 static bool forceSyncCommit = false;
 
 /* Flag for logging statements in a transaction. */
-bool        xact_is_sampled = false;
+bool		xact_is_sampled = false;
 
 /*
  * Private context for transaction-abort work --- we reserve space for this
@@ -1942,6 +1942,7 @@ YBInitializeTransaction(void)
 			YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
 		HandleYBStatus(YBCPgEnableFollowerReads(YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
 		HandleYBStatus(YBCPgSetTransactionReadOnly(XactReadOnly));
+		HandleYBStatus(YBCPgSetEnableTracing(YBEnableTracing()));
 		HandleYBStatus(YBCPgSetTransactionDeferrable(XactDeferrable));
 	}
 }

@@ -1621,8 +1621,6 @@ ybChangeDependencyOnProfile(Oid roleId, Oid newProfileId)
 	heap_close(sdepRel, RowExclusiveLock);
 }
 
-
-
 /*
  * ybDropDependencyOnProfile
  *

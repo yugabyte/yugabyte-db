@@ -35,7 +35,6 @@ import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.yb.client.YBClient;
 
 @Slf4j
 public class AnsibleConfigureServers extends NodeTaskBase {
@@ -149,10 +148,9 @@ public class AnsibleConfigureServers extends NodeTaskBase {
                 NodeDetails node = universe.getNode(nodeName);
                 node.cronsActive = false;
                 log.info(
-                    "Updated "
-                        + nodeName
-                        + " cronjob status to inactive from universe "
-                        + taskParams().universeUUID);
+                    "Updated {} cronjob status to inactive from universe {}",
+                    nodeName,
+                    taskParams().universeUUID);
               }
             };
         saveUniverseDetails(updater);

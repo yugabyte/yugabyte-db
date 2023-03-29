@@ -39,6 +39,8 @@
 
 namespace yb {
 
+class Thread;
+
 namespace client {
 
 class TableHandle;
@@ -64,6 +66,7 @@ static const char* const kTableId = "TABLEID";
 static const char* const kCDCSDKSafeTime = "cdc_sdk_safe_time";
 static const char* const kCDCSDKActiveTime = "active_time";
 static const char* const kCDCSDKSnapshotKey = "snapshot_key";
+static const char* const kCDCSDKSnapshotDoneKey = "snapshot_done_key";
 struct TabletCheckpoint {
   OpId op_id;
   // Timestamp at which the op ID was last updated.
@@ -121,10 +124,6 @@ class CDCServiceImpl : public CDCServiceIf {
       rpc::RpcContext rpc) override;
 
   Result<TabletCheckpoint> TEST_GetTabletInfoFromCache(const ProducerTabletInfo& producer_tablet);
-
-  void GetCheckpointForColocatedTable(
-      const GetCheckpointForColocatedTableRequestPB* req,
-      GetCheckpointForColocatedTableResponsePB* resp, rpc::RpcContext context) override;
 
   // Update peers in other tablet servers about the latest minimum applied cdc index for a specific
   // tablet.
@@ -203,6 +202,8 @@ class CDCServiceImpl : public CDCServiceIf {
   // Marks the CDC enable flag as true.
   void SetCDCServiceEnabled();
 
+  bool IsCDCSDKSnapshotDone(const GetChangesRequestPB& req);
+
   static bool IsCDCSDKSnapshotRequest(const CDCSDKCheckpointPB& req_checkpoint);
 
   static bool IsCDCSDKSnapshotBootstrapRequest(const CDCSDKCheckpointPB& req_checkpoint);
@@ -234,13 +235,12 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<OpId> GetLastCheckpoint(
       const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session);
 
-  Result<CDCSDKCheckpointPB> GetLastCDCSDKCheckpoint(
+  Result<uint64_t> GetSafeTime(
       const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session);
 
-  Status GetCDCSDKCheckpointsForColocatedTable(
-      const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session,
-      google::protobuf::RepeatedPtrField<::yb::cdc::TableCheckpointInfoPB>*
-          table_checkpoint_details);
+  Result<CDCSDKCheckpointPB> GetLastCDCSDKCheckpoint(
+      const CDCStreamId& stream_id, const TabletId& tablet_id, const client::YBSessionPtr& session,
+      const TableId& colocated_table_id = "");
 
   Result<std::vector<std::pair<std::string, std::string>>> GetDBStreamInfo(
       const std::string& db_stream_id, const client::YBSessionPtr& session);
@@ -267,6 +267,14 @@ class CDCServiceImpl : public CDCServiceIf {
       const bool is_snapshot = false,
       const std::string& snapshot_key = "",
       const TableId& colocated_table_id = "");
+
+  Status UpdateSnapshotDone(
+      const CDCStreamId& stream_id, const TabletId& tablet_id, const TableId& colocated_table_id,
+      const client::YBSessionPtr& session, const CDCSDKCheckpointPB& cdc_sdk_checkpoint);
+
+  Status UpdateActiveTime(
+      const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session,
+      const uint64_t& last_active_time, const uint64_t& snapshot_time);
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> GetTablets(
       const CDCStreamId& stream_id);
@@ -482,7 +490,7 @@ class CDCServiceImpl : public CDCServiceIf {
   // TODO(hector): It would be better to do this update only when a local peer becomes a leader.
   //
   // Periodically update lag metrics (FLAGS_update_metrics_interval_ms).
-  std::unique_ptr<std::thread> update_peers_and_metrics_thread_;
+  scoped_refptr<Thread> update_peers_and_metrics_thread_;
 
   // True when this service is stopped. Used to inform
   // get_minimum_checkpoints_and_update_peers_thread_ that it should exit.

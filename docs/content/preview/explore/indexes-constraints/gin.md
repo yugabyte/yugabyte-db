@@ -1,15 +1,15 @@
 ---
-title: GIN indexes
+title: GIN indexes in YugabyteDB YSQL
+headerTitle: GIN indexes
 linkTitle: GIN indexes
 description: Generalized inverted indexes in YSQL
+headContent: Explore GIN indexes using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: indexes-constraints-gin
     parent: explore-indexes-constraints
     weight: 260
-aliases:
-  - /preview/explore/ysql-language-features/gin/
 type: docs
 ---
 

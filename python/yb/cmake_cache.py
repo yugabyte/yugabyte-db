@@ -14,10 +14,18 @@
 import re
 import os
 
-from typing import Dict, Tuple, Any
+from typing import Dict, Tuple, Any, Set, FrozenSet
 
 
 CMAKE_CACHE_VAR_RE = re.compile(r'^([a-zA-Z_0-9-]+):([A-Z]+)=(.*)$')
+
+# Support some subset of true-like and false-like values from
+# https://cmake.org/cmake/help/latest/command/if.html
+CMAKE_TRUE_VALUES: FrozenSet[str] = frozenset({'1', 'ON', 'YES', 'TRUE', 'Y'})
+CMAKE_FALSE_VALUES: FrozenSet[str] = frozenset(
+    {'0', 'OFF', 'NO', 'FALSE', 'N', 'IGNORE', 'NOTFOUND', ''}
+)
+CMAKE_BOOLEAN_VALUES: FrozenSet[str] = CMAKE_TRUE_VALUES | CMAKE_FALSE_VALUES
 
 
 class CMakeCache:
@@ -41,13 +49,20 @@ class CMakeCache:
         if key not in self.name_to_val_and_type:
             return default_value
         value, type_name = self.name_to_val_and_type[key]
-        if type_name == 'BOOL':
-            assert value in ['ON', 'OFF']
-            return value == 'ON'
+
         if value.startswith("'") and value.endswith("'") and "'" not in value[1:-1]:
             # Remove the surrounding single quotes that CMake puts around e.g. values containing
             # spaces.
-            return value[1:-1]
+            # TODO: what happens if the original value contains both single quotes and spaces?
+            value = value[1:-1]
+
+        if type_name == 'BOOL':
+            value_upper = value.upper()
+            assert value_upper in CMAKE_BOOLEAN_VALUES, \
+                   "Unrecognized value of a CMake boolean variable %s: %s (allowed: %s)" % (
+                        key, value, ', '.join(sorted(CMAKE_BOOLEAN_VALUES)))
+            return value_upper in CMAKE_TRUE_VALUES
+
         return value
 
     def get_or_raise(self, key: str) -> Any:

@@ -94,9 +94,9 @@ YB_DEFINE_ENUM(RestoreTicker, (kUpdates)(kInserts)(kDeletes));
 class RestorePatch {
  public:
   RestorePatch(FetchState* existing_state, FetchState* restoring_state,
-               docdb::DocWriteBatch* doc_batch) :
-      existing_state_(existing_state), restoring_state_(restoring_state),
-      doc_batch_(doc_batch) {}
+               docdb::DocWriteBatch* doc_batch, tablet::TableInfo* table_info) :
+      table_info_(table_info), existing_state_(existing_state),
+      restoring_state_(restoring_state), doc_batch_(doc_batch) {}
 
   Status PatchCurrentStateFromRestoringState();
 
@@ -134,13 +134,23 @@ class RestorePatch {
   virtual Status ProcessExistingOnlyEntry(
       const Slice& existing_key, const Slice& existing_value);
 
+  tablet::TableInfo* table_info_;
  private:
   FetchState* existing_state_;
   FetchState* restoring_state_;
   docdb::DocWriteBatch* doc_batch_;
   std::array<size_t, kRestoreTickerMapSize> tickers_ = { 0, 0, 0 };
 
+  struct KeyValuePair {
+    KeyBuffer key;
+    ValueBuffer value;
+  };
+  // Key-Value pair corresponding to the most recent packed row encountered in
+  // the restoring state.
+  KeyValuePair last_packed_row_restoring_state_;
+
   virtual Result<bool> ShouldSkipEntry(const Slice& key, const Slice& value) = 0;
+  Status TryUpdateLastPackedRow(const Slice& key, const Slice& value);
 };
 
 void AddKeyValue(const Slice& key, const Slice& value, docdb::DocWriteBatch* write_batch);

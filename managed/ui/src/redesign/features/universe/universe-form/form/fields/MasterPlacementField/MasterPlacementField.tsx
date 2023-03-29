@@ -8,6 +8,7 @@ import {
   YBTooltip,
   RadioGroupOrientation
 } from '../../../../../../components';
+import { YBTag, YBTag_Types } from '../../../../../../../components/common/YBTag';
 import { UniverseFormData, MasterPlacementMode, CloudType } from '../../../utils/dto';
 import { MASTER_PLACEMENT_FIELD, PROVIDER_FIELD } from '../../../utils/constants';
 
@@ -63,6 +64,7 @@ export const MasterPlacementField = ({
           <Box>
             <YBLabel dataTestId="MasterPlacement-Label">
               {t('universeForm.cloudConfig.masterPlacement')}
+              <YBTag type={YBTag_Types.YB_ORANGE}>{t('common.beta')}</YBTag>
             </YBLabel>
           </Box>
           <Box flex={1}>

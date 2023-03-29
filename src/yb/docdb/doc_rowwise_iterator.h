@@ -108,7 +108,7 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // Skip the current row.
   void SkipRow() override;
 
-  HybridTime RestartReadHt() override;
+  Result<HybridTime> RestartReadHt() override;
 
   HybridTime TEST_MaxSeenHt() override;
 

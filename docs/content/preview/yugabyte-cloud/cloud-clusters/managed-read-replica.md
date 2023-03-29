@@ -37,8 +37,7 @@ Read replicas require the following:
 
 ## Limitations
 
-- You can't access read replicas from public IP addresses; connect to read replicas via peered VPCs.
-- Geo-partitioned clusters do not support read replicas.
+- Partition-by-region clusters do not support read replicas.
 
 ## Add or edit read replicas
 

@@ -747,8 +747,12 @@ Status MiniCluster::WaitForLoadBalancerToStabilize(MonoDelta timeout) {
 server::SkewedClockDeltaChanger JumpClock(
     server::RpcServerBase* server, std::chrono::milliseconds delta) {
   auto* hybrid_clock = down_cast<server::HybridClock*>(server->clock());
-  return server::SkewedClockDeltaChanger(
-      delta, std::static_pointer_cast<server::SkewedClock>(hybrid_clock->physical_clock()));
+  DCHECK(hybrid_clock);
+  auto skewed_clock =
+      std::dynamic_pointer_cast<server::SkewedClock>(hybrid_clock->physical_clock());
+  DCHECK(skewed_clock)
+      << ": Server physical clock is not a SkewedClock; did you forget to set --time_source?";
+  return server::SkewedClockDeltaChanger(delta, skewed_clock);
 }
 
 std::vector<server::SkewedClockDeltaChanger> SkewClocks(

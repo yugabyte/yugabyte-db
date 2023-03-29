@@ -65,13 +65,19 @@ Status XClusterTestBase::InitClusters(const MiniClusterOptions& opts) {
 
   producer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(producer_opts);
 
-  RETURN_NOT_OK(producer_cluster()->StartSync());
+  {
+    TEST_SetThreadPrefixScoped prefix_se("P");
+    RETURN_NOT_OK(producer_cluster()->StartSync());
+  }
 
   auto consumer_opts = opts;
   consumer_opts.cluster_id = "consumer";
   consumer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(consumer_opts);
 
-  RETURN_NOT_OK(consumer_cluster()->StartSync());
+  {
+    TEST_SetThreadPrefixScoped prefix_se("C");
+    RETURN_NOT_OK(consumer_cluster()->StartSync());
+  }
 
   RETURN_NOT_OK(RunOnBothClusters([&opts](MiniCluster* cluster) {
     return cluster->WaitForTabletServerCount(opts.num_tablet_servers);
@@ -86,6 +92,7 @@ Status XClusterTestBase::InitClusters(const MiniClusterOptions& opts) {
 void XClusterTestBase::TearDown() {
   LOG(INFO) << "Destroying CDC Clusters";
   if (consumer_cluster()) {
+    TEST_SetThreadPrefixScoped prefix_se("C");
     if (consumer_cluster_.pg_supervisor_) {
       consumer_cluster_.pg_supervisor_->Stop();
     }
@@ -94,6 +101,7 @@ void XClusterTestBase::TearDown() {
   }
 
   if (producer_cluster()) {
+    TEST_SetThreadPrefixScoped prefix_se("P");
     if (producer_cluster_.pg_supervisor_) {
       producer_cluster_.pg_supervisor_->Stop();
     }
@@ -171,6 +179,11 @@ Result<YBTableName> XClusterTestBase::CreateTable(
   return table;
 }
 
+Status XClusterTestBase::SetupUniverseReplication(const std::vector<string>& table_ids) {
+  return SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, table_ids);
+}
+
 Status XClusterTestBase::SetupUniverseReplication(
     const std::vector<std::shared_ptr<client::YBTable>>& tables, bool leader_only) {
   return SetupUniverseReplication(kUniverseId, tables, leader_only);
@@ -193,6 +206,20 @@ Status XClusterTestBase::SetupUniverseReplication(
     MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
     const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
     bool leader_only, const std::vector<string>& bootstrap_ids) {
+  std::vector<string> table_ids;
+  for (const auto& table : tables) {
+    table_ids.push_back(table->id());
+  }
+
+  return SetupUniverseReplication(
+      producer_cluster, consumer_cluster, consumer_client, universe_id, table_ids, leader_only,
+      bootstrap_ids);
+}
+
+Status XClusterTestBase::SetupUniverseReplication(
+    MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
+    const std::string& universe_id, const std::vector<string>& table_ids, bool leader_only,
+    const std::vector<string>& bootstrap_ids) {
   // If we have certs for encryption in FLAGS_certs_dir then we need to copy it over to the
   // universe_id subdirectory in FLAGS_certs_for_cdc_dir.
   if (!FLAGS_certs_for_cdc_dir.empty() && !FLAGS_certs_dir.empty()) {
@@ -226,13 +253,13 @@ Status XClusterTestBase::SetupUniverseReplication(
   auto hp_vec = VERIFY_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, req.mutable_producer_master_addresses());
 
-  req.mutable_producer_table_ids()->Reserve(narrow_cast<int>(tables.size()));
-  for (const auto& table : tables) {
-    req.add_producer_table_ids(table->id());
+  req.mutable_producer_table_ids()->Reserve(narrow_cast<int>(table_ids.size()));
+  for (const auto& table_id : table_ids) {
+    req.add_producer_table_ids(table_id);
   }
 
   SCHECK(
-      bootstrap_ids.empty() || bootstrap_ids.size() == tables.size(), InvalidArgument,
+      bootstrap_ids.empty() || bootstrap_ids.size() == table_ids.size(), InvalidArgument,
       "Bootstrap Ids for all tables should be provided");
 
   for (const auto& bootstrap_id : bootstrap_ids) {
@@ -510,14 +537,15 @@ Status XClusterTestBase::WaitForValidSafeTimeOnAllTServers(
 
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
-          auto safe_time =
+          auto safe_time_result =
               tserver->server()->GetXClusterSafeTimeMap().GetSafeTime(namespace_id);
-          if (!safe_time) {
+          if (!safe_time_result || !*safe_time_result) {
             return false;
           }
-          CHECK(safe_time->is_valid());
+          CHECK(safe_time_result.get()->is_valid());
           return true;
-        }, safe_time_propagation_timeout_,
+        },
+        safe_time_propagation_timeout_,
         Format("Wait for safe_time of namespace $0 to be valid", namespace_id)));
   }
 

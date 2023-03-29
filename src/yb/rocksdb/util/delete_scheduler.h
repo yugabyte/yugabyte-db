@@ -23,11 +23,15 @@
 #include <map>
 #include <queue>
 #include <string>
-#include <thread>
 
+#include "yb/gutil/ref_counted.h"
 #include "yb/rocksdb/port/port.h"
 
 #include "yb/rocksdb/status.h"
+
+namespace yb {
+class Thread;
+}
 
 namespace rocksdb {
 
@@ -93,7 +97,7 @@ class DeleteScheduler {
   //    - closing_ value is set to true
   port::CondVar cv_;
   // Background thread running BackgroundEmptyTrash
-  std::unique_ptr<std::thread> bg_thread_;
+  scoped_refptr<yb::Thread> bg_thread_;
   // Mutex to protect threads from file name conflicts
   port::Mutex file_move_mu_;
   Logger* info_log_;

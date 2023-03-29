@@ -43,6 +43,100 @@ using yb::tserver::WriteResponsePB;
 namespace yb {
 namespace cdc {
 
+class GetCompatibleSchemaVersionRpc : public rpc::Rpc, public client::internal::TabletRpc {
+ public:
+  GetCompatibleSchemaVersionRpc(CoarseTimePoint deadline,
+              client::internal::RemoteTablet *tablet,
+              client::YBClient *client,
+              tserver::GetCompatibleSchemaVersionRequestPB *req,
+              GetSchemaVersionMappingsCDCRecordCallback callback,
+              bool use_local_tserver)
+      : rpc::Rpc(deadline, client->messenger(), &client->proxy_cache()),
+        trace_(new Trace),
+        invoker_(use_local_tserver /* local_tserver_only */,
+                 false /* consistent_prefix */,
+                 client,
+                 this,
+                 this,
+                 tablet,
+                 /* table =*/nullptr,
+                 mutable_retrier(),
+                 trace_.get()),
+                 callback_(std::move(callback)) {
+    req_.Swap(req);
+  }
+
+  virtual ~GetCompatibleSchemaVersionRpc() {
+    CHECK(called_);
+  }
+
+  void SendRpc() override {
+    invoker_.Execute(tablet_id());
+  }
+
+  void InvokeCallback(const Status &status) {
+    if (!called_) {
+      called_ = true;
+      callback_(status, std::move(req_), std::move(resp_));
+    } else {
+      LOG(WARNING) << "Multiple invocation of GetCompatibleSchemaVersionRpc: "
+                   << status << " : " << resp_.DebugString();
+    }
+  }
+
+  void Finished(const Status &status) override {
+    Status new_status = status;
+    if (invoker_.Done(&new_status)) {
+      InvokeCallback(new_status);
+    }
+  }
+
+  void Failed(const Status &status) override {}
+
+  const TabletServerErrorPB *response_error() const override {
+    return resp_.has_error() ? &resp_.error() : nullptr;
+  }
+
+ private:
+  void SendRpcToTserver(int attempt_num) override {
+    InvokeAsync(invoker_.proxy().get(),
+                PrepareController(),
+                std::bind(&GetCompatibleSchemaVersionRpc::Finished, this, Status::OK()));
+  }
+
+  const std::string &tablet_id() const {
+    return req_.tablet_id();
+  }
+
+  std::string ToString() const override {
+    return Format("GetCompatibleSchemaVersionRpc: $0, retrier: $1", req_, retrier());
+  }
+
+  void InvokeAsync(TabletServerServiceProxy *proxy,
+                   rpc::RpcController *controller,
+                   rpc::ResponseCallback callback) {
+    proxy->GetCompatibleSchemaVersionAsync(req_, &resp_, controller, std::move(callback));
+  }
+
+  TracePtr trace_;
+  client::internal::TabletInvoker invoker_;
+  tserver::GetCompatibleSchemaVersionRequestPB req_;
+  tserver::GetCompatibleSchemaVersionResponsePB resp_;
+  GetSchemaVersionMappingsCDCRecordCallback callback_;
+  bool called_ = false;
+};
+
+rpc::RpcCommandPtr CreateGetCompatibleSchemaVersionRpc(
+    CoarseTimePoint deadline,
+    client::internal::RemoteTablet *tablet,
+    client::YBClient* client,
+    tserver::GetCompatibleSchemaVersionRequestPB* req,
+    GetSchemaVersionMappingsCDCRecordCallback callback,
+    bool use_local_tserver) {
+  return std::make_shared<GetCompatibleSchemaVersionRpc>(
+      deadline, tablet, client, req, std::move(callback), use_local_tserver);
+}
+
 class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
  public:
   CDCWriteRpc(CoarseTimePoint deadline,

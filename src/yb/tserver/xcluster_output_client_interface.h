@@ -16,6 +16,7 @@
 #include "yb/consensus/opid_util.h"
 
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_util.h"
 
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
@@ -42,6 +43,10 @@ class XClusterOutputClientIf : public std::enable_shared_from_this<XClusterOutpu
 
   // Sets the last compatible consumer schema version
   virtual void SetLastCompatibleConsumerSchemaVersion(SchemaVersion schema_version) = 0;
+
+  virtual void UpdateSchemaVersionMappings(
+      const cdc::XClusterSchemaVersionMap& schema_version_map,
+      const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map) = 0;
 
   // Async call for applying changes.
   virtual Status ApplyChanges(const cdc::GetChangesResponsePB* resp) = 0;

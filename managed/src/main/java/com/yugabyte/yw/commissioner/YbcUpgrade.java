@@ -10,8 +10,8 @@ import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.services.YbcClientService;
+import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
@@ -79,7 +80,7 @@ public class YbcUpgrade {
   private final int YBC_NODE_UPGRADE_BATCH_SIZE;
   public final int MAX_YBC_UPGRADE_POLL_RESULT_TRIES = 30;
   public final long YBC_UPGRADE_POLL_RESULT_SLEEP_MS = 10000;
-  private final long UPLOAD_YBC_PACKAGE_TIMEOUT_SEC = 60;
+  private final long YBC_REMOTE_TIMEOUT_SEC = 60;
   private final int MAX_NUM_RETRIES = 50;
   private final String PACKAGE_PERMISSIONS = "755";
   private final String PLAT_YBC_PACKAGE_URL;
@@ -300,6 +301,9 @@ public class YbcUpgrade {
 
   private void upgradeYbcOnNode(
       Universe universe, NodeDetails node, String ybcVersion, boolean localPackage) {
+    if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
+      checkCronStatus(universe, node);
+    }
     Integer ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     String certFile = universe.getCertificateNodetoNode();
     String nodeIp = node.cloudInfo.private_ip;
@@ -452,12 +456,44 @@ public class YbcUpgrade {
         ShellProcessContext.builder()
             .logCmdOutput(false)
             .traceLogging(true)
-            .timeoutSecs(UPLOAD_YBC_PACKAGE_TIMEOUT_SEC)
+            .timeoutSecs(YBC_REMOTE_TIMEOUT_SEC)
             .build();
     String targetFile = ybcManager.getYbcPackageTmpLocation(universe, node, ybcVersion);
     nodeUniverseManager
         .uploadFileToNode(
             node, universe, ybcServerPackage, targetFile, PACKAGE_PERMISSIONS, context)
         .processErrors();
+  }
+
+  private void checkCronStatus(Universe universe, NodeDetails node) {
+    ShellProcessContext context =
+        ShellProcessContext.builder()
+            .logCmdOutput(false)
+            .traceLogging(true)
+            .timeoutSecs(YBC_REMOTE_TIMEOUT_SEC)
+            .build();
+    List<String> cmd = new ArrayList<>();
+    String homeDir = nodeUniverseManager.getYbHomeDir(node, universe);
+    String ybCtlLocation = homeDir + "/bin/yb-server-ctl.sh";
+    String ybCtlControllerCmd = ybCtlLocation + " controller";
+    String cronCheckCmd = ybCtlControllerCmd + " cron-check";
+    String cronStartCmd = ybCtlControllerCmd + " start";
+
+    cmd.addAll(Arrays.asList("crontab", "-l", "|", "grep", "-q", cronCheckCmd));
+    cmd.add("||");
+    cmd.add("(");
+    cmd.addAll(Arrays.asList("crontab", "-l", "2>/dev/null", "||", "true;"));
+    cmd.addAll(
+        Arrays.asList(
+            "echo",
+            "-e",
+            "#Ansible: Check liveness of controller\n*/1 * * * * "
+                + cronCheckCmd
+                + " || "
+                + cronStartCmd));
+    cmd.add(")");
+    cmd.add("|");
+    cmd.addAll(Arrays.asList("crontab", "-", ";"));
+    nodeUniverseManager.runCommand(node, universe, cmd, context).processErrors();
   }
 }

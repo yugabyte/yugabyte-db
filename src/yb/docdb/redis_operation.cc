@@ -1717,7 +1717,7 @@ Result<boost::optional<Expiration>> GetTtl(
     Value doc_value = Value(PrimitiveValue(ValueEntryType::kInvalid));
     RETURN_NOT_OK(doc_value.Decode(iter->value()));
     if (doc_value.value_type() != ValueEntryType::kTombstone) {
-      return Expiration(key_data.write_time.hybrid_time(), doc_value.ttl());
+      return Expiration(VERIFY_RESULT(key_data.write_time.Decode()).hybrid_time(), doc_value.ttl());
     }
   }
   return boost::none;

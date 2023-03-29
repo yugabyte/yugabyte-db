@@ -2602,21 +2602,6 @@ TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
   // Verify that the Consumer doesn't have new data even though it has the pending_schema/ALTER.
   LOG(INFO) << "Verify that Consumer doesn't have inserts (before restart).";
   {
-    ASSERT_OK(WaitFor([&]() -> Result<bool> {
-      master::SysClusterConfigEntryPB cluster_info;
-      auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
-      RETURN_NOT_OK(cm.GetClusterConfig(&cluster_info));
-      auto& producer_map = cluster_info.consumer_registry().producer_map();
-      auto producer_entry = FindOrNull(producer_map, kUniverseId);
-      if (producer_entry) {
-        CHECK_EQ(producer_entry->stream_map().size(), 1);
-        auto& stream_entry = producer_entry->stream_map().begin()->second;
-        return (stream_entry.has_producer_schema() &&
-            stream_entry.producer_schema().has_pending_schema());
-      }
-      return false;
-    }, MonoDelta::FromSeconds(20), "IsConsumerHaltedOnDDL"));
-
     auto producer_results = ScanTableToStrings(tables[0]->name(), producer_client());
     auto consumer_results = ScanTableToStrings(tables[1]->name(), consumer_client());
     ASSERT_EQ(producer_results.size(), 10);
@@ -2637,35 +2622,11 @@ TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
       return new_ts != nullptr;
     }, MonoDelta::FromSeconds(10), "FindTabletLeader"));
     ASSERT_NE(old_ts, new_ts);
-
-    // Verify that the new Consumer poller had read the ALTER DDL and stopped polling.
-    auto* tserver = new_ts->server();
-    XClusterConsumer* xcluster_consumer;
-    ASSERT_TRUE(tserver && (xcluster_consumer = tserver->GetXClusterConsumer()));
-    ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-      auto pollers = xcluster_consumer->TEST_ListPollers();
-      return pollers.size() == 1 && !pollers[0]->IsPolling();
-    }, MonoDelta::FromSeconds(10), "ConsumerNotPolling"));
   }
 
   // Verify that the new Consumer TServer is in the same state as before.
   LOG(INFO) << "Verify that Consumer doesn't have inserts (after restart).";
   {
-    ASSERT_OK(WaitFor([&]() -> Result<bool> {
-      master::SysClusterConfigEntryPB cluster_info;
-      auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
-      RETURN_NOT_OK(cm.GetClusterConfig(&cluster_info));
-      auto& producer_map = cluster_info.consumer_registry().producer_map();
-      auto producer_entry = FindOrNull(producer_map, kUniverseId);
-      if (producer_entry) {
-        CHECK_EQ(producer_entry->stream_map().size(), 1);
-        auto& stream_entry = producer_entry->stream_map().begin()->second;
-        return stream_entry.has_producer_schema() &&
-               stream_entry.producer_schema().has_pending_schema();
-      }
-      return false;
-    }, MonoDelta::FromSeconds(20), "IsConsumerHaltedOnDDL"));
-
     auto producer_results = ScanTableToStrings(tables[0]->name(), producer_client());
     auto consumer_results = ScanTableToStrings(tables[1]->name(), consumer_client());
     ASSERT_EQ(producer_results.size(), 10);

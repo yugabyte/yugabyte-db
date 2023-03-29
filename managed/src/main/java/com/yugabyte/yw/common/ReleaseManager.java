@@ -8,12 +8,12 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.AddGFlagMetadata;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.utils.FileUtils;
-import com.yugabyte.yw.common.utils.Version;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -39,10 +39,8 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
@@ -53,7 +51,7 @@ import javax.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
-import com.typesafe.config.Config;
+import play.Configuration;
 import play.data.validation.Constraints;
 import play.libs.Json;
 import play.mvc.Http.Status;
@@ -69,8 +67,8 @@ public class ReleaseManager {
   private static final String YB_PACKAGE_REGEX =
       "yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz";
 
-  private final ConfigHelper configHelper;
-  private final Config appConfig;
+  public final ConfigHelper configHelper;
+  private final Configuration appConfig;
   private final GFlagsValidation gFlagsValidation;
   private final Commissioner commissioner;
   private final AWSUtil awsUtil;
@@ -79,7 +77,7 @@ public class ReleaseManager {
   @Inject
   public ReleaseManager(
       ConfigHelper configHelper,
-      Config appConfig,
+      Configuration appConfig,
       GFlagsValidation gFlagsValidation,
       Commissioner commissioner,
       AWSUtil awsUtil,
@@ -567,7 +565,9 @@ public class ReleaseManager {
                   chartPath, checksumAlgorithm, computedChecksum, checksumValue));
         }
       }
-      metadata.chartPath = Objects.toString(chartPath);
+      if (chartPath != null) {
+        metadata.chartPath = chartPath.toString();
+      }
     } catch (Exception e) {
       throw new RuntimeException(
           String.format(

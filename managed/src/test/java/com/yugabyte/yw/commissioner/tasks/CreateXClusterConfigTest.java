@@ -15,6 +15,8 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -34,6 +36,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -160,7 +163,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
             null,
             true,
             CommonTypes.TableType.YQL_TABLE_TYPE,
-            Collections.emptyList());
+            Collections.emptyList(),
+            false);
     GetTableSchemaResponse mockTableSchemaResponseTable2 =
         new GetTableSchemaResponse(
             0,
@@ -172,7 +176,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
             null,
             true,
             CommonTypes.TableType.YQL_TABLE_TYPE,
-            Collections.emptyList());
+            Collections.emptyList(),
+            false);
     try {
       lenient()
           .when(mockClient.getTableSchemaByUUID(exampleTableID1))
@@ -274,7 +279,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     tableInfoList.add(table2TableInfoBuilder.build());
 
     try {
-      when(mockClient.getTablesList(null, true, null)).thenReturn(mockListTablesResponse);
+      when(mockClient.getTablesList(eq(null), anyBoolean(), eq(null)))
+          .thenReturn(mockListTablesResponse);
       when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
     } catch (Exception e) {
       e.printStackTrace();
@@ -341,7 +347,9 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
             createFormData.tables,
             createFormData.bootstrapParams,
             sourceUniverse,
-            targetUniverse);
+            targetUniverse,
+            null,
+            ConfigType.Basic);
 
     TaskInfo taskInfo = submitTask(xClusterConfig, requestedTableInfoList);
     assertNotNull(taskInfo);
@@ -383,7 +391,9 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
             createFormData.tables,
             createFormData.bootstrapParams,
             sourceUniverse,
-            targetUniverse);
+            targetUniverse,
+            null,
+            ConfigType.Basic);
 
     TaskInfo taskInfo = submitTask(xClusterConfig, requestedTableInfoList);
     assertNotNull(taskInfo);
@@ -428,7 +438,9 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
             createFormData.tables,
             createFormData.bootstrapParams,
             sourceUniverse,
-            targetUniverse);
+            targetUniverse,
+            null,
+            ConfigType.Basic);
 
     TaskInfo taskInfo = submitTask(xClusterConfig, requestedTableInfoList);
     assertNotNull(taskInfo);
@@ -477,7 +489,9 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
             createFormData.tables,
             createFormData.bootstrapParams,
             sourceUniverse,
-            targetUniverse);
+            targetUniverse,
+            null,
+            ConfigType.Basic);
 
     TaskInfo taskInfo = submitTask(xClusterConfig, requestedTableInfoList);
     assertNotNull(taskInfo);

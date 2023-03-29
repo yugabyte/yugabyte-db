@@ -9,8 +9,6 @@ menu:
     identifier: going-beyond-sql-tablespaces
     parent: going-beyond-sql
     weight: 320
-aliases:
-  - /preview/explore/ysql-language-features/tablespaces/
 type: docs
 ---
 

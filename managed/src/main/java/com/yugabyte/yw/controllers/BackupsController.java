@@ -12,9 +12,9 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YbcBackupUtil;
-import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.DeleteBackupParams;
@@ -870,7 +870,7 @@ public class BackupsController extends AuthenticatedController {
             Customer.get(customerUUID).getFeatures(), "universes.details.backups.storageLocation");
     boolean isStorageLocMasked = custStorageLoc != null && custStorageLoc.asText().equals("hidden");
     if (!isStorageLocMasked) {
-      UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
+      UserWithFeatures user = (UserWithFeatures) ctx().args.get("user");
       JsonNode userStorageLoc =
           CommonUtils.getNodeProperty(
               user.getFeatures(), "universes.details.backups.storageLocation");
@@ -949,9 +949,8 @@ public class BackupsController extends AuthenticatedController {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format(
-              "Got error setting throttle params for universe {}, error: {}",
-              universeUUID.toString(),
-              e.getMessage()));
+              "Got error setting throttle params for universe %s, error: %s",
+              universeUUID.toString(), e.getMessage()));
     }
     auditService()
         .createAuditEntryWithReqBody(
@@ -987,9 +986,8 @@ public class BackupsController extends AuthenticatedController {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format(
-              "Got error getting throttle params for universe {}, error: {}",
-              universeUUID.toString(),
-              e.getMessage()));
+              "Got error getting throttle params for universe %s, error: %s",
+              universeUUID.toString(), e.getMessage()));
     }
   }
 }

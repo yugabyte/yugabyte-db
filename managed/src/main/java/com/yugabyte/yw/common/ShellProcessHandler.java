@@ -14,11 +14,14 @@ import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_EXECUTION_CANCELLE
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_GENERIC_ERROR;
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.password.RedactingService;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -42,7 +45,6 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Marker;
 import org.slf4j.MarkerFactory;
 import play.libs.Json;
-import com.typesafe.config.Config;
 
 @Singleton
 @Slf4j
@@ -111,7 +113,14 @@ public class ShellProcessHandler {
                 redactedCommand.add(key);
                 command.add(key);
                 command.add(value);
-                redactedCommand.add(Util.redactString(value));
+
+                try {
+                  JsonNode valueJson = Json.mapper().readTree(value);
+                  redactedCommand.add(RedactingService.filterSecretFields(valueJson).toString());
+
+                } catch (JsonProcessingException e) {
+                  redactedCommand.add(RedactingService.redactString(value));
+                }
               });
     }
     // If there are entries with redacted values, update them.
@@ -161,7 +170,9 @@ public class ShellProcessHandler {
         log.info(logMsg);
       }
       String fullCommand = "'" + String.join("' '", redactedCommand) + "'";
-      if (appConfig.getBoolean("yb.log.logEnvVars") && extraEnvVars != null) {
+      if (appConfig.hasPath("yb.log.logEnvVars")
+          && appConfig.getBoolean("yb.log.logEnvVars")
+          && extraEnvVars != null) {
         fullCommand = Joiner.on(" ").withKeyValueSeparator("=").join(extraEnvVars) + fullCommand;
       }
       logMsg =

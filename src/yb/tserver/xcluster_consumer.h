@@ -63,8 +63,6 @@ struct XClusterClient {
   void Shutdown();
 };
 
-typedef std::pair<SchemaVersion, SchemaVersion> SchemaVersionMapping;
-
 class XClusterConsumer {
  public:
   static Result<std::unique_ptr<XClusterConsumer>> Create(
@@ -117,6 +115,9 @@ class XClusterConsumer {
   void StoreReplicationError(
     const TabletId& tablet_id, const CDCStreamId& stream_id, ReplicationErrorPb error,
     const std::string& detail);
+
+  // Clears replication errors.
+  void ClearReplicationError(const TabletId& tablet_id, const CDCStreamId& stream_id);
 
   // Returns the replication error map.
   cdc::TabletReplicationErrorMap GetReplicationErrors() const;
@@ -182,7 +183,13 @@ class XClusterConsumer {
 
   std::unordered_set<std::string> streams_with_local_tserver_optimization_
       GUARDED_BY(master_data_mutex_);
-  std::unordered_map<std::string, SchemaVersionMapping> stream_to_schema_version_
+  std::unordered_map<std::string, cdc::SchemaVersionMapping> stream_to_schema_version_
+      GUARDED_BY(master_data_mutex_);
+
+  cdc::StreamSchemaVersionMap stream_schema_version_map_
+      GUARDED_BY(master_data_mutex_);
+
+  cdc::StreamColocatedSchemaVersionMap stream_colocated_schema_version_map_
       GUARDED_BY(master_data_mutex_);
 
   scoped_refptr<Thread> run_trigger_poll_thread_;
@@ -206,6 +213,10 @@ class XClusterConsumer {
 
   std::atomic<int32_t> cluster_config_version_ GUARDED_BY(master_data_mutex_) = {-1};
   std::atomic<cdc::XClusterRole> consumer_role_ = cdc::XClusterRole::ACTIVE;
+
+  // This is the cached cluster config version on which the pollers
+  // were notified of any changes
+  std::atomic<int32_t> last_polled_at_cluster_config_version_  = {-1};
 
   std::atomic<uint32_t> TEST_num_successful_write_rpcs {0};
 

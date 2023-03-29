@@ -1,4 +1,5 @@
 ---
+title: Alerts in YugabyteDB Anywhere
 headerTitle: Alerts
 linkTitle: Alerts
 description: Use alerts

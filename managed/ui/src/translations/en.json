@@ -1,6 +1,7 @@
 {
   "translation": {
     "common": {
+      "beta": "Beta",
       "apply": "Apply",
       "cancel": "Cancel",
       "confirm": "Confirm",
@@ -356,6 +357,7 @@
       "customVariables": {
         "addNewVariableText": "Create your own variables with <bold> customized value </bold> to use in the notification templates.",
         "createNewVariableButton": "Create Custom Variable",
+        "customVariables":"Custom Variables",
         "systemVariables": "System Variables",
         "assignVariablesButton": "Assign Variable Value to Alert Policies",
         "customVariableContextMenu": {
@@ -383,6 +385,23 @@
           "menuDefault": "(default)",
           "tablePolicyHeader": "Alert Policies"
         }
+      },
+      "composer": {
+        "subject": "Subject",
+        "content": "Content",
+        "helpText": "All Alert Policies that generate email alerts will use this notification template.",
+        "insertVariableButton": "Insert Variable",
+        "previewTemplateButton": "Preview Notification Template",
+        "templateSavedSuccess": "Template saved successfully"
+      },
+      "customVariablesPlugin": {
+        "sysOrCusVariable": "{{variable_type}} VAR",
+        "alertValueNotFound": "No value found"
+      },
+      "alertVariablesPreviewModal": {
+        "modalTitle":"Preview Notification Template",
+        "info":"Choose the Alert Template to preview with the Email Notification Template.",
+        "selectPlaceholder": "Select an alert configuration"
       }
     }
   }

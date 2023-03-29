@@ -1,5 +1,5 @@
 ---
-title: Scaling transactions
+title: Scaling transactions in YugabyteDB Managed
 headerTitle: Scaling concurrent transactions
 linkTitle: Scaling concurrent transactions
 description: Scaling concurrent transactions in YugabyteDB Managed.

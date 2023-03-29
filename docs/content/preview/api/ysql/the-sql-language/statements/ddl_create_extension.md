@@ -8,8 +8,6 @@ menu:
   preview:
     identifier: ddl_create_extension
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/ddl_create_extension/
 type: docs
 ---
 

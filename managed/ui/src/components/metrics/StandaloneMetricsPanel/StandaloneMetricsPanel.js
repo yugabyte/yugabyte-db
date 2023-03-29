@@ -41,6 +41,7 @@ class StandaloneMetricsPanel extends Component {
     props.width = width;
 
     if (
+      metrics &&
       Object.keys(metrics).length > 0 &&
       isNonEmptyObject(metrics[type]) &&
       isNonEmptyObject(metrics[type][metricKey]) &&
@@ -93,6 +94,7 @@ class StandaloneMetricsPanel extends Component {
 
     if (isDedicatedNodes) {
       if (
+        masterMetrics &&
         Object.keys(masterMetrics).length > 0 &&
         isNonEmptyObject(masterMetrics[type]) &&
         isNonEmptyObject(masterMetrics[type][metricKey]) &&

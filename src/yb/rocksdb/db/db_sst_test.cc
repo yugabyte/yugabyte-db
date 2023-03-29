@@ -26,8 +26,8 @@
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/sst_file_manager.h"
 #include "yb/rocksdb/util/sst_file_manager_impl.h"
-#include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 
 namespace rocksdb {
@@ -249,13 +249,13 @@ TEST_F(DBTest, DBWithSstFileManager) {
   int files_added = 0;
   int files_deleted = 0;
   int files_moved = 0;
-  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+  yb::SyncPoint::GetInstance()->SetCallBack(
       "SstFileManagerImpl::OnAddFile", [&](void* arg) { files_added++; });
-  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+  yb::SyncPoint::GetInstance()->SetCallBack(
       "SstFileManagerImpl::OnDeleteFile", [&](void* arg) { files_deleted++; });
-  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+  yb::SyncPoint::GetInstance()->SetCallBack(
       "SstFileManagerImpl::OnMoveFile", [&](void* arg) { files_moved++; });
-  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
 
   Options options = CurrentOptions();
   options.sst_file_manager = sst_file_manager;
@@ -303,19 +303,19 @@ TEST_F(DBTest, DBWithSstFileManager) {
   ASSERT_EQ(sfm->GetTrackedFiles(), files_in_db);
   ASSERT_EQ(sfm->GetTotalSize(), total_files_size);
 
-  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->DisableProcessing();
 }
 
 TEST_F(DBTest, RateLimitedDelete) {
-  rocksdb::SyncPoint::GetInstance()->LoadDependency({
+  yb::SyncPoint::GetInstance()->LoadDependency({
       {"DBTest::RateLimitedDelete:1", "DeleteScheduler::BackgroundEmptyTrash"},
   });
 
   std::vector<uint64_t> penalties;
-  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+  yb::SyncPoint::GetInstance()->SetCallBack(
       "DeleteScheduler::BackgroundEmptyTrash:Wait",
       [&](void* arg) { penalties.push_back(*(static_cast<int*>(arg))); });
-  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->DisableProcessing();
 
   Options options = CurrentOptions();
   options.disable_auto_compactions = true;
@@ -328,7 +328,7 @@ TEST_F(DBTest, RateLimitedDelete) {
   auto sfm = static_cast<SstFileManagerImpl*>(options.sst_file_manager.get());
 
   Destroy(last_options_);
-  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
   ASSERT_OK(TryReopen(options));
   // Create 4 files in L0
   for (char v = 'a'; v <= 'd'; v++) {
@@ -365,7 +365,7 @@ TEST_F(DBTest, RateLimitedDelete) {
   }
   ASSERT_GT(time_spent_deleting, expected_penlty * 0.9);
 
-  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->DisableProcessing();
 }
 
 // Create a DB with 2 db_paths, and generate multiple files in the 2
@@ -374,10 +374,10 @@ TEST_F(DBTest, RateLimitedDelete) {
 // files in the second path were not.
 TEST_F(DBTest, DeleteSchedulerMultipleDBPaths) {
   int bg_delete_file = 0;
-  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+  yb::SyncPoint::GetInstance()->SetCallBack(
       "DeleteScheduler::DeleteTrashFile:DeleteFile",
       [&](void* arg) { bg_delete_file++; });
-  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
 
   Options options = CurrentOptions();
   options.disable_auto_compactions = true;
@@ -434,15 +434,15 @@ TEST_F(DBTest, DeleteSchedulerMultipleDBPaths) {
   sfm->WaitForEmptyTrash();
   ASSERT_EQ(bg_delete_file, 16);
 
-  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->DisableProcessing();
 }
 
 TEST_F(DBTest, DestroyDBWithRateLimitedDelete) {
   int bg_delete_file = 0;
-  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+  yb::SyncPoint::GetInstance()->SetCallBack(
       "DeleteScheduler::DeleteTrashFile:DeleteFile",
       [&](void* arg) { bg_delete_file++; });
-  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
 
   Options options = CurrentOptions();
   options.disable_auto_compactions = true;
@@ -513,7 +513,7 @@ TEST_F(DBTest, DBWithMaxSpaceAllowedRandomized) {
 
   int reached_max_space_on_flush = 0;
   int reached_max_space_on_compaction = 0;
-  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+  yb::SyncPoint::GetInstance()->SetCallBack(
       "DBImpl::FlushMemTableToOutputFile:MaxAllowedSpaceReached",
       [&](void* arg) {
         bg_error_set = true;
@@ -521,7 +521,7 @@ TEST_F(DBTest, DBWithMaxSpaceAllowedRandomized) {
         reached_max_space_on_flush++;
       });
 
-  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+  yb::SyncPoint::GetInstance()->SetCallBack(
       "CompactionJob::FinishCompactionOutputFile:MaxAllowedSpaceReached",
       [&](void* arg) {
         bg_error_set = true;
@@ -532,8 +532,8 @@ TEST_F(DBTest, DBWithMaxSpaceAllowedRandomized) {
   for (auto limit_mb : max_space_limits_mbs) {
     bg_error_set = false;
     total_sst_files_size = 0;
-    rocksdb::SyncPoint::GetInstance()->ClearTrace();
-    rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+    yb::SyncPoint::GetInstance()->ClearTrace();
+    yb::SyncPoint::GetInstance()->EnableProcessing();
     std::shared_ptr<SstFileManager> sst_file_manager(ASSERT_RESULT(NewSstFileManager(env_)));
     auto sfm = static_cast<SstFileManagerImpl*>(sst_file_manager.get());
 
@@ -560,7 +560,7 @@ TEST_F(DBTest, DBWithMaxSpaceAllowedRandomized) {
     }
     ASSERT_TRUE(bg_error_set);
     ASSERT_GE(total_sst_files_size, limit_mb * 1024 * 1024);
-    rocksdb::SyncPoint::GetInstance()->DisableProcessing();
+    yb::SyncPoint::GetInstance()->DisableProcessing();
   }
 
   ASSERT_GT(reached_max_space_on_flush, 0);

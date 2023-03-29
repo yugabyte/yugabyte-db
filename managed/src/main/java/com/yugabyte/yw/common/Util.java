@@ -15,8 +15,6 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.utils.Pair;
-import com.yugabyte.yw.controllers.RequestContext;
-import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -24,8 +22,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
@@ -38,6 +36,7 @@ import java.math.BigDecimal;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
+import java.net.Socket;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
@@ -76,6 +75,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
+import play.mvc.Http.Context;
 
 public class Util {
   public static final Logger LOG = LoggerFactory.getLogger(Util.class);
@@ -112,6 +112,8 @@ public class Util {
   public static final double EPSILON = 0.000001d;
 
   public static final String YBC_COMPATIBLE_DB_VERSION = "2.15.0.0-b1";
+
+  public static final String K8S_YBC_COMPATIBLE_DB_VERSION = "2.17.3.0-b62";
 
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
 
@@ -153,13 +155,6 @@ public class Util {
       inetAddrs.add(new InetSocketAddress(privateIp, yqlRPCPort));
     }
     return inetAddrs;
-  }
-
-  public static String redactString(String input) {
-    String length = ((Integer) input.length()).toString();
-    String regex = "(.)" + "{" + length + "}";
-    String output = input.replaceAll(regex, REDACT);
-    return output;
   }
 
   public static String redactYsqlQuery(String input) {
@@ -891,12 +886,15 @@ public class Util {
     }
   }
 
-  public static String maybeGetEmailFromContext() {
-    return Optional.ofNullable(RequestContext.getIfPresent(TokenAuthenticator.USER))
-        .map(UserWithFeatures::getUser)
-        .map(Users::getEmail)
-        .map(Object::toString)
-        .orElse("Unknown");
+  public static String maybeGetEmailFromContext(Context context) {
+    String userEmail =
+        Optional.ofNullable(context)
+            .map(context1 -> (UserWithFeatures) context1.args.get("user"))
+            .map(UserWithFeatures::getUser)
+            .map(Users::getEmail)
+            .map(Object::toString)
+            .orElse("Unknown");
+    return userEmail;
   }
 
   public static Universe lockUniverse(Universe universe) {
@@ -919,5 +917,14 @@ public class Util {
           u.setUniverseDetails(universeDetails);
         };
     return Universe.saveDetails(universe.universeUUID, updater, false);
+  }
+
+  public static boolean isAddressReachable(String host, int port) {
+    try (Socket socket = new Socket()) {
+      socket.connect(new InetSocketAddress(host, port), 3000);
+      return true;
+    } catch (IOException e) {
+    }
+    return false;
   }
 }

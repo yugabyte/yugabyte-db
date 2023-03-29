@@ -7,8 +7,6 @@ menu:
   preview:
     identifier: perf_execute
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/perf_execute/
 type: docs
 ---
 

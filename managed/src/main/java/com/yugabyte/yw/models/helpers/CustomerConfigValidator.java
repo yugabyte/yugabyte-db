@@ -163,7 +163,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
     }
   }
 
-  private class CloudClientsFactoryImpl implements CloudClientsFactory {
+  private static class CloudClientsFactoryImpl implements CloudClientsFactory {
     @Override
     public Storage createGcpStorage(CustomerConfigStorageGCSData configData)
         throws IOException, UnsupportedEncodingException {

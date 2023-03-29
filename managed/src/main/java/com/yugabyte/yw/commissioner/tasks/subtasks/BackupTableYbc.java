@@ -9,11 +9,11 @@ import com.yugabyte.yw.commissioner.YbcTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.YbcBackupUtil;
-import com.yugabyte.yw.common.YbcManager;
-import com.yugabyte.yw.common.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.common.ybc.YbcBackupNodeRetriever;
+import com.yugabyte.yw.common.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.ybc.YbcManager;
+import com.yugabyte.yw.common.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BackupRequestParams.ParallelBackupState;
@@ -105,7 +105,8 @@ public class BackupTableYbc extends YbcTaskBase {
       if (StringUtils.isBlank(taskParams().nodeIp)) {
         taskParams().nodeIp = taskParams().nodeRetriever.getNodeIpForBackup();
       }
-      ybcClient = ybcBackupUtil.getYbcClient(taskParams().universeUUID, taskParams().nodeIp);
+      // Ping operation is attempted again, but it's OK, since a small check only.
+      ybcClient = ybcManager.getYbcClient(taskParams().universeUUID, taskParams().nodeIp);
 
       if (StringUtils.isBlank(taskParams().taskID)) {
         taskParams().taskID =

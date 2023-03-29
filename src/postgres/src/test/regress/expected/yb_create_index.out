@@ -1481,6 +1481,31 @@ INSERT INTO test_index_nonconcurrently VALUES (1, 'b');
 CREATE UNIQUE INDEX NONCONCURRENTLY ON test_index_nonconcurrently (i);
 ERROR:  duplicate key value violates unique constraint "test_index_nonconcurrently_i_idx"
 DROP TABLE test_index_nonconcurrently;
+-- Verify that creating indexes on a YB table does not update table stats.
+CREATE TABLE test_stats (i INT);
+INSERT INTO test_stats VALUES (1), (2), (3);
+ANALYZE test_stats;
+SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
+ reltuples 
+-----------
+         3
+(1 row)
+
+CREATE INDEX CONCURRENTLY ON test_stats(i);
+SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
+ reltuples 
+-----------
+         3
+(1 row)
+
+CREATE INDEX NONCONCURRENTLY ON test_stats(i);
+SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
+ reltuples 
+-----------
+         3
+(1 row)
+
+DROP TABLE test_stats;
 -- Test creating temp index using lsm.
 CREATE TEMP TABLE test_temp_lsm (i int);
 CREATE INDEX ON test_temp_lsm USING lsm (i);

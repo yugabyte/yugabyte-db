@@ -6,7 +6,6 @@ package common
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -18,12 +17,12 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/spf13/viper"
 	"github.com/vmware-labs/yaml-jsonpath/pkg/yamlpath"
 	"gopkg.in/yaml.v3"
 
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common/shell"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	// "github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
 )
@@ -50,16 +49,6 @@ const javaBinaryGlob = "yba_installer-*linux*/OpenJDK8U-jdk_x64_linux_*.tar.gz"
 const tarTemplateDirGlob = "yba_installer-*linux*/" + ConfigDir
 
 const tarCronDirGlob = "yba_installer-*linux*/" + CronDir
-
-// DetectOS detects the operating system yba-installer is running on.
-func DetectOS() string {
-
-	command1 := "bash"
-	args1 := []string{"-c", "awk -F= '/^NAME/{print $2}' /etc/os-release"}
-	output, _ := RunBash(command1, args1)
-
-	return string(output)
-}
 
 // GetVersion gets the version at execution time so that yba-installer
 // installs the correct version of YugabyteDB Anywhere.
@@ -93,48 +82,6 @@ func GetVersion() string {
 	return version
 }
 
-func RunBashNoLog(command string, args []string) (o string, e error) {
-	return runBash(command, args, false)
-}
-
-func RunBash(command string, args []string) (o string, e error) {
-	return runBash(command, args, true)
-}
-
-// RunBash executes a command in the shell, returning the output and error.
-func runBash(command string, args []string, shouldLog bool) (o string, e error) {
-
-	fullCmd := command + " " + strings.Join(args, " ")
-	startTime := time.Now()
-	if shouldLog {
-		log.Debug("About to run command " + fullCmd)
-	}
-	cmd := exec.Command(command, args...)
-
-	var execOut bytes.Buffer
-	var execErr bytes.Buffer
-	cmd.Stdout = &execOut
-	cmd.Stderr = &execErr
-
-	err := cmd.Run()
-
-	if err == nil {
-		if shouldLog {
-			log.Debug(fmt.Sprintf("Completed running command: '%s' [took %f secs]", fullCmd, time.Since(startTime).Seconds()))
-			log.Trace(fmt.Sprintf("Stdout for command '%s' was \n%s\n", fullCmd, execOut.String()))
-			log.Trace(fmt.Sprintf("Stderr for command '%s' was \n%s\n", fullCmd, execErr.String()))
-		}
-	} else {
-		err = fmt.Errorf("command failed with error %w and stderr %s", err, execErr.String())
-		if shouldLog {
-			log.Info("ERROR: '" + fullCmd + "' failed with error " +
-				err.Error() + "\nPrinting stdOut/stdErr " + execOut.String() + execErr.String())
-		}
-	}
-
-	return execOut.String(), err
-}
-
 // IndexOf returns the index in arr where val is present, -1 otherwise.
 func IndexOf(arr []string, val string) int {
 
@@ -166,13 +113,10 @@ func Chown(dir, user, group string, recursive bool) error {
 	if recursive {
 		args = append([]string{"-R"}, args...)
 	}
-	_, err := RunBashNoLog("chown", args)
-	if err != nil {
-		log.Debug(fmt.Sprintf(
-			"Chown of dir %s to user %s, recursive=%t failed with error %s",
-			dir, user, recursive, err))
-	}
-	return err
+
+	out := shell.Run("chown", args...)
+	out.SucceededOrLog()
+	return out.Error
 }
 
 // HasSudoAccess determines whether or not running user has sudo permissions.
@@ -211,20 +155,38 @@ func Create(p string) (*os.File, error) {
 	linkDir - directory where you want the link to be created
 	binary - name of file or directory to link. should already exist in pkgDir and will be the same
 */
-func CreateSymlink(pkgDir string, linkDir string, binary string) {
+func CreateSymlink(pkgDir string, linkDir string, binary string) error {
 	binaryPath := fmt.Sprintf("%s/%s", pkgDir, binary)
 	linkPath := fmt.Sprintf("%s/%s", linkDir, binary)
 
 	args := []string{"-sf", binaryPath, linkPath}
 	log.Debug(fmt.Sprintf("Creating symlink at %s -> orig %s",
 		linkPath, binaryPath))
-	_, err := RunBashNoLog("ln", args)
-	if err != nil {
-		log.Debug(fmt.Sprintf(
-			"Creating symlink at %s -> orig %s failed with error %s",
-			linkPath, binaryPath, err))
-		// TODO: handle error
+
+	out := shell.Run("ln", args...)
+	out.SucceededOrLog()
+	return out.Error
+}
+
+// Copy will copy the source to the destination
+/*
+	src - source file or directory
+	dest - destination file or directory
+	recursive - if it should be a recursive copy
+	preserve  - preserve file stats
+*/
+func Copy(src, dest string, recursive, preserve bool) error {
+	args := []string{}
+	if recursive {
+		args = append(args, "-r")
 	}
+	if preserve {
+		args = append(args, "-p")
+	}
+	args = append(args, src, dest)
+	out := shell.Run("cp", args...)
+	out.SucceededOrLog()
+	return out.Error
 }
 
 type defaultAnswer int
@@ -550,22 +512,4 @@ func GetValidParent(dir string) (string, error) {
 		_, curError = os.Stat(curDir)
 	}
 	return curDir, curError
-}
-
-// RunFromInstalled will return if yba-ctl is an "installed" yba-ctl, or one from a new release.
-func RunFromInstalled() bool {
-	path, err := os.Executable()
-	if err != nil {
-		panic("unable to determine executable path: " + err.Error())
-	}
-
-	// Regex for "installed paths" of yba-ctl
-	matcher, err := regexp.Compile("(?:/opt/yba-ctl/yba-ctl)|(?:/usr/bin/yba-ctl)|" +
-		"(?:.*/yugabyte/software/.*/yba_installer/yba-ctl)")
-	if err != nil {
-		panic("bad regex: " + err.Error())
-	}
-
-	// If we have a match, we are running from the installed yba-ctl.
-	return matcher.MatchString(path)
 }

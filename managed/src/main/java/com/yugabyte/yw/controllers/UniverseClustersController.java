@@ -58,6 +58,12 @@ public class UniverseClustersController extends AuthenticatedController {
     UniverseConfigureTaskParams taskParams =
         bindFormDataToTaskParams(ctx(), request(), UniverseConfigureTaskParams.class);
 
+    // explicitly setting useSystemd as true while creating new universe cluster if this property
+    // is not already set by caller.
+    if (taskParams.getPrimaryCluster().userIntent.useSystemd == null) {
+      taskParams.getPrimaryCluster().userIntent.useSystemd = true;
+    }
+
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     taskParams.currentClusterType = ClusterType.PRIMARY;
     universeCRUDHandler.configure(customer, taskParams);

@@ -12,4 +12,4 @@ Headings in included markdown files _do_ appear in the right navigation.
 
 ### Another heading in the included markdown
 
-Use `includeMarkdown` to add repetitive text to multiple pages.
+Use includeMarkdown to add repetitive text to multiple pages.

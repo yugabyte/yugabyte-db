@@ -94,7 +94,7 @@ void YQLVTableIterator::Advance(bool increment) {
 YQLVTableIterator::~YQLVTableIterator() {
 }
 
-HybridTime YQLVTableIterator::RestartReadHt() {
+Result<HybridTime> YQLVTableIterator::RestartReadHt() {
   return HybridTime::kInvalid;
 }
 

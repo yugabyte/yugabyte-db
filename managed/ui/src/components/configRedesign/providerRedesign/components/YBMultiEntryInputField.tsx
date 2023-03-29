@@ -35,8 +35,7 @@ export const YBMultiEntryInputField = <T extends FieldValues>({
     })
   };
 
-  // TODO: Need to do a deeper dive to resolve the issue where fieldState.error is not recognized as an array of FieldErrors.
-  const errors = (fieldState.error as unknown) as FieldError[];
+  const fieldErrorArray = fieldState.error as FieldError[] | undefined;
   return (
     <div data-testid="YBMultiEntryInputField-Container">
       <YBMultiEntryInput
@@ -45,9 +44,17 @@ export const YBMultiEntryInputField = <T extends FieldValues>({
         val={field.value.map((option: any) => ({ value: option, label: option }))}
         styles={multiSelectStyles}
       />
-      {errors?.[0]?.message ? (
-        <FormHelperText error={true}>{errors[0].message}</FormHelperText>
-      ) : null}
+      {!!fieldErrorArray?.length &&
+        fieldErrorArray.map((_, index) => (
+          <>
+            {!!fieldErrorArray[index]?.message && (
+              <FormHelperText error={true}>{fieldErrorArray[index].message}</FormHelperText>
+            )}
+          </>
+        ))}
+      {!!fieldState.error?.message && (
+        <FormHelperText error={true}>{fieldState.error.message}</FormHelperText>
+      )}
     </div>
   );
 };

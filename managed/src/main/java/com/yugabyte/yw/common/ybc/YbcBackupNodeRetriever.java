@@ -5,14 +5,19 @@ package com.yugabyte.yw.common.ybc;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.forms.BackupRequestParams.ParallelBackupState;
 import com.yugabyte.yw.models.Universe;
+
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.stream.Collectors;
-import org.apache.commons.lang3.StringUtils;
 
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import play.api.Play;
+
+@Slf4j
 public class YbcBackupNodeRetriever {
   // For backups in parallel, we move all subtasks to a single subtask group.
   // Initialise a node-ip queue, with the size of queue being equal to parallelism.
@@ -21,15 +26,16 @@ public class YbcBackupNodeRetriever {
   // After completing task, ips returned to pool, so that next subtask blocked on it can pick it up.
 
   private final LinkedBlockingQueue<String> universeTserverIPs;
+  private final UUID universeUUID;
+  private final YbcManager ybcManager;
 
-  public YbcBackupNodeRetriever(
-      UUID universeUUID, int parallelism, Map<String, ParallelBackupState> backupDBStates) {
-    universeTserverIPs = new LinkedBlockingQueue<>(parallelism);
-    initializeNodePoolForBackups(universeUUID, backupDBStates);
+  public YbcBackupNodeRetriever(UUID universeUUID, int parallelism) {
+    this.universeTserverIPs = new LinkedBlockingQueue<>(parallelism);
+    this.universeUUID = universeUUID;
+    this.ybcManager = Play.current().injector().instanceOf(YbcManager.class);
   }
 
-  private void initializeNodePoolForBackups(
-      UUID universeUUID, Map<String, ParallelBackupState> backupDBStates) {
+  public void initializeNodePoolForBackups(Map<String, ParallelBackupState> backupDBStates) {
     Set<String> nodeIPsAlreadyAssigned =
         backupDBStates
             .entrySet()
@@ -42,12 +48,30 @@ public class YbcBackupNodeRetriever {
             .collect(Collectors.toSet());
     int nodeIPsToAdd = universeTserverIPs.remainingCapacity() - nodeIPsAlreadyAssigned.size();
     Universe universe = Universe.getOrBadRequest(universeUUID);
+    String certFile = universe.getCertificateNodetoNode();
+    int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     universe
         .getLiveTServersInPrimaryCluster()
         .stream()
-        .filter(nD -> !nodeIPsAlreadyAssigned.contains(nD.cloudInfo.private_ip))
+        .map(nD -> nD.cloudInfo.private_ip)
+        .filter(
+            ip ->
+                !nodeIPsAlreadyAssigned.contains(ip)
+                    && ybcManager.ybcPingCheck(ip, certFile, ybcPort))
         .limit(nodeIPsToAdd)
-        .forEach(nD -> universeTserverIPs.add(nD.cloudInfo.private_ip));
+        .forEach(ip -> universeTserverIPs.add(ip));
+
+    if (nodeIPsToAdd != 0) {
+      if (universeTserverIPs.size() == 0) {
+        throw new RuntimeException("YB-Controller servers unavailable.");
+      }
+      if (universeTserverIPs.size() < nodeIPsToAdd) {
+        log.warn(
+            "Found unhealthy nodes, using fewer YB-Controller"
+                + " orchestrators: {} than desired parallelism.",
+            nodeIPsAlreadyAssigned.size() + universeTserverIPs.size());
+      }
+    }
   }
 
   public String getNodeIpForBackup() {

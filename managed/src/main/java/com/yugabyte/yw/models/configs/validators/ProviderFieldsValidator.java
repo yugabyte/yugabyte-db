@@ -24,6 +24,10 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
     this.runtimeConfGetter = runtimeConfGetter;
   }
 
+  protected void throwBeanProviderValidatorError(String fieldName, String exceptionMsg) {
+    throwBeanValidatorError(fieldName, exceptionMsg, "providerValidation");
+  }
+
   public boolean validateNTPServers(List<String> ntpServers) {
     try {
       int maxNTPServerValidateCount =
@@ -40,7 +44,7 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
         }
       }
     } catch (Exception e) {
-      throwBeanValidatorError("NTP_SERVERS", e.getMessage());
+      throwBeanProviderValidatorError("NTP_SERVERS", e.getMessage());
     }
     return true;
   }

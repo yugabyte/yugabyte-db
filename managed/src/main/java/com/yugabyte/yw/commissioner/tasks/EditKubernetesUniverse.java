@@ -14,7 +14,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckStorageClass;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckVolumeExpansion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -209,7 +209,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           masterAddresses,
           newIntent,
           isReadOnlyCluster,
-          newNamingStyle);
+          newNamingStyle,
+          universe.isYbcEnabled(),
+          universe.getUniverseDetails().ybcSoftwareVersion);
     }
 
     boolean instanceTypeChanged = false;
@@ -291,11 +293,14 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           masterAddresses,
           newPlacement,
           curPlacement,
-          taskParams().enableYbc);
+          universe.isYbcEnabled());
 
-      if (taskParams().enableYbc) {
+      if (universe.isYbcEnabled()) {
         installYbcOnThePods(
-            universe.name, tserversToAdd, isReadOnlyCluster, taskParams().ybcSoftwareVersion);
+            universe.name,
+            tserversToAdd,
+            isReadOnlyCluster,
+            universe.getUniverseDetails().ybcSoftwareVersion);
         createWaitForYbcServerTask(tserversToAdd);
       }
     }
@@ -352,7 +357,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           false,
           true,
           newNamingStyle,
-          isReadOnlyCluster);
+          isReadOnlyCluster,
+          KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
+          universe.isYbcEnabled(),
+          universe.getUniverseDetails().ybcSoftwareVersion);
     }
 
     // If tservers have been removed, check if some deployments need to be completely
@@ -506,7 +514,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       String masterAddresses,
       UserIntent userIntent,
       boolean isReadOnlyCluster,
-      boolean newNamingStyle) {
+      boolean newNamingStyle,
+      boolean enableYbc,
+      String ybcSoftwareVersion) {
 
     // The method to expand disk size is:
     // 1. Delete statefulset without deleting the pods
@@ -544,7 +554,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           null,
           isReadOnlyCluster,
           null,
-          newDiskSizeGi);
+          newDiskSizeGi,
+          false,
+          enableYbc,
+          ybcSoftwareVersion);
       createSingleKubernetesExecutorTaskForServerType(
           universeName,
           KubernetesCommandExecutor.CommandType.PVC_EXPAND_SIZE,
@@ -561,7 +574,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           null,
           newDiskSizeGi,
-          true);
+          true,
+          enableYbc,
+          ybcSoftwareVersion);
       createSingleKubernetesExecutorTaskForServerType(
           universeName,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
@@ -577,7 +592,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           null,
           isReadOnlyCluster,
           null,
-          newDiskSizeGi);
+          newDiskSizeGi,
+          false,
+          enableYbc,
+          ybcSoftwareVersion);
     }
   }
 
@@ -589,8 +607,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       boolean newNamingStyle,
       UUID providerUUID) {
     SubTaskGroup subTaskGroup =
-        createSubTaskGroup(KubernetesCheckStorageClass.getSubTaskGroupName());
-    KubernetesCheckStorageClass.Params params = new KubernetesCheckStorageClass.Params();
+        getTaskExecutor().createSubTaskGroup(KubernetesCheckVolumeExpansion.getSubTaskGroupName());
+    KubernetesCheckVolumeExpansion.Params params = new KubernetesCheckVolumeExpansion.Params();
     params.config = config;
     params.newNamingStyle = newNamingStyle;
     if (config != null) {
@@ -610,7 +628,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             azName,
             isReadOnlyCluster,
             taskParams().useNewHelmNamingStyle);
-    KubernetesCheckStorageClass task = createTask(KubernetesCheckStorageClass.class);
+    KubernetesCheckVolumeExpansion task = createTask(KubernetesCheckVolumeExpansion.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

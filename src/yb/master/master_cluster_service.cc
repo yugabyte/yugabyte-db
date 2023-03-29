@@ -277,6 +277,12 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, GetClusterConfig);
   }
 
+  void GetMasterXClusterConfig(
+      const GetMasterXClusterConfigRequestPB* req, GetMasterXClusterConfigResponsePB* resp,
+      rpc::RpcContext rpc) override {
+    HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, GetXClusterConfig);
+  }
+
   void GetLeaderBlacklistCompletion(
       const GetLeaderBlacklistPercentRequestPB* req, GetLoadMovePercentResponsePB* resp,
       rpc::RpcContext rpc) override {

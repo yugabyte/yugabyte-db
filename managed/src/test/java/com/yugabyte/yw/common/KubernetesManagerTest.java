@@ -10,7 +10,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -41,7 +40,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
 
   ShellKubernetesManager kubernetesManager;
 
-  @Mock Config mockAppConfig;
+  @Mock play.Configuration mockAppConfig;
 
   Provider defaultProvider;
   Customer defaultCustomer;

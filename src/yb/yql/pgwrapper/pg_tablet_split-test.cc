@@ -189,6 +189,24 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitDuringLongRunningTransact
   ASSERT_OK(conn.CommitTransaction());
 }
 
+TEST_F(PgTabletSplitTest, SplitSequencesDataTable) {
+  // Test that tablet splitting is blocked on system_postgres.sequences_data table
+  auto conn = ASSERT_RESULT(Connect());
+  // create a table with serial column which creates the
+  // system_postgres.sequences_data table
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k SERIAL, v INT);"));
+  auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
+  master::TableInfoPtr sequences_data_table = catalog_mgr->GetTableInfo(kPgSequencesDataTableId);
+  // Attempt splits on "system_postgres.sequences_data" table and verify that it fails.
+  for (const auto& tablet : sequences_data_table->GetTablets()) {
+    LOG(INFO) << "Splitting : " << sequences_data_table->name() << " Tablet :" << tablet->id();
+    auto s = catalog_mgr->TEST_SplitTablet(tablet, true /* is_manual_split */);
+    LOG(INFO) << s.ToString();
+    EXPECT_TRUE(s.IsNotSupported());
+    LOG(INFO) << "Split of sequences_data table failed as expected";
+  }
+}
+
 TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitKeyMatchesPartitionBound)) {
   // The intent of the test is to check that splitting is not happening when middle split key
   // matches one of the bounds (it actually can match only lower bound). Placed the test at this

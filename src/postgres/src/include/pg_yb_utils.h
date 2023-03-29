@@ -103,6 +103,7 @@ extern GeolocationDistance get_tablespace_distance (Oid tablespaceoid);
  */
 extern bool IsYugaByteEnabled();
 
+extern bool yb_enable_docdb_tracing;
 extern bool yb_read_from_followers;
 extern int32_t yb_follower_read_staleness_ms;
 
@@ -553,6 +554,7 @@ extern void YBFlushBufferedOperations();
 extern void YBGetAndResetOperationFlushRpcStats(uint64_t *count,
 												uint64_t *wait_time);
 
+bool YBEnableTracing();
 bool YBReadFromFollowersEnabled();
 int32_t YBFollowerReadStalenessMs();
 
@@ -744,8 +746,10 @@ void YBUpdateRowLockPolicyForSerializable(
 
 const char* yb_fetch_current_transaction_priority(void);
 
-void GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YBCStatus s,
-							   const char **msg, size_t *nargs, const char ***args);
+void GetStatusMsgAndArgumentsByCode(
+	const uint32_t pg_err_code, uint16_t txn_err_code, YBCStatus s,
+	const char **msg_buf, size_t *msg_nargs, const char ***msg_args,
+	const char **detail_buf, size_t *detail_nargs, const char ***detail_args);
 
 #define HandleYBStatus(status) \
 	HandleYBStatusAtErrorLevel(status, ERROR)
@@ -776,17 +780,23 @@ void GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YBCStatus s,
 			const char	   *filename = YBCStatusFilename(_status); \
 			int				lineno = YBCStatusLineNumber(_status); \
 			const char	   *funcname = YBCStatusFuncname(_status); \
-			const char	   *msg_buf = YBCMessageAsCString(_status); \
-			size_t			nargs; \
-			const char	  **args = YBCStatusArguments(_status, &nargs); \
-			GetStatusMsgAndArgumentsByCode(pg_err_code, _status, &msg_buf, \
-										   &nargs, &args); \
+			const char	   *msg_buf = NULL; \
+			const char	   *detail_buf = NULL; \
+			size_t		    msg_nargs = 0; \
+			size_t		    detail_nargs = 0; \
+			const char	  **msg_args = NULL; \
+			const char	  **detail_args = NULL; \
+			GetStatusMsgAndArgumentsByCode(pg_err_code, txn_err_code, _status, \
+										   &msg_buf, &msg_nargs, &msg_args, \
+										   &detail_buf, &detail_nargs, \
+										   &detail_args); \
 			YBCFreeStatus(_status); \
 			if (errstart(elevel, filename ? filename : __FILE__, \
 						 lineno > 0 ? lineno : __LINE__, \
 						 funcname ? funcname : PG_FUNCNAME_MACRO, TEXTDOMAIN)) \
 			{ \
-				yb_errmsg_from_status_data(msg_buf, nargs, args); \
+				yb_errmsg_from_status_data(msg_buf, msg_nargs, msg_args); \
+				yb_detail_from_status_data(detail_buf, detail_nargs, detail_args); \
 				errcode(pg_err_code); \
 				yb_txn_errcode(txn_err_code); \
 				errhidecontext(true); \
@@ -810,17 +820,22 @@ void GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YBCStatus s,
 			const char	   *filename = YBCStatusFilename(_status); \
 			int				lineno = YBCStatusLineNumber(_status); \
 			const char	   *funcname = YBCStatusFuncname(_status); \
-			const char	   *msg_buf = YBCMessageAsCString(_status); \
-			size_t			nargs; \
-			const char	  **args = YBCStatusArguments(_status, &nargs); \
+			const char	   *msg_buf = NULL; \
+			const char	   *detail_buf = NULL; \
+			size_t		    msg_nargs = 0; \
+			size_t		    detail_nargs = 0; \
+			const char	  **msg_args = NULL; \
+			const char	  **detail_args = NULL; \
 			GetStatusMsgAndArgumentsByCode(pg_err_code, _status, &msg_buf, \
-										   &nargs, &args); \
+										   &msg_nargs, &msg_args, &detail_buf, \
+										   &detail_nargs, &detail_args); \
 			YBCFreeStatus(_status); \
 			if (errstart(elevel_, filename ? filename : __FILE__, \
 						 lineno > 0 ? lineno : __LINE__, \
 						 funcname ? funcname : PG_FUNCNAME_MACRO, TEXTDOMAIN)) \
 			{ \
-				yb_errmsg_from_status_data(msg_buf, nargs, args); \
+				yb_errmsg_from_status_data(msg_buf, msg_nargs, msg_args); \
+				yb_detail_from_status_data(detail_buf, detail_nargs, detail_args); \
 				errcode(pg_err_code); \
 				yb_txn_errcode(txn_err_code); \
 				errhidecontext(true); \

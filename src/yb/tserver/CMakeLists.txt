@@ -169,6 +169,24 @@ ADD_YB_LIBRARY(test_echo_service_proto
   NONLINK_DEPS ${TSERVER_YRPC_TGTS})
 
 #########################################
+# pg_auto_analyze_service_proto
+#########################################
+
+YRPC_GENERATE(
+  TSERVER_YRPC_SRCS TSERVER_YRPC_HDRS TSERVER_YRPC_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES stateful_services/pg_auto_analyze_service.proto)
+set(TSERVER_YRPC_LIBS
+  yrpc
+  yb_common_proto
+  protobuf)
+ADD_YB_LIBRARY(pg_auto_analyze_service_proto
+  SRCS ${TSERVER_YRPC_SRCS}
+  DEPS ${TSERVER_YRPC_LIBS}
+  NONLINK_DEPS ${TSERVER_YRPC_TGTS})
+
+#########################################
 # tserver_util
 #########################################
 
@@ -198,8 +216,11 @@ set(TSERVER_SRCS
   pg_client_service.cc
   pg_client_session.cc
   pg_create_table.cc
-  pg_table_cache.cc
+  pg_mutation_counter.cc
   pg_response_cache.cc
+  pg_sequence_cache.cc
+  pg_table_cache.cc
+  pg_table_mutation_count_sender.cc
   read_query.cc
   remote_bootstrap_anchor_client.cc
   remote_bootstrap_client.cc
@@ -216,6 +237,7 @@ set(TSERVER_SRCS
   tserver-path-handlers.cc
   tserver_metrics_heartbeat_data_provider.cc
   server_main_util.cc
+  stateful_services/pg_auto_analyze_service.cc
   stateful_services/stateful_service_base.cc
   stateful_services/test_echo_service.cc
   xcluster_safe_time_map.cc

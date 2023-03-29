@@ -6,8 +6,6 @@ headcontent: Learn about YugabyteDB features, with examples
 description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes.
 image: /images/section_icons/index/explore.png
 aliases:
-  - /preview/explore/cloud-native/
-  - /preview/explore/transactional/
   - /preview/explore/high-performance/
   - /preview/explore/planet-scale/
   - /preview/explore/cloud-native/orchestration-readiness/
@@ -375,7 +373,7 @@ To start the application against a running YugabyteDB Anywhere universe, use the
 <!-- The preceding instructions are applicable to a YSQL workload.
 To run a YCQL workload, add the following parameters before the `-jar ./yb-workload-sim-0.0.3.jar` command: -->
 
-<!-- 
+<!--
 ```sh
 -Dworkload=genericCassandraWorkload \
 -Dspring.data.cassandra.contact-points=<host_ip> \

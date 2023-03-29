@@ -7,6 +7,7 @@ import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -16,6 +17,7 @@ import java.util.Optional;
 import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.SetupUniverseReplicationResponse;
 import org.yb.client.YBClient;
@@ -101,13 +103,26 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
               xClusterConfig.uuid));
     }
 
+    // If bootstrapping is required for the tables, add txn table to the list too.
+    XClusterTableConfig txnTableConfig = xClusterConfig.getTxnTableDetails();
+    if (Objects.nonNull(txnTableConfig)
+        && Objects.nonNull(tableIdsBootstrapIdsMap.values().iterator().next())
+        && Objects.nonNull(txnTableConfig.streamId)) {
+      log.info(
+          "{}.{} table id({}) and stream id({}) added to setupUniverseReplication request",
+          TRANSACTION_STATUS_TABLE_NAMESPACE,
+          TRANSACTION_STATUS_TABLE_NAME,
+          txnTableConfig.tableId,
+          txnTableConfig.streamId);
+      tableIdsBootstrapIdsMap.put(txnTableConfig.tableId, txnTableConfig.streamId);
+    }
+
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.sourceUniverseUUID);
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
-    YBClient client = ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate);
-
-    try {
+    try (YBClient client =
+        ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate)) {
       log.info(
           "Setting up replication for XClusterConfig({}): tableIdsBootstrapIdsMap {}",
           xClusterConfig.uuid,
@@ -130,11 +145,6 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
       }
       waitForXClusterOperation(client::isSetupUniverseReplicationDone);
 
-      // Persist that replicationSetupDone is true for the tables in taskParams. We have checked
-      // that taskParams().tableIds exist in the xCluster config, so it will not throw an exception.
-      xClusterConfig.setReplicationSetupDone(taskParams().tableIds);
-      xClusterConfig.setStatusForTables(taskParams().tableIds, XClusterTableConfig.Status.Running);
-
       // Get the stream ids from the target universe and put it in the Platform DB.
       GetMasterClusterConfigResponse clusterConfigResp = client.getMasterClusterConfig();
       if (clusterConfigResp.hasError()) {
@@ -145,18 +155,25 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
                 targetUniverse.universeUUID, xClusterConfig.uuid, clusterConfigResp.errorMessage());
         throw new RuntimeException(errMsg);
       }
-      updateStreamIdsFromTargetUniverseClusterConfig(
-          clusterConfigResp.getConfig(), xClusterConfig, taskParams().tableIds);
+      syncXClusterConfigWithReplicationGroup(
+          clusterConfigResp.getConfig(),
+          xClusterConfig,
+          taskParams().tableIds,
+          false /* skipSyncTxnTable */);
+
+      // For txn xCluster set the target universe role to standby.
+      if (xClusterConfig.type.equals(ConfigType.Txn) && xClusterConfig.targetActive) {
+        client.changeXClusterRole(XClusterRole.STANDBY);
+        xClusterConfig.targetActive = false;
+        xClusterConfig.update();
+      }
 
       if (HighAvailabilityConfig.get().isPresent()) {
         getUniverse(true).incrementVersion();
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
-      xClusterConfig.setStatusForTables(taskParams().tableIds, XClusterTableConfig.Status.Failed);
       throw new RuntimeException(e);
-    } finally {
-      ybService.closeClient(client, targetUniverseMasterAddresses);
     }
 
     log.info("Completed {}", getName());

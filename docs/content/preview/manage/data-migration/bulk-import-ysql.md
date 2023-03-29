@@ -1,10 +1,8 @@
 ---
-title: Bulk import
+title: Bulk import YSQL
 headerTitle: Bulk import for YSQL
 linkTitle: Bulk import
 description: Import data from PostgreSQL into YugabyteDB for YSQL.
-aliases:
-  - /preview/manage/data-migration/bulk-import/
 menu:
   preview:
     identifier: manage-bulk-import-ysql

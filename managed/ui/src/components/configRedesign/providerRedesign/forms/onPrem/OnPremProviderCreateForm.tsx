@@ -4,7 +4,14 @@ import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, mixed, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 
-import { ASYNC_ERROR, DEFAULT_SSH_PORT, NTPSetupType, ProviderCode } from '../../constants';
+import {
+  ASYNC_ERROR,
+  DEFAULT_NODE_EXPORTER_PORT,
+  DEFAULT_NODE_EXPORTER_USER,
+  DEFAULT_SSH_PORT,
+  NTPSetupType,
+  ProviderCode
+} from '../../constants';
 import { NTP_SERVER_REGEX } from '../constants';
 import {
   ConfigureOnPremRegionModal,
@@ -34,21 +41,21 @@ interface OnPremProviderCreateFormProps {
 
 interface OnPremProviderCreateFormFieldValues {
   dbNodePublicInternetAccess: boolean;
+  installNodeExporter: boolean;
   ntpServers: string[];
   ntpSetupType: NTPSetupType;
   providerCredentialType: ProviderCredentialType;
   providerName: string;
   regions: ConfigureOnPremRegionFormValues[];
+  skipProvisioning: boolean;
   sshKeypairName: string;
   sshPort: number;
   sshPrivateKeyContent: File;
   sshUser: string;
 
-  ybFirewallTags?: string;
-  ybHomeDir?: string;
-  installNodeExporter?: boolean;
   nodeExporterPort?: number;
   nodeExporterUser?: string;
+  ybHomeDir?: string;
 
   [ASYNC_ERROR]: string;
 }
@@ -86,14 +93,13 @@ const VALIDATION_SCHEMA = object().shape({
   }),
   ntpServers: array().when('ntpSetupType', {
     is: NTPSetupType.SPECIFIED,
-    then: array()
-      .min(1, 'NTP Servers cannot be empty.')
-      .of(
-        string().matches(
-          NTP_SERVER_REGEX,
-          'NTP servers must be provided in IPv4, IPv6, or hostname format.'
-        )
+    then: array().of(
+      string().matches(
+        NTP_SERVER_REGEX,
+        (testContext) =>
+          `NTP servers must be provided in IPv4, IPv6, or hostname format. '${testContext.originalValue}' is not valid.`
       )
+    )
   }),
   regions: array().min(1, 'Provider configurations must contain at least one region.')
 });
@@ -109,11 +115,14 @@ export const OnPremProviderCreateForm = ({
 
   const defaultValues = {
     dbNodePublicInternetAccess: true,
-    installNodeExporter: false,
+    installNodeExporter: true,
+    nodeExporterPort: DEFAULT_NODE_EXPORTER_PORT,
+    nodeExporterUser: DEFAULT_NODE_EXPORTER_USER,
     ntpServers: [] as string[],
     ntpSetupType: NTPSetupType.SPECIFIED,
     providerName: '',
     regions: [] as ConfigureOnPremRegionFormValues[],
+    skipProvisioning: false,
     sshKeypairManagement: KeyPairManagement.CUSTOM_KEY_PAIR,
     sshPort: DEFAULT_SSH_PORT,
     ybHomeDir: ''
@@ -125,6 +134,14 @@ export const OnPremProviderCreateForm = ({
 
   const onFormSubmit: SubmitHandler<OnPremProviderCreateFormFieldValues> = async (formValues) => {
     formMethods.clearErrors(ASYNC_ERROR);
+
+    if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
+      formMethods.setError('ntpServers', {
+        type: 'min',
+        message: 'Please specify at least one NTP server.'
+      });
+      return;
+    }
 
     const providerPayload: YBProviderMutation = {
       code: ProviderCode.ON_PREM,
@@ -288,10 +305,31 @@ export const OnPremProviderCreateForm = ({
             </FieldGroup>
             <FieldGroup heading="Advanced">
               <FormField>
-                <FieldLabel>DB Nodes have public internet access?</FieldLabel>
+                <FieldLabel infoContent="If yes, YBA will install some software packages on the DB nodes by downloading from the public internet. If not, all installation of software on the nodes will download from only this YBA instance.">
+                  DB Nodes have public internet access?
+                </FieldLabel>
                 <YBToggleField
                   name="dbNodePublicInternetAccess"
                   control={formMethods.control}
+                  disabled={isProviderFormReadOnly}
+                />
+              </FormField>
+              <FormField>
+                <FieldLabel infoContent="If enabled, node provisioning will not be done when the universe is created. A pre-provision script will be provided to be run manually instead.">
+                  Manually Provision Nodes
+                </FieldLabel>
+                <YBToggleField
+                  name="skipProvisioning"
+                  control={formMethods.control}
+                  disabled={isProviderFormReadOnly}
+                />
+              </FormField>
+              <FormField>
+                <FieldLabel>YB Nodes Home Directory (Optional)</FieldLabel>
+                <YBInputField
+                  control={formMethods.control}
+                  name="ybHomeDir"
+                  fullWidth
                   disabled={isProviderFormReadOnly}
                 />
               </FormField>

@@ -48,6 +48,10 @@ const DocHybridTime DocHybridTime::kInvalid = DocHybridTime(HybridTime::kInvalid
 const DocHybridTime DocHybridTime::kMin = DocHybridTime(HybridTime::kMin, 0);
 const DocHybridTime DocHybridTime::kMax = DocHybridTime(HybridTime::kMax, kMaxWriteId);
 
+const EncodedDocHybridTime kEncodedDocHybridTimeMin{DocHybridTime::kMin};
+
+const Slice EncodedDocHybridTime::kMin = kEncodedDocHybridTimeMin.AsSlice();
+
 constexpr int kNumBitsForHybridTimeSize = 5;
 constexpr int kHybridTimeSizeMask = (1 << kNumBitsForHybridTimeSize) - 1;
 
@@ -241,9 +245,22 @@ EncodedDocHybridTime::EncodedDocHybridTime(const DocHybridTime& input)
 EncodedDocHybridTime::EncodedDocHybridTime(HybridTime ht, IntraTxnWriteId write_id)
     : EncodedDocHybridTime(DocHybridTime(ht, write_id)) {}
 
+EncodedDocHybridTime::EncodedDocHybridTime(const Slice& src)
+    : size_(src.size()) {
+  memcpy(buffer_.data(), src.data(), src.size());
+}
+
 void EncodedDocHybridTime::Assign(const Slice& input) {
   size_ = input.size();
   memcpy(buffer_.data(), input.data(), size_);
+}
+
+void EncodedDocHybridTime::Assign(const DocHybridTime& doc_ht) {
+  size_ = doc_ht.EncodedInDocDbFormat(buffer_.data()) - buffer_.data();
+}
+
+void EncodedDocHybridTime::Reset() {
+  size_ = 0;
 }
 
 std::string EncodedDocHybridTime::ToString() const {
@@ -252,6 +269,13 @@ std::string EncodedDocHybridTime::ToString() const {
 
 Result<DocHybridTime> EncodedDocHybridTime::Decode() const {
   return DocHybridTime::FullyDecodeFrom(AsSlice());
+}
+
+void EncodedDocHybridTime::MakeAtLeast(const EncodedDocHybridTime& rhs) {
+  if (*this >= rhs) {
+    return;
+  }
+  Assign(rhs.AsSlice());
 }
 
 }  // namespace yb

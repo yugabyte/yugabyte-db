@@ -29,7 +29,7 @@ RELEASE_VERSION_FILE = "version.txt"
 THIRDPARTY_PREFIX_RE = re.compile('^thirdparty/(.*)$')
 
 
-class ReleaseUtil(object):
+class ReleaseUtil:
     """Packages a YugaByte package with the appropriate file naming schema."""
     release_manifest: Dict[str, Any]
     base_version: str
@@ -41,6 +41,7 @@ class ReleaseUtil(object):
     commit: str
     build_root: str
     package_name: str
+    skip_yugabyted_ui: bool
 
     def __init__(
             self,
@@ -50,7 +51,8 @@ class ReleaseUtil(object):
             force: bool,
             commit: Optional[str],
             build_root: str,
-            package_name: str) -> None:
+            package_name: str,
+            skip_yugabyted_ui: bool) -> None:
         """
         :param repository: the path to YugabyteDB repository (also known as YB_SRC_ROOT).
         :param build_type: build type such as "release".
@@ -61,6 +63,7 @@ class ReleaseUtil(object):
         :param package_name: the name of the top-level section of yb_release_manifest.json, such
                              as "yugabyte" or "yugabyte-client", specifying the set of files to
                              include.
+        :param skip_yugabyted_ui: whether to skip files related to yugabyted UI
         """
         self.repo = repository
         self.build_type = build_type
@@ -87,6 +90,11 @@ class ReleaseUtil(object):
         self.java_project_version = minidom.parse(pom_file).getElementsByTagName(
             'version')[0].firstChild.nodeValue
         logging.info("Java project version from pom.xml: {}".format(self.java_project_version))
+        if skip_yugabyted_ui:
+            self.release_manifest['bin'] = [
+                item for item in self.release_manifest['bin']
+                if os.path.basename(item) != 'yugabyted-ui'
+            ]
         self._rewrite_manifest()
 
     def get_release_manifest(self) -> Dict[str, Any]:

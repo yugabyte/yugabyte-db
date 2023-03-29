@@ -112,6 +112,8 @@ class SchemaPackingStorage {
 
   Result<const SchemaPacking&> GetPacking(SchemaVersion schema_version) const;
   Result<const SchemaPacking&> GetPacking(Slice* packed_row) const;
+  Result<SchemaVersion> GetSchemaPackingVersion(
+      TableType table_type, const Schema& schema) const;
 
   void AddSchema(SchemaVersion version, const Schema& schema);
 
@@ -139,8 +141,20 @@ class SchemaPackingStorage {
  private:
   // Set could_present to true when schemas could contain the same packings as already present.
   Status InsertSchemas(
+      const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas, bool could_present,
+      OverwriteSchemaPacking overwrite);
+  static Status InsertSchemas(
+      const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas, bool could_present,
+      OverwriteSchemaPacking overwrite, std::unordered_map<SchemaVersion, SchemaPacking>* out);
+
+  Result<std::unordered_map<SchemaVersion, SchemaPacking>> GetMergedSchemaPackings(
+      SchemaVersion schema_version, const SchemaPB& schema,
       const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas,
-      bool could_present, OverwriteSchemaPacking overwrite);
+      OverwriteSchemaPacking overwrite) const;
+
+  static void AddSchema(
+      TableType table_type, SchemaVersion version, const Schema& schema,
+      std::unordered_map<SchemaVersion, SchemaPacking>* out);
 
   TableType table_type_;
   std::unordered_map<SchemaVersion, SchemaPacking> version_to_schema_packing_;

@@ -2192,6 +2192,60 @@ void MasterPathHandlers::HandleGetClusterConfigJSON(
   jw.Protobuf(config);
 }
 
+Status MasterPathHandlers::GetClusterAndXClusterConfigStatus(
+    SysXClusterConfigEntryPB* xcluster_config, SysClusterConfigEntryPB* cluster_config) {
+  RETURN_NOT_OK(master_->catalog_manager()->GetXClusterConfig(xcluster_config));
+  return master_->catalog_manager()->GetClusterConfig(cluster_config);
+}
+
+void MasterPathHandlers::HandleGetXClusterConfig(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream* output = &resp->output;
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+
+  *output << "<h1>Current XCluster Config</h1>\n";
+  SysXClusterConfigEntryPB xcluster_config;
+  SysClusterConfigEntryPB cluster_config;
+  Status s = GetClusterAndXClusterConfigStatus(&xcluster_config, &cluster_config);
+
+  if (!s.ok()) {
+    *output << "<div class=\"alert alert-warning\">" << s.ToString() << "</div>";
+    return;
+  }
+  *output << "<div class=\"alert alert-success\">Successfully got xcluster config!</div>"
+          << "<pre class=\"prettyprint\">" << xcluster_config.DebugString()
+          << "consumer_registry {\n"
+          << cluster_config.consumer_registry().DebugString() << "}</pre>";
+}
+
+void MasterPathHandlers::HandleGetXClusterConfigJSON(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream* output = &resp->output;
+  JsonWriter jw(output, JsonWriter::COMPACT);
+
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+
+  SysXClusterConfigEntryPB xcluster_config;
+  SysClusterConfigEntryPB cluster_config;
+  Status s = GetClusterAndXClusterConfigStatus(&xcluster_config, &cluster_config);
+  if (!s.ok()) {
+    jw.StartObject();
+    jw.String("error");
+    jw.String(s.ToString());
+    jw.EndObject();
+    return;
+  }
+
+  jw.StartObject();
+  jw.String("version");
+  jw.Int64(xcluster_config.version());
+  jw.String("xcluster_producer_registry");
+  jw.Protobuf(xcluster_config.xcluster_producer_registry());
+  jw.String("consumer_registry");
+  jw.Protobuf(cluster_config.consumer_registry());
+  jw.EndObject();
+}
+
 void MasterPathHandlers::HandleVersionInfoDump(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
@@ -2450,6 +2504,15 @@ Status MasterPathHandlers::Register(Webserver* server) {
       "/api/v1/cluster-config", "Cluster Config JSON",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false,
       false);
+  cb = std::bind(&MasterPathHandlers::HandleGetXClusterConfig, this, _1, _2);
+  server->RegisterPathHandler(
+      "/xcluster-config", "XCluster Config",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
+      false);
+  cb = std::bind(&MasterPathHandlers::HandleGetXClusterConfigJSON, this, _1, _2);
+  server->RegisterPathHandler(
+      "/api/v1/xcluster-config", "XCluster Config JSON",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
   cb = std::bind(&MasterPathHandlers::HandleTasksPage, this, _1, _2);
   server->RegisterPathHandler(
       "/tasks", "Tasks",

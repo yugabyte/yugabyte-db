@@ -49,6 +49,8 @@ class XClusterSafeTimeMap;
 
 namespace tserver {
 
+class PgMutationCounter;
+
 #define PG_CLIENT_SESSION_METHODS \
     (AlterDatabase) \
     (AlterTable) \
@@ -94,7 +96,8 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
       client::YBClient* client, const scoped_refptr<ClockBase>& clock,
       std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
       PgTableCache* table_cache, const XClusterSafeTimeMap* xcluster_safe_time_map,
-      PgResponseCache* response_cache);
+      std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter,
+      PgResponseCache* response_cache, PgSequenceCache* sequence_cache);
 
   uint64_t id() const;
 
@@ -165,7 +168,9 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   const TransactionPoolProvider& transaction_pool_provider_;
   PgTableCache& table_cache_;
   const XClusterSafeTimeMap* xcluster_safe_time_map_;
+  std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter_;
   PgResponseCache& response_cache_;
+  PgSequenceCache& sequence_cache_;
 
   std::array<SessionData, kPgClientSessionKindMapSize> sessions_;
   uint64_t txn_serial_no_ = 0;

@@ -14,6 +14,7 @@
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/json_util.h"
 
 #include "yb/gutil/logging-inl.h"
@@ -936,6 +937,60 @@ TEST_F(YbAdminSnapshotScheduleTest, CleanupDeletedTablets) {
   }, deadline, "Deleted table cleanup"));
 }
 
+TEST_F(YbAdminSnapshotScheduleTest, ListRestorationsAfterFailover) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl(2s * kTimeMultiplier, 10s * kTimeMultiplier));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  // Create a table.
+  LOG(INFO) << "Create table";
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, 3, client_.get(), &table_));
+
+  SleepFor(MonoDelta::FromSeconds(6 * kTimeMultiplier));
+
+  // Restore to the time noted above.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Perform a master leader stepdown.
+  LOG(INFO) << "Stepping down the master leader";
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+
+  // list_snapshot_restorations should not fatal now.
+  auto restorations = ASSERT_RESULT(GetAllRestorationIds());
+  ASSERT_EQ(restorations.size(), 1);
+  LOG(INFO) << "Restoration: " << restorations[0];
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, ListRestorationsTestMigration) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl(2s * kTimeMultiplier, 10s * kTimeMultiplier));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  // Create a table.
+  LOG(INFO) << "Create table";
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, 3, client_.get(), &table_));
+
+  SleepFor(MonoDelta::FromSeconds(6 * kTimeMultiplier));
+
+  // Simulate old behavior.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_update_aggregated_restore_state", "true"));
+
+  // Restore to the time noted above.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Reload this data.
+  cluster_->Shutdown();
+  ASSERT_OK(cluster_->Restart());
+  LOG(INFO) << "Restarted cluster";
+
+  // list_snapshot_restorations should not fatal now.
+  auto restorations = ASSERT_RESULT(GetAllRestorationIds());
+  ASSERT_EQ(restorations.size(), 1);
+  LOG(INFO) << "Restoration: " << restorations[0];
+}
+
 // This class simplifies the way to run PITR tests against (not) colocated database.
 // After setting proper callback functions, calling RunTestWithColocatedParam performs the test.
 // You can also write tests inherit from this class without using this framework.
@@ -1573,6 +1628,37 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddColumnCom
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
   auto res = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM test_table ORDER BY key"));
   ASSERT_EQ(res, "1, one, NULL; 2, two, dva");
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSingleColumnUpdate),
+          YbAdminSnapshotScheduleTestWithYsqlAndPackedRow) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+  {
+    auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+    // Create a sequence.
+    ASSERT_OK(conn.Execute("CREATE SEQUENCE seq_1 INCREMENT 5 START 10"));
+  }
+  // Note down the restore time.
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  // Now get next val in new connection.
+  {
+    auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+    auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('seq_1')"));
+    LOG(INFO) << "First value of sequence " << result;
+    ASSERT_EQ(result, "10");
+  }
+
+  // Restore to noted time.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Open a new connection and get the next value.
+  {
+    auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+    auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('seq_1')"));
+    LOG(INFO) << "First value of sequence post restore " << result;
+    ASSERT_EQ(result, "10");
+  }
 }
 
 void YbAdminSnapshotScheduleTestWithYsql::TestPgsqlDropDefault() {
@@ -2490,7 +2576,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(TablegroupGCAfter
 
   auto tablegroups = ASSERT_RESULT(client_->ListTablegroups(client::kTableName.namespace_name()));
   ASSERT_EQ(tablegroups.size(), 1);
-  TableId parent_table_id = master::GetTablegroupParentTableId(tablegroups[0].id());
+  TableId parent_table_id = GetTablegroupParentTableId(tablegroups[0].id());
   LOG(INFO) << "Tablegroup parent table name: " << parent_table_id;
 
   LOG(INFO) << "Perform a Restore to the time noted above";

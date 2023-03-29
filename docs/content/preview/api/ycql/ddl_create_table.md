@@ -8,7 +8,6 @@ menu:
     parent: api-cassandra
     weight: 1240
 aliases:
-  - /preview/api/cassandra/ddl_create_table
   - /preview/api/ycql/ddl_create_table
 type: docs
 ---
@@ -151,7 +150,7 @@ ycqlsh:example> INSERT INTO items(supplier_id, item_id, supplier_name, item_name
 ```
 
 ```sql
-ycqlsh:example> SELECT * FROM devices;
+ycqlsh:example> SELECT * FROM items;
 ```
 
 ```output

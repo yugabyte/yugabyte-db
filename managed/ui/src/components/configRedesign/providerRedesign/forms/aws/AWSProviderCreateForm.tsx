@@ -193,14 +193,13 @@ const VALIDATION_SCHEMA = object().shape({
   }),
   ntpServers: array().when('ntpSetupType', {
     is: NTPSetupType.SPECIFIED,
-    then: array()
-      .min(1, 'NTP Servers cannot be empty.')
-      .of(
-        string().matches(
-          NTP_SERVER_REGEX,
-          'NTP servers must be provided in IPv4, IPv6, or hostname format.'
-        )
+    then: array().of(
+      string().matches(
+        NTP_SERVER_REGEX,
+        (testContext) =>
+          `NTP servers must be provided in IPv4, IPv6, or hostname format. '${testContext.originalValue}' is not valid.`
       )
+    )
   }),
   regions: array().min(1, 'Provider configurations must contain at least one region.')
 });
@@ -296,6 +295,15 @@ export const AWSProviderCreateForm = ({
     shouldValidate = true
   ) => {
     clearErrors();
+
+    if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
+      formMethods.setError('ntpServers', {
+        type: 'min',
+        message: 'Please specify at least one NTP server.'
+      });
+      return;
+    }
+
     const providerPayload = await constructProviderPayload(formValues);
     await createInfraProvider(providerPayload, {
       shouldValidate: shouldValidate,

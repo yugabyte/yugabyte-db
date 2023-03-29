@@ -10,12 +10,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.common.SupportBundleUtil.KubernetesResourceType;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaimCondition;
+import io.fabric8.kubernetes.api.model.PersistentVolumeClaimList;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.api.model.PodStatus;
@@ -35,7 +35,10 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -327,6 +330,40 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
+  public List<PersistentVolumeClaim> getPVCs(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle) {
+    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    String labelSelector = String.format("%s=%s,release=%s", appLabel, appName, helmReleaseName);
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl", "--namespace", namespace, "get", "pvc", "-l", labelSelector, "-o", "json");
+    ShellResponse response =
+        execCommand(config, commandList, false).processErrors("Unable to get PVCs");
+    return deserialize(response.getMessage(), PersistentVolumeClaimList.class).getItems();
+  }
+
+  @Override
+  public List<Pod> getPods(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle) {
+    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    String labelSelector = String.format("%s=%s,release=%s", appLabel, appName, helmReleaseName);
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl", "--namespace", namespace, "get", "pod", "-l", labelSelector, "-o", "json");
+    ShellResponse response =
+        execCommand(config, commandList, false).processErrors("Unable to get Pods");
+    return deserialize(response.getMessage(), PodList.class).getItems();
+  }
+
+  @Override
   public boolean expandPVC(
       UUID universeUUID,
       Map<String, String> config,
@@ -342,7 +379,11 @@ public class ShellKubernetesManager extends KubernetesManager {
             "kubectl", "--namespace", namespace, "get", "pvc", "-l", labelSelector, "-o", "name");
     ShellResponse response =
         execCommand(config, commandList, false).processErrors("Unable to get PVCs");
-    log.info("Expanding PVCs: {}", response.getMessage());
+    List<PersistentVolumeClaim> pvcs =
+        getPVCs(config, namespace, helmReleaseName, appName, newNamingStyle);
+    Set<String> pvcNames =
+        pvcs.stream().map(pvc -> pvc.getMetadata().getName()).collect(Collectors.toSet());
+    log.info("Expanding PVCs: {}", pvcNames);
     ObjectNode patchObj = Json.newObject();
     patchObj
         .putObject("spec")
@@ -351,9 +392,10 @@ public class ShellKubernetesManager extends KubernetesManager {
         .put("storage", newDiskSize);
     String patchStr = patchObj.toString();
     boolean patchSuccess = true;
-    for (String pvcName : response.getMessage().split("\n")) {
+    for (String pvcName : pvcNames) {
       commandList =
-          ImmutableList.of("kubectl", "--namespace", namespace, "patch", pvcName, "-p", patchStr);
+          ImmutableList.of(
+              "kubectl", "--namespace", namespace, "patch", "pvc", pvcName, "-p", patchStr);
       response = execCommand(config, commandList, false).processErrors("Unable to patch PVC");
       patchSuccess &=
           response.isSuccess() && waitForPVCExpand(universeUUID, config, namespace, pvcName);
@@ -415,7 +457,7 @@ public class ShellKubernetesManager extends KubernetesManager {
             () -> {
               List<String> commandList =
                   ImmutableList.of(
-                      "kubectl", "--namespace", namespace, "get", pvcName, "-o", "json");
+                      "kubectl", "--namespace", namespace, "get", "pvc", pvcName, "-o", "json");
               ShellResponse response =
                   execCommand(config, commandList, false).processErrors("Unable to get PVC");
               List<PersistentVolumeClaimCondition> pvcConditions =

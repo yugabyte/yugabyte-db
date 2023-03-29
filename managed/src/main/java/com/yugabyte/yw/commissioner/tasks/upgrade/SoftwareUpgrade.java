@@ -221,6 +221,7 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
               xClusterConfigs.forEach(
                   xClusterConfig ->
                       createTransferXClusterCertsCopyTasks(
+                          xClusterConfig,
                           targetUniverse.getNodes(),
                           xClusterConfig.getReplicationGroupName(),
                           sourceCertificate,

@@ -3,8 +3,6 @@ title: YugabyteDB Quick Start
 headerTitle: Quick start
 linkTitle: Quick start
 description: Get started using YugabyteDB in less than five minutes on macOS.
-aliases:
-  - /quick-start/
 layout: single
 type: docs
 ---

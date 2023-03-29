@@ -39,11 +39,11 @@
 #include "yb/rocksdb/db/compaction_picker.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/sync_point.h"
 
 using namespace yb::size_literals;
 

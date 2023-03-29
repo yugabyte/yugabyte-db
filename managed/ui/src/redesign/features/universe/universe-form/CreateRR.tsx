@@ -102,9 +102,15 @@ export const CreateReadReplica: FC<CreateReadReplicaProps> = ({ uuid }) => {
     const finalPayload = {
       ...configureData,
       expectedUniverseVersion: universe?.version,
-      nodeDetailsSet: configureData.nodeDetailsSet.filter(
-        (node: NodeDetails) => node.state === NodeState.ToBeAdded
-      ),
+      nodeDetailsSet: configureData.nodeDetailsSet
+        .filter((node: NodeDetails) => node.state === NodeState.ToBeAdded)
+        .map((node: NodeDetails) => ({
+          ...node,
+          cloudInfo: {
+            ...node.cloudInfo,
+            assignPublicIP: !!PRIMARY_CLUSTER?.userIntent.assignPublicIP
+          }
+        })),
       clusters: [
         {
           ...getAsyncCluster(configureData),

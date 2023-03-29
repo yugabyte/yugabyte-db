@@ -7,8 +7,6 @@ menu:
   preview:
     identifier: dcl_create_role
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/dcl_create_role/
 type: docs
 ---
 

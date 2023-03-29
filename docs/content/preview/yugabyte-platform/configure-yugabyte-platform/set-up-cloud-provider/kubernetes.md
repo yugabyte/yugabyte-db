@@ -1,5 +1,5 @@
 ---
-..title: Configure the Kubernetes cloud provider
+title: Configure the Kubernetes cloud provider
 headerTitle: Configure the Kubernetes cloud provider
 linkTitle: Configure cloud providers
 description: Configure the Kubernetes cloud provider
@@ -32,7 +32,7 @@ type: docs
   <li>
     <a href="../azure/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
-      &nbsp;&nbsp; Azure
+      Azure
     </a>
   </li>
 
@@ -52,7 +52,9 @@ type: docs
 
 <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fa-brands fa-redhat" aria-hidden="true"></i>OpenShift</a>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>
+      OpenShift
+    </a>
   </li>
 
   <li>
@@ -191,8 +193,8 @@ Continue configuring your Kubernetes provider as follows:
 
 1. Specify a meaningful name for your configuration.
 2. Choose one of the following ways to specify **Kube Config** for an availability zone:
-   - Specify at **provider level** in the provider form. If specified, this configuration file is used for all availability zones in all regions.
-   - Specify at **zone level** in the region form. This is required for **multi-az** or **multi-region** deployments. If the zone is in a different Kubernetes cluster than YugabyteDB Anywhere, a zone-specific `kubeconfig` file needs to be passed.
+    - Specify at **provider level** in the provider form. If specified, this configuration file is used for all availability zones in all regions.
+    - Specify at **zone level** in the region form. This is required for **multi-az** or **multi-region** deployments. If the zone is in a different Kubernetes cluster than YugabyteDB Anywhere, a zone-specific `kubeconfig` file needs to be passed.
 3. In the **Service Account** field, provide the name of the [service account](#service-account) which has necessary access to manage the cluster (see [Create cluster](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster)).
 4. In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry, in which case refer to steps described in [Pull and push YugabyteDB Docker images to private container registry](../../../install-yugabyte-platform/prerequisites#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
 5. Use **Pull Secret File** to upload the pull secret to download the image of the Enterprise YugabyteDB that is in a private repository. Your Yugabyte sales representative should have provided this secret.
@@ -218,7 +220,6 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 1. Click **Add Zone** and complete the corresponding portion of the dialog. Notice that there are might be multiple zones.
 
 1. Finally, click **Add Region**, and then click **Save** to save the configuration. If successful, you will be redirected to the table view of all configurations.
-
 
 ### Overrides
 
@@ -302,7 +303,7 @@ The following overrides are available:
 
 - Overrides to publish node IP as the server broadcast address.
 
-  By default, YB-Master and YB-TServer pod fully-qualified domain names (FQDN) are used within the cluster as the server broadcast address. To publish the IPs of the nodes on which YB-TServer pods are deployed, add the following YAML to each zone override configuration: 
+  By default, YB-Master and YB-TServer pod fully-qualified domain names (FQDN) are used in the cluster as the server broadcast address. To publish the IPs of the nodes on which YB-TServer pods are deployed, add the following YAML to each zone override configuration:
 
   ```yml
   tserver:

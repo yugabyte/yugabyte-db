@@ -112,6 +112,9 @@ public class TablesController extends AuthenticatedController {
   private static final String MASTER_LEADER_TIMEOUT_CONFIG_PATH =
       "yb.wait_for_master_leader_timeout";
 
+  private static final String COLOCATED_NAME_SUFFIX = ".colocated.parent.tablename";
+  private static final String COLOCATION_NAME_SUFFIX = ".colocation.parent.tablename";
+
   Commissioner commissioner;
 
   private final YBClientService ybService;
@@ -209,7 +212,7 @@ public class TablesController extends AuthenticatedController {
       response = Object.class,
       responseContainer = "Map")
   public Result alter(UUID cUUID, UUID uniUUID, UUID tableUUID) {
-    return TODO(request());
+    return play.mvc.Results.TODO;
   }
 
   @ApiOperation(value = "Drop a YugabyteDB table", nickname = "dropTable", response = YBPTask.class)
@@ -347,7 +350,26 @@ public class TablesController extends AuthenticatedController {
       notes = "Get a list of all tables in the specified universe",
       response = TableInfoResp.class,
       responseContainer = "List")
-  public Result listTables(UUID customerUUID, UUID universeUUID, boolean includeParentTableInfo) {
+  public Result listTables(
+      UUID customerUUID,
+      UUID universeUUID,
+      boolean includeParentTableInfo,
+      boolean excludeColocatedTables) {
+
+    // Do not support this use case as the meaning of parent table is different for these two cases.
+    // The current implementation of listTablesWithParentTableInfo() sets the parentTableUUID of a
+    // partition to the paritioned table. It is possible for partitions to exist in a db with
+    // colocation=true. In this scenario, there can be conflict between the parentTableUUID, as it
+    // can be the UUID of the partitioned table or the colocated parent table UUID.
+    if (includeParentTableInfo && excludeColocatedTables) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Parameter selection, includeParentTableInfo: %s, excludeColocatedTables: %s, "
+                  + "not supported",
+              includeParentTableInfo, excludeColocatedTables));
+    }
+
     if (includeParentTableInfo) {
       return listTablesWithParentTableInfo(customerUUID, universeUUID);
     }
@@ -364,15 +386,30 @@ public class TablesController extends AuthenticatedController {
     Map<String, TableSizes> tableSizes = getTableSizesOrEmpty(universe);
 
     String certificate = universe.getCertificateNodetoNode();
-    ListTablesResponse response = listTablesOrBadRequest(masterAddresses, certificate);
+    ListTablesResponse response =
+        listTablesOrBadRequest(masterAddresses, certificate, false /* excludeSystemTables */);
     List<TableInfo> tableInfoList = response.getTableInfoList();
     List<TableInfoResp> tableInfoRespList = new ArrayList<>(tableInfoList.size());
+
+    if (excludeColocatedTables) {
+      Set<String> colocatedKeySpaces = getColocatedKeySpaces(tableInfoList);
+      tableInfoList =
+          tableInfoList
+              .stream()
+              .filter(t -> !colocatedKeySpaces.contains(t.getNamespace().getName()))
+              .collect(Collectors.toList());
+    }
+
     for (TableInfo table : tableInfoList) {
-      if (!isSystemTable(table) || isSystemRedis(table)) {
+      if ((!isSystemTable(table) || isSystemRedis(table)) && !isColocatedParentTable(table)) {
         tableInfoRespList.add(buildResponseFromTableInfo(table, null, null, tableSizes).build());
       }
     }
     return PlatformResults.withData(tableInfoRespList);
+  }
+
+  private boolean isColocatedParentTable(TableInfo table) {
+    return table.getRelationType() == RelationType.COLOCATED_PARENT_TABLE_RELATION;
   }
 
   private boolean isSystemTable(TableInfo table) {
@@ -401,13 +438,14 @@ public class TablesController extends AuthenticatedController {
     return Collections.emptyMap();
   }
 
-  private ListTablesResponse listTablesOrBadRequest(String masterAddresses, String certificate) {
+  private ListTablesResponse listTablesOrBadRequest(
+      String masterAddresses, String certificate, boolean excludeSystemTables) {
     YBClient client = null;
     ListTablesResponse response;
     try {
       client = ybService.getClient(masterAddresses, certificate);
       checkLeaderMasterAvailability(client);
-      response = client.getTablesList();
+      response = client.getTablesList(null, excludeSystemTables, null);
     } catch (Exception e) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     } finally {
@@ -1073,7 +1111,8 @@ public class TablesController extends AuthenticatedController {
     Map<String, TableSizes> tableSizes = getTableSizesOrEmpty(universe);
 
     String certificate = universe.getCertificateNodetoNode();
-    ListTablesResponse response = listTablesOrBadRequest(masterAddresses, certificate);
+    ListTablesResponse response =
+        listTablesOrBadRequest(masterAddresses, certificate, true /* excludeSystemTables */);
     List<TableInfo> tableInfoList = response.getTableInfoList();
 
     Map<String, List<TableInfo>> namespacesToTablesMap =
@@ -1115,6 +1154,18 @@ public class TablesController extends AuthenticatedController {
     }
 
     return PlatformResults.withData(tableInfoRespList);
+  }
+
+  private Set<String> getColocatedKeySpaces(List<TableInfo> tableInfoList) {
+    Set<String> colocatedKeySpaces = new HashSet<String>();
+    for (TableInfo tableInfo : tableInfoList) {
+      String keySpace = tableInfo.getNamespace().getName();
+      String tableName = tableInfo.getName();
+      if (tableName.endsWith(COLOCATED_NAME_SUFFIX) || tableName.endsWith(COLOCATION_NAME_SUFFIX)) {
+        colocatedKeySpaces.add(keySpace);
+      }
+    }
+    return colocatedKeySpaces;
   }
 
   private TableInfoResp.TableInfoRespBuilder buildResponseFromTableInfo(

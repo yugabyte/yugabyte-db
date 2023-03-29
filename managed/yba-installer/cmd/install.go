@@ -1,11 +1,15 @@
 package cmd
 
 import (
+	"errors"
+
 	"github.com/spf13/cobra"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/yugaware"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/ybactlstate"
 )
 
 var installCmd = &cobra.Command{
@@ -16,6 +20,12 @@ var installCmd = &cobra.Command{
 				downloaded version of YBA Installer onto the local machine.
         `,
 	Args: cobra.NoArgs,
+	PreRun: func(cmd *cobra.Command, args []string) {
+		_, err := yugaware.InstalledVersionFromMetadata()
+		if !errors.Is(err, yugaware.NotInstalledVersionError) {
+			log.Fatal("YugabyteDB Anywhere already installed, cannot install twice")
+		}
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 
 		// Install the license if it is provided.
@@ -43,7 +53,13 @@ var installCmd = &cobra.Command{
 			}
 			log.Info("Completed installing component " + name)
 		}
-
+		if err := ybaCtl.Install(); err != nil {
+			log.Fatal("failed to install yba-ctl")
+		}
+		state := ybactlstate.New()
+		if err := ybactlstate.StoreState(state); err != nil {
+			log.Fatal("failed to write state: " + err.Error())
+		}
 		common.WaitForYBAReady()
 
 		var statuses []common.Status
@@ -59,9 +75,6 @@ var installCmd = &cobra.Command{
 			}
 		}
 
-		if err := ybaCtl.Install(); err != nil {
-			log.Fatal("failed to install yba-ctl")
-		}
 		common.PrintStatus(statuses...)
 		log.Info("Successfully installed YugabyteDB Anywhere!")
 	},
@@ -73,7 +86,5 @@ func init() {
 	installCmd.Flags().StringVarP(&licensePath, "license-path", "l", "", "path to license file")
 
 	// Install must be run from directory of yba version
-	if !common.RunFromInstalled() {
-		rootCmd.AddCommand(installCmd)
-	}
+	rootCmd.AddCommand(installCmd)
 }

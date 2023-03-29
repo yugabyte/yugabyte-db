@@ -38,7 +38,7 @@ If you prefer, you can install a standalone version using any of the following m
 - Using Homebrew:
 
     ```sh
-    brew tap yugabyte/yugabytedb
+    brew tap yugabyte/tap
     brew install yugabytedb-client
     ysqlsh
     ```
@@ -255,7 +255,7 @@ Specifies the host name of the machine on which the server is running. If the va
 
 ##### -H, --html
 
-Turn on HTML tabular output. This is equivalent to [\pset format html](../ysqlsh-meta-commands/#format) or the [\H](../ysqlsh-meta-commands/#h-html) command.
+Turn on HTML tabular output. This is equivalent to [\pset format html](../ysqlsh-pset-options/#format) or the [\H](../ysqlsh-meta-commands/#h-html) command.
 
 ##### -l, --list
 
@@ -285,11 +285,11 @@ Specifies printing options, in the style of [\pset](../ysqlsh-meta-commands/#pse
 
 ##### -q, --quiet
 
-Specifies that ysqlsh should do its work quietly. By default, it prints welcome messages and various informational output. If this option is used, none of this happens. This is useful with the `-c` option. This is equivalent to setting the variable [QUIET](#quiet) to `on`.
+Specifies that ysqlsh should do its work quietly. By default, it prints welcome messages and various informational output. If this option is used, none of this happens. This is helpful with the `-c` option. This is equivalent to setting the variable [QUIET](#quiet) to `on`.
 
 ##### -R *separator*, --record-separator=*separator*
 
-Use *separator* as the record separator for unaligned output. This is equivalent to [\pset recordsep](../ysqlsh-meta-commands/#recordsep).
+Use *separator* as the record separator for unaligned output. This is equivalent to [\pset recordsep](../ysqlsh-pset-options/#recordsep).
 
 ##### -s, --single-step
 
@@ -307,11 +307,11 @@ This mode is provided for those who insist on it, but you aren't necessarily enc
 
 ##### -t, --tuples-only
 
-Turn off printing of column names and result row count footers, etc. This is equivalent to `\t` or [\pset tuples_only](../ysqlsh-meta-commands/#tuples-only-or-t).
+Turn off printing of column names and result row count footers, etc. This is equivalent to `\t` or [\pset tuples_only](../ysqlsh-pset-options/#tuples-only-or-t).
 
 ##### -T *table_options*, --table-attr=*table_options*
 
-Specifies options to be placed in the HTML `table` tag. For details, see [\pset tableattr](../ysqlsh-meta-commands/#tableattr-or-t).
+Specifies options to be placed in the HTML `table` tag. For details, see [\pset tableattr](../ysqlsh-pset-options/#tableattr-or-t).
 
 ##### -U *username*, --username=*username*
 
@@ -341,7 +341,7 @@ Note that this option remains set for the entire session, and so it affects uses
 
 ##### -x, --expanded
 
-Turn on the expanded table formatting mode. This is equivalent to `\x` or [\pset expanded](../ysqlsh-meta-commands/#expanded-or-x).
+Turn on the expanded table formatting mode. This is equivalent to `\x` or [\pset expanded](../ysqlsh-pset-options/#expanded-or-x).
 
 ##### -X, --no-psqlrc
 
@@ -349,11 +349,11 @@ Don't read the start-up file (neither the system-wide `psqlrc` file nor the user
 
 ##### -z, --field-separator-zero
 
-Set the field separator for unaligned output to a zero byte. This is equivalent to [\pset fieldsep_zero](../ysqlsh-meta-commands/#fieldsep-zero).
+Set the field separator for unaligned output to a zero byte. This is equivalent to [\pset fieldsep_zero](../ysqlsh-pset-options/#fieldsep-zero).
 
 ##### -0, --record-separator-zero
 
-Set the record separator for unaligned output to a zero byte. This is useful for interfacing, for example, with `xargs -0`. This is equivalent to [\pset recordsep_zero](../ysqlsh-meta-commands/#recordsep-zero).
+Set the record separator for unaligned output to a zero byte. This is helpful for interfacing, for example, with `xargs -0`. This is equivalent to [\pset recordsep_zero](../ysqlsh-pset-options/#recordsep-zero).
 
 ##### -1, --single-transaction
 
@@ -394,7 +394,7 @@ The arguments of `\set` are subject to the same substitution rules as with other
 
 A number of these variables are treated specially by ysqlsh. They represent certain option settings that can be changed at run time by altering the value of the variable, or in some cases represent changeable state of ysqlsh. By convention, all specially treated variables' names consist of all upper-case ASCII letters (and possibly digits and underscores). To ensure maximum compatibility in the future, avoid using such variable names for your own purposes.
 
-Variables that control ysqlsh's behavior generally can't be unset or set to invalid values. An `\unset` command is allowed but is interpreted as setting the variable to its default value. A `\set` command without a second argument is interpreted as setting the variable to `on`, for control variables that accept that value, and is rejected for others. Also, control variables that accept the values `on` and `off` also accept other common spellings of Boolean values, such as `true` and `false`.
+Variables that control ysqlsh behavior generally can't be unset or set to invalid values. An `\unset` command is allowed but is interpreted as setting the variable to its default value. A `\set` command without a second argument is interpreted as setting the variable to `on`, for control variables that accept that value, and is rejected for others. Also, control variables that accept the values `on` and `off` also accept other common spellings of Boolean values, such as `true` and `false`.
 
 The specially treated variables are:
 
@@ -577,7 +577,7 @@ Use the following environment variables to configure and customize your editor. 
 
 ##### COLUMNS
 
-If [\pset columns](../ysqlsh-meta-commands/#columns) is zero (`0`), controls the width for the wrapped format and width for determining if wide output requires the pager or should be switched to the vertical format in expanded auto mode.
+If [\pset columns](../ysqlsh-pset-options/#columns) is zero (`0`), controls the width for the wrapped format and width for determining if wide output requires the pager or should be switched to the vertical format in expanded auto mode.
 
 ##### PAGER
 

@@ -78,6 +78,7 @@
 #include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tablet_service.h"
+#include "yb/tserver/pg_table_mutation_count_sender.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -86,6 +87,7 @@
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service_context.h"
+#include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
 #include "yb/tserver/stateful_services/test_echo_service.h"
 
 #include "yb/util/flags.h"
@@ -194,6 +196,14 @@ DEFINE_UNKNOWN_int32(xcluster_svc_queue_length, 5000,
 TAG_FLAG(xcluster_svc_queue_length, advanced);
 
 DECLARE_string(cert_node_filename);
+DECLARE_bool(ysql_enable_table_mutation_counter);
+
+DEFINE_RUNTIME_bool(xcluster_external_transactions_ignore_safe_time, false,
+    "When enabled, xcluster external transactions will ignore the xCluster safe time. Enabling "
+    "this on can cause consistency issues.");
+TAG_FLAG(xcluster_external_transactions_ignore_safe_time, advanced);
+TAG_FLAG(xcluster_external_transactions_ignore_safe_time, unsafe);
+
 namespace yb {
 namespace tserver {
 
@@ -237,7 +247,8 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       tablet_manager_(new TSTabletManager(fs_manager_.get(), this, metric_registry())),
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
-      master_config_index_(0) {
+      master_config_index_(0),
+      pg_node_level_mutation_counter_(std::make_shared<PgMutationCounter>()) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
   if (FLAGS_TEST_enable_db_catalog_version_mode) {
@@ -366,6 +377,10 @@ Status TabletServer::Init() {
 
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     metrics_snapshotter_.reset(new MetricsSnapshotter(opts_, this));
+  }
+
+  if (GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter)) {
+    pg_table_mutation_count_sender_.reset(new TableMutationCountSender(this));
   }
 
   std::vector<HostPort> hps;
@@ -511,7 +526,8 @@ Status TabletServer::RegisterServices() {
   auto pg_client_service = std::make_shared<PgClientServiceImpl>(
       *this, tablet_manager_->client_future(), clock(),
       std::bind(&TabletServer::TransactionPool, this), metric_entity(),
-      &messenger()->scheduler(), &xcluster_safe_time_map_);
+      &messenger()->scheduler(), &xcluster_safe_time_map_,
+      pg_node_level_mutation_counter_);
   pg_client_service_ = pg_client_service;
   LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
@@ -526,6 +542,14 @@ Status TabletServer::RegisterServices() {
     RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
         FLAGS_TEST_echo_svc_queue_length, std::move(test_echo_service)));
   }
+
+  auto pg_auto_analyze_service =
+      std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity());
+  LOG(INFO) << "yb::tserver::stateful_service::PgAutoAnalyzeService created at "
+            << pg_auto_analyze_service.get();
+  RETURN_NOT_OK(pg_auto_analyze_service->Init(tablet_manager_.get()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+      FLAGS_TEST_echo_svc_queue_length, std::move(pg_auto_analyze_service)));
 
   return Status::OK();
 }
@@ -544,6 +568,10 @@ Status TabletServer::Start() {
 
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     RETURN_NOT_OK(metrics_snapshotter_->Start());
+  }
+
+  if (pg_table_mutation_count_sender_) {
+    RETURN_NOT_OK(pg_table_mutation_count_sender_->Start());
   }
 
   RETURN_NOT_OK(maintenance_manager_->Init());
@@ -569,6 +597,12 @@ void TabletServer::Shutdown() {
     if (FLAGS_tserver_enable_metrics_snapshotter) {
       WARN_NOT_OK(metrics_snapshotter_->Stop(), "Failed to stop TS Metrics Snapshotter thread");
     }
+
+    if (pg_table_mutation_count_sender_) {
+      WARN_NOT_OK(pg_table_mutation_count_sender_->Stop(),
+          "Failed to stop table mutation count sender thread");
+    }
+
     tablet_manager_->StartShutdown();
     RpcAndWebServerBase::Shutdown();
     tablet_manager_->CompleteShutdown();
@@ -893,13 +927,25 @@ const XClusterSafeTimeMap& TabletServer::GetXClusterSafeTimeMap() const {
   return xcluster_safe_time_map_;
 }
 
+const std::shared_ptr<PgMutationCounter>
+    TabletServer::GetPgNodeLevelMutationCounter() {
+  return pg_node_level_mutation_counter_;
+}
+
 void TabletServer::UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map) {
   xcluster_safe_time_map_.Update(safe_time_map);
 }
 
 Result<bool> TabletServer::XClusterSafeTimeCaughtUpToCommitHt(
     const NamespaceId& namespace_id, HybridTime commit_ht) const {
-  return VERIFY_RESULT(xcluster_safe_time_map_.GetSafeTime(namespace_id)) > commit_ht;
+  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_xcluster_external_transactions_ignore_safe_time))) {
+    return true;
+  }
+
+  auto safe_time = VERIFY_RESULT(xcluster_safe_time_map_.GetSafeTime(namespace_id));
+  SCHECK(safe_time, TryAgain, "XCluster safe time not found for namespace $0", namespace_id);
+
+  return *safe_time > commit_ht;
 }
 
 Result<cdc::XClusterRole> TabletServer::TEST_GetXClusterRole() const {

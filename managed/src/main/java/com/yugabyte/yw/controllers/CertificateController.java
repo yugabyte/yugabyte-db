@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Strings;
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -45,7 +44,7 @@ public class CertificateController extends AuthenticatedController {
 
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
-  @Inject private Config appConfig;
+  @Inject private play.Configuration appConfig;
 
   @ApiOperation(value = "Restore a certificate from backup", response = UUID.class)
   @ApiImplicitParams(

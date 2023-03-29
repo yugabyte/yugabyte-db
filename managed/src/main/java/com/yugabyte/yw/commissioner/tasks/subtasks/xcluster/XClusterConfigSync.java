@@ -6,8 +6,10 @@ import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
-import com.yugabyte.yw.models.XClusterTableConfig;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +23,7 @@ import org.yb.cdc.CdcConsumer;
 import org.yb.cdc.CdcConsumer.ProducerEntryPB;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterDdlOuterClass;
 
 @Slf4j
 public class XClusterConfigSync extends XClusterConfigTaskBase {
@@ -52,12 +55,16 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
 
   private void syncXClusterConfigs(
       CatalogEntityInfo.SysClusterConfigEntryPB config, UUID targetUniverseUUID) {
-
-    Set<Pair<UUID, String>> foundXClusterConfigs = new HashSet<>();
-
     Map<String, ProducerEntryPB> replicationGroups =
-        config.getConsumerRegistry().getProducerMapMap();
+        new HashMap<>(config.getConsumerRegistry().getProducerMapMap());
 
+    // Try to find the txn replication group.
+    Optional<ProducerEntryPB> txnReplicationGroupOptional =
+        Optional.ofNullable(
+            replicationGroups.remove(TRANSACTION_STATUS_TABLE_REPLICATION_GROUP_NAME));
+
+    // Import all the xCluster configs on the target universe cluster config.
+    Set<Pair<UUID, String>> foundXClusterConfigs = new HashSet<>();
     replicationGroups.forEach(
         (replicationGroupName, value) -> {
           // Parse and get information for this replication group.
@@ -95,19 +102,45 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
                   xClusterConfigName, sourceUniverseUUID, targetUniverseUUID);
           if (xClusterConfig == null) {
             xClusterConfig =
-                XClusterConfig.create(xClusterConfigName, sourceUniverseUUID, targetUniverseUUID);
+                XClusterConfig.create(
+                    xClusterConfigName,
+                    sourceUniverseUUID,
+                    targetUniverseUUID,
+                    txnReplicationGroupOptional.isPresent() ? ConfigType.Txn : ConfigType.Basic);
             log.info("Creating new XClusterConfig({})", xClusterConfig.uuid);
           } else {
-            log.info("Updating existing XClusterConfig({})", xClusterConfig.uuid);
+            log.info("Updating existing XClusterConfig({})", xClusterConfig);
           }
           xClusterConfig.setStatus(XClusterConfigStatusType.Running);
           xClusterConfig.setPaused(value.getDisableStream());
-          xClusterConfig.setTables(xClusterConfigTables);
-          xClusterConfig.setReplicationSetupDone(xClusterConfigTables);
-          xClusterConfig.setStatusForTables(
-              xClusterConfigTables, XClusterTableConfig.Status.Running);
-          updateStreamIdsFromTargetUniverseClusterConfig(
-              config, xClusterConfig, xClusterConfigTables);
+          xClusterConfig.addTablesIfNotExist(xClusterConfigTables);
+
+          // Set txn table id for txn configs. We assume the source universe is always in active
+          // role, and we do not sync it.
+          if (txnReplicationGroupOptional.isPresent()) {
+            List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
+                getTableInfoList(
+                    ybService,
+                    Universe.getOrBadRequest(sourceUniverseUUID),
+                    false /* excludeSystemTables */);
+            Optional<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>
+                txnTableInfoSourceOptional = getTxnTableInfoIfExists(sourceTableInfoList);
+            if (!txnTableInfoSourceOptional.isPresent()) {
+              throw new IllegalStateException(
+                  String.format(
+                      "The detected xCluster config type for %s is %s, but %s.%s on the "
+                          + "source universe is not found",
+                      xClusterConfig.uuid,
+                      ConfigType.Txn,
+                      TRANSACTION_STATUS_TABLE_NAMESPACE,
+                      TRANSACTION_STATUS_TABLE_NAME));
+            }
+            xClusterConfig.setTxnTableId(
+                Collections.singletonList(txnTableInfoSourceOptional.get()));
+          }
+
+          syncXClusterConfigWithReplicationGroup(
+              config, xClusterConfig, xClusterConfigTables, false /* skipSyncTxnTable */);
         });
 
     List<XClusterConfig> currentXClusterConfigsForTarget =

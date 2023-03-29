@@ -5,8 +5,6 @@ linkTitle: Build the source
 description: Build YugabyteDB from source code on AlmaLinux.
 image: /images/section_icons/index/quick_start.png
 headcontent: Build the source code.
-aliases:
-  - /preview/contribute/core-database/build-from-src
 menu:
   preview:
     identifier: build-from-src-1-almalinux

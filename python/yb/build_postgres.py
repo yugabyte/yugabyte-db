@@ -45,8 +45,6 @@ from yb.common_util import (
     YB_SRC_ROOT,
     get_build_type_from_build_root,
     get_bool_env_var,
-    write_json_file,
-    read_json_file,
     get_absolute_path_aliases,
     EnvVarContext,
     shlex_join,
@@ -54,6 +52,7 @@ from yb.common_util import (
     is_macos_arm64,
     init_logging,
 )
+from yb.json_util import write_json_file, read_json_file
 from yb import compile_commands
 from yb.compile_commands import (
     create_compile_commands_symlink, CompileCommandProcessor, get_compile_commands_file_path)
@@ -293,10 +292,15 @@ class PostgresBuilder(YbBuildToolBase):
         self.shared_library_suffix = self.cmake_cache.get_or_raise('YB_SHARED_LIBRARY_SUFFIX')
 
     def adjust_cflags_in_makefile(self) -> None:
-        makefile_global_path = os.path.join(self.pg_build_root, 'src/Makefile.global')
-        new_makefile_lines = []
+        makefile_global_path = os.path.join(self.pg_build_root, 'src', 'Makefile.global')
         new_cflags = os.environ['CFLAGS'].strip()
         found_cflags = False
+
+        install_cmd_line_prefix = 'INSTALL = '
+
+        new_makefile_lines = []
+        install_script_updated = False
+
         with open(makefile_global_path) as makefile_global_input_f:
             for line in makefile_global_input_f:
                 line = line.rstrip("\n")
@@ -307,10 +311,30 @@ class PostgresBuilder(YbBuildToolBase):
                         line = 'CFLAGS = $(YB_PREPEND_CFLAGS) ' + \
                             new_cflags + ' $(YB_APPEND_CFLAGS)'
                         replaced_cflags = True
+
+                if line.startswith(install_cmd_line_prefix):
+                    new_makefile_lines.extend([
+                        '# The following line was modified by the build_postgres.py script to use',
+                        '# our install_wrapper.py script to customize installation path of',
+                        '# executables and libraries, needed in case of LTO.'
+                    ])
+                    line = ''.join([
+                        install_cmd_line_prefix,
+                        os.path.join('$(YB_SRC_ROOT)', 'python', 'yb', 'install_wrapper.py'),
+                        ' ',
+                        line[len(install_cmd_line_prefix):]
+                    ])
+                    install_script_updated = True
+
                 new_makefile_lines.append(line)
 
         if not found_cflags:
             raise RuntimeError("Could not find a CFLAGS line in %s" % makefile_global_path)
+
+        if not install_script_updated:
+            raise RuntimeError(
+                f"Could not find and update a line starting with '{install_cmd_line_prefix}' in "
+                f"{makefile_global_path}.")
 
         if replaced_cflags:
             logging.info("Replaced cflags in %s", makefile_global_path)
@@ -354,7 +378,6 @@ class PostgresBuilder(YbBuildToolBase):
             '-Wimplicit-function-declaration',
             '-Wno-error=unused-function',
             '-DHAVE__BUILTIN_CONSTANT_P=1',
-            '-std=c11',
             '-Werror=implicit-function-declaration',
             '-Werror=int-conversion',
         ]
@@ -458,7 +481,9 @@ class PostgresBuilder(YbBuildToolBase):
             logging.info("TSAN_OPTIONS for Postgres build: %s", os.getenv('TSAN_OPTIONS'))
 
     def sync_postgres_source(self) -> None:
-        logging.info("Syncing postgres source code")
+        sync_start_time_sec = time.time()
+        if is_verbose_mode():
+            logging.info("Syncing postgres source code")
         # Remove source code files from the build directory that have been removed from the
         # source directory.
         # TODO: extend this to the complete list of source file types.
@@ -483,8 +508,9 @@ class PostgresBuilder(YbBuildToolBase):
             '--exclude', '*.rej',
             self.postgres_src_dir + '/', self.pg_build_root],
             capture_output=False)
-        if is_verbose_mode():
-            logging.info("Successfully synced postgres source code")
+        sync_elapsed_time_sec = time.time() - sync_start_time_sec
+        logging.info("Successfully synced postgres source code in %.2f sec",
+                     sync_elapsed_time_sec)
 
     def clean_postgres(self) -> None:
         logging.info("Removing the postgres build and installation directories")

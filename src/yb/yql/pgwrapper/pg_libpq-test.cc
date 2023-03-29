@@ -35,6 +35,7 @@
 #include "yb/client/yb_table_name.h"
 #include "yb/client/client-test-util.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
@@ -85,10 +86,6 @@ METRIC_DECLARE_counter(rpc_inbound_calls_created);
 
 namespace yb {
 namespace pgwrapper {
-
-using master::GetColocatedDbParentTableId;
-using master::GetTablegroupParentTableId;
-using master::GetColocationParentTableId;
 
 class PgLibPqTest : public LibPqTestBase {
  protected:
@@ -1505,6 +1502,7 @@ void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
   auto status = conn2.Execute("DELETE FROM t WHERE a = 1");
   ASSERT_FALSE(status.ok());
   ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "could not serialize access due to concurrent update");
   ASSERT_STR_CONTAINS(status.ToString(), "conflicts with higher priority transaction");
 
   ASSERT_OK(conn1.CommitTransaction());
@@ -2263,7 +2261,7 @@ TEST_F_EX(
 
   // Wait for cleanup thread to delete a table.
   // Since delete hasn't started initially, WaitForDeleteTableToFinish will error out.
-  const auto tg_parent_table_id = master::GetTablegroupParentTableId(next_tg_id);
+  const auto tg_parent_table_id = GetTablegroupParentTableId(next_tg_id);
   ASSERT_OK(WaitFor(
       [&client, &tg_parent_table_id] {
         Status s = client->WaitForDeleteTableToFinish(tg_parent_table_id);

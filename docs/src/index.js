@@ -155,6 +155,11 @@ function yugabyteActiveLeftNav() {
 }
 
 $(document).ready(() => {
+  const isSafari = /Safari/.test(navigator.userAgent) && /Apple Computer/.test(navigator.vendor);
+  if (isSafari) {
+    $('body').addClass('is-safari');
+  }
+
   let searchValue = '';
 
   /**
@@ -318,7 +323,7 @@ $(document).ready(() => {
      * Close popup on clicking cross.
      */
     document.querySelectorAll('.image-popup i').forEach((popupClose) => {
-      popupClose.addEventListener('click', (e) => {
+      popupClose.addEventListener('click', () => {
         document.body.classList.remove('image-popped-up');
         popupClose.closest('.image-popup').classList.remove('open');
       });
@@ -339,6 +344,24 @@ $(document).ready(() => {
   })();
 
   rightnavAppend();
+  (() => {
+    const header = document.querySelector('.scrolltop-btn');
+    const scrollChange = 50;
+
+    header.addEventListener('click', () => {
+      window.scrollTo(0, 0);
+    });
+
+    window.addEventListener('scroll', () => {
+      const scrollpos = window.scrollY;
+
+      if (scrollpos >= scrollChange) {
+        header.classList.add('btn-visible');
+      } else {
+        header.classList.remove('btn-visible');
+      }
+    });
+  })();
   popupOnPills();
   checkAnchorMultilines();
 

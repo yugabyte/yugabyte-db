@@ -118,16 +118,16 @@ public class TestPgForeignKeyBatching extends BasePgSQLTestWithRpcMetric {
       stmt.execute("INSERT INTO parent VALUES (1), (2), (3), (4), (5)");
       stmt.execute("BEGIN");
       stmt.execute("INSERT INTO child VALUES(1, 1), (2, 2), (3, 3)");
-      runInvalidQuery(extraStmt,
-        "DELETE FROM parent WHERE k = 1",
+      runInvalidQuery(extraStmt, "DELETE FROM parent WHERE k = 1", true,
+        "could not serialize access due to concurrent update",
         "conflicts with higher priority transaction");
       stmt.execute("COMMIT");
 
       stmt.execute("DELETE FROM child");
       stmt.execute("BEGIN ISOLATION LEVEL REPEATABLE READ");
       stmt.execute("INSERT INTO child VALUES (1, 1), (2, 2), (3, 3)");
-      runInvalidQuery(extraStmt,
-        "DELETE FROM parent WHERE k = 1",
+      runInvalidQuery(extraStmt, "DELETE FROM parent WHERE k = 1", true,
+        "could not serialize access due to concurrent update",
         "conflicts with higher priority transaction");
       stmt.execute("COMMIT");
     }

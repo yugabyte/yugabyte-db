@@ -19,14 +19,15 @@ import static play.test.Helpers.contentAsString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.TestUtils;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import java.io.File;
@@ -75,43 +76,47 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   private Result listCertificates(UUID customerUUID) {
     String uri = "/api/customers/" + customerUUID + "/certificates";
-    return doRequestWithAuthToken("GET", uri, user.createAuthToken());
+    return FakeApiHelper.doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
 
   private Result uploadCertificate(UUID customerUUID, ObjectNode bodyJson) {
     String uri = "/api/customers/" + customerUUID + "/certificates";
-    return doRequestWithAuthTokenAndBody("POST", uri, user.createAuthToken(), bodyJson);
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        "POST", uri, user.createAuthToken(), bodyJson);
   }
 
   private Result updateCertificate(UUID customerUUID, UUID rootUUID, ObjectNode bodyJson) {
     String uri =
         "/api/customers/" + customerUUID + "/certificates/" + rootUUID + "/update_empty_cert";
-    return doRequestWithAuthTokenAndBody("POST", uri, user.createAuthToken(), bodyJson);
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        "POST", uri, user.createAuthToken(), bodyJson);
   }
 
   private Result getCertificate(UUID customerUUID, String label) {
     String uri = "/api/customers/" + customerUUID + "/certificates/" + label;
-    return doRequestWithAuthToken("GET", uri, user.createAuthToken());
+    return FakeApiHelper.doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
 
   private Result deleteCertificate(UUID customerUUID, UUID certUUID) {
     String uri = "/api/customers/" + customerUUID + "/certificates/" + certUUID.toString();
-    return doRequestWithAuthToken("DELETE", uri, user.createAuthToken());
+    return FakeApiHelper.doRequestWithAuthToken("DELETE", uri, user.createAuthToken());
   }
 
   private Result createClientCertificate(UUID customerUUID, UUID rootUUID, ObjectNode bodyJson) {
     String uri = "/api/customers/" + customerUUID + "/certificates/" + rootUUID;
-    return doRequestWithAuthTokenAndBody("POST", uri, user.createAuthToken(), bodyJson);
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        "POST", uri, user.createAuthToken(), bodyJson);
   }
 
   private Result getRootCertificate(UUID customerUUID, UUID rootUUID) {
     String uri = "/api/customers/" + customerUUID + "/certificates/" + rootUUID + "/download";
-    return doRequestWithAuthToken("GET", uri, user.createAuthToken());
+    return FakeApiHelper.doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
 
   private Result createSelfSignedCertificate(UUID customerUUID, ObjectNode bodyJson) {
     String uri = "/api/customers/" + customerUUID + "/certificates/create_self_signed_cert";
-    return doRequestWithAuthTokenAndBody("POST", uri, user.createAuthToken(), bodyJson);
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        "POST", uri, user.createAuthToken(), bodyJson);
   }
 
   @Test

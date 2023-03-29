@@ -96,6 +96,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ChangeXClusterRole;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplication;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterConfigEntry;
@@ -143,6 +144,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.helpers.ClusterAZ;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.ColumnDetails.YQLDataType;
@@ -179,6 +181,7 @@ import org.apache.commons.collections.MapUtils;
 import org.slf4j.MDC;
 import org.yb.ColumnSchema.SortOrder;
 import org.yb.CommonTypes.TableType;
+import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListMastersResponse;
 import org.yb.client.ListTablesResponse;
@@ -2412,7 +2415,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       int parallelDBBackups) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("BackupTableYbc");
     YbcBackupNodeRetriever nodeRetriever =
-        new YbcBackupNodeRetriever(backupParams.universeUUID, parallelDBBackups, backupStates);
+        new YbcBackupNodeRetriever(backupParams.universeUUID, parallelDBBackups);
+    nodeRetriever.initializeNodePoolForBackups(backupStates);
     backupParams
         .backupList
         .stream()
@@ -2447,8 +2451,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     RestoreBackupYbc.Params restoreParams = new RestoreBackupYbc.Params(taskParams);
     // Giving node-ip as subtask param, so that leader changes does not
     // affect polling.
-    restoreParams.nodeIp =
-        restoreParams.nodeIp != null ? restoreParams.nodeIp : Util.getYbcNodeIp(getUniverse(false));
+    restoreParams.nodeIp = restoreParams.nodeIp;
     task.initialize(restoreParams);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);
@@ -2552,12 +2555,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
-   * Creates a task to upgrade desired ybc version on a universe.
+   * Creates a task to upgrade desired ybc version on a k8s universe.
    *
    * @param universeUUID universe on which ybc need to be upgraded
    * @param ybcVersion desired ybc version
-   * @param validateOnlyMasterLeader flag to check only if master leader node's ybc is upgraded or
-   *     not
    */
   public SubTaskGroup createUpgradeYbcTaskOnK8s(UUID universeUUID, String ybcSoftwareVersion) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpgradeYbc");
@@ -3541,6 +3542,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected SubTaskGroup createTransferXClusterCertsRemoveTasks(
       XClusterConfig xClusterConfig,
+      String replicationGroupName,
       File sourceRootCertDirPath,
       boolean ignoreErrors,
       boolean skipRemoveTransactionalCert) {
@@ -3552,7 +3554,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // replication as well. It is assumed that xCluster replications can be deleted one by one only.
     boolean removeTransactionalReplicationCert =
         !skipRemoveTransactionalCert
-            && XClusterConfigTaskBase.isTransactionalReplication(targetUniverse)
+            && xClusterConfig.type.equals(ConfigType.Txn)
             && !XClusterConfigTaskBase.otherXClusterConfigsAsTargetExist(
                 targetUniverse.universeUUID, xClusterConfig.uuid);
 
@@ -3562,7 +3564,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       transferParams.nodeName = node.nodeName;
       transferParams.azUuid = node.azUuid;
       transferParams.action = TransferXClusterCerts.Params.Action.REMOVE;
-      transferParams.replicationGroupName = xClusterConfig.getReplicationGroupName();
+      transferParams.replicationGroupName = replicationGroupName;
       transferParams.producerCertsDirOnTarget = sourceRootCertDirPath;
       transferParams.ignoreErrors = ignoreErrors;
 
@@ -3578,7 +3580,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         transferParamsForTransactionCert.azUuid = node.azUuid;
         transferParamsForTransactionCert.action = TransferXClusterCerts.Params.Action.REMOVE;
         transferParamsForTransactionCert.replicationGroupName =
-            XClusterConfigTaskBase.TRANSACTION_STATUS_TABLE_REPLICATION_GROUP_NAME;
+            xClusterConfig.txnTableReplicationGroupName;
         transferParamsForTransactionCert.producerCertsDirOnTarget = sourceRootCertDirPath;
         transferParamsForTransactionCert.ignoreErrors = ignoreErrors;
 
@@ -3588,6 +3590,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         subTaskGroup.addSubTask(transferXClusterCertsForTransactionTask);
       }
     }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createChangeXClusterRoleTask(
+      XClusterConfig xClusterConfig,
+      @Nullable XClusterRole sourceRole,
+      @Nullable XClusterRole targetRole) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("ChangeXClusterRole");
+    ChangeXClusterRole.Params ChangeXClusterRoleParams = new ChangeXClusterRole.Params();
+    ChangeXClusterRoleParams.xClusterConfig = xClusterConfig;
+    ChangeXClusterRoleParams.sourceRole = sourceRole;
+    ChangeXClusterRoleParams.targetRole = targetRole;
+
+    ChangeXClusterRole task = createTask(ChangeXClusterRole.class);
+    task.initialize(ChangeXClusterRoleParams);
+    subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
@@ -3620,12 +3639,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       if (sourceRootCertDirPath != null) {
         createTransferXClusterCertsRemoveTasks(
                 xClusterConfig,
+                xClusterConfig.getReplicationGroupName(),
                 sourceRootCertDirPath,
                 forceDelete
                     || xClusterConfig.status
                         == XClusterConfig.XClusterConfigStatusType.DeletedUniverse,
                 false /* skipRemoveTransactionalCert */)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+      }
+
+      if (xClusterConfig.type.equals(ConfigType.Txn)) {
+        // Set back the target universe role to Active.
+        createChangeXClusterRoleTask(
+            xClusterConfig, null /* sourceRole */, XClusterRole.ACTIVE /* targetRole */);
       }
     }
 
@@ -3748,6 +3774,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected SubTaskGroup createTransferXClusterCertsCopyTasks(
+      XClusterConfig xClusterConfig,
       Collection<NodeDetails> nodes,
       String replicationGroupName,
       File certificate,
@@ -3776,8 +3803,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
       // If transactional replication is enabled, transfer the cert for it as well. It assumes that
       // the TransferXClusterCerts subtask for the same parameters is idempotent.
-      if (XClusterConfigTaskBase.isTransactionalReplication(
-          Universe.getOrBadRequest(taskParams().universeUUID))) {
+      if (xClusterConfig.type.equals(ConfigType.Txn)) {
         TransferXClusterCerts.Params transferParamsForTransactionCert =
             new TransferXClusterCerts.Params();
         transferParamsForTransactionCert.universeUUID = taskParams().universeUUID;
@@ -3786,7 +3812,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         transferParamsForTransactionCert.rootCertPath = certificate;
         transferParamsForTransactionCert.action = TransferXClusterCerts.Params.Action.COPY;
         transferParamsForTransactionCert.replicationGroupName =
-            XClusterConfigTaskBase.TRANSACTION_STATUS_TABLE_REPLICATION_GROUP_NAME;
+            xClusterConfig.txnTableReplicationGroupName;
         transferParamsForTransactionCert.producerCertsDirOnTarget = sourceRootCertDirPath;
         transferParamsForTransactionCert.ignoreErrors = false;
 
@@ -3816,6 +3842,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           sourceCertificate.ifPresent(
               cert ->
                   createTransferXClusterCertsCopyTasks(
+                          xClusterConfig,
                           nodes,
                           xClusterConfig.getReplicationGroupName(),
                           cert,

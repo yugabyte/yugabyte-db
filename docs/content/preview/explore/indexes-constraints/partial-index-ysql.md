@@ -1,7 +1,9 @@
 ---
-title: Partial indexes
+title: Partial indexes in YugabyteDB YSQL
+headerTitle: Partial indexes
 linkTitle: Partial indexes
 description: Using Partial indexes in YSQL
+headContent: Explore partial indexes in YugabyteDB using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
@@ -10,7 +12,6 @@ menu:
     weight: 240
 aliases:
   - /preview/explore/ysql-language-features/indexes-1/
-  - /preview/explore/indexes-constraints/indexes-1/
 type: docs
 ---
 

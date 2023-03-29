@@ -3,8 +3,11 @@ package cmd
 import (
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/ybactl"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/yugaware"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/ybactlstate"
 )
 
 var upgradeCmd = &cobra.Command{
@@ -24,8 +27,20 @@ var upgradeCmd = &cobra.Command{
 		// some sort of config that is given to all structs we create, and based on that be able to
 		// chose the correct workflow.
 		common.SetWorkflowUpgrade()
+
+		yugawareVersion, err := yugaware.InstalledVersionFromMetadata()
+		if err != nil {
+			log.Fatal("Cannot reconfigure: " + err.Error())
+		}
+		if !common.LessVersions(yugawareVersion, ybactl.Version) {
+			log.Fatal("yba-ctl version must be greater then the installed YugabyteDB Anywhere version")
+		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		state, err := ybactlstate.LoadState()
+		if err != nil {
+			log.Fatal("unable to load yba installer state: " + err.Error())
+		}
 		results := preflight.Run(preflight.UpgradeChecks, skippedPreflightChecks...)
 		if preflight.ShouldFail(results) {
 			preflight.PrintPreflightResults(results)
@@ -87,6 +102,10 @@ var upgradeCmd = &cobra.Command{
 		if err := ybaCtl.Install(); err != nil {
 			log.Fatal("failed to install yba-ctl")
 		}
+
+		if err := ybactlstate.StoreState(state); err != nil {
+			log.Fatal("failed to write state: " + err.Error())
+		}
 		common.PostUpgrade()
 	},
 }
@@ -95,7 +114,5 @@ func init() {
 	// Upgrade can only be run from the new version, not from the installed path
 	upgradeCmd.Flags().StringSliceVarP(&skippedPreflightChecks, "skip_preflight", "s",
 		[]string{}, "Preflight checks to skip by name")
-	if !common.RunFromInstalled() {
-		rootCmd.AddCommand(upgradeCmd)
-	}
+	rootCmd.AddCommand(upgradeCmd)
 }

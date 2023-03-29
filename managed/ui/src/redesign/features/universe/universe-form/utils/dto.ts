@@ -352,12 +352,17 @@ export interface Cluster {
   regions?: any;
 }
 
+export interface CloudInfo {
+  assignPublicIP: boolean;
+}
+
 export interface NodeDetails {
   nodeIdx: number;
   nodeName: string | null;
   nodeUuid: string | null;
   placementUuid: string;
   state: NodeState;
+  cloudInfo?: CloudInfo;
 }
 
 export interface EncryptionAtRestConfig {

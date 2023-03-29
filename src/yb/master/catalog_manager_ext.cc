@@ -17,6 +17,8 @@
 #include <unordered_set>
 #include <google/protobuf/util/message_differencer.h>
 
+#include "yb/common/colocated_util.h"
+#include "yb/common/common_fwd.h"
 #include "yb/common/constants.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
@@ -2327,21 +2329,9 @@ Status CatalogManager::RestoreSysCatalog(
     // Restore sequences_data table.
     RETURN_NOT_OK(state.PatchSequencesDataObjects());
 
-    // We also need to increment the catalog version by 1 so that
-    // postgres and tservers can refresh their catalog cache.
-    const auto* meta = tablet->metadata();
-    auto pg_yb_catalog_meta_result = meta->GetTableInfo(kPgYbCatalogVersionTableId);
-    std::shared_ptr<yb::tablet::TableInfo> pg_yb_catalog_meta = nullptr;
-    // If the catalog version table is not found then this is a cluster upgraded from < 2.4, so
-    // we need to use the SysYSQLCatalogConfigEntryPB. All other errors are fatal.
-    if (!pg_yb_catalog_meta_result.ok() && !pg_yb_catalog_meta_result.status().IsNotFound()) {
-      return pg_yb_catalog_meta_result.status();
-    } else if (pg_yb_catalog_meta_result.ok()) {
-      pg_yb_catalog_meta = *pg_yb_catalog_meta_result;
-    }
-    // Pass an empty schema to indicate that this is older version cluster.
     auto status = state.ProcessPgCatalogRestores(
-        pg_yb_catalog_meta.get(), doc_db, tablet->doc_db(), &write_batch, doc_read_context());
+        doc_db, tablet->doc_db(),
+        &write_batch, doc_read_context(), tablet->metadata());
 
     // As RestoreSysCatalog is synchronous on Master it should be ok to set the completion
     // status in case of validation failures so that it gets propagated back to the client before

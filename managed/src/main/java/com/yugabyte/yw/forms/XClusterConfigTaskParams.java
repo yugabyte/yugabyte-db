@@ -6,8 +6,10 @@ import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.models.XClusterConfig;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import javax.annotation.Nullable;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.yb.master.MasterDdlOuterClass;
@@ -18,6 +20,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
 
   public XClusterConfig xClusterConfig;
   @JsonIgnore private List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList;
+  @JsonIgnore private MasterDdlOuterClass.ListTablesResponsePB.TableInfo txnTableInfo;
   private Map<String, List<String>> mainTableIndexTablesMap;
   private XClusterConfigCreateFormData.BootstrapParams bootstrapParams;
   private XClusterConfigEditFormData editFormData;
@@ -33,8 +36,8 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     this.universeUUID = xClusterConfig.targetUniverseUUID;
     this.xClusterConfig = xClusterConfig;
     this.bootstrapParams = bootstrapParams;
-    this.tableInfoList = tableInfoList;
     this.mainTableIndexTablesMap = mainTableIndexTablesMap;
+    this.setTableInfoListAndTxnTableInfo(tableInfoList);
   }
 
   public XClusterConfigTaskParams(
@@ -48,10 +51,10 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     this.xClusterConfig = xClusterConfig;
     this.editFormData = editFormData;
     this.bootstrapParams = editFormData.bootstrapParams;
-    this.tableInfoList = tableInfoList;
     this.mainTableIndexTablesMap = mainTableIndexTablesMap;
     this.tableIdsToAdd = tableIdsToAdd;
     this.tableIdsToRemove = tableIdsToRemove;
+    this.setTableInfoListAndTxnTableInfo(tableInfoList);
   }
 
   public XClusterConfigTaskParams(
@@ -63,9 +66,9 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     this.universeUUID = xClusterConfig.targetUniverseUUID;
     this.xClusterConfig = xClusterConfig;
     this.bootstrapParams = bootstrapParams;
-    this.tableInfoList = tableInfoList;
     this.mainTableIndexTablesMap = mainTableIndexTablesMap;
-    this.tableIdsToAdd = XClusterConfigTaskBase.getTableIds(tableInfoList);
+    this.setTableInfoListAndTxnTableInfo(tableInfoList);
+    this.tableIdsToAdd = XClusterConfigTaskBase.getTableIds(this.tableInfoList);
     this.isForced = isForced;
   }
 
@@ -82,5 +85,17 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
 
   public XClusterConfigTaskParams(UUID targetUniverseUUID) {
     this.universeUUID = targetUniverseUUID;
+  }
+
+  public void setTableInfoListAndTxnTableInfo(
+      @Nullable List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
+    if (Objects.nonNull(tableInfoList)) {
+      this.tableInfoList = tableInfoList;
+      txnTableInfo = XClusterConfigTaskBase.getTxnTableInfoIfExists(tableInfoList).orElse(null);
+      if (Objects.nonNull(txnTableInfo)) {
+        // Todo: Remove the dependency on the order in tableInfoList.
+        this.tableInfoList.remove(this.tableInfoList.size() - 1);
+      }
+    }
   }
 }

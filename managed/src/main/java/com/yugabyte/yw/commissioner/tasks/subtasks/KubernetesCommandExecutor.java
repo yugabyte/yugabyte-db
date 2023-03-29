@@ -56,6 +56,7 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -609,7 +610,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Yaml yaml = new Yaml();
 
     // TODO: decide if the user wants to expose all the services or just master.
-    overrides = yaml.load(environment.resourceAsStream("k8s-expose-all.yml"));
+    overrides = yaml.load(application.resourceAsStream("k8s-expose-all.yml"));
 
     Provider provider = Provider.get(taskParams().providerUUID);
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
@@ -948,9 +949,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
 
     // Go over tserver flags.
-    Map<String, Object> tserverOverrides =
-        new HashMap<String, Object>(
-            GFlagsUtil.getBaseGFlags(ServerType.TSERVER, cluster, u.getUniverseDetails().clusters));
+    Map<String, String> tserverOverrides =
+        GFlagsUtil.getBaseGFlags(ServerType.TSERVER, cluster, u.getUniverseDetails().clusters);
     if (!primaryClusterIntent
         .enableYSQL) { // In the UI, we can choose not to show these entries for read replica.
       tserverOverrides.put("enable_ysql", "false");
@@ -961,7 +961,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     tserverOverrides.put("start_redis_proxy", String.valueOf(primaryClusterIntent.enableYEDIS));
     if (primaryClusterIntent.enableYSQL && primaryClusterIntent.enableYSQLAuth) {
       tserverOverrides.put("ysql_enable_auth", "true");
-      tserverOverrides.put("ysql_hba_conf_csv", "local all yugabyte trust");
+      Map<String, String> DEFAULT_YSQL_HBA_CONF_MAP =
+          Collections.singletonMap(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
+      GFlagsUtil.mergeCSVs(
+          tserverOverrides, DEFAULT_YSQL_HBA_CONF_MAP, GFlagsUtil.YSQL_HBA_CONF_CSV);
     }
     if (primaryClusterIntent.enableYCQL && primaryClusterIntent.enableYCQLAuth) {
       tserverOverrides.put("use_cassandra_authentication", "true");

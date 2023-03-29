@@ -62,6 +62,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.MetricFilter;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -100,6 +101,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
+import play.Configuration;
 import play.Environment;
 import play.inject.ApplicationLifecycle;
 import play.libs.Json;
@@ -124,7 +126,7 @@ public class HealthChecker {
 
   private final Environment environment;
 
-  private final Config config;
+  private final play.Configuration config;
 
   // Last time we sent a status update email per customer.
   private final Map<UUID, Long> lastStatusUpdateTimeMap = new HashMap<>();
@@ -165,7 +167,7 @@ public class HealthChecker {
   @Inject
   public HealthChecker(
       Environment environment,
-      Config config,
+      Configuration config,
       PlatformExecutorFactory platformExecutorFactory,
       PlatformScheduler platformScheduler,
       HealthCheckerReport healthCheckerReport,
@@ -192,7 +194,7 @@ public class HealthChecker {
 
   HealthChecker(
       Environment environment,
-      Config config,
+      Configuration config,
       PlatformScheduler platformScheduler,
       HealthCheckerReport healthCheckerReport,
       EmailHelper emailHelper,
@@ -646,7 +648,7 @@ public class HealthChecker {
     String providerCode;
     int masterIndex = 0;
     int tserverIndex = 0;
-    CustomerTask lastTask = CustomerTask.getLatestByUniverseUuid(params.universe.universeUUID);
+    CustomerTask lastTask = CustomerTask.getLastTaskByTargetUuid(params.universe.universeUUID);
     Long potentialStartTime = null;
     if (lastTask != null && lastTask.getCompletionTime() != null) {
       potentialStartTime = lastTask.getCompletionTime().getTime();
@@ -739,7 +741,8 @@ public class HealthChecker {
           nodeInfo
               .setEnableYbc(true)
               .setYbcPort(
-                  params.universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort);
+                  params.universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort)
+              .setYbcDir(nodeInfo.isK8s() ? CommonUtils.DEFAULT_YBC_DIR : nodeInfo.getYbHomeDir());
         }
         nodeMetadata.add(nodeInfo);
       }
@@ -1031,6 +1034,7 @@ public class HealthChecker {
     private int tserverIndex = -1;
     private boolean isK8s = false;
     private String ybHomeDir;
+    private String ybcDir = "";
     private String nodeHost;
     private String nodeName;
     private String ybSoftwareVersion = null;
