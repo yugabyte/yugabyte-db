@@ -25,7 +25,7 @@ import { ProviderCreateView } from './forms/ProviderCreateView';
 import { useCreateProvider, UseCreateProviderParams } from '../../../redesign/helpers/hooks';
 
 import { YBProviderMutation } from './types';
-import { YBBeanValidationError, YBPError, YBPTask } from '../../../redesign/helpers/dtos';
+import { YBPBeanValidationError, YBPError, YBPTask } from '../../../redesign/helpers/dtos';
 
 import styles from './InfraProvider.module.scss';
 
@@ -44,7 +44,7 @@ export type CreateInfraProvider = (
     shouldValidate?: boolean;
     mutateOptions?: MutateOptions<
       YBPTask,
-      Error | AxiosError<YBBeanValidationError | YBPError>,
+      Error | AxiosError<YBPBeanValidationError | YBPError>,
       UseCreateProviderParams
     >;
   }
@@ -108,6 +108,7 @@ export const InfraProvider = (props: InfraProviderProps) => {
       }
     );
   };
+
   const handleOnBack = () => {
     setCurrentView(DEFAULT_VIEW);
   };
