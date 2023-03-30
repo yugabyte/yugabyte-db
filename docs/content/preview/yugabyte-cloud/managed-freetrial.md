@@ -18,15 +18,11 @@ To request a free trial:
 
 1. [Sign up](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup).
 1. [Log in](https://cloud.yugabyte.com/login).
-1. On the **Clusters** page, click **Add Cluster**.
-
-    This displays the **Create Cluster** wizard.
+1. On the **Clusters** page, click **Add Cluster** to display the **Create Cluster** wizard.
 
     ![Request a free trial](/images/yb-cloud/managed-trial.png)
 
-1. In the **Create Cluster** wizard, click **Request a Free Trial**.
-
-    This displays the **Request a Free Trial** form.
+1. In the **Create Cluster** wizard, click **Request a Free Trial** to display the **Request a Free Trial** form.
 
     ![Enter your details](/images/yb-cloud/managed-trial-2.png)
 
