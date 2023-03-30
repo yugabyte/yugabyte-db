@@ -974,7 +974,8 @@ public class Universe extends Model {
         .parallelStream()
         .anyMatch(
             n ->
-                n.cloudInfo.private_ip.equals(host)
+                n.cloudInfo.private_ip != null
+                    && n.cloudInfo.private_ip.equals(host)
                     && (port == n.masterHttpPort
                         || port == n.tserverHttpPort
                         || port == n.ysqlServerHttpPort
