@@ -110,6 +110,16 @@ public class V230_5__AccessKeyCleanupTest extends FakeDBApplication {
   }
 
   @Test
+  public void plat_8027() {
+    awsProvider.details.sshPort = 54422;
+    awsProvider.save();
+    V230_5__AccessKeyCleanup.migrateAllAccessKeys();
+    awsProvider.refresh();
+    assertNull(awsProvider.details.sshUser);
+    assertEquals(54422, awsProvider.details.sshPort.intValue());
+  }
+
+  @Test
   @Parameters({"true", "false"})
   public void nonDefault(boolean isOldProvider) {
     if (isOldProvider) {
