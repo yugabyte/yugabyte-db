@@ -12,7 +12,6 @@ package com.yugabyte.yw.common.alerts.impl;
 import static com.yugabyte.yw.common.alerts.AlertChannelParams.SYSTEM_VARIABLE_PREFIX;
 import static com.yugabyte.yw.common.alerts.AlertTemplateSubstitutor.LABELS_PREFIX;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.alerts.AlertChannelInterface;
 import com.yugabyte.yw.common.alerts.AlertNotificationTemplateSubstitutor;
 import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
@@ -31,7 +30,7 @@ import java.util.stream.Collectors;
 import lombok.Value;
 import org.apache.commons.lang3.StringUtils;
 
-abstract class AlertChannelBase implements AlertChannelInterface {
+public abstract class AlertChannelBase implements AlertChannelInterface {
 
   protected final AlertTemplateVariableService alertTemplateVariableService;
 
@@ -39,19 +38,13 @@ abstract class AlertChannelBase implements AlertChannelInterface {
     this.alertTemplateVariableService = alertTemplateVariableService;
   }
 
-  /**
-   * Returns the alert notification title according to the template stored in the alert channel or
-   * default one. Also does all the necessary substitutions using labels from the alert.
-   *
-   * @param alert Alert
-   * @param context Alert Channel
-   * @return the notification title
-   */
-  @VisibleForTesting
-  String getNotificationTitle(Alert alert, Context context) {
+  public static String getNotificationTitle(Alert alert, Context context) {
     AlertChannel channel = context.getChannel();
     AlertChannelTemplatesExt templates = context.getTemplates();
-    String template = channel.getParams().getTitleTemplate();
+    String template = null;
+    if (channel.getParams() != null) {
+      template = channel.getParams().getTitleTemplate();
+    }
     if (StringUtils.isEmpty(template) && templates.getChannelTemplates() != null) {
       template = templates.getChannelTemplates().getTitleTemplate();
     }
@@ -70,11 +63,13 @@ abstract class AlertChannelBase implements AlertChannelInterface {
    * @param context
    * @return
    */
-  @VisibleForTesting
-  String getNotificationText(Alert alert, Context context) {
+  public static String getNotificationText(Alert alert, Context context) {
     AlertChannel channel = context.getChannel();
     AlertChannelTemplatesExt templates = context.getTemplates();
-    String template = channel.getParams().getTextTemplate();
+    String template = null;
+    if (channel.getParams() != null) {
+      template = channel.getParams().getTextTemplate();
+    }
     if (StringUtils.isEmpty(template) && templates.getChannelTemplates() != null) {
       template = templates.getChannelTemplates().getTextTemplate();
     }
@@ -85,7 +80,7 @@ abstract class AlertChannelBase implements AlertChannelInterface {
     return alertSubstitutions(alert, context, notificationTemplate);
   }
 
-  private String convertToNotificationTemplate(String template) {
+  private static String convertToNotificationTemplate(String template) {
     Map<String, String> systemVariablesToPlaceholderValue =
         Arrays.stream(AlertTemplateSystemVariable.values())
             .collect(
@@ -108,7 +103,13 @@ abstract class AlertChannelBase implements AlertChannelInterface {
 
   private static String alertSubstitutions(Alert alert, Context context, String template) {
     AlertChannel channel = context.getChannel();
-    ChannelType channelType = ChannelType.valueOf(AlertUtils.getJsonTypeName(channel.getParams()));
+    ChannelType channelType;
+    if (channel.getParams() != null) {
+      channelType = ChannelType.valueOf(AlertUtils.getJsonTypeName(channel.getParams()));
+    } else {
+      // Required for notification preview, as we don't have actual channel.
+      channelType = context.getTemplates().getChannelTemplates().getType();
+    }
     AlertNotificationTemplateSubstitutor substitutor =
         new AlertNotificationTemplateSubstitutor(
             alert, channel, context.getLabelDefaultValues(), channelType == ChannelType.WebHook);
@@ -116,7 +117,7 @@ abstract class AlertChannelBase implements AlertChannelInterface {
   }
 
   @Value
-  static class Context {
+  public static class Context {
     AlertChannel channel;
     AlertChannelTemplatesExt templates;
     Map<String, String> labelDefaultValues;

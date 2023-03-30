@@ -185,6 +185,9 @@ DELETE  /customers/:cUUID/alert_configurations/:configurationUUID              c
 + forceNoAudit
 POST    /customers/:cUUID/alert_configurations/:configurationUUID/test_alert   com.yugabyte.yw.controllers.AlertController.sendTestAlert(cUUID: java.util.UUID, configurationUUID: java.util.UUID)
 
++ forceNoAudit
+POST    /customers/:cUUID/alert_notification_preview                           com.yugabyte.yw.controllers.AlertController.alertNotificationPreview(cUUID: java.util.UUID)
+
 POST    /customers/:cUUID/alert_channels                                       com.yugabyte.yw.controllers.AlertController.createAlertChannel(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alert_channels                                       com.yugabyte.yw.controllers.AlertController.listAlertChannels(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alert_channels/:acUUID                               com.yugabyte.yw.controllers.AlertController.getAlertChannel(cUUID: java.util.UUID, acUUID: java.util.UUID)
