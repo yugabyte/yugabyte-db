@@ -21,7 +21,7 @@ You can replace a failed YB-TServer in a YugabyteDB cluster, as follows:
    ~/master/bin/yb-admin -master_addresses $MASTERS change_blacklist ADD $OLD_IP:9100
    ```
 
-   For details, see [Change_blacklist](../../../admin/yb-admin/#change-blacklist) command in the yb-admin reference page.
+   For details, see [change_blacklist](../../../admin/yb-admin/#change-blacklist) in the yb-admin reference page.
 
 3. Wait for the data to drain from the failed YB-TServer and for the data to be loaded into the new one. You can check for the completion of rebalancing by running the following command:
 
@@ -37,8 +37,8 @@ You can replace a failed YB-TServer in a YugabyteDB cluster, as follows:
 
    To verify that the failed YB-TServer is dead, open your web browser to `$MASTER_LEADER_IP:7000/tablet-servers` and check the output.
 
-5. Since the replacement YB-TServer is running and is loaded with data, remove the address for the failed YB-TServer from the blacklist, as follows:
+5. Because the replacement YB-TServer is running and is loaded with data, remove the address for the failed YB-TServer from the blacklist, as follows:
 
    ```sh
-   ~/master/bin/yb-admin -master_addresses $MASTERS change_blacklist REMOVE node1:9100
+   ~/master/bin/yb-admin -master_addresses $MASTERS change_blacklist REMOVE $OLD_IP:9100
    ```
