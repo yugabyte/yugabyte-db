@@ -35,20 +35,27 @@ public class V230_5__AccessKeyCleanup extends BaseJdbcMigration {
       for (TmpProvider provider : TmpProvider.getAll(customer.uuid)) {
         if (provider.details == null) {
           provider.details = new TmpProviderDetails();
+          provider.save();
         }
         final Optional<TmpAccessKeyDto> optAcccessKey =
             AccessKey.getLatestAccessKeyQuery(provider.uuid)
                 .select("keyInfo")
                 .asDto(TmpAccessKeyDto.class)
                 .findOneOrEmpty();
-        optAcccessKey.ifPresent(
-            latestKey -> {
-              provider.details.mergeFrom(latestKey.keyInfo);
-              log.debug(
-                  "Migrated KeyInfo fields to ProviderDetails:\n"
-                      + Json.toJson(provider.details).toPrettyString());
-              provider.save();
-            });
+
+        // PLAT-8027:
+        // Do not overwrite if there are non-default values in provider.details
+        // because the provider is already created with new schema.
+        if (new TmpProviderDetails().equals(provider.details)) {
+          optAcccessKey.ifPresent(
+              latestKey -> {
+                provider.details.mergeFrom(latestKey.keyInfo);
+                log.debug(
+                    "Migrated KeyInfo fields to ProviderDetails:\n"
+                        + Json.toJson(provider.details).toPrettyString());
+                provider.save();
+              });
+        }
       }
     }
   }
