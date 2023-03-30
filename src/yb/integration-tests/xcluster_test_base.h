@@ -86,6 +86,10 @@ class XClusterTestBase : public YBTest {
     propagation_timeout_ = MonoDelta::FromSeconds(30 * kTimeMultiplier);
   }
 
+  Result<std::unique_ptr<Cluster>> CreateCluster(
+      const std::string& cluster_id, const std::string& cluster_short_name,
+      uint32_t num_tservers = 1, uint32_t num_masters = 1);
+
   virtual Status InitClusters(const MiniClusterOptions& opts);
 
   void TearDown() override;
@@ -94,6 +98,8 @@ class XClusterTestBase : public YBTest {
   Status RunOnBothClusters(std::function<Status(Cluster*)> run_on_cluster);
 
   Status WaitForLoadBalancersToStabilize();
+
+  Status WaitForLoadBalancersToStabilize(MiniCluster* cluster);
 
   Status CreateDatabase(
       Cluster* cluster, const std::string& namespace_name = kNamespaceName, bool colocated = false);
@@ -239,6 +245,17 @@ class XClusterTestBase : public YBTest {
     }
     return result;
   }
+
+  void VerifyReplicationError(
+      const std::string& consumer_table_id,
+      const std::string& stream_id,
+      const boost::optional<ReplicationErrorPb>
+          expected_replication_error);
+
+  Result<CDCStreamId> GetCDCStreamID(const std::string& producer_table_id);
+
+  Status PauseResumeXClusterProducerStreams(
+      const std::vector<std::string>& stream_ids, bool is_paused);
 
  protected:
   CoarseTimePoint PropagationDeadline() const {
