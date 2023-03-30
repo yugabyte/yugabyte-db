@@ -7,9 +7,12 @@ import {
   InstanceTypeMutation,
   YBProviderMutation
 } from '../../components/configRedesign/providerRedesign/types';
-import { InstanceType, YBBeanValidationError, YBPError, YBPSuccess, YBPTask } from './dtos';
+import { InstanceType, YBPBeanValidationError, YBPError, YBPSuccess, YBPTask } from './dtos';
 import { handleServerError } from '../../utils/errorHandlingUtils';
-import { getCreateProviderErrorMessage } from '../../components/configRedesign/providerRedesign/forms/utils';
+import {
+  getCreateProviderErrorMessage,
+  getEditProviderErrorMessage
+} from '../../components/configRedesign/providerRedesign/forms/utils';
 
 // run callback when component is mounted only
 export const useWhenMounted = () => {
@@ -62,9 +65,45 @@ export const useCreateProvider = (
         error;
         mutationOptions?.onError
           ? mutationOptions.onError(error, variables, context)
-          : handleServerError<YBBeanValidationError | YBPError>(
+          : handleServerError<YBPBeanValidationError | YBPError>(
               error,
               getCreateProviderErrorMessage
+            );
+      }
+    }
+  );
+
+export type UseEditProviderParams = {
+  providerUUID: string;
+  values: YBProviderMutation;
+  shouldValidate: boolean;
+};
+export const useEditProvider = (
+  queryClient: QueryClient,
+  mutationOptions?: MutationOptions<YBPTask, Error | AxiosError, UseEditProviderParams>
+) =>
+  useMutation(
+    ({ providerUUID, values, shouldValidate }: UseEditProviderParams) =>
+      api.editProvider(providerUUID, values, shouldValidate),
+    {
+      ...mutationOptions,
+      onSuccess: (response, variables, context) => {
+        if (mutationOptions?.onSuccess) {
+          mutationOptions.onSuccess(response, variables, context);
+        } else {
+          queryClient.invalidateQueries(providerQueryKey.ALL, { exact: true });
+          queryClient.invalidateQueries(providerQueryKey.detail(variables.providerUUID), {
+            exact: true
+          });
+        }
+      },
+      onError: (error, variables, context) => {
+        error;
+        mutationOptions?.onError
+          ? mutationOptions.onError(error, variables, context)
+          : handleServerError<YBPBeanValidationError | YBPError>(
+              error,
+              getEditProviderErrorMessage
             );
       }
     }

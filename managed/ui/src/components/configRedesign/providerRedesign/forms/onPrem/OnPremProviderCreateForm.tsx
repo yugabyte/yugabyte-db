@@ -5,10 +5,10 @@ import { array, mixed, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 
 import {
-  ASYNC_ERROR,
   DEFAULT_NODE_EXPORTER_PORT,
   DEFAULT_NODE_EXPORTER_USER,
   DEFAULT_SSH_PORT,
+  KeyPairManagement,
   NTPSetupType,
   ProviderCode
 } from '../../constants';
@@ -30,7 +30,7 @@ import { RegionOperation } from '../configureRegion/constants';
 import { YBButton } from '../../../../common/forms/fields';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { YBInputField, YBToggleField } from '../../../../../redesign/components';
-import { addItem, deleteItem, editItem, handleFormServerError, readFileAsText } from '../utils';
+import { addItem, deleteItem, editItem, readFileAsText } from '../utils';
 
 import { OnPremRegionMutation, YBProviderMutation } from '../../types';
 
@@ -56,8 +56,6 @@ interface OnPremProviderCreateFormFieldValues {
   nodeExporterPort?: number;
   nodeExporterUser?: string;
   ybHomeDir?: string;
-
-  [ASYNC_ERROR]: string;
 }
 
 const ProviderCredentialType = {
@@ -65,12 +63,6 @@ const ProviderCredentialType = {
   SPECIFIED_SERVICE_ACCOUNT: 'specifiedServiceAccount'
 } as const;
 type ProviderCredentialType = typeof ProviderCredentialType[keyof typeof ProviderCredentialType];
-
-const KeyPairManagement = {
-  YBA_MANAGED: 'ybaManaged',
-  CUSTOM_KEY_PAIR: 'customKeyPair'
-} as const;
-type KeyPairManagement = typeof KeyPairManagement[keyof typeof KeyPairManagement];
 
 const VALIDATION_SCHEMA = object().shape({
   providerName: string()
@@ -80,15 +72,15 @@ const VALIDATION_SCHEMA = object().shape({
       'Provider name cannot contain special characters other than "-", and "_"'
     ),
   sshUser: string().when('sshKeypairManagement', {
-    is: KeyPairManagement.CUSTOM_KEY_PAIR,
+    is: KeyPairManagement.SELF_MANAGED,
     then: string().required('SSH user is required.')
   }),
   sshKeypairName: string().when('sshKeypairManagement', {
-    is: KeyPairManagement.CUSTOM_KEY_PAIR,
+    is: KeyPairManagement.SELF_MANAGED,
     then: string().required('SSH keypair name is required.')
   }),
   sshPrivateKeyContent: mixed().when('sshKeypairManagement', {
-    is: KeyPairManagement.CUSTOM_KEY_PAIR,
+    is: KeyPairManagement.SELF_MANAGED,
     then: mixed().required('SSH private key is required.')
   }),
   ntpServers: array().when('ntpSetupType', {
@@ -123,7 +115,7 @@ export const OnPremProviderCreateForm = ({
     providerName: '',
     regions: [] as ConfigureOnPremRegionFormValues[],
     skipProvisioning: false,
-    sshKeypairManagement: KeyPairManagement.CUSTOM_KEY_PAIR,
+    sshKeypairManagement: KeyPairManagement.SELF_MANAGED,
     sshPort: DEFAULT_SSH_PORT,
     ybHomeDir: ''
   };
@@ -133,8 +125,6 @@ export const OnPremProviderCreateForm = ({
   });
 
   const onFormSubmit: SubmitHandler<OnPremProviderCreateFormFieldValues> = async (formValues) => {
-    formMethods.clearErrors(ASYNC_ERROR);
-
     if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
       formMethods.setError('ntpServers', {
         type: 'min',
@@ -175,11 +165,7 @@ export const OnPremProviderCreateForm = ({
       }))
     };
 
-    await createInfraProvider(providerPayload, {
-      mutateOptions: {
-        onError: (error) => handleFormServerError(error, ASYNC_ERROR, formMethods.setError)
-      }
-    });
+    await createInfraProvider(providerPayload);
   };
 
   const showAddRegionFormModal = () => {
@@ -278,6 +264,7 @@ export const OnPremProviderCreateForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
+                  inputProps={{ min: 0, max: 65535 }}
                   fullWidth
                   disabled={isProviderFormReadOnly}
                 />
