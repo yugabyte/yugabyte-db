@@ -97,4 +97,9 @@ message ConsumerRegistryPB {
   // support.
   bool enable_replicate_transaction_status_table = 2;
   XClusterRole role = 3;
+  // Does this replication group support consistent transactions. There are two possible ways to
+  // support transactions depending on enable_replicate_transaction_status_table.
+  // false: Use the producer's xcluster_consistent_wal feature without replicating txn status table.
+  // true (DEPRECATED): Replicate the transaction status table.
+  bool transactional = 4;
 }

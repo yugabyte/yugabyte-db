@@ -3891,10 +3891,12 @@ Status ClusterAdminClient::WaitForSetupUniverseReplicationToFinish(const string&
 
 Status ClusterAdminClient::SetupUniverseReplication(
     const string& producer_uuid, const vector<string>& producer_addresses,
-    const vector<TableId>& tables, const vector<string>& producer_bootstrap_ids) {
+    const vector<TableId>& tables, const vector<string>& producer_bootstrap_ids,
+    bool transactional) {
   master::SetupUniverseReplicationRequestPB req;
   master::SetupUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_uuid);
+  req.set_transactional(transactional);
 
   req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_addresses.size()));
   for (const auto& addr : producer_addresses) {

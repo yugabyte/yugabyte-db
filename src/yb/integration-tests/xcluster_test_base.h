@@ -74,6 +74,20 @@ class XClusterTestBase : public YBTest {
     }
   };
 
+  YB_STRONGLY_TYPED_BOOL(LeaderOnly);
+  YB_STRONGLY_TYPED_BOOL(Transactional);
+
+  struct SetupReplicationOptions {
+    SetupReplicationOptions() {}
+    SetupReplicationOptions(LeaderOnly leader_only_, Transactional transactional_) {
+      leader_only = leader_only_;
+      transactional = transactional_;
+    }
+    LeaderOnly leader_only = LeaderOnly::kTrue;
+    // Support consistent transactions for the replication group.
+    Transactional transactional = Transactional::kFalse;
+  };
+
   void SetUp() override {
     HybridTime::TEST_SetPrettyToString(true);
 
@@ -113,11 +127,12 @@ class XClusterTestBase : public YBTest {
   virtual Status SetupUniverseReplication(const std::vector<std::string>& table_ids);
 
   virtual Status SetupUniverseReplication(
-      const std::vector<std::shared_ptr<client::YBTable>>& tables, bool leader_only = true);
+      const std::vector<std::shared_ptr<client::YBTable>>& tables,
+      SetupReplicationOptions opts = SetupReplicationOptions());
 
   Status SetupUniverseReplication(
       const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
-      bool leader_only = true);
+      SetupReplicationOptions opts = SetupReplicationOptions());
 
   Status SetupReverseUniverseReplication(
       const std::vector<std::shared_ptr<client::YBTable>>& tables);
@@ -125,17 +140,20 @@ class XClusterTestBase : public YBTest {
   Status SetupUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
-      bool leader_only = true, const std::vector<std::string>& bootstrap_ids = {});
+      const std::vector<std::string>& bootstrap_ids = {},
+      SetupReplicationOptions opts = SetupReplicationOptions());
 
   Status SetupUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, const std::vector<std::string>& table_ids,
-      bool leader_only = true, const std::vector<std::string>& bootstrap_ids = {});
+      const std::vector<std::string>& bootstrap_ids = {},
+      SetupReplicationOptions opts = SetupReplicationOptions());
 
   Status SetupNSUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, const std::string& producer_ns_name,
-      const YQLDatabase& producer_ns_type, bool leader_only = true);
+      const YQLDatabase& producer_ns_type,
+      SetupReplicationOptions opts = SetupReplicationOptions());
 
   Status VerifyUniverseReplication(master::GetUniverseReplicationResponsePB* resp);
 
@@ -173,6 +191,11 @@ class XClusterTestBase : public YBTest {
 
   Status DeleteUniverseReplication(
       const std::string& universe_id, YBClient* client, MiniCluster* cluster);
+
+  Status AlterUniverseReplication(
+      const std::string& universe_id,
+      const std::vector<std::shared_ptr<client::YBTable>>& tables,
+      bool add_tables);
 
   Status CorrectlyPollingAllTablets(MiniCluster* cluster, uint32_t num_producer_tablets);
 

@@ -26,7 +26,6 @@
 
 DECLARE_string(vmodule);
 DECLARE_bool(xcluster_consistent_wal);
-DECLARE_bool(enable_replicate_transaction_status_table);
 DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(TEST_xcluster_fail_table_create_during_bootstrap);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
@@ -75,7 +74,8 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
     ASSERT_OK(producer_client()->OpenTable(yb_table_name, &producer_table));
     namespace_id_ = producer_table->name().namespace_id();
 
-    ASSERT_OK(SetupUniverseReplication(kUniverseId, {producer_table}));
+    ASSERT_OK(SetupUniverseReplication(kUniverseId, {producer_table},
+              {LeaderOnly::kTrue, Transactional::kTrue}));
     // Verify that universe was setup on consumer.
     master::GetUniverseReplicationResponsePB resp;
     ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
