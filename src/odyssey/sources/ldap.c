@@ -4,6 +4,9 @@
  * Scalable PostgreSQL connection pooler.
  */
 
+/* for ldap_unbind */
+#define LDAP_DEPRECATED 1
+
 #include <kiwi.h>
 #include <machinarium.h>
 #include <odyssey.h>

@@ -106,7 +106,7 @@ Build options:
   --force-run-cmake, --frcm
     Ensure that we explicitly invoke CMake from this script. CMake may still run as a result of
     changes made to CMakeLists.txt files if we just invoke make on the CMake-generated Makefile.
-  --force-no-run-cmake, --fnrcm
+  --force-no-run-cmake, --fnrcm, --skip-cmake, --no-cmake
     The opposite of --force-run-cmake. Makes sure we do not run CMake.
   --cmake-args
     Additional CMake arguments
@@ -261,6 +261,8 @@ Test options:
     work here -- they are naively split on spaces.
   --(with|no)-fuzz-targets
     Build|Do not build fuzz targets. By default - do not build.
+  --(with|no)-odyssey
+    Specify whether to build Odyssey (PostgreSQL connection pooler). Not building by default.
 
 Debug options:
 
@@ -440,7 +442,7 @@ capture_sec_timestamp() {
   eval "${1}_time_sec=$current_timestamp"
 }
 
-run_yugabyted-ui_build() {
+run_yugabyted_ui_build() {
   # This is a standalone build script.  It honors BUILD_ROOT from the env
   "${YB_SRC_ROOT}/yugabyted-ui/build.sh"
 }
@@ -763,6 +765,69 @@ set_cxx_test_filter_regex() {
   cmake_opts+=( "-DYB_TEST_FILTER_RE=$1" )
 }
 
+# This function is used to propagate a boolean variable to a CMake variable. For example, if we have
+# a variable named build_tests, we will propagate that variable to a CMake parameter named
+# YB_BUILD_TESTS, and will replace true with ON and false with OFF. This is useful for variables
+# that are used in both build scripts and CMake files.
+propagate_bool_var_to_cmake() {
+  expect_num_args 1 "$@"
+  local var_name=$1
+  # var_name could be something build_tests. We will propagate that variable to a CMake parameter
+  # named e.g. YB_BUILD_TESTS, and will replace true with ON and false with OFF.
+  if [[ -n ${!var_name:-} ]]; then
+    local cmake_var_name
+    cmake_var_name=YB_$( tr '[:lower:]' '[:upper:]' <<<"${var_name}" )
+    local cmake_var_value
+    case "${!var_name}" in
+      true) cmake_var_value=ON ;;
+      false) cmake_var_value=OFF ;;
+      *) fatal "Invalid value of variable ${var_name}: ${!var_name}. Expected 'true' or 'false'."
+    esac
+    cmake_opts+=( "-D${cmake_var_name}=${cmake_var_value}" )
+
+    # CMakeCache.txt will contain something like
+    # YB_BUILD_ODYSSEY:UNINITIALIZED=ON
+    # Only re-run CMake if we want to put a different value of this variable there.
+    local cmake_cache_path="$BUILD_ROOT/CMakeCache.txt"
+    if [[ ${force_no_run_cmake} == "false" ]] && (
+         [[ ! -f $cmake_cache_path ]] ||
+         ! grep -Eq "^${cmake_var_name}:[A-Z]*=${cmake_var_value}$" "$cmake_cache_path"
+       ); then
+      force_run_cmake=true
+    fi
+  fi
+}
+
+use_packaged_targets() {
+  local packaged_targets=()
+  local optional_components_args=()
+  if [[ "${build_odyssey:-}" == "true" ]]; then
+    optional_components_args+=( "--with_odyssey" )
+  else
+    optional_components_args+=( "--no_odyssey" )
+  fi
+  if [[ "${build_yugabyted_ui:-}" == "true" ]]; then
+    optional_components_args+=( "--with_yugabyted_ui" )
+  else
+    optional_components_args+=( "--no_yugabyted_ui" )
+  fi
+  while IFS='' read -r line; do
+    packaged_targets+=( "$line" )
+  done < <(
+    activate_virtualenv &>/dev/null
+    set_pythonpath
+    "$YB_SRC_ROOT"/build-support/list_packaged_targets.py "${optional_components_args[@]}"
+  )
+  if [[ ${#packaged_targets[@]} -eq 0 ]]; then
+    fatal "Failed to identify the set of targets to build for the release package"
+  fi
+  make_targets+=(
+    "${packaged_targets[@]}"
+    initial_sys_catalog_snapshot
+    update_ysql_migrations
+  )
+}
+
 # -------------------------------------------------------------------------------------------------
 # Command line parsing
 # -------------------------------------------------------------------------------------------------
@@ -779,7 +844,6 @@ make_opts=()
 force=false
 build_cxx=true
 build_java=true
-build_yugabyted_ui=false
 run_java_tests=false
 save_log=false
 make_targets=()
@@ -810,10 +874,7 @@ clean_postgres=false
 make_ninja_extra_args=""
 java_lint=false
 collect_java_tests=false
-
-# This will be set to true/false based on --no-tests / --with-tests.
-build_tests=""
-build_fuzz_targets=""
+should_use_packaged_targets=false
 
 # The default value of this parameter will be set based on whether we're running on Jenkins.
 reduce_log_output=""
@@ -842,6 +903,21 @@ export YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT=0
 
 cxx_test_filter_regex=""
 reset_cxx_test_filter=false
+
+# -------------------------------------------------------------------------------------------------
+# Switches deciding what components or targets to build
+# -------------------------------------------------------------------------------------------------
+
+build_tests=""
+build_fuzz_targets=""
+
+# These will influence what targets to build if invoked with the packaged_targets meta-target.
+build_odyssey="false"
+build_yugabyted_ui="false"
+
+# -------------------------------------------------------------------------------------------------
+# Actually parsing command-line arguments
+# -------------------------------------------------------------------------------------------------
 
 yb_build_args=( "$@" )
 
@@ -875,7 +951,7 @@ while [[ $# -gt 0 ]]; do
     --force-run-cmake|--frcm)
       force_run_cmake=true
     ;;
-    --force-no-run-cmake|--fnrcm)
+    --force-no-run-cmake|--fnrcm|--no-cmake|--skip-cmake)
       force_no_run_cmake=true
     ;;
     --cmake-only)
@@ -1023,8 +1099,11 @@ while [[ $# -gt 0 ]]; do
       build_cxx=false
       java_only=true
     ;;
-    --build-yugabyted-ui)
+    --build-yugabyted-ui|--with-yugabyted-ui)
       build_yugabyted_ui=true
+    ;;
+    --no-yugabyted-ui|--skip-yugabyted-ui)
+      build_yugabyted_ui=false
     ;;
     --num-repetitions|--num-reps|-n)
       ensure_option_has_arg "$@"
@@ -1096,13 +1175,7 @@ while [[ $# -gt 0 ]]; do
       make_targets+=( "yb-master" "yb-tserver" "gen_auto_flags_json" "postgres" "yb-admin" )
     ;;
     packaged|packaged-targets)
-      for packaged_target in $( "$YB_SRC_ROOT"/build-support/list_packaged_targets.py ); do
-        make_targets+=( "$packaged_target" )
-      done
-      if [[ ${#make_targets[@]} -eq 0 ]]; then
-        fatal "Failed to identify the set of targets to build for the release package"
-      fi
-      make_targets+=( "initial_sys_catalog_snapshot" "update_ysql_migrations" )
+      should_use_packaged_targets=true
     ;;
     --skip-build|--sb)
       set_flags_to_skip_build
@@ -1258,13 +1331,28 @@ while [[ $# -gt 0 ]]; do
       build_tests=false
     ;;
     --with-tests)
+      # We use this variable indirectly via propagate_bool_var_to_cmake.
+      # shellcheck disable=SC2034
       build_tests=true
     ;;
     --no-fuzz-targets)
       build_fuzz_targets=false
     ;;
     --with-fuzz-targets)
+      # We use this variable indirectly via propagate_bool_var_to_cmake.
+      # shellcheck disable=SC2034
       build_fuzz_targets=true
+    ;;
+    --no-odyssey)
+      build_odyssey=false
+    ;;
+    --with-odyssey)
+      if is_mac; then
+        fatal "Cannot build Odyssey on macOS"
+      fi
+      # We use this variable indirectly via propagate_bool_var_to_cmake.
+      # shellcheck disable=SC2034
+      build_odyssey=true
     ;;
     --cmake-unit-tests)
       run_cmake_unit_tests=true
@@ -1386,24 +1474,6 @@ handle_predefined_build_root
 # Setting CMake options.
 cmake_opts=()
 set_cmake_build_type_and_compiler_type
-if [[ -n ${build_tests} ]]; then
-  force_run_cmake=true
-  # YB_BUILD_TESTS will get stored in CMake cache and take effect on further runs.
-  if [[ ${build_tests} == "true" ]]; then
-    cmake_opts+=( -DYB_BUILD_TESTS=ON )
-  else
-    cmake_opts+=( -DYB_BUILD_TESTS=OFF )
-  fi
-fi
-
-if [[ -n ${build_fuzz_targets} ]]; then
-  force_run_cmake=true
-  if [[ ${build_fuzz_targets} == "true" ]]; then
-    cmake_opts+=( -DYB_BUILD_FUZZ_TARGETS=ON )
-  else
-    cmake_opts+=( -DYB_BUILD_FUZZ_TARGETS=OFF )
-  fi
-fi
 
 if [[ -n ${cxx_test_filter_regex} ]]; then
   if [[ ${reset_cxx_test_filter} == "true" ]]; then
@@ -1513,6 +1583,10 @@ if [[ $build_type == "prof_use" ]] && [[ $pgo_data_path == "" ]]; then
   fatal "Please set --pgo-data-path path/to/pgo/data"
 fi
 
+if [[ "${should_use_packaged_targets}" == "true" ]]; then
+  use_packaged_targets
+fi
+
 # End of post-processing and validating command-line arguments.
 
 # -------------------------------------------------------------------------------------------------
@@ -1561,6 +1635,10 @@ fi
 
 # shellcheck disable=SC2119
 set_build_root
+
+propagate_bool_var_to_cmake build_tests
+propagate_bool_var_to_cmake build_fuzz_targets
+propagate_bool_var_to_cmake build_odyssey
 
 # -------------------------------------------------------------------------------------------------
 # Cleaning confirmation
@@ -1736,7 +1814,7 @@ if [[ ${build_cxx} == "true" ||
 fi
 
 if [[ ${build_yugabyted_ui} == "true" && ${cmake_only} != "true" ]]; then
-  run_yugabyted-ui_build
+  run_yugabyted_ui_build
 fi
 
 export YB_JAVA_TEST_OFFLINE_MODE=0
