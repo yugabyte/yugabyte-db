@@ -85,13 +85,13 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
 1. Run the following `helm install` command to install the Yugabyte Platform (`yugaware`) Helm chart:
 
     ```sh
-    helm install yw-test yugabytedb/yugaware --version{{<yb-version version="v2.8" format="short">}} -n yb-platform --wait
+    helm install yw-test yugabytedb/yugaware --version {{<yb-version version="v2.8" format="short">}} -n yb-platform --wait
     ```
 
 1. Optionally, set the TLS version for Nginx frontend by using `ssl_protocols` operational directive in the Helm installation, as follows:
 
     ```sh
-    helm install yw-test yugabytedb/yugaware --version{{<yb-version version="v2.8" format="short">}} -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
+    helm install yw-test yugabytedb/yugaware --version {{<yb-version version="v2.8" format="short">}} -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
     ```
 
 1. Use the following command to check the service:
@@ -123,12 +123,11 @@ You can customize Yugabyte Platform on a Kubernetes cluster in a number of ways,
     --set prometheus.resources.requests.mem=6Gi
   ```
 
-- You can disable the public-facing load balancer by providing the annotations to Yugabyte Platform service for disabling that load balancer. Since every cloud provider has different annotations for doing this, refer to the following documentation:
+- You can disable the public-facing load balancer by providing the annotations to Yugabyte Platform service for disabling that load balancer. Because every cloud provider has different annotations for doing this, refer to the following documentation:
 
   - For Google Cloud, see [GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing).
   - For Azure, see [AKS](https://docs.microsoft.com/en-us/azure/aks/internal-lb).
   - For AWS, see [EKS](https://docs.aws.amazon.com/eks/latest/userguide/load-balancing.html).
-
 
    For example, for a GKE version earlier than 1.17, you would execute a command similar to the following:
 
