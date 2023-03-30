@@ -28,6 +28,7 @@
 #include <funcapi.h>
 #include <limits.h>
 #include <math.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
@@ -602,19 +603,22 @@ typedef struct
 static size_t
 mse_nelem_max(void)
 {
+    // This function has been modified for Yugabyte to use offsetof (keeping ASAN happy)
     multiset_t *msp = NULL;  /* Safely! */
-    uint8_t *ms_data_start = (uint8_t*)(&msp->ms_data);
+    uint8_t *ms_data_start = (uint8_t*) offsetof(multiset_t, ms_data);
     uint8_t *ms_data_end = ms_data_start + sizeof(msp->ms_data);
-    uint8_t *mse_elems_start = (uint8_t*)(&msp->ms_data.as_expl.mse_elems);
+    uint8_t *mse_elems_start = (uint8_t*) offsetof(multiset_t, ms_data.as_expl.mse_elems);
     return ((size_t)(ms_data_end - mse_elems_start)) / sizeof(uint64_t);
 }
 
 static size_t
 msc_regs_idx_limit(void)
 {
+    // This function has been modified for Yugabyte to use offsetof (keeping ASAN happy)
     multiset_t * o_msp = NULL;
-    uint8_t * const ms_data_limit = ((uint8_t*)&o_msp->ms_data) + sizeof(o_msp->ms_data);
-    return (ms_data_limit - (uint8_t*)&o_msp->ms_data.as_comp.msc_regs[0]) / sizeof(compreg_t);
+    uint8_t *ms_data_start = (uint8_t*) offsetof(multiset_t, ms_data);
+    uint8_t * const ms_data_limit = ms_data_start + sizeof(o_msp->ms_data);
+    return (ms_data_limit - (uint8_t*) offsetof(multiset_t, ms_data.as_comp.msc_regs[0])) / sizeof(compreg_t);
 }
 
 static uint32_t
