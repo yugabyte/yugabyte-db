@@ -2654,7 +2654,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<scoped_refptr<UniverseReplicationInfo>> CreateUniverseReplicationInfoForProducer(
       const std::string& producer_id,
       const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses,
-      const google::protobuf::RepeatedPtrField<std::string>& table_ids);
+      const google::protobuf::RepeatedPtrField<std::string>& table_ids,
+      bool transactional);
 
   void ProcessCDCParentTabletDeletionPeriodically();
 
