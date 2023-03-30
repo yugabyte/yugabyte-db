@@ -293,7 +293,7 @@ The output would be similar to the following:
                 "level": "info",
                 "value": 2048
             },
-…
+...
 ```
 
 {{< note title="Note" >}}
@@ -407,7 +407,7 @@ If the YugabyteDB pods of your universe are crashing, you can debug them with th
 
 ### Collect core dumps in Kubernetes environments
 
-When dealing with Kubernetes-based installations of YugabyteDB Anywhere, you might need to retrieve core dump files in case of a crash within the Kubernetes pod. For more information, see [Specify ulimit and remember the location of core dumps](../../install-yugabyte-platform/prerequisites#specify-ulimit-and-remember-the-location-of-core-dumps).
+When dealing with Kubernetes-based installations of YugabyteDB Anywhere, you might need to retrieve core dump files in case of a crash within the Kubernetes pod. For more information, see [Specify ulimit and remember the location of core dumps](../../install-yugabyte-platform/prepare-environment/kubernetes/#specify-ulimit-and-remember-the-location-of-core-dumps).
 
 The process of collecting core dumps depends on the value of the sysctl `kernel.core_pattern`, which you can inspect within a Kubernetes pod or node by executing the following command:
 
@@ -435,17 +435,17 @@ The value of `core_pattern` can be a literal path or it can contain a pipe symbo
 
 ### Use debug hooks with YugabyteDB in Kubernetes
 
-You can add your own commands to pre and post debug hooks to troubleshoot crashing YB-Master or YB-TServer pods. These commands are run before the database process starts and after the database process terminates or crashes.
+You can add your own commands to pre- and post-debug hooks to troubleshoot crashing YB-Master or YB-TServer pods. These commands are run before the database process starts and after the database process terminates or crashes.
 
-For example, to modify the debug hooks of a YB-Master, you will run following commands:
+For example, to modify the debug hooks of a YB-Master, run following command:
 
 ```sh
 kubectl edit configmap -n <namespace> ybuni1-asia-south1-a-lbrl-master-hooks
 ```
 
-This will open the configmap YAML in your editor.
+This opens the configmap YAML in your editor.
 
-To add multiple commands to pre hook of `yb-master-0`, you can modify the `yb-master-0-pre_debug_hook.sh` key as follows:
+To add multiple commands to the pre-debug hook of `yb-master-0`, you can modify the `yb-master-0-pre_debug_hook.sh` key as follows:
 
 ```yaml
 apiVersion: v1
@@ -463,7 +463,7 @@ data:
   yb-master-1-pre_debug_hook.sh: 'echo ''hello-from-pre'' '
 ```
 
-Once you save the file, the updated commands will be executed on the next restart of `yb-master-0`.
+After you save the file, the updated commands will be executed on the next restart of `yb-master-0`.
 
 You can run the following command to check the output of your debug hook:
 
@@ -474,7 +474,7 @@ kubectl logs -n <namespace> ybuni1-asia-south1-a-lbrl-yb-master-0 -c yb-master
 Expect an output similar to the following:
 
 ```output
-…
+...
 2023-03-29 06:40:09,553 [INFO] k8s_parent.py: Executing operation: ybuni1-asia-south1-a-lbrl-yb-master-0_pre_debug_hook filepath: /opt/debug_hooks_config/yb-master-0-pre_debug_hook.sh
 2023-03-29 06:45:09,627 [INFO] k8s_parent.py: Output from hook b'Running the pre hook\n44M\t/mnt/disk0/yb-data/\n'
 ```
