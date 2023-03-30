@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB returns different [error codes](../transactions-errorcodes-ysql) for the various scenarios that go wrong during transaction processing. It is important for applications to be designed to handle various error scenarios correctly so as to be highly available and so that users aren't impacted. Although most errors are common across multiple isolation levels, some errors are very specific to certain [transaction isolation levels](../../../../explore/transactions/isolation-levels/).
+YugabyteDB returns different [error codes](../transactions-errorcodes-ysql) for the various scenarios that go wrong during transaction processing. Applications need to be designed to handle these scenarios correctly to be highly available, so that users aren't impacted. Although most errors are common across multiple isolation levels, some errors are very specific to certain [transaction isolation levels](../../../../explore/transactions/isolation-levels/).
 
 In general, the error codes can be classified into the following three types:
 
