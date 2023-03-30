@@ -606,7 +606,7 @@ class LibraryPackager:
         with open(post_install_path, 'w') as post_install_script_output:
             post_install_script_output.write(new_post_install_script)
 
-    def post_process_distribution(self, build_target: str) -> None:
+    def postprocess_distribution(self, build_target: str) -> None:
         """
         build_target is different from self.dest_dir because this function is invoked after
         PostgreSQL files are copied to the second packaging directory. Ideally there should only

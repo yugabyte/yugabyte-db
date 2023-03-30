@@ -20,7 +20,9 @@ from yb.command_util import run_program, mkdir_p, copy_deep
 from yb.common_util import (
     get_thirdparty_dir,
     get_compiler_type_from_build_root,
+    YB_SRC_ROOT,
 )
+from yb.optional_components import OptionalComponents
 
 from typing import Dict, Any, Optional, cast, List
 
@@ -29,32 +31,62 @@ RELEASE_VERSION_FILE = "version.txt"
 THIRDPARTY_PREFIX_RE = re.compile('^thirdparty/(.*)$')
 
 
+def read_release_manifest(package_name: str) -> Dict[str, Any]:
+    """
+    Reads the release manifest file and returns the top-level section corresponding to the given
+    package name, such as "yugabyte" or "yugabyte-client". If the given top-level section is not
+    present, throws an exception.
+    """
+    with open(os.path.join(YB_SRC_ROOT, RELEASE_MANIFEST_NAME)) as release_manifest_file:
+        release_manifest = json.load(release_manifest_file)[package_name]
+    assert release_manifest is not None, \
+        'Unable to read {0} file'.format(RELEASE_MANIFEST_NAME)
+    return release_manifest
+
+
+def filter_bin_items(
+        bin_items: List[str],
+        optional_components: OptionalComponents) -> List[str]:
+    """
+    Filter the given list of items from the "bin" directory of the release manifest based on the
+    given set of enabled optional components.
+    """
+    # We remove some items in the 'bin' directory depending on what components are built or not.
+    bin_items_to_remove = []
+    if not optional_components.yugabyted_ui_enabled:
+        bin_items_to_remove.append('yugabyted-ui')
+
+    if not optional_components.odyssey_enabled:
+        bin_items_to_remove.append('odyssey')
+
+    return [
+        item for item in bin_items
+        if os.path.basename(item) not in bin_items_to_remove
+    ]
+
+
 class ReleaseUtil:
     """Packages a YugaByte package with the appropriate file naming schema."""
     release_manifest: Dict[str, Any]
     base_version: str
 
-    repository: str
     build_type: str
     distribution_path: str
     force: bool
     commit: str
     build_root: str
     package_name: str
-    skip_yugabyted_ui: bool
 
     def __init__(
             self,
-            repository: str,
             build_type: str,
             distribution_path: str,
             force: bool,
             commit: Optional[str],
             build_root: str,
             package_name: str,
-            skip_yugabyted_ui: bool) -> None:
+            optional_components: OptionalComponents) -> None:
         """
-        :param repository: the path to YugabyteDB repository (also known as YB_SRC_ROOT).
         :param build_type: build type such as "release".
         :param distribution_path: the directory where to place the resulting archive.
         :param force: whether to skip the prompt in case there are local uncommitted changes.
@@ -63,38 +95,34 @@ class ReleaseUtil:
         :param package_name: the name of the top-level section of yb_release_manifest.json, such
                              as "yugabyte" or "yugabyte-client", specifying the set of files to
                              include.
-        :param skip_yugabyted_ui: whether to skip files related to yugabyted UI
+        :param optional_components: specifies which optional components to include in the release
+                                    archive (e.g. yugabyted UI or Odyssey PostgreSQL connection
+                                    pooler).
         """
-        self.repo = repository
         self.build_type = build_type
-        self.build_path = os.path.join(self.repo, 'build')
+        self.build_path = os.path.join(YB_SRC_ROOT, 'build')
         self.distribution_path = distribution_path
         self.force = force
         self.commit = commit or ReleaseUtil.get_head_commit_hash()
         self.package_name = package_name
 
         base_version = None
-        with open(os.path.join(self.repo, RELEASE_VERSION_FILE)) as version_file:
+        with open(os.path.join(YB_SRC_ROOT, RELEASE_VERSION_FILE)) as version_file:
             # Remove any build number in the version.txt.
             base_version = version_file.read().split("-")[0]
         assert base_version is not None, \
             'Unable to read {0} file'.format(RELEASE_VERSION_FILE)
         self.base_version = base_version
 
-        with open(os.path.join(self.repo, RELEASE_MANIFEST_NAME)) as release_manifest_file:
-            self.release_manifest = json.load(release_manifest_file)[package_name]
-        assert self.release_manifest is not None, \
-            'Unable to read {0} file'.format(RELEASE_MANIFEST_NAME)
+        self.release_manifest = read_release_manifest(package_name)
+
         self.build_root = build_root
-        pom_file = os.path.join(self.repo, 'java', 'pom.xml')
+        pom_file = os.path.join(YB_SRC_ROOT, 'java', 'pom.xml')
         self.java_project_version = minidom.parse(pom_file).getElementsByTagName(
             'version')[0].firstChild.nodeValue
         logging.info("Java project version from pom.xml: {}".format(self.java_project_version))
-        if skip_yugabyted_ui:
-            self.release_manifest['bin'] = [
-                item for item in self.release_manifest['bin']
-                if os.path.basename(item) != 'yugabyted-ui'
-            ]
+        self.release_manifest['bin'] = filter_bin_items(
+            self.release_manifest['bin'], optional_components)
         self._rewrite_manifest()
 
     def get_release_manifest(self) -> Dict[str, Any]:
@@ -146,7 +174,7 @@ class ReleaseUtil:
         If path is relative treat it as a path within repo and make it absolute.
         """
         if not path.startswith('/'):
-            path = os.path.join(self.repo, path)
+            path = os.path.join(YB_SRC_ROOT, path)
         return path
 
     def create_distribution(self, distribution_dir: str) -> None:

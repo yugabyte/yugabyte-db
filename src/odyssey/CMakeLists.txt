@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.10)
 
 project(odyssey C)
 
+add_compile_options(${OD_EXTRA_COMPILER_FLAGS})
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OD_EXTRA_EXE_LINKER_FLAGS}")
+
+# End of YugabyteDB changes
+
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH}
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
@@ -14,7 +19,7 @@ if ("${OD_VERSION_GIT}" STREQUAL "")
                     RESULT_VARIABLE OD_VERSION_GIT_RESULT
                     OUTPUT_STRIP_TRAILING_WHITESPACE
                     ERROR_QUIET)
-    
+
     if(NOT "${OD_VERSION_GIT_RESULT}" STREQUAL "0")
         add_definitions(-DOD_VERSION_GIT="unknown")
     else()
@@ -52,19 +57,20 @@ execute_process(COMMAND ${CMAKE_C_COMPILER} --version
 set(OD_DEVEL_LVL -1)
 
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "")
-        set(CMAKE_BUILD_TYPE "Debug")
+        set(CMAKE_BUILD_TYPE "DEBUG")
         set(OD_DEVEL_LVL 1)
 endif()
-if ("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
-        set(CMAKE_C_FLAGS "-std=${CLANGCOMPILERSTANDART} -pedantic -Wall -Wextra -Wstrict-aliasing -g -O2 -pthread -D_GNU_SOURCE")
+string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE)
+if ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=${CLANGCOMPILERSTANDART} -pedantic -Wall -Wextra -Wstrict-aliasing -g -O2 -pthread -D_GNU_SOURCE")
         set(OD_DEVEL_LVL -1)
-elseif("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
-        set(CMAKE_C_FLAGS "-std=${CLANGCOMPILERSTANDART} -pedantic -Wall -Wextra -Wstrict-aliasing -g -O0 -pthread -D_GNU_SOURCE -DLDAP_DBG")
+elseif("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=${CLANGCOMPILERSTANDART} -pedantic -Wall -Wextra -Wstrict-aliasing -g -O0 -pthread -D_GNU_SOURCE -DLDAP_DBG")
         set(OD_DEVEL_LVL 1)
 elseif("${CMAKE_BUILD_TYPE}" STREQUAL "ASAN")
-        set(CMAKE_C_FLAGS "-std=${CLANGCOMPILERSTANDART} -g -fsanitize=address,undefined -fno-sanitize-recover=all -pedantic -Wall -Wextra -Wstrict-aliasing -g -O0 -pthread -D_GNU_SOURCE")
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=${CLANGCOMPILERSTANDART} -g -fsanitize=address,undefined -fno-sanitize-recover=all -pedantic -Wall -Wextra -Wstrict-aliasing -g -O0 -pthread -D_GNU_SOURCE")
 elseif("${CMAKE_BUILD_TYPE}" STREQUAL "TSAN")
-        set(CMAKE_C_FLAGS "-std=${CLANGCOMPILERSTANDART} -g -fsanitize=thread -fno-sanitize-recover=all -pedantic -Wall -Wextra -Wstrict-aliasing -g -O0 -pthread -D_GNU_SOURCE")
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=${CLANGCOMPILERSTANDART} -g -fsanitize=thread -fno-sanitize-recover=all -pedantic -Wall -Wextra -Wstrict-aliasing -g -O0 -pthread -D_GNU_SOURCE")
 endif()
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${CC_FLAGS}")
@@ -85,7 +91,9 @@ if (BUILD_DEBIAN)
 endif()
 
 # postgresql
-find_package(PostgreSQL REQUIRED)
+if("${POSTGRESQL_LIBRARY}" STREQUAL "")
+    find_package(PostgreSQL REQUIRED)
+endif()
 
 set(od_libraries ${od_libraries} ${POSTGRESQL_LIBRARY} ${POSTGRESQL_LIBPGPORT} ${PQ_LIBRARY})
 include_directories(${POSTGRESQL_INCLUDE_DIR})
@@ -106,21 +114,24 @@ elseif ("${OPENSSL_LIBRARIES}" STREQUAL "")
 endif ()
 
 # use PAM
-find_package(PAM)
-if (PAM_FOUND)
-    set(od_pam ${PAM_LIBRARY})
-    include_directories(${PAM_INCLUDE_DIR})
+if(NOT OD_SKIP_PAM)
+    if("${PAM_LIBRARY}" STREQUAL "")
+        find_package(PAM)
+    endif()
+    if (PAM_FOUND)
+        set(od_pam ${PAM_LIBRARY})
+        include_directories(${PAM_INCLUDE_DIR})
+    endif()
+    set(od_libraries ${od_libraries} ${od_pam})
 endif()
 
-set(od_libraries ${od_libraries} ${od_pam})
-
-# use LDAP
-find_package(LDAP)
+if("${LDAP_LIBRARY}" STREQUAL "")
+    find_package(LDAP)
+endif()
 if (LDAP_FOUND)
     set(od_ldap ${LDAP_LIBRARY})
     include_directories(${LDAP_INCLUDE_DIR})
 endif()
-
 set(od_libraries ${od_libraries} ${od_ldap})
 
 # use Prom
@@ -148,8 +159,8 @@ if (USE_SCRAM)
 endif()
 
 #compression
-option(BUILD_COMPRESSION "Build with compression support" OFF)
-if(BUILD_COMPRESSION)
+option(OD_BUILD_COMPRESSION "Build with compression support" OFF)
+if(OD_BUILD_COMPRESSION)
     set(compression_libraries "")
     add_definitions(-DMM_BUILD_COMPRESSION)
     # use zstd
@@ -170,22 +181,25 @@ if(BUILD_COMPRESSION)
 endif()
 
 # machinarium
-include(BuildMachinarium)
-build_machinarium()
+if("${MACHINARIUM_LIBRARIES}" STREQUAL "")
+    include(BuildMachinarium)
+    build_machinarium()
+endif()
 set(od_libraries ${od_libraries} ${MACHINARIUM_LIBRARIES} ${od_ssl} "dl")
 include_directories(${MACHINARIUM_INCLUDE_DIRS})
 
 # kiwi
-include(BuildKiwi)
-build_kiwi()
+if("${KIWI_LIBRARIES}" STREQUAL "")
+    include(BuildKiwi)
+    build_kiwi()
+endif()
 set(od_libraries ${od_libraries} ${KIWI_LIBRARIES})
 include_directories(${KIWI_INCLUDE_DIRS})
-
 
 message(STATUS "")
 message(STATUS "Odyssey (version: ${OD_VERSION_NUMBER}-${OD_VERSION_GIT}-${OD_VERSION_BUILD})")
 message(STATUS "")
-message(STATUS "using compiler:         ${CMAKE_C_COMPILER} version 
+message(STATUS "using compiler:         ${CMAKE_C_COMPILER} version
 ${OD_COMPILER_VERSION}")
 message(STATUS "c lang standart:        ${CLANGCOMPILERSTANDART}")
 message(STATUS "                                                                          ")
@@ -212,7 +226,7 @@ endif()
 
 message(STATUS "USE_SCRAM:              ${USE_SCRAM}")
 
-    
+
 message(STATUS "BUILD_COMPRESSION:      ${BUILD_COMPRESSION}")
 if (BUILD_COMPRESSION)
     message(STATUS "ZSTD_INCLUDE_DIR:       ${ZSTD_INCLUDE_DIR}")

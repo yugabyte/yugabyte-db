@@ -441,5 +441,5 @@ class MacLibraryPackager:
             logging.error('Unable to restore file %s mode', filename)
             raise
 
-    def post_process_distribution(self, build_target: str) -> None:
+    def postprocess_distribution(self, build_target: str) -> None:
         pass

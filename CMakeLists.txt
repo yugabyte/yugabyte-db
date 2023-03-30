@@ -115,6 +115,12 @@ if(NOT DEFINED YB_BUILD_FUZZ_TARGETS)
   message("Will not build fuzz targets by default")
   set(YB_BUILD_FUZZ_TARGETS OFF)
 endif()
+if(NOT DEFINED YB_BUILD_ODYSSEY)
+  message("Will not build Odyssey by default")
+  set(YB_BUILD_ODYSSEY OFF)
+  # Eventually we should build Odyssey by default on Linux but not on macOS.
+endif()
+
 yb_put_string_vars_into_cache(YB_BUILD_FUZZ_TARGETS)
 message("YB_BUILD_FUZZ_TARGETS=${YB_BUILD_FUZZ_TARGETS}")
 
@@ -784,6 +790,12 @@ set(LIBPQ_SHARED_LIB
 set(YB_PGBACKEND_SHARED_LIB
     "${YB_BUILD_ROOT}/postgres/lib/libyb_pgbackend${YB_SHARED_LIBRARY_SUFFIX}")
 
+# Also define full paths to PostgreSQL static libraries that are linked into Odyssey.
+set(PG_COMMON_STATIC_LIB
+    "${YB_BUILD_ROOT}/postgres_build/src/common/libpgcommon.a")
+set(PG_PORT_STATIC_LIB
+    "${YB_BUILD_ROOT}/postgres_build/src/port/libpgport.a")
+
 # -------------------------------------------------------------------------------------------------
 # Subdirectories
 # -------------------------------------------------------------------------------------------------
@@ -795,29 +807,39 @@ include_directories(${YB_BUILD_ROOT}/postgres/include)
 add_postgres_shared_library(pq "${LIBPQ_SHARED_LIB}")
 add_postgres_shared_library(yb_pgbackend "${YB_PGBACKEND_SHARED_LIB}")
 
-add_subdirectory(src/yb/rocksdb)
-add_subdirectory(src/yb/gutil)
-add_subdirectory(src/yb/util)
-add_subdirectory(src/yb/common)
-add_subdirectory(src/yb/encryption)
-add_subdirectory(src/yb/gen_yrpc)
-add_subdirectory(src/yb/fs)
-add_subdirectory(src/yb/server)
-add_subdirectory(src/yb/tablet)
-add_subdirectory(src/yb/bfcommon)
-add_subdirectory(src/yb/bfql)
-add_subdirectory(src/yb/bfpg)
-add_subdirectory(src/yb/rpc)
-add_subdirectory(src/yb/tserver)
-add_subdirectory(src/yb/consensus)
-add_subdirectory(src/yb/master)
-add_subdirectory(src/yb/client)
-add_subdirectory(src/yb/integration-tests)
-add_subdirectory(src/yb/tools)
-add_subdirectory(src/yb/rocksutil)
-add_subdirectory(src/yb/docdb)
-add_subdirectory(src/yb/yql)
-add_subdirectory(src/yb/cdc)
+set(YB_SUBDIR_NAMES
+    bfcommon
+    bfpg
+    bfql
+    cdc
+    client
+    common
+    consensus
+    docdb
+    encryption
+    fs
+    gen_yrpc
+    gutil
+    integration-tests
+    master
+    rocksdb
+    rocksutil
+    rpc
+    server
+    tablet
+    tools
+    tserver
+    util
+    yql
+   )
+
+foreach(subdir_name IN LISTS YB_SUBDIR_NAMES)
+  add_subdirectory("src/yb/${subdir_name}")
+endforeach()
+
+if(YB_BUILD_ODYSSEY)
+  yb_setup_odyssey()
+endif()
 
 # Note "yb-server", without the "t" -- this is not a typo. "yb-server" is the unified LTO executable
 # that contains the functionality of both yb-master and yb-tserver, and yb-master/yb-tserver are

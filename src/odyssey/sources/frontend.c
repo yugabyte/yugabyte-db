@@ -634,7 +634,7 @@ static od_frontend_status_t od_frontend_local(od_client_t *client)
 		for (;;) {
 			/* local server is alwys null */
 			if (od_should_drop_connection(client, NULL)) {
-				/* Odyssey is in a state of completion, we done 
+				/* Odyssey is in a state of completion, we done
                          * the last client's request and now we can drop the connection  */
 
 				/* a sort of EAGAIN */
@@ -993,7 +993,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			 "%s", kiwi_fe_type_to_string(type));
 
 	od_frontend_status_t retstatus = OD_OK;
-	machine_msg_t *msg;
+	machine_msg_t *msg = NULL;
 	bool forwarded = 0;
 	switch (type) {
 	case KIWI_FE_COPY_DONE:
@@ -1194,7 +1194,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 					/* redeploy
 					* previous
-					* client allocated prepared stmt with same name 
+					* client allocated prepared stmt with same name
 					*/
 					char buf[OD_HASH_LEN];
 					od_snprintf(buf, OD_HASH_LEN, "%08x",
