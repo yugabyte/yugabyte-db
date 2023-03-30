@@ -55,6 +55,7 @@ DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_uint64(refresh_waiter_timeout_ms);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_pack_full_row_update);
+DECLARE_bool(TEST_drop_participant_signal);
 
 using namespace std::literals;
 
@@ -76,7 +77,7 @@ class PgWaitQueuesTest : public PgMiniTestBase {
     PgMiniTestBase::SetUp();
   }
 
-  CoarseTimePoint GetDeadlockDetectedDeadline() {
+  CoarseTimePoint GetDeadlockDetectedDeadline() const {
     return CoarseMonoClock::Now() + (kClientStatementTimeoutSeconds * 1s) / 2;
   }
 
@@ -91,6 +92,8 @@ class PgWaitQueuesTest : public PgMiniTestBase {
     }, 1s * kTimeMultiplier, "Wait for blocking request to be submitted to the query layer"));
     return status;
   }
+
+  void TestDeadlockWithWrites() const;
 };
 
 auto GetBlockerIdx(auto idx, auto cycle_length) {
@@ -162,7 +165,7 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlock)) {
   EXPECT_LT(succeeded_commit, kClients);
 }
 
-TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockWithWrites)) {
+void PgWaitQueuesTest::TestDeadlockWithWrites() const {
   auto setup_conn = ASSERT_RESULT(Connect());
   // This test generates deadlocks of cycle-length 3, involving client 0-1-2 in a group, 3-4-5 in a
   // group, etc. Setting this to 11 creates 3 deadlocks, and one pair of txn's which block but do
@@ -225,6 +228,23 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockWithWrites)) {
   // EXPECT_LT(succeeded_second_update, kClients);
   EXPECT_LE(succeeded_commit, succeeded_second_update);
   EXPECT_LT(succeeded_commit, kClients);
+}
+
+TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockWithWrites)) {
+  TestDeadlockWithWrites();
+}
+
+class PgWaitQueuesDropParticipantSignal : public PgWaitQueuesTest {
+ protected:
+
+  void SetUp() override {
+    FLAGS_TEST_drop_participant_signal = true;
+    PgWaitQueuesTest::SetUp();
+  }
+};
+
+TEST_F(PgWaitQueuesDropParticipantSignal, YB_DISABLE_TEST_IN_TSAN(FindAbortStatusInTxnPoll)) {
+  TestDeadlockWithWrites();
 }
 
 // TODO(wait-queues): Once we have active unblocking of deadlocked waiters, re-enable this test.
