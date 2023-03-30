@@ -11,12 +11,11 @@ menu:
 type: docs
 ---
 
-As a versatile distributed database, YugabyteDB can be deployed in a variety of configurations for a variety of use cases. Let's see some best practices and tips that can hugely improve the performance of a YugabyteDB cluster.
+As a versatile distributed database, YugabyteDB can be deployed in a variety of configurations for a variety of use cases. The following best practices and tips can significantly improve the performance of a YugabyteDB cluster.
 
 {{<note title="Setup">}}
 To run the following examples, first set up a cluster and database schema as described in [Prerequisites](../transactions-high-availability-ysql#prerequisites).
 {{</note>}}
-
 
 ## Fast single-row transactions
 
@@ -32,16 +31,15 @@ SELECT v FROM txndemo WHERE k=1;
 COMMIT;
 ```
 
-In this formulation, when the rows are locked in the first [SELECT](../../../../api/ysql/the-sql-language/statements/cmd_select)  statement, YugabyteDB does not know what rows are going to be modified in subsequent commands. As a result, it considers the transaction to be distributed.
+In this formulation, when the rows are locked in the first [SELECT](../../../../api/ysql/the-sql-language/statements/dml_select)  statement, YugabyteDB does not know what rows are going to be modified in subsequent commands. As a result, it considers the transaction to be distributed.
 
-However, if you write it as a single statement, YugabyteDB can confidently treat it as a single-row transaction. To update a row and return its new value using a single statement, use the [RETURNING](../../../../api/ysql/the-sql-language/statements/cmd_update)  clause as follows:
+However, if you write it as a single statement, YugabyteDB can confidently treat it as a single-row transaction. To update a row and return its new value using a single statement, use the [RETURNING](../../../../api/ysql/the-sql-language/statements/dml_update)  clause as follows:
 
 ```plpgsql
 UPDATE txndemo SET v = v + 3 WHERE k=1 RETURNING v;
 ```
 
 YugabyteDB treats this as a single-row transaction, which executes much faster. This also saves four round trips and immediately fetches the updated value.
-
 
 ## Minimize conflict errors
 
@@ -55,7 +53,7 @@ INSERT INTO txndemo VALUES (1,10) DO NOTHING;
 
 With [DO NOTHING](../../../../api/ysql/the-sql-language/statements/dml_insert/#conflict-action-1), the server does not throw an error, resulting in one less round trip between the application and the server.
 
-You can also simulate an `upsert` by using `DO UPDATE SET` instead of doing a [INSERT](../../../../api/ysql/the-sql-language/statements/cmd_insert) , fail, and [UPDATE](../../../../api/ysql/the-sql-language/statements/cmd_update) , as follows:
+You can also simulate an `upsert` by using `DO UPDATE SET` instead of doing an [INSERT](../../../../api/ysql/the-sql-language/statements/dml_insert), fail, and [UPDATE](../../../../api/ysql/the-sql-language/statements/dml_update), as follows:
 
 ```plpgsql
 INSERT INTO txndemo VALUES (1,10) 
@@ -63,7 +61,6 @@ INSERT INTO txndemo VALUES (1,10)
 ```
 
 Now, the server automatically updates the row when it fails to insert. Again, this results in one less round trip between the application and the server.
-
 
 ## Avoid long waits
 
@@ -76,7 +73,6 @@ SET statement_timeout = '10s';
 ```
 
 This ensures that the transaction would not be blocked for more than 10 seconds.
-
 
 ## Handle idle applications
 
@@ -106,7 +102,6 @@ SHOW idle_in_transaction_session_timeout;
 
 Setting this timeout can avoid scenarios where applications acquire locks and block other transactions unintentionally for a long time.
 
-
 ## Long scans and batch jobs
 
 When a transaction is in [SERIALIZABLE](../../../../explore/transactions/isolation-levels/#serializable-isolation) isolation level and [READ ONLY](../../../../api/ysql/the-sql-language/statements/txn_set/#read-only-mode) mode, if the transaction property [DEFERRABLE](../../../../api/ysql/the-sql-language/statements/txn_set/#deferrable-mode-1) is set, then that transaction executes with much lower overhead and is never canceled because of a serialization failure. This can be used for batch or long-running jobs, which need a consistent snapshot of the database without interfering or being interfered with by other transactions. For example:
@@ -116,7 +111,6 @@ BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE;
 SELECT * FROM very_large_table;
 COMMIT;
 ```
-
 
 ## Fail-on-conflict concurrency control
 
@@ -141,10 +135,9 @@ SET yb_transaction_priority_upper_bound=1.0;
 
 This ensures that the priority assigned to your transaction is in the range `[0.9-1.0]` and thereby making it a high priority transaction.
 
+## Minimize round trips using stored procedures
 
-## Stored Procedures : Minimize round trips
-
-A transaction block executed from the client that has multiple statements would involve multiple round trips between the client and the server. Consider the following transaction:
+A transaction block executed from the client that has multiple statements requires multiple round trips between the client and the server. Consider the following transaction:
 
 ```plpgsql
 BEGIN TRANSACTION;
@@ -154,7 +147,7 @@ BEGIN TRANSACTION;
 COMMIT;
 ```
 
-This would entail `5` round trips between the application and server, which means `5` times the latency between the application and the server. This would be very detrimental even if the latency between them is low. These round trips could be avoided if these transactions are wrapped in a [stored procedure](../../../../api/ysql/the-sql-language/statements/ddl_create_function/). A stored procedure is executed in the server and can incorporate loops and error handling. Stored procedures can be invoked from the client in just one call as follows:
+This would entail five round trips between the application and server, which means five times the latency between the application and the server. This would be very detrimental even if the latency is low. These round trips can avoided if these transactions are wrapped in a [stored procedure](../../../../api/ysql/the-sql-language/statements/ddl_create_function/). A stored procedure is executed in the server and can incorporate loops and error handling. Stored procedures can be invoked from the client in just one call as follows:
 
 ```sql
 CALL stored_procedure_name(argument_list);
@@ -162,15 +155,13 @@ CALL stored_procedure_name(argument_list);
 
 Depending on the complexity of your transaction block, this can vastly improve the performance.
 
-
 ## Place leaders in one region
 
-In a [multi-region](../../../../explore/multi-region-deployments/) setup, a transaction would have to reach out to the tablet leaders spread across multiple regions. In this scenario, the transaction can incur high inter-regional latencies that could multiply with the number of statements that have to travel cross-region.
+In a [multi-region](../../../../explore/multi-region-deployments/) setup, a transaction has to reach out to the tablet leaders spread across multiple regions. In this scenario, the transaction can incur high inter-regional latencies that could multiply with the number of statements that have to travel cross-region.
 
 Cross-region trips can be avoided by placing all the tablet leaders in one region using the [set_preferred_zones](../../../../admin/yb-admin/#set-preferred-zones) command in [yb-admin](../../../../admin/yb-admin).
 
-You can also do this by [marking the zones as Preferred](../../../../yugabyte-platform/manage-deployments/edit-universe/) on the **Edit Universe** page in [YugabyteDB Anywhere](../../../../yugabyte-platform/), or [setting the region as preferred](../../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/#preferred-region) in YugabyteDB Managed.
-
+You can also do this by [marking the zones as Preferred](../../../../yugabyte-platform/manage-deployments/edit-universe/) on the **Edit Universe** page in YugabyteDB Anywhere, or [setting the region as preferred](../../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/#preferred-region) in YugabyteDB Managed.
 
 ## Read from followers
 
@@ -190,7 +181,7 @@ BEGIN TRANSACTION READ ONLY;
 COMMIT;
 ```
 
-This will read data from the closest follower or leader. As replicas may not be up-to-date with all updates, by design, this will return only stale data (default: 30s). This is the case even if the read goes to a leader. The staleness value can be changed using another setting like:
+This will read data from the closest follower or leader. As replicas may not be up-to-date with all updates, by design, this will return only stale data (default: 30s). This is the case even if the read goes to a leader. The staleness value can be changed using the `yb_follower_read_staleness_ms` setting as follows:
 
 ```plpgsql
 SET yb_follower_read_staleness_ms = 10000; -- 10s
@@ -199,7 +190,6 @@ SET yb_follower_read_staleness_ms = 10000; -- 10s
 {{<note title="Note">}}
 Follower reads only affects reads. All writes are still handled by the leader.
 {{</note>}}
-
 
 ## Learn more
 
