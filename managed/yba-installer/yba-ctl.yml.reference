@@ -133,6 +133,8 @@ postgres:
       password: ""
       host: ""
       port: 5432
+      pg_dump_path: ""
+      pg_restore_path: ""
 
 
 # Config parameters for Prometheus
