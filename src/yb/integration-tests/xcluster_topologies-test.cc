@@ -342,16 +342,14 @@ TEST_F(XClusterTopologiesTest, TestNToOneReplicationFails) {
     const std::string universe_id = Format("$0$1", kUniverseId, i);
     master::IsSetupUniverseReplicationDoneResponsePB setup_resp;
     master::GetUniverseReplicationResponsePB verify_resp;
-    ASSERT_OK(SetupUniverseReplication(
-        producer_cluster_mini_cluster, consumer_cluster(), consumer_client(), universe_id,
-        producer_tables_[producer_cluster_mini_cluster->GetClusterId()]));
-    ASSERT_OK(WaitForSetupUniverseReplication(
-        consumer_cluster(), consumer_client(), universe_id, &setup_resp));
-    // Only the first setup should pass, all others should fail.
     if (i == 0) {
-      ASSERT_OK(VerifyUniverseReplication(universe_id, &verify_resp));
+      ASSERT_OK(SetupUniverseReplication(
+          producer_cluster_mini_cluster, consumer_cluster(), consumer_client(), universe_id,
+          producer_tables_[producer_cluster_mini_cluster->GetClusterId()]));
     } else {
-      ASSERT_NOK(VerifyUniverseReplication(universe_id, &verify_resp));
+       ASSERT_NOK(SetupUniverseReplication(
+          producer_cluster_mini_cluster, consumer_cluster(), consumer_client(), universe_id,
+          producer_tables_[producer_cluster_mini_cluster->GetClusterId()]));
     }
   }
 }
