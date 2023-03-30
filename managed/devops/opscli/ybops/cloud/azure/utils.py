@@ -5,6 +5,7 @@
 # may obtain a copy of the License at
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+import time
 
 from azure.common.credentials import ServicePrincipalCredentials
 from azure.mgmt.network import NetworkManagementClient
@@ -525,18 +526,35 @@ class AzureCloudAdmin():
 
         nic_name = self.get_nic_name(vm_name)
         ip_name = self.get_public_ip_name(vm_name)
-        try:
-            nic_info = self.network_client.network_interfaces.get(RESOURCE_GROUP, nic_name)
-            if nic_info.tags and nic_info.tags.get('node-uuid') == node_uuid:
-                logging.info("[app] Deleted nic {}".format(nic_name))
-                nic_del = self.network_client.network_interfaces.delete(RESOURCE_GROUP, nic_name)
-                nic_del.wait()
-                logging.info("[app] Deleted nic {}".format(nic_name))
-        except CloudError as e:
-            if e.error and e.error.error == 'ResourceNotFound':
-                logging.info("[app] Resource nic {} is not found".format(nic_name))
-            else:
-                raise e
+
+        max_attempts = 10
+        sleep_sec = 60
+        for i in range(1, max_attempts + 1):
+            try:
+                nic_info = self.network_client.network_interfaces.get(RESOURCE_GROUP, nic_name)
+                if nic_info.tags and nic_info.tags.get('node-uuid') == node_uuid:
+                    logging.info("[app] Deleting nic {}".format(nic_name))
+                    nic_del = self.network_client.network_interfaces.delete(RESOURCE_GROUP,
+                                                                            nic_name)
+                    nic_del.wait()
+                    logging.info("[app] Deleted nic {}".format(nic_name))
+            except CloudError as e:
+                if e.error and e.error.error in ['ResourceNotFound', 'NotFound']:
+                    logging.info("[app] Resource nic {} is not found".format(nic_name))
+                    break
+                elif e.error and e.error.error == 'NicReservedForAnotherVm':
+                    # In case VM wasn't created, Azure reserves the NICs for the VMs
+                    # for 180 seconds and throws NicReservedForAnotherVm error code,
+                    # and suggests to retry after 180 seconds.
+                    if i < max_attempts:
+                        logging.info("[app] Resource NIC is {} reserved for another VM, waiting "
+                                     "for {} seconds before re-trying deletion of NIC (this was "
+                                     "attempt {} out of {}).".format(nic_name, sleep_sec, i,
+                                                                     max_attempts))
+                        time.sleep(sleep_sec)
+                else:
+                    raise e
+
         try:
             ip_addr = self.network_client.public_ip_addresses.get(RESOURCE_GROUP, ip_name)
             if ip_addr and ip_addr.tags and ip_addr.tags.get('node-uuid') == node_uuid:
