@@ -20,6 +20,8 @@ To request a free trial:
 1. [Log in](https://cloud.yugabyte.com/login).
 1. On the **Clusters** page, click **Add Cluster**.
 
+    This displays the **Create Cluster** wizard.
+
     ![Request a free trial](/images/yb-cloud/managed-trial.png)
 
 1. In the **Create Cluster** wizard, click **Request a Free Trial**.
@@ -30,9 +32,7 @@ To request a free trial:
 
 1. If you have a promo code, enter it and click **Start Free Trial** to start your trial right away.
 
-1. Otherwise, enter your contact details and click **Request Free Trial**.
-
-    The Yugabyte team will contact you within two business days. In the meantime, [create a Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/) to run a tutorial and [explore](../../explore/) YugabyteDB and distributed SQL.
+    Otherwise, enter your contact details and click **Request Free Trial**. The Yugabyte team will contact you within two business days. In the meantime, [create a Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/) to run a tutorial and [explore](../../explore/) YugabyteDB and distributed SQL.
 
 After the free trial begins, you can use your credits to create dedicated clusters in a [variety of topologies](../cloud-basics/create-clusters-topology/), including:
 
