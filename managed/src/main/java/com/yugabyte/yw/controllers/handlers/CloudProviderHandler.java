@@ -175,6 +175,11 @@ public class CloudProviderHandler {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Provider with the name %s already exists", providerName));
     }
+
+    if (providerCode.equals(Common.CloudType.gcp)) {
+      maybeUpdateGCPProject(reqProvider);
+    }
+
     // TODO: Remove this code once the validators are added for all cloud provider.
     CloudAPI cloudAPI = cloudAPIFactory.get(providerCode.toString());
     if (cloudAPI != null && !cloudAPI.isValidCreds(reqProvider, getFirstRegionCode(reqProvider))) {
@@ -1007,23 +1012,27 @@ public class CloudProviderHandler {
     return false;
   }
 
+  private void maybeUpdateGCPProject(Provider provider) {
+    GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
+
+    if (StringUtils.isBlank(gcpCloudInfo.getGceProject())) {
+      /**
+       * Preferences for GCP Project. 1. User provided project name. 2. `project_id` present in gcp
+       * credentials user provided. 3. Metadata query to fetch the same.
+       */
+      ObjectNode credentialJSON = (ObjectNode) gcpCloudInfo.getGceApplicationCredentials();
+      if (credentialJSON != null && credentialJSON.has("project_id")) {
+        gcpCloudInfo.setGceProject(credentialJSON.get("project_id").asText());
+      }
+    }
+  }
+
   private void maybeUpdateVPC(Provider provider) {
     switch (provider.getCloudCode()) {
       case gcp:
         GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
         if (gcpCloudInfo == null) {
           return;
-        }
-
-        if (StringUtils.isBlank(gcpCloudInfo.getGceProject())) {
-          /**
-           * Preferences for GCP Project. 1. User provided project name. 2. `project_id` present in
-           * gcp credentials user provided. 3. Metadata query to fetch the same.
-           */
-          ObjectNode credentialJSON = (ObjectNode) gcpCloudInfo.gceApplicationCredentials;
-          if (credentialJSON != null && credentialJSON.has("project_id")) {
-            gcpCloudInfo.setGceProject(credentialJSON.get("project_id").asText());
-          }
         }
 
         if (gcpCloudInfo.getUseHostVPC() != null && !gcpCloudInfo.getUseHostVPC()) {
@@ -1046,7 +1055,7 @@ public class CloudProviderHandler {
             gcpCloudInfo.setDestVpcId(network);
           }
           if (StringUtils.isBlank(gcpCloudInfo.getGceProject())) {
-            gcpCloudInfo.setGceProject(currentHostInfo.get("host_project").asText());
+            gcpCloudInfo.setGceProject(currentHostInfo.get("project").asText());
           }
         }
         break;

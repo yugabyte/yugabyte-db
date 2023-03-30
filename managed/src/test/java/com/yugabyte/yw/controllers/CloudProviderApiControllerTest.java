@@ -248,7 +248,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   @Test
   public void testCreateGCPProviderSomeRegionInput() {
     when(mockCloudQueryHelper.getCurrentHostInfo(eq(CloudType.gcp)))
-        .thenReturn(Json.newObject().put("network", "234234").put("host_project", "PROJ"));
+        .thenReturn(Json.newObject().put("network", "234234").put("project", "PROJ"));
     Provider provider = buildProviderReq("gcp", "Google");
     Region region = new Region();
     region.name = "region1";
@@ -263,7 +263,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   @Test
   public void testCreateGCPProviderHostVPC() {
     when(mockCloudQueryHelper.getCurrentHostInfo(eq(CloudType.gcp)))
-        .thenReturn(Json.newObject().put("network", "234234").put("host_project", "PROJ"));
+        .thenReturn(Json.newObject().put("network", "234234").put("project", "PROJ"));
     Provider provider = buildProviderReq("gcp", "Google");
     Map<String, String> reqConfig = new HashMap<>();
     reqConfig.put("use_host_vpc", "true");
@@ -280,7 +280,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   @Test
   public void testCreateGCPProviderCreateNewVPC() {
     when(mockCloudQueryHelper.getCurrentHostInfo(eq(CloudType.gcp)))
-        .thenReturn(Json.newObject().put("network", "234234").put("host_project", "PROJ"));
+        .thenReturn(Json.newObject().put("network", "234234").put("project", "PROJ"));
     Provider provider = buildProviderReq("gcp", "Google");
     Map<String, String> reqConfig = new HashMap<>();
     reqConfig.put("use_host_vpc", "false");
@@ -408,13 +408,13 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     Provider providerReq = buildProviderReq(code, providerName);
     Map<String, String> reqConfig = new HashMap<>();
     when(mockCloudQueryHelper.getCurrentHostInfo(eq(CloudType.gcp)))
-        .thenReturn(Json.newObject().put("network", "234234").put("host_project", "PROJ"));
+        .thenReturn(Json.newObject().put("network", "234234").put("project", "PROJ"));
     if (code.equals("gcp")) {
       // Note that we do not wrap the GCP config in API requests. Caller should do extracting
       // config file details and putting it in the config map
       reqConfig.put("use_host_credentials", "true");
       reqConfig.put("use_host_vpc", "true");
-      reqConfig.put("host_project_id", "project");
+      reqConfig.put("project_id", "project");
       reqConfig.put("config_file_path", "/tmp/credentials.json");
     } else if (code.equals("aws")) {
       reqConfig.put("AWS_ACCESS_KEY_ID", "bar");
@@ -443,7 +443,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     String region = "us-west1";
     String instanceTemplate = "test-template";
     when(mockCloudQueryHelper.getCurrentHostInfo(eq(CloudType.gcp)))
-        .thenReturn(Json.newObject().put("network", "234234").put("host_project", "PROJ"));
+        .thenReturn(Json.newObject().put("network", "234234").put("project", "PROJ"));
     Provider provider = buildProviderReq(code, code + "-Provider");
     Map<String, String> reqConfig = new HashMap<>();
     reqConfig.put("use_host_vpc", "true");
