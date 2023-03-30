@@ -8,9 +8,11 @@ services:
 
       play.crypto.secret="${PLATFORM_APP_SECRET}"
       play.http.errorHandler = "com.yugabyte.yw.common.YWErrorHandler"
-      play.server.https.keyStore.path = "{{ baseInstall }}/data/yba-installer/certs/server.ks"
-      play.server.https.keyStore.type = "JKS"
-      play.server.https.keyStore.password = "{{ yamlPath "platform.keyStorePassword" }}"
+      play.server.https.keyStore{
+          path = "{{ baseInstall }}/data/yba-installer/certs/server.pem"
+          type = "PEM"
+          password = "{{ yamlPath "platform.keyStorePassword" }}"
+      }
 
       play.i18n.langs = [ "en" ]
       pidfile.path = "/dev/null"
