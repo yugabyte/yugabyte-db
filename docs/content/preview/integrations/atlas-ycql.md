@@ -11,8 +11,6 @@ type: docs
 ---
 [Apache Atlas](https://atlas.apache.org/) is an enterprise-scale open data management service which provides governance for Hadoop and the entire enterprise data ecosystem.
 
-[Solr](https://solr.apache.org/) is an open-source indexing platform that serves as an indexing backend to run Apache Atlas.
-
 This tutorial describes how to set up Apache Atlas with YugabyteDB and run the quick start provided by the Atlas service.
 
 ## Prerequisites
@@ -21,7 +19,7 @@ To use [Apache Atlas](https://doc.akka.io/docs/akka-persistence-r2dbc/current/ov
 
 - YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../quick-start/).
 
-- [Apache Solr 5.5.1](https://solr.apache.org/guide/6_6/installing-solr.html) installed.
+- [Apache Solr 5.5.1](https://solr.apache.org/guide/6_6/installing-solr.html) installed. [Solr](https://solr.apache.org/) is an open-source indexing platform that serves as an indexing backend to run Apache Atlas.
 
 ## Build the Apache Atlas Project
 
