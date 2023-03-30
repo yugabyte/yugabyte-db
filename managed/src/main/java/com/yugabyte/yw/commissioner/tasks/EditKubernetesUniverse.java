@@ -536,6 +536,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               ? AvailabilityZone.getOrBadRequest(azUUID).code
               : null;
       Map<String, String> azConfig = entry.getValue();
+      PlacementInfo azPI = new PlacementInfo();
+      PlacementInfoUtil.addPlacementZone(azUUID, azPI);
       // Validate that the StorageClass has allowVolumeExpansion=true
       createTaskToValidateExpansion(
           universeName, azConfig, azName, isReadOnlyCluster, newNamingStyle, providerUUID);
@@ -543,7 +545,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       createSingleKubernetesExecutorTaskForServerType(
           universeName,
           KubernetesCommandExecutor.CommandType.STS_DELETE,
-          placement.placementInfo,
+          azPI,
           azName,
           masterAddresses,
           softwareVersion,
@@ -562,7 +564,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       createSingleKubernetesExecutorTaskForServerType(
           universeName,
           KubernetesCommandExecutor.CommandType.PVC_EXPAND_SIZE,
-          placement.placementInfo,
+          azPI,
           azName,
           masterAddresses,
           softwareVersion,
@@ -581,7 +583,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       createSingleKubernetesExecutorTaskForServerType(
           universeName,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
-          placement.placementInfo,
+          azPI,
           azName,
           masterAddresses,
           softwareVersion,
