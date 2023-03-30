@@ -572,6 +572,10 @@ components:
           type: integer
         fault_tolerance:
           $ref: '#/components/schemas/ClusterFaultTolerance'
+        replication_factor:
+          description: The replication factor applied on the cluster
+          title: Cluster Replication Factor
+          type: integer
         node_info:
           $ref: '#/components/schemas/ClusterNodeInfo'
         is_production:
@@ -585,6 +589,7 @@ components:
       required:
       - cluster_tier
       - fault_tolerance
+      - replication_factor
       - is_production
       - node_info
       - num_nodes
