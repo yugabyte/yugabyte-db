@@ -68,11 +68,11 @@ DEFINE_int64(memory_limit_hard_bytes, 0,
              "A value of 0 autosizes based on the total system memory. "
              "A value of -1 disables all memory limiting.");
 TAG_FLAG(memory_limit_hard_bytes, stable);
+
 DEFINE_double(default_memory_limit_to_ram_ratio, 0.85,
               "If memory_limit_hard_bytes is left unspecified, then it is "
               "set to default_memory_limit_to_ram_ratio * Available RAM.");
 TAG_FLAG(default_memory_limit_to_ram_ratio, advanced);
-TAG_FLAG(default_memory_limit_to_ram_ratio, hidden);
 
 DEFINE_int32(memory_limit_soft_percentage, 85,
              "Percentage of the hard memory limit that this daemon may "
