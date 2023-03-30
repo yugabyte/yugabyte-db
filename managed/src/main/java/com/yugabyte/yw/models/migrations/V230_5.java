@@ -23,6 +23,7 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.Table;
+import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -74,5 +75,6 @@ public class V230_5 {
     }
   }
 
+  @EqualsAndHashCode(callSuper = true)
   public static class TmpProviderDetails extends MigratedKeyInfoFields {}
 }
