@@ -4,20 +4,27 @@
 
 # Lists the targets that need to be built for a YB release.
 
-import json
-import os
 import re
+import argparse
+
+from yb.release_util import read_release_manifest, filter_bin_items
+from yb.optional_components import (
+    add_optional_component_arguments,
+    optional_components_from_args,
+)
+
+LATEST_BINARY_RE = re.compile(r'^[$]BUILD_ROOT/bin/([^/]+)$')
 
 
-YB_SRC_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LATEST_BINARY_RE = re.compile('^\$BUILD_ROOT/bin/([^/]+)$')
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    add_optional_component_arguments(parser)
+    args = parser.parse_args()
+    optional_components = optional_components_from_args(args)
 
-
-def main():
-    with open(os.path.join(YB_SRC_ROOT, 'yb_release_manifest.json')) as manifest_input_file:
-        release_manifest = json.loads(manifest_input_file.read())['yugabyte']
+    release_manifest = read_release_manifest('yugabyte')
     found_matches = False
-    for bin_path in release_manifest['bin']:
+    for bin_path in filter_bin_items(release_manifest['bin'], optional_components):
         match = LATEST_BINARY_RE.match(bin_path)
         if match:
             print(match.group(1))

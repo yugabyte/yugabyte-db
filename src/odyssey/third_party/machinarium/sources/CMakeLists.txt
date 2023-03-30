@@ -53,6 +53,8 @@ if (BUILD_SHARED)
     add_library(machine_library_shared SHARED ${machine_src})
     set_target_properties(machine_library_shared PROPERTIES OUTPUT_NAME ${machine_library})
     target_link_libraries(machine_library_shared ${machine_libraries} m rt)
-endif(BUILD_SHARED)
+endif()
+
+target_link_libraries(machine_library_static ${mm_libraries})
 
 configure_file("build.h.cmake" "build.h")

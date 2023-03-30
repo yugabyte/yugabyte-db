@@ -20,14 +20,14 @@ import logging
 import os
 import re
 import shutil
-import json
 import subprocess
 import shlex
 import io
 import platform
 import argparse
 import uuid
-import hashlib
+import pathlib
+import random
 
 import typing
 from typing import (
@@ -563,19 +563,28 @@ def assert_set_contains_all(a: Set[Any], b: Set[Any], message: str = '') -> None
             f"{set_to_str_one_element_per_line(d)}.")
 
 
-def create_temp_dir() -> str:
+def create_temp_dir(keep_tmp_dir: bool = False) -> str:
     """
-    Create a temporary directory and return its path.
-    The directory is automatically deleted at program exit.
+    Creates a temporary directory inside the "build" directory and returns its path.
+
+    :param keep_tmp_dir: If true, the temporary directory will not be deleted at exit.
     """
-    tmp_dir = os.path.join(YB_SRC_ROOT, "build", "yb_release_tmp_{}".format(str(uuid.uuid4())))
+
+    tmp_dir = os.path.join(
+        YB_SRC_ROOT,
+        "build",
+        "yb_tmp_{}_{}".format(
+            str(uuid.uuid4()),
+            ''.join([str(random.randint(0, 9)) for _ in range(16)])
+        )
+    )
     try:
-        os.mkdir(tmp_dir)
+        pathlib.Path(tmp_dir).mkdir(parents=True, exist_ok=True)
     except OSError as e:
         logging.error("Could not create directory at '{}'".format(tmp_dir))
         raise e
-
-    atexit.register(lambda: shutil.rmtree(tmp_dir))
+    if not keep_tmp_dir:
+        atexit.register(lambda: shutil.rmtree(tmp_dir))
     return tmp_dir
 
 

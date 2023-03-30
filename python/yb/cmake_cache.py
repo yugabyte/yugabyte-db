@@ -14,7 +14,7 @@
 import re
 import os
 
-from typing import Dict, Tuple, Any, Set, FrozenSet
+from typing import Dict, Tuple, Any, Set, FrozenSet, Optional
 
 
 CMAKE_CACHE_VAR_RE = re.compile(r'^([a-zA-Z_0-9-]+):([A-Z]+)=(.*)$')
@@ -26,6 +26,14 @@ CMAKE_FALSE_VALUES: FrozenSet[str] = frozenset(
     {'0', 'OFF', 'NO', 'FALSE', 'N', 'IGNORE', 'NOTFOUND', ''}
 )
 CMAKE_BOOLEAN_VALUES: FrozenSet[str] = CMAKE_TRUE_VALUES | CMAKE_FALSE_VALUES
+
+
+def convert_boolean_value(key: str, value: str) -> bool:
+    value_upper = value.upper()
+    assert value_upper in CMAKE_BOOLEAN_VALUES, \
+        "Unrecognized value of a CMake boolean variable %s: %s (allowed: %s)" % (
+            key, value, ', '.join(sorted(CMAKE_BOOLEAN_VALUES)))
+    return value_upper in CMAKE_TRUE_VALUES
 
 
 class CMakeCache:
@@ -57,13 +65,21 @@ class CMakeCache:
             value = value[1:-1]
 
         if type_name == 'BOOL':
-            value_upper = value.upper()
-            assert value_upper in CMAKE_BOOLEAN_VALUES, \
-                   "Unrecognized value of a CMake boolean variable %s: %s (allowed: %s)" % (
-                        key, value, ', '.join(sorted(CMAKE_BOOLEAN_VALUES)))
-            return value_upper in CMAKE_TRUE_VALUES
+            return convert_boolean_value(key, value)
 
         return value
+
+    def get_bool(self, key: str, default_value: Any = None) -> Optional[bool]:
+        """
+        Similar to get(), but always returns a boolean value for a boolean CMake variable, or
+        raises an exception if the variable is not a boolean.
+        """
+        value = self.get(key, default_value)
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return value
+        return convert_boolean_value(key, value)
 
     def get_or_raise(self, key: str) -> Any:
         value = self.get(key)

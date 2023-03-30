@@ -1,7 +1,10 @@
 
 configure_file("build.h.cmake" "build.h")
 
-set(od_binary ${CMAKE_PROJECT_NAME})
+if("${od_binary}" STREQUAL "")
+    set(od_binary {odyssey})
+endif()
+
 set(od_src
     daemon.c
     pid.c
@@ -27,6 +30,7 @@ set(od_src
     backend.c
     instance.c
     main.c
+    odyssey_main.cc
     misc.c
     tdigest.c
     module.c
@@ -75,12 +79,16 @@ include_directories("${PROJECT_BINARY_DIR}/sources")
 add_executable(${od_binary} ${od_src})
 add_dependencies(${od_binary} build_libs)
 
+if(NOT "${od_extra_dependencies}" STREQUAL "")
+    add_dependencies(${od_binary} ${od_extra_dependencies})
+endif()
+
 if(THREADS_HAVE_PTHREAD_ARG)
     set_property(TARGET ${od_binary} PROPERTY COMPILE_OPTIONS "-pthread")
     set_property(TARGET ${od_binary} PROPERTY INTERFACE_COMPILE_OPTIONS "-pthread")
 endif()
 
-target_link_libraries(${od_binary} ${od_libraries} ${CMAKE_THREAD_LIBS_INIT} m)
+target_link_libraries(${od_binary} ${od_libraries} ${OD_EXTRA_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} m)
 
 if (BUILD_COMPRESSION)
     target_link_libraries(${od_binary} ${compression_libraries})
