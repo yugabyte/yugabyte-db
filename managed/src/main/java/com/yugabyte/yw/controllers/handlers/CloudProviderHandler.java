@@ -877,6 +877,17 @@ public class CloudProviderHandler {
     if (validate) {
       providerValidator.validate(editProviderReq);
     }
+    if (!provider.name.equals(editProviderReq.name)) {
+      updatedProviderDetails = true;
+      List<Provider> providers =
+          Provider.getAll(customer.uuid, editProviderReq.name, provider.getCloudCode());
+      if (providers.size() > 0) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format("Provider with name %s already exists.", editProviderReq.name));
+      }
+      provider.name = editProviderReq.name;
+    }
     if (!provider.details.equals(editProviderReq.details)) {
       updatedProviderDetails = true;
       provider.details = editProviderReq.details;

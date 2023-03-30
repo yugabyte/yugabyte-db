@@ -1084,6 +1084,29 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertAuditEntry(1, customer.uuid);
   }
 
+  @Test
+  public void testProviderNameChange() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
+    Result providerRes = getProvider(p.uuid);
+    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    bodyJson.put("name", "AWS-Updated");
+    Result result = editProvider(bodyJson, p.uuid);
+    assertOk(result);
+    p.refresh();
+    assertEquals("AWS-Updated", p.name);
+  }
+
+  @Test
+  public void testProviderNameChangeWithExistingName() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
+    Provider p2 = ModelFactory.newProvider(customer, Common.CloudType.aws, "aws-2");
+    Result providerRes = getProvider(p.uuid);
+    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    bodyJson.put("name", "aws-2");
+    Result result = assertPlatformException(() -> editProvider(bodyJson, p.uuid));
+    assertBadRequest(result, "Provider with name aws-2 already exists.");
+  }
+
   private void prepareBootstrap(
       ObjectNode bodyJson, Provider provider, boolean expectCallToGetRegions) {
     UUID fakeTaskUUID = UUID.randomUUID();
