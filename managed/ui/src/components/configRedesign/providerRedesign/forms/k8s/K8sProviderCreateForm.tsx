@@ -13,7 +13,7 @@ import { toast } from 'react-toastify';
 import { yupResolver } from '@hookform/resolvers/yup';
 
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
-import { ASYNC_ERROR, KubernetesProviderType, ProviderCode } from '../../constants';
+import { KubernetesProviderType, ProviderCode } from '../../constants';
 import { CreateInfraProvider } from '../../InfraProvider';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
 import { FieldGroup } from '../components/FieldGroup';
@@ -31,7 +31,7 @@ import { YBButton } from '../../../../common/forms/fields';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { YBInputField } from '../../../../../redesign/components';
 import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
-import { addItem, deleteItem, editItem, handleFormServerError, readFileAsText } from '../utils';
+import { addItem, deleteItem, editItem, readFileAsText } from '../utils';
 
 import {
   K8sAvailabilityZoneMutation,
@@ -57,8 +57,6 @@ export interface K8sProviderCreateFormFieldValues {
   kubernetesServiceAccount: string;
   providerName: string;
   regions: K8sRegionField[];
-
-  [ASYNC_ERROR]: string;
 }
 
 export const DEFAULT_FORM_VALUES: Partial<K8sProviderCreateFormFieldValues> = {
@@ -188,11 +186,7 @@ export const K8sProviderCreateForm = ({
       toast.error('An error occured while reading the form input files.');
     }
     if (providerPayload) {
-      await createInfraProvider(providerPayload, {
-        mutateOptions: {
-          onError: (error) => handleFormServerError(error, ASYNC_ERROR, formMethods.setError)
-        }
-      });
+      await createInfraProvider(providerPayload);
     }
   };
 

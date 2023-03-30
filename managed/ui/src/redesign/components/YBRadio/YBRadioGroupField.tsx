@@ -1,5 +1,7 @@
 import React, { ReactElement } from 'react';
 import { FieldValues, useController, UseControllerProps } from 'react-hook-form';
+import { Box, FormHelperText } from '@material-ui/core';
+
 import { YBRadioGroup, YBRadioGroupProps } from './YBRadio';
 
 type YBRadioGroupFieldProps<T extends FieldValues> = UseControllerProps<T> &
@@ -19,7 +21,13 @@ export const YBRadioGroupField = <T extends FieldValues>({
   shouldUnregister,
   ...ybRadioGroupProps
 }: YBRadioGroupFieldProps<T>): ReactElement => {
-  const { field } = useController({ name, rules, defaultValue, control, shouldUnregister });
+  const { field, fieldState } = useController({
+    name,
+    rules,
+    defaultValue,
+    control,
+    shouldUnregister
+  });
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>, value: string): void => {
     field.onChange(event, value);
@@ -28,13 +36,18 @@ export const YBRadioGroupField = <T extends FieldValues>({
     }
   };
   return (
-    <YBRadioGroup
-      {...ybRadioGroupProps}
-      name={field.name}
-      value={field.value}
-      onBlur={field.onBlur}
-      onChange={handleChange}
-      innerRef={field.ref}
-    />
+    <Box display="flex" flexDirection="column" justifyContent="center">
+      <YBRadioGroup
+        {...ybRadioGroupProps}
+        name={field.name}
+        value={field.value}
+        onBlur={field.onBlur}
+        onChange={handleChange}
+        innerRef={field.ref}
+      />
+      {fieldState.error?.message && (
+        <FormHelperText error={true}>{fieldState.error?.message}</FormHelperText>
+      )}
+    </Box>
   );
 };

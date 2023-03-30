@@ -123,7 +123,7 @@ class ApiService {
     return Promise.reject('Failed to fetch universe: No universe UUID provided.');
   };
 
-  createProvider = (providerConfigMutation: YBProviderMutation, shouldValidate = false) => {
+  createProvider = (providerConfigMutation: YBProviderMutation, shouldValidate = true) => {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers`;
     return axios
       .post<YBPTask>(requestURL, providerConfigMutation, {
@@ -131,7 +131,22 @@ class ApiService {
           validate: shouldValidate
         }
       })
-      .then((resp) => resp.data);
+      .then((response) => response.data);
+  };
+
+  editProvider = (
+    providerUUID: string,
+    providerConfigMutation: YBProviderMutation,
+    shouldValidate = true
+  ) => {
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}/edit`;
+    return axios
+      .put<YBPTask>(requestURL, providerConfigMutation, {
+        params: {
+          validate: shouldValidate
+        }
+      })
+      .then((response) => response.data);
   };
 
   fetchProviderList = (): Promise<YBProvider[]> => {
