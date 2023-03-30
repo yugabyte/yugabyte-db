@@ -63,6 +63,7 @@ set(INTEGRATION_TESTS_SRCS
   xcluster_test_base.cc
   cdcsdk_test_base.cc
   xcluster_ysql_test_base.cc
+  xcluster_ycql_test_base.cc
 )
 
 ADD_YB_TEST_LIBRARY(integration-tests SRCS ${INTEGRATION_TESTS_SRCS})
@@ -194,6 +195,7 @@ ADD_YB_TEST(xcluster_ysql-test)
 ADD_YB_TEST(xcluster-test)
 ADD_YB_TEST(xcluster_safe_time-itest)
 ADD_YB_TEST(xcluster_dr-itest)
+ADD_YB_TEST(xcluster_topologies-test)
 ADD_YB_TEST(transaction-test)
 ADD_YB_TEST(encryption-test)
 ADD_YB_TEST(secure_connection_test)
