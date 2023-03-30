@@ -177,6 +177,8 @@ class PrimitiveValue {
 
   float GetFloat() const;
 
+  bool GetBoolean() const;
+
   const std::string& GetDecimal() const;
 
   const std::string& GetVarInt() const;
