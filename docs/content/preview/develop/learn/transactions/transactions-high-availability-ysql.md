@@ -1,6 +1,6 @@
 ---
 title: HA of Transactions in YSQL
-headerTitle: Design highly available applications in YSQL
+headerTitle: Build highly available applications in YSQL
 linkTitle: High availability
 description: Learn how to design highly available Transactions in YSQL.
 
@@ -65,10 +65,9 @@ Follow the [setup instructions](../../../../explore#tabs-00-00) to start a singl
     INSERT INTO txndemo VALUES (1,10),(2,10),(3,10),(4,10),(5,10);
     ```
 
-
 ## Automatic retries
 
-YugabyteDB will retry failed transactions automatically on the server side whenever possible without client intervention as per the [concurrency control policies](../../../../architecture/transactions/concurrency-control/#best-effort-internal-retries-for-first-statement-in-a-transaction). These happen even on single statements, which are implicitly considered as transactions. In [Read Committed](/#statement-timeout) isolation mode, the server retries indefinitely.
+YugabyteDB retries failed transactions automatically on the server side whenever possible without client intervention as per the [concurrency control policies](../../../../architecture/transactions/concurrency-control/#best-effort-internal-retries-for-first-statement-in-a-transaction). This is the case even for single statements, which are implicitly considered as transactions. In [Read Committed](/#statement-timeout) isolation mode, the server retries indefinitely.
 
 In some scenarios, a server-side retry is not suitable. For example, the retry limit has been reached or the transaction is not in a valid state. In these cases, it is the client's responsibility to retry the transaction at the application layer.
 
@@ -76,7 +75,7 @@ In some scenarios, a server-side retry is not suitable. For example, the retry l
 
 Most transaction errors that happen due to conflicts and deadlocks can be restarted by the client. The following scenarios describe the causes for failures, and the required methods to be handled by the applications.
 
-Execute the transaction in a `try..catch` block in a loop. When a re-tryable failure happens, issue [ROLLBACK](../../../../api/ysql/the-sql-language/statements/txn_rollback) and then retry the transaction. To avoid overloading the server and ending up in an indefinite loop, wait for a period of time between retires and limit the number of retries. The following illustrates a typical client-side retry implementation:
+Execute the transaction in a `try..catch` block in a loop. When a re-tryable failure happens, issue [ROLLBACK](../../../../api/ysql/the-sql-language/statements/txn_rollback) and then retry the transaction. To avoid overloading the server and ending up in an indefinite loop, wait for a period of time between retries and limit the number of retries. The following illustrates a typical client-side retry implementation:
 
 ```python
 max_attempts = 10   # max no.of retries
@@ -101,7 +100,7 @@ while attempt < max_attempts:
             sleep_time *= backoff
 ```
 
-If the `COMMIT` is successful, the program exits the loop. `attempt < max_attempts` limits the number of retries to `max_attempts`, and the amount of time the code waits before the next retry also increases with `sleep_time *= backoff`. Choose values as appropriate for your application. Let's look at how to handle some common transaction errors.
+If the `COMMIT` is successful, the program exits the loop. `attempt < max_attempts` limits the number of retries to `max_attempts`, and the amount of time the code waits before the next retry also increases with `sleep_time *= backoff`. Choose values as appropriate for your application.
 
 ##### 40001 - SerializationFailure
 
@@ -125,11 +124,11 @@ The correct way to handle this error is with a retry loop with exponential backo
 In read committed isolation level, as the server retries internally, the client does not need to worry about handling SerializationFailure. Only transactions operating in repeated read and serializable levels need to handle serialization failures.
 {{</tip>}}
 
-Another way would be to rollback to a checkpoint before the failed statement and proceed further as described in [Use savepoints](#use-savepoints).
+Another way to handle these failures is to rollback to a checkpoint before the failed statement and proceed further as described in [Savepoints](#savepoints).
 
 ## Savepoints
 
-[Savepoints](../../../../api/ysql/the-sql-language/statements/savepoint_create) are named checkpoints that are helpful to rollback just a few statements in case of error scenarios and proceed the transaction further rather than aborting the entire transaction.
+[Savepoints](../../../../api/ysql/the-sql-language/statements/savepoint_create) are named checkpoints that can be used to rollback just a few statements, and then proceed with the transaction, rather than aborting the entire transaction when there is an error.
 
 Consider the following example that inserts a row `[k=1, v=30]`:
 
@@ -160,7 +159,6 @@ except Exception as e:
 ```
 
 If the row `[k=1]` already exists in the table, the [INSERT](../../../../api/ysql/the-sql-language/statements/cmd_insert) would result in a UniqueViolation exception. Technically, the transaction would be in an error state and further statements would result in a [25P02: In failed SQL transaction](#25P02-in-failed-sql-transaction) error. You have to catch the exception and rollback. But instead of rolling back the entire transaction, you can rollback to the previously declared savepoint `before_insert`, and update the value of the row with `k=1`. Then you can continue with other statements in the transaction.
-
 
 ## Non-retriable errors
 
@@ -251,7 +249,7 @@ Time: 2.523 ms
 SELECT * from txndemo where k=1;
 ```
 
-```
+```output
 ERROR:  25P02: current transaction is aborted, commands ignored until end of transaction block
 Time: 17.074 ms
 ```
@@ -260,19 +258,19 @@ The only valid statements at this point would be [ROLLBACK](../../../../api/ysql
 
 ## Observability
 
-YugabyteDB exports a lot of [observable metrics](../../../../explore/observability) for you to see what is going in your cluster. These metrics can be exported to [Prometheus](../../../../explore/observability/prometheus-integration/macos/) and visualized in [Grafana](../../../../explore/observability/grafana-dashboard/grafana/). These metrics are also available on the UI in YBAnywhere Platform. Let's look into some key transaction related metrics.
+YugabyteDB exports a lot of [observable metrics](../../../../explore/observability) so that you can see what is going in your cluster. These metrics can be exported to [Prometheus](../../../../explore/observability/prometheus-integration/macos/) and visualized in [Grafana](../../../../explore/observability/grafana-dashboard/grafana/). Many of these metrics are also displayed as charts in YugabyteDB Anywhere and YugabyteDB Managed. The following are key transaction related metrics.
 
 ##### transactions_running
 
-This metric represents the no.of transactions that are currently active. This would give a great overview how transaction intensive the cluster currently is. 
+Shows the number of transactions that are currently active. This provides an overview of how transaction intensive the cluster currently is.
 
 ##### transaction_conflicts
 
-This metric represents the no.of times transactions have conflicted with other transactions. An increase in the number of conflicts, could directly result in increased latency of your applications.
+Describes the number of times transactions have conflicted with other transactions. An increase in the number of conflicts could directly result in increased latency of your applications.
 
 ##### expired_transactions
 
-This metric represents the no.of transactions that did not complete because the status tablet did not receive enough number of heartbeats from the node to which the client had connected to. This usually happens if that node or process managing the transaction has crashed.
+Shows the number of transactions that did not complete because the status tablet did not receive enough number of heartbeats from the node to which the client was connected. This usually happens if that node or process managing the transaction has crashed.
 
 ## Learn more
 
