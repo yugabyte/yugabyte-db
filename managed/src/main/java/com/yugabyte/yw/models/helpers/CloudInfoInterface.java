@@ -486,6 +486,9 @@ public interface CloudInfoInterface {
         if (config.has("use_host_vpc")) {
           gcpCloudInfo.set("use_host_vpc", config.get("use_host_vpc"));
         }
+        if (shouldUseHostCredentials) {
+          gcpCloudInfo.set("useHostCredentials", config.get("use_host_credentials"));
+        }
         gcpCloudInfo.set("YB_FIREWALL_TAGS", config.get("YB_FIREWALL_TAGS"));
         cloudInfo.set("gcp", gcpCloudInfo);
         details.set("cloudInfo", cloudInfo);
