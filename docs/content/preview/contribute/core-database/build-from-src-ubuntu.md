@@ -55,7 +55,7 @@ The following instructions are for Ubuntu 20.04 or Ubuntu 22.04.
 
 ## Install necessary packages
 
-Update packages on your system, install development tools and additional packages:
+Update and install basic development packages as follows:
 
 ```sh
 sudo apt update
@@ -74,6 +74,10 @@ packages=(
 sudo apt install -y "${packages[@]}"
 sudo locale-gen en_US.UTF-8
 ```
+
+### /opt/yb-build
+
+{{% readfile "includes/opt-yb-build.md" %}}
 
 ### Python 3
 
@@ -96,37 +100,11 @@ curl -L "https://github.com/Kitware/CMake/releases/download/v3.25.2/cmake-3.25.2
 export PATH="$HOME/tools/cmake-3.25.2-linux-x86_64/bin:$PATH"
 ```
 
-### /opt/yb-build
-
-{{% readfile "includes/opt-yb-build.md" %}}
-
-### Ninja (optional)
-
-Use [Ninja][ninja] for faster builds.
-
-```sh
-sudo apt install -y ninja-build
-```
-
-[ninja]: https://ninja-build.org
-
-### Ccache (optional)
-
-Use [Ccache][ccache] for faster builds.
-
-```sh
-sudo apt install -y ccache
-# Also add the following line to your .bashrc or equivalent.
-export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
-```
-
-[ccache]: https://ccache.dev
-
 ### Java
 
 {{% readfile "includes/java.md" %}}
 
-The `maven` package satisfies both requirements.
+Install the following package to satisfy the preceding requirements:
 
 ```sh
 sudo apt install -y maven
@@ -142,26 +120,48 @@ sudo apt install -y npm golang-1.18
 export PATH="/usr/lib/go-1.18/bin:$PATH"
 ```
 
+### Ninja (optional)
+
+{{% readfile "includes/ninja.md" %}}
+
+```sh
+sudo apt install -y ninja-build
+```
+
+### Ccache (optional)
+
+{{% readfile "includes/ccache.md" %}}
+
+```sh
+sudo apt install -y ccache
+# Also add the following line to your .bashrc or equivalent.
+export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
+```
+
 ## Build the code
 
 {{% readfile "includes/build-the-code.md" %}}
 
 ### Build release package (optional)
 
-[Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
+Perform the following steps to build a release package:
 
-Install the following additional packages:
+1. [Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
+1. Install additional packages using the following command:
 
-```sh
-sudo apt install -y file patchelf
-```
+   ```sh
+   sudo apt install -y file patchelf
+   ```
 
-Run the `yb_release` script to build a release package:
+1. Run the `yb_release` script using the following command:
 
-```output.sh
-$ ./yb_release
-......
-2023-02-17 01:26:37,156 [yb_release.py:299 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.17.2.0-ede2a2619ea8470064a5a2c0d7fa510dbee3ce81-release-clang15-ubuntu20-x86_64.tar.gz'
-```
+   ```sh
+   ./yb_release
+   ```
+
+   ```output.sh
+   ......
+   2023-02-17 01:26:37,156 [yb_release.py:299 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.17.2.0-ede2a2619ea8470064a5a2c0d7fa510dbee3ce81-release-clang15-ubuntu20-x86_64.tar.gz'
+   ```
 
 {{% readfile "includes/ulimit.md" %}}
