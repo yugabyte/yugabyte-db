@@ -120,12 +120,21 @@ create_postgres_backup() {
   db_port="$4"
   verbose="$5"
   yba_installer="$6"
+  pgdump_path="$7"
   pg_dump="pg_dump"
 
   # Determine pg_dump path in yba-installer cases where postgres is installed in data_dir.
   if [[ "${yba_installer}" = true ]]; then
-    # TODO: Need to pick up from system for bring their own postgres.
-    pg_dump=$(find ${data_dir}/**/${yba_version} -name pg_dump)
+    # If a pg_dump path is given, use it explicitly
+    if [[ "${pgdump_path}" != "" ]]; then
+      pg_dump="${pgdump_path}"
+    else
+      pg_dump=$(find ${data_dir}/**/${yba_version} -name pg_dump)
+      # If we cannot find a pg_dump brought from yba_installer, attempt to use the system path.
+      if [[ "${pg_dump}" == "" ]]; then
+        pg_dump="pg_dump"
+      fi
+    fi
   fi
 
   if [[ "${verbose}" = true ]]; then
@@ -156,11 +165,21 @@ restore_postgres_backup() {
   db_port="$4"
   verbose="$5"
   yba_installer="$6"
+  pgrestore_path="$7"
+  pg_password="$8"
   pg_restore="pg_restore"
 
   # Determine pg_restore path in yba-installer cases where postgres is installed in data_dir.
   if [[ "${yba_installer}" = true ]]; then
-    pg_restore=$(find ${data_dir}/**/${yba_version} -name pg_restore)
+    if [[ "${pgrestore_path}" != "" ]]; then
+      pg_restore=${pgrestore_path}
+    else
+      pg_restore=$(find ${data_dir}/**/${yba_version} -name pg_restore)
+      # If we cannot find a pg_restore brought from yba_installer, attempt to use the system path.
+      if [[ "${pg_restore}" == "" ]]; then
+        pg_restore="pg_restore"
+      fi
+    fi
   fi
 
   if [[ "${verbose}" = true ]]; then
@@ -170,9 +189,21 @@ restore_postgres_backup() {
     restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c -d \
       ${PLATFORM_DB_NAME} ${backup_path}"
   fi
+
   # Run pg_restore.
   echo "Restoring Yugabyte Platform DB backup ${backup_path}..."
-  docker_aware_cmd "postgres" "${restore_cmd}"
+  if [[ "${yba_installer}" = true ]]; then
+    # -f flag does not work for docker based installs. Tries to dump inside postgres container but
+    # we need output on the host itself.
+    echo "password: ${pg_password}"
+    if [[ "$pg_password" != "" ]]; then
+      (PGPASSWORD="${pg_password}"; ${restore_cmd})
+      return
+    fi
+    docker_aware_cmd "postgres" "${restore_cmd}"
+  else
+    docker_aware_cmd "postgres" "${restore_cmd}"
+  fi
   echo "Done"
 }
 
@@ -203,6 +234,7 @@ create_backup() {
   prometheus_port="${10}"
   k8s_namespace="${11}"
   k8s_pod="${12}"
+  pgdump_path="${13}"
   include_releases_flag="**/releases/**"
 
   mkdir -p "${output_path}"
@@ -290,7 +322,7 @@ create_backup() {
   db_backup_path="${data_dir}/${PLATFORM_DUMP_FNAME}"
   trap 'delete_postgres_backup ${db_backup_path}' RETURN
   create_postgres_backup "${db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
-                         "${verbose}" "${yba_installer}"
+                         "${verbose}" "${yba_installer}" "${pgdump_path}"
 
   # Backup prometheus data.
   if [[ "$exclude_prometheus" = false ]]; then
@@ -344,6 +376,8 @@ restore_backup() {
   k8s_namespace="${10}"
   k8s_pod="${11}"
   disable_version_check="${12}"
+  pgrestore_path="${13}"
+  pg_password="${14}"
   prometheus_dir_regex="^${PROMETHEUS_SNAPSHOT_DIR}/$"
   if [[ "${yba_installer}" = true ]]; then
     prometheus_dir_regex="${PROMETHEUS_SNAPSHOT_DIR}"
@@ -464,7 +498,7 @@ restore_backup() {
   fi
 
   restore_postgres_backup "${db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
-  "${verbose}" "${yba_installer}"
+  "${verbose}" "${yba_installer}" "${pgrestore_path}" "${pg_password}"
   # Restore prometheus data.
   if tar -tf "${input_path}" | grep $prometheus_dir_regex; then
     echo "Restoring prometheus snapshot..."
@@ -589,6 +623,9 @@ data_dir=/opt/yugabyte
 verbose=false
 disable_version_check=false
 yba_installer=false
+pg_dump_path=""
+pgpass_path=""
+pg_restore_path=""
 yba_version=""
 
 case $command in
@@ -671,6 +708,14 @@ case $command in
           yba_version=$2
           shift 2
           ;;
+        --pg_dump_path)
+          pgdump_path=$2
+          shift 2
+          ;;
+        --pgpass_path)
+          pgpass_path=$2
+          shift 2
+          ;;
         -?|--help)
           print_backup_usage
           exit 0
@@ -685,9 +730,12 @@ case $command in
 
     validate_k8s_args "${k8s_namespace}" "${k8s_pod}"
 
+    if [[ "${pgpass_path}" != "" ]]; then
+      export PGPASSFILE=${pgpass_path}
+    fi
     create_backup "$output_path" "$data_dir" "$exclude_prometheus" "$exclude_releases" \
     "$db_username" "$db_host" "$db_port" "$verbose" "$prometheus_host" "$prometheus_port" \
-    "$k8s_namespace" "$k8s_pod" ""
+    "$k8s_namespace" "$k8s_pod" "$pgdump_path" ""
     exit 0
     ;;
   restore)
@@ -769,6 +817,14 @@ case $command in
           yba_version=$2
           shift 2
           ;;
+        --pg_restore_path)
+          pgrestore_path=$2
+          shift 2
+          ;;
+        --pgpass_path)
+          pgpass_path=$2
+          shift 2
+          ;;
         -?|--help)
           print_restore_usage
           exit 0
@@ -790,9 +846,13 @@ case $command in
 
     validate_k8s_args "${k8s_namespace}" "${k8s_pod}"
 
+    if [[ "${pgpass_path}" != "" ]]; then
+      export PGPASSFILE=${pgpass_path}
+    fi
+
     restore_backup "$input_path" "$destination" "$db_host" "$db_port" "$db_username" "$verbose" \
     "$prometheus_host" "$prometheus_port" "$data_dir" "$k8s_namespace" "$k8s_pod" \
-    "$disable_version_check"
+    "$disable_version_check" "$pgdump_path" "$pg_password"
     exit 0
     ;;
   *)
