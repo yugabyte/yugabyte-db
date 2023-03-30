@@ -619,7 +619,12 @@ class WaitOnConflictResolver : public ConflictResolver {
       return;
     }
 
-    DCHECK(!resume_ht.is_special());
+    if (resume_ht.is_special()) {
+      auto error_msg = Format("Unexpected resume_ht in conflict resolution: $0", resume_ht);
+      LOG_WITH_PREFIX(DFATAL) << error_msg;
+      InvokeCallback(STATUS(InternalError, error_msg));
+      return;
+    }
     context_->MakeResolutionAtLeast(resume_ht);
 
     // If status from wait_queue is OK, then all blockers read earlier are now resolved. Retry
