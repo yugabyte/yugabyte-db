@@ -131,7 +131,7 @@ See [isolation level examples](../../../../explore/transactions/isolation-levels
 
 ## Row-level locking
 
-Typically [SELECT](../../../../api/ysql/the-sql-language/statements/cmd_select) statements do not automatically lock the rows fetched during a transaction. Depending on your application needs, you might have to lock the rows retrieved during [SELECT](../../../../api/ysql/the-sql-language/statements/cmd_select). YugabyteDB supports [explicit row-level locking](../../../../explore/transactions/explicit-locking) for such cases and ensures that no two transactions can hold locks on the same row. Lock acquisition conflicts are resolved according to [concurrency control](../../../../architecture/transactions/concurrency-control/) policies.
+Typically [SELECT](../../../../api/ysql/the-sql-language/statements/dml_select) statements do not automatically lock the rows fetched during a transaction. Depending on your application needs, you might have to lock the rows retrieved during `SELECT`. YugabyteDB supports [explicit row-level locking](../../../../explore/transactions/explicit-locking) for such cases and ensures that no two transactions can hold locks on the same row. Lock acquisition conflicts are resolved according to [concurrency control](../../../../architecture/transactions/concurrency-control/) policies.
 
 Lock acquisition has the following format:
 
@@ -148,7 +148,7 @@ YugabyteDB supports the following types of explicit row locks:
 | **FOR KEY SHARE** | Shared lock that does not block other `FOR SHARE`, `FOR KEY SHARE`, and `FOR NO KEY UPDATE` commands.|
 
 {{<tip title="Examples">}}
-For more details and examples related to these locking policies, see [Explicit locking](../../../../explore/transactions/explicit|locking).
+For more details and examples related to these locking policies, see [Explicit locking](../../../../explore/transactions/explicit-locking).
 {{</tip>}}
 
 ## Learn more
