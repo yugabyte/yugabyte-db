@@ -264,4 +264,35 @@ void WriteToRocksDB(
   tablet->WriteToRocksDB(
       &frontiers, &rocksdb_write_batch, docdb::StorageDbType::kRegular);
 }
+
+int64_t GetValue(const docdb::Value& value, int64_t* type) {
+  return value.primitive_value().GetInt64();
+}
+
+bool GetValue(const docdb::Value& value, bool* type) {
+  return value.primitive_value().GetBoolean();
+}
+
+Result<std::optional<int64_t>> GetInt64ColumnValue(
+    const docdb::SubDocKey& sub_doc_key, const Slice& value,
+    tablet::TableInfo* table_info, const std::string& column_name) {
+  // Packed row case.
+  if (sub_doc_key.subkeys().empty()) {
+    return VERIFY_RESULT(GetColumnValuePacked<int64_t>(table_info, value, column_name));
+  }
+  return VERIFY_RESULT(GetColumnValueNotPacked<int64_t>(
+      table_info, value, column_name, sub_doc_key));
+}
+
+Result<std::optional<bool>> GetBoolColumnValue(
+    const docdb::SubDocKey& sub_doc_key, const Slice& value,
+    tablet::TableInfo* table_info, const std::string& column_name) {
+  // Packed row case.
+  if (sub_doc_key.subkeys().empty()) {
+    return VERIFY_RESULT(GetColumnValuePacked<bool>(table_info, value, column_name));
+  }
+  return VERIFY_RESULT(GetColumnValueNotPacked<bool>(
+      table_info, value, column_name, sub_doc_key));
+}
+
 } // namespace yb

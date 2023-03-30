@@ -326,6 +326,7 @@ Result<TabletRestorePatch> TabletSnapshots::GenerateRestoreWriteBatch(
         &existing_state, &restoring_state, write_batch,
         tablet().metadata()->primary_table_info().get(), request.db_oid());
     RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
+    RETURN_NOT_OK(restore_patch.Finish());
     return std::move(restore_patch);
   } else {
     LOG_WITH_PREFIX(INFO) << "Cleaning only rows with db oid " << request.db_oid();
@@ -333,6 +334,7 @@ Result<TabletRestorePatch> TabletSnapshots::GenerateRestoreWriteBatch(
         &existing_state, nullptr, write_batch,
         tablet().metadata()->primary_table_info().get(), request.db_oid());
     RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
+    RETURN_NOT_OK(restore_patch.Finish());
     return std::move(restore_patch);
   }
 }
@@ -586,6 +588,109 @@ Result<bool> TabletRestorePatch::ShouldSkipEntry(const Slice& key, const Slice& 
     return true;
   }
   return false;
+}
+
+Status TabletRestorePatch::UpdateColumnValueInMap(
+    const Slice& key, const Slice& value,
+    std::map<docdb::DocKey, SequencesDataInfo>* key_to_seq_info_map) {
+  docdb::SubDocKey decoded_key;
+  RETURN_NOT_OK(decoded_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
+
+  auto last_value_opt = VERIFY_RESULT(GetInt64ColumnValue(
+      decoded_key, value, table_info_, "last_value"));
+  auto is_called_opt = VERIFY_RESULT(GetBoolColumnValue(
+      decoded_key, value, table_info_, "is_called"));
+
+  if (!last_value_opt && !is_called_opt) {
+    return Status::OK();
+  }
+  std::optional<int64_t> updated_last_value = last_value_opt;
+  std::optional<bool> updated_is_called = is_called_opt;
+  const auto& doc_key = decoded_key.doc_key();
+  auto it = key_to_seq_info_map->find(doc_key);
+  if (it != key_to_seq_info_map->end()) {
+    // Only update if last_value has increased.
+    if (it->second.last_value) {
+      if (!last_value_opt || *(it->second.last_value) >= *last_value_opt) {
+        updated_last_value = *(it->second.last_value);
+      }
+    }
+    // Only update if is_called has changed from false to true.
+    if (it->second.is_called) {
+      if (!is_called_opt || *(it->second.is_called) == true) {
+        updated_is_called = *(it->second.is_called);
+      }
+    }
+    key_to_seq_info_map->erase(doc_key);
+  }
+  SequencesDataInfo seq_values(updated_last_value, updated_is_called);
+  key_to_seq_info_map->emplace(doc_key, seq_values);
+  VLOG_WITH_FUNC(3) << "Inserted in map " << doc_key.ToString() << ": " << seq_values;
+  return Status::OK();
+}
+
+Status TabletRestorePatch::ProcessCommonEntry(
+    const Slice& key, const Slice& existing_value, const Slice& restoring_value) {
+  RETURN_NOT_OK(RestorePatch::ProcessCommonEntry(key, existing_value, restoring_value));
+  RETURN_NOT_OK(UpdateColumnValueInMap(
+      key, existing_value, &existing_key_to_seq_info_map_));
+  return UpdateColumnValueInMap(
+      key, restoring_value, &restoring_key_to_seq_info_map_);
+}
+
+Status TabletRestorePatch::ProcessRestoringOnlyEntry(
+    const Slice& restoring_key, const Slice& restoring_value) {
+  RETURN_NOT_OK(RestorePatch::ProcessRestoringOnlyEntry(restoring_key, restoring_value));
+  return UpdateColumnValueInMap(
+      restoring_key, restoring_value, &restoring_key_to_seq_info_map_);
+}
+
+Status TabletRestorePatch::ProcessExistingOnlyEntry(
+    const Slice& existing_key, const Slice& existing_value) {
+  RETURN_NOT_OK(RestorePatch::ProcessExistingOnlyEntry(existing_key, existing_value));
+  return UpdateColumnValueInMap(
+      existing_key, existing_value, &existing_key_to_seq_info_map_);
+}
+
+Status TabletRestorePatch::Finish() {
+  for (const auto& doc_key_and_value : restoring_key_to_seq_info_map_) {
+    auto value_to_insert = doc_key_and_value.second;
+    auto it = existing_key_to_seq_info_map_.find(doc_key_and_value.first);
+    if (it != existing_key_to_seq_info_map_.end()) {
+      value_to_insert = it->second;
+    }
+    // Insert this kv into the write batch.
+    if (value_to_insert.last_value) {
+      QLValuePB value_pb;
+      value_pb.set_int64_value(*(value_to_insert.last_value));
+      VLOG_WITH_FUNC(3) << doc_key_and_value.first << ": " << *(value_to_insert.last_value);
+      auto column_id = VERIFY_RESULT(table_info_->schema().ColumnIdByName("last_value"));
+      auto doc_path = docdb::DocPath(
+          doc_key_and_value.first.Encode(), docdb::KeyEntryValue::MakeColumnId(column_id));
+      RETURN_NOT_OK(DocBatch()->SetPrimitive(
+          doc_path, docdb::ValueRef(value_pb, SortingType::kNotSpecified)));
+      IncrementTicker(RestoreTicker::kInserts);
+    }
+    if (value_to_insert.is_called) {
+      QLValuePB value_pb;
+      value_pb.set_bool_value(*(value_to_insert.is_called));
+      VLOG_WITH_FUNC(3) << doc_key_and_value.first << ": " << *(value_to_insert.is_called);
+      auto column_id = VERIFY_RESULT(table_info_->schema().ColumnIdByName("is_called"));
+      auto doc_path = docdb::DocPath(
+          doc_key_and_value.first.Encode(), docdb::KeyEntryValue::MakeColumnId(column_id));
+      RETURN_NOT_OK(DocBatch()->SetPrimitive(
+          doc_path, docdb::ValueRef(value_pb, SortingType::kNotSpecified)));
+      IncrementTicker(RestoreTicker::kInserts);
+    }
+  }
+  return Status::OK();
+}
+
+std::ostream& operator<<(std::ostream& out, const SequencesDataInfo& value) {
+  out << "[last_value: " << (value.last_value ? std::to_string(*(value.last_value)) : "none")
+      << ", is_called: " << (value.is_called ? (*(value.is_called) ? "true" : "false") : "none")
+      << "]";
+  return out;
 }
 
 } // namespace tablet
