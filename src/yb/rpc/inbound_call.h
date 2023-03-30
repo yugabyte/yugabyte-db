@@ -128,7 +128,9 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   ConnectionPtr connection() const;
   ConnectionContext& connection_context() const;
 
-  Trace* trace() const EXCLUDES(mutex_);
+  inline Trace* trace() const EXCLUDES(mutex_) {
+    return trace_.load(std::memory_order_relaxed);
+  }
 
   // When this InboundCall was received (instantiated).
   // Should only be called once on a given instance.
@@ -254,7 +256,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
  private:
   // The trace buffer.
-  scoped_refptr<Trace> trace_ GUARDED_BY(mutex_);
+  scoped_refptr<Trace> trace_holder_ GUARDED_BY(mutex_);
+  std::atomic<Trace*> trace_ = nullptr;
 
   // The connection on which this inbound call arrived. Can be null for LocalYBInboundCall.
   ConnectionPtr conn_ = nullptr;
