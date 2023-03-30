@@ -92,6 +92,8 @@ import com.yugabyte.yw.forms.AlertTemplateSettingsFormData;
 import com.yugabyte.yw.forms.AlertTemplateSystemVariable;
 import com.yugabyte.yw.forms.AlertTemplateVariablesFormData;
 import com.yugabyte.yw.forms.AlertTemplateVariablesList;
+import com.yugabyte.yw.forms.NotificationPreview;
+import com.yugabyte.yw.forms.NotificationPreviewFormData;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.forms.filters.AlertTemplateApiFilter;
@@ -1718,8 +1720,50 @@ public class AlertControllerTest extends FakeDBApplication {
                     .setUuids(ImmutableSet.of(universe.getUniverseUUID())));
           }
           alertConfigurationService.save(configuration);
-          Alert testAlert = alertController.createTestAlert(configuration);
+          Alert testAlert = alertController.createTestAlert(customer, configuration);
           assertThat(testAlert.getMessage(), CoreMatchers.equalTo("[TEST ALERT!!!] " + message));
         });
+  }
+
+  @Test
+  public void testNotificationPreview() {
+    AlertTemplateVariable variable =
+        AlertTemplateVariableServiceTest.createTestVariable(customer.getUuid(), "test");
+    alertTemplateVariableService.save(variable);
+    AlertChannelTemplates templates =
+        AlertChannelTemplateServiceTest.createTemplates(customer.getUuid(), ChannelType.Email);
+    templates.setTitleTemplate(
+        "Alert {{ yugabyte_alert_policy_name }} "
+            + "{{ yugabyte_alert_status }}: severity={{ yugabyte_alert_severity }} "
+            + "with test = '{{ test }}'");
+    templates.setTextTemplate(
+        "Channel '{{ yugabyte_alert_channel_name }}' got alert "
+            + "{{ yugabyte_alert_policy_name }} with test = '{{ test }}'");
+
+    AlertConfiguration configuration =
+        ModelFactory.createAlertConfiguration(
+            customer, universe, config -> config.setLabels(ImmutableMap.of("test", "value")));
+    AlertDefinition definition =
+        ModelFactory.createAlertDefinition(customer, universe, configuration);
+
+    NotificationPreviewFormData formData = new NotificationPreviewFormData();
+    formData.setAlertChannelTemplates(templates);
+    formData.setAlertConfigUuid(configuration.getUuid());
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/" + customer.getUuid() + "/alert_notification_preview",
+            authToken,
+            Json.toJson(formData));
+    assertThat(result.status(), equalTo(OK));
+    JsonNode previewJson = Json.parse(contentAsString(result));
+    NotificationPreview resultPreview = Json.fromJson(previewJson, NotificationPreview.class);
+
+    assertThat(
+        resultPreview.getTitle(),
+        equalTo("Alert alertConfiguration firing: severity=SEVERE with test = 'value'"));
+    assertThat(
+        resultPreview.getText(),
+        equalTo("Channel 'Channel name' got alert alertConfiguration with test = 'value'"));
   }
 }

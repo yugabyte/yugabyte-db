@@ -599,7 +599,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("container_metrics")));
     params.put("start", "1479281737000");
-    params.put("nodePrefix", "demo");
+    params.put("nodePrefix", "yb-tc-demo");
     Universe u1 = createUniverse("demo", customer.getCustomerId(), CloudType.kubernetes);
     Provider provider =
         Provider.get(
@@ -626,7 +626,7 @@ public class CustomerControllerTest extends FakeDBApplication {
         .query(metricKeys.capture(), queryParams.capture(), anyMap(), anyBoolean());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
-    assertValue(filters, "namespace", "demo-az-1|demo-az-2|test-ns-1");
+    assertValue(filters, "namespace", "yb-tc-demo-az-1|yb-tc-demo-az-2|test-ns-1");
     assertEquals(OK, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
   }
@@ -646,7 +646,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("container_metrics")));
     params.put("start", "1479281737000");
-    params.put("nodePrefix", "demo");
+    params.put("nodePrefix", "yb-tc-demo");
     Universe u1 = createUniverse("demo", customer.getCustomerId(), CloudType.kubernetes);
     if (helmNewNamingStyle) {
       u1 =
@@ -673,9 +673,9 @@ public class CustomerControllerTest extends FakeDBApplication {
         .query(metricKeys.capture(), queryParams.capture(), anyMap(), anyBoolean());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
-    assertValue(filters, "namespace", "demo");
+    assertValue(filters, "namespace", "yb-tc-demo");
     if (helmNewNamingStyle) {
-      assertValue(filters, "pod_name", "ybdemo-jjk0-yb-tserver-(.*)");
+      assertValue(filters, "pod_name", "ybdemo-xlrv-yb-tserver-(.*)");
     } else {
       assertNull(filters.get("pod_name"));
     }
@@ -689,7 +689,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("container_metrics")));
     params.put("start", "1479281737000");
-    params.put("nodePrefix", "demo");
+    params.put("nodePrefix", "yb-tc-demo");
     ArrayNode nodeNames = Json.newArray();
     nodeNames.add("demo-n1");
     params.put("nodeNames", nodeNames);
