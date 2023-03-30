@@ -15,6 +15,7 @@
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/intent_aware_iterator.h"
@@ -23,6 +24,7 @@
 #include "yb/docdb/value_type.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 
 namespace yb {
 
@@ -120,6 +122,8 @@ class RestorePatch {
                   GetTicker(RestoreTicker::kDeletes));
   }
 
+  virtual Status Finish() = 0;
+
   virtual ~RestorePatch() = default;
 
  protected:
@@ -128,7 +132,7 @@ class RestorePatch {
   virtual Status ProcessCommonEntry(
       const Slice& key, const Slice& existing_value, const Slice& restoring_value);
 
-  Status ProcessRestoringOnlyEntry(
+  virtual Status ProcessRestoringOnlyEntry(
       const Slice& restoring_key, const Slice& restoring_value);
 
   virtual Status ProcessExistingOnlyEntry(
@@ -158,5 +162,54 @@ void AddKeyValue(const Slice& key, const Slice& value, docdb::DocWriteBatch* wri
 void WriteToRocksDB(
     docdb::DocWriteBatch* write_batch, const HybridTime& write_time, const OpId& op_id,
     tablet::Tablet* tablet, const std::optional<docdb::KeyValuePairPB>& restore_kv);
+
+int64_t GetValue(const docdb::Value& value, int64_t* type);
+
+bool GetValue(const docdb::Value& value, bool* type);
+
+template <class ValueType>
+Result<std::optional<ValueType>> GetColumnValuePacked(
+    tablet::TableInfo* table_info, const Slice& packed_value, const std::string& column_name) {
+  auto value_slice = packed_value;
+  RETURN_NOT_OK(docdb::ValueControlFields::Decode(&value_slice));
+  SCHECK(value_slice.TryConsumeByte(docdb::ValueEntryTypeAsChar::kPackedRow),
+          Corruption, "Packed row expected: $0", packed_value.ToDebugHexString());
+  const docdb::SchemaPacking& packing = VERIFY_RESULT(
+      table_info->doc_read_context->schema_packing_storage.GetPacking(&value_slice));
+  auto column_id = VERIFY_RESULT(table_info->schema().ColumnIdByName(column_name));
+  auto value = packing.GetValue(column_id, value_slice);
+  if (value) {
+    docdb::Value column_value;
+    RETURN_NOT_OK(column_value.Decode(*value));
+    return GetValue(column_value, static_cast<ValueType*>(nullptr));
+  }
+  return std::nullopt;
+}
+
+template <class ValueType>
+Result<std::optional<ValueType>> GetColumnValueNotPacked(
+    tablet::TableInfo* table_info, const Slice& value, const std::string& column_name,
+    const docdb::SubDocKey& decoded_sub_doc_key) {
+  SCHECK_EQ(decoded_sub_doc_key.subkeys().size(), 1U, Corruption, "Wrong number of subdoc keys");
+  const auto& first_subkey = decoded_sub_doc_key.subkeys()[0];
+  if (first_subkey.type() == docdb::KeyEntryType::kColumnId) {
+    auto column_id = first_subkey.GetColumnId();
+    const ColumnSchema& column = VERIFY_RESULT(table_info->schema().column_by_id(column_id));
+    if (column.name() == column_name) {
+      docdb::Value column_value;
+      RETURN_NOT_OK(column_value.Decode(value));
+      return GetValue(column_value, static_cast<ValueType*>(nullptr));
+    }
+  }
+  return std::nullopt;
+}
+
+Result<std::optional<int64_t>> GetInt64ColumnValue(
+    const docdb::SubDocKey& sub_doc_key, const Slice& value,
+    tablet::TableInfo* table_info, const std::string& column_name);
+
+Result<std::optional<bool>> GetBoolColumnValue(
+    const docdb::SubDocKey& sub_doc_key, const Slice& value,
+    tablet::TableInfo* table_info, const std::string& column_name);
 
 } // namespace yb
