@@ -60,10 +60,10 @@ In addition, ensure the following:
 
 ## Multi cluster Kubernetes environment
 
-When you want to create a multi-region YugabyteDB universe or two universes from different regions replicating using xCluster, you need to use one Kubernetes cluster per region. Following things are required for YugabyteDB Anywhere to work across multiple Kubernetes clusters:
+When you want to create a multi-region YugabyteDB universe or two universes from different regions replicating using xCluster, you need to use one Kubernetes cluster per region. In the common case, following are the prerequisites for YugabyteDB Anywhere to work across multiple Kubernetes clusters:
 
 - Pod IP address connectivity should be present between the clusters. Each pod and service should have an unique IP address across the clusters (non-overlapping addresses).
-- DNS connectivity between the clusters. ClusterIP and headless service pod FQDNs should be resolvable across the Kubernetes clusters. For example, `yb-master-0.yb-masters.ns.svc.cluster.local` and `yb-tserver-service.ns.svc.cluster.local` should get resolved.
-- YugabyteDB Anywhere should have access to the control plane of all the Kubernetes clusters to perform Helm and kubectl operations against them. It should be installed on one of the connected clusters.
+- There should be DNS connectivity between the clusters. ClusterIP and headless service FQDNs (including the individual pod FQDNs) exposed in one Kubernetes cluster should be resolvable in all the other Kubernetes clusters.
+- YugabyteDB Anywhere should have access to the control plane of all the Kubernetes clusters, typically via a kubeconfig file of a service account. It should be installed on one of the connected clusters.
 
-If your cluster setup does not satisfy above requirements, you can setup [Multi-Cluster Services API](https://git.k8s.io/enhancements/keps/sig-multicluster/1645-multi-cluster-services-api) (MCS). For more details on the setup, see [Configure Multi-Cluster Services](../../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes#configure-multi-cluster-services). Note that MCS support in YugabyteDB Anywhere is still in beta.
+Alternatively, you can setup [Multi-Cluster Services API](https://git.k8s.io/enhancements/keps/sig-multicluster/1645-multi-cluster-services-api) (MCS). For more details on the setup, see [Configure Kubernetes multi-cluster environment](../../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes#configure-kubernetes-multi-cluster-environment). Note that MCS support in YugabyteDB Anywhere is still in beta.
