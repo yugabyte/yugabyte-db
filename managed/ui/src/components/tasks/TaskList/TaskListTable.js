@@ -38,7 +38,9 @@ export default class TaskListTable extends Component {
 
     function typeFormatter(cell, row) {
       return row.correlationId ? (
-        <Link to={`/logs/?queryRegex=${row.correlationId}`}>{row.typeName} {row.target}</Link>
+        <Link to={`/logs/?queryRegex=${row.correlationId}&startDate=${row.createTime}`}>
+          {row.typeName} {row.target}
+        </Link>
       ) : (
         `${row.typeName} ${row.target}`
       );
