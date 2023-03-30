@@ -1160,8 +1160,8 @@ HistoryRetentionDirective ManualHistoryRetentionPolicy::GetRetentionDirective() 
           ShouldRetainDeleteMarkersInMajorCompaction::kFalse};
 }
 
-HistoryRetentionDirective ManualHistoryRetentionPolicy::StatelessRetentionDirective() {
-  return GetRetentionDirective();
+HybridTime ManualHistoryRetentionPolicy::ProposedHistoryCutoff() {
+  return history_cutoff_.load(std::memory_order_acquire);
 }
 
 void ManualHistoryRetentionPolicy::SetHistoryCutoff(HybridTime history_cutoff) {
