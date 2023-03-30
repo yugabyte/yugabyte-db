@@ -72,7 +72,8 @@ namespace rpc {
 
 InboundCall::InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
                          CallProcessedListener* call_processed_listener)
-    : trace_(Trace::MaybeGetNewTrace()),
+    : trace_holder_(Trace::MaybeGetNewTrace()),
+      trace_(trace_holder_.get()),
       conn_(std::move(conn)),
       rpc_metrics_(rpc_metrics ? rpc_metrics : &conn_->rpc_metrics()),
       call_processed_listener_(call_processed_listener) {
@@ -107,11 +108,12 @@ void InboundCall::EnsureTraceCreated() {
   scoped_refptr<Trace> trace = nullptr;
   {
     std::lock_guard<simple_spinlock> lock(mutex_);
-    if (trace_) {
+    if (trace_holder_) {
       return;
     }
-    trace_ = new Trace;
-    trace = trace_;
+    trace = new Trace;
+    trace_holder_ = trace;
+    trace_.store(trace.get(), std::memory_order_relaxed);
   }
 
   if (timing_.time_received.Initialized()) {
@@ -140,11 +142,6 @@ ConnectionPtr InboundCall::connection() const {
 
 ConnectionContext& InboundCall::connection_context() const {
   return conn_->context();
-}
-
-Trace* InboundCall::trace() const {
-  std::lock_guard<simple_spinlock> lock(mutex_);
-  return trace_.get();
 }
 
 void InboundCall::RecordCallReceived() {
