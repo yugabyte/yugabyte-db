@@ -31,17 +31,10 @@ python -m unittest -v test_agtypes.py
 python setup.py install
 ```
 
-### Install from PyPi
-
-```
-pip install apache-age-python
-```
-
 ### For more information about [Apache AGE](https://age.apache.org/)
 * Apache Age : https://age.apache.org/
 * Github : https://github.com/apache/age
 * Document : https://age.apache.org/age-manual/master/index.html
-* apache-age-python GitHub : https://github.com/rhizome-ai/apache-age-python
 
 ### Check AGE loaded on your PostgreSQL
 Connect to your containerized Postgres instance and then run the following commands:

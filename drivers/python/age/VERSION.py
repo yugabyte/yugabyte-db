@@ -15,8 +15,8 @@
 
 
 
-VER_MAJOR = 0
+VER_MAJOR = 1
 VER_MINOR = 0
-VER_MICRO = 3
+VER_MICRO = 0
 
 VERSION = '.'.join([str(VER_MAJOR),str(VER_MINOR),str(VER_MICRO)])
