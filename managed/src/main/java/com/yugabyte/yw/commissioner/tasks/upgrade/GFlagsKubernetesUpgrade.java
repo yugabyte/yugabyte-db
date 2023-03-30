@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -58,13 +59,28 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
               .setSubTaskGroupType(getTaskSubGroupType());
           // Create Kubernetes Upgrade Task
-          createUpgradeTask(
-              getUniverse(),
-              userIntent.ybSoftwareVersion,
-              !taskParams().masterGFlags.equals(userIntent.masterGFlags),
-              !taskParams().tserverGFlags.equals(userIntent.tserverGFlags),
-              universe.isYbcEnabled(),
-              universe.getUniverseDetails().getYbcSoftwareVersion());
+          switch (taskParams().upgradeOption) {
+            case ROLLING_UPGRADE:
+              createUpgradeTask(
+                  getUniverse(),
+                  userIntent.ybSoftwareVersion,
+                  !taskParams().masterGFlags.equals(userIntent.masterGFlags),
+                  !taskParams().tserverGFlags.equals(userIntent.tserverGFlags),
+                  universe.isYbcEnabled(),
+                  universe.getUniverseDetails().getYbcSoftwareVersion());
+              break;
+            case NON_ROLLING_UPGRADE:
+              createNonRollingGflagUpgradeTask(
+                  getUniverse(),
+                  userIntent.ybSoftwareVersion,
+                  !taskParams().masterGFlags.equals(userIntent.masterGFlags),
+                  !taskParams().tserverGFlags.equals(userIntent.tserverGFlags),
+                  universe.isYbcEnabled(),
+                  universe.getUniverseDetails().getYbcSoftwareVersion());
+              break;
+            case NON_RESTART_UPGRADE:
+              throw new RuntimeException("Non-restart unimplemented for K8s");
+          }
         });
   }
 }
