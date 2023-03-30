@@ -245,6 +245,7 @@ public class ModelFactory {
     params.rootCA = rootCA;
     params.enableYbc = enableYbc;
     params.ybcInstalled = enableYbc;
+    params.nodePrefix = Util.getNodePrefix(customerId, universeName);
     if (enableYbc) {
       params.ybcSoftwareVersion = "1.0.0-b1";
       NodeDetails node = new NodeDetails();
