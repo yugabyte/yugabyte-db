@@ -4,9 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { getMemorySizeUnits } from '@app/helpers';
 import ArrowRightIcon from '@app/assets/caret-right-circle.svg';
 import { YBButton, YBInput, YBLoadingBox, YBSelect, YBTable } from '@app/components';
-import type { ClusterTable } from '@app/api/src';
+import { ClusterTable, useGetClusterHealthCheckQuery, useGetClusterTabletsQuery } from '@app/api/src';
 import SearchIcon from '@app/assets/search.svg';
 import RefreshIcon from '@app/assets/refresh.svg';
+import { BadgeVariant, YBBadge } from '@app/components/YBBadge/YBBadge';
 
 const useStyles = makeStyles((theme) => ({
   label: {
@@ -70,25 +71,44 @@ const ArrowComponent = (classes: ReturnType<typeof useStyles>) => () => {
   );
 }
 
-export const TableList: FC<DatabaseListProps> = ({ tableList, onSelect, onRefetch }) => {
+export const TableList: FC<DatabaseListProps> = ({ tableList: tableListProp, onSelect, onRefetch }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const [tabletStatus, setTabletStatus] = React.useState<string>();
-  const [tableName, setTableName] = React.useState<string>();
+  const [tabletStatus, setTabletStatus] = React.useState<string>('');
+  const [tableName, setTableName] = React.useState<string>('');
+
+  const { data: tablets } = useGetClusterTabletsQuery();
+  const { data: healthCheckData } = useGetClusterHealthCheckQuery();
 
   const tabletStatusList = useMemo(() => [
-    t('clusterDetail.databases.healthyReplication'),
-    t('clusterDetail.databases.underReplicated'),
-    t('clusterDetail.databases.unavailable'),
+     { key: t('clusterDetail.databases.healthyReplication'), value: "Healthy" },
+     { key: t('clusterDetail.databases.underReplicated'), value: "Under-replicated" },
+     { key: t('clusterDetail.databases.unavailable'), value: "Unavailable" },
   ], [t]);
+
+  const tableList = useMemo(() => {
+    let tabletList = tablets ? Object.entries(tablets.data).map(([_, value]) => value) : [];
+    return tableListProp.map(table => ({ ...table,
+      status: tabletList.some(tablet => tablet.tablet_id &&
+        tablet.table_name === table.name && 
+        healthCheckData?.data?.under_replicated_tablets?.includes(tablet.tablet_id)) ?
+        "Under-replicated" : (
+          tabletList.some(tablet => tablet.tablet_id &&
+            tablet.table_name === table.name && 
+            healthCheckData?.data?.leaderless_tablets?.includes(tablet.tablet_id)) ? 
+            "Unavailable" : "Healthy"
+        )
+        
+    }));
+  }, [healthCheckData, tablets, tableListProp])
 
   const data = useMemo(() => {
     let data = tableList;
-    if (tabletStatus !== undefined) {
-      data = data.filter(data => (data as any).status === tabletStatus);
+    if (tabletStatus) {
+      data = data.filter(data => data.status === tabletStatus);
     }
-    if (tableName !== undefined) {
+    if (tableName) {
       const searchName = tableName.toLowerCase();
       data = data.filter(data => data.name.toLowerCase().includes(searchName));
     }
@@ -121,17 +141,21 @@ export const TableList: FC<DatabaseListProps> = ({ tableList, onSelect, onRefetc
         customBodyRender: (value: number) => getMemorySizeUnits(value)
       }
     },
-    /* {
-      name: '',
+    {
+      name: 'status',
       label: '',
       options: {
         sort: false,
+        hideHeader: true,
         setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
-        setCellProps: () => ({ style: { padding: '8px 16px', display: 'flex', justifyContent: 'center' }}),
-        customBodyRender: () => <YBBadge variant={BadgeVariant.Warning} 
-          text={t('clusterDetail.databases.underReplicated')} />,
+        setCellProps: () => ({ style: { padding: '8px 16px' }}),
+        customBodyRender: (status: string) => 
+          status !== "Healthy" && <YBBadge
+            variant={status === "Under-replicated" ? BadgeVariant.Warning : BadgeVariant.Error} 
+            text={status === "Under-replicated" ? t('clusterDetail.databases.underReplicated') :
+              t('clusterDetail.databases.unavailable')} />,
       }
-    }, */
+    },
     {
       name: '',
       label: '',
@@ -168,7 +192,7 @@ export const TableList: FC<DatabaseListProps> = ({ tableList, onSelect, onRefetc
             {t('clusterDetail.databases.underReplicatedTables')}
           </Typography>
           <Typography variant="h4" className={classes.value}>
-            0 {/* TODO: Replace with actual data */}
+            {tableList.filter(table => table.status === "Under-replicated").length}
           </Typography>
         </Box>
       </Box>
@@ -181,9 +205,9 @@ export const TableList: FC<DatabaseListProps> = ({ tableList, onSelect, onRefetc
           onChange={(ev) => setTabletStatus(ev.target.value)}
           className={classes.dropdown}
         >
-          <MenuItem value={undefined}>{t('clusterDetail.databases.allStatuses')}</MenuItem>
+          <MenuItem value={''}>{t('clusterDetail.databases.allStatuses')}</MenuItem>
           {tabletStatusList.map(tableStatus => 
-            <MenuItem key={tableStatus} value={tableStatus}>{tableStatus}</MenuItem>
+            <MenuItem key={tableStatus.key} value={tableStatus.value}>{tableStatus.key}</MenuItem>
           )}
           
         </YBSelect>

@@ -178,7 +178,9 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
           </Breadcrumbs>
         }
       </Box>
-      {selectedDB && selectedTable ? <TabletList onRefetch={refetchData} /> :
+      {selectedDB && selectedTable ? 
+        <TabletList selectedTable={selectedTable} onRefetch={refetchData} />
+        :
         (selectedDB ? 
           <TableList
             tableList={data}
@@ -190,6 +192,7 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
             dbList={dbKeyframeList} 
             isYcql={dbApi === GetClusterTablesApiEnum.Ycql}
             onSelect={setSelectedDB}
+            onRefetch={refetchData}
           />
         )
       }

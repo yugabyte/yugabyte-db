@@ -3,8 +3,9 @@ import { makeStyles, Box, Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { getMemorySizeUnits } from '@app/helpers';
 import ArrowRightIcon from '@app/assets/caret-right-circle.svg';
-import { YBLoadingBox, YBTable } from '@app/components';
+import { YBButton, YBLoadingBox, YBTable } from '@app/components';
 import type { DatabaseListType } from './TablesTab';
+import RefreshIcon from '@app/assets/refresh.svg';
 
 const useStyles = makeStyles((theme) => ({
   label: {
@@ -29,13 +30,15 @@ const useStyles = makeStyles((theme) => ({
   },
   statContainer: {
     marginTop: theme.spacing(3),
-    marginBottom: theme.spacing(4),
+  },
+  refreshBtn: {
+    marginRight: theme.spacing(1)
   },
 }));
 
 type DatabaseListProps = {
   dbList: DatabaseListType,
-  /* onRefetch: () => void, */
+  onRefetch: () => void,
   onSelect: (db: string) => void,
   isYcql: boolean,
 }
@@ -48,7 +51,7 @@ const ArrowComponent = (classes: ReturnType<typeof useStyles>) => () => {
   );
 }
 
-export const DatabaseList: FC<DatabaseListProps> = ({ dbList: data, onSelect, isYcql }) => {
+export const DatabaseList: FC<DatabaseListProps> = ({ dbList: data, onSelect, isYcql, onRefetch }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
@@ -105,6 +108,11 @@ export const DatabaseList: FC<DatabaseListProps> = ({ dbList: data, onSelect, is
         <Typography variant="body2" className={classes.value}>
           {data.length}
         </Typography>
+      </Box>
+      <Box display="flex" alignItems="center" justifyContent="end" mb={2}>
+        <YBButton variant="ghost" startIcon={<RefreshIcon />} className={classes.refreshBtn} onClick={onRefetch}>
+          {t('clusterDetail.performance.actions.refresh')}
+        </YBButton>
       </Box>
       {!data.length ?
         <YBLoadingBox>{t('clusterDetail.databases.noDatabases')}</YBLoadingBox>

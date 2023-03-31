@@ -1,12 +1,12 @@
-import React, { FC, useMemo } from 'react';
+import React, { FC, useEffect, useMemo } from 'react';
 import { makeStyles, Box, Typography, MenuItem } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
-import { getMemorySizeUnits } from '@app/helpers';
 import { YBButton, YBInput, YBLoadingBox, YBSelect, YBTable } from '@app/components';
-import { useGetClusterNodesQuery } from '@app/api/src';
+import { useGetClusterHealthCheckQuery, useGetClusterNodesQuery, useGetClusterTabletsQuery } from '@app/api/src';
 import SearchIcon from '@app/assets/search.svg';
 import RefreshIcon from '@app/assets/refresh.svg';
 import { BadgeVariant, YBBadge } from '@app/components/YBBadge/YBBadge';
+import axios from 'axios';
 
 const useStyles = makeStyles((theme) => ({
   label: {
@@ -52,50 +52,99 @@ const useStyles = makeStyles((theme) => ({
 
 type DatabaseListProps = {
   /* tabletList: ClusterTable[], */
+  selectedTable: string,
   onRefetch: () => void,
 }
 
-// Dummy data for now
-const tabletList = [
-  {
-    id: "00abf04dc4e14d63ad58f6wqop",
-    size: 82000000,
-    range: "0x0000, 0x5555",
-    leaderNode: "172.12.52.103",
-    followerNodes: "172.12.52.102",
-    status: "Under-replicated",
-  },
-  {
-    id: "00f577acb945426abaa1bglpaer",
-    size: 86000000,
-    range: "0x5555, 0xAAAA",
-    leaderNode: "172.12.52.103",
-    followerNodes: "172.12.52.105, 172.12.52.106",
-    status: "",
-  },
-]
-
-export const TabletList: FC<DatabaseListProps> = ({ onRefetch }) => {
+export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const [node, setNode] = React.useState<string>();
-  const [tabletID, setTabletID] = React.useState<string>();
+  const [node, setNode] = React.useState<string>('');
+  const [tabletID, setTabletID] = React.useState<string>('');
+
+  const { data: tablets } = useGetClusterTabletsQuery();
+  const tableID = useMemo(() => tablets ? Object.values(tablets.data)
+    .find(tablet => tablet.table_name === selectedTable)?.table_uuid as string : undefined, [selectedTable, tablets])
+
+  const { data: nodesResponse } = useGetClusterNodesQuery();
+  const nodeNames = useMemo(() => nodesResponse?.data.map(node => node.name), [nodesResponse])
+
+  const { data: healthCheckData } = useGetClusterHealthCheckQuery();
+  
+  const [tabletList, setTabletList] = React.useState<any[]>([]);
+
+  useEffect(() => {
+    if (!nodesResponse || !tableID || !healthCheckData) {
+      return;
+    }
+
+    const populateTablets = async () => {
+      let nodes = nodesResponse.data;
+      if (node) {
+        nodes = nodes.filter(n => n.name === node)
+      }
+      const nodeHosts = nodes.map(node => node.host);
+      if (!nodeHosts) {
+        return;
+      }
+
+      const getNodeTablets = async (nodeName: string) => {
+        try {
+          const cpu = await axios.get<string>(`http://${nodeName}:7000/table?id=${tableID}&raw`)
+            .then(({ data }) => {
+              const parseTable = data.substring(Array.from(data.matchAll(/<table /g))[2].index!);
+              const parseRows = Array.from(parseTable.matchAll(/<tr>([\s\S]*?)<\/tr>/g)).slice(1, -1);
+              return parseRows.map(row => {
+                const tabletID = Array.from(row[1].matchAll(/<th>(.*)<\/th>/g))[0][1]
+                const tabletRange = Array.from(row[1].matchAll(/<td>hash_split: \[(.*)\]<\/td>/g))[0][1]
+                const tabletLeader = Array.from(row[1].matchAll(/LEADER: <a href=".*">(.*)<\/a>/g))[0][1]
+                const tabletFollowers = Array.from(row[1].matchAll(/FOLLOWER: <a href=".*">(.*)<\/a>/g)).map(r => r[1]).join(', ')
+                return {
+                  id: tabletID,
+                  range: tabletRange,
+                  leaderNode: tabletLeader,
+                  followerNodes: tabletFollowers,
+                  status: healthCheckData?.data?.under_replicated_tablets?.includes(tabletID) ? "Under-replicated" : 
+                    (healthCheckData?.data?.leaderless_tablets?.includes(tabletID) ? "Unavailable" : ""),
+                }
+              })
+              
+            })
+            .catch(err => { console.error(err); return undefined; })
+          return cpu;
+        } catch (err) {
+          console.error(err);
+          return undefined;
+        }
+      }
+      
+      const tabletList: any[] = [];
+      for (let i = 0; i < nodeHosts.length; i++) {
+        const node = nodeHosts[i];
+        const tablets = await getNodeTablets(node);
+        tablets?.forEach(tablet => {
+          if (!tabletList.find(t => t.id === tablet.id)) {
+            tabletList.push(tablet);
+          }
+        })
+      }
+
+      setTabletList(tabletList);
+    }
+
+    populateTablets();
+  }, [nodesResponse, node, tableID, healthCheckData]);
 
   const data = useMemo(() => {
     let data = tabletList;
-    if (node !== undefined) {
-      data = data.filter(data => data.leaderNode === node);
-    }
-    if (tabletID !== undefined) {
+    if (tabletID) {
       const searchName = tabletID.toLowerCase();
       data = data.filter(data => data.id.toLowerCase().includes(searchName));
     }
     return data;
-  }, [tabletList, node, tabletID]);
+  }, [tabletList, tabletID]);
 
-  const { data: nodesResponse } = useGetClusterNodesQuery();
-  const nodeList = useMemo(() => nodesResponse?.data.map(node => node.name), [nodesResponse])
 
   const columns = [
     {
@@ -104,15 +153,6 @@ export const TabletList: FC<DatabaseListProps> = ({ onRefetch }) => {
       options: {
         setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
         setCellProps: () => ({ style: { padding: '8px 16px' }}),
-      }
-    },
-    {
-      name: 'size',
-      label: t('clusterDetail.databases.size'),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
-        setCellProps: () => ({ style: { padding: '8px 16px' }}),
-        customBodyRender: (value: number) => getMemorySizeUnits(value)
       }
     },
     {
@@ -147,8 +187,10 @@ export const TabletList: FC<DatabaseListProps> = ({ onRefetch }) => {
         hideHeader: true,
         setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
         setCellProps: () => ({ style: { padding: '8px 16px' }}),
-        customBodyRender: (status: string) => status && <YBBadge variant={BadgeVariant.Warning} 
-          text={t('clusterDetail.databases.underReplicated')} />,
+        customBodyRender: (status: string) => status && 
+          <YBBadge variant={status === "Under-replicated" ? BadgeVariant.Warning : BadgeVariant.Error} 
+            text={status === "Under-replicated" ? t('clusterDetail.databases.underReplicated') : 
+              t('clusterDetail.databases.unavailable')} />,
       }
     },
   ];
@@ -164,14 +206,6 @@ export const TabletList: FC<DatabaseListProps> = ({ onRefetch }) => {
             {tabletList.length}
           </Typography>
         </Box>
-        <Box>
-          <Typography variant="subtitle2" className={classes.label}>
-            {t('clusterDetail.databases.totalSize')}
-          </Typography>
-          <Typography variant="h4" className={classes.value}>
-            {getMemorySizeUnits(tabletList.reduce((prev, curr) => prev + curr.size, 0))}
-          </Typography>
-        </Box>
       </Box>
       <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
         <YBSelect
@@ -179,8 +213,8 @@ export const TabletList: FC<DatabaseListProps> = ({ onRefetch }) => {
           onChange={(ev) => setNode(ev.target.value)}
           className={classes.dropdown}
         >
-          <MenuItem value={undefined}>{t('clusterDetail.databases.allNodes')}</MenuItem>
-          {nodeList?.map(nodeName => 
+          <MenuItem value={''}>{t('clusterDetail.databases.allNodes')}</MenuItem>
+          {nodeNames?.map(nodeName => 
             <MenuItem key={nodeName} value={nodeName}>{nodeName}</MenuItem>
           )}
         </YBSelect>
@@ -198,7 +232,7 @@ export const TabletList: FC<DatabaseListProps> = ({ onRefetch }) => {
         </YBButton>
       </Box>
       {!data.length ?
-        <YBLoadingBox>{t('clusterDetail.tables.noTablesCopy')}</YBLoadingBox>
+        <YBLoadingBox>{t('clusterDetail.tables.noTabletsCopy')}</YBLoadingBox>
         :
         <YBTable
           data={data}
