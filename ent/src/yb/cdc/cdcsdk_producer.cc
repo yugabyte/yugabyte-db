@@ -1378,6 +1378,7 @@ Status GetChangesForCDCSDK(
 
     read_ops = VERIFY_RESULT(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(
         last_seen_op_id, last_readable_opid_index, deadline, true));
+    have_more_messages = HaveMoreMessages(true);
 
     if (read_ops.messages.size() != 1) {
       LOG(WARNING) << "Reading more or less than one raft log message while reading intents, read "
@@ -1402,6 +1403,17 @@ Status GetChangesForCDCSDK(
         op_id, transaction_id, stream_metadata, enum_oid_label_map, composite_atts_map, resp,
         &consumption, &checkpoint, tablet_peer, &keyValueIntents, &stream_state, client,
         cached_schema, cached_schema_version, commit_timestamp));
+    ht_of_last_returned_message =
+        (resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1).row_message().op() ==
+         RowMessage_Op_COMMIT)
+            // Commit time won't be populated in the COMMIT record, in which case we will consider
+            // the commit_time of the previous to last record.
+            ? HybridTime::FromPB(resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 2)
+                                     .row_message()
+                                     .commit_time())
+            : HybridTime::FromPB(resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1)
+                                     .row_message()
+                                     .commit_time());
 
     if (checkpoint.write_id() == 0 && checkpoint.key().empty()) {
       last_streamed_op_id->term = checkpoint.term();
@@ -1431,7 +1443,7 @@ Status GetChangesForCDCSDK(
       if (txn_participant) {
         request_scope = VERIFY_RESULT(RequestScope::Create(txn_participant));
       }
-      have_more_messages = read_ops.have_more_messages;
+      have_more_messages = HaveMoreMessages(true);
 
       Schema current_schema;
       bool pending_intents = false;
@@ -1621,7 +1633,6 @@ Status GetChangesForCDCSDK(
 
         if (pending_intents) {
           // Incase of pending intents use the last replicated intents commit time.
-          have_more_messages = HaveMoreMessages(true);
           ht_of_last_returned_message =
               HybridTime::FromPB(resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1)
                                      .row_message()
@@ -1648,15 +1659,19 @@ Status GetChangesForCDCSDK(
 
     // In case the checkpoint was not updated at-all, we will update the checkpoint using the last
     // seen non-actionable message.
-    if (!checkpoint_updated && last_seen_default_message_op_id != OpId().Invalid()) {
-      SetCheckpoint(
-          last_seen_default_message_op_id.term, last_seen_default_message_op_id.index, 0, "", 0,
-          &checkpoint, last_streamed_op_id);
-      checkpoint_updated = true;
-      VLOG_WITH_FUNC(2) << "The last batch of 'read_ops' had no actionable message"
-                        << ", on tablet: " << tablet_id
-                        << ". The checkpoint will be updated based on the last message's OpId to: "
-                        << last_seen_default_message_op_id;
+    if (!checkpoint_updated) {
+      have_more_messages = HaveMoreMessages(false);
+      if (last_seen_default_message_op_id != OpId::Invalid()) {
+        SetCheckpoint(
+            last_seen_default_message_op_id.term, last_seen_default_message_op_id.index, 0, "", 0,
+            &checkpoint, last_streamed_op_id);
+        checkpoint_updated = true;
+        VLOG_WITH_FUNC(2)
+            << "The last batch of 'read_ops' had no actionable message"
+            << ", on tablet: " << tablet_id
+            << ". The checkpoint will be updated based on the last message's OpId to: "
+            << last_seen_default_message_op_id;
+      }
     }
   }
 
