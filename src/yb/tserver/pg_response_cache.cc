@@ -26,7 +26,6 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/rpc/rpc_context.h"
 #include "yb/rpc/sidecars.h"
 
 #include "yb/tserver/pg_client.pb.h"
@@ -131,21 +130,19 @@ struct Entry {
 };
 
 void FillResponse(PgPerformResponsePB* response,
-                  rpc::RpcContext* context,
+                  rpc::Sidecars* sidecars,
                   const PgResponseCache::Response& value) {
   *response = value.response;
   auto rows_data_it = value.rows_data.begin();
-  auto& sidecars = context->sidecars();
   for (auto& op : *response->mutable_responses()) {
     if (op.has_rows_data_sidecar()) {
-      sidecars.Start().Append(rows_data_it->AsSlice());
-      op.set_rows_data_sidecar(narrow_cast<int>(sidecars.Complete()));
+      sidecars->Start().Append(rows_data_it->AsSlice());
+      op.set_rows_data_sidecar(narrow_cast<int>(sidecars->Complete()));
     } else {
       DCHECK(!*rows_data_it);
     }
     ++rows_data_it;
   }
-  context->RespondSuccess();
 }
 
 } // namespace
@@ -191,14 +188,13 @@ class PgResponseCache::Impl {
   }
 
   Result<PgResponseCache::Setter> Get(
-      PgPerformOptionsPB::CachingInfoPB* cache_info,
-      PgPerformResponsePB* response, rpc::RpcContext* context) {
-    auto deadline = context->GetClientDeadline();
-    auto[data, loading_required] = DoGetEntry(cache_info, deadline);
+      PgPerformOptionsPB::CachingInfoPB* cache_info, PgPerformResponsePB* response,
+      rpc::Sidecars* sidecars, CoarseTimePoint deadline) {
+    auto [data, loading_required] = DoGetEntry(cache_info, deadline);
     IncrementCounter(queries_);
     if (!loading_required) {
       IncrementCounter(hits_);
-      FillResponse(response, context, VERIFY_RESULT_REF(data->Get(deadline)));
+      FillResponse(response, sidecars, VERIFY_RESULT_REF(data->Get(deadline)));
       return PgResponseCache::Setter();
     }
     return [empty_data = std::move(data)](Response&& response) {
@@ -226,8 +222,9 @@ PgResponseCache::~PgResponseCache() = default;
 
 Result<PgResponseCache::Setter> PgResponseCache::Get(
     PgPerformOptionsPB::CachingInfoPB* cache_info,
-    PgPerformResponsePB* response, rpc::RpcContext* context) {
-  return impl_->Get(cache_info, response, context);
+    PgPerformResponsePB* response, rpc::Sidecars* sidecars,
+    CoarseTimePoint deadline) {
+  return impl_->Get(cache_info, response, sidecars, deadline);
 }
 
 } // namespace tserver

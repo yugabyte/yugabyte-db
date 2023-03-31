@@ -59,7 +59,8 @@ class PgResponseCache {
 
   Result<Setter> Get(
       PgPerformOptionsPB::CachingInfoPB* cache_info,
-      PgPerformResponsePB* response, rpc::RpcContext* context);
+      PgPerformResponsePB* response, rpc::Sidecars* sidecars,
+             CoarseTimePoint deadline);
 
  private:
   class Impl;

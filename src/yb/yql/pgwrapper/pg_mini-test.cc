@@ -1952,6 +1952,40 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ManyRowsInsert), PgMiniSingleTServ
   LOG(INFO) << "Time: " << finish - start;
 }
 
+template <class Base>
+class PgMiniNoPrefetchTest : public Base {
+ public:
+  void SetUp() override {
+    FLAGS_ysql_prefetch_limit = 1;
+    Base::SetUp();
+  }
+};
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ColocatedJoinPerformance),
+          PgMiniNoPrefetchTest<PgMiniSingleTServerTest>) {
+  const std::string kDatabaseName = "testdb";
+  constexpr int kNumRows = RegularBuildVsDebugVsSanitizers(10000, 1000, 100);
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with colocated=true", kDatabaseName));
+
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1(k INT PRIMARY KEY, v1 INT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2(k INT PRIMARY KEY, v2 INT)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t2 SELECT s, s FROM generate_series(1, $0) AS s", kNumRows));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t1 SELECT s, s FROM generate_series(1, $0) AS s", kNumRows));
+
+  auto start = MonoTime::Now();
+  auto res = ASSERT_RESULT(conn.FetchValue<int32_t>(
+      "SELECT v1 + v2 FROM t1 INNER JOIN t2 ON (t1.k = t2.k) WHERE v2 < 2 OR v1 < 2"));
+  auto finish = MonoTime::Now();
+  ASSERT_EQ(res, 2);
+  LOG(INFO) << "Time: " << finish - start;
+}
+
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(MoveMaster)) {
   ShutdownAllMasters(cluster_.get());
   cluster_->mini_master(0)->set_pass_master_addresses(false);
