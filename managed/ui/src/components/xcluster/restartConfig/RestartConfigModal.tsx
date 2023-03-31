@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { FormikActions, FormikErrors, FormikProps } from 'formik';
 import { toast } from 'react-toastify';
+import { AxiosError } from 'axios';
 
 import { YBModalForm } from '../../common/forms';
 import { PARALLEL_THREADS_RANGE } from '../../backupv2/common/BackupUtils';
@@ -15,7 +16,7 @@ import {
   fetchTaskUntilItCompletes,
   restartXClusterConfig
 } from '../../../actions/xClusterReplication';
-import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
+import { assertUnreachableCase, handleServerError } from '../../../utils/errorHandlingUtils';
 import { ConfigTableSelect } from '../common/tableSelect/ConfigTableSelect';
 import { XClusterConfigStatus } from '../constants';
 
@@ -114,7 +115,7 @@ export const RestartConfigModal = ({
               toast.error(
                 <span className={styles.alertMsg}>
                   <i className="fa fa-exclamation-circle" />
-                  <span>Replication restart failed.</span>
+                  <span>{`Failed to restart replication: ${xClusterConfig.name}`}</span>
                   <a
                     href={`/tasks/${response.data.taskUUID}`}
                     rel="noopener noreferrer"
@@ -134,14 +135,8 @@ export const RestartConfigModal = ({
           }
         );
       },
-      onError: (error: any) => {
-        toast.error(
-          <span className={styles.alertMsg}>
-            <i className="fa fa-exclamation-circle" />
-            <span>{error.message}</span>
-          </span>
-        );
-      }
+      onError: (error: Error | AxiosError) =>
+        handleServerError(error, { customErrorLabel: 'Restart replication request failed' })
     }
   );
 

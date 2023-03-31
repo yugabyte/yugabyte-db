@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import { FormikActions, FormikErrors, FormikProps } from 'formik';
-import axios, { AxiosError } from 'axios';
+import { AxiosError } from 'axios';
 
 import {
   createXClusterReplication,
@@ -20,7 +20,7 @@ import { SelectTargetUniverseStep } from './SelectTargetUniverseStep';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import { api } from '../../../redesign/helpers/api';
 import { getPrimaryCluster, isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
-import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
+import { assertUnreachableCase, handleServerError } from '../../../utils/errorHandlingUtils';
 import {
   XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN,
   BOOTSTRAP_MIN_FREE_DISK_SPACE_GB,
@@ -154,7 +154,7 @@ export const CreateConfigModal = ({
             toast.error(
               <span className={styles.alertMsg}>
                 <i className="fa fa-exclamation-circle" />
-                <span>Replication creation failed.</span>
+                <span>xCluster config creation failed.</span>
                 <a
                   href={`/tasks/${response.data.taskUUID}`}
                   rel="noopener noreferrer"
@@ -168,13 +168,8 @@ export const CreateConfigModal = ({
           queryClient.invalidateQueries(['universe', sourceUniverseUUID], { exact: true });
         });
       },
-      onError: (error: Error | AxiosError) => {
-        if (axios.isAxiosError(error)) {
-          toast.error(error.response?.data?.error?.message ?? error.message);
-        } else {
-          toast.error(error.message);
-        }
-      }
+      onError: (error: Error | AxiosError) =>
+        handleServerError(error, { customErrorLabel: 'Create xCluster config request failed' })
     }
   );
 

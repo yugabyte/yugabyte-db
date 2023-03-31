@@ -59,7 +59,7 @@ import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { YBBanner, YBBannerVariant } from '../../../../common/descriptors';
 import { YBAHost } from '../../../../../redesign/helpers/constants';
 import { isAxiosError, isYBPBeanValidationError } from '../../../../../utils/errorHandlingUtils';
-import { YBPBeanValidationError, YBPError } from '../../../../../redesign/helpers/dtos';
+import { YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dtos';
 import { AWSProviderCredentialType, VPC_SETUP_OPTIONS } from './constants';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
@@ -184,11 +184,11 @@ export const AWSProviderEditForm = ({
   }
 
   const handleFormSubmitServerError = (
-    error: Error | AxiosError<YBPBeanValidationError | YBPError>
+    error: Error | AxiosError<YBPStructuredError | YBPError>
   ) => {
     if (
       featureFlags.test.enableAWSProviderValidation &&
-      isAxiosError<YBPBeanValidationError | YBPError>(error) &&
+      isAxiosError<YBPStructuredError | YBPError>(error) &&
       isYBPBeanValidationError(error) &&
       error.response?.data.error
     ) {
