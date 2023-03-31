@@ -296,7 +296,7 @@ class CDCServiceImpl::Impl {
     CDCStateMetadataInfo info = CDCStateMetadataInfo{
         .producer_tablet_info = producer_tablet,
         .commit_timestamp = {},
-        .last_streamed_op_id = OpId(),
+        .last_streamed_op_id = OpId::Invalid(),
         .schema_details_map = {},
         .mem_tracker = nullptr};
     cdc_state_metadata_.emplace(info);
@@ -569,7 +569,7 @@ class CDCServiceImpl::Impl {
         cdc_state_metadata_.emplace(CDCStateMetadataInfo{
             .producer_tablet_info = producer_info,
             .commit_timestamp = {},
-            .last_streamed_op_id = OpId(),
+            .last_streamed_op_id = OpId::Invalid(),
             .schema_details_map = {},
             .mem_tracker = nullptr,
         });

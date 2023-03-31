@@ -2319,6 +2319,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   }
 
   void CDCSDKDropColumnsWithRestartTServer(bool packed_row) {
+    FLAGS_enable_load_balancing = false;
     const int num_tservers = 3;
     ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
