@@ -54,7 +54,7 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
   protected JsonNode getUniverseJson(Result universeCreateResponse) {
     String universeUUID =
         Json.parse(contentAsString(universeCreateResponse)).get("resourceUUID").asText();
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID;
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID;
     Result getResponse = doRequestWithAuthToken("GET", url, authToken);
     assertOk(getResponse);
     return Json.parse(contentAsString(getResponse));
@@ -71,7 +71,7 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
     body.remove("nodeDetailsSet");
     body.remove("nodePrefix");
     return doRequestWithAuthTokenAndBody(
-        "POST", "/api/customers/" + customer.uuid + "/universes/clusters", authToken, body);
+        "POST", "/api/customers/" + customer.getUuid() + "/universes/clusters", authToken, body);
   }
 
   @Override
@@ -79,7 +79,7 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
     body.remove("clusterOperation");
     body.remove("currentClusterType");
     return doRequestWithAuthTokenAndBody(
-        "POST", "/api/customers/" + customer.uuid + "/universes/clusters", authToken, body);
+        "POST", "/api/customers/" + customer.getUuid() + "/universes/clusters", authToken, body);
   }
 
   @Override
@@ -89,7 +89,7 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
     return doRequestWithAuthTokenAndBody(
         "PUT",
         "/api/customers/"
-            + customer.uuid
+            + customer.getUuid()
             + "/universes/"
             + body.get("universeUUID").asText()
             + "/clusters/primary",
@@ -104,7 +104,7 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
     return doRequestWithAuthTokenAndBody(
         "POST",
         "/api/customers/"
-            + customer.uuid
+            + customer.getUuid()
             + "/universes/"
             + body.get("universeUUID").asText()
             + "/clusters/read_only",
@@ -142,7 +142,7 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
     ObjectNode bodyJson = Json.newObject();
     ArrayNode clustersJsonArray = Json.newArray().add(Json.toJson(primaryCluster));
     bodyJson.set("clusters", clustersJsonArray);
-    bodyJson.put("universeUUID", universe.universeUUID.toString());
+    bodyJson.put("universeUUID", universe.getUniverseUUID().toString());
     bodyJson.set("nodeDetailsSet", Json.toJson(universe.getUniverseDetails().nodeDetailsSet));
     Result result = assertPlatformException(() -> sendPrimaryEditConfigureRequest(bodyJson));
     assertBadRequest(
@@ -154,14 +154,14 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
       Consumer<UniverseDefinitionTaskParams.UserIntent> primaryMutator,
       Consumer<UniverseDefinitionTaskParams.UserIntent> readonlyMutator,
       boolean success) {
-    Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
+    Universe universe = ModelFactory.createUniverse(customer.getId());
     Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    taskParams.universeUUID = universe.universeUUID;
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
     UniverseDefinitionTaskParams.Cluster newCluster =
         new UniverseDefinitionTaskParams.Cluster(
             UniverseDefinitionTaskParams.ClusterType.ASYNC, primaryCluster.userIntent);
@@ -172,11 +172,11 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
     deviceInfo.storageType = PublicCloudConstants.StorageType.GP2;
     newCluster.userIntent.deviceInfo = deviceInfo;
     newCluster.userIntent.instanceType = "c3.xlarge";
-    newCluster.userIntent.regionList = Collections.singletonList(r.uuid);
+    newCluster.userIntent.regionList = Collections.singletonList(r.getUuid());
 
     if (primaryMutator != null) {
       Universe.saveDetails(
-          universe.universeUUID,
+          universe.getUniverseUUID(),
           univ -> {
             primaryMutator.accept(univ.getUniverseDetails().getPrimaryCluster().userIntent);
           });
@@ -188,7 +188,7 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
     ArrayNode clustersJsonArray = Json.newArray().add(Json.toJson(newCluster));
     bodyJson.set("clusters", clustersJsonArray);
     bodyJson.set("deviceInfo", Json.toJson(deviceInfo));
-    bodyJson.put("universeUUID", universe.universeUUID.toString());
+    bodyJson.put("universeUUID", universe.getUniverseUUID().toString());
     if (success) {
       Result result = sendAsyncCreateConfigureRequest(bodyJson);
       assertOk(result);

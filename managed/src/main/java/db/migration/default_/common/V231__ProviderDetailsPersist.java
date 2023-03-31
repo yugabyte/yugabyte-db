@@ -33,8 +33,8 @@ public class V231__ProviderDetailsPersist extends BaseJdbcMigration {
 
   public static void migrateConfigToDetails() {
     for (Customer customer : Customer.getAll()) {
-      for (Provider provider : Provider.getAll(customer.uuid)) {
-        Map<String, String> config = provider.config;
+      for (Provider provider : Provider.getAll(customer.getUuid())) {
+        Map<String, String> config = provider.getConfig();
         if (config == null) {
           continue;
         }
@@ -45,10 +45,10 @@ public class V231__ProviderDetailsPersist extends BaseJdbcMigration {
           providerConfig = V231__ProviderDetailsPersist.translateGCPConfigToDetails(config);
         }
 
-        for (Region region : provider.regions) {
+        for (Region region : provider.getRegions()) {
           V231__ProviderDetailsPersist.migrateRegionDetails(region);
-          for (AvailabilityZone az : region.zones) {
-            CloudInfoInterface.setCloudProviderInfoFromConfig(az, az.config);
+          for (AvailabilityZone az : region.getZones()) {
+            CloudInfoInterface.setCloudProviderInfoFromConfig(az, az.getConfig());
             az.save();
           }
           region.save();
@@ -65,18 +65,18 @@ public class V231__ProviderDetailsPersist extends BaseJdbcMigration {
   }
 
   private static void migrateRegionDetails(Region region) {
-    if (region.ybImage != null) {
-      region.setYbImage(region.ybImage);
+    if (region.getYbImage() != null) {
+      region.setYbImage(region.getYbImage());
     }
-    if (region.details != null) {
-      if (region.details.sg_id != null) {
-        region.setSecurityGroupId(region.details.sg_id);
+    if (region.getDetails() != null) {
+      if (region.getDetails().sg_id != null) {
+        region.setSecurityGroupId(region.getDetails().sg_id);
       }
-      if (region.details.vnet != null) {
-        region.setVnetName(region.details.vnet);
+      if (region.getDetails().vnet != null) {
+        region.setVnetName(region.getDetails().vnet);
       }
-      if (region.details.arch != null) {
-        region.setArchitecture(region.details.arch);
+      if (region.getDetails().arch != null) {
+        region.setArchitecture(region.getDetails().arch);
       }
     }
   }
@@ -124,10 +124,10 @@ public class V231__ProviderDetailsPersist extends BaseJdbcMigration {
       }
     }
 
-    if (provider.details == null) {
+    if (provider.getDetails() == null) {
       return;
     }
-    GCPCloudInfo gcpCloudInfo = provider.details.cloudInfo.gcp;
+    GCPCloudInfo gcpCloudInfo = provider.getDetails().cloudInfo.gcp;
     if (gcpCloudInfo == null) {
       return;
     }

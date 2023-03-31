@@ -27,7 +27,7 @@ public class SystemdUpgradeParams extends UpgradeTaskParams {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     if (userIntent.providerType == Common.CloudType.onprem) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
-      if (provider.details.skipProvisioning) {
+      if (provider.getDetails().skipProvisioning) {
         throw new PlatformServiceException(
             Status.BAD_REQUEST, "Cannot upgrade systemd for manually provisioned universes");
       }

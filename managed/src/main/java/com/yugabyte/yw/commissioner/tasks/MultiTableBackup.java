@@ -85,7 +85,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     tableBackupParams.customerUuid = params().customerUUID;
     tableBackupParams.ignoreErrors = true;
     Set<String> tablesToBackup = new HashSet<>();
-    Universe universe = Universe.getOrBadRequest(params().universeUUID);
+    Universe universe = Universe.getOrBadRequest(params().getUniverseUUID());
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
@@ -224,7 +224,7 @@ public class MultiTableBackup extends UniverseTaskBase {
             }
           }
         } catch (Exception e) {
-          log.error("Failed to get list of tables in universe " + params().universeUUID, e);
+          log.error("Failed to get list of tables in universe " + params().getUniverseUUID(), e);
           unlockUniverseForUpdate();
           // Do not lose the actual exception thrown.
           Throwables.propagate(e);
@@ -261,7 +261,7 @@ public class MultiTableBackup extends UniverseTaskBase {
           tableBackupParams.storageConfigUUID = params().storageConfigUUID;
           tableBackupParams.actionType = BackupTableParams.ActionType.CREATE;
           tableBackupParams.scheduleUUID = params().scheduleUUID;
-          tableBackupParams.universeUUID = params().universeUUID;
+          tableBackupParams.setUniverseUUID(params().getUniverseUUID());
           tableBackupParams.sse = params().sse;
           tableBackupParams.parallelism = params().parallelism;
           tableBackupParams.timeBeforeDelete = params().timeBeforeDelete;
@@ -275,8 +275,8 @@ public class MultiTableBackup extends UniverseTaskBase {
           Backup backup = Backup.create(params().customerUUID, tableBackupParams);
           backup.setTaskUUID(userTaskUUID);
           backup.save();
-          tableBackupParams.backupUuid = backup.backupUUID;
-          log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
+          tableBackupParams.backupUuid = backup.getBackupUUID();
+          log.info("Task id {} for the backup {}", backup.getTaskUUID(), backup.getBackupUUID());
 
           for (BackupTableParams backupParams : backupParamsList) {
             createEncryptedUniverseKeyBackupTask(backupParams)
@@ -291,8 +291,8 @@ public class MultiTableBackup extends UniverseTaskBase {
           Backup backup = Backup.create(params().customerUUID, tableBackupParams);
           backup.setTaskUUID(userTaskUUID);
           backup.save();
-          tableBackupParams.backupUuid = backup.backupUUID;
-          log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
+          tableBackupParams.backupUuid = backup.getBackupUUID();
+          log.info("Task id {} for the backup {}", backup.getTaskUUID(), backup.getBackupUUID());
 
           createEncryptedUniverseKeyBackupTask(backup.getBackupInfo())
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
@@ -303,12 +303,12 @@ public class MultiTableBackup extends UniverseTaskBase {
             Backup backup = Backup.create(params().customerUUID, tableParams);
             backup.setTaskUUID(userTaskUUID);
             backup.save();
-            tableParams.backupUuid = backup.backupUUID;
-            tableParams.customerUuid = backup.customerUUID;
+            tableParams.backupUuid = backup.getBackupUUID();
+            tableParams.customerUuid = backup.getCustomerUUID();
             tableParams.disableChecksum = params().disableChecksum;
             tableBackupParams.useTablespaces = params().useTablespaces;
             tableBackupParams.disableParallelism = params().disableParallelism;
-            log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
+            log.info("Task id {} for the backup {}", backup.getTaskUUID(), backup.getBackupUUID());
 
             createEncryptedUniverseKeyBackupTask(tableParams)
                 .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
@@ -371,7 +371,7 @@ public class MultiTableBackup extends UniverseTaskBase {
 
     backupParams.actionType = BackupTableParams.ActionType.CREATE;
     backupParams.storageConfigUUID = params().storageConfigUUID;
-    backupParams.universeUUID = params().universeUUID;
+    backupParams.setUniverseUUID(params().getUniverseUUID());
     backupParams.sse = params().sse;
     backupParams.parallelism = params().parallelism;
     backupParams.timeBeforeDelete = params().timeBeforeDelete;
@@ -420,7 +420,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     }
     backupParams.actionType = BackupTableParams.ActionType.CREATE;
     backupParams.storageConfigUUID = params().storageConfigUUID;
-    backupParams.universeUUID = params().universeUUID;
+    backupParams.setUniverseUUID(params().getUniverseUUID());
     backupParams.sse = params().sse;
     backupParams.parallelism = params().parallelism;
     backupParams.timeBeforeDelete = params().timeBeforeDelete;
@@ -437,10 +437,10 @@ public class MultiTableBackup extends UniverseTaskBase {
     Customer customer = Customer.get(customerUUID);
     JsonNode params = schedule.getTaskParams();
     MultiTableBackup.Params taskParams = Json.fromJson(params, MultiTableBackup.Params.class);
-    taskParams.scheduleUUID = schedule.scheduleUUID;
+    taskParams.scheduleUUID = schedule.getScheduleUUID();
     Universe universe;
     try {
-      universe = Universe.getOrBadRequest(taskParams.universeUUID);
+      universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
     } catch (Exception e) {
       schedule.stopSchedule();
       return;
@@ -455,7 +455,7 @@ public class MultiTableBackup extends UniverseTaskBase {
 
       if (shouldTakeBackup) {
         schedule.updateBacklogStatus(true);
-        log.debug("Schedule {} backlog status is set to true", schedule.scheduleUUID);
+        log.debug("Schedule {} backlog status is set to true", schedule.getScheduleUUID());
         SCHEDULED_BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
@@ -464,30 +464,32 @@ public class MultiTableBackup extends UniverseTaskBase {
       String stateLogMsg = CommonUtils.generateStateLogMsg(universe, alreadyRunning);
       log.warn(
           "Cannot run Backup task on universe {} due to the state {}",
-          taskParams.universeUUID.toString(),
+          taskParams.getUniverseUUID().toString(),
           stateLogMsg);
       return;
     }
     UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
-    if (schedule.getBacklogStatus()) {
+    if (schedule.isBacklogStatus()) {
       schedule.updateBacklogStatus(false);
-      log.debug("Schedule {} backlog status is set to false", schedule.scheduleUUID);
+      log.debug("Schedule {} backlog status is set to false", schedule.getScheduleUUID());
     }
     log.info(
-        "Submitted backup for universe: {}, task uuid = {}.", taskParams.universeUUID, taskUUID);
+        "Submitted backup for universe: {}, task uuid = {}.",
+        taskParams.getUniverseUUID(),
+        taskUUID);
     CustomerTask.create(
         customer,
-        taskParams.universeUUID,
+        taskParams.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Backup,
         CustomerTask.TaskType.Create,
-        universe.name);
+        universe.getName());
     log.info(
         "Saved task uuid {} in customer tasks table for universe {}:{}",
         taskUUID,
-        taskParams.universeUUID,
-        universe.name);
+        taskParams.getUniverseUUID(),
+        universe.getName());
     SCHEDULED_BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     metricService.setOkStatusMetric(
         buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));

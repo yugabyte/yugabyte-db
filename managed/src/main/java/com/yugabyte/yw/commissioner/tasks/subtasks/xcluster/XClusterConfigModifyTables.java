@@ -62,7 +62,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
     return String.format(
         "%s(targetUniverse=%s,xClusterConfig=%s,tables=%s,action=%s)",
         super.getName(),
-        taskParams().universeUUID,
+        taskParams().getUniverseUUID(),
         taskParams().getXClusterConfig(),
         taskParams().tables,
         taskParams().action);
@@ -92,17 +92,17 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
         String errMsg =
             String.format(
                 "Table with id (%s) does not belong to the task params xCluster config (%s)",
-                tableId, xClusterConfig.uuid);
+                tableId, xClusterConfig.getUuid());
         throw new IllegalArgumentException(errMsg);
       }
-      if (tableConfig.get().replicationSetupDone) {
+      if (tableConfig.get().isReplicationSetupDone()) {
         String errMsg =
             String.format(
                 "Replication is already set up for table with id (%s) and cannot be set up again",
                 tableId);
         throw new IllegalArgumentException(errMsg);
       }
-      tableIdsToAddBootstrapIdsMap.put(tableId, tableConfig.get().streamId);
+      tableIdsToAddBootstrapIdsMap.put(tableId, tableConfig.get().getStreamId());
     }
     // Either all tables should need bootstrap, or none should.
     if (tableIdsToAddBootstrapIdsMap.values().stream().anyMatch(Objects::isNull)
@@ -112,7 +112,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
               "Failed to modify XClusterConfig(%s) to add tables because some tables went "
                   + "through bootstrap and some did not, You must create modify tables subtasks "
                   + "separately for them",
-              xClusterConfig.uuid));
+              xClusterConfig.getUuid()));
     }
 
     // Ensure each tableId exits in the xCluster config.
@@ -122,13 +122,13 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
         String errMsg =
             String.format(
                 "Table with id (%s) is not part of xCluster config (%s) and cannot be removed",
-                tableId, xClusterConfig.uuid);
+                tableId, xClusterConfig.getUuid());
         throw new IllegalArgumentException(errMsg);
       }
     }
-    log.info("Modifying tables in XClusterConfig({})", xClusterConfig.uuid);
+    log.info("Modifying tables in XClusterConfig({})", xClusterConfig.getUuid());
 
-    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     try (YBClient client =
@@ -137,7 +137,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
         try {
           log.info(
               "Adding tables to XClusterConfig({}): tableIdsToAddBootstrapIdsMap {}",
-              xClusterConfig.uuid,
+              xClusterConfig.getUuid(),
               tableIdsToAddBootstrapIdsMap);
           AlterUniverseReplicationResponse resp =
               client.alterUniverseReplicationAddTables(
@@ -146,7 +146,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
             String errMsg =
                 String.format(
                     "Failed to add tables to XClusterConfig(%s): %s",
-                    xClusterConfig.uuid, resp.errorMessage());
+                    xClusterConfig.getUuid(), resp.errorMessage());
             throw new RuntimeException(errMsg);
           }
           waitForXClusterOperation(client::isAlterUniverseReplicationDone);
@@ -154,7 +154,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
           // Get the stream ids from the target universe and put it in the Platform DB for the
           // added tables to the xCluster config.
           CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
-              getClusterConfig(client, targetUniverse.universeUUID);
+              getClusterConfig(client, targetUniverse.getUniverseUUID());
           syncXClusterConfigWithReplicationGroup(
               clusterConfig, xClusterConfig, tableIdsToAdd, true /* skipSyncTxnTable */);
 
@@ -165,7 +165,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
             getUniverse(true).incrementVersion();
           }
         } catch (Exception e) {
-          xClusterConfig.setStatusForTables(tableIdsToAdd, XClusterTableConfig.Status.Failed);
+          xClusterConfig.updateStatusForTables(tableIdsToAdd, XClusterTableConfig.Status.Failed);
           throw e;
         }
       }
@@ -173,17 +173,20 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
       if (tableIdsToRemove.size() > 0) {
         try {
           log.info(
-              "Removing tables from XClusterConfig({}): {}", xClusterConfig.uuid, tableIdsToRemove);
+              "Removing tables from XClusterConfig({}): {}",
+              xClusterConfig.getUuid(),
+              tableIdsToRemove);
           // Sync the state for the tables to be removed.
           CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
-              getClusterConfig(client, targetUniverse.universeUUID);
+              getClusterConfig(client, targetUniverse.getUniverseUUID());
           boolean replicationGroupExists =
               syncReplicationSetUpStateForTables(clusterConfig, xClusterConfig, tableIdsToRemove);
           if (!replicationGroupExists) {
             throw new RuntimeException(
                 String.format(
                     "No replication group found with name (%s) in universe (%s) cluster config",
-                    xClusterConfig.getReplicationGroupName(), xClusterConfig.targetUniverseUUID));
+                    xClusterConfig.getReplicationGroupName(),
+                    xClusterConfig.getTargetUniverseUUID()));
           }
           Set<String> tableIdsToRemoveWithReplication =
               xClusterConfig
@@ -197,7 +200,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
           // Removing all tables from a replication config is not allowed.
           if (tableIdsToRemoveWithReplication.size()
                   + xClusterConfig.getTableIdsWithReplicationSetup(false /* done */).size()
-              == xClusterConfig.getTables().size()) {
+              == xClusterConfig.getTableIds().size()) {
             throw new RuntimeException(
                 String.format(
                     "The operation to remove tables from replication config will remove all the "
@@ -215,7 +218,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
               throw new RuntimeException(
                   String.format(
                       "Failed to remove tables from XClusterConfig(%s): %s",
-                      xClusterConfig.uuid, resp.errorMessage()));
+                      xClusterConfig.getUuid(), resp.errorMessage()));
             }
 
             if (HighAvailabilityConfig.get().isPresent()) {
@@ -230,16 +233,16 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
                 .getTablesById(tableIdsToRemove)
                 .forEach(
                     tableConfig -> {
-                      tableConfig.status = XClusterTableConfig.Status.Validated;
-                      tableConfig.replicationSetupDone = false;
-                      tableConfig.streamId = null;
-                      tableConfig.bootstrapCreateTime = null;
-                      tableConfig.restoreTime = null;
+                      tableConfig.setStatus(XClusterTableConfig.Status.Validated);
+                      tableConfig.setReplicationSetupDone(false);
+                      tableConfig.setStreamId(null);
+                      tableConfig.setBootstrapCreateTime(null);
+                      tableConfig.setRestoreTime(null);
                     });
             xClusterConfig.update();
           }
         } catch (Exception e) {
-          xClusterConfig.setStatusForTables(tableIdsToRemove, XClusterTableConfig.Status.Failed);
+          xClusterConfig.updateStatusForTables(tableIdsToRemove, XClusterTableConfig.Status.Failed);
           throw e;
         }
       }

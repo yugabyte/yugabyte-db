@@ -127,7 +127,7 @@ public class KubernetesUtil {
         throw new NullPointerException("Couldn't find a kubeconfig");
       }
 
-      String azName = AvailabilityZone.get(entry.getKey()).code;
+      String azName = AvailabilityZone.get(entry.getKey()).getCode();
       String namespace =
           getKubernetesNamespace(
               isMultiAZ, nodePrefix, azName, entry.getValue(), false, isReadOnlyCluster);
@@ -201,14 +201,14 @@ public class KubernetesUtil {
           getKubernetesNamespace(
               isMultiAZ,
               nodePrefix,
-              az.code,
+              az.getCode(),
               azConfig,
               newNamingStyle,
               false /*isReadOnlyCluster*/);
       String domain = azToDomain.get(entry.getKey());
       String helmFullName =
           getHelmFullNameWithSuffix(
-              isMultiAZ, nodePrefix, universeName, az.code, newNamingStyle, false);
+              isMultiAZ, nodePrefix, universeName, az.getCode(), newNamingStyle, false);
       for (int idx = 0; idx < entry.getValue(); idx++) {
         String masterIP =
             formatPodAddress(

@@ -52,7 +52,7 @@ public class HAController extends AuthenticatedController {
           .createAuditEntryWithReqBody(
               ctx(),
               Audit.TargetType.HAConfig,
-              Objects.toString(config.getUUID(), null),
+              Objects.toString(config.getUuid(), null),
               Audit.ActionType.Create,
               Json.toJson(formData));
       return PlatformResults.withData(config);

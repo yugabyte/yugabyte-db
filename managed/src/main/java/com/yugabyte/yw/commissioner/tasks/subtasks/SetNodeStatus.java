@@ -38,7 +38,7 @@ public class SetNodeStatus extends NodeTaskBase {
           "Updating node {} status to {} in universe {}.",
           taskParams().nodeName,
           taskParams().nodeStatus,
-          taskParams().universeUUID);
+          taskParams().getUniverseUUID());
       setNodeStatus(taskParams().nodeStatus);
     } catch (Exception e) {
       throw new RuntimeException(e);

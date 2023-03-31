@@ -78,22 +78,22 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
       if (backupList.size() != 0) {
         if (isCredentialUsable(customerConfig)) {
           List<String> backupLocations;
-          switch (customerConfig.name) {
+          switch (customerConfig.getName()) {
             case S3:
             case GCS:
             case AZ:
               for (Backup backup : backupList) {
                 try {
-                  CloudUtil cloudUtil = CloudUtil.getCloudUtil(customerConfig.name);
+                  CloudUtil cloudUtil = CloudUtil.getCloudUtil(customerConfig.getName());
                   backupLocations = backupUtil.getBackupLocations(backup);
                   cloudUtil.deleteKeyIfExists(
                       customerConfig.getDataObject(), backupLocations.get(0));
                   cloudUtil.deleteStorage(customerConfig.getDataObject(), backupLocations);
                 } catch (Exception e) {
-                  log.error(" Error in deleting backup " + backup.backupUUID.toString(), e);
+                  log.error(" Error in deleting backup " + backup.getBackupUUID().toString(), e);
                   backup.transitionState(Backup.BackupState.FailedToDelete);
                 } finally {
-                  if (backup.state != Backup.BackupState.FailedToDelete) {
+                  if (backup.getState() != Backup.BackupState.FailedToDelete) {
                     backup.delete();
                   }
                 }
@@ -114,7 +114,7 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
               }
               break;
             default:
-              log.error("Invalid Config type {} provided", customerConfig.name);
+              log.error("Invalid Config type {} provided", customerConfig.getName());
           }
         } else {
           backupList
@@ -138,7 +138,7 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
   }
 
   private Boolean isUniversePresent(Backup backup) {
-    Optional<Universe> universe = Universe.maybeGet(backup.getBackupInfo().universeUUID);
+    Optional<Universe> universe = Universe.maybeGet(backup.getBackupInfo().getUniverseUUID());
     return universe.isPresent();
   }
 

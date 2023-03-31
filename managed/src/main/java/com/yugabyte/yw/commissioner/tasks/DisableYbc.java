@@ -33,21 +33,22 @@ public class DisableYbc extends UniverseTaskBase {
       // to lock out the universe completely in case this task fails.
       lockUniverse(-1 /* expectedUniverseVersion */);
 
-      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
       if (Schedule.getAllActiveSchedulesByOwnerUUIDAndType(
-              universe.universeUUID, TaskType.CreateBackup)
+              universe.getUniverseUUID(), TaskType.CreateBackup)
           .stream()
           .anyMatch(s -> ScheduleUtil.isIncrementalBackupSchedule(s.getScheduleUUID()))) {
         throw new RuntimeException(
             "Cannot disable ybc as an incremental backup schedule exists on universe "
-                + universe.universeUUID);
+                + universe.getUniverseUUID());
       }
 
-      if (!universeDetails.enableYbc || !universeDetails.ybcInstalled) {
+      if (!universeDetails.isEnableYbc() || !universeDetails.isYbcInstalled()) {
         throw new RuntimeException(
-            "Ybc is either not installed or enabled on the universe: " + universe.universeUUID);
+            "Ybc is either not installed or enabled on the universe: "
+                + universe.getUniverseUUID());
       }
       // Stop yb-controller processes on nodes
       createStopYbControllerTasks(universe.getNodes())

@@ -46,7 +46,7 @@ public class SessionHandler {
 
     List<String> regexBuilder = new ArrayList<>();
     if (universe != null) {
-      regexBuilder.add(universe.universeUUID.toString());
+      regexBuilder.add(universe.getUniverseUUID().toString());
     }
 
     if (queryRegex != null) {

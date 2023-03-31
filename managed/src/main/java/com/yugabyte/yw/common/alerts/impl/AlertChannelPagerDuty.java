@@ -90,7 +90,7 @@ public class AlertChannelPagerDuty extends AlertChannelWebBase {
                 .group(alert.getConfigurationType().name())
                 .eventClass(title)
                 .summary(text)
-                .source("YB Platform " + customer.name)
+                .source("YB Platform " + customer.getName())
                 .severity(severity)
                 .timestamp(
                     alert

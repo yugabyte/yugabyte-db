@@ -73,27 +73,27 @@ public class AccessKeyFormData {
   public AccessKeyFormData setOrValidateRequestDataWithExistingKey(Provider provider) {
     // fill missing access key params from provider details
     // But we want to do this only if there was access key created already.
-    if (!AccessKey.getAll(provider.uuid).isEmpty()) {
-      this.sshUser = setOrValidate(this.sshUser, provider.details.sshUser, "sshUser");
-      this.sshPort = setOrValidate(this.sshPort, provider.details.sshPort, "sshPort");
+    if (!AccessKey.getAll(provider.getUuid()).isEmpty()) {
+      this.sshUser = setOrValidate(this.sshUser, provider.getDetails().sshUser, "sshUser");
+      this.sshPort = setOrValidate(this.sshPort, provider.getDetails().sshPort, "sshPort");
       this.nodeExporterUser =
           setOrValidate(
-              this.nodeExporterUser, provider.details.nodeExporterUser, "nodeExporterUser");
+              this.nodeExporterUser, provider.getDetails().nodeExporterUser, "nodeExporterUser");
       this.nodeExporterPort =
           setOrValidate(
-              this.nodeExporterPort, provider.details.nodeExporterPort, "nodeExporterPort");
+              this.nodeExporterPort, provider.getDetails().nodeExporterPort, "nodeExporterPort");
 
       // These fields are not required during creating a new access key. This information
       // will be missing during rotation. Therefore, copying the information present in the latest
       // access key(for the first access key creation information will be populated during provider
       // creation, which will be passed on during subsequent creation).
-      this.airGapInstall = provider.details.airGapInstall;
-      this.skipProvisioning = provider.details.skipProvisioning;
-      this.setUpChrony = provider.details.setUpChrony;
-      this.ntpServers = provider.details.ntpServers;
-      this.showSetUpChrony = provider.details.showSetUpChrony;
-      this.passwordlessSudoAccess = provider.details.passwordlessSudoAccess;
-      this.installNodeExporter = provider.details.installNodeExporter;
+      this.airGapInstall = provider.getDetails().airGapInstall;
+      this.skipProvisioning = provider.getDetails().skipProvisioning;
+      this.setUpChrony = provider.getDetails().setUpChrony;
+      this.ntpServers = provider.getDetails().ntpServers;
+      this.showSetUpChrony = provider.getDetails().showSetUpChrony;
+      this.passwordlessSudoAccess = provider.getDetails().passwordlessSudoAccess;
+      this.installNodeExporter = provider.getDetails().installNodeExporter;
     }
     if (sshPort == null) sshPort = 22;
 

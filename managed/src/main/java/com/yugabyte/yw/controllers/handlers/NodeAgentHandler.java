@@ -73,7 +73,7 @@ public class NodeAgentHandler {
   public NodeAgent register(UUID customerUuid, NodeAgentForm payload) {
     Optional<NodeAgent> nodeAgentOp = NodeAgent.maybeGetByIp(payload.ip);
     if (nodeAgentOp.isPresent()) {
-      log.error("Node {} is already registered with {}", payload.ip, nodeAgentOp.get().uuid);
+      log.error("Node {} is already registered with {}", payload.ip, nodeAgentOp.get().getUuid());
       throw new PlatformServiceException(Status.BAD_REQUEST, "Node agent is already registered");
     }
     if (StringUtils.isBlank(payload.version)) {

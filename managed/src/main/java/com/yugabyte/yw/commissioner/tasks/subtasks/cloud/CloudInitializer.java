@@ -41,7 +41,7 @@ public class CloudInitializer extends CloudTaskBase {
   public void run() {
     Provider cloudProvider = getProvider();
     AbstractInitializer initializer;
-    switch (Common.CloudType.valueOf(cloudProvider.code)) {
+    switch (Common.CloudType.valueOf(cloudProvider.getCode())) {
       case aws:
         initializer = StaticInjectorHolder.injector().instanceOf(AWSInitializer.class);
         break;
@@ -52,8 +52,8 @@ public class CloudInitializer extends CloudTaskBase {
         initializer = StaticInjectorHolder.injector().instanceOf(AZUInitializer.class);
         break;
       default:
-        throw new RuntimeException(cloudProvider.code + " does not have an initializer.");
+        throw new RuntimeException(cloudProvider.getCode() + " does not have an initializer.");
     }
-    initializer.initialize(cloudProvider.customerUUID, cloudProvider.uuid);
+    initializer.initialize(cloudProvider.getCustomerUUID(), cloudProvider.getUuid());
   }
 }

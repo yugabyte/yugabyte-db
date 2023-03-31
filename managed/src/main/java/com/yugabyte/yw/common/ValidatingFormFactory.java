@@ -32,6 +32,10 @@ public class ValidatingFormFactory {
     this.validator = validator;
   }
 
+  /*
+   * Use AbstractPlatformController.parseJsonAndValidate instead.
+   */
+  @Deprecated
   public <T> Form<T> getFormDataOrBadRequest(Class<T> clazz) {
     Form<T> formData = formFactory.form(clazz).bindFromRequest();
     if (formData.hasErrors()) {

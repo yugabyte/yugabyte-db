@@ -161,14 +161,14 @@ public class TokenAuthenticator extends Action.Simple {
       Users user = getCurrentAuthenticatedUser(ctx);
 
       if (user != null) {
-        cust = Customer.get(user.customerUUID);
+        cust = Customer.get(user.getCustomerUUID());
       } else {
         return CompletableFuture.completedFuture(Results.forbidden("Unable To Authenticate User"));
       }
 
       // Some authenticated calls don't actually need to be authenticated
       // (e.g. /metadata/column_types). Only check auth_token is valid in that case.
-      if (cust != null && (custUUID == null || custUUID.equals(cust.uuid))) {
+      if (cust != null && (custUUID == null || custUUID.equals(cust.getUuid()))) {
         if (!checkAccessLevel(endPoint, user, requestType)) {
           return CompletableFuture.completedFuture(Results.forbidden("User doesn't have access"));
         }
@@ -260,7 +260,7 @@ public class TokenAuthenticator extends Action.Simple {
     // user's password.
     if (endPoint.endsWith("/change_password")) {
       UUID userUUID = UUID.fromString(endPoint.split("/")[2]);
-      return userUUID.equals(user.uuid);
+      return userUUID.equals(user.getUuid());
     }
 
     // All users have access to get, metrics and setting an API token.

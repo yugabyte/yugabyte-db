@@ -248,7 +248,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
 
     CertificateInfo.create(
         rootCA,
-        defaultCustomer.uuid,
+        defaultCustomer.getUuid(),
         "test1",
         new Date(),
         new Date(),
@@ -259,7 +259,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
     if (!rootCA.equals(clientRootCA)) {
       CertificateInfo.create(
           clientRootCA,
-          defaultCustomer.uuid,
+          defaultCustomer.getUuid(),
           "test1",
           new Date(),
           new Date(),
@@ -270,7 +270,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
 
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             universe -> {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
               PlacementInfo placementInfo = universeDetails.getPrimaryCluster().placementInfo;
@@ -311,7 +311,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
       taskParams.rootCA = UUID.randomUUID();
       CertificateInfo.create(
           taskParams.rootCA,
-          defaultCustomer.uuid,
+          defaultCustomer.getUuid(),
           "test1",
           new Date(),
           new Date(),
@@ -323,7 +323,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
       taskParams.setClientRootCA(UUID.randomUUID());
       CertificateInfo.create(
           taskParams.getClientRootCA(),
-          defaultCustomer.uuid,
+          defaultCustomer.getUuid(),
           "test1",
           new Date(),
           new Date(),

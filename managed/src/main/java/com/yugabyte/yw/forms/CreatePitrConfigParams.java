@@ -4,7 +4,9 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.UUID;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
 
@@ -12,7 +14,7 @@ import play.data.validation.Constraints;
 @NoArgsConstructor
 public class CreatePitrConfigParams extends UniverseTaskParams {
 
-  @JsonIgnore public UUID universeUUID;
+  @JsonIgnore @Getter @Setter private UUID universeUUID;
 
   @JsonIgnore public UUID customerUUID;
 

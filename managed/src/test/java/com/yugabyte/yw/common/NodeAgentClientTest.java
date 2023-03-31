@@ -72,7 +72,7 @@ public class NodeAgentClientTest extends FakeDBApplication {
     payload.archType = ArchType.AMD64.name();
     payload.home = "/home/yugabyte/node-agent";
     nodeAgentHandler.enableConnectionValidation(false);
-    nodeAgent = nodeAgentHandler.register(customer.uuid, payload);
+    nodeAgent = nodeAgentHandler.register(customer.getUuid(), payload);
     nodeAgentImpl =
         new NodeAgentImplBase() {
           @Override

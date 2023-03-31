@@ -44,7 +44,7 @@ public class SystemdUpgrade extends UpgradeTaskBase {
           // Verify the request params and fail if invalid
           taskParams().verifyParams(getUniverse());
 
-          if (taskParams().ybcInstalled) {
+          if (taskParams().isYbcInstalled()) {
             createServerControlTasks(nodes.getRight(), ServerType.CONTROLLER, "stop")
                 .setSubTaskGroupType(getTaskSubGroupType());
           }

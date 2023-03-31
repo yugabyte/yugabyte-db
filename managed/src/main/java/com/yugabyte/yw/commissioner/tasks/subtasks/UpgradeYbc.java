@@ -38,16 +38,16 @@ public class UpgradeYbc extends AbstractTaskBase {
   }
 
   private void preChecks(Universe universe, String ybcVersion) {
-    if (!universe.getUniverseDetails().enableYbc) {
+    if (!universe.getUniverseDetails().isEnableYbc()) {
       throw new RuntimeException(
-          "Cannot upgrade YBC as it is not enabled on universe " + universe.universeUUID);
+          "Cannot upgrade YBC as it is not enabled on universe " + universe.getUniverseUUID());
     }
-    if (universe.getUniverseDetails().ybcSoftwareVersion.equals(ybcVersion)) {
+    if (universe.getUniverseDetails().getYbcSoftwareVersion().equals(ybcVersion)) {
       throw new RuntimeException(
           "YBC version "
               + ybcVersion
               + " is already installed on universe "
-              + universe.universeUUID);
+              + universe.getUniverseUUID());
     }
   }
 
@@ -87,7 +87,7 @@ public class UpgradeYbc extends AbstractTaskBase {
                 universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort,
                 universe.getCertificateNodetoNode());
       } else {
-        sourceYbcVersion = ybcUpgrade.getUniverseYbcVersion(universe.universeUUID);
+        sourceYbcVersion = ybcUpgrade.getUniverseYbcVersion(universe.getUniverseUUID());
       }
       if (!sourceYbcVersion.equals(taskParams().ybcVersion)) {
         throw new RuntimeException(

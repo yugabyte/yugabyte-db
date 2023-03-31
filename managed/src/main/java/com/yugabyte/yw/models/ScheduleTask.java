@@ -86,14 +86,8 @@ public class ScheduleTask extends Model {
     return find.query().where().eq("scheduleUUID", scheduleUUID).findList();
   }
 
-  public void setCompletedTime() {
+  public void markCompleted() {
     this.completedTime = new Date();
     save();
-  }
-
-  public void markAsCompleted() {
-    if (this.completedTime == null) {
-      setCompletedTime();
-    }
   }
 }

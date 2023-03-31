@@ -186,7 +186,7 @@ public class HealthCheckerReport {
                 + "        <td style=\"text-align:left\">%s</td>\n"
                 + "    </tr>\n"
                 + "</table>\n",
-            makeHeaderLeft("Universe name", u.name),
+            makeHeaderLeft("Universe name", u.getName()),
             makeHeaderLeft("Universe version", report.path("yb_version").asText()),
             timestamp,
             makeHeaderLeft("YW host name", Util.getHostname()),

@@ -19,8 +19,6 @@ import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.UpdatedTimestamp;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import java.text.SimpleDateFormat;
-import java.util.Collection;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
@@ -31,15 +29,18 @@ import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
+import lombok.Getter;
+import lombok.Setter;
+import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.apache.commons.collections.CollectionUtils;
 
 @ApiModel(description = "Keyspace level restores")
 @Entity
+@Getter
+@Setter
 public class RestoreKeyspace extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(RestoreKeyspace.class);
-  SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
   public static final Finder<UUID, RestoreKeyspace> find =
       new Finder<UUID, RestoreKeyspace>(RestoreKeyspace.class) {};
 
@@ -72,60 +73,36 @@ public class RestoreKeyspace extends Model {
 
   @ApiModelProperty(value = "Restore keyspace UUID", accessMode = READ_ONLY)
   @Id
-  public UUID uuid;
+  private UUID uuid;
 
   @ApiModelProperty(value = "Universe-level Restore UUID", accessMode = READ_ONLY)
   @Column(nullable = false)
-  public UUID restoreUUID;
+  private UUID restoreUUID;
 
   @ApiModelProperty(value = "Restore Keyspace task UUID", accessMode = READ_ONLY)
   @Column(nullable = false)
-  public UUID taskUUID;
-
-  public UUID getTaskUUID() {
-    return taskUUID;
-  }
-
-  public void setTaskUUID(UUID uuid) {
-    this.taskUUID = uuid;
-  }
+  private UUID taskUUID;
 
   @ApiModelProperty(value = "Source keyspace name", accessMode = READ_ONLY)
   @Column
-  public String sourceKeyspace;
+  private String sourceKeyspace;
 
   @ApiModelProperty(value = "Storage location name", accessMode = READ_ONLY)
   @Column
-  public String storageLocation;
+  private String storageLocation;
 
   @ApiModelProperty(value = "Target keyspace name", accessMode = READ_ONLY)
   @Column
-  public String targetKeyspace;
+  private String targetKeyspace;
 
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "State of the keyspace restore", accessMode = READ_ONLY)
   private State state;
 
-  public State getState() {
-    return state;
-  }
-
-  public void setState(State state) {
-    this.state = state;
-  }
-
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(value = "RestoreKeyspace task creation time", example = "2022-12-12T13:07:18Z")
   @CreatedTimestamp
   private Date createTime;
-
-  public Date getCreateTime() {
-    return createTime;
-  }
-
-  public void setCreateTime(Date createTime) {
-    this.createTime = createTime;
-  }
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
@@ -133,14 +110,6 @@ public class RestoreKeyspace extends Model {
       example = "2022-12-12T13:07:18Z")
   @UpdatedTimestamp
   private Date completeTime;
-
-  public Date getCompleteTime() {
-    return completeTime;
-  }
-
-  public void setCompleteTime(Date completeTime) {
-    this.completeTime = completeTime;
-  }
 
   private static final Multimap<State, State> ALLOWED_TRANSITIONS =
       ImmutableMultimap.<State, State>builder()
@@ -171,17 +140,17 @@ public class RestoreKeyspace extends Model {
 
   public static RestoreKeyspace create(UUID taskUUID, RestoreBackupParams taskDetails) {
     RestoreKeyspace restoreKeyspace = new RestoreKeyspace();
-    restoreKeyspace.uuid = UUID.randomUUID();
+    restoreKeyspace.setUuid(UUID.randomUUID());
 
-    restoreKeyspace.restoreUUID = taskDetails.prefixUUID;
-    restoreKeyspace.taskUUID = taskUUID;
+    restoreKeyspace.setRestoreUUID(taskDetails.prefixUUID);
+    restoreKeyspace.setTaskUUID(taskUUID);
 
     if (!CollectionUtils.isEmpty(taskDetails.backupStorageInfoList)) {
       RestoreBackupParams.BackupStorageInfo storageInfo = taskDetails.backupStorageInfoList.get(0);
-      restoreKeyspace.storageLocation = storageInfo.storageLocation;
-      restoreKeyspace.targetKeyspace = storageInfo.keyspace;
-      restoreKeyspace.sourceKeyspace =
-          BackupUtil.getKeyspaceFromStorageLocation(restoreKeyspace.storageLocation);
+      restoreKeyspace.setStorageLocation(storageInfo.storageLocation);
+      restoreKeyspace.setTargetKeyspace(storageInfo.keyspace);
+      restoreKeyspace.setSourceKeyspace(
+          BackupUtil.getKeyspaceFromStorageLocation(restoreKeyspace.getStorageLocation()));
     }
     restoreKeyspace.state = RestoreKeyspace.State.InProgress;
     restoreKeyspace.save();
@@ -189,10 +158,10 @@ public class RestoreKeyspace extends Model {
   }
 
   public long getBackupSizeFromStorageLocation() {
-    if (storageLocation == null) {
+    if (getStorageLocation() == null) {
       return 0L;
     }
-    long backupSize = getBackupSizeFromStorageLocation(storageLocation);
+    long backupSize = getBackupSizeFromStorageLocation(getStorageLocation());
     return backupSize;
   }
 
@@ -209,10 +178,10 @@ public class RestoreKeyspace extends Model {
 
   public static void update(Restore restore, TaskInfo.State parentState) {
     List<RestoreKeyspace> restoreKeyspaceList =
-        fetchRestoreKeyspaceFromRestoreUUID(restore.restoreUUID);
+        fetchRestoreKeyspaceFromRestoreUUID(restore.getRestoreUUID());
     State restoreKeyspaceState = fetchStateFromTaskInfoState(parentState);
     for (RestoreKeyspace restoreKeyspace : restoreKeyspaceList) {
-      restoreKeyspace.update(restoreKeyspace.taskUUID, restoreKeyspaceState);
+      restoreKeyspace.update(restoreKeyspace.getTaskUUID(), restoreKeyspaceState);
     }
   }
 
@@ -236,7 +205,7 @@ public class RestoreKeyspace extends Model {
     } else {
       LOG.error("Ignored INVALID STATE TRANSITION  {} -> {}", getState(), newRestoreKeyspaceState);
     }
-    setCompleteTime(taskInfo.getLastUpdateTime());
+    setCompleteTime(taskInfo.getUpdateTime());
     save();
   }
 

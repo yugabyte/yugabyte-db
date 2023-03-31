@@ -35,7 +35,7 @@ public class PromoteAutoFlags extends ServerSubTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     try (YBClient client = getClient()) {
       PromoteAutoFlagsResponse resp =
           client.promoteAutoFlags(

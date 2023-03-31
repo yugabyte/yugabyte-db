@@ -72,14 +72,14 @@ public class TableManagerYb extends DevopsBase {
 
   public ShellResponse runCommand(CommandSubType subType, TableManagerParams taskParams)
       throws PlatformServiceException {
-    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     Region region = Region.get(primaryCluster.userIntent.regionList.get(0));
     UniverseDefinitionTaskParams.UserIntent userIntent = primaryCluster.userIntent;
-    Provider provider = Provider.get(region.provider.uuid);
+    Provider provider = Provider.get(region.getProvider().getUuid());
 
     String accessKeyCode = userIntent.accessKeyCode;
-    AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
+    AccessKey accessKey = AccessKey.get(region.getProvider().getUuid(), accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
     Map<String, String> extraVars = CloudInfoInterface.fetchEnvVars(provider);
     Map<String, Map<String, String>> podAddrToConfig = new HashMap<>();
@@ -103,7 +103,7 @@ public class TableManagerYb extends DevopsBase {
         Provider clusterProvider =
             Provider.getOrBadRequest(UUID.fromString(clusterUserIntent.provider));
         AccessKey accessKeyForCluster =
-            AccessKey.getOrBadRequest(clusterProvider.uuid, clusterUserIntent.accessKeyCode);
+            AccessKey.getOrBadRequest(clusterProvider.getUuid(), clusterUserIntent.accessKeyCode);
         Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
         for (NodeDetails nodeInCluster : nodesInCluster) {
           if (nodeInCluster.cloudInfo.private_ip != null
@@ -169,12 +169,13 @@ public class TableManagerYb extends DevopsBase {
         if (taskParams.sse) {
           commandArgs.add("--sse");
         }
-        customer = Customer.find.query().where().idEq(universe.customerId).findOne();
-        customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
+        customer = Customer.find.query().where().idEq(universe.getCustomerId()).findOne();
+        customerConfig =
+            CustomerConfig.get(customer.getUuid(), backupTableParams.storageConfigUUID);
         CustomerConfigStorageData configData =
             (CustomerConfigStorageData) customerConfig.getDataObject();
         Map<String, String> regionLocationMap =
-            StorageUtil.getStorageUtil(customerConfig.name).getRegionLocationsMap(configData);
+            StorageUtil.getStorageUtil(customerConfig.getName()).getRegionLocationsMap(configData);
         if (MapUtils.isNotEmpty(regionLocationMap)) {
           regionLocationMap.forEach(
               (r, bL) -> {
@@ -238,15 +239,16 @@ public class TableManagerYb extends DevopsBase {
         commandArgs.add("--s3bucket");
         commandArgs.add(bulkImportParams.s3Bucket);
 
-        extraVars.put("AWS_DEFAULT_REGION", region.code);
+        extraVars.put("AWS_DEFAULT_REGION", region.getCode());
 
         break;
       case DELETE:
         commandArgs.add("--ts_web_hosts_ports");
         commandArgs.add(universe.getTserverHTTPAddresses());
         backupTableParams = (BackupTableParams) taskParams;
-        customer = Customer.find.query().where().idEq(universe.customerId).findOne();
-        customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
+        customer = Customer.find.query().where().idEq(universe.getCustomerId()).findOne();
+        customerConfig =
+            CustomerConfig.get(customer.getUuid(), backupTableParams.storageConfigUUID);
         log.info("Deleting backup at location {}", backupTableParams.storageLocation);
         addCommonCommandArgs(
             backupTableParams,
@@ -288,7 +290,7 @@ public class TableManagerYb extends DevopsBase {
       commandArgs.add(Json.stringify(Json.toJson(podAddrToConfig)));
     } else {
       commandArgs.add("--ssh_port");
-      commandArgs.add(provider.details.sshPort.toString());
+      commandArgs.add(provider.getDetails().sshPort.toString());
       commandArgs.add("--ssh_key_path");
       commandArgs.add(accessKey.getKeyInfo().privateKey);
       if (!ipToSshKeyPath.isEmpty()) {
@@ -299,8 +301,8 @@ public class TableManagerYb extends DevopsBase {
     commandArgs.add("--backup_location");
     commandArgs.add(backupTableParams.storageLocation);
     commandArgs.add("--storage_type");
-    commandArgs.add(customerConfig.name.toLowerCase());
-    if (customerConfig.name.toLowerCase().equals("nfs")) {
+    commandArgs.add(customerConfig.getName().toLowerCase());
+    if (customerConfig.getName().equalsIgnoreCase("nfs")) {
       commandArgs.add("--nfs_storage_path");
       commandArgs.add(
           ((CustomerConfigStorageNFSData) customerConfig.getDataObject()).backupLocation);
@@ -309,7 +311,7 @@ public class TableManagerYb extends DevopsBase {
       commandArgs.add("--certs_dir");
       commandArgs.add(getCertsDir(region, provider));
     }
-    Universe universe = Universe.getOrBadRequest(backupTableParams.universeUUID);
+    Universe universe = Universe.getOrBadRequest(backupTableParams.getUniverseUUID());
     boolean verboseLogsEnabled =
         confGetter.getConfForScope(universe, UniverseConfKeys.backupLogVerbose);
     if (backupTableParams.enableVerboseLogs || verboseLogsEnabled) {

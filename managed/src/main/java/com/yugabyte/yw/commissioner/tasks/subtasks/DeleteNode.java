@@ -67,7 +67,7 @@ public class DeleteNode extends NodeTaskBase {
                       "On-prem node {} in universe {} doesn't have a linked instance. "
                           + "Deletion is skipped.",
                       taskParams().nodeName,
-                      universe.name);
+                      universe.getName());
                 }
               }
               universe.setUniverseDetails(universeDetails);

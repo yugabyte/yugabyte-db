@@ -39,13 +39,13 @@ public class CloudAccessKeyCleanup extends CloudTaskBase {
 
   @Override
   public void run() {
-    String accessKeyCode = String.format("yb-%s-key", getProvider().name).toLowerCase();
+    String accessKeyCode = String.format("yb-%s-key", getProvider().getName()).toLowerCase();
     String regionCode = taskParams().regionCode;
     Region region = Region.getByCode(getProvider(), regionCode);
     if (region == null) {
       throw new RuntimeException("Region " + regionCode + " not setup.");
     }
 
-    accessManager.deleteKey(region.uuid, accessKeyCode);
+    accessManager.deleteKey(region.getUuid(), accessKeyCode);
   }
 }
