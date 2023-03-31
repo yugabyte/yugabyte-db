@@ -87,6 +87,7 @@ message PgHeartbeatRequestPB {
 message PgHeartbeatResponsePB {
   AppStatusPB status = 1;
   uint64 session_id = 2;
+  bytes instance_id = 3;
 }
 
 message PgObjectIdPB {
