@@ -124,7 +124,7 @@ my-sandbox-n1   us-west-2[us-west-2a]   💚        ✅        ✅        ❌   
 
 You may now [connect](../../cloud-connect/connect-client-shell/) to the endpoint host address using the ysqlsh or ycqlsh shells and the database credentials you specified when you created the sandbox.
 
-## Create a single-region dedicated cluster
+### Create a single-region dedicated cluster
 
 The following command creates a single-region dedicated cluster in Tokyo:
 
@@ -138,32 +138,48 @@ ybm cluster create \
     --cluster-tier Dedicated \
     --fault-tolerance ZONE \
     --database-version Preview \
-    --cluster-name my-single-region
+    --cluster-name my-single-region \
     --wait
 ```
 
-## Create a multi-region dedicated cluster
+### Create a multi-region dedicated cluster
 
-To list the available regions in AWS:
+Multi-region clusters must be deployed in a [VPC](../../cloud-basics/cloud-vpcs/). The following example creates a VPC on GCP:
 
 ```sh
-ybm region list --cloud-provider AWS
+ybm vpc create \
+  --name gcp-vpc \
+  --cloud GCP \
+  --global-cidr 10.0.0.0/18 \
+  --wait
 ```
 
-For multi-region we need VPC peering:
-Image description
+```output
+The VPC gcp-vpc has been created
+Name      State     Provider   Region[CIDR]                        Peerings   Clusters
+gcp-vpc   ACTIVE    GCP        asia-southeast2[10.0.19.0/24],+27   0          0
+```
 
-I create a GEO-PARTITIONNED with 3 --region-info:
-ybm cluster create ^
-    --credentials=username=admin,password=Password-5up3r53cr3t ^
-    --cloud-type=AWS ^
-    --cluster-type=GEO_PARTITIONED ^
-    --node-config=num-cores=4,disk-size-gb=200 ^
-    --region-info=region=ap-south-1,num-nodes=3,vpc=vpc-ap-south-1 ^
-    --region-info=region=ap-southeast-1,num-nodes=3,vpc=vpc-ap-southeast-1 ^
-    --region-info=region=ap-southeast-2,num-nodes=3,vpc=ap-southeast-2 ^
-    --cluster-tier=Dedicated ^
-    --fault-tolerance=REGION ^
-    --database-version=Preview ^
-    --wait ^
-    --cluster-name=my-multi-region
+To list the available regions in GCP:
+
+```sh
+ybm region list --cloud-provider GCP
+```
+
+The following command creates a [replicate-across-regions](../../cloud-basics/create-clusters/create-clusters-multisync/) cluster in the VPC you created:
+
+```sh
+ybm cluster create \
+    --cluster-name my-multi-region \
+    --credentials username=admin,password=password \
+    --cloud-type GCP \
+    --cluster-type SYNCHRONOUS \
+    --node-config num-cores=2,disk-size-gb=200 \
+    --region-info region=us-east1,num-nodes=1,vpc=gcp-vpc \
+    --region-info region=us-west2,num-nodes=1,vpc=gcp-vpc \
+    --region-info region=us-central1,num-nodes=1,vpc=gcp-vpc \
+    --cluster-tier Dedicated \
+    --fault-tolerance REGION \
+    --database-version Stable \
+    --wait
+```
