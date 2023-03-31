@@ -65,6 +65,7 @@ class AreLeadersOnPreferredOnlyTest : public MiniClusterTestWithClient<MiniClust
                   .replication_info(replication_info)
                   .schema(&schema)
                   .hash_schema(YBHashSchema::kMultiColumnHash)
+                  .num_tablets(1)
                   .Create());
   }
 
