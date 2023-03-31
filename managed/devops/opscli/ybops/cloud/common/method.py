@@ -874,11 +874,27 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
         volume_id = self.create_master_volume(args)
         output = [volume_id]
         num_disks = int(args.num_disks) - 1
+        snapshot_creation_delay = None
+        snapshot_creation_max_attempts = None
+
+        try:
+            snapshot_creation_delay = args.snapshot_creation_delay
+        except Exception as e:
+            pass  # Continue as none (default values if not found)
+
+        try:
+            snapshot_creation_max_attempts = args.snapshot_creation_max_attempts
+        except Exception as e:
+            pass  # Continue as none (default values if not found)
 
         # Now clone and create the remaining disks if any as the machine image is the same
         if num_disks > 0:
             logging.info("Cloning {} other disks using volume_id {}".format(num_disks, volume_id))
-            output.extend(self.cloud.clone_disk(args, volume_id, num_disks))
+            if snapshot_creation_delay is not None and snapshot_creation_max_attempts is not None:
+                output.extend(self.cloud.clone_disk(args, volume_id, num_disks,
+                              args.snapshot_creation_delay, args.snapshot_creation_max_attempts))
+            else:
+                output.extend(self.cloud.clone_disk(args, volume_id, num_disks))
 
         logging.info("==> Created volumes {}".format(output))
         print(json.dumps(output))

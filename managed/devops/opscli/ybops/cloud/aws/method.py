@@ -146,6 +146,19 @@ class AwsCreateRootVolumesMethod(CreateRootVolumesMethod):
     def delete_instance(self, args, instance_id):
         self.cloud.delete_instance(args.region, instance_id, args.assign_static_public_ip)
 
+    def add_extra_args(self):
+        super(AwsCreateRootVolumesMethod, self).add_extra_args()
+        self.parser.add_argument("--snapshot_creation_delay",
+                                 required=False,
+                                 default=15,
+                                 help="Time in seconds to wait for snapshot creation per attempt.",
+                                 type=int)
+        self.parser.add_argument("--snapshot_creation_max_attempts",
+                                 required=False,
+                                 default=80,
+                                 help="Max number of wait attempts to try for snapshot creation.",
+                                 type=int)
+
 
 class AwsDeleteRootVolumesMethod(DeleteRootVolumesMethod):
     """Subclass for deleting root volumes in AWS.
