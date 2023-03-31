@@ -13,11 +13,17 @@ type: docs
 
 Included here are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.2 - April 3, 2023
+
+### Key enhancements
+
+* When using the `import data file` command with the `--data-dir` option, you can provide an AWS S3 bucket as a path to the data directory.
+
 ## v1.1 - March 7, 2023
 
 ### Key enhancements
 
-* When using the `import data` file command with CSV files, YB Voyager now supports any character as an escape character and a quote character in the `--file-opts` flag, such as single quote (`'`) as a `quote_char` and backslash (`\`) as an `escape_char`, and so on. Previously, YB Voyager only supported double quotes (`"`) as a quote character and an escape character.
+* When using the `import data file` command with CSV files, YB Voyager now supports any character as an escape character and a quote character in the `--file-opts` flag, such as single quote (`'`) as a `quote_char` and backslash (`\`) as an `escape_char`, and so on. Previously, YB Voyager only supported double quotes (`"`) as a quote character and an escape character.
 
 * Creating the Orafce extension on the target database for Oracle migrations is now available by default.
 

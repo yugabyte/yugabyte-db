@@ -519,7 +519,12 @@ Default: 20,000
 
 ### --data-dir
 
-Path to the directory containing the data files to import.
+Path to the directory containing the data files to import. You can also provide an AWS S3 bucket as a path to the data directory. For example,
+
+```sh
+yb-voyager import data file .... \
+--data-dir s3://voyager-data
+```
 
 ### --file-table-map
 
