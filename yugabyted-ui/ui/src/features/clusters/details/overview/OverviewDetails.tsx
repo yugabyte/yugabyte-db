@@ -59,6 +59,7 @@ export const OverviewDetails: FC = () => {
             <Tab
               key={tab.name}
               value={tab.name}
+              disabled={tab.name === 'tabActivity'}
               label={t(`clusterDetail.${tab.name}`)}
               component={Link}
               to={generatePath(path, {
@@ -76,7 +77,7 @@ export const OverviewDetails: FC = () => {
       <Box mt={2}>
         <QueryParamProvider ReactRouterRoute={Route}>
           <Switch>
-            {tabList.map((tab) => (
+            {tabList.filter(tab => tab.name !== 'tabActivity').map((tab) => (
               <Route key={tab.name} path={`${path}/${tab.name}/:subTab?`} component={tab.component} />
             ))}
           </Switch>
