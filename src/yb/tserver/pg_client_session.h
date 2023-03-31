@@ -38,9 +38,12 @@
 
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/xcluster_context.h"
 
+#include "yb/util/coding_consts.h"
 #include "yb/util/locks.h"
+#include "yb/util/thread.h"
 
 DECLARE_bool(TEST_enable_db_catalog_version_mode);
 
@@ -102,6 +105,8 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
 
   Status Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context);
 
+  std::shared_ptr<CountDownLatch> ProcessSharedRequest(size_t size, SharedExchange* exchange);
+
   #define PG_CLIENT_SESSION_METHOD_DECLARE(r, data, method) \
   Status method( \
       const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
@@ -160,6 +165,9 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
     }
     return Status::OK();
   }
+
+  template <class DataPtr>
+  Status DoPerform(const DataPtr& data, CoarseTimePoint deadline, rpc::RpcContext* context);
 
   const uint64_t id_;
   client::YBClient& client_;

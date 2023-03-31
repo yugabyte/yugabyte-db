@@ -108,5 +108,9 @@ inline void FastAppendUnsignedVarInt(uint64_t v, Out* dest) {
   dest->append(buf, len);
 }
 
+inline size_t FastEncodeUnsignedVarInt(uint64_t v, std::byte* dest) {
+  return FastEncodeUnsignedVarInt(v, pointer_cast<uint8_t*>(dest));
+}
+
 }  // namespace util
 }  // namespace yb

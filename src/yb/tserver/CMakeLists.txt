@@ -192,7 +192,8 @@ ADD_YB_LIBRARY(pg_auto_analyze_service_proto
 
 set(TSERVER_UTIL_SRCS
   tserver_flags.cc
-  tserver_error.cc)
+  tserver_error.cc
+  tserver_shared_mem.cc)
 set(TSERVER_UTIL_LIBS
   yb_util)
 ADD_YB_LIBRARY(tserver_util
