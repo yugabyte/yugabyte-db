@@ -503,7 +503,8 @@ class AwsCloud(AbstractCloud):
         waiter = ec2.get_waiter('volume_available')
         waiter.wait(VolumeIds=[vol_id])
 
-    def clone_disk(self, args, volume_id, num_disks):
+    def clone_disk(self, args, volume_id, num_disks,
+                   snapshot_creation_delay=15, snapshot_creation_max_attempts=80):
         output = []
         snapshot = None
         ec2 = boto3.client('ec2', args.region)
@@ -525,8 +526,8 @@ class AwsCloud(AbstractCloud):
                 'Tags': resource_tags
             }]
             wait_config = {
-                'Delay': 15,
-                'MaxAttempts': 80
+                'Delay': snapshot_creation_delay,
+                'MaxAttempts': snapshot_creation_max_attempts
             }
             logging.info("==> Going to create a snapshot from {}".format(volume_id))
             snapshot = ec2.create_snapshot(VolumeId=volume_id, TagSpecifications=snapshot_tag_specs)

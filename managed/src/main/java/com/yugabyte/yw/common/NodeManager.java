@@ -47,6 +47,7 @@ import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.Pair;
@@ -1413,6 +1414,16 @@ public class NodeManager extends DevopsBase {
         CreateRootVolumes.Params crvParams = (CreateRootVolumes.Params) nodeTaskParam;
         commandArgs.add("--num_disks");
         commandArgs.add(String.valueOf(crvParams.numVolumes));
+
+        if (Common.CloudType.aws.equals(userIntent.providerType)) {
+          commandArgs.add("--snapshot_creation_delay");
+          commandArgs.add(
+              String.valueOf(confGetter.getGlobalConf(GlobalConfKeys.snapshotCreationDelay)));
+
+          commandArgs.add("--snapshot_creation_max_attempts");
+          commandArgs.add(
+              String.valueOf(confGetter.getGlobalConf(GlobalConfKeys.snapshotCreationMaxAttempts)));
+        }
         // intentional fall-thru
       case Create:
         {

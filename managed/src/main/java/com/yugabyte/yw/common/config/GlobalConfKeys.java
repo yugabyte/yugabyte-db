@@ -208,6 +208,22 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "This config lets you enable support bundle creation for onprem universes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> snapshotCreationMaxAttempts =
+      new ConfKeyInfo<>(
+          "yb.snapshot_creation.max_attempts",
+          ScopeType.GLOBAL,
+          "Snapshot creation max attempts",
+          "Max attempts while waiting for AWS Snapshot Creation",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> snapshotCreationDelay =
+      new ConfKeyInfo<>(
+          "yb.snapshot_creation.delay",
+          ScopeType.GLOBAL,
+          "Snapshot creation delay",
+          "Delay per attempt while waiting for AWS Snapshot Creation",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> runtimeConfigUiEnableForAll =
       new ConfKeyInfo<>(
           "yb.runtime_conf_ui.enable_for_all",
