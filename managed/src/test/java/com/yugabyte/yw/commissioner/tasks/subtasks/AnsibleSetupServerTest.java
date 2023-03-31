@@ -31,20 +31,20 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
   private AnsibleSetupServer.Params createUniverse(
       Common.CloudType cloudType, AccessKey.KeyInfo accessKeyInfo) {
     Provider p = ModelFactory.newProvider(defaultCustomer, cloudType);
-    p.details = new ProviderDetails();
-    p.details.mergeFrom(accessKeyInfo);
+    p.setDetails(new ProviderDetails());
+    p.getDetails().mergeFrom(accessKeyInfo);
     p.save();
     Region r = Region.create(p, "r-1", "r-1", "yb-image");
-    AccessKey.create(p.uuid, "demo-key", accessKeyInfo);
+    AccessKey.create(p.getUuid(), "demo-key", accessKeyInfo);
     AvailabilityZone az = AvailabilityZone.createOrThrow(r, "az-1", "az-1", "subnet-1");
     Universe u =
         ModelFactory.createUniverse(
-            cloudType.name() + "-universe", defaultCustomer.getCustomerId(), cloudType);
+            cloudType.name() + "-universe", defaultCustomer.getId(), cloudType);
     // Save the updates to the universe.
-    Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
     AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
-    params.azUuid = az.uuid;
-    params.universeUUID = u.universeUUID;
+    params.azUuid = az.getUuid();
+    params.setUniverseUUID(u.getUniverseUUID());
     return params;
   }
 
@@ -114,7 +114,7 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
     AnsibleSetupServer ansibleSetupServer = AbstractTaskBase.createTask(AnsibleSetupServer.class);
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     AnsibleSetupServer.Params params = createUniverse(Common.CloudType.onprem, keyInfo);
-    AccessKey.create(params.getProvider().uuid, "demo-key-2", keyInfo);
+    AccessKey.create(params.getProvider().getUuid(), "demo-key-2", keyInfo);
     ansibleSetupServer.initialize(params);
     ansibleSetupServer.run();
     verify(mockNodeManager, times(1)).nodeCommand(NodeManager.NodeCommandType.Provision, params);

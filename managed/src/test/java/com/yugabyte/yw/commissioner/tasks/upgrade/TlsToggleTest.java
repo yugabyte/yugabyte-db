@@ -244,7 +244,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
 
     CertificateInfo.create(
         rootCA,
-        defaultCustomer.uuid,
+        defaultCustomer.getUuid(),
         "test1",
         new Date(),
         new Date(),
@@ -255,7 +255,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     if (!clientRootCA.equals(rootCA)) {
       CertificateInfo.create(
           clientRootCA,
-          defaultCustomer.uuid,
+          defaultCustomer.getUuid(),
           "test1",
           new Date(),
           new Date(),
@@ -265,7 +265,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     }
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             universe -> {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
               PlacementInfo placementInfo = universeDetails.getPrimaryCluster().placementInfo;

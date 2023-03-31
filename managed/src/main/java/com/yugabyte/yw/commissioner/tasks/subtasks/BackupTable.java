@@ -54,7 +54,7 @@ public class BackupTable extends AbstractTaskBase {
     }
 
     try {
-      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       Map<String, String> config = universe.getConfig();
       if (config.isEmpty() || config.getOrDefault(Universe.TAKE_BACKUPS, "true").equals("true")) {
         BackupTableParams.ActionType actionType = taskParams().actionType;

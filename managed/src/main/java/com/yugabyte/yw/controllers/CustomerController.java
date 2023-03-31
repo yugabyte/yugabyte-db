@@ -115,7 +115,7 @@ public class CustomerController extends AuthenticatedController {
           .forEach(
               c ->
                   c.setTransientUniverseUUIDs(
-                      allUniverseUuids.getOrDefault(c.getCustomerId(), Collections.emptySet())));
+                      allUniverseUuids.getOrDefault(c.getId(), Collections.emptySet())));
     }
     return PlatformResults.withData(customers);
   }
@@ -176,7 +176,7 @@ public class CustomerController extends AuthenticatedController {
     AlertingFormData alertingFormData = formData.get();
 
     if (alertingFormData.name != null) {
-      customer.name = alertingFormData.name;
+      customer.setName(alertingFormData.name);
       customer.save();
     }
 

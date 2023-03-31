@@ -65,7 +65,7 @@ public class WaitForServer extends ServerSubTaskBase {
         // Check for master UUID retries until timeout.
         ret = client.waitForMaster(hp, taskParams().serverWaitTimeoutMs);
       } else if (taskParams().serverType.equals(ServerType.YSQLSERVER)) {
-        Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+        Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
         NodeDetails node = universe.getNode(taskParams().nodeName);
         Duration waitTimeout = Duration.ofMillis(taskParams().serverWaitTimeoutMs);
         Stopwatch stopwatch = Stopwatch.createStarted();

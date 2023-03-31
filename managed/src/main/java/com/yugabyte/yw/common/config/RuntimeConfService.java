@@ -268,9 +268,9 @@ public class RuntimeConfService extends AuthenticatedController {
   public RuntimeConfigFormData listScopes(Customer customer, boolean includeGlobal) {
     RuntimeConfigFormData formData = new RuntimeConfigFormData();
     formData.addGlobalScope(includeGlobal);
-    formData.addMutableScope(ScopeType.CUSTOMER, customer.uuid);
-    Provider.getAll(customer.uuid)
-        .forEach(provider -> formData.addMutableScope(ScopeType.PROVIDER, provider.uuid));
+    formData.addMutableScope(ScopeType.CUSTOMER, customer.getUuid());
+    Provider.getAll(customer.getUuid())
+        .forEach(provider -> formData.addMutableScope(ScopeType.PROVIDER, provider.getUuid()));
     Universe.getAllUUIDs(customer)
         .forEach(universeUUID -> formData.addMutableScope(ScopeType.UNIVERSE, universeUUID));
     return formData;

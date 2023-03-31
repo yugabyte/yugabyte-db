@@ -46,15 +46,15 @@ public class AccessKeyHandler {
         "Creating access key {} for customer {}, provider {}.",
         formData.keyCode,
         customerUUID,
-        provider.uuid);
+        provider.getUuid());
     return providerEditRestrictionManager.tryEditProvider(
-        provider.uuid, () -> doCreate(provider, formData, requestBody));
+        provider.getUuid(), () -> doCreate(provider, formData, requestBody));
   }
 
   private AccessKey doCreate(
       Provider provider, AccessKeyFormData formData, RequestBody requestBody) {
     try {
-      List<Region> regionList = provider.regions;
+      List<Region> regionList = provider.getRegions();
       if (regionList.isEmpty()) {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, "Provider is in invalid state. No regions.");
@@ -86,7 +86,7 @@ public class AccessKeyHandler {
         }
         accessKey =
             accessManager.uploadKeyFile(
-                region.uuid,
+                region.getUuid(),
                 uploadedFile,
                 formData.keyCode,
                 formData.keyType,
@@ -108,7 +108,7 @@ public class AccessKeyHandler {
         // Upload temp file to create the access key and return success/failure
         accessKey =
             accessManager.uploadKeyFile(
-                region.uuid,
+                region.getUuid(),
                 tempFile.toFile(),
                 formData.keyCode,
                 formData.keyType,
@@ -122,7 +122,7 @@ public class AccessKeyHandler {
       } else {
         accessKey =
             accessManager.addKey(
-                region.uuid,
+                region.getUuid(),
                 formData.keyCode,
                 null,
                 formData.sshUser,
@@ -154,7 +154,7 @@ public class AccessKeyHandler {
       }
 
       KeyInfo keyInfo = accessKey.getKeyInfo();
-      keyInfo.mergeFrom(provider.details);
+      keyInfo.mergeFrom(provider.getDetails());
       return accessKey;
     } catch (IOException e) {
       log.error("Failed to create access key", e);
@@ -168,9 +168,9 @@ public class AccessKeyHandler {
         "Editing access key {} for customer {}, provider {}.",
         keyCode,
         customerUUID,
-        provider.uuid);
+        provider.getUuid());
     return providerEditRestrictionManager.tryEditProvider(
-        provider.uuid, () -> doEdit(provider, accessKey, keyCode));
+        provider.getUuid(), () -> doEdit(provider, accessKey, keyCode));
   }
 
   private AccessKey doEdit(Provider provider, AccessKey accessKey, String keyCode) {
@@ -180,7 +180,7 @@ public class AccessKeyHandler {
           FORBIDDEN, "Cannot modify the access key for the provider in use!");
     }
 
-    ProviderDetails details = provider.details;
+    ProviderDetails details = provider.getDetails();
     AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     String keyPairName = keyInfo.keyPairName;
     if (keyPairName == null) {
@@ -193,13 +193,13 @@ public class AccessKeyHandler {
       keyPairName = AccessKey.getNewKeyCode(keyPairName);
     }
     String sshPrivateKeyContent = keyInfo.getUnMaskedSshPrivateKeyContent();
-    List<Region> regions = Region.getByProvider(provider.uuid);
+    List<Region> regions = Region.getByProvider(provider.getUuid());
     AccessKey newAccessKey = null;
     for (Region region : regions) {
       if (!Strings.isNullOrEmpty(sshPrivateKeyContent)) {
         newAccessKey =
             accessManager.saveAndAddKey(
-                region.uuid,
+                region.getUuid(),
                 sshPrivateKeyContent,
                 keyPairName,
                 AccessManager.KeyType.PRIVATE,
@@ -214,7 +214,7 @@ public class AccessKeyHandler {
       } else {
         newAccessKey =
             accessManager.addKey(
-                region.uuid,
+                region.getUuid(),
                 keyPairName,
                 null,
                 details.sshUser,

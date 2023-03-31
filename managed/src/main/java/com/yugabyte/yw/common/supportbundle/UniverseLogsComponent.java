@@ -50,7 +50,7 @@ class UniverseLogsComponent implements SupportBundleComponent {
         String.format(
             "downloadComponent() method not applicable "
                 + "for 'UniverseLogsComponent' without start and end date, on universe = '%s'",
-            universe.name);
+            universe.getName());
     throw new RuntimeException(errMsg);
   }
 
@@ -144,7 +144,7 @@ class UniverseLogsComponent implements SupportBundleComponent {
           log.debug(
               String.format(
                   "No universe log files downloaded from the source path '%s' for universe '%s'.",
-                  nodeHomeDir, universe.name));
+                  nodeHomeDir, universe.getName()));
         }
       } catch (Exception e) {
         log.error(

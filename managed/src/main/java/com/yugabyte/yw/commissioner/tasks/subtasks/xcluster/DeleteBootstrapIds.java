@@ -52,13 +52,14 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
 
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
 
-    if (xClusterConfig.sourceUniverseUUID == null) {
+    if (xClusterConfig.getSourceUniverseUUID() == null) {
       log.info("Skipped {}: the source universe is destroyed", getName());
       return;
     }
 
     // Force delete when it is requested by the user or target universe is deleted.
-    boolean forceDelete = taskParams().forceDelete || xClusterConfig.targetUniverseUUID == null;
+    boolean forceDelete =
+        taskParams().forceDelete || xClusterConfig.getTargetUniverseUUID() == null;
 
     // Get the bootstrap IDs to delete. Either the bootstrap flow had error, or the target universe
     // is deleted.
@@ -66,22 +67,22 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
         xClusterConfig
             .getTableDetails(true /* includeTxnTableIfExists */)
             .stream()
-            .filter(tableConfig -> tableConfig.streamId != null)
+            .filter(tableConfig -> tableConfig.getStreamId() != null)
             .collect(Collectors.toSet());
     Set<String> bootstrapIds =
         tableConfigsWithBootstrapId
             .stream()
-            .map(tableConfig -> tableConfig.streamId)
+            .map(tableConfig -> tableConfig.getStreamId())
             .collect(Collectors.toSet());
 
-    Universe sourceUniverse = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe sourceUniverse = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String sourceUniverseMasterAddresses = sourceUniverse.getMasterAddresses();
     String sourceUniverseCertificate = sourceUniverse.getCertificateNodetoNode();
     if (bootstrapIds.isEmpty()) {
       log.info(
           "Skipped {}: There is no BootstrapId to delete for source universe ({})",
           getName(),
-          sourceUniverse.universeUUID);
+          sourceUniverse.getUniverseUUID());
       return;
     }
     log.info("Bootstrap ids to be deleted: {}", bootstrapIds);
@@ -95,18 +96,18 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
         throw new RuntimeException(
             String.format(
                 "Failed to delete bootstrapIds(%s) in XClusterConfig(%s): %s",
-                bootstrapIds, xClusterConfig.uuid, resp.errorMessage()));
+                bootstrapIds, xClusterConfig.getUuid(), resp.errorMessage()));
       }
       log.info(
           "BootstrapIds ({}) deleted from source universe ({})",
           bootstrapIds,
-          sourceUniverse.universeUUID);
+          sourceUniverse.getUniverseUUID());
 
       // Delete the bootstrap ID from DB.
       tableConfigsWithBootstrapId.forEach(
           tableConfig -> {
-            tableConfig.streamId = null;
-            tableConfig.bootstrapCreateTime = null;
+            tableConfig.setStreamId(null);
+            tableConfig.setBootstrapCreateTime(null);
           });
       xClusterConfig.update();
 

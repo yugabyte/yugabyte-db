@@ -61,7 +61,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         "Started {} task for node {} in universe {}",
         getName(),
         taskParams().nodeName,
-        taskParams().universeUUID);
+        taskParams().getUniverseUUID());
     String errorString = null;
 
     try {
@@ -72,7 +72,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       final NodeDetails currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
         String msg =
-            String.format("No node %s in universe %s", taskParams().nodeName, universe.name);
+            String.format("No node %s in universe %s", taskParams().nodeName, universe.getName());
         log.error(msg);
         throw new RuntimeException(msg);
       }
@@ -147,7 +147,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
       if (!wasDecommissioned) {
         // Validate instance existence and connectivity before changing the state.
-        createInstanceExistsCheckTasks(universe.universeUUID, nodeSet);
+        createInstanceExistsCheckTasks(universe.getUniverseUUID(), nodeSet);
       }
 
       // Update Node State to being added if it is not in one of the intermediate states.
@@ -200,8 +200,8 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       if (addMaster) {
         log.info(
             "Bringing up master for under replicated universe {} ({})",
-            universe.universeUUID,
-            universe.name);
+            universe.getUniverseUUID(),
+            universe.getName());
 
         // Start a shell master process.
         createStartMasterTasks(nodeSet).setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);

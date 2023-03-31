@@ -23,6 +23,8 @@ import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.experimental.Accessors;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -30,6 +32,8 @@ import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 
 @Entity
+@Getter
+@Setter
 public class HealthCheck extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(HealthCheck.class);
   @Inject private static RuntimeConfGetter confGetter;
@@ -140,17 +144,17 @@ public class HealthCheck extends Model {
   // The max number of records to keep per universe.
   public static final int RECORD_LIMIT = 10;
 
-  @EmbeddedId @Constraints.Required public HealthCheckKey idKey;
+  @EmbeddedId @Constraints.Required private HealthCheckKey idKey;
 
   // The customer id, needed only to enforce unique universe names for a customer.
-  @Constraints.Required public Long customerId;
+  @Constraints.Required private Long customerId;
 
   // The Json serialized version of the details. This is used only in read from and writing to the
   // DB.
   @DbJson
   @Constraints.Required
   @Column(columnDefinition = "TEXT", nullable = false)
-  public Details detailsJson = new Details();
+  private Details detailsJson = new Details();
 
   public boolean hasError() {
     if (detailsJson != null) {
@@ -173,9 +177,9 @@ public class HealthCheck extends Model {
   public static HealthCheck addAndPrune(UUID universeUUID, Long customerId, Details report) {
     // Create the HealthCheck object.
     HealthCheck check = new HealthCheck();
-    check.idKey = HealthCheckKey.create(universeUUID);
-    check.customerId = customerId;
-    check.detailsJson = report;
+    check.setIdKey(HealthCheckKey.create(universeUUID));
+    check.setCustomerId(customerId);
+    check.setDetailsJson(report);
     // Save the object.
     check.save();
     keepOnlyLast(universeUUID, RECORD_LIMIT);

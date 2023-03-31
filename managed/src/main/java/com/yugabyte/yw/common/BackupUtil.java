@@ -52,7 +52,6 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -259,13 +258,14 @@ public class BackupUtil {
     Boolean isStorageConfigPresent = checkIfStorageConfigExists(backup);
     Boolean isUniversePresent = checkIfUniverseExists(backup);
     List<Backup> backupChain =
-        Backup.fetchAllBackupsByBaseBackupUUID(backup.customerUUID, backup.baseBackupUUID);
+        Backup.fetchAllBackupsByBaseBackupUUID(
+            backup.getCustomerUUID(), backup.getBaseBackupUUID());
     Date lastIncrementDate = null;
     boolean hasIncrements = false;
     BackupState lastBackupState = BackupState.Completed;
     if (CollectionUtils.isNotEmpty(backupChain)) {
       lastIncrementDate = backupChain.get(0).getCreateTime();
-      lastBackupState = backupChain.get(0).state;
+      lastBackupState = backupChain.get(0).getState();
       hasIncrements = backupChain.size() > 1;
     }
     Boolean onDemand = (backup.getScheduleUUID() == null);
@@ -275,11 +275,11 @@ public class BackupUtil {
             .expiryTimeUnit(backup.getExpiryTimeUnit())
             .onDemand(onDemand)
             .isFullBackup(backup.getBackupInfo().isFullBackup)
-            .universeName(backup.universeName)
+            .universeName(backup.getUniverseName())
             .scheduleUUID(backup.getScheduleUUID())
-            .customerUUID(backup.customerUUID)
-            .universeUUID(backup.universeUUID)
-            .category(backup.category)
+            .customerUUID(backup.getCustomerUUID())
+            .universeUUID(backup.getUniverseUUID())
+            .category(backup.getCategory())
             .isStorageConfigPresent(isStorageConfigPresent)
             .isUniversePresent(isUniversePresent)
             .backupType(backup.getBackupInfo().backupType)
@@ -299,13 +299,13 @@ public class BackupUtil {
         .createTime(backup.getCreateTime())
         .updateTime(backup.getUpdateTime())
         .completionTime(backup.getCompletionTime())
-        .backupUUID(backup.backupUUID)
-        .baseBackupUUID(backup.baseBackupUUID)
+        .backupUUID(backup.getBackupUUID())
+        .baseBackupUUID(backup.getBaseBackupUUID())
         .totalBackupSizeInBytes(Long.valueOf(backup.getBackupInfo().backupSizeInBytes))
-        .state(backup.state)
+        .state(backup.getState())
         .kmsConfigUUID(backup.getBackupInfo().kmsConfigUUID)
-        .storageConfigUUID(backup.storageConfigUUID)
-        .taskUUID(backup.taskUUID)
+        .storageConfigUUID(backup.getStorageConfigUUID())
+        .taskUUID(backup.getTaskUUID())
         .sse(backup.getBackupInfo().sse);
     if (backup.getBackupInfo().backupList == null) {
       KeyspaceTablesList kTList =
@@ -360,7 +360,7 @@ public class BackupUtil {
       updatedLocation =
           String.format(
               "univ-%s/%s-%s-%d/multi-table-%s",
-              params.universeUUID,
+              params.getUniverseUUID(),
               backupLabel,
               tsFormat.format(new Date()),
               abs(params.backupUuid.hashCode()),
@@ -369,7 +369,7 @@ public class BackupUtil {
       updatedLocation =
           String.format(
               "univ-%s/%s-%s-%d/keyspace-%s",
-              params.universeUUID,
+              params.getUniverseUUID(),
               backupLabel,
               tsFormat.format(new Date()),
               abs(params.backupUuid.hashCode()),
@@ -378,7 +378,7 @@ public class BackupUtil {
       updatedLocation =
           String.format(
               "univ-%s/%s-%s-%d/table-%s.%s",
-              params.universeUUID,
+              params.getUniverseUUID(),
               backupLabel,
               tsFormat.format(new Date()),
               abs(params.backupUuid.hashCode()),
@@ -420,7 +420,7 @@ public class BackupUtil {
     params.storageLocation = formatStorageLocation(params, isYbc);
     if (customerConfig != null) {
       String backupLocation = null;
-      if (customerConfig.name.equals(Util.NFS)) {
+      if (customerConfig.getName().equals(Util.NFS)) {
         CustomerConfigStorageNFSData configData =
             (CustomerConfigStorageNFSData) customerConfig.getDataObject();
         backupLocation = configData.backupLocation;
@@ -441,12 +441,13 @@ public class BackupUtil {
 
   public void validateBackupStorageConfig(Backup backup) {
     CustomerConfig config =
-        customerConfigService.getOrBadRequest(backup.customerUUID, backup.storageConfigUUID);
+        customerConfigService.getOrBadRequest(
+            backup.getCustomerUUID(), backup.getStorageConfigUUID());
     validateStorageConfigOnBackup(config, backup);
   }
 
   public void validateStorageConfigOnBackup(CustomerConfig config, Backup backup) {
-    StorageUtil storageUtil = StorageUtil.getStorageUtil(config.name);
+    StorageUtil storageUtil = StorageUtil.getStorageUtil(config.getName());
     BackupTableParams params = backup.getBackupInfo();
     if (CollectionUtils.isNotEmpty(params.backupList)) {
       for (BackupTableParams tableParams : params.backupList) {
@@ -460,12 +461,12 @@ public class BackupUtil {
   }
 
   public void validateStorageConfig(CustomerConfig config) throws PlatformServiceException {
-    LOG.info(String.format("Validating storage config %s", config.configName));
+    LOG.info(String.format("Validating storage config %s", config.getConfigName()));
     CustomerConfigStorageData configData = (CustomerConfigStorageData) config.getDataObject();
     if (StringUtils.isBlank(configData.backupLocation)) {
       throw new PlatformServiceException(BAD_REQUEST, "Default backup location cannot be empty");
     }
-    StorageUtil.getStorageUtil(config.name).validateStorageConfigOnLocations(configData);
+    StorageUtil.getStorageUtil(config.getName()).validateStorageConfigOnLocations(configData);
   }
 
   /**
@@ -502,7 +503,7 @@ public class BackupUtil {
    * it.
    *
    * @param checkYbcNfs Remove default nfs bucket name if true
-   * @param defaultbackupLocation The default location of the backup, containing the md/success file
+   * @param defaultBackupLocation The default location of the backup, containing the md/success file
    */
   public static String getBackupIdentifier(String defaultBackupLocation, boolean checkYbcNfs) {
     return getBackupIdentifier(defaultBackupLocation, checkYbcNfs, "");
@@ -611,7 +612,7 @@ public class BackupUtil {
         throw new PlatformServiceException(
             BAD_REQUEST,
             "No tables to backup inside specified Universe "
-                + universe.universeUUID.toString()
+                + universe.getUniverseUUID().toString()
                 + " and Table Type "
                 + tableType.name());
       }
@@ -724,17 +725,17 @@ public class BackupUtil {
   }
 
   public static boolean checkInProgressIncrementalBackup(Backup backup) {
-    return Backup.fetchAllBackupsByBaseBackupUUID(backup.customerUUID, backup.backupUUID)
+    return Backup.fetchAllBackupsByBaseBackupUUID(backup.getCustomerUUID(), backup.getBackupUUID())
         .stream()
-        .anyMatch((b) -> (b.state.equals(BackupState.InProgress)));
+        .anyMatch((b) -> (b.getState().equals(BackupState.InProgress)));
   }
 
   public static boolean checkIfStorageConfigExists(Backup backup) {
-    return CustomerConfig.get(backup.customerUUID, backup.storageConfigUUID) != null;
+    return CustomerConfig.get(backup.getCustomerUUID(), backup.getStorageConfigUUID()) != null;
   }
 
   public static boolean checkIfUniverseExists(Backup backup) {
-    return Universe.maybeGet(backup.universeUUID).isPresent();
+    return Universe.maybeGet(backup.getUniverseUUID()).isPresent();
   }
 
   public static boolean checkIfUniverseExists(UUID universeUUID) {

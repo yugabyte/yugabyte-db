@@ -92,9 +92,13 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
 
   @Test
   public void testGetMasterLeaderWithValidParams() {
-    Universe universe = createUniverse(customer.getCustomerId());
+    Universe universe = createUniverse(customer.getId());
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID + "/leader";
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/leader";
     String host = "1.2.3.4";
     HostAndPort hostAndPort = HostAndPort.fromParts(host, 9000);
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(hostAndPort);
@@ -103,7 +107,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "privateIP", host);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -116,8 +120,8 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
   })
   public void testUniverseStatus(boolean masterAlive, boolean nodeExpAlive, boolean promError) {
 
-    Universe u = createUniverse("TestUniverse", customer.getCustomerId());
-    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater("TestUniverse"));
+    Universe u = createUniverse("TestUniverse", customer.getId());
+    u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater("TestUniverse"));
 
     List<Integer> ports = new ArrayList<>();
     ports.add(9000);
@@ -147,11 +151,12 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     } else {
       when(mockMetricQueryHelper.queryDirect(anyString())).thenThrow(new RuntimeException());
     }
-    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/status";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID() + "/status";
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
-    assertValue(json, "universe_uuid", u.universeUUID.toString());
+    assertValue(json, "universe_uuid", u.getUniverseUUID().toString());
     assertEquals(ImmutableList.copyOf(json.fieldNames()).size(), 4);
 
     for (NodeDetails node : u.getNodes()) {
@@ -163,7 +168,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
           nodeJson.get("node_status").asText(),
           (!promError ? (nodeExpAlive ? "Live" : "Unreachable") : "MetricsUnavailable"));
     }
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -171,16 +176,16 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     when(mockShellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
         .thenReturn(new ShellResponse());
 
-    Universe u = createUniverse(customer.getCustomerId());
+    Universe u = createUniverse(customer.getId());
     String url =
         "/api/customers/"
-            + customer.uuid
+            + customer.getUuid()
             + "/universes/"
-            + u.universeUUID
+            + u.getUniverseUUID()
             + "/dummy_node/download_logs";
     Result result = assertPlatformException(() -> doRequestWithAuthToken("GET", url, authToken));
     assertNotFound(result, "dummy_node");
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   private byte[] createFakeLog(Path path) throws IOException {
@@ -206,21 +211,26 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     UniverseDefinitionTaskParams.UserIntent ui = getDefaultUserIntent(customer);
     String keyCode = "dummy_code";
     ui.accessKeyCode = keyCode;
-    UUID uUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    UUID uUUID = createUniverse(customer.getId()).getUniverseUUID();
     Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater(ui));
 
-    Provider provider = Provider.get(customer.uuid, Common.CloudType.aws).get(0);
+    Provider provider = Provider.get(customer.getUuid(), Common.CloudType.aws).get(0);
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.sshPort = 1223;
-    AccessKey.create(provider.uuid, keyCode, keyInfo);
+    AccessKey.create(provider.getUuid(), keyCode, keyInfo);
 
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/host-n1/" + "download_logs";
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + uUUID
+            + "/host-n1/"
+            + "download_logs";
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertEquals(OK, result.status());
     byte[] actualContent = contentAsBytes(result, mat).toArray();
     assertArrayEquals(fakeLog, actualContent);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
     assertFalse(logPath.toFile().exists());
   }
 
@@ -230,9 +240,13 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
         "{\"ysql\":{\"errorCount\":0,\"queries\":[]},"
             + "\"ycql\":{\"errorCount\":0,\"queries\":[]}}";
     when(mockQueryHelper.slowQueries(any())).thenReturn(Json.parse(jsonMsg));
-    Universe u = createUniverse(customer.getCustomerId());
+    Universe u = createUniverse(customer.getId());
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/slow_queries";
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + u.getUniverseUUID()
+            + "/slow_queries";
     Map<String, String> fakeRequestHeaders = new HashMap<>();
     fakeRequestHeaders.put("X-AUTH-TOKEN", authToken);
 
@@ -246,9 +260,9 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     when(mockRuntimeConfig.getString(QueryHelper.QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY))
         .thenReturn("total_time");
     when(mockRuntimeConfig.getInt(QueryHelper.QUERY_STATS_SLOW_QUERIES_LIMIT_KEY)).thenReturn(200);
-    Universe universe = createUniverse(customer.getCustomerId());
+    Universe universe = createUniverse(customer.getId());
     Universe.saveDetails(
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         u -> {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion = "2.15.1.0-b10";
@@ -273,9 +287,9 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     when(mockRuntimeConfig.getString(QueryHelper.QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY))
         .thenReturn("total_time");
     when(mockRuntimeConfig.getInt(QueryHelper.QUERY_STATS_SLOW_QUERIES_LIMIT_KEY)).thenReturn(200);
-    Universe universe = createUniverse(customer.getCustomerId());
+    Universe universe = createUniverse(customer.getId());
     Universe.saveDetails(
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         u -> {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion = "2.17.1.0-b146";
@@ -299,12 +313,12 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
   @Test
   public void testTriggerHealthCheck() {
     when(mockRuntimeConfig.getBoolean("yb.health.trigger_api.enabled")).thenReturn(true);
-    Universe u = createUniverse(customer.getCustomerId());
+    Universe u = createUniverse(customer.getId());
     String url =
         "/api/customers/"
-            + customer.uuid
+            + customer.getUuid()
             + "/universes/"
-            + u.universeUUID
+            + u.getUniverseUUID()
             + "/trigger_health_check";
 
     OffsetDateTime before = OffsetDateTime.now(ZoneOffset.UTC);

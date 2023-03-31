@@ -238,7 +238,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         kubernetesManagerFactory
             .getManager()
             .helmInstall(
-                taskParams().universeUUID,
+                taskParams().getUniverseUUID(),
                 taskParams().ybSoftwareVersion,
                 config,
                 taskParams().providerUUID,
@@ -251,7 +251,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         kubernetesManagerFactory
             .getManager()
             .helmUpgrade(
-                taskParams().universeUUID,
+                taskParams().getUniverseUUID(),
                 taskParams().ybSoftwareVersion,
                 config,
                 taskParams().helmReleaseName,
@@ -262,7 +262,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         int numNodes = this.getNumNodes();
         if (numNodes > 0) {
           boolean newNamingStyle =
-              Universe.getOrBadRequest(taskParams().universeUUID)
+              Universe.getOrBadRequest(taskParams().getUniverseUUID())
                   .getUniverseDetails()
                   .useNewHelmNamingStyle;
           kubernetesManagerFactory
@@ -297,7 +297,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         processNodeInfo();
         break;
       case STS_DELETE:
-        Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+        Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
         boolean newNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
         // Ideally we should have called KubernetesUtil.getHelmFullNameWithSuffix()
         String appName = (newNamingStyle ? taskParams().helmReleaseName + "-" : "") + "yb-tserver";
@@ -306,11 +306,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             .deleteStatefulSet(config, taskParams().namespace, appName);
         break;
       case PVC_EXPAND_SIZE:
-        u = Universe.getOrBadRequest(taskParams().universeUUID);
+        u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
         kubernetesManagerFactory
             .getManager()
             .expandPVC(
-                taskParams().universeUUID,
+                taskParams().getUniverseUUID(),
                 config,
                 taskParams().namespace,
                 taskParams().helmReleaseName,
@@ -319,20 +319,22 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 u.getUniverseDetails().useNewHelmNamingStyle);
         break;
       case COPY_PACKAGE:
-        u = Universe.getOrBadRequest(taskParams().universeUUID);
+        u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
         NodeDetails nodeDetails = u.getNode(taskParams().ybcServerName);
         ReleaseManager.ReleaseMetadata releaseMetadata =
             releaseManager.getYbcReleaseByVersion(
-                taskParams().ybcSoftwareVersion,
+                taskParams().getYbcSoftwareVersion(),
                 OsType.LINUX.toString().toLowerCase(),
                 Architecture.x86_64.name().toLowerCase());
         String ybcPackage = releaseMetadata.filePath;
         Map<String, String> ybcGflags =
-            GFlagsUtil.getYbcFlagsForK8s(taskParams().universeUUID, taskParams().ybcServerName);
+            GFlagsUtil.getYbcFlagsForK8s(
+                taskParams().getUniverseUUID(), taskParams().ybcServerName);
         try {
           Path confFilePath =
               Files.createTempFile(
-                  taskParams().universeUUID.toString() + "_" + taskParams().ybcServerName, ".conf");
+                  taskParams().getUniverseUUID().toString() + "_" + taskParams().ybcServerName,
+                  ".conf");
           Files.write(
               confFilePath,
               () ->
@@ -365,7 +367,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         }
         break;
       case YBC_ACTION:
-        u = Universe.getOrBadRequest(taskParams().universeUUID);
+        u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
         nodeDetails = u.getNode(taskParams().ybcServerName);
         List<String> commandArgs =
             Arrays.asList(
@@ -385,7 +387,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   }
 
   private Map<String, String> getClusterIpForLoadBalancer() {
-    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     PlacementInfo pi = taskParams().placementInfo;
 
     Map<UUID, Map<String, String>> azToConfig = KubernetesUtil.getConfigPerAZ(pi);
@@ -396,8 +398,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
       UUID azUUID = entry.getKey();
-      String azName = AvailabilityZone.get(azUUID).code;
-      String regionName = AvailabilityZone.get(azUUID).region.code;
+      String azName = AvailabilityZone.get(azUUID).getCode();
+      String regionName = AvailabilityZone.get(azUUID).getRegion().getCode();
       Map<String, String> config = entry.getValue();
 
       // TODO(bhavin192): we seem to be iterating over all the AZs
@@ -420,7 +422,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
   private void processNodeInfo() {
     ObjectNode pods = Json.newObject();
-    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     UUID placementUuid =
         taskParams().isReadOnlyCluster
             ? u.getUniverseDetails().getReadOnlyClusters().get(0).uuid
@@ -434,8 +436,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     String nodePrefix = u.getUniverseDetails().nodePrefix;
     for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
       UUID azUUID = entry.getKey();
-      String azName = AvailabilityZone.get(azUUID).code;
-      String regionName = AvailabilityZone.get(azUUID).region.code;
+      String azName = AvailabilityZone.get(azUUID).getCode();
+      String regionName = AvailabilityZone.get(azUUID).getRegion().getCode();
       Map<String, String> config = entry.getValue();
 
       String helmReleaseName =
@@ -597,7 +599,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   private int getNumNodes() {
     Provider provider = Provider.get(taskParams().providerUUID);
     if (provider != null) {
-      Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+      Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       UniverseDefinitionTaskParams.UserIntent userIntent =
           u.getUniverseDetails().getPrimaryCluster().userIntent;
       return userIntent.numNodes;
@@ -617,7 +619,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Map<String, String> azConfig = new HashMap<String, String>();
     Map<String, String> regionConfig = new HashMap<String, String>();
 
-    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
 
     UniverseDefinitionTaskParams.Cluster cluster =
         taskParams().isReadOnlyCluster
@@ -681,7 +683,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           if (region.azList.size() != 0) {
             PlacementInfo.PlacementAZ zone = region.azList.get(0);
             // TODO: wtf, why do we have AZ name but not code at this level??
-            placementZone = AvailabilityZone.get(zone.uuid).code;
+            placementZone = AvailabilityZone.get(zone.uuid).getCode();
             numNodes = zone.numNodesInAZ;
             replicationFactorZone = zone.replicationFactor;
             replicationFactor = userIntent.replicationFactor;
@@ -768,10 +770,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Map<String, Object> masterResource = new HashMap<>();
     Map<String, Object> masterLimit = new HashMap<>();
 
-    tserverResource.put("cpu", instanceType.numCores);
-    tserverResource.put("memory", String.format("%.2fGi", instanceType.memSizeGB));
-    tserverLimit.put("cpu", instanceType.numCores * burstVal);
-    tserverLimit.put("memory", String.format("%.2fGi", instanceType.memSizeGB));
+    tserverResource.put("cpu", instanceType.getNumCores());
+    tserverResource.put("memory", String.format("%.2fGi", instanceType.getMemSizeGB()));
+    tserverLimit.put("cpu", instanceType.getNumCores() * burstVal);
+    tserverLimit.put("memory", String.format("%.2fGi", instanceType.getMemSizeGB()));
 
     // If the instance type is not xsmall or dev, we would bump the master resource.
     if (!instanceTypeCode.equals("xsmall") && !instanceTypeCode.equals("dev")) {
@@ -791,7 +793,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // Memory should not be burstable as memory consumption above requests can lead to pods being
     // killed if the nodes is running out of resources.
     if (instanceTypeCode.equals("cloud")) {
-      tserverLimit.put("cpu", instanceType.numCores * 2);
+      tserverLimit.put("cpu", instanceType.getNumCores() * 2);
       masterResource.put("cpu", 0.3);
       masterResource.put("memory", "1Gi");
       masterLimit.put("cpu", 0.6);
@@ -860,7 +862,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         rootCA.put("key", "");
         tlsInfo.put("rootCA", rootCA);
 
-        if (certInfo.certType == CertConfigType.K8SCertManager
+        if (certInfo.getCertType() == CertConfigType.K8SCertManager
             && (azConfig.containsKey("CERT-MANAGER-ISSUER")
                 || azConfig.containsKey("CERT-MANAGER-CLUSTERISSUER"))) {
           // User configuring a K8SCertManager type of certificate on a Universe and setting
@@ -1031,7 +1033,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
 
     Map<String, Object> ybcInfo = new HashMap<>();
-    ybcInfo.put("enabled", taskParams().enableYbc);
+    ybcInfo.put("enabled", taskParams().isEnableYbc());
     overrides.put("ybc", ybcInfo);
 
     if (overridesYAML != null) {
@@ -1097,7 +1099,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
 
     try {
-      Path tempFile = Files.createTempFile(taskParams().universeUUID.toString(), ".yml");
+      Path tempFile = Files.createTempFile(taskParams().getUniverseUUID().toString(), ".yml");
       try (BufferedWriter bw = new BufferedWriter(new FileWriter(tempFile.toFile())); ) {
         yaml.dump(overrides, bw);
         return tempFile.toAbsolutePath().toString();
@@ -1164,13 +1166,13 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
    * user does not end up in such an unsupported configuration.
    */
   private void allowK8SCertManagerOnlyWithOverride(Map<String, Object> values) {
-    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     if (u.getUniverseDetails().rootCA == null) {
       // nothing to validate on a Universe that does not have TLS enabled
       return;
     }
     CertificateInfo certInfo = CertificateInfo.get(u.getUniverseDetails().rootCA);
-    boolean isK8SCertManager = certInfo.certType == CertConfigType.K8SCertManager;
+    boolean isK8SCertManager = certInfo.getCertType() == CertConfigType.K8SCertManager;
     boolean hasCertManagerOverride = hasCertManagerOverride(values);
     if (isK8SCertManager != hasCertManagerOverride) {
       throw new RuntimeException(

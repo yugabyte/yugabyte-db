@@ -43,7 +43,7 @@ public class PersistResizeNode extends UniverseTaskBase {
     String ret =
         super.getName()
             + "("
-            + taskParams().universeUUID
+            + taskParams().getUniverseUUID()
             + ", instanceType: "
             + taskParams().instanceType;
     if (taskParams().volumeSize != null) {

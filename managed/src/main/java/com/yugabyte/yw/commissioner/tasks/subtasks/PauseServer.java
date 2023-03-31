@@ -36,12 +36,12 @@ public class PauseServer extends NodeTaskBase {
   }
 
   private void pauseUniverse(final String nodeName) {
-    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     if (u.getNode(nodeName) == null) {
       log.error("No node in universe with name " + nodeName);
       return;
     }
-    log.info("Paused the node " + nodeName + " from universe " + taskParams().universeUUID);
+    log.info("Paused the node " + nodeName + " from universe " + taskParams().getUniverseUUID());
   }
 
   @Override

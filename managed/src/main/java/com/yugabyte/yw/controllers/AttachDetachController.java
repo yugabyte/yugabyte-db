@@ -127,25 +127,27 @@ public class AttachDetachController extends AuthenticatedController {
       List<CertificateInfo> certificateInfoList = CertificateInfo.getCertificateInfoList(universe);
 
       List<KmsHistory> kmsHistoryList =
-          EncryptionAtRestUtil.getAllUniverseKeys(universe.universeUUID);
-      kmsHistoryList.sort((h1, h2) -> h1.timestamp.compareTo(h2.timestamp));
+          EncryptionAtRestUtil.getAllUniverseKeys(universe.getUniverseUUID());
+      kmsHistoryList.sort((h1, h2) -> h1.getTimestamp().compareTo(h2.getTimestamp()));
       List<KmsConfig> kmsConfigs =
           kmsHistoryList
               .stream()
-              .map(kmsHistory -> kmsHistory.configUuid)
+              .map(KmsHistory::getConfigUuid)
               .distinct()
-              .map(c -> KmsConfig.get(c))
+              .map(KmsConfig::get)
               .collect(Collectors.toList());
 
-      List<Backup> backups = Backup.fetchByUniverseUUID(customer.getUuid(), universe.universeUUID);
+      List<Backup> backups =
+          Backup.fetchByUniverseUUID(customer.getUuid(), universe.getUniverseUUID());
       List<Schedule> schedules =
-          Schedule.getAllSchedulesByOwnerUUIDAndType(universe.universeUUID, TaskType.CreateBackup);
+          Schedule.getAllSchedulesByOwnerUUIDAndType(
+              universe.getUniverseUUID(), TaskType.CreateBackup);
       List<CustomerConfig> customerConfigs =
           backups
               .stream()
-              .map(backup -> backup.storageConfigUUID)
+              .map(Backup::getStorageConfigUUID)
               .distinct()
-              .map(ccUUID -> CustomerConfig.get(ccUUID))
+              .map(CustomerConfig::get)
               .collect(Collectors.toList());
 
       // Non-local releases will not be populated by importLocalReleases, so we need to add it
@@ -157,7 +159,7 @@ public class AttachDetachController extends AuthenticatedController {
         ybReleaseMetadata = null;
       }
 
-      List<NodeInstance> nodeInstances = NodeInstance.listByUniverse(universe.universeUUID);
+      List<NodeInstance> nodeInstances = NodeInstance.listByUniverse(universe.getUniverseUUID());
 
       String storagePath = confGetter.getStaticConf().getString(STORAGE_PATH);
       String releasesPath = confGetter.getStaticConf().getString(RELEASES_PATH);
@@ -202,7 +204,7 @@ public class AttachDetachController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.Universe,
-            universe.universeUUID.toString(),
+            universe.getUniverseUUID().toString(),
             Audit.ActionType.Export,
             universeSpec.generateUniverseSpecObj());
     response().setHeader("Content-Disposition", "attachment; filename=universeSpec.tar.gz");
@@ -247,7 +249,7 @@ public class AttachDetachController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.Universe,
-            universeSpec.universe.universeUUID.toString(),
+            universeSpec.universe.getUniverseUUID().toString(),
             Audit.ActionType.Import);
     return YBPSuccess.empty();
   }
@@ -259,25 +261,27 @@ public class AttachDetachController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(universeUUID);
 
     List<Schedule> schedules =
-        Schedule.getAllSchedulesByOwnerUUIDAndType(universe.universeUUID, TaskType.CreateBackup);
+        Schedule.getAllSchedulesByOwnerUUIDAndType(
+            universe.getUniverseUUID(), TaskType.CreateBackup);
 
     for (Schedule schedule : schedules) {
       schedule.delete();
     }
 
-    List<Backup> backups = Backup.fetchByUniverseUUID(customer.getUuid(), universe.universeUUID);
+    List<Backup> backups =
+        Backup.fetchByUniverseUUID(customer.getUuid(), universe.getUniverseUUID());
     for (Backup backup : backups) {
       backup.delete();
     }
 
     List<KmsHistory> kmsHistoryList =
-        EncryptionAtRestUtil.getAllUniverseKeys(universe.universeUUID);
+        EncryptionAtRestUtil.getAllUniverseKeys(universe.getUniverseUUID());
 
     for (KmsHistory kmsHistory : kmsHistoryList) {
       kmsHistory.delete();
     }
 
-    List<NodeInstance> nodeInstances = NodeInstance.listByUniverse(universe.universeUUID);
+    List<NodeInstance> nodeInstances = NodeInstance.listByUniverse(universe.getUniverseUUID());
     for (NodeInstance nodeInstance : nodeInstances) {
       nodeInstance.delete();
     }
@@ -286,7 +290,7 @@ public class AttachDetachController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.Universe,
-            universe.universeUUID.toString(),
+            universe.getUniverseUUID().toString(),
             Audit.ActionType.DeleteMetadata);
 
     Universe.delete(universe.getUniverseUUID());

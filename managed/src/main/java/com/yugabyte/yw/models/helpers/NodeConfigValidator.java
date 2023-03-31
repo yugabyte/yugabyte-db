@@ -70,7 +70,7 @@ public class NodeConfigValidator {
     @Override
     public String toString() {
       return String.format(
-          "%s(path=%s, provider=%s)", getClass().getSimpleName(), path, provider.uuid);
+          "%s(path=%s, provider=%s)", getClass().getSimpleName(), path, provider.getUuid());
     }
   }
 
@@ -110,10 +110,11 @@ public class NodeConfigValidator {
    */
   public Map<Type, ValidationResult> validateNodeConfigs(
       Provider provider, NodeInstanceData nodeData) {
-    InstanceType instanceType = InstanceType.getOrBadRequest(provider.uuid, nodeData.instanceType);
-    AccessKey accessKey = AccessKey.getLatestKey(provider.uuid);
+    InstanceType instanceType =
+        InstanceType.getOrBadRequest(provider.getUuid(), nodeData.instanceType);
+    AccessKey accessKey = AccessKey.getLatestKey(provider.getUuid());
     Operation operation =
-        provider.details.skipProvisioning ? Operation.CONFIGURE : Operation.PROVISION;
+        provider.getDetails().skipProvisioning ? Operation.CONFIGURE : Operation.PROVISION;
 
     Set<NodeConfig> nodeConfigs =
         nodeData.nodeConfigs == null ? new HashSet<>() : new HashSet<>(nodeData.nodeConfigs);
@@ -160,7 +161,7 @@ public class NodeConfigValidator {
     InstanceType instanceType = input.getInstanceType();
     Provider provider = input.getProvider();
     NodeConfig.Type type = input.nodeConfig.getType();
-    MigratedKeyInfoFields keyInfo = provider.details;
+    MigratedKeyInfoFields keyInfo = provider.getDetails();
     switch (type) {
       case PROMETHEUS_SPACE:
         {
@@ -185,12 +186,13 @@ public class NodeConfigValidator {
       case RAM_SIZE:
         {
           return Double.compare(
-                  Double.parseDouble(nodeConfig.getValue()), instanceType.memSizeGB * 1024)
+                  Double.parseDouble(nodeConfig.getValue()), instanceType.getMemSizeGB() * 1024)
               >= 0;
         }
       case CPU_CORES:
         {
-          return Double.compare(Double.parseDouble(nodeConfig.getValue()), instanceType.numCores)
+          return Double.compare(
+                  Double.parseDouble(nodeConfig.getValue()), instanceType.getNumCores())
               >= 0;
         }
       case TMP_DIR_SPACE:
@@ -290,7 +292,7 @@ public class NodeConfigValidator {
   }
 
   private boolean isNodeConfigRequired(ValidationData input) {
-    MigratedKeyInfoFields keyInfo = input.getProvider().details;
+    MigratedKeyInfoFields keyInfo = input.getProvider().getDetails();
     Provider provider = input.getProvider();
     NodeConfig.Type type = input.nodeConfig.getType();
     switch (type) {
@@ -394,9 +396,9 @@ public class NodeConfigValidator {
   }
 
   public boolean sshIntoNode(Provider provider, NodeInstanceData nodeData, Operation operation) {
-    AccessKey accessKey = AccessKey.getLatestKey(provider.uuid);
+    AccessKey accessKey = AccessKey.getLatestKey(provider.getUuid());
     KeyInfo keyInfo = accessKey.getKeyInfo();
-    String sshUser = operation == Operation.CONFIGURE ? "yugabyte" : provider.details.sshUser;
+    String sshUser = operation == Operation.CONFIGURE ? "yugabyte" : provider.getDetails().sshUser;
     List<String> commandList =
         ImmutableList.of(
             "ssh",
@@ -404,7 +406,7 @@ public class NodeConfigValidator {
             keyInfo.privateKey,
             "-oStrictHostKeyChecking=no",
             "-p",
-            Integer.toString(provider.details.sshPort),
+            Integer.toString(provider.getDetails().sshPort),
             String.format("%s@%s", sshUser, nodeData.ip),
             "exit");
 
@@ -427,7 +429,7 @@ public class NodeConfigValidator {
         nodeAgentClient.ping(nodeAgent);
         return true;
       } catch (RuntimeException e) {
-        log.error("Failed to connect to node agent {} - {}", nodeAgent.uuid, e.getMessage());
+        log.error("Failed to connect to node agent {} - {}", nodeAgent.getUuid(), e.getMessage());
       }
     }
     return false;

@@ -40,15 +40,15 @@ public class ProviderTest extends FakeDBApplication {
   public void testCreate() {
     Provider provider = ModelFactory.awsProvider(defaultCustomer);
 
-    assertNotNull(provider.uuid);
-    assertEquals(provider.name, "Amazon");
-    assertTrue(provider.active);
+    assertNotNull(provider.getUuid());
+    assertEquals(provider.getName(), "Amazon");
+    assertTrue(provider.getActive());
   }
 
   @Test
   public void testNullConfig() {
     Provider provider = ModelFactory.awsProvider(defaultCustomer);
-    assertNotNull(provider.uuid);
+    assertNotNull(provider.getUuid());
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(provider);
     assertTrue(envVars.isEmpty());
   }
@@ -57,9 +57,12 @@ public class ProviderTest extends FakeDBApplication {
   public void testNotNullConfig() {
     Provider provider =
         Provider.create(
-            defaultCustomer.uuid, Common.CloudType.aws, "Amazon", ImmutableMap.of("Foo", "Bar"));
+            defaultCustomer.getUuid(),
+            Common.CloudType.aws,
+            "Amazon",
+            ImmutableMap.of("Foo", "Bar"));
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(provider);
-    assertNotNull(provider.uuid);
+    assertNotNull(provider.getUuid());
     assertNotNull(envVars.toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
   }
 
@@ -67,7 +70,7 @@ public class ProviderTest extends FakeDBApplication {
   public void testCreateDuplicateProvider() {
     ModelFactory.awsProvider(defaultCustomer);
     try {
-      Provider.create(defaultCustomer.uuid, Common.CloudType.aws, "Amazon");
+      Provider.create(defaultCustomer.getUuid(), Common.CloudType.aws, "Amazon");
     } catch (Exception e) {
       assertThat(e.getMessage(), containsString("Unique index or primary key violation:"));
     }
@@ -77,30 +80,30 @@ public class ProviderTest extends FakeDBApplication {
   public void testGetMaskedConfigWithSensitiveData() {
     Provider provider =
         Provider.create(
-            defaultCustomer.uuid,
+            defaultCustomer.getUuid(),
             Common.CloudType.aws,
             "Amazon",
             ImmutableMap.of("AWS_ACCESS_KEY_ID", "BarBarBarBar"));
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(provider);
-    assertNotNull(provider.uuid);
+    assertNotNull(provider.getUuid());
     assertEquals("BarBarBarBar", envVars.get("AWS_ACCESS_KEY_ID"));
     CloudInfoInterface.mayBeMassageResponse(provider);
-    assertEquals("Ba********ar", provider.config.get("AWS_ACCESS_KEY_ID"));
+    assertEquals("Ba********ar", provider.getConfig().get("AWS_ACCESS_KEY_ID"));
   }
 
   @Test
   public void testGetMaskedConfigWithoutSensitiveData() {
     Provider provider =
         Provider.create(
-            defaultCustomer.uuid,
+            defaultCustomer.getUuid(),
             Common.CloudType.aws,
             "Amazon",
             ImmutableMap.of("AWS_ACCESS_KEY_ID", "BarBarBarBar"));
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(provider);
-    assertNotNull(provider.uuid);
+    assertNotNull(provider.getUuid());
     assertEquals("BarBarBarBar", envVars.get("AWS_ACCESS_KEY_ID"));
     CloudInfoInterface.mayBeMassageResponse(provider);
-    assertEquals("Ba********ar", provider.config.get("AWS_ACCESS_KEY_ID"));
+    assertEquals("Ba********ar", provider.getConfig().get("AWS_ACCESS_KEY_ID"));
   }
 
   @Test
@@ -115,47 +118,47 @@ public class ProviderTest extends FakeDBApplication {
   public void testInactiveProvider() {
     Provider provider = ModelFactory.awsProvider(defaultCustomer);
 
-    assertNotNull(provider.uuid);
-    assertEquals(provider.name, "Amazon");
-    assertTrue(provider.active);
+    assertNotNull(provider.getUuid());
+    assertEquals(provider.getName(), "Amazon");
+    assertTrue(provider.getActive());
 
-    provider.active = false;
+    provider.setActive(false);
     provider.save();
 
-    Provider fetch = Provider.find.byId(provider.uuid);
-    assertFalse(fetch.active);
+    Provider fetch = Provider.find.byId(provider.getUuid());
+    assertFalse(fetch.getActive());
   }
 
   @Test
   public void testFindProvider() {
     Provider provider = ModelFactory.awsProvider(defaultCustomer);
 
-    assertNotNull(provider.uuid);
-    Provider fetch = Provider.find.byId(provider.uuid);
+    assertNotNull(provider.getUuid());
+    Provider fetch = Provider.find.byId(provider.getUuid());
     assertNotNull(fetch);
-    assertEquals(fetch.uuid, provider.uuid);
-    assertEquals(fetch.name, provider.name);
-    assertTrue(fetch.active);
-    assertEquals(fetch.customerUUID, defaultCustomer.uuid);
+    assertEquals(fetch.getUuid(), provider.getUuid());
+    assertEquals(fetch.getName(), provider.getName());
+    assertTrue(fetch.getActive());
+    assertEquals(fetch.getCustomerUUID(), defaultCustomer.getUuid());
   }
 
   @Test
   public void testGetByNameSuccess() {
     Provider provider = ModelFactory.awsProvider(defaultCustomer);
-    Provider fetch = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).get(0);
+    Provider fetch = Provider.get(defaultCustomer.getUuid(), Common.CloudType.aws).get(0);
     assertNotNull(fetch);
-    assertEquals(fetch.uuid, provider.uuid);
-    assertEquals(fetch.name, provider.name);
-    assertTrue(fetch.active);
-    assertEquals(fetch.customerUUID, defaultCustomer.uuid);
+    assertEquals(fetch.getUuid(), provider.getUuid());
+    assertEquals(fetch.getName(), provider.getName());
+    assertTrue(fetch.getActive());
+    assertEquals(fetch.getCustomerUUID(), defaultCustomer.getUuid());
   }
 
   @Test
   public void testGetByNameFailure() {
-    Provider.create(defaultCustomer.uuid, Common.CloudType.aws, "Amazon");
-    Provider.create(defaultCustomer.uuid, Common.CloudType.gcp, "Amazon");
+    Provider.create(defaultCustomer.getUuid(), Common.CloudType.aws, "Amazon");
+    Provider.create(defaultCustomer.getUuid(), Common.CloudType.gcp, "Amazon");
     try {
-      Provider.get(defaultCustomer.uuid, Common.CloudType.aws);
+      Provider.get(defaultCustomer.getUuid(), Common.CloudType.aws);
     } catch (RuntimeException re) {
       assertThat(
           re.getMessage(), allOf(notNullValue(), equalTo("Found 2 providers with name: Amazon")));
@@ -176,19 +179,19 @@ public class ProviderTest extends FakeDBApplication {
   public void testGetAwsHostedZoneWithData() {
     Provider provider =
         Provider.create(
-            defaultCustomer.uuid,
+            defaultCustomer.getUuid(),
             Common.CloudType.aws,
             "Amazon",
             ImmutableMap.of("HOSTED_ZONE_ID", "some_id", "HOSTED_ZONE_NAME", "some_name"));
-    assertNotNull(provider.uuid);
+    assertNotNull(provider.getUuid());
     assertEquals("some_id", provider.getHostedZoneId());
     assertEquals("some_name", provider.getHostedZoneName());
   }
 
   @Test
   public void testGetAwsHostedZoneWithNoData() {
-    Provider provider = Provider.create(defaultCustomer.uuid, Common.CloudType.aws, "Amazon");
-    assertNotNull(provider.uuid);
+    Provider provider = Provider.create(defaultCustomer.getUuid(), Common.CloudType.aws, "Amazon");
+    assertNotNull(provider.getUuid());
     assertNull(provider.getHostedZoneId());
   }
 
@@ -222,10 +225,10 @@ public class ProviderTest extends FakeDBApplication {
   @Test
   public void testOptimisticLocking() {
     Provider provider = ModelFactory.gcpProvider(defaultCustomer);
-    Provider providerCopy = Provider.getOrBadRequest(provider.uuid);
-    provider.setConfig(Collections.singletonMap("qqq", "vvv"));
+    Provider providerCopy = Provider.getOrBadRequest(provider.getUuid());
+    provider.setConfigMap(Collections.singletonMap("qqq", "vvv"));
     provider.save();
-    providerCopy.setConfig(Collections.singletonMap("1", "2"));
+    providerCopy.setConfigMap(Collections.singletonMap("1", "2"));
     assertThrows(OptimisticLockException.class, () -> providerCopy.save());
     providerCopy.setVersion(provider.getVersion());
     providerCopy.save(); // Success

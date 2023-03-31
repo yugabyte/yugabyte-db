@@ -89,7 +89,11 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     az3 = AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ-3", "subnet-3");
     InstanceType i =
         InstanceType.upsert(
-            kubernetesProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+            kubernetesProvider.getUuid(),
+            "c3.xlarge",
+            10,
+            5.5,
+            new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent =
         getTestUserIntent(r, kubernetesProvider, i, 3);
     userIntent.replicationFactor = 3;
@@ -98,18 +102,18 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     userIntent.universeName = "demo-universe";
     userIntent.ybSoftwareVersion = YB_SOFTWARE_VERSION;
     userIntent.enableYEDIS = enabledYEDIS;
-    defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
+    defaultUniverse = createUniverse(defaultCustomer.getId());
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(userIntent, NODE_PREFIX, setMasters /* setMasters */));
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
     defaultUniverse.save();
 
-    nodePrefix1 = String.format("%s-%s", NODE_PREFIX, az1.code);
-    nodePrefix2 = String.format("%s-%s", NODE_PREFIX, az2.code);
-    nodePrefix3 = String.format("%s-%s", NODE_PREFIX, az3.code);
+    nodePrefix1 = String.format("%s-%s", NODE_PREFIX, az1.getCode());
+    nodePrefix2 = String.format("%s-%s", NODE_PREFIX, az2.getCode());
+    nodePrefix3 = String.format("%s-%s", NODE_PREFIX, az3.getCode());
     ns1 = nodePrefix1;
     ns2 = nodePrefix2;
     ns3 = nodePrefix3;
@@ -134,7 +138,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
     } else {
       config.put("KUBECONFIG", "test");
-      kubernetesProvider.setConfig(config);
+      kubernetesProvider.setConfigMap(config);
       kubernetesProvider.save();
 
       // Copying provider config
@@ -163,22 +167,22 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     expectedNodeNameToIP =
         ImmutableMap.<String, String>builder()
             .put(
-                String.format(nodeNameFormat, "master", 0, az1.code),
+                String.format(nodeNameFormat, "master", 0, az1.getCode()),
                 String.format(privateIPFormat, helmNameSuffix1, "master", 0, ns1))
             .put(
-                String.format(nodeNameFormat, "tserver", 0, az1.code),
+                String.format(nodeNameFormat, "tserver", 0, az1.getCode()),
                 String.format(privateIPFormat, helmNameSuffix1, "tserver", 0, ns1))
             .put(
-                String.format(nodeNameFormat, "master", 0, az2.code),
+                String.format(nodeNameFormat, "master", 0, az2.getCode()),
                 String.format(privateIPFormat, helmNameSuffix2, "master", 0, ns2))
             .put(
-                String.format(nodeNameFormat, "tserver", 0, az2.code),
+                String.format(nodeNameFormat, "tserver", 0, az2.getCode()),
                 String.format(privateIPFormat, helmNameSuffix2, "tserver", 0, ns2))
             .put(
-                String.format(nodeNameFormat, "master", 0, az3.code),
+                String.format(nodeNameFormat, "master", 0, az3.getCode()),
                 String.format(privateIPFormat, helmNameSuffix3, "master", 0, ns3))
             .put(
-                String.format(nodeNameFormat, "tserver", 0, az3.code),
+                String.format(nodeNameFormat, "tserver", 0, az3.getCode()),
                 String.format(privateIPFormat, helmNameSuffix3, "tserver", 0, ns3))
             .build();
 
@@ -200,7 +204,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
                     ? "yb"
                         + universeName.toLowerCase().substring(0, 11)
                         + "-"
-                        + az1.code
+                        + az1.getCode()
                         + "-"
                         + Util.base36hash(nodePrefix1)
                     : nodePrefix1)),
@@ -216,7 +220,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
                     ? "yb"
                         + universeName.toLowerCase().substring(0, 11)
                         + "-"
-                        + az2.code
+                        + az2.getCode()
                         + "-"
                         + Util.base36hash(nodePrefix2)
                     : nodePrefix2)),
@@ -232,7 +236,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
                     ? "yb"
                         + universeName.toLowerCase().substring(0, 11)
                         + "-"
-                        + az3.code
+                        + az3.getCode()
                         + "-"
                         + Util.base36hash(nodePrefix3)
                     : nodePrefix3)),
@@ -245,7 +249,11 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     AvailabilityZone az = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
     InstanceType i =
         InstanceType.upsert(
-            kubernetesProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+            kubernetesProvider.getUuid(),
+            "c3.xlarge",
+            10,
+            5.5,
+            new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent =
         getTestUserIntent(r, kubernetesProvider, i, 3);
     userIntent.replicationFactor = 3;
@@ -254,11 +262,11 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     userIntent.universeName = "demo-universe";
     userIntent.ybSoftwareVersion = YB_SOFTWARE_VERSION;
     userIntent.enableYEDIS = enabledYEDIS;
-    defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
+    defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(userIntent, NODE_PREFIX, setMasters /* setMasters */));
-    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
     defaultUniverse.save();
@@ -272,7 +280,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       az.save();
     } else {
       config.put("KUBECONFIG", "test");
-      kubernetesProvider.setConfig(config);
+      kubernetesProvider.setConfigMap(config);
       kubernetesProvider.save();
     }
 
@@ -402,7 +410,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       JsonNode expectedResults = expectedTasksResult.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
       int expectedSize = taskCountPerPosition.get(position);
       assertEquals(expectedSize, tasks.size());
       assertEquals(taskType, tasks.get(0).getTaskType());
@@ -412,7 +420,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   private TaskInfo submitTask(UniverseDefinitionTaskParams taskParams) {
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.nodePrefix = "demo-universe";
     taskParams.expectedUniverseVersion = universeVersion;
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
@@ -467,16 +475,16 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
     verify(mockKubernetesManager, times(1))
         .helmInstall(
-            eq(defaultUniverse.universeUUID),
+            eq(defaultUniverse.getUniverseUUID()),
             eq(YB_SOFTWARE_VERSION),
             eq(config1),
-            eq(kubernetesProvider.uuid),
+            eq(kubernetesProvider.getUuid()),
             eq(
                 (newNamingStyle
                     ? "yb"
                         + universeName.toLowerCase().substring(0, 11)
                         + "-"
-                        + az1.code
+                        + az1.getCode()
                         + "-"
                         + Util.base36hash(nodePrefix1)
                     : nodePrefix1)),
@@ -484,16 +492,16 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(1))
         .helmInstall(
-            eq(defaultUniverse.universeUUID),
+            eq(defaultUniverse.getUniverseUUID()),
             eq(YB_SOFTWARE_VERSION),
             eq(config2),
-            eq(kubernetesProvider.uuid),
+            eq(kubernetesProvider.getUuid()),
             eq(
                 (newNamingStyle
                     ? "yb"
                         + universeName.toLowerCase().substring(0, 11)
                         + "-"
-                        + az2.code
+                        + az2.getCode()
                         + "-"
                         + Util.base36hash(nodePrefix2)
                     : nodePrefix2)),
@@ -501,23 +509,23 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(1))
         .helmInstall(
-            eq(defaultUniverse.universeUUID),
+            eq(defaultUniverse.getUniverseUUID()),
             eq(YB_SOFTWARE_VERSION),
             eq(config3),
-            eq(kubernetesProvider.uuid),
+            eq(kubernetesProvider.getUuid()),
             eq(
                 (newNamingStyle
                     ? "yb"
                         + universeName.toLowerCase().substring(0, 11)
                         + "-"
-                        + az3.code
+                        + az3.getCode()
                         + "-"
                         + Util.base36hash(nodePrefix3)
                     : nodePrefix3)),
             eq(newNamingStyle ? NODE_PREFIX : ns3),
             expectedOverrideFile.capture());
 
-    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
     verify(mockKubernetesManager, times(1))
@@ -527,7 +535,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
                 ? "yb"
                     + universeName.toLowerCase().substring(0, 11)
                     + "-"
-                    + az1.code
+                    + az1.getCode()
                     + "-"
                     + Util.base36hash(nodePrefix1)
                 : nodePrefix1,
@@ -539,7 +547,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
                 ? "yb"
                     + universeName.toLowerCase().substring(0, 11)
                     + "-"
-                    + az2.code
+                    + az2.getCode()
                     + "-"
                     + Util.base36hash(nodePrefix2)
                 : nodePrefix2,
@@ -551,14 +559,14 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
                 ? "yb"
                     + universeName.toLowerCase().substring(0, 11)
                     + "-"
-                    + az3.code
+                    + az3.getCode()
                     + "-"
                     + Util.base36hash(nodePrefix3)
                 : nodePrefix3,
             newNamingStyle ? NODE_PREFIX : ns3);
-    verify(mockSwamperHelper, times(1)).writeUniverseTargetJson(defaultUniverse.universeUUID);
+    verify(mockSwamperHelper, times(1)).writeUniverseTargetJson(defaultUniverse.getUniverseUUID());
 
-    Universe u = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    Universe u = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     Map<String, String> nodeNameToIP =
         u.getUniverseDetails()
             .nodeDetailsSet
@@ -605,19 +613,19 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
     verify(mockKubernetesManager, times(1))
         .helmInstall(
-            eq(defaultUniverse.universeUUID),
+            eq(defaultUniverse.getUniverseUUID()),
             eq(YB_SOFTWARE_VERSION),
             eq(config),
-            eq(kubernetesProvider.uuid),
+            eq(kubernetesProvider.getUuid()),
             eq(NODE_PREFIX),
             eq(ns),
             expectedOverrideFile.capture());
 
-    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
     verify(mockKubernetesManager, times(1)).getPodInfos(config, NODE_PREFIX, ns);
-    verify(mockSwamperHelper, times(1)).writeUniverseTargetJson(defaultUniverse.universeUUID);
+    verify(mockSwamperHelper, times(1)).writeUniverseTargetJson(defaultUniverse.getUniverseUUID());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =

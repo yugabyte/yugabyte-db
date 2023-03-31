@@ -33,8 +33,8 @@ public class CloudProviderCleanup extends CloudTaskBase {
       priceComponents.forEach(priceComponent -> priceComponent.delete());
     }
     // We would delete the provider, keys etc only when all the regions are cleaned up.
-    if (getProvider().regions.isEmpty()) {
-      List<AccessKey> accessKeyList = AccessKey.getAll(provider.uuid);
+    if (getProvider().getRegions().isEmpty()) {
+      List<AccessKey> accessKeyList = AccessKey.getAll(provider.getUuid());
       accessKeyList.forEach(accessKey -> accessKey.delete());
       provider.delete();
     }

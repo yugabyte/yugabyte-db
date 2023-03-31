@@ -70,7 +70,7 @@ public class GcpEARServiceUtilTest extends FakeDBApplication {
   @Before
   public void setUp() {
     this.customer = ModelFactory.testCustomer();
-    this.universe = ModelFactory.createUniverse(customer.getCustomerId());
+    this.universe = ModelFactory.createUniverse(customer.getId());
 
     // Populate the fake auth config
     fakeAuthConfig.put("name", authConfigName);

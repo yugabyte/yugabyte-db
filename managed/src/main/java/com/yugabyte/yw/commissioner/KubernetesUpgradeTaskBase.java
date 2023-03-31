@@ -6,8 +6,6 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.KubernetesUtil;
-import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -140,7 +138,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     Cluster primaryCluster = universeDetails.getPrimaryCluster();
     PlacementInfo placementInfo = primaryCluster.placementInfo;
     createSingleKubernetesExecutorTask(
-        universe.name, CommandType.POD_INFO, placementInfo, /*isReadOnlyCluster*/ false);
+        universe.getName(), CommandType.POD_INFO, placementInfo, /*isReadOnlyCluster*/ false);
 
     KubernetesPlacement placement =
         new KubernetesPlacement(placementInfo, /*isReadOnlyCluster*/ false);
@@ -159,14 +157,14 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             placementInfo,
             placement.masters,
             taskParams().nodePrefix,
-            universe.name,
+            universe.getName(),
             provider,
             universeDetails.communicationPorts.masterRpcPort,
             newNamingStyle);
 
     if (isMasterChanged) {
       upgradePodsTask(
-          universe.name,
+          universe.getName(),
           placement,
           masterAddresses,
           null,
@@ -188,7 +186,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       }
 
       upgradePodsTask(
-          universe.name,
+          universe.getName(),
           placement,
           masterAddresses,
           null,
@@ -208,7 +206,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       if (enableYbc) {
         Set<NodeDetails> primaryTservers =
             new HashSet<NodeDetails>(universe.getTServersInPrimaryCluster());
-        installYbcOnThePods(universe.name, primaryTservers, false, ybcSoftwareVersion);
+        installYbcOnThePods(universe.getName(), primaryTservers, false, ybcSoftwareVersion);
         performYbcAction(primaryTservers, false, "stop");
         createWaitForYbcServerTask(primaryTservers);
       }
@@ -218,7 +216,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
         PlacementInfo readClusterPlacementInfo =
             universeDetails.getReadOnlyClusters().get(0).placementInfo;
         createSingleKubernetesExecutorTask(
-            universe.name,
+            universe.getName(),
             CommandType.POD_INFO,
             readClusterPlacementInfo, /*isReadOnlyCluster*/
             true);
@@ -227,7 +225,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             new KubernetesPlacement(readClusterPlacementInfo, /*isReadOnlyCluster*/ true);
 
         upgradePodsTask(
-            universe.name,
+            universe.getName(),
             readClusterPlacement,
             masterAddresses,
             null,
@@ -249,7 +247,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
               new HashSet<NodeDetails>(
                   universe.getNodesInCluster(
                       universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid));
-          installYbcOnThePods(universe.name, replicaTservers, true, ybcSoftwareVersion);
+          installYbcOnThePods(universe.getName(), replicaTservers, true, ybcSoftwareVersion);
           performYbcAction(replicaTservers, true, "stop");
           createWaitForYbcServerTask(replicaTservers);
         }

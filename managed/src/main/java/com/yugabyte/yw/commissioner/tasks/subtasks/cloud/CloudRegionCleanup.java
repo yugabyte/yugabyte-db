@@ -45,7 +45,7 @@ public class CloudRegionCleanup extends CloudTaskBase {
     if (region == null) {
       throw new RuntimeException("Region " + regionCode + " doesn't exists.");
     }
-    JsonNode vpcInfo = networkManager.cleanupOrFail(region.uuid);
+    JsonNode vpcInfo = networkManager.cleanupOrFail(region.getUuid());
     if (vpcInfo.has("error") || !vpcInfo.has(regionCode)) {
       throw new RuntimeException("Region cleanup failed for: " + regionCode);
     }

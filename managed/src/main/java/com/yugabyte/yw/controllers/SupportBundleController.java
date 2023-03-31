@@ -82,7 +82,7 @@ public class SupportBundleController extends AuthenticatedController {
           String.format(
               "Cannot create support bundle since the universe %s"
                   + "is currently in a locked/paused state or has backup running",
-              universe.universeUUID));
+              universe.getUniverseUUID()));
     }
 
     // Support bundle for onprem and k8s universes was originally behind a runtime flag.
@@ -124,7 +124,7 @@ public class SupportBundleController extends AuthenticatedController {
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.CreateSupportBundle,
-        universe.name);
+        universe.getName());
     log.info(
         "Saved task uuid "
             + taskUUID.toString()

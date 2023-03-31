@@ -29,7 +29,7 @@ public class CreateTableSpacesInUniverse extends UniverseTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     if (!primaryCluster.userIntent.enableYSQL) {
       throw new PlatformServiceException(

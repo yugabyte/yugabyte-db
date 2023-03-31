@@ -152,8 +152,8 @@ public class CertificateHelper {
     List<CertificateInfo> certificateInfoList =
         CertificateInfo.getWhereLabelStartsWith(nodePrefix, certType);
     if (!certificateInfoList.isEmpty()) {
-      certificateInfoList.sort(Comparator.comparing(a -> a.label, Comparator.reverseOrder()));
-      String[] labelArray = certificateInfoList.get(0).label.split("~");
+      certificateInfoList.sort(Comparator.comparing(a -> a.getLabel(), Comparator.reverseOrder()));
+      String[] labelArray = certificateInfoList.get(0).getLabel().split("~");
       int lastCount = 0;
       try {
         lastCount = Integer.parseInt(labelArray[labelArray.length - 1]);
@@ -202,7 +202,7 @@ public class CertificateHelper {
               certType);
 
       LOG.info("Created Root CA for universe {}.", certLabel);
-      return cert.uuid;
+      return cert.getUuid();
     } catch (Exception e) {
       LOG.error(String.format("Unable to create RootCA for universe %s", nodePrefix), e);
       return null;
@@ -528,7 +528,7 @@ public class CertificateHelper {
           certPath,
           keyPath,
           Json.toJson(customCertInfo));
-      return cert.uuid;
+      return cert.getUuid();
     } catch (IOException | NoSuchAlgorithmException e) {
       LOG.error(
           "uploadRootCA: Could not generate checksum for cert {} for customer {}",
@@ -541,7 +541,7 @@ public class CertificateHelper {
 
   public static String getCertPEMFileContents(UUID rootCA) {
     CertificateInfo cert = CertificateInfo.get(rootCA);
-    return FileUtils.readFileToString(new File(cert.certificate));
+    return FileUtils.readFileToString(new File(cert.getCertificate()));
   }
 
   public static String getCertPEM(UUID rootCA) {
@@ -551,17 +551,17 @@ public class CertificateHelper {
   }
 
   public static String getCertPEM(CertificateInfo cert) {
-    String certPEM = FileUtils.readFileToString(new File(cert.certificate));
+    String certPEM = FileUtils.readFileToString(new File(cert.getCertificate()));
     certPEM = Base64.getEncoder().encodeToString(certPEM.getBytes());
     return certPEM;
   }
 
   public static String getKeyPEM(CertificateInfo cert) {
-    if (cert.certType == CertConfigType.HashicorpVault
-        || (cert.certType == CertConfigType.K8SCertManager)) {
+    if (cert.getCertType() == CertConfigType.HashicorpVault
+        || (cert.getCertType() == CertConfigType.K8SCertManager)) {
       return "";
     }
-    String privateKeyPEM = FileUtils.readFileToString(new File(cert.privateKey));
+    String privateKeyPEM = FileUtils.readFileToString(new File(cert.getPrivateKey()));
     privateKeyPEM = Base64.getEncoder().encodeToString(privateKeyPEM.getBytes());
     return privateKeyPEM;
   }
@@ -573,14 +573,14 @@ public class CertificateHelper {
 
   public static String getClientCertFile(UUID rootCA) {
     CertificateInfo cert = CertificateInfo.get(rootCA);
-    File certFile = new File(cert.certificate);
+    File certFile = new File(cert.getCertificate());
     String path = certFile.getParentFile().toString();
     return String.format("%s/%s", path, CLIENT_CERT);
   }
 
   public static String getClientKeyFile(UUID rootCA) {
     CertificateInfo cert = CertificateInfo.get(rootCA);
-    File certFile = new File(cert.certificate);
+    File certFile = new File(cert.getCertificate());
     String path = certFile.getParentFile().toString();
     return String.format("%s/%s", path, CLIENT_KEY);
   }
@@ -589,8 +589,8 @@ public class CertificateHelper {
     try {
       CertificateInfo cer1 = CertificateInfo.get(cert1);
       CertificateInfo cer2 = CertificateInfo.get(cert2);
-      FileInputStream is1 = new FileInputStream(cer1.certificate);
-      FileInputStream is2 = new FileInputStream(cer2.certificate);
+      FileInputStream is1 = new FileInputStream(cer1.getCertificate());
+      FileInputStream is2 = new FileInputStream(cer2.getCertificate());
       CertificateFactory fact = CertificateFactory.getInstance("X.509");
       X509Certificate certObj1 = (X509Certificate) fact.generateCertificate(is1);
       X509Certificate certObj2 = (X509Certificate) fact.generateCertificate(is2);
@@ -616,10 +616,10 @@ public class CertificateHelper {
     List<CertificateInfo> certs = CertificateInfo.getAllNoChecksum();
     for (CertificateInfo cert : certs) {
       try {
-        cert.setChecksum();
+        cert.updateChecksum();
       } catch (IOException | NoSuchAlgorithmException e) {
         // Log error, but don't cause it to error out.
-        LOG.error("Could not generate checksum for cert: {}", cert.certificate);
+        LOG.error("Could not generate checksum for cert: {}", cert.getCertificate());
       }
     }
   }

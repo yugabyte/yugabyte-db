@@ -7,7 +7,9 @@ import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
 
@@ -25,7 +27,9 @@ public class RestoreBackupParams extends UniverseTaskParams {
 
   @Constraints.Required
   @ApiModelProperty(value = "Universe UUID", required = true)
-  public UUID universeUUID;
+  @Getter
+  @Setter
+  private UUID universeUUID;
 
   @ApiModelProperty(value = "KMS configuration UUID")
   public UUID kmsConfigUUID = null;
@@ -112,7 +116,7 @@ public class RestoreBackupParams extends UniverseTaskParams {
       ActionType actionType,
       String currentYbcTaskId) {
     this.customerUUID = otherParams.customerUUID;
-    this.universeUUID = otherParams.universeUUID;
+    this.setUniverseUUID(otherParams.getUniverseUUID());
     this.storageConfigUUID = otherParams.storageConfigUUID;
     this.restoreTimeStamp = otherParams.restoreTimeStamp;
     this.kmsConfigUUID = otherParams.kmsConfigUUID;
@@ -133,7 +137,7 @@ public class RestoreBackupParams extends UniverseTaskParams {
     // Don't need vebose, multipart, parallelism.
     // Since only using this for YBC restores.
     this.customerUUID = params.customerUUID;
-    this.universeUUID = params.universeUUID;
+    this.setUniverseUUID(params.getUniverseUUID());
     this.storageConfigUUID = params.storageConfigUUID;
     this.restoreTimeStamp = params.restoreTimeStamp;
     this.kmsConfigUUID = params.kmsConfigUUID;

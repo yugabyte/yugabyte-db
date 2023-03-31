@@ -30,6 +30,8 @@ import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
@@ -40,6 +42,8 @@ import play.mvc.Http.Status;
 @Slf4j
 @Entity
 @ApiModel(description = "A user associated with a customer")
+@Getter
+@Setter
 public class Users extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(Users.class);
@@ -88,15 +92,11 @@ public class Users extends Model {
   @Id
   @Column(nullable = false, unique = true)
   @ApiModelProperty(value = "User UUID", accessMode = READ_ONLY)
-  public UUID uuid = UUID.randomUUID();
+  private UUID uuid = UUID.randomUUID();
 
   @Column(nullable = false)
   @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
-  public UUID customerUUID;
-
-  public void setCustomerUuid(UUID id) {
-    this.customerUUID = id;
-  }
+  private UUID customerUUID;
 
   @Column(length = 256, unique = true, nullable = false)
   @Constraints.Required
@@ -105,21 +105,17 @@ public class Users extends Model {
       value = "User email address",
       example = "username1@example.com",
       required = true)
-  public String email;
-
-  public String getEmail() {
-    return this.email;
-  }
+  private String email;
 
   @JsonIgnore
   @Column(length = 256, nullable = false)
   @ApiModelProperty(
       value = "User password hash",
       example = "$2y$10$ABccHWa1DO2VhcF1Ea2L7eOBZRhktsJWbFaB/aEjLfpaplDBIJ8K6")
-  public String passwordHash;
+  private String passwordHash;
 
   public void setPassword(String password) {
-    this.passwordHash = Users.hasher.hash(password);
+    this.setPasswordHash(Users.hasher.hash(password));
   }
 
   @Column(nullable = false)
@@ -128,9 +124,9 @@ public class Users extends Model {
       value = "User creation date",
       example = "2022-12-12T13:07:18Z",
       accessMode = READ_ONLY)
-  public Date creationDate;
+  private Date creationDate;
 
-  @Encrypted private String authToken;
+  @Encrypted @JsonIgnore private String authToken;
 
   @Column(nullable = true)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
@@ -154,61 +150,17 @@ public class Users extends Model {
   @ApiModelProperty(value = "User role")
   private Role role;
 
-  public Role getRole() {
-    return this.role;
-  }
-
-  public void setRole(Role role) {
-    this.role = role;
-  }
-
   @Column(nullable = false)
   @ApiModelProperty(value = "True if the user is the primary user")
   private boolean isPrimary;
 
-  public boolean getIsPrimary() {
-    return this.isPrimary;
-  }
-
-  public void setIsPrimary(boolean isPrimary) {
-    this.isPrimary = isPrimary;
-  }
-
   @Column(nullable = false)
   @ApiModelProperty(value = "User Type")
-  public UserType userType;
-
-  public void setUserType(UserType userType) {
-    this.userType = userType;
-  }
-
-  public UserType getUserType() {
-    return this.userType;
-  }
+  private UserType userType;
 
   @Column(nullable = false)
   @ApiModelProperty(value = "LDAP Specified Role")
-  public boolean ldapSpecifiedRole;
-
-  public void setLdapSpecifiedRole(boolean ldapSpecifiedRole) {
-    this.ldapSpecifiedRole = ldapSpecifiedRole;
-  }
-
-  public boolean getLdapSpecifiedRole() {
-    return this.ldapSpecifiedRole;
-  }
-
-  public Date getAuthTokenIssueDate() {
-    return this.authTokenIssueDate;
-  }
-
-  public String getTimezone() {
-    return this.timezone;
-  }
-
-  public void setTimezone(String timezone) {
-    this.timezone = timezone;
-  }
+  private boolean ldapSpecifiedRole;
 
   public static final Finder<UUID, Users> find = new Finder<UUID, Users>(Users.class) {};
 
@@ -230,7 +182,7 @@ public class Users extends Model {
   }
 
   public Users() {
-    this.creationDate = new Date();
+    this.setCreationDate(new Date());
   }
 
   /**
@@ -266,10 +218,10 @@ public class Users extends Model {
   static Users createInternal(
       String email, String password, Role role, UUID customerUUID, boolean isPrimary) {
     Users users = new Users();
-    users.email = email.toLowerCase();
+    users.setEmail(email.toLowerCase());
     users.setPassword(password);
-    users.setCustomerUuid(customerUUID);
-    users.creationDate = new Date();
+    users.setCustomerUUID(customerUUID);
+    users.setCreationDate(new Date());
     users.role = role;
     users.isPrimary = isPrimary;
     users.setUserType(UserType.local);
@@ -286,8 +238,11 @@ public class Users extends Model {
    */
   public static void deleteUser(String email) {
     Users userToDelete = Users.find.query().where().eq("email", email).findOne();
-    if (userToDelete != null && userToDelete.userType.equals(UserType.ldap)) {
-      log.info("Deleting user id {} with email address {}", userToDelete.uuid, userToDelete.email);
+    if (userToDelete != null && userToDelete.getUserType().equals(UserType.ldap)) {
+      log.info(
+          "Deleting user id {} with email address {}",
+          userToDelete.getUuid(),
+          userToDelete.getEmail());
       userToDelete.delete();
     }
     return;
@@ -303,7 +258,7 @@ public class Users extends Model {
   public static Users authWithPassword(String email, String password) {
     Users users = Users.find.query().where().eq("email", email).findOne();
 
-    if (users != null && Users.hasher.isValid(password, users.passwordHash)) {
+    if (users != null && Users.hasher.isValid(password, users.getPasswordHash())) {
       return users;
     } else {
       return null;
@@ -434,7 +389,7 @@ public class Users extends Model {
 
   public static String getAllEmailsForCustomer(UUID customerUUID) {
     List<Users> users = Users.getAll(customerUUID);
-    return users.stream().map(user -> user.email).collect(Collectors.joining(","));
+    return users.stream().map(user -> user.getEmail()).collect(Collectors.joining(","));
   }
 
   public static List<Users> getAllReadOnly() {

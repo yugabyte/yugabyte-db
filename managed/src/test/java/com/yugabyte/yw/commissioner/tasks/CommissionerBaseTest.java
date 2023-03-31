@@ -260,7 +260,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         TaskInfo taskInfo = TaskInfo.get(taskUUID);
         if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
           // Also, ensure task details are set before returning.
-          if (taskInfo.getTaskDetails() != null) {
+          if (taskInfo.getDetails() != null) {
             return taskInfo;
           }
         }

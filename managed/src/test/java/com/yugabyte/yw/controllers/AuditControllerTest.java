@@ -72,7 +72,7 @@ public class AuditControllerTest extends FakeDBApplication {
     String route = "/api/customers/%s/users/%s/audit_trail";
     Result result =
         route(
-            fakeRequest("GET", String.format(route, customer1.uuid, user1.uuid))
+            fakeRequest("GET", String.format(route, customer1.getUuid(), user1.getUuid()))
                 .cookie(validCookie));
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
@@ -85,7 +85,7 @@ public class AuditControllerTest extends FakeDBApplication {
     String route = "/api/customers/%s/users/%s/audit_trail";
     Result result =
         route(
-            fakeRequest("GET", String.format(route, customer2.uuid, user1.uuid))
+            fakeRequest("GET", String.format(route, customer2.getUuid(), user1.getUuid()))
                 .cookie(validCookie));
     assertEquals(FORBIDDEN, result.status());
   }
@@ -96,11 +96,11 @@ public class AuditControllerTest extends FakeDBApplication {
     String route = "/api/customers/%s/tasks/%s/audit_info";
     Result result =
         route(
-            fakeRequest("GET", String.format(route, customer2.uuid, taskUUID2))
+            fakeRequest("GET", String.format(route, customer2.getUuid(), taskUUID2))
                 .cookie(validCookie));
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
-    assertTrue(json.path("auditID").asLong() == audit3.getAuditID());
+    assertTrue(json.path("auditID").asLong() == audit3.getId());
   }
 
   @Test
@@ -111,7 +111,7 @@ public class AuditControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 route(
-                    fakeRequest("GET", String.format(route, customer2.uuid, taskUUID1))
+                    fakeRequest("GET", String.format(route, customer2.getUuid(), taskUUID1))
                         .cookie(validCookie)));
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
@@ -123,11 +123,11 @@ public class AuditControllerTest extends FakeDBApplication {
     String route = "/api/customers/%s/tasks/%s/audit_user";
     Result result =
         route(
-            fakeRequest("GET", String.format(route, customer2.uuid, taskUUID2))
+            fakeRequest("GET", String.format(route, customer2.getUuid(), taskUUID2))
                 .cookie(validCookie));
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
-    assertTrue(json.path("uuid").asText().equals(user2.uuid.toString()));
+    assertTrue(json.path("uuid").asText().equals(user2.getUuid().toString()));
   }
 
   @Test
@@ -138,7 +138,7 @@ public class AuditControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 route(
-                    fakeRequest("GET", String.format(route, customer2.uuid, taskUUID1))
+                    fakeRequest("GET", String.format(route, customer2.getUuid(), taskUUID1))
                         .cookie(validCookie)));
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());

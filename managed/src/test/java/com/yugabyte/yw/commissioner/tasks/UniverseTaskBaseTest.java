@@ -141,7 +141,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     // Create Universe
     Universe universe =
         ModelFactory.createUniverse(
-            "name", UUID.randomUUID(), customer.getCustomerId(), cloudType, placementInfo);
+            "name", UUID.randomUUID(), customer.getId(), cloudType, placementInfo);
     // Update UserIntent
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     universeDetails.getPrimaryCluster().userIntent.enableLB = true;
@@ -149,7 +149,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
         u -> {
           u.setUniverseDetails(universeDetails);
         };
-    Universe.saveDetails(universe.universeUUID, updater);
+    Universe.saveDetails(universe.getUniverseUUID(), updater);
 
     return universe;
   }
@@ -163,12 +163,12 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
       // Create AZ if doesn't exist
       if (AvailabilityZone.get(uuid) == null) {
         AvailabilityZone newAz = new AvailabilityZone();
-        newAz.region = region;
-        newAz.uuid = nodes.get(i).getAzUuid();
-        newAz.code = "code" + i;
-        newAz.name = "name" + i;
-        newAz.subnet = "subnet";
-        newAz.secondarySubnet = "secondarySubnet";
+        newAz.setRegion(region);
+        newAz.setUuid(nodes.get(i).getAzUuid());
+        newAz.setCode("code" + i);
+        newAz.setName("name" + i);
+        newAz.setSubnet("subnet");
+        newAz.setSecondarySubnet("secondarySubnet");
         newAz.save();
       }
       // Create PlacementAZ
@@ -345,8 +345,8 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     Customer customer = ModelFactory.testCustomer();
     Provider provider = ModelFactory.awsProvider(customer);
     Region region = Region.create(provider, "code", "name", "image");
-    PlacementInfo placementInfo1 = setupPlacementInfo(provider.uuid, region, nodes1, lbNames1);
-    PlacementInfo placementInfo2 = setupPlacementInfo(provider.uuid, region, nodes2, lbNames2);
+    PlacementInfo placementInfo1 = setupPlacementInfo(provider.getUuid(), region, nodes1, lbNames1);
+    PlacementInfo placementInfo2 = setupPlacementInfo(provider.getUuid(), region, nodes2, lbNames2);
     // Setup Universe and clusters
     Universe universe = setupUniverse(cloudType, customer, placementInfo1);
     UUID cluster1 = universe.getUniverseDetails().getPrimaryCluster().uuid;
@@ -428,8 +428,8 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     Customer customer = ModelFactory.testCustomer();
     Provider provider = ModelFactory.awsProvider(customer);
     Region region = Region.create(provider, "code", "name", "image");
-    PlacementInfo placementInfo1 = setupPlacementInfo(provider.uuid, region, nodes1, lbNames);
-    PlacementInfo placementInfo2 = setupPlacementInfo(provider.uuid, region, nodes2, lbNames);
+    PlacementInfo placementInfo1 = setupPlacementInfo(provider.getUuid(), region, nodes1, lbNames);
+    PlacementInfo placementInfo2 = setupPlacementInfo(provider.getUuid(), region, nodes2, lbNames);
     // Setup Universe and clusters
     Universe universe = setupUniverse(cloudType, customer, placementInfo1);
     UUID cluster1 = universe.getUniverseDetails().getPrimaryCluster().uuid;
@@ -474,7 +474,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     Customer customer = ModelFactory.testCustomer();
     Provider provider = ModelFactory.awsProvider(customer);
     Region region = Region.create(provider, "code", "name", "image");
-    PlacementInfo placementInfo = setupPlacementInfo(provider.uuid, region, nodes, lbNames);
+    PlacementInfo placementInfo = setupPlacementInfo(provider.getUuid(), region, nodes, lbNames);
     // Setup Universe and clusters
     Universe universe = setupUniverse(cloudType, customer, placementInfo);
     UUID cluster = universe.getUniverseDetails().getPrimaryCluster().uuid;

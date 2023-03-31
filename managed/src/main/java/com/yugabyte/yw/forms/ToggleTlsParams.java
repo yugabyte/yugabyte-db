@@ -40,7 +40,7 @@ public class ToggleTlsParams {
           Http.Status.BAD_REQUEST,
           "TLS upgrade can be performed either rolling or non-rolling way."
               + " - for universe: "
-              + universeParams.universeUUID);
+              + universeParams.getUniverseUUID());
     }
 
     if (this.enableClientToNodeEncrypt == existingEnableClientToNodeEncrypt
@@ -49,7 +49,7 @@ public class ToggleTlsParams {
           Http.Status.BAD_REQUEST,
           "No changes in Tls parameters, cannot perform update operation."
               + " - for universe: "
-              + universeParams.universeUUID);
+              + universeParams.getUniverseUUID());
     }
 
     if (rootCA != null && CertificateInfo.get(rootCA) == null) {
@@ -58,7 +58,7 @@ public class ToggleTlsParams {
           "No valid rootCA found for UUID: "
               + rootCA
               + " - for universe: "
-              + universeParams.universeUUID);
+              + universeParams.getUniverseUUID());
     }
 
     if (existingRootCA != null && rootCA != null && !existingRootCA.equals(rootCA)) {
@@ -66,7 +66,7 @@ public class ToggleTlsParams {
           Http.Status.BAD_REQUEST,
           "Cannot update root certificate, if already created."
               + " - for universe: "
-              + universeParams.universeUUID);
+              + universeParams.getUniverseUUID());
     }
 
     if (existingClientRootCA != null
@@ -76,7 +76,7 @@ public class ToggleTlsParams {
           Http.Status.BAD_REQUEST,
           "Cannot update client root certificate, if already created."
               + " - for universe: "
-              + universeParams.universeUUID);
+              + universeParams.getUniverseUUID());
     }
   }
 

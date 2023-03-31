@@ -182,7 +182,8 @@ public class SupportBundleUtil {
         String providerUUID = userIntent.provider;
         InstanceType instanceType =
             InstanceType.getOrBadRequest(UUID.fromString(providerUUID), nodeInstanceType);
-        List<VolumeDetails> volumeDetailsList = instanceType.instanceTypeDetails.volumeDetailsList;
+        List<VolumeDetails> volumeDetailsList =
+            instanceType.getInstanceTypeDetails().volumeDetailsList;
         if (CollectionUtils.isNotEmpty(volumeDetailsList)) {
           dataDirPath = volumeDetailsList.get(0).mountPath;
         } else {
@@ -699,7 +700,7 @@ public class SupportBundleUtil {
           String.format(
               "Wrongly called downloadNodeLevelComponent() "
                   + "from '%s' with node = null, on universe = '%s'.",
-              componentName, universe.name);
+              componentName, universe.getName());
       throw new RuntimeException(errMsg);
     }
 
@@ -728,7 +729,7 @@ public class SupportBundleUtil {
         log.debug(
             String.format(
                 "No files exist at the source path '%s' for universe '%s' for component '%s'.",
-                nodeHomeDir, universe.name, componentName));
+                nodeHomeDir, universe.getName(), componentName));
       }
     } catch (Exception e) {
       log.error(

@@ -82,7 +82,7 @@ public class CertReloadTaskCreator implements IUpgradeSubTask {
           String nodeHostPort = getHostPort(node, processTypes);
           NodeCertReloadTask task = NodeCertReloadTask.createTask();
           Params params = new Params();
-          params.universeUUID = universeUuid;
+          params.setUniverseUUID(universeUuid);
           params.azUuid = node.azUuid;
           params.nodeName = node.nodeName;
           params.setMasters(masterHostPorts);

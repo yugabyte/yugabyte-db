@@ -35,10 +35,10 @@ public class ManipulateDnsRecordTaskTest extends CommissionerBaseTest {
   private TaskInfo submitTask() {
     Customer customer = ModelFactory.testCustomer();
     Users defaultUser = ModelFactory.testUser(customer);
-    Universe universe = createUniverse(customer.getCustomerId());
+    Universe universe = createUniverse(customer.getId());
     AbstractTaskBase.createTask(ManipulateDnsRecordTask.class);
     ManipulateDnsRecordTask.Params params = new ManipulateDnsRecordTask.Params();
-    params.universeUUID = universe.universeUUID;
+    params.setUniverseUUID(universe.getUniverseUUID());
     params.type = DnsManager.DnsCommandType.Create;
     params.providerUUID = UUID.randomUUID();
     params.hostedZoneId = "";
@@ -50,7 +50,7 @@ public class ManipulateDnsRecordTaskTest extends CommissionerBaseTest {
       UUID taskUUID = commissioner.submit(TaskType.ManipulateDnsRecordTask, params);
       CustomerTask.create(
           customer,
-          universe.universeUUID,
+          universe.getUniverseUUID(),
           taskUUID,
           CustomerTask.TargetType.Universe,
           CustomerTask.TaskType.Create,

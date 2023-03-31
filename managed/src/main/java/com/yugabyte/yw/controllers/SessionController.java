@@ -173,14 +173,14 @@ public class SessionController extends AbstractPlatformController {
   @With(TokenAuthenticator.class)
   public Result getSessionInfo() {
     Users user = getCurrentUser();
-    Customer cust = Customer.get(user.customerUUID);
+    Customer cust = Customer.get(user.getCustomerUUID());
     Cookie authCookie = request().cookie(AUTH_TOKEN);
     SessionInfo sessionInfo =
         new SessionInfo(
             authCookie == null ? null : authCookie.value(),
             user.getApiToken(),
-            cust.uuid,
-            user.uuid);
+            cust.getUuid(),
+            user.getUuid());
     return withData(sessionInfo);
   }
 
@@ -299,10 +299,10 @@ public class SessionController extends AbstractPlatformController {
     Users user =
         loginHandler.login(formFactory.getFormDataOrBadRequest(CustomerLoginFormData.class).get());
 
-    Customer cust = Customer.get(user.customerUUID);
+    Customer cust = Customer.get(user.getCustomerUUID());
 
     String authToken = user.createAuthToken();
-    SessionInfo sessionInfo = new SessionInfo(authToken, null, cust.uuid, user.uuid);
+    SessionInfo sessionInfo = new SessionInfo(authToken, null, cust.getUuid(), user.getUuid());
     response()
         .setCookie(
             Http.Cookie.builder(AUTH_TOKEN, authToken)
@@ -311,13 +311,13 @@ public class SessionController extends AbstractPlatformController {
                 .build());
     response()
         .setCookie(
-            Http.Cookie.builder("customerId", cust.uuid.toString())
+            Http.Cookie.builder("customerId", cust.getUuid().toString())
                 .withSecure(ctx().request().secure())
                 .withHttpOnly(false)
                 .build());
     response()
         .setCookie(
-            Http.Cookie.builder("userId", user.uuid.toString())
+            Http.Cookie.builder("userId", user.getUuid().toString())
                 .withSecure(ctx().request().secure())
                 .withHttpOnly(false)
                 .build());
@@ -327,7 +327,7 @@ public class SessionController extends AbstractPlatformController {
         request().path(),
         request().method(),
         Audit.TargetType.User,
-        user.uuid.toString(),
+        user.getUuid().toString(),
         Audit.ActionType.Login,
         null,
         null,
@@ -346,16 +346,17 @@ public class SessionController extends AbstractPlatformController {
   public Result apiLogin() {
     Users user =
         loginHandler.login(formFactory.getFormDataOrBadRequest(CustomerLoginFormData.class).get());
-    Customer cust = Customer.get(user.customerUUID);
+    Customer cust = Customer.get(user.getCustomerUUID());
 
-    SessionInfo sessionInfo = new SessionInfo(null, user.getApiToken(), cust.uuid, user.uuid);
+    SessionInfo sessionInfo =
+        new SessionInfo(null, user.getApiToken(), cust.getUuid(), user.getUuid());
     ctx().args.put("isAudited", true);
     Audit.create(
         user,
         request().path(),
         request().method(),
         Audit.TargetType.User,
-        user.uuid.toString(),
+        user.getUuid().toString(),
         ActionType.ApiLogin,
         null,
         null,
@@ -387,7 +388,7 @@ public class SessionController extends AbstractPlatformController {
         request().path(),
         request().method(),
         Audit.TargetType.User,
-        user.uuid.toString(),
+        user.getUuid().toString(),
         Audit.ActionType.Login,
         null,
         null,
@@ -420,7 +421,8 @@ public class SessionController extends AbstractPlatformController {
         apiToken = user.upsertApiToken();
       }
 
-      SessionInfo sessionInfo = new SessionInfo(null, apiToken, user.customerUUID, user.uuid);
+      SessionInfo sessionInfo =
+          new SessionInfo(null, apiToken, user.getCustomerUUID(), user.getUuid());
       response()
           .setCookie(
               Http.Cookie.builder(API_TOKEN, apiToken)
@@ -433,7 +435,7 @@ public class SessionController extends AbstractPlatformController {
           request().path(),
           request().method(),
           Audit.TargetType.User,
-          user.uuid.toString(),
+          user.getUuid().toString(),
           Audit.ActionType.Login,
           null,
           null,
@@ -494,7 +496,7 @@ public class SessionController extends AbstractPlatformController {
     }
 
     String apiToken = user.upsertApiToken();
-    SessionInfo sessionInfo = new SessionInfo(null, apiToken, customerUUID, user.uuid);
+    SessionInfo sessionInfo = new SessionInfo(null, apiToken, customerUUID, user.getUuid());
     response()
         .setCookie(
             Http.Cookie.builder(API_TOKEN, apiToken)
@@ -568,13 +570,14 @@ public class SessionController extends AbstractPlatformController {
     }
     passwordPolicyService.checkPasswordPolicy(cust.getUuid(), data.getPassword());
 
-    alertDestinationService.createDefaultDestination(cust.uuid);
+    alertDestinationService.createDefaultDestination(cust.getUuid());
     alertConfigurationService.createDefaultConfigs(cust);
 
-    Users user = Users.createPrimary(data.getEmail(), data.getPassword(), role, cust.uuid);
+    Users user = Users.createPrimary(data.getEmail(), data.getPassword(), role, cust.getUuid());
     String authToken = user.createAuthToken();
     String apiToken = generateApiToken ? user.upsertApiToken() : null;
-    SessionInfo sessionInfo = new SessionInfo(authToken, apiToken, user.customerUUID, user.uuid);
+    SessionInfo sessionInfo =
+        new SessionInfo(authToken, apiToken, user.getCustomerUUID(), user.getUuid());
     response()
         .setCookie(
             Http.Cookie.builder(AUTH_TOKEN, sessionInfo.authToken)
@@ -716,7 +719,7 @@ public class SessionController extends AbstractPlatformController {
     if (alertingConfig == null) {
       return Collections.emptyList();
     }
-    AlertingData alertingData = Json.fromJson(alertingConfig.data, AlertingData.class);
+    AlertingData alertingData = Json.fromJson(alertingConfig.getData(), AlertingData.class);
     if (StringUtils.isEmpty(alertingData.alertingEmail)) {
       return Collections.emptyList();
     }

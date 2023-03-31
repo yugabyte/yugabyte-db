@@ -135,10 +135,10 @@ public class TransferXClusterCerts extends NodeTaskBase {
 
   private void transferXClusterCertUsingNodeUniverseManager() {
     // Find the specified universe and node.
-    Optional<Universe> targetUniverseOptional = Universe.maybeGet(taskParams().universeUUID);
+    Optional<Universe> targetUniverseOptional = Universe.maybeGet(taskParams().getUniverseUUID());
     if (!targetUniverseOptional.isPresent()) {
       throw new IllegalArgumentException(
-          String.format("No universe with UUID %s found", taskParams().universeUUID));
+          String.format("No universe with UUID %s found", taskParams().getUniverseUUID()));
     }
     Universe targetUniverse = targetUniverseOptional.get();
     NodeDetails node = targetUniverse.getNode(taskParams().nodeName);
@@ -146,7 +146,7 @@ public class TransferXClusterCerts extends NodeTaskBase {
       throw new IllegalArgumentException(
           String.format(
               "Node with name %s in universe %s not found",
-              taskParams().nodeName, taskParams().universeUUID));
+              taskParams().nodeName, taskParams().getUniverseUUID()));
     }
 
     String sourceCertificateDirPath =
@@ -162,7 +162,7 @@ public class TransferXClusterCerts extends NodeTaskBase {
           taskParams().rootCertPath,
           taskParams().nodeName,
           sourceCertificatePath,
-          taskParams().universeUUID);
+          taskParams().getUniverseUUID());
 
       // Create the parent directory for the certificate file.
       nodeUniverseManager
@@ -227,7 +227,7 @@ public class TransferXClusterCerts extends NodeTaskBase {
           "Removing server cert located at {} from node {} in universe {}",
           sourceCertificatePath,
           taskParams().nodeName,
-          taskParams().universeUUID);
+          taskParams().getUniverseUUID());
 
       // Remove the certificate file.
       verifyRmCommandShellResponse(

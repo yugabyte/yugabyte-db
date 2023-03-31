@@ -36,13 +36,13 @@ public class RemoveUniverseEntry extends UniverseTaskBase {
 
   @Override
   public void run() {
-    Universe.delete(taskParams().universeUUID);
+    Universe.delete(taskParams().getUniverseUUID());
 
     alertConfigurationService.handleSourceRemoval(
         taskParams().customerUUID,
         AlertConfiguration.TargetType.UNIVERSE,
-        taskParams().universeUUID);
-    metricService.markSourceRemoved(taskParams().customerUUID, taskParams().universeUUID);
-    healthChecker.handleUniverseRemoval(taskParams().universeUUID);
+        taskParams().getUniverseUUID());
+    metricService.markSourceRemoved(taskParams().customerUUID, taskParams().getUniverseUUID());
+    healthChecker.handleUniverseRemoval(taskParams().getUniverseUUID());
   }
 }

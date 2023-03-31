@@ -104,7 +104,8 @@ public class UniverseInfoHandler {
       try {
         response.add(UniverseResourceDetails.create(universe.getUniverseDetails(), context));
       } catch (Exception e) {
-        log.error("Could not add cost details for Universe with UUID: " + universe.universeUUID);
+        log.error(
+            "Could not add cost details for Universe with UUID: " + universe.getUniverseUUID());
       }
     }
     return response;
@@ -130,7 +131,7 @@ public class UniverseInfoHandler {
     try {
       List<HealthCheck> checks = HealthCheck.getAll(universeUUID);
       for (HealthCheck check : checks) {
-        detailsList.add(check.detailsJson);
+        detailsList.add(check.getDetailsJson());
       }
     } catch (RuntimeException e) {
       // TODO(API) dig deeper and find root cause of RuntimeException
@@ -155,7 +156,7 @@ public class UniverseInfoHandler {
       HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
       if (leaderMasterHostAndPort == null) {
         throw new PlatformServiceException(
-            BAD_REQUEST, "Leader master not found for universe " + universe.universeUUID);
+            BAD_REQUEST, "Leader master not found for universe " + universe.getUniverseUUID());
       }
       return leaderMasterHostAndPort;
     } catch (RuntimeException e) {
@@ -254,7 +255,9 @@ public class UniverseInfoHandler {
     } catch (RuntimeException re) {
       queryError = true;
       log.debug(
-          "Error fetching node status from prometheus for universe {} ", universe.universeUUID, re);
+          "Error fetching node status from prometheus for universe {} ",
+          universe.getUniverseUUID(),
+          re);
     }
 
     // convert prom query results to Map<hostname -> Map<port -> liveness>>
@@ -272,7 +275,7 @@ public class UniverseInfoHandler {
       Universe universe, boolean queryError, Map<String, Map<Integer, Boolean>> nodePortStatus) {
 
     ObjectNode result = Json.newObject();
-    result.put("universe_uuid", universe.universeUUID.toString());
+    result.put("universe_uuid", universe.getUniverseUUID().toString());
     for (final NodeDetails nodeDetails : universe.getNodes()) {
 
       Map<Integer, Boolean> portStatus =

@@ -37,7 +37,7 @@ public class AvailabilityZoneHandler {
       UUID zoneUUID, UUID regionUUID, Consumer<AvailabilityZone> mutator) {
     AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(zoneUUID, regionUUID);
     return providerEditRestrictionManager.tryEditProvider(
-        az.getProvider().uuid,
+        az.getProvider().getUuid(),
         () -> {
           long nodeCount = az.getNodeCount();
           if (nodeCount > 0) {
@@ -52,7 +52,7 @@ public class AvailabilityZoneHandler {
   public AvailabilityZone deleteZone(UUID zoneUUID, UUID regionUUID) {
     AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(zoneUUID, regionUUID);
     return providerEditRestrictionManager.tryEditProvider(
-        az.getProvider().uuid,
+        az.getProvider().getUuid(),
         () -> {
           long nodeCount = az.getNodeCount();
           if (nodeCount > 0) {

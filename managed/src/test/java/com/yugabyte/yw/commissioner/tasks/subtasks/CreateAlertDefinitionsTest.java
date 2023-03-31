@@ -45,7 +45,7 @@ public class CreateAlertDefinitionsTest extends FakeDBApplication {
         .thenReturn(app.injector().instanceOf(PlatformExecutorFactory.class));
 
     customer = ModelFactory.testCustomer();
-    u = ModelFactory.createUniverse(customer.getCustomerId());
+    u = ModelFactory.createUniverse(customer.getId());
 
     for (AlertTemplate template : AlertTemplate.values()) {
       ModelFactory.createAlertConfiguration(
@@ -64,11 +64,11 @@ public class CreateAlertDefinitionsTest extends FakeDBApplication {
   public void testRunFunctionality() {
     CreateAlertDefinitions alertDefinitionTask = new CreateAlertDefinitions(baseTaskDependencies);
     UniverseTaskParams taskParams = new UniverseTaskParams();
-    taskParams.universeUUID = u.universeUUID;
+    taskParams.setUniverseUUID(u.getUniverseUUID());
     alertDefinitionTask.initialize(taskParams);
 
     AlertDefinitionFilter definitionFilter =
-        AlertDefinitionFilter.builder().customerUuid(customer.uuid).build();
+        AlertDefinitionFilter.builder().customerUuid(customer.getUuid()).build();
     assertEquals(0, alertDefinitionService.list(definitionFilter).size());
 
     alertDefinitionTask.run();

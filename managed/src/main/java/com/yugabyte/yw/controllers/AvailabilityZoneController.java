@@ -82,8 +82,8 @@ public class AvailabilityZoneController extends AuthenticatedController {
     Map<String, AvailabilityZone> availabilityZones = new HashMap<>();
     List<AvailabilityZone> createdZones = availabilityZoneHandler.createZones(region, azDataList);
     for (AvailabilityZone az : createdZones) {
-      availabilityZones.put(az.code, az);
-      createdAvailabilityZonesUUID.add(az.uuid.toString());
+      availabilityZones.put(az.getCode(), az);
+      createdAvailabilityZonesUUID.add(az.getUuid().toString());
     }
     auditService()
         .createAuditEntryWithReqBody(
@@ -121,15 +121,15 @@ public class AvailabilityZoneController extends AuthenticatedController {
             zoneUUID,
             regionUUID,
             zone -> {
-              zone.subnet = azData.subnet;
-              zone.secondarySubnet = azData.secondarySubnet;
+              zone.setSubnet(azData.subnet);
+              zone.setSecondarySubnet(azData.secondarySubnet);
             });
 
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.AvailabilityZone,
-            az.uuid.toString(),
+            az.getUuid().toString(),
             Audit.ActionType.Edit,
             Json.toJson(azData));
     return PlatformResults.withData(az);
@@ -152,7 +152,10 @@ public class AvailabilityZoneController extends AuthenticatedController {
     AvailabilityZone az = availabilityZoneHandler.deleteZone(azUUID, regionUUID);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.AvailabilityZone, az.uuid.toString(), Audit.ActionType.Delete);
+            ctx(),
+            Audit.TargetType.AvailabilityZone,
+            az.getUuid().toString(),
+            Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 }
