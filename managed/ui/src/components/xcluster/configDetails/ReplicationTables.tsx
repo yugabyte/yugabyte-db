@@ -39,8 +39,8 @@ interface props {
 const TABLE_MIN_PAGE_SIZE = 10;
 
 export function ReplicationTables({ xClusterConfig }: props) {
-  const [deleteTableDetails, setDeleteTableDetails] = useState<YBTable>();
-  const [openTableLagGraphDetails, setOpenTableLagGraphDetails] = useState<YBTable>();
+  const [deleteTableDetails, setDeleteTableDetails] = useState<XClusterTable>();
+  const [openTableLagGraphDetails, setOpenTableLagGraphDetails] = useState<XClusterTable>();
 
   const dispatch = useDispatch();
   const { visibleModal } = useSelector((state: any) => state.modal);
@@ -178,7 +178,7 @@ export function ReplicationTables({ xClusterConfig }: props) {
             columnClassName={styles.tableActionColumn}
             width="160px"
             dataField="action"
-            dataFormat={(_, row) => (
+            dataFormat={(_, row: XClusterTable) => (
               <>
                 <YBButton
                   className={styles.actionButton}
@@ -199,6 +199,7 @@ export function ReplicationTables({ xClusterConfig }: props) {
                         setDeleteTableDetails(row);
                         dispatch(openDialog(XClusterModalName.REMOVE_TABLE_FROM_CONFIG));
                       }}
+                      disabled={row.tableType === TableType.TRANSACTION_STATUS_TABLE_TYPE}
                     >
                       <YBLabelWithIcon className={styles.dropdownMenuItem} icon="fa fa-times">
                         Remove Table
