@@ -6,6 +6,7 @@ import {
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
   XClusterConfigStatus,
+  XClusterConfigType,
   XClusterTableEligibility,
   XClusterTableStatus
 } from './constants';
@@ -20,7 +21,7 @@ export type XClusterTableType = TableType.PGSQL_TABLE_TYPE | TableType.YQL_TABLE
 /**
  * Source: XClusterTableConfig.java
  */
- export interface XClusterTableDetails {
+export interface XClusterTableDetails {
   needBootstrap: boolean;
   replicationSetupDone: true;
   bootstrapCreateTime: string;
@@ -40,9 +41,10 @@ export interface XClusterConfig {
   sourceUniverseUUID?: string;
   status: XClusterConfigStatus;
   tableDetails: XClusterTableDetails[];
-  txnTableDetails: XClusterTableDetails;
   tables: string[];
   targetUniverseUUID?: string;
+  txnTableDetails: XClusterTableDetails;
+  type: XClusterConfigType;
   uuid: string;
 }
 
@@ -111,8 +113,7 @@ export interface MetricTrace {
 }
 
 export type Metrics<MetricNameType extends MetricName> = {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  [metricName in MetricNameType]: { // eslint-disable-line no-unused-vars
+  [metricName in MetricNameType]: {
     data: MetricTrace[];
     directURLs: string[];
     layout: {

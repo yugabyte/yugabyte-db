@@ -24,7 +24,8 @@ import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
 import {
   XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN,
   BOOTSTRAP_MIN_FREE_DISK_SPACE_GB,
-  XClusterConfigAction
+  XClusterConfigAction,
+  XClusterConfigType
 } from '../constants';
 import { TableSelect } from '../common/tableSelect/TableSelect';
 
@@ -36,6 +37,7 @@ import styles from './CreateConfigModal.module.scss';
 export interface CreateXClusterConfigFormValues {
   configName: string;
   targetUniverse: { label: string; value: Universe };
+  isTransactionalConfig: boolean;
   tableUUIDs: string[];
   // Bootstrap fields
   storageConfig: { label: string; name: string; regions: any[]; value: string };
@@ -79,6 +81,7 @@ const DEFAULT_TABLE_TYPE = TableType.PGSQL_TABLE_TYPE;
 
 const INITIAL_VALUES: Partial<CreateXClusterConfigFormValues> = {
   configName: '',
+  isTransactionalConfig: false,
   tableUUIDs: [],
   // Bootstrap fields
   parallelThreads: PARALLEL_THREADS_RANGE.MIN
@@ -123,6 +126,7 @@ export const CreateConfigModal = ({
           values.targetUniverse.value.universeUUID,
           sourceUniverseUUID,
           values.configName,
+          values.isTransactionalConfig ? XClusterConfigType.TXN : XClusterConfigType.BASIC,
           values.tableUUIDs.map(adaptTableUUID),
           bootstrapParams
         );
@@ -131,6 +135,7 @@ export const CreateConfigModal = ({
         values.targetUniverse.value.universeUUID,
         sourceUniverseUUID,
         values.configName,
+        values.isTransactionalConfig ? XClusterConfigType.TXN : XClusterConfigType.BASIC,
         values.tableUUIDs.map(adaptTableUUID)
       );
     },
@@ -492,7 +497,8 @@ const validateForm = async (
         try {
           bootstrapTests = await isBootstrapRequired(
             sourceUniveres.universeUUID,
-            values.tableUUIDs.map(adaptTableUUID)
+            values.tableUUIDs.map(adaptTableUUID),
+            values.isTransactionalConfig ? XClusterConfigType.TXN : XClusterConfigType.BASIC
           );
         } catch (error: any) {
           toast.error(
