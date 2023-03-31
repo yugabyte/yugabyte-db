@@ -62,7 +62,7 @@ Create a cluster.
 | --cloud-type | Cloud provider. `AWS` (default) or `GCP`.
 | --cluster-type | Deployment type. `SYNCHRONOUS` or `GEO_PARTITIONED`. |
 | --node-config | Number of vCPUs and disk size per node for the cluster, provided as key-value pairs.<br>Arguments:<ul><li>num-cores - number of vCPUs per node</li><li>disk-size-gb - disk size in GB per node</li></ul>If specified, num-cores is mandatory, disk-size-gb is optional. |
-| --region-info | Region details for multi-region cluster, provided as key-value pairs.<br>Arguments:<ul><li>region-name - name of the region specified as cloud.region</li><li>num_nodes - number of nodes for the region</li><li>vpc - name of the VPC</li></ul>Specify one `--region-info` flag for each region in the cluster.<br>If specified, region and num-nodes is mandatory, vpc is optional. |
+| --region-info | Region details for multi-region cluster, provided as key-value pairs.<br>Arguments:<ul><li>region-name - name of the region specified as cloud.region</li><li>num-nodes - number of nodes for the region</li><li>vpc - name of the VPC</li></ul>Specify one `--region-info` flag for each region in the cluster.<br>If specified, region and num-nodes is mandatory, vpc is optional. |
 | --cluster-tier | Type of cluster. `Sandbox` or `Dedicated`. |
 | --fault-tolerance | Fault tolerance for the cluster. `NONE`, `ZONE`, or `REGION`. |
 | --database-version | Database version to use for the cluster. `Stable` or `Preview`. |
@@ -101,7 +101,7 @@ Update the specified cluster.
 | --cloud-type | Cloud provider. `AWS` or `GCP`. |
 | --cluster-type | Deployment type. `SYNCHRONOUS` or `GEO_PARTITIONED`. |
 | --node-config | Number of vCPUs and disk size per node for the cluster, provided as key-value pairs.<br>Arguments:<ul><li>num-cores - number of vCPUs per node</li><li>disk-size-gb - disk size in GB per node</li></ul>If specified, num-cores is mandatory, disk-size-gb is optional. |
-| --region-info | Region details for multi-region cluster, provided as key-value pairs.<br>Arguments:<ul><li>region-name - name of the region specified as cloud.region</li><li>num_nodes - number of nodes for the region</li><li>vpc - name of the VPC</li></ul>Specify one `--region-info` flag for each region in the cluster.<br>If specified, region and num-nodes is mandatory, vpc is optional. |
+| --region-info | Region details for multi-region cluster, provided as key-value pairs.<br>Arguments:<ul><li>region-name - name of the region specified as cloud.region</li><li>num-nodes - number of nodes for the region</li><li>vpc - name of the VPC</li></ul>Specify one `--region-info` flag for each region in the cluster.<br>If specified, region and num-nodes is mandatory, vpc is optional. |
 | --cluster-tier | Type of cluster. `Sandbox` or `Dedicated`. |
 | --fault-tolerance | Fault tolerance for the cluster. `NONE`, `ZONE`, or `REGION`. |
 | --database-version | Database version to use for the cluster. `Stable` or `Preview`. |
@@ -129,4 +129,4 @@ Download the [cluster certificate](../../../../cloud-secure-clusters/cloud-authe
 | Flag | Description |
 | :--- | :--- |
 | --force | Overwrite the output file if it exists. |
-| --out | Full path with file name of the location to which to download the cluster certificate file. Default is stdout. |
+| --out | Full path with file name of the location to which to download the cluster certificate file. Default is `stdout`. |
