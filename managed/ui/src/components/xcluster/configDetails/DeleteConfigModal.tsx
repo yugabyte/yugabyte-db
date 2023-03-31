@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from 'react-query';
 import { browserHistory } from 'react-router';
 import { toast } from 'react-toastify';
 import { FormikActions } from 'formik';
+import { AxiosError } from 'axios';
 
 import {
   deleteXclusterConfig,
@@ -10,6 +11,7 @@ import {
 } from '../../../actions/xClusterReplication';
 import { YBModalForm } from '../../common/forms';
 import { YBCheckBox } from '../../common/forms/fields';
+import { handleServerError } from '../../../utils/errorHandlingUtils';
 
 import { XClusterConfig } from '../XClusterTypes';
 
@@ -55,6 +57,13 @@ export const DeleteConfigModal = ({
                 <span className={styles.alertMsg}>
                   <i className="fa fa-exclamation-circle" />
                   <span>{`Failed to delete xCluster configuration: ${xClusterConfig.name}`}</span>
+                  <a
+                    href={`/tasks/${response.data.taskUUID}`}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    View Details
+                  </a>
                 </span>
               );
               // Invalidate the cached data for current xCluster config.
@@ -78,13 +87,8 @@ export const DeleteConfigModal = ({
           }
         );
       },
-      onError: (err: any) => {
-        toast.error(
-          err.response.data.error instanceof String
-            ? err.response.data.error
-            : JSON.stringify(err.response.data.error)
-        );
-      }
+      onError: (error: Error | AxiosError) =>
+        handleServerError(error, { customErrorLabel: 'Delete xCluster config request failed' })
     }
   );
 
