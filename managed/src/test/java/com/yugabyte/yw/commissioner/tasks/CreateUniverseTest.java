@@ -249,7 +249,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     taskParams.getPrimaryCluster().userIntent.dedicatedNodes = true;
     PlacementInfoUtil.SelectMastersResult selectMastersResult =
         PlacementInfoUtil.selectMasters(
-            null, taskParams.nodeDetailsSet, null, true, taskParams.getPrimaryCluster().userIntent);
+            null, taskParams.nodeDetailsSet, null, true, taskParams.clusters);
     selectMastersResult.addedMasters.forEach(taskParams.nodeDetailsSet::add);
     PlacementInfoUtil.dedicateNodes(taskParams.nodeDetailsSet);
     TaskInfo taskInfo = submitTask(taskParams);
