@@ -64,7 +64,7 @@ public class XClusterConfigRename extends XClusterConfigTaskBase {
       AlterUniverseReplicationResponse resp =
           client.alterUniverseReplicationName(
               xClusterConfig.getReplicationGroupName(),
-              XClusterConfig.getReplicationGroupName(
+              xClusterConfig.getNewReplicationGroupName(
                   xClusterConfig.getSourceUniverseUUID(), taskParams().newName));
       if (resp.hasError()) {
         throw new RuntimeException(
@@ -75,7 +75,7 @@ public class XClusterConfigRename extends XClusterConfigTaskBase {
 
       // Set the new name of the xCluster config in the DB.
       xClusterConfig.setName(taskParams().newName);
-      xClusterConfig.setReplicationGroupName();
+      xClusterConfig.setReplicationGroupName(taskParams().newName);
       xClusterConfig.update();
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());

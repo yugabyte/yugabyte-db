@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashSet;
 import java.util.List;
@@ -81,18 +82,16 @@ public class XClusterConfigUpdateMasterAddresses extends XClusterConfigTaskBase 
 
       // Update all the xCluster configs whose source and target universes belong to this task.
       for (String replicationGroupName : replicationGroups.keySet()) {
-        Optional<Pair<UUID, String>> sourceUuidAndConfigName =
-            maybeParseReplicationGroupName(replicationGroupName);
-        // If replication group name cannot be parsed, ignore it. The replication might have been
-        // created through yb-admin command.
-        if (!sourceUuidAndConfigName.isPresent()) {
-          log.warn(
-              "Skipping {} because it does not conform to the Platform replication group naming",
-              replicationGroupName);
+        XClusterConfig xClusterConfig =
+            XClusterConfig.getByReplicationGroupNameTarget(
+                replicationGroupName, targetUniverse.getUniverseUUID());
+        if (xClusterConfig == null) {
+          // Skip replication for xcluster replications were created by yb-admin command and not
+          // existing in YBA.
           continue;
         }
-        UUID sourceUniverseUUID = sourceUuidAndConfigName.get().getFirst();
-        String xClusterConfigName = sourceUuidAndConfigName.get().getSecond();
+        UUID sourceUniverseUUID = xClusterConfig.getSourceUniverseUUID();
+        String xClusterConfigName = xClusterConfig.getName();
         // Skip the replication configs whose source universe does not belong to this task.
         if (!sourceUniverseUUID.equals(taskParams().sourceUniverseUuid)) {
           continue;
