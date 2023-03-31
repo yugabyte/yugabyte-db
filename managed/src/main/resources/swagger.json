@@ -18355,7 +18355,7 @@
         }, {
           "default" : "null",
           "in" : "query",
-          "name" : "type",
+          "name" : "configType",
           "required" : false,
           "type" : "string"
         }, {
