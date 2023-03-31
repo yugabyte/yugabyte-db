@@ -109,7 +109,8 @@ class XClusterConsumer {
 
   client::TransactionManager* TransactionManager();
 
-  Result<cdc::ConsumerTabletInfo> GetConsumerTableInfo(const TabletId& producer_tablet_id);
+  Result<cdc::ConsumerTabletInfo> GetConsumerTableInfo(
+      const TabletId& producer_tablet_id) EXCLUDES (master_data_mutex_);
 
   // Stores a replication error and detail. This overwrites a previously stored 'error'.
   void StoreReplicationError(
@@ -135,10 +136,10 @@ class XClusterConsumer {
 
   // Loops through all entries in registry from master to check if all producer tablets are being
   // polled for.
-  void TriggerPollForNewTablets();
+  void TriggerPollForNewTablets() EXCLUDES (master_data_mutex_);
 
   // Loop through pollers and check if they should still be polling, if not, shut them down.
-  void TriggerDeletionOfOldPollers();
+  void TriggerDeletionOfOldPollers() EXCLUDES (master_data_mutex_);
 
   bool ShouldContinuePolling(
       const cdc::ProducerTabletInfo producer_tablet_info,
