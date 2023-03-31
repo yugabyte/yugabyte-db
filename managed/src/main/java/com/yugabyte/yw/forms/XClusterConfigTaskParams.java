@@ -24,6 +24,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   private Map<String, List<String>> mainTableIndexTablesMap;
   private XClusterConfigCreateFormData.BootstrapParams bootstrapParams;
   private XClusterConfigEditFormData editFormData;
+  private XClusterConfigSyncFormData syncFormData;
   private Set<String> tableIdsToAdd;
   private Set<String> tableIdsToRemove;
   private boolean isForced = false;
@@ -97,5 +98,10 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
         this.tableInfoList.remove(this.tableInfoList.size() - 1);
       }
     }
+  }
+
+  public XClusterConfigTaskParams(XClusterConfigSyncFormData syncFormData) {
+    this.syncFormData = syncFormData;
+    this.setUniverseUUID(syncFormData.targetUniverseUUID);
   }
 }
