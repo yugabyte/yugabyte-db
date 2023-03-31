@@ -91,7 +91,8 @@ class GcpCloud(AbstractCloud):
     def create_disk(self, args, body):
         self.get_admin().create_disk(args.zone, args.instance_tags, body)
 
-    def clone_disk(self, args, volume_id, num_disks):
+    def clone_disk(self, args, volume_id, num_disks,
+                   snapshot_creation_delay=15, snapshot_creation_max_attempts=80):
         output = []
         # disk names must match regex https://cloud.google.com/compute/docs/reference/rest/v1/disks
         name = args.search_pattern[:58] if len(args.search_pattern) > 58 else args.search_pattern
