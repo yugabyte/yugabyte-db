@@ -2,10 +2,11 @@ import { FormikActions, FormikErrors, FormikProps } from 'formik';
 import React, { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
+import { AxiosError } from 'axios';
 
 import { api } from '../../../../redesign/helpers/api';
 import { TableType, TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/dtos';
-import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
+import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBButton, YBModal } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { isYbcEnabledUniverse } from '../../../../utils/UniverseUtils';
@@ -135,7 +136,7 @@ export const AddTableModal = ({
               toast.error(
                 <span className={styles.alertMsg}>
                   <i className="fa fa-exclamation-circle" />
-                  <span>Replication restart failed.</span>
+                  <span>{`Add table to xCluster config failed: ${xClusterConfig.name}`}</span>
                   <a
                     href={`/tasks/${response.data.taskUUID}`}
                     rel="noopener noreferrer"
@@ -155,14 +156,8 @@ export const AddTableModal = ({
           }
         );
       },
-      onError: (error: any) => {
-        toast.error(
-          <span className={styles.alertMsg}>
-            <i className="fa fa-exclamation-circle" />
-            <span>{error.message}</span>
-          </span>
-        );
-      }
+      onError: (error: Error | AxiosError) =>
+        handleServerError(error, { customErrorLabel: 'Create xCluster config request failed' })
     }
   );
 

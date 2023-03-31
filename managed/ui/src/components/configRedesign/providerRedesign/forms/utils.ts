@@ -6,7 +6,7 @@
  */
 import { AxiosError } from 'axios';
 
-import { YBPBeanValidationError, YBPError } from '../../../../redesign/helpers/dtos';
+import { YBPError, YBPStructuredError } from '../../../../redesign/helpers/dtos';
 import { isYBPBeanValidationError, isYBPError } from '../../../../utils/errorHandlingUtils';
 
 export const readFileAsText = (sshKeyFile: File) => {
@@ -61,25 +61,25 @@ export const deleteItem = <TFieldItem extends FieldItem>(
 };
 
 export const getMutateProviderErrorMessage = (
-  error: AxiosError<YBPBeanValidationError | YBPError>,
-  primaryErrorMessage = 'Mutate provider request failed'
+  error: AxiosError<YBPStructuredError | YBPError>,
+  errorLabel = 'Mutate provider request failed'
 ) => {
   if (isYBPError(error)) {
-    return `${primaryErrorMessage}${
-      error.response?.data.error ? `: ${error.response?.data.error}` : '.'
-    }`;
+    const errorMessageDetails = error.response?.data.error;
+    return `${errorLabel}${errorMessageDetails ? `: ${errorMessageDetails}` : '.'}`;
   }
   if (isYBPBeanValidationError(error)) {
-    return `${primaryErrorMessage}: Form validation failed.`;
+    return `${errorLabel}: Form validation failed.`;
   }
-  return `${primaryErrorMessage}.`;
+  const errorMessageDetails =
+    (error as AxiosError<YBPStructuredError>).response?.data.error?.['message'] ?? error.message;
+  return `${errorLabel}${errorMessageDetails ? `: ${errorMessageDetails}` : '.'}`;
 };
 
-export const getCreateProviderErrorMessage = (
-  error: AxiosError<YBPBeanValidationError | YBPError>
-) => getMutateProviderErrorMessage(error, 'Create provider request failed');
+export const getCreateProviderErrorMessage = (error: AxiosError<YBPStructuredError | YBPError>) =>
+  getMutateProviderErrorMessage(error, 'Create provider request failed');
 
-export const getEditProviderErrorMessage = (error: AxiosError<YBPBeanValidationError | YBPError>) =>
+export const getEditProviderErrorMessage = (error: AxiosError<YBPStructuredError | YBPError>) =>
   getMutateProviderErrorMessage(error, 'Edit provider request failed');
 
 export const generateLowerCaseAlphanumericId = (stringLength = 14) =>
