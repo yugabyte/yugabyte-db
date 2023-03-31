@@ -4,7 +4,7 @@ headerTitle: Monitor YugabyteDB
 linkTitle: Monitor
 description: Overview of monitoring and alerts for YugabyteDB databases
 image: /images/section_icons/explore/monitoring.png
-headcontent:
+headcontent: Monitor cluster performance and activity
 menu:
   preview:
     identifier: monitor-and-alert
@@ -17,7 +17,7 @@ type: indexpage
     <a class="section-link icon-offset" href="metrics/">
       <div class="head">
         <div class="icon"><i class="fa-solid fa-chart-line"></i></div>
-        <div class="title">Metrics overview</div>
+        <div class="title">Metrics</div>
       </div>
       <div class="body">
           Learn about selecting and using YugabyteDB metrics.

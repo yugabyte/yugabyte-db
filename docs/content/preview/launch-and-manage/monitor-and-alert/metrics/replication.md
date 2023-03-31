@@ -1,8 +1,8 @@
 ---
 title: Replication metrics
 headerTitle: Replication
-linkTitle: Replication
-headcontent: Monitor and manage clusters with YugabyteDB's replication metrics.
+linkTitle: Replication metrics
+headcontent: Monitor xCluster replication
 description: Learn about YugabyteDB's replication metrics, and how to select and use the metrics.
 menu:
   preview:
@@ -20,7 +20,7 @@ The replication lag metrics are computed at a tablet level as the difference bet
 
 A description of key metrics in this category is listed in the following table:
 
-| Metrics | Unit | Type | Description |
+| Metric | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
 | `async_replication_committed_lag_micros` | microseconds | counter | The time in microseconds for the replication lag on the target cluster. This metric is available only on the source cluster. |
 | `time_since_last_getchanges` | microseconds | counter | The time elapsed in microseconds from when the source cluster got a request to replicate from the target cluster. This metric is available only on the source cluster. |

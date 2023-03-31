@@ -1,8 +1,8 @@
 ---
 title: Raft and distributed system metrics
 headerTitle: Raft and distributed systems
-linkTitle: Raft and distributed systems
-headcontent: Monitor and manage clusters with YugabyteDB's raft and distributed system metrics.
+linkTitle: Raft metrics
+headcontent: Monitor raft and distributed system metrics
 description: Learn about YugabyteDB's raft and distributed system metrics, and how to select and use the metrics.
 menu:
   preview:
@@ -16,7 +16,7 @@ type: docs
 
 YugabyteDB implements the RAFT consensus protocol, with minor modifications. Replicas implement an RPC method called `UpdateConsensus` which allows a tablet leader to replicate a batch of log entries to the follower. Replicas also implement an RPC method called `RequestConsensusVote`, which candidates invoke to gather votes. `ChangeConfig` RPC method indicates the number of times a peer was added or removed from the consensus group. An increase in change configuration typically happens when YugabyteDB needs to move data around. This may happen due to a planned server addition or decommission or a server crash looping. A high number for the request consensus indicates that many replicas are looking for a new election because they have yet to receive a heartbeat from the leader. This could happen due to high CPU or a network partition condition.
 
-A description of key metrics in this category is listed as follows:
+The following are key metrics for monitoring RAFT processing.
 
 ##### handler_latency_yb_consensus_ConsensusService_UpdateConsensus
 
@@ -50,11 +50,9 @@ A description of key metrics in this category is listed as follows:
 
 The throughput (Ops/Sec) can be calculated and aggregated for nodes across the entire cluster using appropriate aggregations.
 
-### Clock skew
+## Clock skew
 
 Clock skew is an important metric for performance and data consistency. It signals if the Hybrid Logical Clock (HLC) used by YugabyteDB is out of state or if your virtual machine was paused or migrated. If the skew is more than 500 milliseconds, it may impact the consistency guarantees of YugabyteDB. If there is unexplained, seemingly random latency in query responses and spikes in the clock skew metric, it could indicate that the virtual machine got migrated to another machine, or the hypervisor is oversubscribed.
-
-A description of key metrics in this category is listed as follows:
 
 ##### hybrid_clock_skew
 
@@ -68,11 +66,9 @@ A description of key metrics in this category is listed as follows:
 | :------ | :--- | :--- | :---------- |
 | `hybrid_clock_skew` | microseconds | gauge | The time in microseconds for clock drift and skew. | -->
 
-### Remote Bootstraps
+## Remote bootstraps
 
 When a Raft peer fails, YugabyteDB executes an automatic remote bootstrap to create a new peer from the remaining ones. Bootstrapping can also result from planned user activity when adding or decommissioning nodes.
-
-A description of key metrics in this category is listed as follows:
 
 ##### handler_latency_yb_consensus_ConsensusService_StartRemoteBootstrap
 

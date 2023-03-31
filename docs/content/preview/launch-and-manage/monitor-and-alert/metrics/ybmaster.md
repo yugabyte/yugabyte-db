@@ -2,7 +2,7 @@
 title: YB-Master metrics
 headerTitle: YB-Master metrics
 linkTitle: YB-Master metrics
-headcontent: Monitor and manage clusters with YB-Master metrics.
+headcontent: Monitor table and tablet operations
 description: Learn about YugabyteDB's YB-Master metrics, and how to select and use the metrics.
 menu:
   preview:
@@ -14,7 +14,7 @@ type: docs
 
 The [YB-Master](../../../architecture/concepts/yb-master/) hosts system metadata, records about tables in the system and locations of their tablets, users, roles, permissions, and so on. YB-Masters are also responsible for coordinating background operations such as schema changes, handling addition and removal of nodes from the cluster, automatic re-replication of data on permanent failures, and so on.
 
-A description of key metrics in this category is listed as follows:
+The following are key metrics for evaluating YB-Master performance.
 
 ##### handler_latency_yb_master_MasterClient_GetTabletLocations
 
