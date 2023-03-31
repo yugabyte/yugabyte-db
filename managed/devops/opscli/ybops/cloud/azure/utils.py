@@ -905,6 +905,7 @@ class AzureCloudAdmin():
                 if len(parts) != 2 or parts[0] != "PowerState":
                     continue
                 instance_state = parts[1]
+                break
         is_running = True if instance_state == "running" else False
         return {"private_ip": private_ip, "public_ip": public_ip, "region": region,
                 "zone": zone_full, "name": vm.name, "ip_name": ip_name,
