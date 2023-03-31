@@ -1086,7 +1086,10 @@ class CronCheckMethod(AbstractInstancesMethod):
         self.update_ansible_vars_with_args(args)
         connect_options = {}
         connect_options.update(self.extra_vars)
-        connect_options["ssh_user"] = self.get_ssh_user()
+        connect_options.update({
+            "ssh_user": self.get_ssh_user(),
+            "node_agent_user": self.get_ssh_user()
+        })
         connect_options.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         if not args.systemd_services and not validate_cron_status(connect_options):
             host_port_user = get_host_port_user(connect_options)
@@ -1484,7 +1487,10 @@ class InitYSQLMethod(AbstractInstancesMethod):
         connect_options = {}
         connect_options.update(self.extra_vars)
         # TODO: replace with args.ssh_user when it's setup in the flow
-        connect_options["ssh_user"] = "yugabyte"
+        connect_options.update({
+            "ssh_user": "yugabyte",
+            "node_agent_user": "yugabyte"
+        })
         host_info = self.cloud.get_host_info(args)
         if not host_info:
             raise YBOpsRuntimeError("Instance: {} does not exist, cannot call initysql".format(
@@ -1736,8 +1742,12 @@ class TransferXClusterCerts(AbstractInstancesMethod):
         host_info = self.cloud.get_host_info(args)
         # Populate extra_vars.
         self.update_ansible_vars_with_args(args)
-        connect_options = {"ssh_user": self.ssh_user}
+        connect_options = {}
         connect_options.update(self.extra_vars)
+        connect_options.update({
+            "ssh_user": self.ssh_user,
+            "node_agent_user": self.ssh_user
+        })
         connect_options.update(self.get_server_host_port(host_info, args.custom_ssh_port))
 
         # TODO: Add support for rotate certs
@@ -1789,7 +1799,10 @@ class RebootInstancesMethod(AbstractInstancesMethod):
         if args.use_ssh:
             self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port,
                                                              default_port=True))
-            self.extra_vars.update({"ssh_user": ssh_user})
+            self.extra_vars.update({
+                "ssh_user": ssh_user,
+                "node_agent_user": ssh_user
+            })
             self.update_open_ssh_port(args)
             _, _, stderr = remote_exec_command(self.extra_vars, 'sudo reboot')
             # Cannot rely on rc, as for reboot script won't exit gracefully,
@@ -1861,7 +1874,11 @@ class RunHooks(AbstractInstancesMethod):
         self.extra_vars.update(
             self.get_server_host_port(
                 host_info, args.custom_ssh_port, use_default_ssh_port))
-        self.extra_vars.update({"ssh_user": ssh_user})
+        self.extra_vars.update({
+            "ssh_user": ssh_user,
+            "node_agent_user": ssh_user
+        })
+
         self.wait_for_host(args, use_default_ssh_port)
 
         # Copy the hook to the remote node

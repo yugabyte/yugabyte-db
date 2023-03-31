@@ -105,7 +105,10 @@ class OnPremListInstancesMethod(ListInstancesMethod):
                 try:
                     connect_options = {}
                     connect_options.update(self.extra_vars)
-                    connect_options["ssh_user"] = host_info['ssh_user']
+                    connect_options.update({
+                        "ssh_user": host_info['ssh_user'],
+                        "node_agent_user": host_info['ssh_user']
+                    })
                     connect_options.update(self.get_server_host_port(
                                         self.cloud.get_host_info(args),
                                         args.custom_ssh_port))
@@ -286,7 +289,10 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
 
         connect_options = {}
         connect_options.update(self.extra_vars)
-        connect_options["ssh_user"] = "yugabyte"
+        connect_options.update({
+            "ssh_user": "yugabyte",
+            "node_agent_user": "yugabyte"
+        })
 
         if args.root_cert_path is not None:
             self.verify_certificates("Server", args.root_cert_path,
