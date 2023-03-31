@@ -352,7 +352,7 @@ void XClusterConsumer::UpdateInMemoryState(
       }
 
       if (stream_entry_pb.has_schema_versions()) {
-        auto schema_version_map = stream_schema_version_map_[stream_entry.first];
+        auto& schema_version_map = stream_schema_version_map_[stream_entry.first];
         auto schema_versions = stream_entry_pb.schema_versions();
         schema_version_map[schema_versions.current_producer_schema_version()] =
             schema_versions.current_consumer_schema_version();
@@ -361,7 +361,7 @@ void XClusterConsumer::UpdateInMemoryState(
       }
 
       for (const auto& colocated_entry : stream_entry_pb.colocated_schema_versions()) {
-        auto schema_version_map =
+        auto& schema_version_map =
             stream_colocated_schema_version_map_[stream_entry.first][colocated_entry.first];
         auto schema_versions = stream_entry_pb.schema_versions();
         schema_version_map[schema_versions.current_producer_schema_version()] =
@@ -412,7 +412,7 @@ Result<cdc::ConsumerTabletInfo> XClusterConsumer::GetConsumerTableInfo(
 }
 
 void XClusterConsumer::TriggerPollForNewTablets() {
-  std::lock_guard<rw_spinlock> write_lock_master(master_data_mutex_);
+  SharedLock read_lock_master(master_data_mutex_);
   int32_t current_cluster_config_version = cluster_config_version();
 
   for (const auto& entry : producer_consumer_tablet_map_from_master_) {
