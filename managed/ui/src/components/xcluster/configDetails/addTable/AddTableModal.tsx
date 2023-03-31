@@ -12,7 +12,11 @@ import { isYbcEnabledUniverse } from '../../../../utils/UniverseUtils';
 import { PARALLEL_THREADS_RANGE } from '../../../backupv2/common/BackupUtils';
 import { YBModalForm } from '../../../common/forms';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
-import { BOOTSTRAP_MIN_FREE_DISK_SPACE_GB, XClusterConfigAction } from '../../constants';
+import {
+  BOOTSTRAP_MIN_FREE_DISK_SPACE_GB,
+  XClusterConfigAction,
+  XClusterConfigType
+} from '../../constants';
 import { adaptTableUUID, parseFloatIfDefined } from '../../ReplicationUtils';
 import {
   editXClusterConfigTables,
@@ -298,6 +302,7 @@ export const AddTableModal = ({
           ysqlTableUUIDToKeyspace,
           isTableSelectionValidated,
           configTableType,
+          xClusterConfig.type,
           setBootstrapRequiredTableUUIDs,
           setFormWarnings
         )
@@ -375,6 +380,7 @@ const validateForm = async (
   ysqlTableUUIDToKeyspace: Map<string, string>,
   isTableSelectionValidated: boolean,
   configTableType: XClusterTableType,
+  xClusterConfigType: XClusterConfigType,
   setBootstrapRequiredTableUUIDs: (tableUUIDs: string[]) => void,
   setFormWarning: (formWarnings: AddTableFormWarnings) => void
 ) => {
@@ -400,6 +406,7 @@ const validateForm = async (
       try {
         bootstrapTableUUIDs = await getBootstrapTableUUIDs(
           configTableType,
+          xClusterConfigType,
           values.tableUUIDs,
           sourceUniverse.universeUUID,
           ysqlKeyspaceToTableUUIDs,
@@ -466,6 +473,7 @@ const validateForm = async (
  */
 const getBootstrapTableUUIDs = async (
   configTableType: XClusterTableType,
+  xClusterConfigType: XClusterConfigType,
   selectedTableUUIDs: string[],
   sourceUniverseUUID: string,
   ysqlKeyspaceToTableUUIDs: Map<string, Set<string>>,
@@ -476,7 +484,8 @@ const getBootstrapTableUUIDs = async (
   try {
     bootstrapTests = await isBootstrapRequired(
       sourceUniverseUUID,
-      selectedTableUUIDs.map(adaptTableUUID)
+      selectedTableUUIDs.map(adaptTableUUID),
+      xClusterConfigType
     );
   } catch (error: any) {
     toast.error(
