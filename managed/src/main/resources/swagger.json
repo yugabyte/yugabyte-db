@@ -11697,6 +11697,10 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "imported" : {
+          "description" : "Whether this xCluster replication config was imported",
+          "type" : "boolean"
+        },
         "modifyTime" : {
           "description" : "Last modify time of the xCluster config",
           "example" : "2022-12-12T13:07:18Z",
@@ -11875,6 +11879,10 @@
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
+        },
+        "imported" : {
+          "description" : "Whether this xCluster replication config was imported",
+          "type" : "boolean"
         },
         "lag" : {
           "description" : "Lag metric data",

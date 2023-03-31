@@ -73,6 +73,7 @@ import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
 import play.libs.Json;
 import play.mvc.Result;
+import scala.runtime.TraitSetter;
 
 public class XClusterConfigControllerTest extends FakeDBApplication {
 
@@ -1107,6 +1108,51 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
             "Cannot parse parameter targetUniverseUUID as UUID: " + "Invalid UUID string: %s",
             invalidUUID);
     assertResponseError(expectedErrMsg, result);
+    assertNoTasksCreated();
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testSyncWithReplicationGroupName() {
+    ObjectNode syncRequestBody = Json.newObject();
+    syncRequestBody.put("replicationGroupName", configName);
+    syncRequestBody.put("targetUniverseUUID", targetUniverseUUID.toString());
+
+    String syncAPIEndpoint = apiEndpoint + "/sync";
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST", syncAPIEndpoint, user.createAuthToken(), syncRequestBody);
+
+    assertOk(result);
+    CustomerTask customerTask =
+        CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
+    assertNotNull(customerTask);
+    assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
+    assertThat(customerTask.getTargetUUID(), allOf(notNullValue(), equalTo(targetUniverseUUID)));
+    assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
+    assertThat(
+        customerTask.getTargetType(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
+    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Sync)));
+    assertThat(customerTask.getTargetName(), allOf(notNullValue(), equalTo(targetUniverseName)));
+
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testSyncWithReplGroupNameInvalidTargetUniverseUUID() {
+    String invalidUUID = UUID.randomUUID().toString();
+    ObjectNode syncRequestBody = Json.newObject();
+    syncRequestBody.put("replicationGroupName", configName);
+    syncRequestBody.put("targetUniverseUUID", invalidUUID);
+
+    String syncAPIEndpoint = apiEndpoint + "/sync";
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST", syncAPIEndpoint, user.createAuthToken(), syncRequestBody));
+    assertEquals(contentAsString(result), BAD_REQUEST, result.status());
+    assertResponseError("Cannot find universe " + invalidUUID, result);
     assertNoTasksCreated();
     assertAuditEntry(0, customer.getUuid());
   }
