@@ -143,7 +143,7 @@ public class UsersController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.User,
-            Objects.toString(user.uuid, null),
+            Objects.toString(user.getUuid(), null),
             Audit.ActionType.Create,
             Json.toJson(formData));
     return PlatformResults.withData(userService.getUserWithFeatures(customer, user));
@@ -162,7 +162,7 @@ public class UsersController extends AuthenticatedController {
   public Result delete(UUID customerUUID, UUID userUUID) {
     Users user = Users.getOrBadRequest(userUUID);
     checkUserOwnership(customerUUID, userUUID, user);
-    if (user.getIsPrimary()) {
+    if (user.isPrimary()) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
@@ -181,7 +181,7 @@ public class UsersController extends AuthenticatedController {
 
   private void checkUserOwnership(UUID customerUUID, UUID userUUID, Users user) {
     Customer.getOrBadRequest(customerUUID);
-    if (!user.customerUUID.equals(customerUUID)) {
+    if (!user.getCustomerUUID().equals(customerUUID)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
@@ -202,7 +202,7 @@ public class UsersController extends AuthenticatedController {
   public Result changeRole(UUID customerUUID, UUID userUUID, String role) {
     Users user = Users.getOrBadRequest(userUUID);
     checkUserOwnership(customerUUID, userUUID, user);
-    if (UserType.ldap == user.getUserType() && user.getLdapSpecifiedRole()) {
+    if (UserType.ldap == user.getUserType() && user.isLdapSpecifiedRole()) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot change role for LDAP user.");
     }
     if (Role.SuperAdmin == user.getRole()) {
@@ -248,7 +248,7 @@ public class UsersController extends AuthenticatedController {
 
     UserRegisterFormData formData = form.get();
     passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
-    if (formData.getEmail().equals(user.email)) {
+    if (formData.getEmail().equals(user.getEmail())) {
       if (formData.getPassword().equals(formData.getConfirmPassword())) {
         user.setPassword(formData.getPassword());
         user.save();
@@ -275,7 +275,7 @@ public class UsersController extends AuthenticatedController {
     if (user == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Unable To Authenticate User");
     }
-    return userUUID.equals(user.uuid);
+    return userUUID.equals(user.getUuid());
   }
 
   /**

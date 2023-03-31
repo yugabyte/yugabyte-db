@@ -68,27 +68,27 @@ public class AWSCloudImplTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(customer);
     defaultRegion = new Region();
-    defaultRegion.provider = defaultProvider;
-    defaultRegion.code = "us-west-2";
-    defaultRegion.name = "us-west-2";
+    defaultRegion.setProvider(defaultProvider);
+    defaultRegion.setCode("us-west-2");
+    defaultRegion.setName("us-west-2");
     AvailabilityZone az = new AvailabilityZone();
-    az.code = "subnet-1";
-    defaultRegion.zones = Arrays.asList(az);
-    defaultProvider.regions.add(defaultRegion);
+    az.setCode("subnet-1");
+    defaultRegion.setZones(Arrays.asList(az));
+    defaultProvider.getRegions().add(defaultRegion);
     ProviderDetails providerDetails = new ProviderDetails();
     CloudInfo cloudInfo = new CloudInfo();
     cloudInfo.aws = new AWSCloudInfo();
     cloudInfo.aws.setAwsAccessKeyID("accessKey");
     cloudInfo.aws.setAwsAccessKeySecret("accessKeySecret");
     providerDetails.setCloudInfo(cloudInfo);
-    defaultProvider.details = providerDetails;
+    defaultProvider.setDetails(providerDetails);
   }
 
   @Test
   public void testKeysExists() {
     assertTrue(awsCloudImpl.checkKeysExists(defaultProvider));
-    defaultProvider.details.cloudInfo.aws.awsAccessKeyID = null;
-    defaultProvider.details.cloudInfo.aws.awsAccessKeySecret = null;
+    defaultProvider.getDetails().cloudInfo.aws.awsAccessKeyID = null;
+    defaultProvider.getDetails().cloudInfo.aws.awsAccessKeySecret = null;
     assertFalse(awsCloudImpl.checkKeysExists(defaultProvider));
   }
 
@@ -183,7 +183,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
   @Test
   public void testHostedZone() {
     String hostedZoneId = "hosted_zone_id";
-    defaultProvider.details.cloudInfo.aws.awsHostedZoneId = hostedZoneId;
+    defaultProvider.getDetails().cloudInfo.aws.awsHostedZoneId = hostedZoneId;
     GetHostedZoneResult result = new GetHostedZoneResult();
     when(mockRoute53Client.getHostedZone(any()))
         .thenThrow(new AmazonServiceException("Not found"))
@@ -220,7 +220,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
             PlatformServiceException.class,
             () ->
                 awsCloudImpl.dryRunDescribeInstanceOrBadRequest(
-                    defaultProvider, defaultRegion.code));
+                    defaultProvider, defaultRegion.getCode()));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
     assertEquals(
         "Dry run of AWS DescribeInstances failed: Invalid details " + AMAZON_COMMON_ERROR_MSG,
@@ -230,13 +230,14 @@ public class AWSCloudImplTest extends FakeDBApplication {
             PlatformServiceException.class,
             () ->
                 awsCloudImpl.dryRunDescribeInstanceOrBadRequest(
-                    defaultProvider, defaultRegion.code));
+                    defaultProvider, defaultRegion.getCode()));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
     assertEquals(
         "Dry run of AWS DescribeInstances failed: Invalid region access " + AMAZON_COMMON_ERROR_MSG,
         exception.getMessage());
     assertEquals(
-        true, awsCloudImpl.dryRunDescribeInstanceOrBadRequest(defaultProvider, defaultRegion.code));
+        true,
+        awsCloudImpl.dryRunDescribeInstanceOrBadRequest(defaultProvider, defaultRegion.getCode()));
   }
 
   @Test

@@ -31,7 +31,7 @@ public class SetActiveUniverseKeys extends AbstractTaskBase {
   @Override
   public void run() {
     try {
-      Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+      Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       setUniverseKeys.setUniverseKey(u, SET_ACTIVE_KEYS_FORCEFULLY);
     } catch (Exception e) {
       throw e;

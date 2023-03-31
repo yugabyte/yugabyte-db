@@ -4,10 +4,11 @@ package com.yugabyte.yw.controllers;
 
 import ch.qos.logback.core.joran.spi.JoranException;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.logging.LogUtil;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.forms.AuditLoggingConfig;
 import com.yugabyte.yw.forms.PlatformLoggingConfig;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -29,6 +30,8 @@ public class LoggingConfigController extends AuthenticatedController {
   public static final org.slf4j.Logger LOG = LoggerFactory.getLogger(LoggingConfigController.class);
 
   @Inject ValidatingFormFactory formFactory;
+
+  @Inject BeanValidator validator;
 
   @Inject SettableRuntimeConfigFactory sConfigFactory;
 
@@ -77,6 +80,7 @@ public class LoggingConfigController extends AuthenticatedController {
   })
   public Result setAuditLoggingSettings() throws JoranException {
     AuditLoggingConfig data = formFactory.getFormDataOrBadRequest(AuditLoggingConfig.class).get();
+    data.validate(validator);
     LogUtil.updateAuditLoggingContext(data);
     LogUtil.updateAuditLoggingConfig(sConfigFactory, data);
     return PlatformResults.withData(data);

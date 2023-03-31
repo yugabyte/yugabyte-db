@@ -10,7 +10,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -69,16 +68,16 @@ public class ChangeMasterConfig extends UniverseTaskBase {
   @Override
   public void run() {
     // Get the master addresses.
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String masterAddresses = universe.getMasterAddresses();
     log.info(
         "Running {}: universe = {}, masterAddress = {}",
         getName(),
-        taskParams().universeUUID,
+        taskParams().getUniverseUUID(),
         masterAddresses);
     if (StringUtils.isBlank(masterAddresses)) {
       throw new IllegalStateException(
-          "No master host/ports for a change config op in " + taskParams().universeUUID);
+          "No master host/ports for a change config op in " + taskParams().getUniverseUUID());
     }
 
     // Get the node details and perform the change config operation.

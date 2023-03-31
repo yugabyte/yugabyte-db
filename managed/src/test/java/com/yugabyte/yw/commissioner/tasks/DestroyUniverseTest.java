@@ -61,12 +61,12 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent;
     // create default universe
     userIntent = new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = 3;
-    userIntent.regionList = ImmutableList.of(region.uuid);
+    userIntent.regionList = ImmutableList.of(region.getUuid());
 
     String caFile = createTempFile("destroy_universe_test", "ca.crt", "test content");
     certFolder = new File(caFile).getParentFile();
@@ -80,9 +80,9 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
 
     metricService = app.injector().instanceOf(MetricService.class);
 
-    defaultUniverse = createUniverse(defaultCustomer.getCustomerId(), certInfo.uuid);
+    defaultUniverse = createUniverse(defaultCustomer.getId(), certInfo.getUuid());
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(userIntent, false /* setMasters */));
 
     ShellResponse dummyShellResponse = new ShellResponse();
@@ -93,8 +93,8 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
   @Test
   public void testReleaseUniverseAndRemoveMetrics() {
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
-    taskParams.customerUUID = defaultCustomer.uuid;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.customerUUID = defaultCustomer.getUuid();
     taskParams.isForceDelete = Boolean.FALSE;
     taskParams.isDeleteBackups = Boolean.FALSE;
     taskParams.isDeleteAssociatedCerts = Boolean.FALSE;
@@ -104,7 +104,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
 
     TaskInfo taskInfo = submitTask(taskParams, 4);
     assertEquals(Success, taskInfo.getTaskState());
-    assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));
+    assertFalse(Universe.checkIfUniverseExists(defaultUniverse.getName()));
 
     MetricKey metricKey =
         MetricKey.builder()
@@ -120,11 +120,13 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST1");
     Backup b =
         ModelFactory.createBackup(
-            defaultCustomer.uuid, defaultUniverse.universeUUID, s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            s3StorageConfig.getConfigUUID());
     b.transitionState(Backup.BackupState.Completed);
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
-    taskParams.customerUUID = defaultCustomer.uuid;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.customerUUID = defaultCustomer.getUuid();
     taskParams.isForceDelete = Boolean.FALSE;
     taskParams.isDeleteBackups = Boolean.TRUE;
     taskParams.isDeleteAssociatedCerts = Boolean.FALSE;
@@ -132,10 +134,10 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, 4);
     assertEquals(Success, taskInfo.getTaskState());
 
-    Backup backup = Backup.get(defaultCustomer.uuid, b.backupUUID);
+    Backup backup = Backup.get(defaultCustomer.getUuid(), b.getBackupUUID());
     // Backup state should be QueuedForDeletion.
-    assertEquals(Backup.BackupState.QueuedForDeletion, backup.state);
-    assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));
+    assertEquals(Backup.BackupState.QueuedForDeletion, backup.getState());
+    assertFalse(Universe.checkIfUniverseExists(defaultUniverse.getName()));
   }
 
   @Test
@@ -143,11 +145,13 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST0");
     Backup b =
         ModelFactory.createBackup(
-            defaultCustomer.uuid, defaultUniverse.universeUUID, s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            s3StorageConfig.getConfigUUID());
     b.transitionState(Backup.BackupState.Completed);
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
-    taskParams.customerUUID = defaultCustomer.uuid;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.customerUUID = defaultCustomer.getUuid();
     taskParams.isForceDelete = Boolean.FALSE;
     taskParams.isDeleteBackups = Boolean.FALSE;
     taskParams.isDeleteAssociatedCerts = Boolean.FALSE;
@@ -156,24 +160,24 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     b.setTaskUUID(taskInfo.getTaskUUID());
     b.save();
 
-    Backup backup = Backup.get(defaultCustomer.uuid, b.backupUUID);
-    assertEquals(Backup.BackupState.Completed, backup.state);
-    assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));
+    Backup backup = Backup.get(defaultCustomer.getUuid(), b.getBackupUUID());
+    assertEquals(Backup.BackupState.Completed, backup.getState());
+    assertFalse(Universe.checkIfUniverseExists(defaultUniverse.getName()));
   }
 
   @Test
   public void testDestroyUniverseAndDeleteAssociatedCerts() {
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
-    taskParams.customerUUID = defaultCustomer.uuid;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.customerUUID = defaultCustomer.getUuid();
     taskParams.isForceDelete = Boolean.FALSE;
     taskParams.isDeleteBackups = Boolean.FALSE;
     taskParams.isDeleteAssociatedCerts = Boolean.TRUE;
     TaskInfo taskInfo = submitTask(taskParams, 4);
     assertEquals(Success, taskInfo.getTaskState());
-    assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));
+    assertFalse(Universe.checkIfUniverseExists(defaultUniverse.getName()));
     assertFalse(certFolder.exists());
-    assertNull(CertificateInfo.get(certInfo.uuid));
+    assertNull(CertificateInfo.get(certInfo.getUuid()));
   }
 
   private TaskInfo submitTask(DestroyUniverse.Params taskParams, int version) {
@@ -192,11 +196,13 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST0");
     Backup b =
         ModelFactory.restoreBackup(
-            defaultCustomer.uuid, defaultUniverse.universeUUID, s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            s3StorageConfig.getConfigUUID());
     b.transitionState(Backup.BackupState.Completed);
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
-    taskParams.customerUUID = defaultCustomer.uuid;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.customerUUID = defaultCustomer.getUuid();
     taskParams.isForceDelete = Boolean.FALSE;
     taskParams.isDeleteBackups = Boolean.TRUE;
     taskParams.isDeleteAssociatedCerts = Boolean.FALSE;
@@ -206,9 +212,9 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     b.setTaskUUID(taskInfo.getTaskUUID());
     b.save();
 
-    Backup backup = Backup.get(defaultCustomer.uuid, b.backupUUID);
+    Backup backup = Backup.get(defaultCustomer.getUuid(), b.getBackupUUID());
     // We will deleting any backup object associated with the universe.
-    assertEquals(Backup.BackupState.QueuedForDeletion, backup.state);
-    assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));
+    assertEquals(Backup.BackupState.QueuedForDeletion, backup.getState());
+    assertFalse(Universe.checkIfUniverseExists(defaultUniverse.getName()));
   }
 }

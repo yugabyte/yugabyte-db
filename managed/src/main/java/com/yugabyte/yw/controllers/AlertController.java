@@ -949,14 +949,14 @@ public class AlertController extends AuthenticatedController {
         allUniverses
             .stream()
             .filter(universe -> universe.getUniverseDetails().nodePrefix != null)
-            .min(Comparator.comparing(universe -> universe.creationDate))
+            .min(Comparator.comparing(universe -> universe.getCreationDate()))
             .orElse(null);
     if (firstUniverse != null) {
       return firstUniverse;
     }
     Universe universe = new Universe();
-    universe.name = "some-universe";
-    universe.universeUUID = UUID.randomUUID();
+    universe.setName("some-universe");
+    universe.setUniverseUUID(UUID.randomUUID());
     UniverseDefinitionTaskParams universeDefinitionTaskParams = new UniverseDefinitionTaskParams();
     universeDefinitionTaskParams.nodePrefix = "some-universe-node";
     universe.setUniverseDetails(universeDefinitionTaskParams);

@@ -128,7 +128,7 @@ public class SupportBundle extends Model {
   public static SupportBundle create(SupportBundleFormData bundleData, Universe universe) {
     SupportBundle supportBundle = new SupportBundle();
     supportBundle.bundleUUID = UUID.randomUUID();
-    supportBundle.scopeUUID = universe.universeUUID;
+    supportBundle.scopeUUID = universe.getUniverseUUID();
     supportBundle.path = null;
     if (bundleData != null) {
       supportBundle.startDate = bundleData.startDate;

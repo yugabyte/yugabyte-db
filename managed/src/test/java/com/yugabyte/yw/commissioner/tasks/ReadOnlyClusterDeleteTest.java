@@ -79,10 +79,10 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
-    userIntent.regionList = ImmutableList.of(region.uuid);
-    defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
     YBClient mockClient = mock(YBClient.class);
     // Added lenient() because dependent test is currently ignored.
@@ -99,7 +99,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     }
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.currentClusterType = ClusterType.ASYNC;
     taskParams.creatingUser = ModelFactory.testUser(defaultCustomer);
     userIntent = new UserIntent();
@@ -109,16 +109,16 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     userIntent.replicationFactor = 1;
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
-    userIntent.regionList = ImmutableList.of(region.uuid);
-    userIntent.universeName = defaultUniverse.name;
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.universeName = defaultUniverse.getName();
     userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
-    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.provider = defaultProvider.getUuid().toString();
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     readOnlyCluster = new Cluster(ClusterType.ASYNC, userIntent);
     taskParams.clusters.add(readOnlyCluster);
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams,
-        defaultCustomer.getCustomerId(),
+        defaultCustomer.getId(),
         readOnlyCluster.uuid,
         UniverseConfigureTaskParams.ClusterOperationType.CREATE);
     int iter = 1;
@@ -155,7 +155,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
       assertEquals(taskType, tasks.get(0).getTaskType());
       JsonNode expectedResults = CLUSTER_DELETE_TASK_EXPECTED_RESULTS.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }
@@ -164,11 +164,11 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
   @Ignore("createPlacementInfoTask fails sometimes")
   public void testClusterDeleteSuccess() {
     UniverseDefinitionTaskParams univUTP =
-        Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
     assertEquals(2, univUTP.clusters.size());
     assertEquals(4, univUTP.nodeDetailsSet.size());
     ReadOnlyClusterDelete.Params taskParams = new ReadOnlyClusterDelete.Params();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.clusterUUID = readOnlyCluster.uuid;
     TaskInfo taskInfo = submitTask(taskParams, TaskType.ReadOnlyClusterDelete, -1);
     assertEquals(Success, taskInfo.getTaskState());
@@ -178,7 +178,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertClusterDeleteSequence(subTasksByPosition);
-    univUTP = Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
+    univUTP = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
     assertEquals(1, univUTP.clusters.size());
     assertEquals(3, univUTP.nodeDetailsSet.size());
   }
@@ -186,11 +186,11 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
   @Test
   public void testClusterDeleteFailure() {
     UniverseDefinitionTaskParams univUTP =
-        Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
     assertEquals(2, univUTP.clusters.size());
     assertEquals(4, univUTP.nodeDetailsSet.size());
     ReadOnlyClusterDelete.Params taskParams = new ReadOnlyClusterDelete.Params();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.clusterUUID = UUID.randomUUID();
     TaskInfo taskInfo = submitTask(taskParams, TaskType.ReadOnlyClusterDelete, -1);
     assertEquals(Failure, taskInfo.getTaskState());

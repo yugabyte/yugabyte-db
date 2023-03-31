@@ -178,23 +178,23 @@ public class NodeAgentPoller {
         if (count % 10 == 0) {
           log.warn(
               "Node agent {} has not been responding for count {}- {}",
-              nodeAgent.uuid,
+              nodeAgent.getUuid(),
               count,
               e.getMessage());
         }
         Instant expiryDate =
             Instant.now().minus(param.getLifetime().toMinutes(), ChronoUnit.MINUTES);
-        if (expiryDate.isAfter(nodeAgent.updatedAt.toInstant())) {
+        if (expiryDate.isAfter(nodeAgent.getUpdatedAt().toInstant())) {
           // Purge the node agent record and its certs.
           Set<String> nodeIps =
               NodeInstance.getAll()
                   .stream()
                   .map(node -> node.getDetails().ip)
                   .collect(Collectors.toSet());
-          if (!nodeIps.contains(nodeAgent.ip)) {
+          if (!nodeIps.contains(nodeAgent.getIp())) {
             log.info(
                 "Purging node agent {} because connection failed. Error: {}",
-                nodeAgent.uuid,
+                nodeAgent.getUuid(),
                 e.getMessage());
             nodeAgentManager.purge(nodeAgent);
           }
@@ -207,11 +207,11 @@ public class NodeAgentPoller {
         // Return to schedule on the live executor.
         return;
       }
-      switch (nodeAgent.state) {
+      switch (nodeAgent.getState()) {
         case READY:
           {
             String ybaVersion = param.getSoftwareVersion();
-            if (Util.compareYbVersions(ybaVersion, nodeAgent.version, true) == 0) {
+            if (Util.compareYbVersions(ybaVersion, nodeAgent.getVersion(), true) == 0) {
               nodeAgent.heartbeat();
               return;
             }
@@ -226,7 +226,7 @@ public class NodeAgentPoller {
             if (!acquireUpgradeToken()) {
               return;
             }
-            log.info("Initiating upgrade for node agent {}", nodeAgent.uuid);
+            log.info("Initiating upgrade for node agent {}", nodeAgent.getUuid());
             InstallerFiles installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, null);
             // Upload the installer files including new cert and key to the remote node agent.
             uploadInstallerFiles(nodeAgent, installerFiles);
@@ -250,29 +250,29 @@ public class NodeAgentPoller {
             if (!acquireUpgradeToken()) {
               return;
             }
-            log.info("Finalizing upgrade for node agent {}", nodeAgent.uuid);
+            log.info("Finalizing upgrade for node agent {}", nodeAgent.getUuid());
             // Inform the node agent to restart and load the new cert and key on restart.
             String nodeAgentHome = nodeAgentClient.finalizeUpgrade(nodeAgent);
             PingResponse pingResponse =
                 nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofMinutes(2));
             ServerInfo serverInfo = pingResponse.getServerInfo();
             if (serverInfo.getRestartNeeded()) {
-              log.info("Server restart is needed for node agent {}", nodeAgent.uuid);
+              log.info("Server restart is needed for node agent {}", nodeAgent.getUuid());
             } else {
               // If the node has restarted and loaded the new cert and key,
               // delete the local merged certs.
               nodeAgentManager.postUpgrade(nodeAgent);
-              nodeAgent.home = nodeAgentHome;
-              nodeAgent.version = serverInfo.getVersion();
+              nodeAgent.setHome(nodeAgentHome);
+              nodeAgent.setVersion(serverInfo.getVersion());
               nodeAgent.saveState(State.READY);
               releaseUpgradeToken();
-              log.info("Node agent {} has been upgraded successfully", nodeAgent.uuid);
+              log.info("Node agent {} has been upgraded successfully", nodeAgent.getUuid());
               // Release the node agent is already upgraded.
             }
             break;
           }
         default:
-          log.trace("Unhandled state: {}", nodeAgent.state);
+          log.trace("Unhandled state: {}", nodeAgent.getState());
       }
     }
   }
@@ -321,7 +321,7 @@ public class NodeAgentPoller {
             .stream()
             .map(dir -> dir.toString())
             .collect(Collectors.toSet());
-    log.info("Creating directories {} on node agent {}", dirs, nodeAgent.uuid);
+    log.info("Creating directories {} on node agent {}", dirs, nodeAgent.getUuid());
     List<String> command = ImmutableList.<String>builder().add("mkdir", "-p").addAll(dirs).build();
     nodeAgentClient.executeCommand(nodeAgent, command);
     installerFiles
@@ -333,7 +333,7 @@ public class NodeAgentPoller {
                   "Uploading {} to {} on node agent {}",
                   f.getSourcePath(),
                   f.getTargetPath(),
-                  nodeAgent.uuid);
+                  nodeAgent.getUuid());
               nodeAgentClient.uploadFile(
                   nodeAgent, f.getSourcePath().toString(), f.getTargetPath().toString());
               if (StringUtils.isNotBlank(f.getPermission())) {
@@ -359,16 +359,16 @@ public class NodeAgentPoller {
       Set<UUID> nodeUuids = new HashSet<>();
       NodeAgent.getAll()
           .stream()
-          .filter(n -> n.state != State.REGISTERING)
-          .peek(n -> nodeUuids.add(n.uuid))
+          .filter(n -> n.getState() != State.REGISTERING)
+          .peek(n -> nodeUuids.add(n.getUuid()))
           .map(
               n ->
                   pollerTasks.computeIfAbsent(
-                      n.uuid,
+                      n.getUuid(),
                       k ->
                           createPollerTask(
                               PollerTaskParam.builder()
-                                  .nodeAgentUuid(n.uuid)
+                                  .nodeAgentUuid(n.getUuid())
                                   .softwareVersion(softwareVersion)
                                   .lifetime(duration)
                                   .build())))

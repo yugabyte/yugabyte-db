@@ -210,7 +210,7 @@ public class Util {
     if (c == null) {
       throw new RuntimeException("Invalid Customer Id: " + custId);
     }
-    return String.format("yb-%s-%s", c.code, univName);
+    return String.format("yb-%s-%s", c.getCode(), univName);
   }
 
   /**
@@ -418,11 +418,11 @@ public class Util {
 
     public UniverseDetailSubset(Universe universe) {
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-      uuid = universe.universeUUID;
-      name = universe.name;
+      uuid = universe.getUniverseUUID();
+      name = universe.getName();
       updateInProgress = universeDetails.updateInProgress;
       updateSucceeded = universeDetails.updateSucceeded;
-      creationDate = universe.creationDate.getTime();
+      creationDate = universe.getCreationDate().getTime();
       universePaused = universeDetails.universePaused;
     }
   }
@@ -715,7 +715,7 @@ public class Util {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     if (userIntent.providerType == Common.CloudType.onprem) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
-      return provider.details.skipProvisioning;
+      return provider.getDetails().skipProvisioning;
     }
     return false;
   }
@@ -903,7 +903,7 @@ public class Util {
           universeDetails.updateSucceeded = false;
           u.setUniverseDetails(universeDetails);
         };
-    return Universe.saveDetails(universe.universeUUID, updater, false);
+    return Universe.saveDetails(universe.getUniverseUUID(), updater, false);
   }
 
   public static Universe unlockUniverse(Universe universe) {
@@ -914,7 +914,7 @@ public class Util {
           universeDetails.updateSucceeded = true;
           u.setUniverseDetails(universeDetails);
         };
-    return Universe.saveDetails(universe.universeUUID, updater, false);
+    return Universe.saveDetails(universe.getUniverseUUID(), updater, false);
   }
 
   public static boolean isAddressReachable(String host, int port) {

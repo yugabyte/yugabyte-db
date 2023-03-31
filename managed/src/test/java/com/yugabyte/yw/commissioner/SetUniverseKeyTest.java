@@ -36,8 +36,8 @@ public class SetUniverseKeyTest extends FakeDBApplication {
     task.scheduleRunner();
     // Ensure that the task runs for each customer even though they both error out
     verify(task, times(2)).setCustomerUniverseKeys(any());
-    verify(task, times(1)).handleCustomerError(eq(customer1.uuid), eq(customerTaskException));
-    verify(task, times(1)).handleCustomerError(eq(customer2.uuid), eq(customerTaskException));
+    verify(task, times(1)).handleCustomerError(eq(customer1.getUuid()), eq(customerTaskException));
+    verify(task, times(1)).handleCustomerError(eq(customer2.getUuid()), eq(customerTaskException));
     verify(task, times(0)).setUniverseKey(any());
   }
 }

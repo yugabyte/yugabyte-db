@@ -133,7 +133,7 @@ public class EmailHelperTest extends FakeDBApplication {
   // @formatter:on
   public void testGetDestinations(String emailTo, boolean sendAlertsToYb, int expectedCount) {
     ModelFactory.createAlertConfig(defaultCustomer, emailTo, sendAlertsToYb, false);
-    List<String> destinations = emailHelper.getDestinations(defaultCustomer.uuid);
+    List<String> destinations = emailHelper.getDestinations(defaultCustomer.getUuid());
     assertEquals(expectedCount, destinations.size());
     if (!StringUtils.isEmpty(emailTo)) {
       assertTrue(destinations.contains(emailTo));
@@ -145,16 +145,16 @@ public class EmailHelperTest extends FakeDBApplication {
 
   @Test
   public void testGetDestinations_NoAlertConfiguration_EmptyList() {
-    List<String> destinations = emailHelper.getDestinations(defaultCustomer.uuid);
+    List<String> destinations = emailHelper.getDestinations(defaultCustomer.getUuid());
     assertEquals(0, destinations.size());
   }
 
   @Test
   public void testGetSmtpData_DbConfigExistsAndEmailFromFilled() {
     SmtpData testSmtpData = EmailFixtures.createSmtpData();
-    CustomerConfig.createSmtpConfig(defaultCustomer.uuid, Json.toJson(testSmtpData)).save();
+    CustomerConfig.createSmtpConfig(defaultCustomer.getUuid(), Json.toJson(testSmtpData)).save();
 
-    SmtpData smtpData = emailHelper.getSmtpData(defaultCustomer.uuid);
+    SmtpData smtpData = emailHelper.getSmtpData(defaultCustomer.getUuid());
     assertEquals(testSmtpData.emailFrom, smtpData.emailFrom);
     assertEquals(testSmtpData.smtpUsername, smtpData.smtpUsername);
     assertEquals(testSmtpData.smtpPassword, smtpData.smtpPassword);
@@ -165,9 +165,9 @@ public class EmailHelperTest extends FakeDBApplication {
   public void testGetSmtpData_DbConfigExistsAndEmailEmpty_AppConfigHasDefaultEmail() {
     SmtpData testSmtpData = EmailFixtures.createSmtpData();
     testSmtpData.emailFrom = "";
-    CustomerConfig.createSmtpConfig(defaultCustomer.uuid, Json.toJson(testSmtpData)).save();
+    CustomerConfig.createSmtpConfig(defaultCustomer.getUuid(), Json.toJson(testSmtpData)).save();
 
-    SmtpData smtpData = emailHelper.getSmtpData(defaultCustomer.uuid);
+    SmtpData smtpData = emailHelper.getSmtpData(defaultCustomer.getUuid());
     assertEquals(YB_DEFAULT_EMAIL, smtpData.emailFrom);
     assertEquals(testSmtpData.smtpUsername, smtpData.smtpUsername);
     assertEquals(testSmtpData.smtpPassword, smtpData.smtpPassword);
@@ -180,9 +180,9 @@ public class EmailHelperTest extends FakeDBApplication {
 
     SmtpData testSmtpData = EmailFixtures.createSmtpData();
     testSmtpData.emailFrom = "";
-    CustomerConfig.createSmtpConfig(defaultCustomer.uuid, Json.toJson(testSmtpData)).save();
+    CustomerConfig.createSmtpConfig(defaultCustomer.getUuid(), Json.toJson(testSmtpData)).save();
 
-    assertNull(emailHelper.getSmtpData(defaultCustomer.uuid));
+    assertNull(emailHelper.getSmtpData(defaultCustomer.getUuid()));
   }
 
   @Test

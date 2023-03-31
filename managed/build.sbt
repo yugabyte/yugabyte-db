@@ -8,6 +8,7 @@ import scala.sys.process.Process
 historyPath := Some(file(System.getenv("HOME") + "/.sbt/.yugaware-history"))
 
 useCoursier := false
+playEnhancerEnabled := false
 
 // ------------------------------------------------------------------------------------------------
 // Constants

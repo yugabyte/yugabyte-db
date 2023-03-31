@@ -84,16 +84,16 @@ public abstract class DevopsBase {
     if (region != null) {
       commandList.add(region.getProviderCloudCode().toString());
       commandList.add("--region");
-      commandList.add(region.code);
+      commandList.add(region.getCode());
       try {
-        Map<String, String> envConfig = CloudInfoInterface.fetchEnvVars(region.provider);
+        Map<String, String> envConfig = CloudInfoInterface.fetchEnvVars(region.getProvider());
         extraVars.putAll(envConfig);
       } catch (Exception e) {
         throw new RuntimeException("Failed to retrieve env variables for the provider!", e);
       }
     } else if (devopsCommand.providerUUID != null) {
       provider = Provider.get(devopsCommand.providerUUID);
-      commandList.add(provider.code);
+      commandList.add(provider.getCode());
       try {
         Map<String, String> envConfig = CloudInfoInterface.fetchEnvVars(provider);
         extraVars.putAll(envConfig);

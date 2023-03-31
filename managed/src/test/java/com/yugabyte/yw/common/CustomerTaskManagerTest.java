@@ -37,7 +37,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse);
     UUID taskUUID = UUID.randomUUID();
     taskInfo.setTaskUUID(taskUUID);
-    taskInfo.setTaskDetails(Json.newObject());
+    taskInfo.setDetails(Json.newObject());
     taskInfo.setOwner("");
     taskInfo.save();
     return CustomerTask.create(
@@ -52,11 +52,12 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   @Test
   @Ignore
   public void testFailPendingTasksNoneExist() throws Exception {
-    universe = ModelFactory.createUniverse(customer.getCustomerId());
+    universe = ModelFactory.createUniverse(customer.getId());
     taskManager = spy(app.injector().instanceOf(CustomerTaskManager.class));
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
-      if (targetType.equals(CustomerTask.TargetType.Universe)) targetUUID = universe.universeUUID;
+      if (targetType.equals(CustomerTask.TargetType.Universe))
+        targetUUID = universe.getUniverseUUID();
       CustomerTask th = createTask(targetType, targetUUID, Create);
       TaskInfo taskInfo = TaskInfo.getOrBadRequest(th.getTaskUUID());
       taskInfo.setTaskState(TaskInfo.State.Success);
@@ -72,12 +73,13 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   @Test
   @Ignore
   public void testHandlePendingTasksForCompletedCustomerTask() throws Exception {
-    universe = ModelFactory.createUniverse(customer.getCustomerId());
+    universe = ModelFactory.createUniverse(customer.getId());
     taskManager = spy(app.injector().instanceOf(CustomerTaskManager.class));
     mockClient = mock(YBClient.class);
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
-      if (targetType.equals(CustomerTask.TargetType.Universe)) targetUUID = universe.universeUUID;
+      if (targetType.equals(CustomerTask.TargetType.Universe))
+        targetUUID = universe.getUniverseUUID();
       CustomerTask th = createTask(targetType, targetUUID, Create);
       // CustomerTask is marked completed, but TaskInfo is still in Create state.
       th.markAsCompleted();
@@ -88,12 +90,12 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
         .handlePendingTask(any(), any());
 
     List<CustomerTask> customerTasks =
-        CustomerTask.find.query().where().eq("customer_uuid", customer.uuid).findList();
+        CustomerTask.find.query().where().eq("customer_uuid", customer.getUuid()).findList();
 
     // Verify tasks have been marked as failure properly
     for (CustomerTask task : customerTasks) {
       TaskInfo taskInfo = TaskInfo.get(task.getTaskUUID());
-      assertEquals("Platform restarted.", taskInfo.getTaskDetails().get("errorString").asText());
+      assertEquals("Platform restarted.", taskInfo.getDetails().get("errorString").asText());
       assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     }
   }
@@ -101,12 +103,13 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   @Test
   @Ignore
   public void testFailPendingTasksForRunningTaskInfo() throws Exception {
-    universe = ModelFactory.createUniverse(customer.getCustomerId());
+    universe = ModelFactory.createUniverse(customer.getId());
     taskManager = spy(app.injector().instanceOf(CustomerTaskManager.class));
     mockClient = mock(YBClient.class);
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
-      if (targetType.equals(CustomerTask.TargetType.Universe)) targetUUID = universe.universeUUID;
+      if (targetType.equals(CustomerTask.TargetType.Universe))
+        targetUUID = universe.getUniverseUUID();
       CustomerTask th = createTask(targetType, targetUUID, Create);
       TaskInfo taskInfo = TaskInfo.getOrBadRequest(th.getTaskUUID());
       taskInfo.setTaskState(TaskInfo.State.Running);
@@ -119,13 +122,13 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
         .handlePendingTask(any(), any());
 
     List<CustomerTask> customerTasks =
-        CustomerTask.find.query().where().eq("customer_uuid", customer.uuid).findList();
+        CustomerTask.find.query().where().eq("customer_uuid", customer.getUuid()).findList();
 
     // Verify tasks have been marked as failure properly
     for (CustomerTask task : customerTasks) {
       assertNotNull(task.getCompletionTime());
       TaskInfo taskInfo = TaskInfo.get(task.getTaskUUID());
-      assertEquals("Platform restarted.", taskInfo.getTaskDetails().get("errorString").asText());
+      assertEquals("Platform restarted.", taskInfo.getDetails().get("errorString").asText());
       assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     }
   }
@@ -133,12 +136,13 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   @Test
   @Ignore
   public void testFailPendingTasksForCompletedTaskInfo() throws Exception {
-    universe = ModelFactory.createUniverse(customer.getCustomerId());
+    universe = ModelFactory.createUniverse(customer.getId());
     taskManager = spy(app.injector().instanceOf(CustomerTaskManager.class));
     mockClient = mock(YBClient.class);
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
-      if (targetType.equals(CustomerTask.TargetType.Universe)) targetUUID = universe.universeUUID;
+      if (targetType.equals(CustomerTask.TargetType.Universe))
+        targetUUID = universe.getUniverseUUID();
       CustomerTask th = createTask(targetType, targetUUID, Create);
       TaskInfo taskInfo = TaskInfo.getOrBadRequest(th.getTaskUUID());
       taskInfo.setTaskState(TaskInfo.State.Success);
@@ -151,7 +155,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
         .handlePendingTask(any(), any());
 
     List<CustomerTask> customerTasks =
-        CustomerTask.find.query().where().eq("customer_uuid", customer.uuid).findList();
+        CustomerTask.find.query().where().eq("customer_uuid", customer.getUuid()).findList();
 
     // Verify tasks have been marked as failure properly
     for (CustomerTask task : customerTasks) {

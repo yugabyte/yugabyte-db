@@ -4,15 +4,10 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.XClusterConfig;
-import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Restore;
 import java.util.Date;
-import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
 
 @Slf4j
 public class SetRestoreTime extends XClusterConfigTaskBase {
@@ -39,8 +34,8 @@ public class SetRestoreTime extends XClusterConfigTaskBase {
     return String.format(
         "%s (sourceUniverse=%s, xClusterUuid=%s, tableIds=%s)",
         super.getName(),
-        taskParams().universeUUID,
-        taskParams().getXClusterConfig().uuid,
+        taskParams().getUniverseUUID(),
+        taskParams().getXClusterConfig().getUuid(),
         taskParams().tableIds);
   }
 
@@ -58,7 +53,7 @@ public class SetRestoreTime extends XClusterConfigTaskBase {
 
     // Update the DB.
     Date now = new Date();
-    xClusterConfig.setRestoreTimeForTables(taskParams().tableIds, now, taskUUID);
+    xClusterConfig.updateRestoreTimeForTables(taskParams().tableIds, now, taskUUID);
     log.info("Restore time for tables {} set to {}", taskParams().tableIds, now);
 
     log.info("Completed {}", getName());

@@ -30,13 +30,13 @@ public class ScheduleUtilTest extends FakeDBApplication {
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
-    defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
     defaultUser = ModelFactory.testUser(defaultCustomer);
 
     backupRequestParams = new BackupRequestParams();
-    backupRequestParams.universeUUID = defaultUniverse.universeUUID;
+    backupRequestParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST16");
-    backupRequestParams.storageConfigUUID = customerConfig.configUUID;
+    backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
   }
 
   @Test
@@ -45,12 +45,12 @@ public class ScheduleUtilTest extends FakeDBApplication {
     TestUtils.setFakeHttpContext(defaultUser);
     Schedule schedule =
         Schedule.create(
-            defaultCustomer.uuid, backupRequestParams, TaskType.CreateBackup, 1000, null);
-    assertFalse(ScheduleUtil.isIncrementalBackupSchedule(schedule.scheduleUUID));
+            defaultCustomer.getUuid(), backupRequestParams, TaskType.CreateBackup, 1000, null);
+    assertFalse(ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID()));
     backupRequestParams.incrementalBackupFrequency = 100000L;
     schedule =
         Schedule.create(
-            defaultCustomer.uuid, backupRequestParams, TaskType.CreateBackup, 1000, null);
-    assertTrue(ScheduleUtil.isIncrementalBackupSchedule(schedule.scheduleUUID));
+            defaultCustomer.getUuid(), backupRequestParams, TaskType.CreateBackup, 1000, null);
+    assertTrue(ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID()));
   }
 }

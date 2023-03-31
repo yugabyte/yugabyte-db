@@ -42,16 +42,17 @@ public class WaitForEncryptionKeyInMemory extends NodeTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-    if (universe != null && EncryptionAtRestUtil.getNumUniverseKeys(universe.universeUUID) > 0) {
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    if (universe != null
+        && EncryptionAtRestUtil.getNumUniverseKeys(universe.getUniverseUUID()) > 0) {
       YBClient client = null;
       String hostPorts = universe.getMasterAddresses();
       String certificate = universe.getCertificateNodetoNode();
       try {
         client = ybService.getClient(hostPorts, certificate);
-        KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universe.universeUUID);
+        KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universe.getUniverseUUID());
         if (!client.waitForMasterHasUniverseKeyInMemory(
-            KEY_IN_MEMORY_TIMEOUT, activeKey.uuid.keyRef, taskParams().nodeAddress)) {
+            KEY_IN_MEMORY_TIMEOUT, activeKey.getUuid().keyRef, taskParams().nodeAddress)) {
           throw new RuntimeException(
               "Timeout occurred waiting for universe encryption key to be set in memory");
         }

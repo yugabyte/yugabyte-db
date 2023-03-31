@@ -69,7 +69,7 @@ public class CustomerConfigController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.CustomerConfig,
-            Objects.toString(customerConfig.configUUID, null),
+            Objects.toString(customerConfig.getConfigUUID(), null),
             Audit.ActionType.Create,
             request().body().asJson());
     return PlatformResults.withData(this.customerConfigService.getConfigMasked(customerConfig));
@@ -82,7 +82,7 @@ public class CustomerConfigController extends AuthenticatedController {
   public Result delete(UUID customerUUID, UUID configUUID, boolean isDeleteBackups) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     CustomerConfig customerConfig = customerConfigService.getOrBadRequest(customerUUID, configUUID);
-    if (customerConfig.type == CustomerConfig.ConfigType.STORAGE) {
+    if (customerConfig.getType() == CustomerConfig.ConfigType.STORAGE) {
       Boolean backupsInProgress = Backup.findIfBackupsRunningWithCustomerConfig(configUUID);
       if (backupsInProgress) {
         throw new PlatformServiceException(
@@ -107,7 +107,7 @@ public class CustomerConfigController extends AuthenticatedController {
             taskUUID,
             CustomerTask.TargetType.CustomerConfiguration,
             CustomerTask.TaskType.Delete,
-            customerConfig.configName);
+            customerConfig.getConfigName());
         auditService()
             .createAuditEntryWithReqBody(
                 ctx(),
@@ -132,7 +132,7 @@ public class CustomerConfigController extends AuthenticatedController {
   public Result deleteYb(UUID customerUUID, UUID configUUID, boolean isDeleteBackups) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     CustomerConfig customerConfig = customerConfigService.getOrBadRequest(customerUUID, configUUID);
-    if (customerConfig.type == CustomerConfig.ConfigType.STORAGE) {
+    if (customerConfig.getType() == CustomerConfig.ConfigType.STORAGE) {
       Boolean backupsInProgress = Backup.findIfBackupsRunningWithCustomerConfig(configUUID);
       if (backupsInProgress) {
         throw new PlatformServiceException(
@@ -156,7 +156,7 @@ public class CustomerConfigController extends AuthenticatedController {
           taskUUID,
           CustomerTask.TargetType.CustomerConfiguration,
           CustomerTask.TaskType.Delete,
-          customerConfig.configName);
+          customerConfig.getConfigName());
       auditService()
           .createAuditEntryWithReqBody(
               ctx(),
@@ -207,7 +207,7 @@ public class CustomerConfigController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.CustomerConfig,
-            Objects.toString(customerConfig.configUUID, null),
+            Objects.toString(customerConfig.getConfigUUID(), null),
             Audit.ActionType.Update,
             request().body().asJson());
     return PlatformResults.withData(this.customerConfigService.getConfigMasked(unmaskedConfig));
@@ -243,7 +243,7 @@ public class CustomerConfigController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.CustomerConfig,
-            Objects.toString(customerConfig.configUUID, null),
+            Objects.toString(customerConfig.getConfigUUID(), null),
             Audit.ActionType.Update,
             request().body().asJson());
     return PlatformResults.withData(this.customerConfigService.getConfigMasked(unmaskedConfig));

@@ -92,7 +92,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
     String kmsConfigName = formData.get("name").asText();
     if (KmsConfig.listKMSConfigs(customerUUID)
         .stream()
-        .anyMatch(config -> config.name.equals(kmsConfigName))) {
+        .anyMatch(config -> config.getName().equals(kmsConfigName))) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Kms config with %s name already exists", kmsConfigName));
     }
@@ -174,7 +174,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
     KmsConfig config = KmsConfig.get(configUUID);
     ObjectNode authconfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
-    if (formData.get("name") != null && !config.name.equals(formData.get("name").asText())) {
+    if (formData.get("name") != null && !config.getName().equals(formData.get("name").asText())) {
       throw new PlatformServiceException(BAD_REQUEST, "KmsConfig name cannot be changed.");
     }
 
@@ -423,16 +423,16 @@ public class EncryptionAtRestController extends AuthenticatedController {
       TaskType taskType = TaskType.EditKMSConfig;
       ObjectNode formData = (ObjectNode) request().body().asJson();
       // Check for non-editable fields.
-      checkEditableFields(formData, config.keyProvider, configUUID);
+      checkEditableFields(formData, config.getKeyProvider(), configUUID);
       // add non-editable fields in formData from existing config.
-      formData = addNonEditableFieldsData(formData, configUUID, config.keyProvider);
+      formData = addNonEditableFieldsData(formData, configUUID, config.getKeyProvider());
       // Validating the KMS Provider config details.
-      validateKMSProviderConfigFormData(formData, config.keyProvider.toString(), customerUUID);
+      validateKMSProviderConfigFormData(formData, config.getKeyProvider().toString(), customerUUID);
       KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
       taskParams.configUUID = configUUID;
-      taskParams.kmsProvider = config.keyProvider;
+      taskParams.kmsProvider = config.getKeyProvider();
       taskParams.providerConfig = formData;
-      taskParams.kmsConfigName = config.name;
+      taskParams.kmsConfigName = config.getName();
       taskParams.customerUUID = customerUUID;
       formData.remove("name");
       UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -469,7 +469,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
     LOG.info(String.format("Retrieving KMS configuration %s", configUUID.toString()));
     KmsConfig config = KmsConfig.get(configUUID);
     ObjectNode kmsConfig =
-        keyManager.getServiceInstance(config.keyProvider.name()).getAuthConfig(configUUID);
+        keyManager.getServiceInstance(config.getKeyProvider().name()).getAuthConfig(configUUID);
     if (kmsConfig == null) {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -493,19 +493,20 @@ public class EncryptionAtRestController extends AuthenticatedController {
                   ObjectNode result = null;
                   ObjectNode credentials =
                       keyManager
-                          .getServiceInstance(configModel.keyProvider.name())
-                          .getAuthConfig(configModel.configUUID);
+                          .getServiceInstance(configModel.getKeyProvider().name())
+                          .getAuthConfig(configModel.getConfigUUID());
                   if (credentials != null) {
                     result = Json.newObject();
                     ObjectNode metadata = Json.newObject();
-                    metadata.put("configUUID", configModel.configUUID.toString());
-                    metadata.put("provider", configModel.keyProvider.name());
+                    metadata.put("configUUID", configModel.getConfigUUID().toString());
+                    metadata.put("provider", configModel.getKeyProvider().name());
                     metadata.put(
-                        "in_use", EncryptionAtRestUtil.configInUse(configModel.configUUID));
+                        "in_use", EncryptionAtRestUtil.configInUse(configModel.getConfigUUID()));
                     metadata.put(
                         "universeDetails",
-                        Json.toJson(EncryptionAtRestUtil.getUniverses(configModel.configUUID)));
-                    metadata.put("name", configModel.name);
+                        Json.toJson(
+                            EncryptionAtRestUtil.getUniverses(configModel.getConfigUUID())));
+                    metadata.put("name", configModel.getName());
                     result.put("credentials", CommonUtils.maskConfig(credentials));
                     result.put("metadata", metadata);
                   }
@@ -528,7 +529,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
       KmsConfig config = KmsConfig.get(configUUID);
       TaskType taskType = TaskType.DeleteKMSConfig;
       KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
-      taskParams.kmsProvider = config.keyProvider;
+      taskParams.kmsProvider = config.getKeyProvider();
       taskParams.customerUUID = customerUUID;
       taskParams.configUUID = configUUID;
       UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -569,14 +570,14 @@ public class EncryptionAtRestController extends AuthenticatedController {
         configUUID.toString(),
         customerUUID.toString());
     KmsConfig kmsConfig = KmsConfig.getOrBadRequest(configUUID);
-    keyManager.getServiceInstance(kmsConfig.keyProvider.name()).refreshKms(configUUID);
+    keyManager.getServiceInstance(kmsConfig.getKeyProvider().name()).refreshKms(configUUID);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(), Audit.TargetType.KMSConfig, configUUID.toString(), Audit.ActionType.Refresh);
     return YBPSuccess.withMessage(
         String.format(
             "Successfully refreshed %s KMS config '%s'.",
-            kmsConfig.keyProvider.name(), configUUID));
+            kmsConfig.getKeyProvider().name(), configUUID));
   }
 
   @ApiOperation(
@@ -631,11 +632,11 @@ public class EncryptionAtRestController extends AuthenticatedController {
             .map(
                 history -> {
                   return Json.newObject()
-                      .put("reference", history.uuid.keyRef)
-                      .put("configUUID", history.configUuid.toString())
-                      .put("re_encryption_count", history.uuid.reEncryptionCount)
+                      .put("reference", history.getUuid().keyRef)
+                      .put("configUUID", history.getConfigUuid().toString())
+                      .put("re_encryption_count", history.getUuid().reEncryptionCount)
                       .put("db_key_id", history.dbKeyId)
-                      .put("timestamp", history.timestamp.toString());
+                      .put("timestamp", history.getTimestamp().toString());
                 })
             .collect(Collectors.toList()));
   }
@@ -666,7 +667,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
             "Retrieving key ref for customer %s and universe %s",
             customerUUID.toString(), universeUUID.toString()));
     KmsHistory activeKey = EncryptionAtRestUtil.getActiveKeyOrBadRequest(universeUUID);
-    String keyRef = activeKey.uuid.keyRef;
+    String keyRef = activeKey.getUuid().keyRef;
     if (keyRef == null || keyRef.length() == 0) {
       throw new PlatformServiceException(
           BAD_REQUEST,

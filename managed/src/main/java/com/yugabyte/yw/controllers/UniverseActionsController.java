@@ -86,7 +86,8 @@ public class UniverseActionsController extends AuthenticatedController {
 
     if (isKubernetesCluster) {
       String msg =
-          String.format("Pause task is not supported for Kubernetes universe - %s", universe.name);
+          String.format(
+              "Pause task is not supported for Kubernetes universe - %s", universe.getName());
       log.error(msg);
       throw new IllegalArgumentException(msg);
     }
@@ -99,7 +100,7 @@ public class UniverseActionsController extends AuthenticatedController {
             universeUUID.toString(),
             Audit.ActionType.Pause,
             taskUUID);
-    return new YBPTask(taskUUID, universe.universeUUID).asResult();
+    return new YBPTask(taskUUID, universe.getUniverseUUID()).asResult();
   }
 
   @ApiOperation(
@@ -125,7 +126,7 @@ public class UniverseActionsController extends AuthenticatedController {
             universeUUID.toString(),
             Audit.ActionType.Resume,
             taskUUID);
-    return new YBPTask(taskUUID, universe.universeUUID).asResult();
+    return new YBPTask(taskUUID, universe.getUniverseUUID()).asResult();
   }
 
   @ApiOperation(
@@ -136,11 +137,11 @@ public class UniverseActionsController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
-    log.info("Updating universe key {} for {}.", universe.universeUUID, customer.uuid);
+    log.info("Updating universe key {} for {}.", universe.getUniverseUUID(), customer.getUuid());
     // Get the user submitted form data.
 
     EncryptionAtRestKeyParams taskParams =
-        EncryptionAtRestKeyParams.bindFromFormData(universe.universeUUID, request());
+        EncryptionAtRestKeyParams.bindFromFormData(universe.getUniverseUUID(), request());
 
     UUID taskUUID = universeActionsHandler.setUniverseKey(customer, universe, taskParams);
 
@@ -164,7 +165,8 @@ public class UniverseActionsController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
-    log.info("Updating load balancer config {} for {}.", universe.universeUUID, customer.uuid);
+    log.info(
+        "Updating load balancer config {} for {}.", universe.getUniverseUUID(), customer.getUuid());
 
     UUID taskUUID =
         universeActionsHandler.updateLoadBalancerConfig(
@@ -179,7 +181,7 @@ public class UniverseActionsController extends AuthenticatedController {
             universeUUID.toString(),
             Audit.ActionType.UpdateLoadBalancerConfig,
             taskUUID);
-    return new YBPTask(taskUUID, universe.universeUUID).asResult();
+    return new YBPTask(taskUUID, universe.getUniverseUUID()).asResult();
   }
 
   /**

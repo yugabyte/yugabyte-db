@@ -73,7 +73,8 @@ public class DestroyUniverse extends UniverseTaskBase {
 
       if (params().isDeleteBackups) {
         List<Backup> backupList =
-            Backup.fetchBackupToDeleteByUniverseUUID(params().customerUUID, universe.universeUUID);
+            Backup.fetchBackupToDeleteByUniverseUUID(
+                params().customerUUID, universe.getUniverseUUID());
         createDeleteBackupYbTasks(backupList, params().customerUUID)
             .setSubTaskGroupType(SubTaskGroupType.DeletingBackup);
       }
@@ -149,7 +150,7 @@ public class DestroyUniverse extends UniverseTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("RemoveUniverseEntry");
     Params params = new Params();
     // Add the universe uuid.
-    params.universeUUID = taskParams().universeUUID;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
     params.customerUUID = params().customerUUID;
     params.isForceDelete = params().isForceDelete;
 
@@ -209,11 +210,11 @@ public class DestroyUniverse extends UniverseTaskBase {
   protected void createDeleteXClusterConfigSubtasksAndLockOtherUniverses() {
     // XCluster configs whose other universe exists.
     List<XClusterConfig> xClusterConfigs =
-        XClusterConfig.getByUniverseUuid(params().universeUUID)
+        XClusterConfig.getByUniverseUuid(params().getUniverseUUID())
             .stream()
             .filter(
                 xClusterConfig ->
-                    xClusterConfig.status
+                    xClusterConfig.getStatus()
                         != XClusterConfig.XClusterConfigStatusType.DeletedUniverse)
             .collect(Collectors.toList());
 
@@ -222,7 +223,7 @@ public class DestroyUniverse extends UniverseTaskBase {
     // even when there is an error.
     xClusterConfigs.forEach(
         xClusterConfig -> {
-          xClusterConfig.setStatus(XClusterConfig.XClusterConfigStatusType.DeletedUniverse);
+          xClusterConfig.updateStatus(XClusterConfig.XClusterConfigStatusType.DeletedUniverse);
         });
 
     Map<UUID, List<XClusterConfig>> otherUniverseUuidToXClusterConfigsMap =
@@ -231,14 +232,16 @@ public class DestroyUniverse extends UniverseTaskBase {
             .collect(
                 Collectors.groupingBy(
                     xClusterConfig -> {
-                      if (xClusterConfig.sourceUniverseUUID.equals(params().universeUUID)) {
+                      if (xClusterConfig
+                          .getSourceUniverseUUID()
+                          .equals(params().getUniverseUUID())) {
                         // Case 1: Delete xCluster configs where this universe is the source
                         // universe.
-                        return xClusterConfig.targetUniverseUUID;
+                        return xClusterConfig.getTargetUniverseUUID();
                       } else {
                         // Case 2: Delete xCluster configs where this universe is the target
                         // universe.
-                        return xClusterConfig.sourceUniverseUUID;
+                        return xClusterConfig.getSourceUniverseUUID();
                       }
                     }));
 

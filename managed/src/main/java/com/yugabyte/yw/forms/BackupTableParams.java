@@ -164,7 +164,7 @@ public class BackupTableParams extends TableManagerParams {
     this.ignoreErrors = true;
     //    this.ignoreErrors = backupRequestParams.ignoreErrors;
     this.storageConfigUUID = backupRequestParams.storageConfigUUID;
-    this.universeUUID = backupRequestParams.universeUUID;
+    this.setUniverseUUID(backupRequestParams.getUniverseUUID());
     this.sse = backupRequestParams.sse;
     this.parallelism = backupRequestParams.parallelism;
     this.timeBeforeDelete = backupRequestParams.timeBeforeDelete;
@@ -199,7 +199,7 @@ public class BackupTableParams extends TableManagerParams {
     this.storageConfigUUID = tableParams.storageConfigUUID;
     this.storageLocation = tableParams.storageLocation;
     this.storageConfigType = tableParams.storageConfigType;
-    this.universeUUID = tableParams.universeUUID;
+    this.setUniverseUUID(tableParams.getUniverseUUID());
     this.sse = tableParams.sse;
     this.parallelism = tableParams.parallelism;
     this.timeBeforeDelete = tableParams.timeBeforeDelete;

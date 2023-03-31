@@ -54,7 +54,7 @@ public class XClusterConfigUpdateMasterAddresses extends XClusterConfigTaskBase 
   public String getName() {
     return String.format(
         "%s (targetUniverse=%s, sourceUniverse=%s)",
-        super.getName(), taskParams().universeUUID, taskParams().sourceUniverseUuid);
+        super.getName(), taskParams().getUniverseUUID(), taskParams().sourceUniverseUuid);
   }
 
   @Override
@@ -73,7 +73,7 @@ public class XClusterConfigUpdateMasterAddresses extends XClusterConfigTaskBase 
             String.format(
                 "Failed to update master addresses of XClusterConfigs for Universe(%s): "
                     + "Failed to get cluster config: %s",
-                targetUniverse.universeUUID, getMasterClusterConfigResp.errorMessage());
+                targetUniverse.getUniverseUUID(), getMasterClusterConfigResp.errorMessage());
         throw new RuntimeException(errMsg);
       }
       Map<String, CdcConsumer.ProducerEntryPB> replicationGroups =
@@ -121,7 +121,7 @@ public class XClusterConfigUpdateMasterAddresses extends XClusterConfigTaskBase 
                       + "between source(%s) and target(%s) to %s: %s",
                   xClusterConfigName,
                   sourceUniverseUUID,
-                  taskParams().universeUUID,
+                  taskParams().getUniverseUUID(),
                   sourceUniverse.getMasterAddresses(),
                   resp.errorMessage());
           throw new RuntimeException(errMsg);
@@ -131,7 +131,7 @@ public class XClusterConfigUpdateMasterAddresses extends XClusterConfigTaskBase 
                 + "updated to {}",
             xClusterConfigName,
             sourceUniverseUUID,
-            taskParams().universeUUID,
+            taskParams().getUniverseUUID(),
             sourceUniverse.getMasterAddresses());
 
         if (HighAvailabilityConfig.get().isPresent()) {

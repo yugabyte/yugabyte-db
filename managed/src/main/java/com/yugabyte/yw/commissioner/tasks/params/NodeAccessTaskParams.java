@@ -12,8 +12,6 @@ public class NodeAccessTaskParams extends NodeTaskParams {
 
   public UUID regionUUID;
 
-  public UUID universeUUID;
-
   public AccessKey accessKey;
 
   // Key to be used for add/remove authorized key tasks
@@ -31,7 +29,7 @@ public class NodeAccessTaskParams extends NodeTaskParams {
     this.customerUUID = customerUUID;
     this.azUuid = azUuid;
     this.providerUUID = providerUUID;
-    this.universeUUID = universeUUID;
+    this.setUniverseUUID(universeUUID);
     this.accessKey = accessKey;
     this.sshUser = sshUser;
   }

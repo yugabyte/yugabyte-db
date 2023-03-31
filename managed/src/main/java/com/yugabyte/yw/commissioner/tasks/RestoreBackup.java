@@ -35,7 +35,7 @@ public class RestoreBackup extends UniverseTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     Restore restore = null;
     try {
       checkUniverseVersion();
@@ -46,7 +46,7 @@ public class RestoreBackup extends UniverseTaskBase {
       if (universe.isYbcEnabled()
           && !universe
               .getUniverseDetails()
-              .ybcSoftwareVersion
+              .getYbcSoftwareVersion()
               .equals(ybcManager.getStableYbcVersion())) {
 
         if (universe
@@ -55,10 +55,12 @@ public class RestoreBackup extends UniverseTaskBase {
             .userIntent
             .providerType
             .equals(Common.CloudType.kubernetes)) {
-          createUpgradeYbcTaskOnK8s(taskParams().universeUUID, ybcManager.getStableYbcVersion())
+          createUpgradeYbcTaskOnK8s(
+                  taskParams().getUniverseUUID(), ybcManager.getStableYbcVersion())
               .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
         } else {
-          createUpgradeYbcTask(taskParams().universeUUID, ybcManager.getStableYbcVersion(), true)
+          createUpgradeYbcTask(
+                  taskParams().getUniverseUUID(), ybcManager.getStableYbcVersion(), true)
               .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
         }
       }
@@ -113,7 +115,7 @@ public class RestoreBackup extends UniverseTaskBase {
       RestoreBackupParams params, BackupStorageInfo backupStorageInfo, ActionType actionType) {
     RestoreBackupParams restoreParams = new RestoreBackupParams();
     restoreParams.customerUUID = params.customerUUID;
-    restoreParams.universeUUID = params.universeUUID;
+    restoreParams.setUniverseUUID(params.getUniverseUUID());
     restoreParams.storageConfigUUID = params.storageConfigUUID;
     restoreParams.restoreTimeStamp = params.restoreTimeStamp;
     restoreParams.kmsConfigUUID = params.kmsConfigUUID;

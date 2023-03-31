@@ -29,7 +29,7 @@ public class UpdateUniverseAccessKey extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ")";
+    return super.getName() + "(" + taskParams().getUniverseUUID() + ")";
   }
 
   @Override

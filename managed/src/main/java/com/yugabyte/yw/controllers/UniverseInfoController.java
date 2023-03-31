@@ -153,7 +153,10 @@ public class UniverseInfoController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Can't get live queries for a paused universe");
     }
-    log.info("Live queries for customer {}, universe {}", customer.uuid, universe.universeUUID);
+    log.info(
+        "Live queries for customer {}, universe {}",
+        customer.getUuid(),
+        universe.getUniverseUUID());
     JsonNode resultNode = universeInfoHandler.getLiveQuery(universe);
     return PlatformResults.withRawData(resultNode);
   }

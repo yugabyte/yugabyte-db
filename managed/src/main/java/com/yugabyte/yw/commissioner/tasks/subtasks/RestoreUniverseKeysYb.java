@@ -1,13 +1,11 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.RestoreUniverseKeysTaskBase;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager.RestoreKeyResult;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.models.Universe;
-import java.util.function.Consumer;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
@@ -28,7 +26,7 @@ public class RestoreUniverseKeysYb extends RestoreUniverseKeysTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
@@ -44,7 +42,7 @@ public class RestoreUniverseKeysYb extends RestoreUniverseKeysTaskBase {
       RestoreKeyResult restoreResult =
           keyManager.restoreUniverseKeyHistory(
               ybService,
-              taskParams().universeUUID,
+              taskParams().getUniverseUUID(),
               taskParams().kmsConfigUUID,
               taskParams().backupStorageInfoList.get(0).storageLocation);
 
@@ -56,7 +54,7 @@ public class RestoreUniverseKeysYb extends RestoreUniverseKeysTaskBase {
           log.info(
               String.format(
                   "Error occurred restoring encryption keys to universe %s",
-                  taskParams().universeUUID));
+                  taskParams().getUniverseUUID()));
         case RESTORE_SUCCEEDED:
           ///////////////
           // Restore state of encryption in universe having backup restored into

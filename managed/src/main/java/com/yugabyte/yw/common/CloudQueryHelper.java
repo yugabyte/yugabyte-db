@@ -72,7 +72,7 @@ public class CloudQueryHelper extends DevopsBase {
 
   public List<String> getRegionCodes(Provider p) {
     List<String> commandArgs = new ArrayList<>();
-    if (p.code.equals("gcp")) {
+    if (p.getCode().equals("gcp")) {
       // TODO: ideally we shouldn't have this hardcoded string present in multiple
       // places.
       GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(p);
@@ -85,7 +85,7 @@ public class CloudQueryHelper extends DevopsBase {
     JsonNode regionInfo =
         execAndParseShellResponse(
             DevopsCommand.builder()
-                .providerUUID(p.uuid)
+                .providerUUID(p.getUuid())
                 .command("regions")
                 .commandArgs(commandArgs)
                 .build());
@@ -117,7 +117,7 @@ public class CloudQueryHelper extends DevopsBase {
     }
     return execAndParseShellResponse(
         DevopsCommand.builder()
-            .regionUUID(region.uuid)
+            .regionUUID(region.getUuid())
             .command("zones")
             .commandArgs(commandArgs)
             .build());
@@ -152,14 +152,14 @@ public class CloudQueryHelper extends DevopsBase {
   public JsonNode getInstanceTypes(List<Region> regionList, String customPayload) {
     List<String> commandArgs = new ArrayList<>();
     commandArgs.add("--regions");
-    regionList.forEach(region -> commandArgs.add(region.code));
+    regionList.forEach(region -> commandArgs.add(region.getCode()));
     if (customPayload != null && !customPayload.isEmpty()) {
       commandArgs.add("--custom_payload");
       commandArgs.add(customPayload);
     }
     return execAndParseShellResponse(
         DevopsCommand.builder()
-            .regionUUID(regionList.get(0).uuid)
+            .regionUUID(regionList.get(0).getUuid())
             .command("instance_types")
             .commandArgs(commandArgs)
             .build());
@@ -168,7 +168,7 @@ public class CloudQueryHelper extends DevopsBase {
   public JsonNode getMachineImages(UUID providerUUID, Region region) {
     List<String> commandArgs = new ArrayList<>();
     commandArgs.add("--regions");
-    commandArgs.add(region.code);
+    commandArgs.add(region.getCode());
     return execAndParseShellResponse(
         DevopsCommand.builder()
             .providerUUID(providerUUID)
@@ -193,9 +193,9 @@ public class CloudQueryHelper extends DevopsBase {
 
   public String getDefaultImage(Region region, String architecture) {
     String defaultImage = null;
-    JsonNode result = queryVpcs(region.uuid, architecture);
+    JsonNode result = queryVpcs(region.getUuid(), architecture);
 
-    JsonNode regionInfo = result.get(region.code);
+    JsonNode regionInfo = result.get(region.getCode());
     if (regionInfo != null) {
       JsonNode defaultImageJson = regionInfo.get(DEFAULT_IMAGE_KEY);
       if (defaultImageJson != null) {
@@ -221,9 +221,9 @@ public class CloudQueryHelper extends DevopsBase {
 
     if (StringUtils.isBlank(region.getYbImage())) {
       throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "ybImage not set for region " + region.code);
+          INTERNAL_SERVER_ERROR, "ybImage not set for region " + region.getCode());
     }
-    JsonNode result = queryImage(region.uuid, region.getYbImage());
+    JsonNode result = queryImage(region.getUuid(), region.getYbImage());
 
     if (result.has("error")) {
       throw new PlatformServiceException(
@@ -249,12 +249,12 @@ public class CloudQueryHelper extends DevopsBase {
   }
 
   public String getVnetOrFail(Region region) {
-    JsonNode result = queryVnet(region.uuid);
+    JsonNode result = queryVnet(region.getUuid());
 
-    JsonNode regionVnet = result.get(region.code);
+    JsonNode regionVnet = result.get(region.getCode());
     if (regionVnet == null) {
       throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Could not get vnet for region: " + region.code);
+          INTERNAL_SERVER_ERROR, "Could not get vnet for region: " + region.getCode());
     }
     return regionVnet.asText();
   }

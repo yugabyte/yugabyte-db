@@ -107,7 +107,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
                   NodeDetails node = u.getNode(taskParams().nodeName);
                   if (node == null) {
                     String msg =
-                        "No node " + taskParams().nodeName + " found in universe " + u.name;
+                        "No node " + taskParams().nodeName + " found in universe " + u.getName();
                     log.error(msg);
                     throw new RuntimeException(msg);
                   }
@@ -124,8 +124,8 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       log.info(
           "Stop Node with name {} from universe {} ({})",
           taskParams().nodeName,
-          taskParams().universeUUID,
-          universe.name);
+          taskParams().getUniverseUUID(),
+          universe.getName());
 
       isBlacklistLeaders =
           confGetter.getConfForScope(universe, UniverseConfKeys.ybUpgradeBlacklistLeaders);
@@ -134,7 +134,8 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
 
       NodeDetails currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
-        String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
+        String msg =
+            "No node " + taskParams().nodeName + " found in universe " + universe.getName();
         log.error(msg);
         throw new RuntimeException(msg);
       }
@@ -225,8 +226,8 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
           log.info(
               "Automatically bringing up master for under replicated "
                   + "universe {} ({}) on node {}.",
-              universe.universeUUID,
-              universe.name,
+              universe.getUniverseUUID(),
+              universe.getName(),
               newMasterNode.getNodeName());
           // Update node state to Starting Master.
           createSetNodeStateTask(newMasterNode, NodeState.Starting)

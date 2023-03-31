@@ -18,18 +18,18 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.algorithms.HashicorpVaultAlgorithm;
-import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
-import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil.VaultSecretEngineBuilder;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.KmsConfig;
-import java.util.UUID;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -183,7 +183,7 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
     LOG.debug("updateCurrentAuthConfigProperties called for {}", configUUID.toString());
     try {
       KmsConfig config = KmsConfig.getOrBadRequest(configUUID);
-      UUID customerUUID = config.customerUUID;
+      UUID customerUUID = config.getCustomerUUID();
 
       UpdateAuthConfigProperties(customerUUID, configUUID, authConfig);
     } catch (Exception e) {

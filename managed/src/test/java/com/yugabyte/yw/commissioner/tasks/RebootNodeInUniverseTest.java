@@ -55,16 +55,16 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = numNodes;
-    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = replicationFactor;
-    userIntent.regionList = ImmutableList.of(region.uuid);
-    defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(userIntent, withMaster /* setMasters */));
-    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
 
     when(mockNodeManager.nodeCommand(any(), any()))
         .then(
@@ -73,11 +73,11 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
                 ShellResponse listResponse = new ShellResponse();
                 NodeTaskParams params = invocation.getArgument(1);
                 if (params.nodeUuid == null) {
-                  listResponse.message = "{\"universe_uuid\":\"" + params.universeUUID + "\"}";
+                  listResponse.message = "{\"universe_uuid\":\"" + params.getUniverseUUID() + "\"}";
                 } else {
                   listResponse.message =
                       "{\"universe_uuid\":\""
-                          + params.universeUUID
+                          + params.getUniverseUUID()
                           + "\", "
                           + "\"node_uuid\": \""
                           + params.nodeUuid
@@ -238,7 +238,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
       assertEquals(taskType, tasks.get(0).getTaskType());
       JsonNode expectedResults = jsonNodes.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
       taskPosition++;
@@ -250,7 +250,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
   public void testRebootNodeWithNoMaster(boolean isHardReboot) {
     setUp(true, 6, 3);
     RebootNodeInUniverse.Params taskParams = new RebootNodeInUniverse.Params();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 2;
     taskParams.isHardReboot = isHardReboot;
 
@@ -268,7 +268,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
   public void testRebootNodeWithMaster(boolean isHardReboot) {
     setUp(true, 4, 3);
     RebootNodeInUniverse.Params taskParams = new RebootNodeInUniverse.Params();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 2;
     taskParams.isHardReboot = isHardReboot;
 
@@ -286,7 +286,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
   public void testRebootNodeWithMasterAndNoTserver(boolean isHardReboot) {
     setUp(true, 4, 3);
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         universe -> {
           universe
               .getUniverseDetails()
@@ -296,7 +296,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
               .forEach(n -> n.isTserver = false);
         });
     RebootNodeInUniverse.Params taskParams = new RebootNodeInUniverse.Params();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
     taskParams.isHardReboot = isHardReboot;
 

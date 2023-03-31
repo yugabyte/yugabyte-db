@@ -49,9 +49,9 @@ public class RegionTest extends FakeDBApplication {
     Region region =
         Region.create(defaultProvider, "region-1", "Awesome PlacementRegion", "default-image");
 
-    assertEquals(region.code, "region-1");
-    assertEquals(region.name, "Awesome PlacementRegion");
-    assertEquals(region.provider.name, "Amazon");
+    assertEquals(region.getCode(), "region-1");
+    assertEquals(region.getName(), "Awesome PlacementRegion");
+    assertEquals(region.getProvider().getName(), "Amazon");
     assertTrue(region.isActive());
   }
 
@@ -60,11 +60,11 @@ public class RegionTest extends FakeDBApplication {
     Region region =
         Region.create(
             defaultProvider, "region-1", "Awesome PlacementRegion", "default-image", 100, 100);
-    assertEquals(region.code, "region-1");
-    assertEquals(region.name, "Awesome PlacementRegion");
-    assertEquals(region.provider.name, "Amazon");
-    assertEquals(region.latitude, 100, 0);
-    assertEquals(region.longitude, 100, 0);
+    assertEquals(region.getCode(), "region-1");
+    assertEquals(region.getName(), "Awesome PlacementRegion");
+    assertEquals(region.getProvider().getName(), "Amazon");
+    assertEquals(region.getLatitude(), 100, 0);
+    assertEquals(region.getLongitude(), 100, 0);
     assertTrue(region.isActive());
   }
 
@@ -83,14 +83,14 @@ public class RegionTest extends FakeDBApplication {
     Region region = Region.create(defaultProvider, "region-1", "region 1", "default-image");
 
     assertNotNull(region);
-    assertEquals(region.code, "region-1");
-    assertEquals(region.name, "region 1");
+    assertEquals(region.getCode(), "region-1");
+    assertEquals(region.getName(), "region 1");
     assertTrue(region.isActive());
 
     region.setActiveFlag(false);
     region.save();
 
-    Region fetch = Region.find.byId(region.uuid);
+    Region fetch = Region.find.byId(region.getUuid());
     assertFalse(fetch.isActive());
   }
 
@@ -103,10 +103,10 @@ public class RegionTest extends FakeDBApplication {
     Region.create(provider2, "region-3", "region 3", "default-image");
 
     Set<Region> regions =
-        Region.find.query().where().eq("provider_uuid", defaultProvider.uuid).findSet();
+        Region.find.query().where().eq("provider_uuid", defaultProvider.getUuid()).findSet();
     assertEquals(regions.size(), 2);
     for (Region region : regions) {
-      assertThat(region.code, containsString("region-"));
+      assertThat(region.getCode(), containsString("region-"));
     }
   }
 
@@ -119,8 +119,8 @@ public class RegionTest extends FakeDBApplication {
     List<Region> regions =
         Region.findByKeys(
             ImmutableList.of(
-                new ProviderAndRegion(defaultProvider.uuid, "region-1"),
-                new ProviderAndRegion(otherProvider.uuid, "region-1")));
+                new ProviderAndRegion(defaultProvider.getUuid(), "region-1"),
+                new ProviderAndRegion(otherProvider.getUuid(), "region-1")));
 
     assertThat(regions, Matchers.containsInAnyOrder(region1, region3));
   }
@@ -132,13 +132,13 @@ public class RegionTest extends FakeDBApplication {
     AvailabilityZone.createOrThrow(r, "az-2", "AZ - 2", "subnet-2");
 
     assertTrue(r.isActive());
-    for (AvailabilityZone zone : AvailabilityZone.getAZsForRegion(r.uuid)) {
+    for (AvailabilityZone zone : AvailabilityZone.getAZsForRegion(r.getUuid())) {
       assertTrue(zone.isActive());
     }
 
     r.disableRegionAndZones();
     assertFalse(r.isActive());
-    for (AvailabilityZone zone : AvailabilityZone.getAZsForRegion(r.uuid)) {
+    for (AvailabilityZone zone : AvailabilityZone.getAZsForRegion(r.getUuid())) {
       assertFalse(zone.isActive());
     }
   }
@@ -172,7 +172,8 @@ public class RegionTest extends FakeDBApplication {
   @Test
   public void testGetWithValidUUIDs() {
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
-    Region fetchedRegion = Region.get(defaultCustomer.uuid, defaultProvider.uuid, r.uuid);
+    Region fetchedRegion =
+        Region.get(defaultCustomer.getUuid(), defaultProvider.getUuid(), r.getUuid());
     assertEquals(r, fetchedRegion);
   }
 
@@ -180,7 +181,7 @@ public class RegionTest extends FakeDBApplication {
   public void testGetWithInvalidCustomerUUID() {
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
     UUID randomUUID = UUID.randomUUID();
-    Region fetchedRegion = Region.get(randomUUID, defaultProvider.uuid, r.uuid);
+    Region fetchedRegion = Region.get(randomUUID, defaultProvider.getUuid(), r.getUuid());
     assertNull(fetchedRegion);
   }
 
@@ -188,7 +189,7 @@ public class RegionTest extends FakeDBApplication {
   public void testGetWithInvalidProviderUUID() {
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
     UUID randomUUID = UUID.randomUUID();
-    Region fetchedRegion = Region.get(defaultCustomer.uuid, randomUUID, r.uuid);
+    Region fetchedRegion = Region.get(defaultCustomer.getUuid(), randomUUID, r.getUuid());
     assertNull(fetchedRegion);
   }
 
@@ -205,7 +206,7 @@ public class RegionTest extends FakeDBApplication {
     Provider testProvider = ModelFactory.gcpProvider(defaultCustomer);
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
     Region r1 = Region.create(testProvider, "region-2", "region 2", "default-image");
-    List<Region> fetchedRegions = Region.getByProvider(defaultProvider.uuid);
+    List<Region> fetchedRegions = Region.getByProvider(defaultProvider.getUuid());
     assertEquals(fetchedRegions.size(), 1);
   }
 
@@ -213,14 +214,14 @@ public class RegionTest extends FakeDBApplication {
   public void testGetByProviderMultipleRegions() {
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
     Region r1 = Region.create(defaultProvider, "region-2", "region 2", "default-image");
-    List<Region> fetchedRegions = Region.getByProvider(defaultProvider.uuid);
+    List<Region> fetchedRegions = Region.getByProvider(defaultProvider.getUuid());
     assertEquals(fetchedRegions.size(), 2);
   }
 
   @Test
   public void testNullConfig() {
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
-    assertNotNull(r.uuid);
+    assertNotNull(r.getUuid());
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(r);
     assertEquals("{ybImage=default-image}", envVars.toString());
   }
@@ -231,7 +232,7 @@ public class RegionTest extends FakeDBApplication {
     r.setConfig(ImmutableMap.of("Foo", "Bar"));
     r.save();
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(r);
-    assertNotNull(r.uuid);
+    assertNotNull(r.getUuid());
     assertNotNull(envVars.toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
   }
 }

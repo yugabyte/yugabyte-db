@@ -37,14 +37,14 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
-    Universe targetUniverse = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe targetUniverse = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     try (YBClient client =
         ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate)) {
       CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
-          getClusterConfig(client, targetUniverse.universeUUID);
-      syncXClusterConfigs(clusterConfig, targetUniverse.universeUUID);
+          getClusterConfig(client, targetUniverse.getUniverseUUID());
+      syncXClusterConfigs(clusterConfig, targetUniverse.getUniverseUUID());
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
@@ -107,12 +107,12 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
                     sourceUniverseUUID,
                     targetUniverseUUID,
                     txnReplicationGroupOptional.isPresent() ? ConfigType.Txn : ConfigType.Basic);
-            log.info("Creating new XClusterConfig({})", xClusterConfig.uuid);
+            log.info("Creating new XClusterConfig({})", xClusterConfig.getUuid());
           } else {
             log.info("Updating existing XClusterConfig({})", xClusterConfig);
           }
-          xClusterConfig.setStatus(XClusterConfigStatusType.Running);
-          xClusterConfig.setPaused(value.getDisableStream());
+          xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
+          xClusterConfig.updatePaused(value.getDisableStream());
           xClusterConfig.addTablesIfNotExist(xClusterConfigTables);
 
           // Set txn table id for txn configs. We assume the source universe is always in active
@@ -130,7 +130,7 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
                   String.format(
                       "The detected xCluster config type for %s is %s, but %s.%s on the "
                           + "source universe is not found",
-                      xClusterConfig.uuid,
+                      xClusterConfig.getUuid(),
                       ConfigType.Txn,
                       TRANSACTION_STATUS_TABLE_NAMESPACE,
                       TRANSACTION_STATUS_TABLE_NAME));
@@ -147,9 +147,9 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
         XClusterConfig.getByTargetUniverseUUID(targetUniverseUUID);
     for (XClusterConfig xClusterConfig : currentXClusterConfigsForTarget) {
       if (!foundXClusterConfigs.contains(
-          new Pair<>(xClusterConfig.sourceUniverseUUID, xClusterConfig.name))) {
+          new Pair<>(xClusterConfig.getSourceUniverseUUID(), xClusterConfig.getName()))) {
         xClusterConfig.delete();
-        log.info("Deleted unknown XClusterConfig({})", xClusterConfig.uuid);
+        log.info("Deleted unknown XClusterConfig({})", xClusterConfig.getUuid());
       }
     }
   }

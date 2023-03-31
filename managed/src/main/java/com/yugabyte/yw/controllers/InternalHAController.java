@@ -203,7 +203,7 @@ public class InternalHAController extends Controller {
         return ApiResponse.error(BAD_REQUEST, "Rejecting demote request from stale leader");
       } else if (localLastFailover == null || localLastFailover.before(requestLastFailover)) {
         // Otherwise, update the last failover timestamp and proceed with demotion request.
-        config.get().setLastFailover(requestLastFailover);
+        config.get().updateLastFailover(requestLastFailover);
       }
 
       // Demote the local instance.
@@ -215,7 +215,7 @@ public class InternalHAController extends Controller {
               .getOrDefault("version", "UNKNOWN")
               .toString();
 
-      localInstance.get().updateYbaVersionForLocalInstance(version);
+      localInstance.get().setYbaVersion(version);
 
       return PlatformResults.withData(localInstance);
     } catch (Exception e) {

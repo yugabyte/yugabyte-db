@@ -56,21 +56,21 @@ public class ChangeXClusterRole extends XClusterConfigTaskBase {
     Universe universe = null;
     XClusterRole requestedRole = null;
 
-    if (!xClusterConfig.type.equals(ConfigType.Txn)) {
+    if (!xClusterConfig.getType().equals(ConfigType.Txn)) {
       throw new IllegalArgumentException(
           "XCluster role can change only for transactional xCluster configs");
     }
 
     // Only one universe role can change in one subtask call.
     if (Objects.nonNull(taskParams().sourceRole)) {
-      universe = Universe.getOrBadRequest(xClusterConfig.sourceUniverseUUID);
+      universe = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
       requestedRole = taskParams().sourceRole;
     }
     if (Objects.nonNull(taskParams().targetRole)) {
       if (Objects.nonNull(universe)) {
         throw new IllegalArgumentException("The role of only one universe can be set");
       }
-      universe = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
+      universe = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
       requestedRole = taskParams().targetRole;
     }
     if (Objects.isNull(universe) || Objects.isNull(requestedRole)) {
@@ -86,20 +86,20 @@ public class ChangeXClusterRole extends XClusterConfigTaskBase {
       XClusterRole currentXClusterRole =
           clusterConfigResp.getConfig().getConsumerRegistry().getRole();
       if (Objects.nonNull(taskParams().sourceRole)) {
-        xClusterConfig.sourceActive = currentXClusterRole.equals(XClusterRole.ACTIVE);
+        xClusterConfig.setSourceActive(currentXClusterRole.equals(XClusterRole.ACTIVE));
       } else {
-        xClusterConfig.targetActive = currentXClusterRole.equals(XClusterRole.ACTIVE);
+        xClusterConfig.setTargetActive(currentXClusterRole.equals(XClusterRole.ACTIVE));
       }
       xClusterConfig.update();
       log.info(
           "Universe role for universe {} was synced to {}",
-          universe.universeUUID,
+          universe.getUniverseUUID(),
           currentXClusterRole);
 
       if (requestedRole.equals(currentXClusterRole)) {
         log.warn(
             "The universe {} is already in {} role; no change happened",
-            universe.universeUUID,
+            universe.getUniverseUUID(),
             currentXClusterRole);
       } else {
         ChangeXClusterRoleResponse resp = client.changeXClusterRole(requestedRole);
@@ -107,7 +107,7 @@ public class ChangeXClusterRole extends XClusterConfigTaskBase {
           throw new RuntimeException(
               String.format(
                   "Failed to set the role for universe %s to %s on XClusterConfig(%s): %s",
-                  universe.universeUUID, requestedRole, xClusterConfig, resp.errorMessage()));
+                  universe.getUniverseUUID(), requestedRole, xClusterConfig, resp.errorMessage()));
         }
 
         if (HighAvailabilityConfig.get().isPresent()) {
@@ -116,9 +116,9 @@ public class ChangeXClusterRole extends XClusterConfigTaskBase {
 
         // Save the role in the DB.
         if (Objects.nonNull(taskParams().sourceRole)) {
-          xClusterConfig.sourceActive = requestedRole.equals(XClusterRole.ACTIVE);
+          xClusterConfig.setSourceActive(requestedRole.equals(XClusterRole.ACTIVE));
         } else {
-          xClusterConfig.targetActive = requestedRole.equals(XClusterRole.ACTIVE);
+          xClusterConfig.setTargetActive(requestedRole.equals(XClusterRole.ACTIVE));
         }
         xClusterConfig.update();
       }

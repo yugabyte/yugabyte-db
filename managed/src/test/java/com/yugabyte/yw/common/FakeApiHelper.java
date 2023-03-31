@@ -33,9 +33,9 @@ public class FakeApiHelper {
     Users user;
     if (customer == null) {
       customer = Customer.create("vc", "Valid Customer");
-      user = Users.create("foo@bar.com", "password", Role.Admin, customer.uuid, false);
+      user = Users.create("foo@bar.com", "password", Role.Admin, customer.getUuid(), false);
     }
-    user = Users.find.query().where().eq("customer_uuid", customer.uuid).findOne();
+    user = Users.find.query().where().eq("customer_uuid", customer.getUuid()).findOne();
     return user.createAuthToken();
   }
 

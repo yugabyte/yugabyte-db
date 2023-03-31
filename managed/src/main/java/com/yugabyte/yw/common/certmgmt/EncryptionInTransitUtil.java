@@ -44,7 +44,7 @@ public class EncryptionInTransitUtil {
       CertificateInfo info, Config config) {
     CertificateProviderBase certProvider;
     try {
-      switch (info.certType) {
+      switch (info.getCertType()) {
         case HashicorpVault:
           certProvider = VaultPKI.getVaultPKIInstance(info);
           break;
@@ -60,13 +60,13 @@ public class EncryptionInTransitUtil {
       throw new PlatformServiceException(BAD_REQUEST, message);
     }
     log.debug(
-        "Returning from getCertificateProviderInstance type is: {}", info.certType.toString());
+        "Returning from getCertificateProviderInstance type is: {}", info.getCertType().toString());
     return certProvider;
   }
 
   public static void fetchLatestCAForHashicorpPKI(CertificateInfo info, Config config)
       throws Exception {
-    UUID custUUID = info.customerUUID;
+    UUID custUUID = info.getCustomerUUID();
     String storagePath = config.getString("yb.storage.path");
     CertificateProviderBase provider = getCertificateProviderInstance(info, config);
     provider.dumpCACertBundle(storagePath, custUUID);
@@ -122,7 +122,7 @@ public class EncryptionInTransitUtil {
     CertificateInfo rootCertConfigInfo = CertificateInfo.get(certConfigUUID);
     rootCertConfigInfo.update(dates.getLeft(), dates.getRight(), paths.getLeft(), hcVaultParams);
 
-    return cert.uuid;
+    return cert.getUuid();
   }
 
   public static void editEITHashicorpConfig(
