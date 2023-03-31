@@ -37,7 +37,6 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.common.PlacementInfoUtil.PlacementIndexes;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
@@ -1864,8 +1863,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Map<String, Integer> expected = parseExpected(zones);
     UserIntent userIntent = new UserIntent();
     userIntent.replicationFactor = rf;
-    SelectMastersResult selection =
-        PlacementInfoUtil.selectMasters(null, nodes, defaultRegion, true, userIntent);
+    SelectMastersResult selection = selectMasters(null, nodes, defaultRegion, true, userIntent);
     verifyMasters(selection, nodes, rf, removedCount, expected);
   }
 
@@ -1952,8 +1950,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     String defaultRegion = getDefaultRegionCode(zones);
     List<NodeDetails> nodes = configureNodesByDescriptor(aws, zones, null);
     makeDedicated(nodes, userIntent);
-    SelectMastersResult selection =
-        PlacementInfoUtil.selectMasters(null, nodes, defaultRegion, true, userIntent);
+    SelectMastersResult selection = selectMasters(null, nodes, defaultRegion, true, userIntent);
     verifyMasters(
         selection, nodes, userIntent.replicationFactor, removedCount, parseExpected(zones));
   }
@@ -1991,8 +1988,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
             zones,
             (descr) -> new Pair<>(userIntent.masterInstanceType, Integer.parseInt(descr[4])));
     makeDedicated(nodes, userIntent);
-    SelectMastersResult selection =
-        PlacementInfoUtil.selectMasters(null, nodes, defaultRegion, true, userIntent);
+    SelectMastersResult selection = selectMasters(null, nodes, defaultRegion, true, userIntent);
     verifyMasters(
         selection, nodes, userIntent.replicationFactor, removedCount, parseExpected(zones));
   }
@@ -2028,7 +2024,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         assertThrows(
                 RuntimeException.class,
                 () -> {
-                  PlacementInfoUtil.selectMasters(null, nodes, defaultRegion, true, userIntent);
+                  selectMasters(null, nodes, defaultRegion, true, userIntent);
                 })
             .getMessage();
     String errors[] =
@@ -2113,9 +2109,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     String errorMessage =
         assertThrows(
                 RuntimeException.class,
-                () -> {
-                  PlacementInfoUtil.selectMasters(null, nodes, defaultRegion, true, userIntent);
-                })
+                () -> selectMasters(null, nodes, defaultRegion, true, userIntent))
             .getMessage();
     String expectedMessage = SELECT_MASTERS_ERRORS[expectedMessageIndex];
     assertTrue(
@@ -2279,21 +2273,14 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     // Updating node with state ToBeAdded.
     nodes.get(0).isMaster = !nodes.get(0).isMaster;
-    assertThrows(
-        RuntimeException.class,
-        () -> {
-          PlacementInfoUtil.verifyMastersSelection(nodes, rf);
-        });
+    assertThrows(RuntimeException.class, () -> PlacementInfoUtil.verifyMastersSelection(nodes, rf));
     nodes.get(0).isMaster = !nodes.get(0).isMaster;
 
     if (numNodes > 1) {
       // Updating node with state Live.
       nodes.get(1).isMaster = !nodes.get(1).isMaster;
       assertThrows(
-          RuntimeException.class,
-          () -> {
-            PlacementInfoUtil.verifyMastersSelection(nodes, rf);
-          });
+          RuntimeException.class, () -> PlacementInfoUtil.verifyMastersSelection(nodes, rf));
       nodes.get(1).isMaster = !nodes.get(1).isMaster;
     }
   }
@@ -2704,9 +2691,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       String errorMessage =
           assertThrows(
                   RuntimeException.class,
-                  () -> {
-                    PlacementInfoUtil.setPerAZRF(pi, numRF, defaultRegionUUID);
-                  })
+                  () -> PlacementInfoUtil.setPerAZRF(pi, numRF, defaultRegionUUID))
               .getMessage();
       assertThat(errorMessage, RegexMatcher.matchesRegex(exceptionMessage));
     }
@@ -2723,28 +2708,6 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         "AZ3 rf differs from expected one",
         expectedRFAZ3,
         getPlacementAZ(pi, r3.uuid, az3.uuid).replicationFactor);
-  }
-
-  private List<UUID> zoneCodesToUUIDs(Provider provider, String... codes) {
-    return Arrays.stream(codes)
-        .map(code -> AvailabilityZone.getByCode(provider, code).uuid)
-        .collect(Collectors.toList());
-  }
-
-  private void assertPlacementIndexes(
-      PlacementInfo placementInfo, Collection<PlacementIndexes> indexes, String... zones) {
-    Map<UUID, AvailabilityZone> zoneMapByUUID = new HashMap<>();
-    assertEquals(zones.length, indexes.size());
-    List<PlacementIndexes> indexesList = new ArrayList<>(indexes);
-    for (int i = 0; i < indexesList.size(); i++) {
-      PlacementIndexes index = indexesList.get(i);
-      PlacementCloud placementCloud = placementInfo.cloudList.get(index.cloudIdx);
-      PlacementRegion placementRegion = placementCloud.regionList.get(index.regionIdx);
-      PlacementAZ placementAZ = placementRegion.azList.get(index.azIdx);
-      AvailabilityZone zone =
-          zoneMapByUUID.computeIfAbsent(placementAZ.uuid, AvailabilityZone::getOrBadRequest);
-      assertEquals(zones[i], zone.code);
-    }
   }
 
   /**
@@ -2963,13 +2926,6 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         11 - nodesToRemove, getNodesInCluster(primaryClusterUUID, udtp.nodeDetailsSet).size());
   }
 
-  private SelectMastersResult selectMasters(
-      String masterLeader, Collection<NodeDetails> nodes, int replicationFactor) {
-    UserIntent userIntent = new UserIntent();
-    userIntent.replicationFactor = replicationFactor;
-    return PlacementInfoUtil.selectMasters(masterLeader, nodes, null, true, userIntent);
-  }
-
   @Test
   public void testConfigureNodesToggleDedicated() {
     Customer customer = ModelFactory.testCustomer("Test Customer");
@@ -3145,6 +3101,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     addNodes(z2, 3, ApiUtils.UTIL_INST_TYPE);
     addNodes(z3, 4, masterInstanceType);
 
+    UUID clusterUUID = UUID.randomUUID();
+
     List<NodeDetails> currentNodes =
         Arrays.asList(z1, z2, z2)
             .stream()
@@ -3155,6 +3113,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                   details.state = ToBeAdded;
                   details.cloudInfo = new CloudSpecificInfo();
                   details.cloudInfo.instance_type = ApiUtils.UTIL_INST_TYPE;
+                  details.placementUuid = clusterUUID;
                   return details;
                 })
             .collect(Collectors.toList());
@@ -3164,9 +3123,13 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.masterInstanceType = masterInstanceType;
 
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
+    cluster.uuid = clusterUUID;
+
     // Checking cloud provider - have infinite number nodes.
     userIntent.providerType = CloudType.aws;
-    AvailableNodeTracker awsNodeTracker = new AvailableNodeTracker(userIntent, currentNodes);
+    AvailableNodeTracker awsNodeTracker =
+        new AvailableNodeTracker(clusterUUID, Collections.singletonList(cluster), currentNodes);
     assertEquals(Integer.MAX_VALUE, awsNodeTracker.getAvailableForZone(z1.uuid));
     assertEquals(
         Integer.MAX_VALUE,
@@ -3181,7 +3144,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     // Checking onprem.
     userIntent.providerType = CloudType.onprem;
-    AvailableNodeTracker onpremNodeTracker = new AvailableNodeTracker(userIntent, currentNodes);
+    AvailableNodeTracker onpremNodeTracker =
+        new AvailableNodeTracker(clusterUUID, Collections.singletonList(cluster), currentNodes);
     assertEquals(0, onpremNodeTracker.getAvailableForZone(z1.uuid));
     assertEquals(
         0, onpremNodeTracker.getAvailableForZone(z1.uuid, UniverseTaskBase.ServerType.MASTER));
@@ -3371,10 +3335,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertEquals(3, toBeAdded.size());
     assertEquals(3, toBeRemoved.size());
     Stream.concat(toBeAdded.stream(), toBeRemoved.stream())
-        .forEach(
-            node -> {
-              assertEquals(UniverseTaskBase.ServerType.MASTER, node.dedicatedTo);
-            });
+        .forEach(node -> assertEquals(UniverseTaskBase.ServerType.MASTER, node.dedicatedTo));
   }
 
   @Test
@@ -3539,5 +3500,91 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         PlacementInfoUtil.getAzUuidToNumNodes(params.nodeDetailsSet);
 
     assertEquals(new HashMap<>(ImmutableMap.of(az1.uuid, 4, az2.uuid, 1)), azUuidToNumNodes);
+  }
+
+  @Test
+  public void testEditOnpremWithRR() {
+    Customer customer =
+        ModelFactory.testCustomer("customer", String.format("Test Customer %s", "customer"));
+    Provider provider = ModelFactory.newProvider(customer, onprem);
+
+    Region region = getOrCreate(provider, "r1");
+    AvailabilityZone z1 = AvailabilityZone.createOrThrow(region, "z1", "z1", "subnet-1");
+    AvailabilityZone z2 = AvailabilityZone.createOrThrow(region, "z2", "z2", "subnet-2");
+    addNodes(z1, 1, ApiUtils.UTIL_INST_TYPE);
+    addNodes(z2, 4, ApiUtils.UTIL_INST_TYPE);
+
+    UserIntent userIntent = new UserIntent();
+    userIntent.universeName = "aaa";
+    userIntent.replicationFactor = 3;
+    userIntent.numNodes = 3;
+    userIntent.provider = provider.uuid.toString();
+    userIntent.regionList = Collections.singletonList(region.uuid);
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    userIntent.ybSoftwareVersion = "0.0.1";
+    userIntent.accessKeyCode = "akc";
+    userIntent.providerType = provider.getCloudCode();
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.upsertPrimaryCluster(userIntent, null);
+    params.currentClusterType = ClusterType.PRIMARY;
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getCustomerId(), params.getPrimaryCluster().uuid, CREATE);
+
+    Map<UUID, Integer> azUuidToNumNodes =
+        PlacementInfoUtil.getAzUuidToNumNodes(params.getPrimaryCluster().placementInfo);
+    assertEquals(2, (int) azUuidToNumNodes.get(z2.uuid));
+    assertEquals(1, (int) azUuidToNumNodes.get(z1.uuid));
+
+    UserIntent rrUserIntent = new UserIntent();
+    rrUserIntent.replicationFactor = 1;
+    rrUserIntent.numNodes = 1;
+    rrUserIntent.provider = provider.uuid.toString();
+    rrUserIntent.regionList = Collections.singletonList(region.uuid);
+    rrUserIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    rrUserIntent.ybSoftwareVersion = "0.0.1";
+    rrUserIntent.accessKeyCode = "akc";
+    rrUserIntent.providerType = provider.getCloudCode();
+
+    params.upsertCluster(rrUserIntent, null, UUID.randomUUID());
+    Cluster rrCluster = params.getReadOnlyClusters().get(0);
+    params.currentClusterType = ClusterType.ASYNC;
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getCustomerId(), rrCluster.uuid, CREATE);
+
+    Map<UUID, Integer> rrAzUuidToNumNodes =
+        PlacementInfoUtil.getAzUuidToNumNodes(rrCluster.placementInfo);
+    assertEquals(1, (int) rrAzUuidToNumNodes.get(z2.uuid));
+
+    // This will lead to exception as we dont have enough nodes
+    rrUserIntent.numNodes = 3;
+    String errorMessage =
+        assertThrows(
+                RuntimeException.class,
+                () ->
+                    PlacementInfoUtil.updateUniverseDefinition(
+                        params, customer.getCustomerId(), rrCluster.uuid, CREATE))
+            .getMessage();
+    assertEquals("Couldn't find 1 nodes of type " + rrUserIntent.instanceType, errorMessage);
+  }
+
+  private SelectMastersResult selectMasters(
+      String masterLeader, Collection<NodeDetails> nodes, int replicationFactor) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.replicationFactor = replicationFactor;
+    return selectMasters(masterLeader, nodes, null, true, userIntent);
+  }
+
+  private SelectMastersResult selectMasters(
+      String masterLeader,
+      Collection<NodeDetails> nodes,
+      String defaultRegion,
+      boolean applySelection,
+      UserIntent userIntent) {
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
+    nodes.forEach(node -> node.placementUuid = cluster.uuid);
+    return PlacementInfoUtil.selectMasters(
+        masterLeader, nodes, defaultRegion, applySelection, Collections.singletonList(cluster));
   }
 }
