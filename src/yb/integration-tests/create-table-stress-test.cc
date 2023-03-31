@@ -594,6 +594,14 @@ DontVerifyClusterBeforeNextTearDown();
 // Creates tables and reloads on-disk metadata concurrently to test for races
 // between the two operations.
 TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
+  // This test continuously reloads the sys catalog. These reloads cancel all inflight tasks, which
+  // can cancel some create replica tasks for tablet replicas. Given this test uses RF=3, if two
+  // create tablet requests succeed then a tablet leader will be elected and the master will
+  // transition the tablet to RUNNING state, preventing further tasks to fix the tablet. From here
+  // the tablet leader will initiate a remote bootstrap to create a tablet replica on the tablet
+  // peer missing the tablet. We explicitly enable remote bootstraps here so the tablet leader
+  // can successfully create the missing replica.
+  FLAGS_TEST_enable_remote_bootstrap = true;
   AtomicBool stop(false);
 
   // Since this test constantly invokes VisitSysCatalog() which is the function
