@@ -18,43 +18,43 @@ The following are key metrics for evaluating YB-Master performance.
 
 ##### handler_latency_yb_master_MasterClient_GetTabletLocations
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : counter
+**Type**: counter
 
-**Description** : The number of microseconds spent on fetching the replicas from the master servers. This metric includes the number of times the locations of the replicas are fetched from the master server.
+**Description**: The number of microseconds spent on fetching the replicas from the master servers. This metric includes the number of times the locations of the replicas are fetched from the master server.
 
 ##### handler_latency_yb_tserver_TabletServerService_Read
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : counter
+**Type**: counter
 
-**Description** : The time in microseconds to read the PostgreSQL system tables (during DDL). This metric includes the count or number of reads.
+**Description**: The time in microseconds to read the PostgreSQL system tables (during DDL). This metric includes the count or number of reads.
 
 ##### handler_latency_yb_tserver_TabletServerService_Write
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : counter
+**Type**: counter
 
-**Description** : The time in microseconds to write the PostgreSQL system tables (during DDL). This metric includes the count or number of writes.
+**Description**: The time in microseconds to write the PostgreSQL system tables (during DDL). This metric includes the count or number of writes.
 
 ##### handler_latency_yb_master_MasterDdl_CreateTable
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : counter
+**Type**: counter
 
-**Description** : The time in microseconds to create a table (during DDL). This metric includes the count of create table operations.
+**Description**: The time in microseconds to create a table (during DDL). This metric includes the count of create table operations.
 
 ##### handler_latency_yb_master_MasterDdl_DeleteTable
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : counter
+**Type**: counter
 
-**Description** : The time in microseconds to delete a table (during DDL). This metric includes the count of delete table operations.
+**Description**: The time in microseconds to delete a table (during DDL). This metric includes the count of delete table operations.
 
 <!-- | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
@@ -64,4 +64,4 @@ The following are key metrics for evaluating YB-Master performance.
 | `handler_latency_yb_master_MasterDdl_CreateTable` | microseconds | counter | The time in microseconds to create a table (during DDL). This metric includes the count of create table operations.|
 | `handler_latency_yb_master_MasterDdl_DeleteTable` | microseconds | counter | The time in microseconds to delete a table (during DDL). This metric includes the count of delete table operations.| -->
 
-These metric can be aggregated for nodes across the entire cluster using appropriate aggregations.
+These metrics can be aggregated for nodes across the entire cluster using appropriate aggregations.

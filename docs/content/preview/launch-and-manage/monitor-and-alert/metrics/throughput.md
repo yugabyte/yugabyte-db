@@ -20,67 +20,67 @@ The following are key metrics for evaluating YSQL query processing.
 
 ##### handler_latency_yb_ysqlserver_SQLProcessor_InsertStmt
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : counter
+**Type**: counter
 
-**Description** : The time in microseconds to parse and execute INSERT statement.
+**Description**: The time in microseconds to parse and execute INSERT statement.
 
 ##### handler_latency_yb_ysqlserver_SQLProcessor_SelectStmt
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : counter
+**Type**: counter
 
-**Description** : The time in microseconds to parse and execute SELECT statement.
+**Description**: The time in microseconds to parse and execute SELECT statement.
 
 ##### handler_latency_yb_ysqlserver_SQLProcessor_UpdateStmt
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : counter
+**Type**: counter
 
-**Description** : The time in microseconds to parse and execute UPDATE statement.
+**Description**: The time in microseconds to parse and execute UPDATE statement.
 
 ##### handler_latency_yb_ysqlserver_SQLProcessor_BeginStmt
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : counter
+**Type**: counter
 
-**Description** : The time in microseconds to parse and execute transaction BEGIN statement.
+**Description**: The time in microseconds to parse and execute transaction BEGIN statement.
 
 ##### handler_latency_yb_ysqlserver_SQLProcessor_CommitStmt
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : counter
+**Type**: counter
 
-**Description** : The time in microseconds to parse and execute transaction COMMIT statement.
+**Description**: The time in microseconds to parse and execute transaction COMMIT statement.
 
 ##### handler_latency_yb_ysqlserver_SQLProcessor_RollbackStmt
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : counter
+**Type**: counter
 
-**Description** : The time in microseconds to parse and execute transaction ROLLBACK statement.
+**Description**: The time in microseconds to parse and execute transaction ROLLBACK statement.
 
 ##### handler_latency_yb_ysqlserver_SQLProcessor_OtherStmts
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : counter
+**Type**: counter
 
-**Description** : The time in microseconds to parse and execute all other statements apart from the preceding ones listed in this table. This includes statements like PREPARE, RELEASE SAVEPOINT, and so on.
+**Description**: The time in microseconds to parse and execute all other statements apart from the preceding ones listed in this table. This includes statements like PREPARE, RELEASE SAVEPOINT, and so on.
 
 ##### handler_latency_yb_ysqlserver_SQLProcessor_Transactions
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : counter
+**Type**: counter
 
-**Description** : The time in microseconds to execute any of the statements in this table.
+**Description**: The time in microseconds to execute any of the statements in this table.
 
 <!-- | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
@@ -122,19 +122,19 @@ The following are key metrics for evaluating database IOPS.
 
 ##### handler_latency_yb_tserver_TabletServerService_Read
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : counter
+**Type**: counter
 
-**Description** : The time in microseconds to perform WRITE operations at a tablet level.
+**Description**: The time in microseconds to perform WRITE operations at a tablet level.
 
 ##### handler_latency_yb_tserver_TabletServerService_Write
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : counter
+**Type**: counter
 
-**Description** : The time in microseconds to perform READ operations at a tablet level.
+**Description**: The time in microseconds to perform READ operations at a tablet level.
 
 <!-- | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |

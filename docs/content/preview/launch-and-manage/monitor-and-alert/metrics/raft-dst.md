@@ -20,27 +20,27 @@ The following are key metrics for monitoring RAFT processing.
 
 ##### handler_latency_yb_consensus_ConsensusService_UpdateConsensus
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : counter
+**Type**: counter
 
-**Description** : The time in microseconds to replicate a batch of log entries from the leader to the follower. This metric includes the total count of the RPC method being invoked.
+**Description**: The time in microseconds to replicate a batch of log entries from the leader to the follower. This metric includes the total count of the RPC method being invoked.
 
 ##### handler_latency_yb_consensus_ConsensusService_RequestConsensusVotes
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : counter
+**Type**: counter
 
-**Description** : The time in microseconds by candidates to gather votes. This metric includes the total count of the RPC method being invoked.
+**Description**: The time in microseconds by candidates to gather votes. This metric includes the total count of the RPC method being invoked.
 
 ##### handler_latency_yb_consensus_ConsensusService_ChangeConfig
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : counter
+**Type**: counter
 
-**Description** : The time in microseconds by candidates to add or remove a peer from the Raft group. This metric includes the total count of the RPC method being invoked.
+**Description**: The time in microseconds by candidates to add or remove a peer from the Raft group. This metric includes the total count of the RPC method being invoked.
 
 <!-- | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
@@ -56,11 +56,11 @@ Clock skew is an important metric for performance and data consistency. It signa
 
 ##### hybrid_clock_skew
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : gauge
+**Type**: gauge
 
-**Description** : The time in microseconds for clock drift and skew.
+**Description**: The time in microseconds for clock drift and skew.
 
 <!-- | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
@@ -72,11 +72,11 @@ When a Raft peer fails, YugabyteDB executes an automatic remote bootstrap to cre
 
 ##### handler_latency_yb_consensus_ConsensusService_StartRemoteBootstrap
 
-**Unit** : microseconds
+**Unit**: microseconds
 
-**Type** : counter
+**Type**: counter
 
-**Description** : The time in microseconds to remote bootstrap a new Raft peer. This metric includes the total count of remote bootstrap connections.
+**Description**: The time in microseconds to remote bootstrap a new Raft peer. This metric includes the total count of remote bootstrap connections.
 
 <!-- | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |

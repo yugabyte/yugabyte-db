@@ -79,7 +79,7 @@ A description of key metrics in this category is listed in the following table:
 | `rocksdb_compaction_times_micros` | microseconds | counter | The time in microseconds for the compaction process to complete. |
 | `rocksdb_numfiles_in_singlecompaction` | files | counter | The number of files in any single compaction. |
 
-### Memtable
+## Memtable
 
 Memtable is the first level of data storage where data is stored when you start inserting. It provides statistics about reading documents, which are essentially columns in the table. If a memtable is full, the existing memtable is made immutable and stored on disk as an SST file.
 
@@ -93,7 +93,7 @@ Memtable has statistics about reading documents, which essentially are columns i
 
 These metrics are available per tablet and can be aggregated across the entire cluster using appropriate aggregations.
 
-### Write-Ahead-Logging (WAL)
+## Write-Ahead-Logging (WAL)
 
 The Write Ahead Log (or WAL) is used to write and persist updates to disk on each tablet. The following table describes metrics for observing the performance of the WAL component.
 
