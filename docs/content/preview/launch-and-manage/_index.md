@@ -32,6 +32,17 @@ type: indexpage
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="./monitor-and-alert/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
+        <div class="title">Monitor</div>
+      </div>
+      <div class="body">
+        Make the best use of YugabyteDB metrics and alerts.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="../troubleshoot/">
       <div class="head">
         <img class="icon" src="/images/section_icons/index/troubleshoot.png" aria-hidden="true" />
