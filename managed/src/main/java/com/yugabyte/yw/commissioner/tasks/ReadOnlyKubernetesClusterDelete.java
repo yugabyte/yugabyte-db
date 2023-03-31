@@ -66,7 +66,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
             String.format(
                 "Unable to delete ReadOnly cluster from universe %s as "
                     + "it doesn't have any ReadOnly clusters.",
-                universe.name);
+                universe.getName());
         log.error(msg);
         throw new RuntimeException(msg);
       }
@@ -113,7 +113,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
 
       for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
         UUID azUUID = entry.getKey();
-        String azName = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
+        String azName = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
 
         Map<String, String> config = entry.getValue();
 
@@ -123,7 +123,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
           // Delete the helm deployments.
           helmDeletes.addSubTask(
               createDestroyKubernetesTask(
-                  universe.name,
+                  universe.getName(),
                   universe.getUniverseDetails().nodePrefix,
                   azName,
                   config,
@@ -136,7 +136,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
         // Delete the PVCs created for this AZ.
         volumeDeletes.addSubTask(
             createDestroyKubernetesTask(
-                universe.name,
+                universe.getName(),
                 universe.getUniverseDetails().nodePrefix,
                 azName,
                 config,
@@ -153,7 +153,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
         if (namespace == null && !newNamingStyle) {
           namespaceDeletes.addSubTask(
               createDestroyKubernetesTask(
-                  universe.name,
+                  universe.getName(),
                   universe.getUniverseDetails().nodePrefix,
                   azName,
                   config,
@@ -224,7 +224,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
           KubernetesUtil.getKubernetesNamespace(
               nodePrefix, az, config, newNamingStyle, isReadOnlyCluster);
     }
-    params.universeUUID = taskParams().universeUUID;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     return task;

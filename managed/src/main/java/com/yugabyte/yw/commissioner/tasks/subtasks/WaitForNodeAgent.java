@@ -34,7 +34,7 @@ public class WaitForNodeAgent extends AbstractTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNode(taskParams().nodeName);
     NodeAgent.maybeGetByIp(node.cloudInfo.private_ip)
         .ifPresent(

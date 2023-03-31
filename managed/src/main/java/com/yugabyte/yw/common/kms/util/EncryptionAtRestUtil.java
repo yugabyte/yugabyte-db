@@ -72,7 +72,7 @@ public class EncryptionAtRestUtil {
 
   public static ObjectNode getAuthConfig(UUID configUUID) {
     KmsConfig config = KmsConfig.getOrBadRequest(configUUID);
-    return config.authConfig;
+    return config.getAuthConfig();
   }
 
   public static <N extends JsonNode> ObjectNode maskConfigData(
@@ -266,7 +266,7 @@ public class EncryptionAtRestUtil {
 
   public static String getPlainTextUniverseKey(KmsHistory kmsHistory) {
     return getPlainTextUniverseKey(
-        kmsHistory.uuid.targetUuid, kmsHistory.configUuid, kmsHistory.uuid.keyRef);
+        kmsHistory.getUuid().targetUuid, kmsHistory.getConfigUuid(), kmsHistory.getUuid().keyRef);
   }
 
   public static String getPlainTextUniverseKey(UUID universeUUID, UUID configUUID, String keyRef) {
@@ -274,7 +274,7 @@ public class EncryptionAtRestUtil {
     byte[] encryptedUniverseKey = Base64.getDecoder().decode(keyRef);
     byte[] plainTextUniverseKey =
         kmsConfig
-            .keyProvider
+            .getKeyProvider()
             .getServiceInstance()
             .retrieveKey(universeUUID, configUUID, encryptedUniverseKey);
     return Base64.getEncoder().encodeToString(plainTextUniverseKey);

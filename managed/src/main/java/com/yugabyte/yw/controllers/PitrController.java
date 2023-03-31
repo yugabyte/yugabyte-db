@@ -100,7 +100,7 @@ public class PitrController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "PITR Config is already present");
     }
 
-    taskParams.universeUUID = universeUUID;
+    taskParams.setUniverseUUID(universeUUID);
     taskParams.customerUUID = customerUUID;
     taskParams.tableType = type;
     taskParams.keyspaceName = keyspaceName;
@@ -111,7 +111,7 @@ public class PitrController extends AuthenticatedController {
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.CreatePitrConfig,
-        universe.name);
+        universe.getName());
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -236,7 +236,7 @@ public class PitrController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "Snapshot schedule is invalid");
     }
 
-    taskParams.universeUUID = universeUUID;
+    taskParams.setUniverseUUID(universeUUID);
     UUID taskUUID = commissioner.submit(TaskType.RestoreSnapshotSchedule, taskParams);
     CustomerTask.create(
         customer,
@@ -244,7 +244,7 @@ public class PitrController extends AuthenticatedController {
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.RestoreSnapshotSchedule,
-        universe.name);
+        universe.getName());
 
     auditService()
         .createAuditEntryWithReqBody(

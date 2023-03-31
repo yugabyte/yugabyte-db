@@ -87,7 +87,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
         ModelFactory.testUser(defaultCustomer, "superadmin@customer.com", Role.SuperAdmin);
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     defaultUniverse = ModelFactory.createUniverse();
-    baseRoute = "/api/customers/" + defaultCustomer.uuid + "/hook_scopes";
+    baseRoute = "/api/customers/" + defaultCustomer.getUuid() + "/hook_scopes";
   }
 
   private List<Http.MultipartFormData.Part<Source<ByteString, ?>>> getCreateHookMultiPartData(
@@ -108,7 +108,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
       String name, ExecutionLang executionLang, String hookText, boolean useSudo) {
     List<Http.MultipartFormData.Part<Source<ByteString, ?>>> bodyData =
         getCreateHookMultiPartData(name, executionLang, hookText, useSudo);
-    String uri = "/api/customers/" + defaultCustomer.uuid + "/hooks";
+    String uri = "/api/customers/" + defaultCustomer.getUuid() + "/hooks";
     return doRequestWithAuthTokenAndMultipartData(
         "POST", uri, superAdminUser.createAuthToken(), bodyData, mat);
   }
@@ -134,34 +134,35 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertValue(json, "triggerType", "PreNodeProvision");
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
 
     // Ensure persistence
     String hookScopeUUID = json.get("uuid").asText();
     HookScope hookScope =
-        HookScope.getOrBadRequest(defaultCustomer.uuid, UUID.fromString(hookScopeUUID));
-    assertTrue(hookScope.triggerType == TriggerType.PreNodeProvision);
-    assertTrue(hookScope.providerUUID == null);
-    assertTrue(hookScope.universeUUID == null);
+        HookScope.getOrBadRequest(defaultCustomer.getUuid(), UUID.fromString(hookScopeUUID));
+    assertTrue(hookScope.getTriggerType() == TriggerType.PreNodeProvision);
+    assertTrue(hookScope.getProviderUUID() == null);
+    assertTrue(hookScope.getUniverseUUID() == null);
   }
 
   @Test
   public void testCreateProviderHookScopeValid() {
     Result result =
-        createHookScope(TriggerType.PreNodeProvision, defaultProvider.uuid, null, superAdminUser);
+        createHookScope(
+            TriggerType.PreNodeProvision, defaultProvider.getUuid(), null, superAdminUser);
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertValue(json, "triggerType", "PreNodeProvision");
-    assertValue(json, "providerUUID", defaultProvider.uuid.toString());
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertValue(json, "providerUUID", defaultProvider.getUuid().toString());
+    assertAuditEntry(1, defaultCustomer.getUuid());
 
     // Ensure persistence
     String hookScopeUUID = json.get("uuid").asText();
     HookScope hookScope =
-        HookScope.getOrBadRequest(defaultCustomer.uuid, UUID.fromString(hookScopeUUID));
-    assertTrue(hookScope.triggerType == TriggerType.PreNodeProvision);
-    assertTrue(hookScope.providerUUID.equals(defaultProvider.uuid));
-    assertTrue(hookScope.universeUUID == null);
+        HookScope.getOrBadRequest(defaultCustomer.getUuid(), UUID.fromString(hookScopeUUID));
+    assertTrue(hookScope.getTriggerType() == TriggerType.PreNodeProvision);
+    assertTrue(hookScope.getProviderUUID().equals(defaultProvider.getUuid()));
+    assertTrue(hookScope.getUniverseUUID() == null);
   }
 
   @Test
@@ -171,27 +172,27 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
         assertPlatformException(
             () -> createHookScope(TriggerType.PreNodeProvision, dummyUUID, null, superAdminUser));
     assertBadRequest(result, "Invalid Provider UUID: " + dummyUUID.toString());
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
   public void testCreateUniverseHookScopeValid() {
     Result result =
         createHookScope(
-            TriggerType.PostNodeProvision, null, defaultUniverse.universeUUID, superAdminUser);
+            TriggerType.PostNodeProvision, null, defaultUniverse.getUniverseUUID(), superAdminUser);
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertValue(json, "triggerType", "PostNodeProvision");
-    assertValue(json, "universeUUID", defaultUniverse.universeUUID.toString());
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertValue(json, "universeUUID", defaultUniverse.getUniverseUUID().toString());
+    assertAuditEntry(1, defaultCustomer.getUuid());
 
     // Ensure persistence
     String hookScopeUUID = json.get("uuid").asText();
     HookScope hookScope =
-        HookScope.getOrBadRequest(defaultCustomer.uuid, UUID.fromString(hookScopeUUID));
-    assertTrue(hookScope.triggerType == TriggerType.PostNodeProvision);
-    assertTrue(hookScope.providerUUID == null);
-    assertTrue(hookScope.universeUUID.equals(defaultUniverse.universeUUID));
+        HookScope.getOrBadRequest(defaultCustomer.getUuid(), UUID.fromString(hookScopeUUID));
+    assertTrue(hookScope.getTriggerType() == TriggerType.PostNodeProvision);
+    assertTrue(hookScope.getProviderUUID() == null);
+    assertTrue(hookScope.getUniverseUUID().equals(defaultUniverse.getUniverseUUID()));
   }
 
   @Test
@@ -201,7 +202,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
         assertPlatformException(
             () -> createHookScope(TriggerType.PostNodeProvision, null, dummyUUID, superAdminUser));
     assertBadRequest(result, "Cannot find universe " + dummyUUID.toString());
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
@@ -211,24 +212,24 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
         createHookScope(
             TriggerType.PostNodeProvision,
             null,
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             clusterUUID,
             superAdminUser);
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertValue(json, "triggerType", "PostNodeProvision");
-    assertValue(json, "universeUUID", defaultUniverse.universeUUID.toString());
+    assertValue(json, "universeUUID", defaultUniverse.getUniverseUUID().toString());
     assertValue(json, "clusterUUID", clusterUUID.toString());
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
 
     // Ensure persistence
     String hookScopeUUID = json.get("uuid").asText();
     HookScope hookScope =
-        HookScope.getOrBadRequest(defaultCustomer.uuid, UUID.fromString(hookScopeUUID));
-    assertTrue(hookScope.triggerType == TriggerType.PostNodeProvision);
-    assertTrue(hookScope.providerUUID == null);
-    assertTrue(hookScope.universeUUID.equals(defaultUniverse.universeUUID));
-    assertTrue(hookScope.clusterUUID.equals(clusterUUID));
+        HookScope.getOrBadRequest(defaultCustomer.getUuid(), UUID.fromString(hookScopeUUID));
+    assertTrue(hookScope.getTriggerType() == TriggerType.PostNodeProvision);
+    assertTrue(hookScope.getProviderUUID() == null);
+    assertTrue(hookScope.getUniverseUUID().equals(defaultUniverse.getUniverseUUID()));
+    assertTrue(hookScope.getClusterUUID().equals(clusterUUID));
   }
 
   @Test
@@ -237,7 +238,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
         assertPlatformException(
             () -> createHookScope(TriggerType.PreNodeProvision, null, null, defaultUser));
     assertUnauthorized(result, "Only Super Admins can perform this operation.");
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
@@ -253,15 +254,15 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
       JsonNode json = Json.parse(contentAsString(result));
       assertOk(result);
       assertValue(json, "triggerType", trigger.toString());
-      assertAuditEntry(i, defaultCustomer.uuid);
+      assertAuditEntry(i, defaultCustomer.getUuid());
 
       // Ensure persistence
       String hookScopeUUID = json.get("uuid").asText();
       HookScope hookScope =
-          HookScope.getOrBadRequest(defaultCustomer.uuid, UUID.fromString(hookScopeUUID));
-      assertTrue(hookScope.triggerType == trigger);
-      assertTrue(hookScope.providerUUID == null);
-      assertTrue(hookScope.universeUUID == null);
+          HookScope.getOrBadRequest(defaultCustomer.getUuid(), UUID.fromString(hookScopeUUID));
+      assertTrue(hookScope.getTriggerType() == trigger);
+      assertTrue(hookScope.getProviderUUID() == null);
+      assertTrue(hookScope.getUniverseUUID() == null);
     }
   }
 
@@ -272,13 +273,13 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
         assertPlatformException(
             () -> createHookScope(TriggerType.PreNodeProvision, null, null, superAdminUser));
     assertBadRequest(result, "Hook scope with this scope ID and trigger already exists");
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
   public void testListHookScopes() {
     createHookScope(TriggerType.PreNodeProvision, null, null, superAdminUser);
-    createHookScope(TriggerType.PreNodeProvision, defaultProvider.uuid, null, superAdminUser);
+    createHookScope(TriggerType.PreNodeProvision, defaultProvider.getUuid(), null, superAdminUser);
     Result result = doRequestWithAuthToken("GET", baseRoute, superAdminUser.createAuthToken());
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
@@ -288,7 +289,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
   @Test
   public void testListHookScopesNonSuperAdmin() {
     createHookScope(TriggerType.PreNodeProvision, null, null, superAdminUser);
-    createHookScope(TriggerType.PreNodeProvision, defaultProvider.uuid, null, superAdminUser);
+    createHookScope(TriggerType.PreNodeProvision, defaultProvider.getUuid(), null, superAdminUser);
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthToken("GET", baseRoute, defaultUser.createAuthToken()));
@@ -304,7 +305,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
 
     Result deleteResult = doRequestWithAuthToken("DELETE", uri, superAdminUser.createAuthToken());
     assertOk(deleteResult);
-    assertAuditEntry(2, defaultCustomer.uuid);
+    assertAuditEntry(2, defaultCustomer.getUuid());
   }
 
   @Test
@@ -318,7 +319,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
         assertPlatformException(
             () -> doRequestWithAuthToken("DELETE", uri, defaultUser.createAuthToken()));
     assertUnauthorized(deleteResult, "Only Super Admins can perform this operation.");
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
@@ -368,7 +369,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
             () -> doRequestWithAuthToken("DELETE", uri, superAdminUser.createAuthToken()));
     assertBadRequest(
         result, "Hook " + hookUUID + " is not attached to hook scope " + hookScopeUUID);
-    assertAuditEntry(4, defaultCustomer.uuid);
+    assertAuditEntry(4, defaultCustomer.getUuid());
   }
 
   @Test
@@ -378,6 +379,6 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
         assertPlatformException(
             () -> createHookScope(TriggerType.PreNodeProvision, null, null, superAdminUser));
     assertUnauthorized(result, "Custom hooks is not enabled on this Anywhere instance");
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 }

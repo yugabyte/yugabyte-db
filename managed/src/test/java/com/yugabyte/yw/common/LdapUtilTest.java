@@ -59,7 +59,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 "ldapUrl", 389, "base-dn", "", "", false, false, false, "", "", "", false));
 
     assertNotNull(user);
-    assertEquals("test-user", user.email);
+    assertEquals("test-user", user.getEmail());
   }
 
   @Test
@@ -96,11 +96,11 @@ public class LdapUtilTest extends FakeDBApplication {
         PlatformServiceException.class,
         () ->
             ldapUtil.authViaLDAP(
-                user.email,
+                user.getEmail(),
                 "password",
                 new LdapUtil.LdapConfiguration(
                     "ldapUrl", 389, "base-dn", "", "cn=", false, false, false, "", "", "", false)));
-    assertNull(Users.getByEmail(user.email));
+    assertNull(Users.getByEmail(user.getEmail()));
   }
 
   @Test
@@ -150,7 +150,7 @@ public class LdapUtilTest extends FakeDBApplication {
 
     Users updatedUser =
         ldapUtil.authViaLDAP(
-            user.email,
+            user.getEmail(),
             "password",
             new LdapUtil.LdapConfiguration(
                 "ldapUrl",
@@ -186,7 +186,7 @@ public class LdapUtilTest extends FakeDBApplication {
 
     Users oldUser =
         ldapUtil.authViaLDAP(
-            user.email,
+            user.getEmail(),
             "password",
             new LdapUtil.LdapConfiguration(
                 "ldapUrl",
@@ -234,7 +234,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 false));
 
     assertNotNull(user);
-    assertEquals("test-user", user.email);
+    assertEquals("test-user", user.getEmail());
   }
 
   @Test

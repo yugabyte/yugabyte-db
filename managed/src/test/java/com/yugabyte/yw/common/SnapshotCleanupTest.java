@@ -53,7 +53,7 @@ public class SnapshotCleanupTest extends FakeDBApplication {
   public void setup() {
     mockSnapshotCleanup = new SnapshotCleanup(mockService, mockConfGetter);
     testCustomer = ModelFactory.testCustomer();
-    testUniverse = ModelFactory.createUniverse(testCustomer.getCustomerId());
+    testUniverse = ModelFactory.createUniverse(testCustomer.getId());
     when(mockConfGetter.getConfForScope(
             testUniverse, UniverseConfKeys.deleteOrphanSnapshotOnStartup))
         .thenReturn(true);
@@ -102,14 +102,14 @@ public class SnapshotCleanupTest extends FakeDBApplication {
   @Test
   public void testInProgressBackupFilter() throws Exception {
     Backup backup = new Backup();
-    backup.backupUUID = UUID.randomUUID();
-    backup.customerUUID = testCustomer.getUuid();
-    backup.universeUUID = testUniverse.universeUUID;
-    backup.state = BackupState.InProgress;
-    backup.storageConfigUUID = UUID.randomUUID();
-    backup.category = BackupCategory.YB_CONTROLLER;
-    backup.version = BackupVersion.V2;
-    backup.baseBackupUUID = backup.backupUUID;
+    backup.setBackupUUID(UUID.randomUUID());
+    backup.setCustomerUUID(testCustomer.getUuid());
+    backup.setUniverseUUID(testUniverse.getUniverseUUID());
+    backup.setState(BackupState.InProgress);
+    backup.setStorageConfigUUID(UUID.randomUUID());
+    backup.setCategory(BackupCategory.YB_CONTROLLER);
+    backup.setVersion(BackupVersion.V2);
+    backup.setBaseBackupUUID(backup.getBackupUUID());
     backup.setBackupInfo(new BackupTableParams());
     backup.save();
 

@@ -110,10 +110,10 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           Cluster primaryCluster = universeDetails.getPrimaryCluster();
           UserIntent userIntent = primaryCluster.userIntent;
-          userIntent.regionList = ImmutableList.of(region.uuid, secondRegion.uuid);
+          userIntent.regionList = ImmutableList.of(region.getUuid(), secondRegion.getUuid());
 
           PlacementInfo placementInfo = primaryCluster.placementInfo;
-          PlacementInfoUtil.addPlacementZone(az4.uuid, placementInfo, 1, 2, false);
+          PlacementInfoUtil.addPlacementZone(az4.getUuid(), placementInfo, 1, 2, false);
           universe.setUniverseDetails(universeDetails);
 
           for (int idx = userIntent.numNodes + 1; idx <= userIntent.numNodes + 2; idx++) {
@@ -125,8 +125,8 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
             node.isTserver = true;
             node.cloudInfo = new CloudSpecificInfo();
             node.cloudInfo.private_ip = "10.0.0." + idx;
-            node.cloudInfo.az = az4.code;
-            node.azUuid = az4.uuid;
+            node.cloudInfo.az = az4.getCode();
+            node.azUuid = az4.getUuid();
             node.state = NodeDetails.NodeState.Live;
             universeDetails.nodeDetailsSet.add(node);
           }
@@ -141,12 +141,12 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           userIntent.deviceInfo.storageType = StorageType.Persistent;
         };
 
-    defaultUniverse = Universe.saveDetails(defaultUniverse.universeUUID, updater);
+    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
 
     VMImageUpgradeParams taskParams = new VMImageUpgradeParams();
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
-    taskParams.machineImages.put(region.uuid, "test-vm-image-1");
-    taskParams.machineImages.put(secondRegion.uuid, "test-vm-image-2");
+    taskParams.machineImages.put(region.getUuid(), "test-vm-image-1");
+    taskParams.machineImages.put(secondRegion.getUuid(), "test-vm-image-2");
 
     // expect a CreateRootVolume for each AZ
     final int expectedRootVolumeCreationTasks = 4;
@@ -155,10 +155,11 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         Stream.of(az1, az2, az3)
             .collect(
                 Collectors.toMap(
-                    az -> az.uuid,
-                    az -> Collections.singletonList(String.format("root-volume-%s", az.code))));
+                    az -> az.getUuid(),
+                    az ->
+                        Collections.singletonList(String.format("root-volume-%s", az.getCode()))));
     // AZ 4 has 2 nodes so return 2 volumes here
-    createVolumeOutput.put(az4.uuid, Arrays.asList("root-volume-4", "root-volume-5"));
+    createVolumeOutput.put(az4.getUuid(), Arrays.asList("root-volume-4", "root-volume-5"));
 
     ObjectMapper om = new ObjectMapper();
     for (Map.Entry<UUID, List<String>> e : createVolumeOutput.entrySet()) {
@@ -172,7 +173,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
       }
     }
 
-    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.version);
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -196,15 +197,15 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
             .collect(Collectors.toList());
     createRootVolumeTasks.forEach(
         task -> {
-          JsonNode details = task.getTaskDetails();
+          JsonNode details = task.getDetails();
           UUID azUuid = UUID.fromString(details.get("azUuid").asText());
           AvailabilityZone zone =
               AvailabilityZone.find.query().fetch("region").where().idEq(azUuid).findOne();
           String machineImage = details.get("machineImage").asText();
-          assertEquals(taskParams.machineImages.get(zone.region.uuid), machineImage);
+          assertEquals(taskParams.machineImages.get(zone.getRegion().getUuid()), machineImage);
 
           String azUUID = details.get("azUuid").asText();
-          if (azUUID.equals(az4.uuid.toString())) {
+          if (azUUID.equals(az4.getUuid().toString())) {
             assertEquals(2, details.get("numVolumes").asInt());
           }
         });
@@ -233,7 +234,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         }
 
         if (taskType == TaskType.ReplaceRootVolume) {
-          JsonNode details = task.getTaskDetails();
+          JsonNode details = task.getDetails();
           UUID az = UUID.fromString(details.get("azUuid").asText());
           replaceRootVolumeParams.compute(az, (k, v) -> v == null ? 1 : v + 1);
         }

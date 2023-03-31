@@ -45,7 +45,7 @@ public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
   @Override
   public String getName() {
     NodeTaskParams taskParams = taskParams();
-    return super.getName() + "(" + taskParams.universeUUID + ", " + taskParams.nodeName + ")";
+    return super.getName() + "(" + taskParams.getUniverseUUID() + ", " + taskParams.nodeName + ")";
   }
 
   @Override
@@ -71,7 +71,7 @@ public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
 
       RebootServer.Params rebootParams = new RebootServer.Params();
       rebootParams.nodeName = params.nodeName;
-      rebootParams.universeUUID = params.universeUUID;
+      rebootParams.setUniverseUUID(params.getUniverseUUID());
       rebootParams.azUuid = params.azUuid;
       rebootParams.useSSH = false;
 

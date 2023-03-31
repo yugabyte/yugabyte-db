@@ -109,7 +109,7 @@ public class AppInit {
             yaml.load(environment.resourceAsStream("db_seed.yml"), application.classloader());
         Ebean.saveAll(all);
         Customer customer = Customer.getAll().get(0);
-        alertDestinationService.createDefaultDestination(customer.uuid);
+        alertDestinationService.createDefaultDestination(customer.getUuid());
         alertConfigurationService.createDefaultConfigs(customer);
       }
 
@@ -140,12 +140,12 @@ public class AppInit {
       // Initialize AWS if any of its instance types have an empty volumeDetailsList
       List<Provider> providerList = Provider.find.query().where().findList();
       for (Provider provider : providerList) {
-        if (provider.code.equals("aws")) {
+        if (provider.getCode().equals("aws")) {
           for (InstanceType instanceType :
               InstanceType.findByProvider(provider, application.config())) {
-            if (instanceType.instanceTypeDetails != null
-                && (instanceType.instanceTypeDetails.volumeDetailsList == null)) {
-              awsInitializer.initialize(provider.customerUUID, provider.uuid);
+            if (instanceType.getInstanceTypeDetails() != null
+                && (instanceType.getInstanceTypeDetails().volumeDetailsList == null)) {
+              awsInitializer.initialize(provider.getCustomerUUID(), provider.getUuid());
               break;
             }
           }

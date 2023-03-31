@@ -703,7 +703,7 @@ public class CommonUtils {
             .collect(Collectors.toList());
     if (tserverLiveNodes.isEmpty()) {
       throw new IllegalStateException(
-          "No live TServers found for Universe UUID: " + universe.universeUUID);
+          "No live TServers found for Universe UUID: " + universe.getUniverseUUID());
     }
     return tserverLiveNodes.get(new Random().nextInt(tserverLiveNodes.size()));
   }

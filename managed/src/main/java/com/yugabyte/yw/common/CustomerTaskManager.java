@@ -3,8 +3,6 @@
 package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.models.CustomerTask.TargetType;
-import com.yugabyte.yw.models.Restore;
-import com.yugabyte.yw.models.RestoreKeyspace;
 import static io.ebean.Ebean.beginTransaction;
 import static io.ebean.Ebean.commitTransaction;
 import static io.ebean.Ebean.endTransaction;
@@ -12,17 +10,16 @@ import static io.ebean.Ebean.endTransaction;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
-import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.common.BackupUtil;
-import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Restore;
+import com.yugabyte.yw.models.RestoreKeyspace;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -37,14 +34,12 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import java.time.Duration;
-import javax.inject.Singleton;
 import javax.inject.Inject;
+import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ChangeLoadBalancerStateResponse;
 import org.yb.client.YBClient;
-import play.api.Play;
 import play.libs.Json;
 
 @Singleton
@@ -73,7 +68,7 @@ public class CustomerTaskManager {
 
   private void setTaskError(TaskInfo taskInfo) {
     taskInfo.setTaskState(TaskInfo.State.Failure);
-    JsonNode jsonNode = taskInfo.getTaskDetails();
+    JsonNode jsonNode = taskInfo.getDetails();
     if (jsonNode instanceof ObjectNode) {
       ObjectNode details = (ObjectNode) jsonNode;
       JsonNode errNode = details.get("errorString");
@@ -97,7 +92,7 @@ public class CustomerTaskManager {
       Optional<Universe> optUniv = Universe.maybeGet(customerTask.getTargetUUID());
       if (LOAD_BALANCER_TASK_TYPES.contains(taskInfo.getTaskType())) {
         Boolean isLoadBalanceAltered = false;
-        JsonNode node = taskInfo.getTaskDetails();
+        JsonNode node = taskInfo.getDetails();
         if (node.has(ALTER_LOAD_BALANCER)) {
           isLoadBalanceAltered = node.path(ALTER_LOAD_BALANCER).asBoolean(false);
         }
@@ -109,17 +104,17 @@ public class CustomerTaskManager {
       UUID taskUUID = taskInfo.getTaskUUID();
       ScheduleTask scheduleTask = ScheduleTask.fetchByTaskUUID(taskUUID);
       if (scheduleTask != null) {
-        scheduleTask.setCompletedTime();
+        scheduleTask.markCompleted();
       }
 
       // Use isUniverseTarget() instead of directly comparing with Universe type because some
       // targets like Cluster, Node are Universe targets.
-      boolean unlockUniverse = customerTask.getTarget().isUniverseTarget();
+      boolean unlockUniverse = customerTask.getTargetType().isUniverseTarget();
       boolean resumeTask = false;
       boolean isRestoreYbc = false;
       CustomerTask.TaskType type = customerTask.getType();
       Map<BackupCategory, List<Backup>> backupCategoryMap = new HashMap<>();
-      if (customerTask.getTarget().equals(TargetType.Backup)) {
+      if (customerTask.getTargetType().equals(TargetType.Backup)) {
         // Backup is not universe target.
         if (CustomerTask.TaskType.Create.equals(type)) {
           // Make transition state false for inProgress backups
@@ -129,9 +124,9 @@ public class CustomerTaskManager {
                   .stream()
                   .filter(
                       backup ->
-                          backup.state.equals(Backup.BackupState.InProgress)
-                              || backup.state.equals(Backup.BackupState.Stopped))
-                  .collect(Collectors.groupingBy(Backup::getBackupCategory));
+                          backup.getState().equals(Backup.BackupState.InProgress)
+                              || backup.getState().equals(Backup.BackupState.Stopped))
+                  .collect(Collectors.groupingBy(Backup::getCategory));
 
           backupCategoryMap
               .getOrDefault(BackupCategory.YB_BACKUP_SCRIPT, new ArrayList<>())
@@ -155,7 +150,7 @@ public class CustomerTaskManager {
           // Restore locks the Universe.
           unlockUniverse = true;
           RestoreBackupParams params =
-              Json.fromJson(taskInfo.getTaskDetails(), RestoreBackupParams.class);
+              Json.fromJson(taskInfo.getDetails(), RestoreBackupParams.class);
           if (backupUtil.isYbcBackup(params.backupStorageInfoList.get(0).storageLocation)) {
             isRestoreYbc = true;
           }
@@ -163,7 +158,7 @@ public class CustomerTaskManager {
       } else if (CustomerTask.TaskType.Restore.equals(type)) {
         unlockUniverse = true;
         RestoreBackupParams params =
-            Json.fromJson(taskInfo.getTaskDetails(), RestoreBackupParams.class);
+            Json.fromJson(taskInfo.getDetails(), RestoreBackupParams.class);
         if (backupUtil.isYbcBackup(params.backupStorageInfoList.get(0).storageLocation)) {
           resumeTask = true;
           isRestoreYbc = true;
@@ -232,12 +227,12 @@ public class CustomerTaskManager {
           switch (taskType) {
             case CreateBackup:
               BackupRequestParams backupParams =
-                  Json.fromJson(taskInfo.getTaskDetails(), BackupRequestParams.class);
+                  Json.fromJson(taskInfo.getDetails(), BackupRequestParams.class);
               taskParams = backupParams;
               break;
             case RestoreBackup:
               RestoreBackupParams restoreParams =
-                  Json.fromJson(taskInfo.getTaskDetails(), RestoreBackupParams.class);
+                  Json.fromJson(taskInfo.getDetails(), RestoreBackupParams.class);
               taskParams = restoreParams;
               break;
             default:
@@ -248,7 +243,7 @@ public class CustomerTaskManager {
           UUID newTaskUUID = commissioner.submit(taskType, taskParams);
           beginTransaction();
           try {
-            customerTask.setTaskUUID(newTaskUUID);
+            customerTask.updateTaskUUID(newTaskUUID);
             customerTask.resetCompletionTime();
             TaskInfo task = TaskInfo.get(taskUUID);
             if (task != null) {

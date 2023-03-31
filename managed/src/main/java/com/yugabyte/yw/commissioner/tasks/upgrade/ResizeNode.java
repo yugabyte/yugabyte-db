@@ -137,7 +137,7 @@ public class ResizeNode extends UpgradeTaskBase {
                                   UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
                         })
                     .build(),
-                taskParams().ybcInstalled);
+                taskParams().isYbcInstalled());
             // Only disk resizing, could be done without restarts.
             createNonRestartUpgradeTaskFlow(
                 (nodes, processTypes) ->
@@ -190,7 +190,7 @@ public class ResizeNode extends UpgradeTaskBase {
                 masterNodes,
                 tserverNodes,
                 RUN_BEFORE_STOPPING,
-                taskParams().ybcInstalled);
+                taskParams().isYbcInstalled());
             // Update the list of parameter key/values in the universe with the new ones.
             updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
                 .setSubTaskGroupType(getTaskSubGroupType());
@@ -309,10 +309,10 @@ public class ResizeNode extends UpgradeTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("ChangeInstanceType");
     ChangeInstanceType.Params params = new ChangeInstanceType.Params();
 
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
 
     params.nodeName = node.nodeName;
-    params.universeUUID = taskParams().universeUUID;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
     params.azUuid = node.azUuid;
     params.instanceType = instanceType;
     params.force = taskParams().isForceResizeNode();

@@ -20,7 +20,7 @@ public class KMSConfigTaskParams extends AbstractTaskParams {
   public String getName() {
     if (kmsConfigName != null) return kmsConfigName;
     KmsConfig config = KmsConfig.get(configUUID);
-    if (config != null) return config.name;
+    if (config != null) return config.getName();
     return String.format("%s KMS Configuration", this.kmsProvider);
   }
 }

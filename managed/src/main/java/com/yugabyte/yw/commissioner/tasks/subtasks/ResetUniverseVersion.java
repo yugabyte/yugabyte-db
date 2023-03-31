@@ -24,7 +24,7 @@ public class ResetUniverseVersion extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     universe.resetVersion();
   }
 }

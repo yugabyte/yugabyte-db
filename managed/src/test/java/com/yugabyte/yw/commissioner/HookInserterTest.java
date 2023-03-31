@@ -9,7 +9,6 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.tasks.upgrade.UpgradeTaskTest;
 import com.yugabyte.yw.commissioner.tasks.upgrade.RestartUniverse;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -51,7 +50,7 @@ public class HookInserterTest extends UpgradeTaskTest {
     // Create universe and provider level scopes
     providerHook =
         Hook.create(
-            defaultCustomer.uuid,
+            defaultCustomer.getUuid(),
             "providerHook",
             Hook.ExecutionLang.Bash,
             "providerHook\nTEXT\n",
@@ -59,7 +58,7 @@ public class HookInserterTest extends UpgradeTaskTest {
             null);
     universeHook =
         Hook.create(
-            defaultCustomer.uuid,
+            defaultCustomer.getUuid(),
             "universeHook",
             Hook.ExecutionLang.Bash,
             "universeHook\nTEXT\n",
@@ -68,10 +67,13 @@ public class HookInserterTest extends UpgradeTaskTest {
     attachHooks("RestartUniverse");
     universeScope =
         HookScope.create(
-            defaultCustomer.uuid, HookScope.TriggerType.PreRestartUniverse, defaultUniverse, null);
+            defaultCustomer.getUuid(),
+            HookScope.TriggerType.PreRestartUniverse,
+            defaultUniverse,
+            null);
     providerScope =
         HookScope.create(
-            defaultCustomer.uuid, HookScope.TriggerType.PreRestartUniverse, defaultProvider);
+            defaultCustomer.getUuid(), HookScope.TriggerType.PreRestartUniverse, defaultProvider);
     providerScope.addHook(providerHook);
     universeScope.addHook(universeHook);
 
@@ -116,23 +118,23 @@ public class HookInserterTest extends UpgradeTaskTest {
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = curIntent.ybSoftwareVersion;
     userIntent.accessKeyCode = curIntent.accessKeyCode;
-    userIntent.regionList = ImmutableList.of(region.uuid);
+    userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.deviceInfo = new DeviceInfo();
     userIntent.deviceInfo.numVolumes = 1;
-    userIntent.provider = gcpProvider.uuid.toString();
+    userIntent.provider = gcpProvider.getUuid().toString();
     PlacementInfo pi = new PlacementInfo();
-    PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 1, false);
-    PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, false);
-    PlacementInfoUtil.addPlacementZone(az3.uuid, pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi, 1, 1, true);
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
 
     // Create hooks for provider
     Hook gcpProviderHook =
         Hook.create(
-            defaultCustomer.uuid,
+            defaultCustomer.getUuid(),
             "gcpProviderHook",
             Hook.ExecutionLang.Bash,
             "gcpProviderHook\nTEXT\n",
@@ -140,7 +142,7 @@ public class HookInserterTest extends UpgradeTaskTest {
             null);
     HookScope gcpProviderScope =
         HookScope.create(
-            defaultCustomer.uuid, HookScope.TriggerType.PreRestartUniverse, gcpProvider);
+            defaultCustomer.getUuid(), HookScope.TriggerType.PreRestartUniverse, gcpProvider);
     gcpProviderScope.addHook(gcpProviderHook);
 
     RestartTaskParams taskParams = new RestartTaskParams();

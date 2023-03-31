@@ -34,7 +34,7 @@ public class DeleteRootVolumes extends NodeTaskBase {
 
   @Override
   public void run() {
-    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     UserIntent userIntent =
         u.getUniverseDetails()
             .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid)

@@ -22,10 +22,14 @@ import javax.persistence.ManyToOne;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import lombok.Getter;
+import lombok.Setter;
 
 @JsonIdentityInfo(generator = ObjectIdGenerators.PropertyGenerator.class, property = "uuid")
 @Entity
 @ApiModel(description = "A custom hook.")
+@Getter
+@Setter
 public class Hook extends Model {
 
   public enum ExecutionLang {
@@ -39,37 +43,37 @@ public class Hook extends Model {
   @Id
   @Column(nullable = false, unique = true)
   @ApiModelProperty(value = "Hook UUID", accessMode = READ_ONLY)
-  public UUID uuid = UUID.randomUUID();
+  private UUID uuid = UUID.randomUUID();
 
   @Column(nullable = false)
   @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
-  public UUID customerUUID;
+  private UUID customerUUID;
 
   @Column(length = 100, nullable = false)
   @ApiModelProperty(value = "Hook name", required = true)
-  public String name;
+  private String name;
 
   @Column(nullable = false)
   @ApiModelProperty(value = "Execution Language", required = true)
-  public ExecutionLang executionLang;
+  private ExecutionLang executionLang;
 
   @Column(nullable = false)
   @ApiModelProperty(value = "Hook text", required = true)
-  public String hookText;
+  private String hookText;
 
   @Column(nullable = false)
   @ApiModelProperty(value = "Use superuser privileges", required = true)
-  public boolean useSudo;
+  private boolean useSudo;
 
   @Column(nullable = true)
   @ApiModelProperty(value = "Runtime arguments", required = false)
   @DbJson
-  public Map<String, String> runtimeArgs;
+  private Map<String, String> runtimeArgs;
 
   @ManyToOne
   @JoinColumn(name = "hook_scope_uuid", nullable = true)
   @ApiModelProperty(value = "Hook scope", accessMode = READ_ONLY)
-  public HookScope hookScope;
+  private HookScope hookScope;
 
   public static Hook create(
       UUID customerUUID,
@@ -79,12 +83,12 @@ public class Hook extends Model {
       boolean useSudo,
       Map<String, String> runtimeArgs) {
     Hook hook = new Hook();
-    hook.customerUUID = customerUUID;
-    hook.name = name;
-    hook.executionLang = executionLang;
-    hook.hookText = hookText;
-    hook.useSudo = useSudo;
-    hook.runtimeArgs = runtimeArgs;
+    hook.setCustomerUUID(customerUUID);
+    hook.setName(name);
+    hook.setExecutionLang(executionLang);
+    hook.setHookText(hookText);
+    hook.setUseSudo(useSudo);
+    hook.setRuntimeArgs(runtimeArgs);
     hook.save();
     return hook;
   }

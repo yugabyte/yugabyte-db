@@ -14,13 +14,11 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsValidation.AutoFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagsValidation.AutoFlagsPerServer;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import java.io.IOException;
@@ -60,7 +58,7 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
   public void testAutoFlagCheckForUpgradeAmongNonCompatibleVersion() {
     updateUniverseVersion(defaultUniverse, "2.14.0.0");
     CheckUpgrade.Params params = new CheckUpgrade.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.ybSoftwareVersion = "2.16.0.0";
     CheckUpgrade task = AbstractTaskBase.createTask(CheckUpgrade.class);
     task.initialize(params);
@@ -70,7 +68,7 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
   @Test
   public void testAutoFlagCheckForUpgradeToNonCompatibleVersion() {
     CheckUpgrade.Params params = new CheckUpgrade.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.ybSoftwareVersion = "2.14.0.0";
     CheckUpgrade task = AbstractTaskBase.createTask(CheckUpgrade.class);
     task.initialize(params);
@@ -83,7 +81,7 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
   @Test
   public void testFailedAutoFlagFileExtraction() throws Exception {
     CheckUpgrade.Params params = new CheckUpgrade.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.ybSoftwareVersion = "new-version";
     doThrow(new IOException("Error occurred while extracting auto_flag.json file"))
         .when(mockGFlagsValidation)
@@ -99,7 +97,7 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
   @Test
   public void testGetAutoFlagConfigError() throws Exception {
     CheckUpgrade.Params params = new CheckUpgrade.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.ybSoftwareVersion = "new-version";
     when(mockClient.autoFlagsConfig()).thenThrow(new Exception("Unable to get auto flags config"));
     CheckUpgrade task = AbstractTaskBase.createTask(CheckUpgrade.class);
@@ -113,7 +111,7 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
   @Test
   public void testMissingAutoFlag() throws Exception {
     CheckUpgrade.Params params = new CheckUpgrade.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.ybSoftwareVersion = "new-version";
     PromotedFlagsPerProcessPB masterFlagPB =
         PromotedFlagsPerProcessPB.newBuilder()
@@ -154,7 +152,7 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
   @Test
   public void testCheckSuccess() throws Exception {
     CheckUpgrade.Params params = new CheckUpgrade.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.ybSoftwareVersion = "new-version";
     PromotedFlagsPerProcessPB masterFlagPB =
         PromotedFlagsPerProcessPB.newBuilder()

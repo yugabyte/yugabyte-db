@@ -69,7 +69,7 @@ public class SetUniverseKey {
     if (u.getUniverseDetails().universePaused && !(u.getUniverseDetails().updateInProgress)) {
       log.info(
           "Skipping setting universe keys as {} is paused and no task is running",
-          u.universeUUID.toString());
+          u.getUniverseUUID().toString());
       return;
     }
 
@@ -97,23 +97,24 @@ public class SetUniverseKey {
   public void setUniverseKey(Universe u, boolean force) {
     try {
       if ((!u.universeIsLocked() || force)
-          && EncryptionAtRestUtil.getNumUniverseKeys(u.universeUUID) > 0) {
+          && EncryptionAtRestUtil.getNumUniverseKeys(u.getUniverseUUID()) > 0) {
         log.debug(
             String.format(
-                "Setting universe encryption key for universe %s", u.universeUUID.toString()));
+                "Setting universe encryption key for universe %s", u.getUniverseUUID().toString()));
 
-        KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(u.universeUUID);
+        KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(u.getUniverseUUID());
         if (activeKey == null
-            || activeKey.uuid.keyRef == null
-            || activeKey.uuid.keyRef.length() == 0) {
+            || activeKey.getUuid().keyRef == null
+            || activeKey.getUuid().keyRef.length() == 0) {
           final String errMsg =
-              String.format("No active key found for universe %s", u.universeUUID.toString());
+              String.format("No active key found for universe %s", u.getUniverseUUID().toString());
           log.debug(errMsg);
           return;
         }
 
-        byte[] keyRef = Base64.getDecoder().decode(activeKey.uuid.keyRef);
-        byte[] keyVal = keyManager.getUniverseKey(u.universeUUID, activeKey.configUuid, keyRef);
+        byte[] keyRef = Base64.getDecoder().decode(activeKey.getUuid().keyRef);
+        byte[] keyVal =
+            keyManager.getUniverseKey(u.getUniverseUUID(), activeKey.getConfigUuid(), keyRef);
         Arrays.stream(u.getMasterAddresses().split(","))
             .map(HostAndPort::fromString)
             .forEach(addr -> setKeyInMaster(u, addr, keyRef, keyVal));
@@ -121,7 +122,8 @@ public class SetUniverseKey {
     } catch (Exception e) {
       String errMsg =
           String.format(
-              "Error setting universe encryption key for universe %s", u.universeUUID.toString());
+              "Error setting universe encryption key for universe %s",
+              u.getUniverseUUID().toString());
       log.error(errMsg, e);
     }
   }
@@ -149,7 +151,7 @@ public class SetUniverseKey {
                 try {
                   setCustomerUniverseKeys(c);
                 } catch (Exception e) {
-                  handleCustomerError(c.uuid, e);
+                  handleCustomerError(c.getUuid(), e);
                 }
               });
     } catch (Exception e) {

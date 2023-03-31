@@ -49,7 +49,8 @@ public class UniverseSetTlsParams extends UniverseTaskBase {
             // If this universe is not being edited, fail the request.
             UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
             if (!universeDetails.updateInProgress) {
-              String errMsg = "UserUniverse " + taskParams().universeUUID + " is not being edited.";
+              String errMsg =
+                  "UserUniverse " + taskParams().getUniverseUUID() + " is not being edited.";
               log.error(errMsg);
               throw new RuntimeException(errMsg);
             }

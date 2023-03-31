@@ -92,7 +92,8 @@ public class CustomerConfigValidator extends BaseBeanValidator {
     beanValidator.validate(customerConfig);
 
     String configName = customerConfig.getConfigName();
-    CustomerConfig existentConfig = CustomerConfig.get(customerConfig.customerUUID, configName);
+    CustomerConfig existentConfig =
+        CustomerConfig.get(customerConfig.getCustomerUUID(), configName);
     if (existentConfig != null) {
       if (!existentConfig.getConfigUUID().equals(customerConfig.getConfigUUID())) {
         beanValidator

@@ -94,7 +94,7 @@ public class UniverseResp {
     Map<UUID, Region> regionMap =
         Region.findByUuids(regionUuids)
             .stream()
-            .collect(Collectors.toMap(region -> region.uuid, Function.identity()));
+            .collect(Collectors.toMap(region -> region.getUuid(), Function.identity()));
     clusters
         .stream()
         .filter(cluster -> CollectionUtils.isNotEmpty(cluster.userIntent.regionList))
@@ -153,7 +153,7 @@ public class UniverseResp {
     this(
         entity,
         taskUUID,
-        Customer.get(entity.customerId),
+        Customer.get(entity.getCustomerId()),
         Provider.getOrBadRequest(
             UUID.fromString(entity.getUniverseDetails().getPrimaryCluster().userIntent.provider)),
         resources);
@@ -165,10 +165,10 @@ public class UniverseResp {
       Customer customer,
       Provider provider,
       UniverseResourceDetails resources) {
-    universeUUID = entity.universeUUID;
-    name = entity.name;
-    creationDate = entity.creationDate.toString();
-    version = entity.version;
+    universeUUID = entity.getUniverseUUID();
+    name = entity.getName();
+    creationDate = entity.getCreationDate().toString();
+    version = entity.getVersion();
     dnsName = getDnsName(customer, provider);
     universeDetails = new UniverseDefinitionTaskParamsResp(entity.getUniverseDetails(), entity);
     this.taskUUID = taskUUID;
@@ -191,7 +191,7 @@ public class UniverseResp {
     if (dnsSuffix == null) {
       return null;
     }
-    return String.format("%s.%s.%s", name, customer.code, dnsSuffix);
+    return String.format("%s.%s.%s", name, customer.getCode(), dnsSuffix);
   }
 
   /** Returns the command to run the sample apps in the universe. */

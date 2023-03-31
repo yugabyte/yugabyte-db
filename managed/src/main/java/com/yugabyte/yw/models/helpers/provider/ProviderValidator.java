@@ -28,7 +28,7 @@ public class ProviderValidator extends BaseBeanValidator {
   }
 
   public void validate(Provider provider) {
-    ProviderFieldsValidator providerFieldsValidator = providerValidatorMap.get(provider.code);
+    ProviderFieldsValidator providerFieldsValidator = providerValidatorMap.get(provider.getCode());
     if (providerFieldsValidator != null) {
       providerFieldsValidator.validate(provider);
     }

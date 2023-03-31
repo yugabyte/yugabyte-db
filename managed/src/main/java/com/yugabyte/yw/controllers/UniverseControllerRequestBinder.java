@@ -92,14 +92,14 @@ public class UniverseControllerRequestBinder {
             if (currentCluster == null) {
               throw new IllegalArgumentException(
                   String.format(
-                      "Cluster %s is not found in universe %s", uuid, universe.universeUUID));
+                      "Cluster %s is not found in universe %s", uuid, universe.getUniverseUUID()));
             }
           } else {
             JsonNode clusterType = clusterJson.get("clusterType");
             if (clusterType == null) {
               throw new IllegalArgumentException(
                   String.format(
-                      "Unknown cluster in request for universe %s", universe.universeUUID));
+                      "Unknown cluster in request for universe %s", universe.getUniverseUUID()));
             }
             if (clusterType
                 .asText()
@@ -110,7 +110,7 @@ public class UniverseControllerRequestBinder {
                 throw new IllegalArgumentException(
                     String.format(
                         "Cannot choose readonly cluster in universe %s (cluster type %s)",
-                        universe.universeUUID, clusterType.asText()));
+                        universe.getUniverseUUID(), clusterType.asText()));
               }
               currentCluster = universe.getUniverseDetails().getReadOnlyClusters().get(0);
             }
@@ -168,12 +168,12 @@ public class UniverseControllerRequestBinder {
       throw new IllegalStateException(
           "Expected " + paramsClass + " but deserialized to " + result.getClass());
     }
-    result.universeUUID = universe.universeUUID;
-    result.expectedUniverseVersion = universe.version;
+    result.setUniverseUUID(universe.getUniverseUUID());
+    result.expectedUniverseVersion = universe.getVersion();
     if (universe.isYbcEnabled()) {
       result.installYbc = true;
-      result.enableYbc = true;
-      result.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
+      result.setEnableYbc(true);
+      result.setYbcSoftwareVersion(universe.getUniverseDetails().getYbcSoftwareVersion());
     }
     return result;
   }
@@ -201,7 +201,7 @@ public class UniverseControllerRequestBinder {
           String.format(
               "Error in serializing/deserializing UniverseDefinitonTaskParams into %s "
                   + "for universe: %s, UniverseDetails: %s",
-              targetClass, params.universeUUID, CommonUtils.maskObject(params)),
+              targetClass, params.getUniverseUUID(), CommonUtils.maskObject(params)),
           e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errMsg);
     }

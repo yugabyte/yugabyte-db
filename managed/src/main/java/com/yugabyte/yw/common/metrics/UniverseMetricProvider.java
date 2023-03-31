@@ -72,11 +72,11 @@ public class UniverseMetricProvider implements MetricsProvider {
     Map<UUID, KmsHistory> activeEncryptionKeys =
         KmsHistory.getAllActiveHistory(TargetType.UNIVERSE_KEY)
             .stream()
-            .collect(Collectors.toMap(key -> key.uuid.targetUuid, Function.identity()));
+            .collect(Collectors.toMap(key -> key.getUuid().targetUuid, Function.identity()));
     Map<UUID, KmsConfig> kmsConfigMap =
         KmsConfig.listAllKMSConfigs()
             .stream()
-            .collect(Collectors.toMap(config -> config.configUUID, Function.identity()));
+            .collect(Collectors.toMap(config -> config.getConfigUUID(), Function.identity()));
     Map<AccessKeyId, AccessKey> allAccessKeys = accessKeyRotationUtil.createAllAccessKeysMap();
     for (Customer customer : Customer.getAll()) {
       for (Universe universe : Universe.getAllWithoutResources(customer)) {
@@ -276,19 +276,19 @@ public class UniverseMetricProvider implements MetricsProvider {
     if (activeKey == null) {
       return null;
     }
-    KmsConfig kmsConfig = configMap.get(activeKey.configUuid);
+    KmsConfig kmsConfig = configMap.get(activeKey.getConfigUuid());
     if (kmsConfig == null) {
       log.warn(
           "Active universe {} key config {} is missing",
-          activeKey.uuid.targetUuid,
-          activeKey.configUuid);
+          activeKey.getUuid().targetUuid,
+          activeKey.getConfigUuid());
       return null;
     }
-    if (kmsConfig.keyProvider != KeyProvider.HASHICORP) {
+    if (kmsConfig.getKeyProvider() != KeyProvider.HASHICORP) {
       // For now only Hashicorp config expires.
       return null;
     }
-    ObjectNode credentials = kmsConfig.authConfig;
+    ObjectNode credentials = kmsConfig.getAuthConfig();
     JsonNode keyTtlNode = credentials.get(HashicorpVaultConfigParams.HC_VAULT_TTL);
     if (keyTtlNode == null || keyTtlNode.asLong() == 0) {
       return null;

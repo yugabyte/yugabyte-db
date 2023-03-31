@@ -52,8 +52,8 @@ public class AlertTemplateSettingsServiceTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer("Customer");
     alertTemplateSettingsService = app.injector().instanceOf(AlertTemplateSettingsService.class);
 
-    Universe universe1 = ModelFactory.createUniverse("U1", customer.getCustomerId());
-    Universe universe2 = ModelFactory.createUniverse("U2", customer.getCustomerId());
+    Universe universe1 = ModelFactory.createUniverse("U1", customer.getId());
+    Universe universe2 = ModelFactory.createUniverse("U2", customer.getId());
     configuration = ModelFactory.createAlertConfiguration(customer, universe1);
     ModelFactory.createAlertDefinition(customer, universe1, configuration);
     ModelFactory.createAlertDefinition(customer, universe2, configuration);
@@ -157,7 +157,7 @@ public class AlertTemplateSettingsServiceTest extends FakeDBApplication {
   }
 
   private void assertTestSettings(AlertTemplateSettings settings) {
-    assertThat(settings.getCustomerUUID(), equalTo(customer.uuid));
+    assertThat(settings.getCustomerUUID(), equalTo(customer.getUuid()));
     assertThat(settings.getTemplate(), equalTo(MEMORY_CONSUMPTION.name()));
     assertThat(
         settings.getLabels().entrySet(),

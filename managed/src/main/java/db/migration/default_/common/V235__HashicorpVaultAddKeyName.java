@@ -25,21 +25,22 @@ public class V235__HashicorpVaultAddKeyName extends BaseJdbcMigration {
   public static void addKeyNameToAuthConfig() {
     List<KmsConfig> kmsConfigs = KmsConfig.listAllKMSConfigs();
     for (KmsConfig kmsConfig : kmsConfigs) {
-      if (KeyProvider.HASHICORP.equals(kmsConfig.keyProvider)) {
+      if (KeyProvider.HASHICORP.equals(kmsConfig.getKeyProvider())) {
         V235__HashicorpVaultAddKeyName.populateKeyNameIfNotExists(kmsConfig);
       }
     }
   }
 
   public static void populateKeyNameIfNotExists(KmsConfig kmsConfig) {
-    ObjectNode authConfig = kmsConfig.authConfig;
+    ObjectNode authConfig = kmsConfig.getAuthConfig();
     if (!authConfig.has(HashicorpVaultConfigParams.HC_VAULT_KEY_NAME)) {
       authConfig.put(
           HashicorpVaultConfigParams.HC_VAULT_KEY_NAME, HashicorpEARServiceUtil.HC_VAULT_EKE_NAME);
-      kmsConfig.authConfig = authConfig;
+      kmsConfig.setAuthConfig(authConfig);
       kmsConfig.save();
       log.info(
-          "Running Hashicorp migration: Added key name to config UUID '{}'.", kmsConfig.configUUID);
+          "Running Hashicorp migration: Added key name to config UUID '{}'.",
+          kmsConfig.getConfigUUID());
     }
   }
 }

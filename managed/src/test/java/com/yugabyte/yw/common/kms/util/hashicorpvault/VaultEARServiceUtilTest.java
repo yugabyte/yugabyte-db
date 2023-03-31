@@ -94,16 +94,16 @@ public class VaultEARServiceUtilTest extends FakeDBApplication {
   public void setUp() {
     LOCAL_MOCK_RUN = MOCK_RUN;
     config = new KmsConfig();
-    config.authConfig = (ObjectNode) Json.parse(jsonString);
-    config.customerUUID = customerID;
-    config.configUUID = testConfigID;
+    config.setAuthConfig((ObjectNode) Json.parse(jsonString));
+    config.setCustomerUUID(customerID);
+    config.setConfigUUID(testConfigID);
   }
 
   @Test
   public void testGetVaultSecretEngine() {
     String key = "key1";
     byte[] data = "TestData".getBytes();
-    ObjectNode cfg = config.authConfig;
+    ObjectNode cfg = config.getAuthConfig();
 
     try {
       VaultSecretEngineBase transitEngine;
@@ -133,7 +133,7 @@ public class VaultEARServiceUtilTest extends FakeDBApplication {
 
     VaultAccessor vAccessor;
     VaultSecretEngineBase transitEngine;
-    ObjectNode cfg = config.authConfig.deepCopy();
+    ObjectNode cfg = config.getAuthConfig().deepCopy();
 
     if (LOCAL_MOCK_RUN) {
       vAccessor = mock(VaultAccessor.class);
@@ -157,7 +157,7 @@ public class VaultEARServiceUtilTest extends FakeDBApplication {
 
     VaultAccessor vAccessor;
     VaultSecretEngineBase transitEngine;
-    ObjectNode cfg = config.authConfig.deepCopy();
+    ObjectNode cfg = config.getAuthConfig().deepCopy();
     if (!LOCAL_MOCK_RUN) return;
 
     vAccessor = mock(VaultAccessor.class);

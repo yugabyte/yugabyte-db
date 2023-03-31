@@ -48,14 +48,15 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
     NodeTaskParams taskParams = taskParams();
     log.info(
         "Updating node details for univ uuid={}, node name={} with {}.",
-        taskParams.universeUUID,
+        taskParams.getUniverseUUID(),
         taskParams.nodeName,
         response.message);
 
     if (Strings.isNullOrEmpty(response.message)) {
       String msg =
           String.format(
-              "Node %s in universe %s is not found.", taskParams.nodeName, taskParams.universeUUID);
+              "Node %s in universe %s is not found.",
+              taskParams.nodeName, taskParams.getUniverseUUID());
       log.error(msg);
       throw new RuntimeException(msg);
     }

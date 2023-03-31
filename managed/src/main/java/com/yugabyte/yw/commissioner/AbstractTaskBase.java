@@ -187,7 +187,7 @@ public abstract class AbstractTaskBase implements ITask {
               nodeName,
               currentStatus,
               nodeStatus,
-              universe.universeUUID);
+              universe.getUniverseUUID());
           nodeStatus.fillNodeStates(node);
           if (nodeStatus.getNodeState() == NodeDetails.NodeState.Decommissioned) {
             node.cloudInfo.private_ip = null;

@@ -62,7 +62,7 @@ public class CreateTableSpaces extends AbstractTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails randomTServer = null;
     try {
       randomTServer = CommonUtils.getARandomLiveTServer(universe);

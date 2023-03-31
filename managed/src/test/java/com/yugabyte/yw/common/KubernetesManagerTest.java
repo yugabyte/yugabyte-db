@@ -59,9 +59,9 @@ public class KubernetesManagerTest extends FakeDBApplication {
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.kubernetes);
-    universe = ModelFactory.createUniverse("testUniverse", defaultCustomer.getCustomerId());
+    universe = ModelFactory.createUniverse("testUniverse", defaultCustomer.getId());
     configProvider.put("KUBECONFIG", "test");
-    defaultProvider.setConfig(configProvider);
+    defaultProvider.setConfigMap(configProvider);
     defaultProvider.save();
     command = ArgumentCaptor.forClass(ArrayList.class);
     context = ArgumentCaptor.forClass(ShellProcessContext.class);
@@ -88,17 +88,17 @@ public class KubernetesManagerTest extends FakeDBApplication {
     switch (commandType) {
       case HELM_INSTALL:
         kubernetesManager.helmInstall(
-            universe.universeUUID,
+            universe.getUniverseUUID(),
             ybSoftwareVersion,
             configProvider,
-            defaultProvider.uuid,
+            defaultProvider.getUuid(),
             "demo-universe",
             "demo-namespace",
             "/tmp/override.yml");
         break;
       case HELM_UPGRADE:
         kubernetesManager.helmUpgrade(
-            universe.universeUUID,
+            universe.getUniverseUUID(),
             ybSoftwareVersion,
             configProvider,
             "demo-universe",
