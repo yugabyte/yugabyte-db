@@ -1,72 +1,36 @@
 import React, { Component, FC, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, makeStyles } from '@material-ui/core';
-import { Layer, Rectangle, ResponsiveContainer, Sankey } from 'recharts';
+import { Layer, Rectangle, Sankey, Tooltip } from 'recharts';
 import { ClusterData, useGetClusterNodesQuery } from '@app/api/src';
-import { Link as RouterLink } from 'react-router-dom';
 import { AXIOS_INSTANCE } from '@app/api/src';
 
-const useStyles = makeStyles((theme) => ({
-  container: {
-    height: '186px',
-    overflow: 'auto',
-    padding: `${theme.spacing(1)}px 0`,
-    position: 'relative'
-  },
-  link: {
-    '&:link, &:focus, &:active, &:visited, &:hover': {
-      textDecoration: 'none',
-      color: theme.palette.text.primary,
-    }
-  },
-  availableContainer: {
-    position: 'absolute',
-    bottom: 12,
-    fontSize: "13px",
-    fontWeight: 500,
-    display: 'flex',
-    gap: theme.spacing(1.5),
-  },
-  availableText: {
-    color: theme.palette.grey[500],
-  },
-  availableValue: {
-    color: '#444',
-  }
-}));
-
-interface VCpuUsageChartProps {
+interface VCpuUsageSankey {
   cluster: ClusterData,
+  height?: number,
+  width?: number,
+  sankeyProps?: Partial<typeof Sankey['defaultProps'] & { cursor: string }>,
+  showTooltip?: boolean,
 }
 
-/* const data = {
+/* Data format for sankey charts
+
+const data = {
   "nodes": [
-    { "name": "cores", "translateKey": "clusterDetail.overview" },
+    { "name": "cores" },
     { "name": "cluster_vpn...1-n5" },
     { "name": "cluster_vpn...1-n6" },
     { "name": "cluster_vpn...1-n7" },
-    { "name": "cluster_vpn...1-n1" },
-    { "name": "cluster_vpn...1-n3" },
-    { "name": "cluster_vpn...1-n4" },
-    { "name": "cluster_vpn...1-n2" },
-    { "name": "cluster_vpn...1-n9" },
-    { "name": "cluster_vpn...1-n8" },
   ],
   "links": [
-    { "source": 0, "target": 1, "value": 25 },
-    { "source": 0, "target": 2, "value": 12 },
+    { "source": 0, "target": 2, "value": 25 },
+    { "source": 0, "target": 1, "value": 12 },
     { "source": 0, "target": 3, "value":  7 },
-    { "source": 0, "target": 4, "value":  6 },
-    { "source": 0, "target": 5, "value":  5 },
-    { "source": 0, "target": 6, "value":  5 },
-    { "source": 0, "target": 7, "value":  4 },
-    { "source": 0, "target": 8, "value":  3 },
-    { "source": 0, "target": 9, "value":  2 },
   ]
-}; */
+};
 
-export const VCpuUsageChartH: FC<VCpuUsageChartProps> = ({ cluster }) => {
-  const classes = useStyles();
+*/
+
+export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, showTooltip, height, width }) => {
   const { t } = useTranslation();
   const { data: nodesResponse } = useGetClusterNodesQuery();
 
@@ -81,7 +45,9 @@ export const VCpuUsageChartH: FC<VCpuUsageChartProps> = ({ cluster }) => {
     const populateCpu = async () => {
       const getNodeCpu = async (nodeName: string) => {
         try {
+          // Get the system and user cpu usage of the node from the metrics endpoint
           const cpu = await AXIOS_INSTANCE.get('/metrics?metrics=CPU_USAGE_SYSTEM%2CCPU_USAGE_USER&node_name=' + nodeName)
+            // Add the system and user cpu usage to get the total cpu usage
             .then(({ data }) => (Number(data.data[0].values[1]) || 0) + (Number(data.data[1].values[1]) || 0))
             .catch(err => { console.error(err); return 0; })
           return cpu;
@@ -94,6 +60,7 @@ export const VCpuUsageChartH: FC<VCpuUsageChartProps> = ({ cluster }) => {
       const cpuUsage: number[] = [];
       for (let i = 0; i < nodesResponse.data.length; i++) {
         const node = nodesResponse.data[i].name;
+        // Fetch the cpu usage of all nodes
         const nodeCPU = await getNodeCpu(node);
         cpuUsage.push(nodeCPU);
       }
@@ -105,64 +72,89 @@ export const VCpuUsageChartH: FC<VCpuUsageChartProps> = ({ cluster }) => {
   }, [nodesResponse])
 
   const data = useMemo(() => {
-    return {
+    const data =  {
       nodes: [
-        { "name": "cores", "translateKey": "clusterDetail.overview" },
-        ...(nodesResponse?.data.map(({ name }) => ({ name })) ?? [])
+        // Usage node
+        { "name": "Usage" },
+        // Available node
+        { "name": "Available" },
+        // Nodes
+        ...(nodesResponse?.data.map(({ name }) => ({ name })) ?? []),
+        // Dummy node for available cores
+        { "name": "" }, 
       ],
-      links: nodesResponse?.data.map((_, index) => ({ 
+      links: [ ...(nodesResponse?.data.map((_, index) => ({ 
+        // Start all links from the usage node
         "source": 0,
-        "target": index + 1,
+        // Target the corresponding node
+        "target": index + 2,
+        // Convert node cpu usage to two decimal places
         "value": !nodeCpuUsage[index] || nodeCpuUsage[index] < 1 ? 1 : Math.round(nodeCpuUsage[index] * 100) / 100 }
-      )) ?? [],
+      )) ?? []),
+      // Dummy link for the available cores node
+      { "source": 1, "target": (nodesResponse ? nodesResponse.data.length : 0) + 2, value: 0 }
+    ],
     }
+
+    // Calculate cpu usage and available cpu values
+    const cpuAcc = data["links"].slice(0, -1).reduce((acc, curr) => acc + curr.value, 0);
+    const cpuUsage = Math.ceil(Math.min(cpuAcc, 100) * totalCores / 100);
+    const cpuAvailable = totalCores - cpuUsage;
+
+    // Update data values as per the calculation performed
+    data["links"][data["links"].length - 1].value = Math.round(cpuAcc / cpuUsage * cpuAvailable);
+    data["nodes"][0].name = t('clusterDetail.overview.usageCores', { usage: cpuUsage });
+    data["nodes"][1].name = t('clusterDetail.overview.availableCores', { available: cpuAvailable });
+  
+    return data;
   }, [nodeCpuUsage, nodesResponse])
 
   return (
-    <div className={classes.container}>
-      <Link className={classes.link} component={RouterLink} to="/performance/metrics">
-        <ResponsiveContainer width="99%" height="100%" debounce={2} minWidth={380}>
-          <Sankey
-            data={data}
-            cursor="pointer"
-            margin={{
-              top: 6,
-              left: 142,
-              right: 180,
-              bottom: 6,
-            }}
-            node={<CpuSankeyNode translate={t} totalCores={totalCores} 
-              totalCpu={data["links"].reduce((acc, curr) => acc + curr.value, 0)} />}
-            nodeWidth={4}
-            nodePadding={10}
-            link={<CpuSankeyLink />}
-          >
-            {/* <Tooltip /> */}
-          </Sankey>
-        </ResponsiveContainer>
-        <div className={classes.availableContainer}>
-          <div className={classes.availableText}>{t((data.nodes[0] as any).translateKey + ".available").toUpperCase()}</div>
-          <div className={classes.availableValue}>{totalCores} {data.nodes[0].name}</div>
-        </div>
-      </Link>
-    </div>
+    <Sankey
+      height={height}
+      width={width}
+      data={data}
+      iterations={0}
+      margin={{
+        top: 15,
+        left: 168,
+        right: 180,
+        bottom: -10,
+      }}
+      node={<CpuSankeyNode />}
+      nodeWidth={4}
+      nodePadding={10}
+      link={<CpuSankeyLink />}
+      {...sankeyProps}
+    >
+      {showTooltip && <Tooltip />}
+    </Sankey>
   );
 };
 
 
 function CpuSankeyNode(props: any) {
-  const { x, y, width, height, index, payload, translate: t, totalCores, totalCpu } = props;
-  const isOut = index === 0 /* x + width + 6 > containerWidth */;
-  const cpuUsage = Math.ceil(totalCpu * totalCores / 100);
+  const { x, y, width, height, index, payload } = props;
+  const isLeftNode = index <= 1;
+
+  const splitPayload = payload.name.split(' ') as string[];
+  const cpuTextPrefix = splitPayload[0].toUpperCase();
+  const cpuValue = Number(splitPayload[1])
+  const cpuTextSuffix = splitPayload.slice(2).join(' ');
+
+  if (!payload.name) {
+    return null;
+  }
 
   return (
     <Layer key={`CustomNode${index}`}>
       <Rectangle 
         x={x} y={y} 
         width={width} height={height} 
-        fill={isOut ? "#2B59C3" : "#8047F5"} 
-        fillOpacity={isOut ? 0.6 : 0.5} />
-      {!isOut ? 
+        fill={isLeftNode ? "#2B59C3" : "#8047F5"} 
+        fillOpacity={isLeftNode ? 0.6 : 0.5} />
+      {!isLeftNode ? 
+        // Right node
         <text
           textAnchor={'start'}
           x={x + width + 15}
@@ -175,6 +167,7 @@ function CpuSankeyNode(props: any) {
           <tspan dx={16}>{payload.name}</tspan>
         </text>
         :
+        // Left node
         <text
           textAnchor='end'
           x={x - 10}
@@ -182,10 +175,10 @@ function CpuSankeyNode(props: any) {
           fontSize="13"
           fontWeight={500}
         >
-          
-          <tspan fill="#97A5B0">{t(payload.translateKey + ".usage").toUpperCase()}</tspan>
-          <tspan dx={cpuUsage < 10 ? 42 : 32} fill="#000" fontWeight={700} fontSize="15">{cpuUsage} </tspan>
-          <tspan fill="#444" fillOpacity={1}>{payload.name}</tspan>
+          <tspan fill="#97A5B0">{cpuTextPrefix}</tspan>
+          <tspan dx={index === 0 ? (cpuValue < 10 ? 64 : 54) : (cpuValue < 10 ? 40 : 32)} 
+            fill="#000" fontWeight={700} fontSize="15">{cpuValue} </tspan>
+          <tspan fill="#444" fillOpacity={1}>{cpuTextSuffix}</tspan>
         </text>
       }
     </Layer>
@@ -196,7 +189,11 @@ class CpuSankeyLink extends Component<any, any> {
   static displayName = 'CpuSankeyLink';
 
   render() {
-    const { sourceX, targetX, sourceY, targetY, sourceControlX, targetControlX, linkWidth, index } = this.props;
+    const { sourceX, targetX, sourceY, targetY, sourceControlX, targetControlX, linkWidth, index, payload } = this.props;
+
+    if (!payload.target.name) {
+      return null;
+    }
 
     const gradientID = `linkGradient${index}`;
     const fill = this.state?.fill ?? `url(#${gradientID})`;

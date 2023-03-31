@@ -27,6 +27,8 @@ import { useChartConfig } from '@app/features/clusters/details/overview/ChartCon
 // import EditIcon from '@app/assets/edit.svg';
 import RefreshIcon from '@app/assets/refresh.svg';
 import { VCpuUsageChartV } from './VCpuUsageChartV';
+import { VCpuUsageResponsiveSankey } from '../../overview/VCpuUsageResponsiveSankey';
+import { VCpuUsagePanel } from './VCpuUsagePanel';
 
 const useStyles = makeStyles((theme) => ({
   divider: {
@@ -147,7 +149,7 @@ export const Metrics: FC = () => {
         setVisibility={setIsMetricsOptionsModalOpen}
   />*/}
       {clusterData?.data &&
-        <VCpuUsageChartV cluster={clusterData.data} />
+        <VCpuUsagePanel cluster={clusterData.data} />
       }
       <Grid container justifyContent="space-between" alignItems="center">
         <Grid item xs={6}>

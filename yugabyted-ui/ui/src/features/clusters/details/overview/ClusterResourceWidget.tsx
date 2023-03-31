@@ -6,7 +6,7 @@ import { DiskUsageGraph } from './DiskUsageGraph';
 import { useTranslation } from 'react-i18next';
 import { ChevronRight } from '@material-ui/icons';
 import { TabContext, TabPanel } from '@material-ui/lab';
-import { VCpuUsageChartH } from './VCpuUsageChartH';
+import { VCpuUsageResponsiveSankey } from './VCpuUsageResponsiveSankey';
 import { Link as RouterLink } from 'react-router-dom';
 
 const useStyles = makeStyles((theme) => ({
@@ -101,7 +101,7 @@ export const ClusterResourceWidget: FC<ClusterDiskWidgetProps> = ({ cluster }) =
         </Box>
         
         <TabPanel className={classes.tabPanel} value={'tabvCpu'}>
-          <VCpuUsageChartH cluster={cluster} />
+          <VCpuUsageResponsiveSankey cluster={cluster} />
         </TabPanel>
         <TabPanel className={classes.tabPanel} value={'tabDisk'}>
           <DiskUsageGraph cluster={cluster} />
