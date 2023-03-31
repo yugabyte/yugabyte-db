@@ -22,28 +22,6 @@ To run these examples, you should have the following:
 - [Installed ybm CLI](../managed-cli/managed-cli-overview/#install-ybm).
 - [Configured ybm CLI](../managed-cli/managed-cli-overview/#configure-ybm) with your API key.
 
-### List clusters
-
-To list your current clusters, enter the following command:
-
-```sh
-ybm cluster list
-```
-
-To connect to your cluster from your computer, you need an IP allow list with your computer's IP address. Create one as follows:
-
-```sh
-ybm network-allow-list create \
-  --ip-addr <your IP address> \
-  --name my-computer
-```
-
-```output
-Name          Description   Allow List          Clusters
-my-computer                 170.200.10.100/32   
-NetworkAllowList my-computer successful created
-```
-
 ### Create a sandbox cluster
 
 To create your free [sandbox](../../cloud-basics/create-clusters/create-clusters-free/) cluster, enter the following command:
@@ -62,6 +40,22 @@ When you use the `--wait` flag, you can see the progress of the cluster creation
 The cluster my-sandbox has been created
 Name         Tier      Version         State     Health    Regions     Nodes     Total Res.(Vcpu/Mem/Disk)
 my-sandbox   Sandbox   2.17.1.0-b439   ACTIVE    💚        us-west-2   1         2 / 4GB / 10GB
+```
+
+### Create an IP allow list
+
+To connect to your cluster from your computer, you need an IP allow list with your computer's IP address. Create one as follows:
+
+```sh
+ybm network-allow-list create \
+  --ip-addr <your IP address> \
+  --name my-computer
+```
+
+```output
+Name          Description   Allow List          Clusters
+my-computer                 170.200.10.100/32   
+NetworkAllowList my-computer successfully created
 ```
 
 Assign your IP allow list to your sandbox:
@@ -130,16 +124,16 @@ The following command creates a single-region dedicated cluster in Tokyo:
 
 ```sh
 ybm cluster create \
-    --credentials username=admin,password=password \
-    --cloud-type AWS \
-    --cluster-type SYNCHRONOUS \
-    --node-config num-cores=4,disk-size-gb=200 \
-    --region-info region=ap-northeast-1,num-nodes=3 \
-    --cluster-tier Dedicated \
-    --fault-tolerance ZONE \
-    --database-version Preview \
-    --cluster-name my-single-region \
-    --wait
+  --credentials username=admin,password=password \
+  --cloud-type AWS \
+  --cluster-type SYNCHRONOUS \
+  --node-config num-cores=4,disk-size-gb=200 \
+  --region-info region=ap-northeast-1,num-nodes=3 \
+  --cluster-tier Dedicated \
+  --fault-tolerance ZONE \
+  --database-version Preview \
+  --cluster-name my-single-region \
+  --wait
 ```
 
 ### Create a multi-region dedicated cluster
@@ -170,16 +164,16 @@ The following command creates a [replicate-across-regions](../../cloud-basics/cr
 
 ```sh
 ybm cluster create \
-    --cluster-name my-multi-region \
-    --credentials username=admin,password=password \
-    --cloud-type GCP \
-    --cluster-type SYNCHRONOUS \
-    --node-config num-cores=2,disk-size-gb=200 \
-    --region-info region=us-east1,num-nodes=1,vpc=gcp-vpc \
-    --region-info region=us-west2,num-nodes=1,vpc=gcp-vpc \
-    --region-info region=us-central1,num-nodes=1,vpc=gcp-vpc \
-    --cluster-tier Dedicated \
-    --fault-tolerance REGION \
-    --database-version Stable \
-    --wait
+  --cluster-name my-multi-region \
+  --credentials username=admin,password=password \
+  --cloud-type GCP \
+  --cluster-type SYNCHRONOUS \
+  --node-config num-cores=2,disk-size-gb=200 \
+  --region-info region=us-east1,num-nodes=1,vpc=gcp-vpc \
+  --region-info region=us-west2,num-nodes=1,vpc=gcp-vpc \
+  --region-info region=us-central1,num-nodes=1,vpc=gcp-vpc \
+  --cluster-tier Dedicated \
+  --fault-tolerance REGION \
+  --database-version Stable \
+  --wait
 ```
