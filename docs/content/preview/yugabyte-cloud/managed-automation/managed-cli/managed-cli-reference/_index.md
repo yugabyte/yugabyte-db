@@ -105,7 +105,7 @@ The following flags can be passed in with any command. These flags can also be a
 : Specify the desired output format. `table` (default), `json`, or `pretty`.
 
 --wait
-: For long-running commands such as creating or deleting a cluster, you can use the `--wait` flag to wait until the operation is completed. `true` or `false` (default). For example:
+: For long-running commands such as creating or deleting a cluster, you can use the `--wait` flag to display progress in the shell. `true` or `false` (default). For example:
 
 ```sh
 ybm cluster delete \
