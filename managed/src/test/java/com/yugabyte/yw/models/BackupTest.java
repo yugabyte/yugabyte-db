@@ -5,13 +5,11 @@ package com.yugabyte.yw.models;
 import static com.yugabyte.yw.models.Backup.BackupState.Failed;
 import static com.yugabyte.yw.models.Backup.BackupState.InProgress;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -26,10 +24,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
@@ -52,33 +46,34 @@ public class BackupTest extends FakeDBApplication {
   public void testCreate() {
     UUID universeUUID = UUID.randomUUID();
     Backup b =
-        ModelFactory.createBackup(defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), universeUUID, s3StorageConfig.getConfigUUID());
     assertNotNull(b);
     String storageRegex =
         "s3://foo/univ-"
             + universeUUID
             + "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+/table-foo.bar-[a-zA-Z0-9]*";
     assertThat(b.getBackupInfo().storageLocation, RegexMatcher.matchesRegex(storageRegex));
-    assertEquals(s3StorageConfig.configUUID, b.getBackupInfo().storageConfigUUID);
-    assertEquals(InProgress, b.state);
+    assertEquals(s3StorageConfig.getConfigUUID(), b.getBackupInfo().storageConfigUUID);
+    assertEquals(InProgress, b.getState());
   }
 
   @Test
   public void testCreateWithoutTableUUID() {
     UUID universeUUID = UUID.randomUUID();
     BackupTableParams params = new BackupTableParams();
-    params.storageConfigUUID = s3StorageConfig.configUUID;
-    params.universeUUID = universeUUID;
+    params.storageConfigUUID = s3StorageConfig.getConfigUUID();
+    params.setUniverseUUID(universeUUID);
     params.setKeyspace("foo");
     params.setTableName("bar");
-    Backup b = Backup.create(defaultCustomer.uuid, params);
+    Backup b = Backup.create(defaultCustomer.getUuid(), params);
     String storageRegex =
         "s3://foo/univ-"
             + universeUUID
             + "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+/table-foo.bar";
     assertThat(b.getBackupInfo().storageLocation, RegexMatcher.matchesRegex(storageRegex));
-    assertEquals(s3StorageConfig.configUUID, b.getBackupInfo().storageConfigUUID);
-    assertEquals(InProgress, b.state);
+    assertEquals(s3StorageConfig.getConfigUUID(), b.getBackupInfo().storageConfigUUID);
+    assertEquals(InProgress, b.getState());
   }
 
   @Test
@@ -87,21 +82,21 @@ public class BackupTest extends FakeDBApplication {
         Json.parse(
             "{\"name\": \"NFS\", \"configName\": \"Test\", \"type\": \"STORAGE\", \"data\": {}}");
     CustomerConfig customerConfig =
-        CustomerConfig.createWithFormData(defaultCustomer.uuid, formData);
+        CustomerConfig.createWithFormData(defaultCustomer.getUuid(), formData);
     UUID universeUUID = UUID.randomUUID();
     BackupTableParams params = new BackupTableParams();
-    params.storageConfigUUID = customerConfig.configUUID;
-    params.universeUUID = universeUUID;
+    params.storageConfigUUID = customerConfig.getConfigUUID();
+    params.setUniverseUUID(universeUUID);
     params.setKeyspace("foo");
     params.setTableName("bar");
-    Backup b = Backup.create(defaultCustomer.uuid, params);
+    Backup b = Backup.create(defaultCustomer.getUuid(), params);
     String storageRegex =
         "univ-"
             + universeUUID
             + "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+/table-foo.bar";
     assertThat(b.getBackupInfo().storageLocation, RegexMatcher.matchesRegex(storageRegex));
-    assertEquals(customerConfig.configUUID, b.getBackupInfo().storageConfigUUID);
-    assertEquals(InProgress, b.state);
+    assertEquals(customerConfig.getConfigUUID(), b.getBackupInfo().storageConfigUUID);
+    assertEquals(InProgress, b.getState());
   }
 
   @Test
@@ -110,40 +105,45 @@ public class BackupTest extends FakeDBApplication {
         Json.parse(
             "{\"name\": \"TEST\", \"configName\": \"Test\", \"type\": \"STORAGE\", \"data\": {}}");
     CustomerConfig customerConfig =
-        CustomerConfig.createWithFormData(defaultCustomer.uuid, formData);
+        CustomerConfig.createWithFormData(defaultCustomer.getUuid(), formData);
     UUID universeUUID = UUID.randomUUID();
     BackupTableParams params = new BackupTableParams();
-    params.storageConfigUUID = customerConfig.configUUID;
-    params.universeUUID = universeUUID;
+    params.storageConfigUUID = customerConfig.getConfigUUID();
+    params.setUniverseUUID(universeUUID);
     params.setKeyspace("foo");
     params.setTableName("bar");
     assertThrows(
         "Unknown data type in configuration data. Type STORAGE, name TEST.",
         PlatformServiceException.class,
-        () -> Backup.create(defaultCustomer.uuid, params));
+        () -> Backup.create(defaultCustomer.getUuid(), params));
   }
 
   @Test
   public void testFetchByUniverseWithValidUUID() {
-    Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    ModelFactory.createBackup(defaultCustomer.uuid, u.universeUUID, s3StorageConfig.configUUID);
-    List<Backup> backupList = Backup.fetchByUniverseUUID(defaultCustomer.uuid, u.universeUUID);
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
+    ModelFactory.createBackup(
+        defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
+    List<Backup> backupList =
+        Backup.fetchByUniverseUUID(defaultCustomer.getUuid(), u.getUniverseUUID());
     assertEquals(1, backupList.size());
   }
 
   @Test
   public void testFetchByUniverseWithInvalidUUID() {
-    Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    ModelFactory.createBackup(defaultCustomer.uuid, u.universeUUID, s3StorageConfig.configUUID);
-    List<Backup> backupList = Backup.fetchByUniverseUUID(defaultCustomer.uuid, UUID.randomUUID());
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
+    ModelFactory.createBackup(
+        defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
+    List<Backup> backupList =
+        Backup.fetchByUniverseUUID(defaultCustomer.getUuid(), UUID.randomUUID());
     assertEquals(0, backupList.size());
   }
 
   @Test
   public void testFetchByTaskWithValidUUID() {
-    Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
     Backup b =
-        ModelFactory.createBackup(defaultCustomer.uuid, u.universeUUID, s3StorageConfig.configUUID);
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
     UUID taskUUID = UUID.randomUUID();
     b.setTaskUUID(taskUUID);
     b.save();
@@ -168,13 +168,14 @@ public class BackupTest extends FakeDBApplication {
 
   @Test
   public void testFetchByTaskWithTargetType() {
-    Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
     Backup b =
-        ModelFactory.createBackup(defaultCustomer.uuid, u.universeUUID, s3StorageConfig.configUUID);
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
     CustomerTask ct =
         CustomerTask.create(
             defaultCustomer,
-            b.backupUUID,
+            b.getBackupUUID(),
             UUID.randomUUID(),
             CustomerTask.TargetType.Table,
             CustomerTask.TaskType.Create,
@@ -185,41 +186,45 @@ public class BackupTest extends FakeDBApplication {
 
   @Test
   public void testGetWithValidCustomerUUID() {
-    Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
     Backup b =
-        ModelFactory.createBackup(defaultCustomer.uuid, u.universeUUID, s3StorageConfig.configUUID);
-    Backup fb = Backup.get(defaultCustomer.uuid, b.backupUUID);
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
+    Backup fb = Backup.get(defaultCustomer.getUuid(), b.getBackupUUID());
     assertEquals(fb, b);
   }
 
   @Test
   public void testGetWithInvalidCustomerUUID() {
-    Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
     Backup b =
-        ModelFactory.createBackup(defaultCustomer.uuid, u.universeUUID, s3StorageConfig.configUUID);
-    Backup fb = Backup.get(UUID.randomUUID(), b.backupUUID);
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
+    Backup fb = Backup.get(UUID.randomUUID(), b.getBackupUUID());
     assertNull(fb);
   }
 
   @Test
   @Parameters({"InProgress, Completed", "Completed, Deleted", "Completed, FailedToDelete"})
   public void testTransitionStateValid(Backup.BackupState from, Backup.BackupState to) {
-    Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
     Backup b =
-        ModelFactory.createBackup(defaultCustomer.uuid, u.universeUUID, s3StorageConfig.configUUID);
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
     b.transitionState(from);
-    assertEquals(from, b.state);
+    assertEquals(from, b.getState());
     b.transitionState(to);
-    assertEquals(to, b.state);
+    assertEquals(to, b.getState());
   }
 
   @Test
   @Parameters({"Completed, Failed"})
   public void testTransitionStateInvalid(Backup.BackupState from, Backup.BackupState to)
       throws InterruptedException {
-    Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
     Backup b =
-        ModelFactory.createBackup(defaultCustomer.uuid, u.universeUUID, s3StorageConfig.configUUID);
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
     Date beforeUpdateTime = b.getUpdateTime();
     assertNotNull(b.getUpdateTime());
     Thread.sleep(1);
@@ -227,80 +232,51 @@ public class BackupTest extends FakeDBApplication {
     assertNotNull(b.getUpdateTime());
     assertNotEquals(beforeUpdateTime, b.getUpdateTime());
     b.transitionState(to);
-    assertNotEquals(Failed, b.state);
+    assertNotEquals(Failed, b.getState());
   }
 
   @Test
   public void testSetTaskUUIDWhenNull() {
-    Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
     Backup b =
-        ModelFactory.createBackup(defaultCustomer.uuid, u.universeUUID, s3StorageConfig.configUUID);
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
     UUID taskUUID = UUID.randomUUID();
-    assertNull(b.taskUUID);
+    assertNull(b.getTaskUUID());
     b.setTaskUUID(taskUUID);
     b.save();
     b.refresh();
-    assertEquals(taskUUID, b.taskUUID);
-  }
-
-  @Test
-  public void testSetTaskUUID() throws InterruptedException {
-    Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    Backup b =
-        ModelFactory.createBackup(defaultCustomer.uuid, u.universeUUID, s3StorageConfig.configUUID);
-    UUID taskUUID1 = UUID.randomUUID();
-    UUID taskUUID2 = UUID.randomUUID();
-    ExecutorService service = Executors.newFixedThreadPool(2);
-    AtomicBoolean success1 = new AtomicBoolean();
-    AtomicBoolean success2 = new AtomicBoolean();
-    service.submit(
-        () -> {
-          success1.set(b.setTaskUUID(taskUUID1));
-          b.save();
-        });
-    service.submit(
-        () -> {
-          success2.set(b.setTaskUUID(taskUUID2));
-          b.save();
-        });
-    service.awaitTermination(3, TimeUnit.SECONDS);
-    b.refresh();
-    if (success1.get() && !success2.get()) {
-      assertEquals(taskUUID2, b.taskUUID);
-    } else {
-      assertFalse(success1.get());
-      assertTrue(success2.get());
-      assertEquals(taskUUID2, b.taskUUID);
-    }
+    assertEquals(taskUUID, b.getTaskUUID());
   }
 
   @Test
   public void testSetTaskUUIDWhenNotNull() {
-    Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
     Backup b =
-        ModelFactory.createBackup(defaultCustomer.uuid, u.universeUUID, s3StorageConfig.configUUID);
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
     b.setTaskUUID(UUID.randomUUID());
     b.save();
     UUID taskUUID = UUID.randomUUID();
-    assertNotNull(b.taskUUID);
+    assertNotNull(b.getTaskUUID());
     b.setTaskUUID(taskUUID);
     b.save();
     b.refresh();
-    assertEquals(taskUUID, b.taskUUID);
+    assertEquals(taskUUID, b.getTaskUUID());
   }
 
   public void testGetAllCompletedBackupsWithExpiryForDelete() {
     UUID universeUUID = UUID.randomUUID();
-    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
     Backup backup1 =
         ModelFactory.createBackupWithExpiry(
-            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(), universe.getUniverseUUID(), s3StorageConfig.getConfigUUID());
     Backup backup2 =
         ModelFactory.createBackupWithExpiry(
-            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(), universe.getUniverseUUID(), s3StorageConfig.getConfigUUID());
     Backup backup3 =
         ModelFactory.createBackupWithExpiry(
-            defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(), universeUUID, s3StorageConfig.getConfigUUID());
 
     backup1.transitionState(Backup.BackupState.Completed);
     backup2.transitionState(Backup.BackupState.Completed);
@@ -327,7 +303,8 @@ public class BackupTest extends FakeDBApplication {
             + "\"schedulingFrequency\":30000,\"timeBeforeDelete\":0,\"enableVerboseLogs\":false}";
     UUID universeUUID = UUID.randomUUID();
     Backup b =
-        ModelFactory.createBackup(defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), universeUUID, s3StorageConfig.getConfigUUID());
     assertNotNull(b);
 
     SqlUpdate sqlUpdate =
@@ -335,11 +312,11 @@ public class BackupTest extends FakeDBApplication {
             "update public.backup set backup_info = '"
                 + jsonWithUnknownFields
                 + "'  where backup_uuid::text = '"
-                + b.backupUUID
+                + b.getBackupUUID()
                 + "';");
     sqlUpdate.execute();
 
-    b = Backup.get(defaultCustomer.uuid, b.backupUUID);
+    b = Backup.get(defaultCustomer.getUuid(), b.getBackupUUID());
     assertNotNull(b);
   }
 }

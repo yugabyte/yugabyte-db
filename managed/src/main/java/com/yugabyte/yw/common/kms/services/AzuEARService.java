@@ -11,11 +11,13 @@
 
 package com.yugabyte.yw.common.kms.services;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import java.util.List;
 import java.util.UUID;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.algorithms.AzuAlgorithm;
 import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil;
@@ -220,6 +222,24 @@ public class AzuEARService extends EncryptionAtRestService<AzuAlgorithm> {
   @Override
   protected void cleanupWithService(UUID universeUUID, UUID configUUID) {
     // Do nothing to KMS when deleting universe with EAR enabled
+  }
+
+  @Override
+  public void refreshKmsWithService(UUID configUUID, ObjectNode authConfig) throws Exception {
+    this.azuEARServiceUtil = getAzuEarServiceUtil();
+    String keyName =
+        azuEARServiceUtil.getConfigFieldValue(
+            authConfig, AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName);
+    if (!azuEARServiceUtil.checkKeyExists(authConfig, keyName)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, String.format("Key does not exist in AZU KMS config '%s'.", configUUID));
+    }
+    if (!azuEARServiceUtil.validateKeySettings(authConfig, keyName)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("Key does not have valid settings in AZU KMS config '%s'.", configUUID));
+    }
+    azuEARServiceUtil.testWrapAndUnwrapKey(authConfig);
   }
 
   @Override

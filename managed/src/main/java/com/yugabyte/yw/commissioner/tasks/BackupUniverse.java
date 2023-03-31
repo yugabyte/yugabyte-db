@@ -97,7 +97,7 @@ public class BackupUniverse extends UniverseTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
 
@@ -143,7 +143,7 @@ public class BackupUniverse extends UniverseTaskBase {
             // Download universe keys backup file for encryption at rest
             BackupTableParams restoreKeysParams = new BackupTableParams();
             restoreKeysParams.storageLocation = taskParams().storageLocation;
-            restoreKeysParams.universeUUID = taskParams().universeUUID;
+            restoreKeysParams.setUniverseUUID(taskParams().getUniverseUUID());
             restoreKeysParams.storageConfigUUID = taskParams().storageConfigUUID;
             restoreKeysParams.kmsConfigUUID = taskParams().kmsConfigUUID;
             restoreKeysParams.restoreTimeStamp = taskParams().restoreTimeStamp;
@@ -224,9 +224,9 @@ public class BackupUniverse extends UniverseTaskBase {
     Customer customer = Customer.get(customerUUID);
     JsonNode params = schedule.getTaskParams();
     BackupTableParams taskParams = Json.fromJson(params, BackupTableParams.class);
-    taskParams.scheduleUUID = schedule.scheduleUUID;
+    taskParams.scheduleUUID = schedule.getScheduleUUID();
     taskParams.customerUuid = customerUUID;
-    Universe universe = Universe.maybeGet(taskParams.universeUUID).orElse(null);
+    Universe universe = Universe.maybeGet(taskParams.getUniverseUUID()).orElse(null);
     if (universe == null) {
       schedule.stopSchedule();
       return;
@@ -238,7 +238,7 @@ public class BackupUniverse extends UniverseTaskBase {
         || universe.getUniverseDetails().universePaused) {
       if (!universe.getUniverseDetails().universePaused) {
         schedule.updateBacklogStatus(true);
-        log.debug("Schedule {} backlog status is set to true", schedule.scheduleUUID);
+        log.debug("Schedule {} backlog status is set to true", schedule.getScheduleUUID());
         SCHEDULED_BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
@@ -247,15 +247,15 @@ public class BackupUniverse extends UniverseTaskBase {
       String stateLogMsg = CommonUtils.generateStateLogMsg(universe, alreadyRunning);
       log.warn(
           "Cannot run Backup task on universe {} due to the state {}",
-          taskParams.universeUUID.toString(),
+          taskParams.getUniverseUUID().toString(),
           stateLogMsg);
       return;
     }
     UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
-    if (schedule.getBacklogStatus()) {
+    if (schedule.isBacklogStatus()) {
       schedule.updateBacklogStatus(false);
-      log.debug("Schedule {} backlog status is set to false", schedule.scheduleUUID);
+      log.debug("Schedule {} backlog status is set to false", schedule.getScheduleUUID());
     }
     log.info(
         "Submitted task to backup table {}:{}, task uuid = {}.",
@@ -264,7 +264,7 @@ public class BackupUniverse extends UniverseTaskBase {
         taskUUID);
     CustomerTask.create(
         customer,
-        taskParams.universeUUID,
+        taskParams.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Backup,
         CustomerTask.TaskType.Create,

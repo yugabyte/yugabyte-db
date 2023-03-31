@@ -15,7 +15,6 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.InstanceTypeResp;
@@ -65,8 +64,6 @@ public class InstanceTypeController extends AuthenticatedController {
 
   @Inject RuntimeConfGetter confGetter;
 
-  @Inject ConfigHelper configHelper;
-
   /**
    * GET endpoint for listing instance types
    *
@@ -92,7 +89,6 @@ public class InstanceTypeController extends AuthenticatedController {
         InstanceType.findByProvider(
                 provider,
                 config,
-                configHelper,
                 confGetter.getConfForScope(provider, ProviderConfKeys.allowUnsupportedInstances))
             .stream()
             .collect(toMap(it -> it.getInstanceTypeCode(), identity()));
@@ -107,7 +103,7 @@ public class InstanceTypeController extends AuthenticatedController {
     if (filterByZoneCodes.isEmpty()) {
       LOG.debug("No zones specified. Skipping filtering by zone.");
     } else {
-      CloudAPI cloudAPI = cloudAPIFactory.get(provider.code);
+      CloudAPI cloudAPI = cloudAPIFactory.get(provider.getCode());
       if (cloudAPI != null) {
         try {
           LOG.debug(
@@ -117,7 +113,7 @@ public class InstanceTypeController extends AuthenticatedController {
               filterByZoneCodes
                   .stream()
                   .map(code -> AvailabilityZone.getByCode(provider, code))
-                  .collect(groupingBy(az -> az.region, mapping(az -> az.code, toSet())));
+                  .collect(groupingBy(az -> az.getRegion(), mapping(az -> az.getCode(), toSet())));
 
           LOG.debug("AZs looked up from db {}", azByRegionMap);
 
@@ -146,11 +142,11 @@ public class InstanceTypeController extends AuthenticatedController {
               "There was an error {} talking to {} cloud API or filtering instance types "
                   + "based on per zone offerings for user selected zones: {}. We won't filter.",
               exception,
-              provider.code,
+              provider.getCode(),
               filterByZoneCodes);
         }
       } else {
-        LOG.info("No Cloud API defined for {}. Skipping filtering by zone.", provider.code);
+        LOG.info("No Cloud API defined for {}. Skipping filtering by zone.", provider.getCode());
       }
     }
     return PlatformResults.withData(convert(instanceTypesMap.values(), provider));
@@ -159,8 +155,8 @@ public class InstanceTypeController extends AuthenticatedController {
   private InstanceTypeResp convert(InstanceType it, Provider provider) {
     return new InstanceTypeResp()
         .setInstanceType(it)
-        .setProviderCode(provider.code)
-        .setProviderUuid(provider.uuid);
+        .setProviderCode(provider.getCode())
+        .setProviderUuid(provider.getUuid());
   }
 
   private List<InstanceTypeResp> convert(
@@ -192,11 +188,11 @@ public class InstanceTypeController extends AuthenticatedController {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     InstanceType it =
         InstanceType.upsert(
-            provider.uuid,
+            provider.getUuid(),
             formData.get().getInstanceTypeCode(),
-            formData.get().numCores,
-            formData.get().memSizeGB,
-            formData.get().instanceTypeDetails);
+            formData.get().getNumCores(),
+            formData.get().getMemSizeGB(),
+            formData.get().getInstanceTypeDetails());
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -221,7 +217,7 @@ public class InstanceTypeController extends AuthenticatedController {
       nickname = "deleteInstanceType")
   public Result delete(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    InstanceType instanceType = InstanceType.getOrBadRequest(provider.uuid, instanceTypeCode);
+    InstanceType instanceType = InstanceType.getOrBadRequest(provider.getUuid(), instanceTypeCode);
     instanceType.setActive(false);
     instanceType.save();
     auditService()
@@ -249,10 +245,10 @@ public class InstanceTypeController extends AuthenticatedController {
   public Result index(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
 
-    InstanceType instanceType = InstanceType.getOrBadRequest(provider.uuid, instanceTypeCode);
+    InstanceType instanceType = InstanceType.getOrBadRequest(provider.getUuid(), instanceTypeCode);
     // Mount paths are not persisted for non-onprem clouds, but we know the default details.
-    if (!provider.code.equals(onprem.toString())) {
-      instanceType.instanceTypeDetails.setDefaultMountPaths();
+    if (!provider.getCode().equals(onprem.toString())) {
+      instanceType.getInstanceTypeDetails().setDefaultMountPaths();
     }
     return PlatformResults.withData(convert(instanceType, provider));
   }

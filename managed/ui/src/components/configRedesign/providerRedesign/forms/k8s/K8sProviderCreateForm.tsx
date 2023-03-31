@@ -13,7 +13,7 @@ import { toast } from 'react-toastify';
 import { yupResolver } from '@hookform/resolvers/yup';
 
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
-import { ASYNC_ERROR, KubernetesProviderType, ProviderCode } from '../../constants';
+import { KubernetesProviderType, ProviderCode } from '../../constants';
 import { CreateInfraProvider } from '../../InfraProvider';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
 import { FieldGroup } from '../components/FieldGroup';
@@ -25,13 +25,17 @@ import {
   K8sRegionField,
   ConfigureK8sRegionModal
 } from '../configureRegion/ConfigureK8sRegionModal';
-import { KUBERNETES_PROVIDER_OPTIONS } from './constants';
+import {
+  KUBERNETES_PROVIDER_OPTIONS,
+  QUAY_IMAGE_REGISTRY,
+  REDHAT_IMAGE_REGISTRY
+} from './constants';
 import { RegionList } from '../../components/RegionList';
 import { YBButton } from '../../../../common/forms/fields';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { YBInputField } from '../../../../../redesign/components';
 import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
-import { addItem, deleteItem, editItem, handleFormServerError, readFileAsText } from '../utils';
+import { addItem, deleteItem, editItem, readFileAsText } from '../utils';
 
 import {
   K8sAvailabilityZoneMutation,
@@ -48,17 +52,15 @@ interface K8sProviderCreateFormProps {
 
 export interface K8sProviderCreateFormFieldValues {
   dbNodePublicInternetAccess: boolean;
-  kubeConfigContent: File;
   kubeConfigName: string;
   kubernetesImageRegistry: string;
   kubernetesProvider: { value: string; label: string };
-  kubernetesPullSecretContent: File;
-  kubernetesPullSecretName: string;
-  kubernetesServiceAccount: string;
   providerName: string;
   regions: K8sRegionField[];
 
-  [ASYNC_ERROR]: string;
+  kubeConfigContent?: File;
+  kubernetesPullSecretContent?: File;
+  kubernetesPullSecretName?: string;
 }
 
 export const DEFAULT_FORM_VALUES: Partial<K8sProviderCreateFormFieldValues> = {
@@ -73,9 +75,8 @@ const VALIDATION_SCHEMA = object().shape({
       'Provider name cannot contain special characters other than "-", and "_".'
     ),
   kubernetesProvider: object().required('Kubernetes provider is required.'),
-  kubeConfigContent: mixed().required('Kube Config file is required.'),
-  kubernetesPullSecretContent: mixed().required('Kubernetes pull secret file is required.'),
-  kubernetesServiceAccount: string().required('Service account name is required.'),
+  kubeConfigContent: mixed(),
+  kubernetesPullSecretContent: mixed(),
   kubernetesImageRegistry: string().required('Image registry is required.'),
   regions: array().min(1, 'Provider configurations must contain at least one region.')
 });
@@ -116,8 +117,9 @@ export const K8sProviderCreateForm = ({
   const onFormSubmit: SubmitHandler<K8sProviderCreateFormFieldValues> = async (formValues) => {
     let providerPayload: YBProviderMutation | null = null;
     try {
-      const kubernetesPullSecretContent =
-        (await readFileAsText(formValues.kubernetesPullSecretContent)) ?? '';
+      const kubernetesPullSecretContent = formValues.kubernetesPullSecretContent
+        ? (await readFileAsText(formValues.kubernetesPullSecretContent)) ?? ''
+        : '';
 
       // Type cast is required since JsYaml.load doesn't know the type of the input file
       const kubernetesPullSecretYAML = JsYaml.load(
@@ -130,15 +132,18 @@ export const K8sProviderCreateForm = ({
           airGapInstall: !formValues.dbNodePublicInternetAccess,
           cloudInfo: {
             [ProviderCode.KUBERNETES]: {
-              kubeConfigContent: (await readFileAsText(formValues.kubeConfigContent)) ?? '',
-              kubeConfigName: formValues.kubeConfigContent.name ?? '',
+              ...(formValues.kubeConfigContent && {
+                kubeConfigContent: (await readFileAsText(formValues.kubeConfigContent)) ?? '',
+                kubeConfigName: formValues.kubeConfigContent?.name ?? ''
+              }),
               kubernetesImageRegistry: formValues.kubernetesImageRegistry,
-              kubernetesImagePullSecretName: kubernetesPullSecretYAML?.metadata.name,
               kubernetesProvider: formValues.kubernetesProvider.value,
-              kubernetesPullSecretContent:
-                (await readFileAsText(formValues.kubernetesPullSecretContent)) ?? '',
-              kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name ?? '',
-              kubernetesServiceAccount: formValues.kubernetesServiceAccount
+              ...(formValues.kubernetesPullSecretContent && {
+                kubernetesPullSecretContent:
+                  (await readFileAsText(formValues.kubernetesPullSecretContent)) ?? '',
+                kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name ?? '',
+                kubernetesImagePullSecretName: kubernetesPullSecretYAML?.metadata?.name ?? ''
+              })
             }
           }
         },
@@ -159,7 +164,7 @@ export const K8sProviderCreateForm = ({
                       kubeDomain: zone.kubeDomain,
                       kubeNamespace: zone.kubeNamespace,
                       kubePodAddressTemplate: zone.kubePodAddressTemplate,
-                      kubernetesStorageClasses: zone.kubernetesStorageClasses,
+                      kubernetesStorageClass: zone.kubernetesStorageClass,
                       ...(zone.certIssuerType === K8sCertIssuerType.CLUSTER_ISSUER && {
                         certManagerClusterIssuer: zone.certIssuerName
                       }),
@@ -188,11 +193,7 @@ export const K8sProviderCreateForm = ({
       toast.error('An error occured while reading the form input files.');
     }
     if (providerPayload) {
-      await createInfraProvider(providerPayload, {
-        mutateOptions: {
-          onError: (error) => handleFormServerError(error, ASYNC_ERROR, formMethods.setError)
-        }
-      });
+      await createInfraProvider(providerPayload);
     }
   };
 
@@ -226,18 +227,15 @@ export const K8sProviderCreateForm = ({
                 />
               </FormField>
               <FormField>
-                <FieldLabel>Service Account Name</FieldLabel>
-                <YBInputField
-                  control={formMethods.control}
-                  name="kubernetesServiceAccount"
-                  fullWidth
-                />
-              </FormField>
-              <FormField>
                 <FieldLabel>Image Registry</FieldLabel>
                 <YBInputField
                   control={formMethods.control}
                   name="kubernetesImageRegistry"
+                  placeholder={
+                    kubernetesProviderType === KubernetesProviderType.OPEN_SHIFT
+                      ? REDHAT_IMAGE_REGISTRY
+                      : QUAY_IMAGE_REGISTRY
+                  }
                   fullWidth
                 />
               </FormField>

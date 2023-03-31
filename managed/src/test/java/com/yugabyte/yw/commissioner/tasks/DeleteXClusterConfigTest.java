@@ -133,11 +133,11 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
       TestUtils.setFakeHttpContext(defaultUser);
       CustomerTask.create(
           defaultCustomer,
-          targetUniverse.universeUUID,
+          targetUniverse.getUniverseUUID(),
           taskUUID,
           TargetType.XClusterConfig,
           CustomerTask.TaskType.Delete,
-          xClusterConfig.name);
+          xClusterConfig.getName());
       return waitForTask(taskUUID);
     } catch (InterruptedException e) {
       assertNull(e.getMessage());
@@ -204,10 +204,10 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
       assertEquals(DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE.get(i), subtaskGroup.getTaskType());
     }
 
-    assertFalse(XClusterConfig.maybeGet(xClusterConfig.uuid).isPresent());
+    assertFalse(XClusterConfig.maybeGet(xClusterConfig.getUuid()).isPresent());
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
-    assertEquals(1, targetUniverse.version);
+    assertEquals(1, targetUniverse.getVersion());
     assertFalse("universe unlocked", targetUniverse.universeIsLocked());
     assertFalse("update completed", targetUniverse.getUniverseDetails().updateInProgress);
     assertTrue("update successful", targetUniverse.getUniverseDetails().updateSucceeded);
@@ -239,10 +239,10 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
       assertEquals(DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE.get(i), subtaskGroup.getTaskType());
     }
 
-    assertFalse(XClusterConfig.maybeGet(xClusterConfig.uuid).isPresent());
+    assertFalse(XClusterConfig.maybeGet(xClusterConfig.getUuid()).isPresent());
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
-    assertEquals(2, targetUniverse.version);
+    assertEquals(2, targetUniverse.getVersion());
     assertFalse("universe unlocked", targetUniverse.universeIsLocked());
     assertFalse("update completed", targetUniverse.getUniverseDetails().updateInProgress);
     assertTrue("update successful", targetUniverse.getUniverseDetails().updateSucceeded);
@@ -278,15 +278,15 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
       assertNotNull(subtaskGroup);
       assertEquals(DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE.get(i), subtaskGroup.getTaskType());
     }
-    String taskErrMsg = taskInfo.getSubTasks().get(1).getTaskDetails().get("errorString").asText();
+    String taskErrMsg = taskInfo.getSubTasks().get(1).getDetails().get("errorString").asText();
     String expectedErrMsg =
         String.format(
             "Failed to delete replication for XClusterConfig(%s): %s",
-            xClusterConfig.uuid, deleteErrMsg);
+            xClusterConfig.getUuid(), deleteErrMsg);
     assertThat(taskErrMsg, containsString(expectedErrMsg));
 
     xClusterConfig.refresh();
-    assertEquals(XClusterConfigStatusType.DeletionFailed, xClusterConfig.status);
+    assertEquals(XClusterConfigStatusType.DeletionFailed, xClusterConfig.getStatus());
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
     assertFalse("universe unlocked", targetUniverse.universeIsLocked());

@@ -24,18 +24,18 @@ These are the steps to follow:
 
 - Delete the tablet from the broken peers if necessary, by running:
 
-    ```
+    ```sh
     yb-ts-cli --server_address=NODE_BAD1 delete_tablet TABLET1
     yb-ts-cli --server_address=NODE_BAD2 delete_tablet TABLET1
     ```
 
 - Trigger a remote bootstrap of `TABLET1` from `NODE_GOOD` to `NODE_BAD1`.
 
-    ```
+    ```sh
     yb-ts-cli --server_address=NODE_BAD1 remote_bootstrap NODE_GOOD TABLET1
     ```
 
-Once the remote bootstrap finishes, `NODE_BAD2` should be automatically removed from the quorum and `TABLET1` fixed, as it has gotten a majority of healthy peers.
+After the remote bootstrap finishes, `NODE_BAD2` should be automatically removed from the quorum and `TABLET1` fixed, as it has gotten a majority of healthy peers.
 
 If you can't perform the preceding steps, you can do the following to manually execute the equivalent of a remote bootstrap:
 
@@ -72,21 +72,25 @@ find /mnt/d0/ -name '*c08596d5820a4683a96893e092088c39*'
 The data you would be interested is the following:
 
 - For the Raft WALS:
+
   ```bash
   /mnt/d0/yb-data/tserver/wals/table-2fa481734909462385e005ba23664537/tablet-c08596d5820a4683a96893e092088c39
   ```
 
 - For the RocksDB regular database:
+
   ```bash
   /mnt/d0/yb-data/tserver/data/rocksdb/table-2fa481734909462385e005ba23664537/tablet-c08596d5820a4683a96893e092088c39
   ```
 
 - For the intents files:
+
   ```bash
   /mnt/d0/yb-data/tserver/data/rocksdb/table-2fa481734909462385e005ba23664537/tablet-c08596d5820a4683a96893e092088c39.intents
   ```
 
 - For the snapshot files:
+
   ```bash
   /mnt/d0/yb-data/tserver/data/rocksdb/table-2fa481734909462385e005ba23664537/tablet-c08596d5820a4683a96893e092088c39.snapshots
   ```

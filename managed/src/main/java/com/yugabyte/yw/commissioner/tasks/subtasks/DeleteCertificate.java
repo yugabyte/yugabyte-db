@@ -50,7 +50,7 @@ public class DeleteCertificate extends UniverseTaskBase {
         return;
       }
 
-      File certDirectory = new File(cert.certificate).getParentFile();
+      File certDirectory = new File(cert.getCertificate()).getParentFile();
       // delete entire certificate directory recursively.
       if (!FileUtils.deleteDirectory(certDirectory)) {
         log.error("Failed to delete certificate directory: %s", certDirectory.getAbsolutePath());

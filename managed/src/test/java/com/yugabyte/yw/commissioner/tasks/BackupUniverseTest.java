@@ -55,14 +55,14 @@ public class BackupUniverseTest extends CommissionerBaseTest {
 
   private TaskInfo submitTask(BackupTableParams.ActionType actionType, boolean enableVerboseLogs) {
     BackupTableParams backupTableParams = new BackupTableParams();
-    backupTableParams.universeUUID = defaultUniverse.universeUUID;
+    backupTableParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     backupTableParams.setTableName("bar");
     backupTableParams.setKeyspace("foo");
     backupTableParams.tableUUID = UUID.randomUUID();
     backupTableParams.storageConfigUUID = UUID.randomUUID();
     backupTableParams.actionType = actionType;
     backupTableParams.enableVerboseLogs = enableVerboseLogs;
-    backupTableParams.customerUuid = defaultCustomer.uuid;
+    backupTableParams.customerUuid = defaultCustomer.getUuid();
     // Set http context
     TestUtils.setFakeHttpContext(defaultUser);
 
@@ -70,7 +70,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, backupTableParams);
       CustomerTask.create(
           defaultCustomer,
-          defaultUniverse.universeUUID,
+          defaultUniverse.getUniverseUUID(),
           taskUUID,
           CustomerTask.TargetType.Backup,
           CustomerTask.TaskType.Create,
@@ -94,7 +94,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
     Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
-    assertEquals(Completed, backup.state);
+    assertEquals(Completed, backup.getState());
   }
 
   @Test
@@ -109,7 +109,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     verify(mockTableManager, times(1)).createBackup(any());
     Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
-    assertEquals(Failed, backup.state);
+    assertEquals(Failed, backup.getState());
   }
 
   @Test
@@ -123,7 +123,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     verify(mockTableManager, times(1)).createBackup(any());
     Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
-    assertEquals(Failed, backup.state);
+    assertEquals(Failed, backup.getState());
   }
 
   @Test
@@ -138,7 +138,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
     Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
-    assertEquals(Completed, backup.state);
+    assertEquals(Completed, backup.getState());
   }
 
   @Test
@@ -153,7 +153,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
     Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
-    assertEquals(Completed, backup.state);
+    assertEquals(Completed, backup.getState());
   }
 
   @Test

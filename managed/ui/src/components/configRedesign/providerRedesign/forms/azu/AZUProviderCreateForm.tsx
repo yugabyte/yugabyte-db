@@ -3,9 +3,9 @@ import { array, mixed, object, string } from 'yup';
 import { Box, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
+import { toast } from 'react-toastify';
 
 import {
-  OptionProps,
   RadioGroupOrientation,
   YBInputField,
   YBRadioGroupField,
@@ -21,15 +21,15 @@ import { NTPConfigField } from '../../components/NTPConfigField';
 import { RegionList } from '../../components/RegionList';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import {
-  ASYNC_ERROR,
   DEFAULT_SSH_PORT,
+  KeyPairManagement,
+  KEY_PAIR_MANAGEMENT_OPTIONS,
   NTPSetupType,
   ProviderCode,
-  VPCSetupType,
-  VPCSetupTypeLabel
+  VPCSetupType
 } from '../../constants';
 import { FieldGroup } from '../components/FieldGroup';
-import { addItem, deleteItem, editItem, handleFormServerError, readFileAsText } from '../utils';
+import { addItem, deleteItem, editItem, readFileAsText } from '../utils';
 import { FormContainer } from '../components/FormContainer';
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
 import { FormField } from '../components/FormField';
@@ -38,7 +38,7 @@ import { CreateInfraProvider } from '../../InfraProvider';
 import { RegionOperation } from '../configureRegion/constants';
 import { NTP_SERVER_REGEX } from '../constants';
 
-import { AZURegionMutation, YBProviderMutation, AZUAvailabilityZoneMutation } from '../../types';
+import { AZURegionMutation, AZUAvailabilityZoneMutation } from '../../types';
 
 interface AZUProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
@@ -46,13 +46,13 @@ interface AZUProviderCreateFormProps {
 }
 
 export interface AZUProviderCreateFormFieldValues {
-  dbNodePublicInternetAccess: boolean;
   azuClientId: string;
   azuClientSecret: string;
   azuHostedZoneId: string;
   azuRG: string;
   azuSubscriptionId: string;
   azuTenantId: string;
+  dbNodePublicInternetAccess: boolean;
   ntpServers: string[];
   ntpSetupType: NTPSetupType;
   providerName: string;
@@ -62,39 +62,7 @@ export interface AZUProviderCreateFormFieldValues {
   sshPort: number;
   sshPrivateKeyContent: File;
   sshUser: string;
-  vpcSetupType: VPCSetupType;
-
-  [ASYNC_ERROR]: string;
 }
-
-const KeyPairManagement = {
-  YBA_MANAGED: 'YBAManaged',
-  CUSTOM_KEY_PAIR: 'customKeyPair'
-} as const;
-type KeyPairManagement = typeof KeyPairManagement[keyof typeof KeyPairManagement];
-
-const KEY_PAIR_MANAGEMENT_OPTIONS: OptionProps[] = [
-  {
-    value: KeyPairManagement.YBA_MANAGED,
-    label: 'Use YugabyteDB Anywhere to manage key pairs'
-  },
-  {
-    value: KeyPairManagement.CUSTOM_KEY_PAIR,
-    label: 'Provide custom key pair information'
-  }
-];
-
-const VPC_SETUP_OPTIONS: OptionProps[] = [
-  {
-    value: VPCSetupType.EXISTING,
-    label: VPCSetupTypeLabel[VPCSetupType.EXISTING]
-  },
-  {
-    value: VPCSetupType.NEW,
-    label: VPCSetupTypeLabel[VPCSetupType.NEW],
-    disabled: true
-  }
-];
 
 export const DEFAULT_FORM_VALUES: Partial<AZUProviderCreateFormFieldValues> = {
   dbNodePublicInternetAccess: true,
@@ -103,8 +71,7 @@ export const DEFAULT_FORM_VALUES: Partial<AZUProviderCreateFormFieldValues> = {
   providerName: '',
   regions: [] as CloudVendorRegionField[],
   sshKeypairManagement: KeyPairManagement.YBA_MANAGED,
-  sshPort: DEFAULT_SSH_PORT,
-  vpcSetupType: VPCSetupType.EXISTING
+  sshPort: DEFAULT_SSH_PORT
 } as const;
 
 const VALIDATION_SCHEMA = object().shape({
@@ -119,16 +86,14 @@ const VALIDATION_SCHEMA = object().shape({
   azuRG: string().required('Azure Resource Group is required.'),
   azuSubscriptionId: string().required('Azure Subscription ID is required.'),
   azuTenantId: string().required('Azure Tenant ID is required.'),
-  // Specified ssh keys
   sshKeypairName: string().when('sshKeypairManagement', {
-    is: KeyPairManagement.CUSTOM_KEY_PAIR,
+    is: KeyPairManagement.SELF_MANAGED,
     then: string().required('SSH keypair name is required.')
   }),
   sshPrivateKeyContent: mixed().when('sshKeypairManagement', {
-    is: KeyPairManagement.CUSTOM_KEY_PAIR,
+    is: KeyPairManagement.SELF_MANAGED,
     then: mixed().required('SSH private key is required.')
   }),
-
   hostedZoneId: string().when('enableHostedZone', {
     is: true,
     then: string().required('Route 53 zone id is required.')
@@ -178,8 +143,6 @@ export const AZUProviderCreateForm = ({
   };
 
   const onFormSubmit: SubmitHandler<AZUProviderCreateFormFieldValues> = async (formValues) => {
-    formMethods.clearErrors(ASYNC_ERROR);
-
     if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
       formMethods.setError('ntpServers', {
         type: 'min',
@@ -188,54 +151,16 @@ export const AZUProviderCreateForm = ({
       return;
     }
 
-    const providerPayload: YBProviderMutation = {
-      code: ProviderCode.AZU,
-      name: formValues.providerName,
-      ...(formValues.sshKeypairManagement === KeyPairManagement.CUSTOM_KEY_PAIR && {
-        ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-        ...(formValues.sshPrivateKeyContent && {
-          sshPrivateKeyContent: (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
-        })
-      }),
-      details: {
-        airGapInstall: !formValues.dbNodePublicInternetAccess,
-        cloudInfo: {
-          [ProviderCode.AZU]: {
-            azuClientId: formValues.azuClientId,
-            azuClientSecret: formValues.azuClientSecret,
-            azuHostedZoneId: formValues.azuHostedZoneId,
-            azuRG: formValues.azuRG,
-            azuSubscriptionId: formValues.azuSubscriptionId,
-            azuTenantId: formValues.azuTenantId
-          }
-        },
-        ntpServers: formValues.ntpServers,
-        setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-        sshPort: formValues.sshPort,
-        sshUser: formValues.sshUser
-      },
-      regions: formValues.regions.map<AZURegionMutation>((regionFormValues) => ({
-        code: regionFormValues.code,
-        details: {
-          cloudInfo: {
-            [ProviderCode.AZU]: {
-              securityGroupId: regionFormValues.securityGroupId,
-              vnet: regionFormValues.vnet,
-              ybImage: regionFormValues.ybImage
-            }
-          }
-        },
-        zones: regionFormValues.zones?.map<AZUAvailabilityZoneMutation>((azFormValues) => ({
-          code: azFormValues.code,
-          subnet: azFormValues.subnet
-        }))
-      }))
-    };
-    await createInfraProvider(providerPayload, {
-      mutateOptions: {
-        onError: (error) => handleFormServerError(error, ASYNC_ERROR, formMethods.setError)
+    try {
+      const providerPayload = await constructProviderPayload(formValues);
+      try {
+        await createInfraProvider(providerPayload);
+      } catch (_) {
+        // Handled with `mutateOptions.onError`
       }
-    });
+    } catch (error) {
+      toast.error(error);
+    }
   };
 
   const regions = formMethods.watch('regions', DEFAULT_FORM_VALUES.regions);
@@ -253,7 +178,6 @@ export const AZUProviderCreateForm = ({
     'sshKeypairManagement',
     DEFAULT_FORM_VALUES.sshKeypairManagement
   );
-  const vpcSetupType = formMethods.watch('vpcSetupType', DEFAULT_FORM_VALUES.vpcSetupType);
 
   return (
     <Box display="flex" justifyContent="center">
@@ -304,15 +228,6 @@ export const AZUProviderCreateForm = ({
                 />
               }
             >
-              <FormField>
-                <FieldLabel>VPC Setup</FieldLabel>
-                <YBRadioGroupField
-                  name="vpcSetupType"
-                  control={formMethods.control}
-                  options={VPC_SETUP_OPTIONS}
-                  orientation={RadioGroupOrientation.HORIZONTAL}
-                />
-              </FormField>
               <RegionList
                 providerCode={ProviderCode.AZU}
                 regions={regions}
@@ -353,7 +268,7 @@ export const AZUProviderCreateForm = ({
                   orientation={RadioGroupOrientation.HORIZONTAL}
                 />
               </FormField>
-              {keyPairManagement === KeyPairManagement.CUSTOM_KEY_PAIR && (
+              {keyPairManagement === KeyPairManagement.SELF_MANAGED && (
                 <>
                   <FormField>
                     <FieldLabel>SSH Keypair Name</FieldLabel>
@@ -415,7 +330,7 @@ export const AZUProviderCreateForm = ({
           providerCode={ProviderCode.AZU}
           regionOperation={regionOperation}
           regionSelection={regionSelection}
-          vpcSetupType={vpcSetupType}
+          vpcSetupType={VPCSetupType.EXISTING}
         />
       )}
       <DeleteRegionModal
@@ -427,3 +342,48 @@ export const AZUProviderCreateForm = ({
     </Box>
   );
 };
+
+const constructProviderPayload = async (formValues: AZUProviderCreateFormFieldValues) => ({
+  code: ProviderCode.AZU,
+  name: formValues.providerName,
+  ...(formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
+    ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
+    ...(formValues.sshPrivateKeyContent && {
+      sshPrivateKeyContent: (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
+    })
+  }),
+  details: {
+    airGapInstall: !formValues.dbNodePublicInternetAccess,
+    cloudInfo: {
+      [ProviderCode.AZU]: {
+        azuClientId: formValues.azuClientId,
+        azuClientSecret: formValues.azuClientSecret,
+        azuHostedZoneId: formValues.azuHostedZoneId,
+        azuRG: formValues.azuRG,
+        azuSubscriptionId: formValues.azuSubscriptionId,
+        azuTenantId: formValues.azuTenantId
+      }
+    },
+    ntpServers: formValues.ntpServers,
+    setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
+    sshPort: formValues.sshPort,
+    sshUser: formValues.sshUser
+  },
+  regions: formValues.regions.map<AZURegionMutation>((regionFormValues) => ({
+    code: regionFormValues.code,
+    details: {
+      cloudInfo: {
+        [ProviderCode.AZU]: {
+          securityGroupId: regionFormValues.securityGroupId,
+          vnet: regionFormValues.vnet,
+          ybImage: regionFormValues.ybImage
+        }
+      }
+    },
+    zones: regionFormValues.zones?.map<AZUAvailabilityZoneMutation>((azFormValues) => ({
+      code: azFormValues.code,
+      name: azFormValues.code,
+      subnet: azFormValues.subnet
+    }))
+  }))
+});

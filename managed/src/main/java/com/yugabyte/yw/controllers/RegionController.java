@@ -68,7 +68,7 @@ public class RegionController extends AuthenticatedController {
     ArrayNode resultArray = Json.newArray();
     for (Provider provider : providerList) {
       CloudInfoInterface.mayBeMassageResponse(provider);
-      List<Region> regionList = Region.fetchValidRegions(customerUUID, provider.uuid, 1);
+      List<Region> regionList = Region.fetchValidRegions(customerUUID, provider.getUuid(), 1);
       for (Region region : regionList) {
         ObjectNode regionNode = (ObjectNode) Json.toJson(region);
         ObjectNode providerForRegion = (ObjectNode) Json.toJson(provider);
@@ -102,7 +102,7 @@ public class RegionController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.Region,
-            Objects.toString(region.uuid, null),
+            Objects.toString(region.getUuid(), null),
             Audit.ActionType.Create,
             Json.toJson(formData.rawData()));
     return PlatformResults.withData(region);

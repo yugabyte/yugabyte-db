@@ -16,7 +16,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -53,15 +52,15 @@ public class ScheduleControllerTest extends FakeDBApplication {
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUser = ModelFactory.testUser(defaultCustomer);
-    defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
 
     backupTableParams = new BackupTableParams();
-    backupTableParams.universeUUID = defaultUniverse.universeUUID;
+    backupTableParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST16");
-    backupTableParams.storageConfigUUID = customerConfig.configUUID;
+    backupTableParams.storageConfigUUID = customerConfig.getConfigUUID();
     defaultSchedule =
         Schedule.create(
-            defaultCustomer.uuid, backupTableParams, TaskType.BackupUniverse, 1000, null);
+            defaultCustomer.getUuid(), backupTableParams, TaskType.BackupUniverse, 1000, null);
   }
 
   private Result listSchedules(UUID customerUUID) {
@@ -69,7 +68,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
     String method = "GET";
     String url = "/api/customers/" + customerUUID + "/schedules";
 
-    return FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
+    return doRequestWithAuthToken(method, url, authToken);
   }
 
   private Result deleteSchedule(UUID scheduleUUID, UUID customerUUID) {
@@ -77,14 +76,14 @@ public class ScheduleControllerTest extends FakeDBApplication {
     String method = "DELETE";
     String url = "/api/customers/" + customerUUID + "/schedules/" + scheduleUUID;
 
-    return FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
+    return doRequestWithAuthToken(method, url, authToken);
   }
 
   private Result deleteScheduleYb(UUID scheduleUUID, UUID customerUUID) {
     String authToken = defaultUser.createAuthToken();
     String method = "DELETE";
     String url = "/api/customers/" + customerUUID + "/schedules/" + scheduleUUID + "/delete";
-    return FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
+    return doRequestWithAuthToken(method, url, authToken);
   }
 
   private Result editSchedule(UUID scheduleUUID, UUID customerUUID, JsonNode body) {
@@ -92,32 +91,33 @@ public class ScheduleControllerTest extends FakeDBApplication {
     String method = "PUT";
     String url = "/api/customers/" + customerUUID + "/schedules/" + scheduleUUID;
 
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, body);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, body);
   }
 
   private Result getPagedSchedulesList(UUID customerUUID, JsonNode body) {
     String authToken = defaultUser.createAuthToken();
     String method = "POST";
     String url = "/api/customers/" + customerUUID + "/schedules/page";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, body);
+    return doRequestWithAuthTokenAndBody(method, url, authToken, body);
   }
 
   private Result createBackupSchedule(ObjectNode bodyJson, Users user) {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "POST";
-    String url = "/api/customers/" + defaultCustomer.uuid + "/create_backup_schedule";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+    String url = "/api/customers/" + defaultCustomer.getUuid() + "/create_backup_schedule";
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   @Test
   public void testListWithValidCustomer() {
-    Result r = listSchedules(defaultCustomer.uuid);
+    Result r = listSchedules(defaultCustomer.getUuid());
     assertOk(r);
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertEquals(1, resultJson.size());
     assertEquals(
-        resultJson.get(0).get("scheduleUUID").asText(), defaultSchedule.scheduleUUID.toString());
-    assertAuditEntry(0, defaultCustomer.uuid);
+        resultJson.get(0).get("scheduleUUID").asText(),
+        defaultSchedule.getScheduleUUID().toString());
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
@@ -127,45 +127,46 @@ public class ScheduleControllerTest extends FakeDBApplication {
     assertEquals(FORBIDDEN, r.status());
     String resultString = contentAsString(r);
     assertEquals(resultString, "Unable To Authenticate User");
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
   public void testDeleteValid() {
-    JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
+    JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.getUuid())));
     assertEquals(1, resultJson.size());
-    Result r = deleteSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid);
+    Result r = deleteSchedule(defaultSchedule.getScheduleUUID(), defaultCustomer.getUuid());
     assertOk(r);
-    resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
+    resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.getUuid())));
     assertEquals(0, resultJson.size());
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
   public void testDeleteInvalidCustomerUUID() {
     UUID invalidCustomerUUID = UUID.randomUUID();
-    JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
+    JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.getUuid())));
     assertEquals(1, resultJson.size());
-    Result r = deleteSchedule(defaultSchedule.scheduleUUID, invalidCustomerUUID);
+    Result r = deleteSchedule(defaultSchedule.getScheduleUUID(), invalidCustomerUUID);
     assertEquals(FORBIDDEN, r.status());
     String resultString = contentAsString(r);
     assertEquals(resultString, "Unable To Authenticate User");
-    resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
+    resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.getUuid())));
     assertEquals(1, resultJson.size());
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
   public void testDeleteInvalidScheduleUUID() {
     UUID invalidScheduleUUID = UUID.randomUUID();
-    JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
+    JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.getUuid())));
     assertEquals(1, resultJson.size());
     Result result =
-        assertPlatformException(() -> deleteSchedule(invalidScheduleUUID, defaultCustomer.uuid));
+        assertPlatformException(
+            () -> deleteSchedule(invalidScheduleUUID, defaultCustomer.getUuid()));
     assertBadRequest(result, "Invalid Schedule UUID: " + invalidScheduleUUID);
-    resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
+    resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.getUuid())));
     assertEquals(1, resultJson.size());
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
@@ -175,26 +176,32 @@ public class ScheduleControllerTest extends FakeDBApplication {
     params.status = State.Active;
     params.frequencyTimeUnit = TimeUnit.DAYS;
     JsonNode requestJson = Json.toJson(params);
-    Result result = editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson);
+    Result result =
+        editSchedule(defaultSchedule.getScheduleUUID(), defaultCustomer.getUuid(), requestJson);
     assertOk(result);
-    JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
+    JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.getUuid())));
     assertEquals(1, resultJson.size());
     assertEquals(
-        resultJson.get(0).get("scheduleUUID").asText(), defaultSchedule.scheduleUUID.toString());
+        resultJson.get(0).get("scheduleUUID").asText(),
+        defaultSchedule.getScheduleUUID().toString());
     assertTrue(resultJson.get(0).get("frequency").asLong() == params.frequency);
     assertTrue(resultJson.get(0).get("status").asText().equals(params.status.name()));
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
   public void testEditIncrementalBackupScheduleFrequency() {
     backupRequestParams = new BackupRequestParams();
-    backupRequestParams.universeUUID = defaultUniverse.universeUUID;
-    backupRequestParams.storageConfigUUID = customerConfig.configUUID;
+    backupRequestParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
     backupRequestParams.incrementalBackupFrequency = 1900 * 1000L;
     defaultIncrementalSchedule =
         Schedule.create(
-            defaultCustomer.uuid, backupRequestParams, TaskType.CreateBackup, 3600 * 1000L, null);
+            defaultCustomer.getUuid(),
+            backupRequestParams,
+            TaskType.CreateBackup,
+            3600 * 1000L,
+            null);
     EditBackupScheduleParams params = new EditBackupScheduleParams();
     params.frequency = 3600 * 1000L;
     params.status = State.Active;
@@ -204,21 +211,25 @@ public class ScheduleControllerTest extends FakeDBApplication {
     JsonNode requestJson = Json.toJson(params);
     Result result =
         assertPlatformException(
-            () -> editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+            () ->
+                editSchedule(
+                    defaultSchedule.getScheduleUUID(), defaultCustomer.getUuid(), requestJson));
     assertBadRequest(
         result, "Cannot assign incremental backup frequency to a non-incremental schedule");
     result =
-        editSchedule(defaultIncrementalSchedule.scheduleUUID, defaultCustomer.uuid, requestJson);
+        editSchedule(
+            defaultIncrementalSchedule.getScheduleUUID(), defaultCustomer.getUuid(), requestJson);
     assertOk(result);
     Schedule schedule =
         Schedule.getOrBadRequest(
-            defaultIncrementalSchedule.getCustomerUUID(), defaultIncrementalSchedule.scheduleUUID);
+            defaultIncrementalSchedule.getCustomerUUID(),
+            defaultIncrementalSchedule.getScheduleUUID());
     assertEquals(params.frequency.longValue(), schedule.getFrequency());
     assertEquals(params.status, schedule.getStatus());
     assertEquals(
         params.incrementalBackupFrequency.longValue(),
         schedule.getTaskParams().get("incrementalBackupFrequency").asLong());
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
@@ -229,19 +240,25 @@ public class ScheduleControllerTest extends FakeDBApplication {
     JsonNode requestJson = Json.toJson(params);
     Result result =
         assertPlatformException(
-            () -> editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+            () ->
+                editSchedule(
+                    defaultSchedule.getScheduleUUID(), defaultCustomer.getUuid(), requestJson));
     assertBadRequest(result, "Please provide time unit for frequency");
   }
 
   @Test
   public void testEditIncrementalBackupScheduleFrequencyWithoutTimeUint() {
     backupRequestParams = new BackupRequestParams();
-    backupRequestParams.universeUUID = defaultUniverse.universeUUID;
-    backupRequestParams.storageConfigUUID = customerConfig.configUUID;
+    backupRequestParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
     backupRequestParams.incrementalBackupFrequency = 1900 * 1000L;
     defaultIncrementalSchedule =
         Schedule.create(
-            defaultCustomer.uuid, backupRequestParams, TaskType.CreateBackup, 3600 * 1000L, null);
+            defaultCustomer.getUuid(),
+            backupRequestParams,
+            TaskType.CreateBackup,
+            3600 * 1000L,
+            null);
     EditBackupScheduleParams params = new EditBackupScheduleParams();
     params.frequency = 3600 * 1000L;
     params.status = State.Active;
@@ -252,19 +269,25 @@ public class ScheduleControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 editSchedule(
-                    defaultIncrementalSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+                    defaultIncrementalSchedule.getScheduleUUID(),
+                    defaultCustomer.getUuid(),
+                    requestJson));
     assertBadRequest(result, "Please provide time unit for incremental backup frequency");
   }
 
   @Test
   public void testEditInvalidIncrementalBackupScheduleFrequency() {
     backupRequestParams = new BackupRequestParams();
-    backupRequestParams.universeUUID = defaultUniverse.universeUUID;
-    backupRequestParams.storageConfigUUID = customerConfig.configUUID;
+    backupRequestParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
     backupRequestParams.incrementalBackupFrequency = 1900 * 1000L;
     defaultIncrementalSchedule =
         Schedule.create(
-            defaultCustomer.uuid, backupRequestParams, TaskType.CreateBackup, 3600 * 1000L, null);
+            defaultCustomer.getUuid(),
+            backupRequestParams,
+            TaskType.CreateBackup,
+            3600 * 1000L,
+            null);
     EditBackupScheduleParams params = new EditBackupScheduleParams();
     params.frequency = 3600 * 1000L;
     params.status = State.Active;
@@ -276,7 +299,9 @@ public class ScheduleControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 editSchedule(
-                    defaultIncrementalSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+                    defaultIncrementalSchedule.getScheduleUUID(),
+                    defaultCustomer.getUuid(),
+                    requestJson));
     assertBadRequest(
         result, "Incremental backup frequency should be lower than full backup frequency.");
     params.cronExpression = "0 * * * *";
@@ -284,7 +309,9 @@ public class ScheduleControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 editSchedule(
-                    defaultIncrementalSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+                    defaultIncrementalSchedule.getScheduleUUID(),
+                    defaultCustomer.getUuid(),
+                    requestJson));
     assertBadRequest(
         result, "Incremental backup frequency should be lower than full backup frequency.");
   }
@@ -295,15 +322,17 @@ public class ScheduleControllerTest extends FakeDBApplication {
     params.cronExpression = "0 12 * * *";
     params.status = State.Active;
     JsonNode requestJson = Json.toJson(params);
-    Result result = editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson);
+    Result result =
+        editSchedule(defaultSchedule.getScheduleUUID(), defaultCustomer.getUuid(), requestJson);
     assertOk(result);
-    JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
+    JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.getUuid())));
     assertEquals(1, resultJson.size());
     assertEquals(
-        resultJson.get(0).get("scheduleUUID").asText(), defaultSchedule.scheduleUUID.toString());
+        resultJson.get(0).get("scheduleUUID").asText(),
+        defaultSchedule.getScheduleUUID().toString());
     assertEquals(resultJson.get(0).get("cronExpression").asText(), params.cronExpression);
     assertTrue(resultJson.get(0).get("status").asText().equals(params.status.name()));
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
@@ -312,11 +341,12 @@ public class ScheduleControllerTest extends FakeDBApplication {
     params.status = State.Stopped;
     params.frequency = 2 * 86400L * 1000L;
     JsonNode requestJson = Json.toJson(params);
-    Result result = editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson);
+    Result result =
+        editSchedule(defaultSchedule.getScheduleUUID(), defaultCustomer.getUuid(), requestJson);
     assertOk(result);
-    JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
+    JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.getUuid())));
     assertEquals(0, resultJson.size());
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
@@ -327,7 +357,9 @@ public class ScheduleControllerTest extends FakeDBApplication {
     JsonNode requestJson = Json.toJson(params);
     Result result =
         assertPlatformException(
-            () -> editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+            () ->
+                editSchedule(
+                    defaultSchedule.getScheduleUUID(), defaultCustomer.getUuid(), requestJson));
     assertBadRequest(result, "Duration between the cron schedules cannot be less than 1 hour");
   }
 
@@ -339,7 +371,9 @@ public class ScheduleControllerTest extends FakeDBApplication {
     JsonNode requestJson = Json.toJson(params);
     Result result =
         assertPlatformException(
-            () -> editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+            () ->
+                editSchedule(
+                    defaultSchedule.getScheduleUUID(), defaultCustomer.getUuid(), requestJson));
     assertBadRequest(result, "Cron expression specified is invalid");
   }
 
@@ -352,7 +386,9 @@ public class ScheduleControllerTest extends FakeDBApplication {
     JsonNode requestJson = Json.toJson(params);
     Result result =
         assertPlatformException(
-            () -> editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+            () ->
+                editSchedule(
+                    defaultSchedule.getScheduleUUID(), defaultCustomer.getUuid(), requestJson));
     assertBadRequest(result, "Both schedule frequency and cron expression cannot be provided");
   }
 
@@ -363,7 +399,9 @@ public class ScheduleControllerTest extends FakeDBApplication {
     JsonNode requestJson = Json.toJson(params);
     Result result =
         assertPlatformException(
-            () -> editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+            () ->
+                editSchedule(
+                    defaultSchedule.getScheduleUUID(), defaultCustomer.getUuid(), requestJson));
     assertBadRequest(result, "Both schedule frequency and cron expression cannot be null");
   }
 
@@ -375,7 +413,9 @@ public class ScheduleControllerTest extends FakeDBApplication {
     JsonNode requestJson = Json.toJson(params);
     Result result =
         assertPlatformException(
-            () -> editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+            () ->
+                editSchedule(
+                    defaultSchedule.getScheduleUUID(), defaultCustomer.getUuid(), requestJson));
     assertBadRequest(
         result, "State paused is an internal state and cannot be specified by the user");
   }
@@ -384,61 +424,62 @@ public class ScheduleControllerTest extends FakeDBApplication {
   public void testDeleteValidScheduleHavingTaskYb() {
     Schedule schedule =
         Schedule.create(
-            defaultCustomer.uuid, backupTableParams, TaskType.BackupUniverse, 1000, null);
+            defaultCustomer.getUuid(), backupTableParams, TaskType.BackupUniverse, 1000, null);
     UUID randomTaskUUID = UUID.randomUUID();
-    ScheduleTask.create(randomTaskUUID, schedule.scheduleUUID);
-    Result r = deleteScheduleYb(schedule.scheduleUUID, defaultCustomer.uuid);
+    ScheduleTask.create(randomTaskUUID, schedule.getScheduleUUID());
+    Result r = deleteScheduleYb(schedule.getScheduleUUID(), defaultCustomer.getUuid());
     assertOk(r);
     assertPlatformException(
-        () -> Schedule.getOrBadRequest(defaultCustomer.uuid, schedule.scheduleUUID));
-    List<ScheduleTask> scheduleTaskList = ScheduleTask.getAllTasks(schedule.scheduleUUID);
+        () -> Schedule.getOrBadRequest(defaultCustomer.getUuid(), schedule.getScheduleUUID()));
+    List<ScheduleTask> scheduleTaskList = ScheduleTask.getAllTasks(schedule.getScheduleUUID());
     assertEquals(0, scheduleTaskList.size());
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
   public void testDeleteValidYb() {
     Schedule schedule =
         Schedule.create(
-            defaultCustomer.uuid, backupTableParams, TaskType.BackupUniverse, 1000, null);
-    Result r = deleteScheduleYb(schedule.scheduleUUID, defaultCustomer.uuid);
+            defaultCustomer.getUuid(), backupTableParams, TaskType.BackupUniverse, 1000, null);
+    Result r = deleteScheduleYb(schedule.getScheduleUUID(), defaultCustomer.getUuid());
     assertOk(r);
     assertPlatformException(
-        () -> Schedule.getOrBadRequest(defaultCustomer.uuid, schedule.scheduleUUID));
-    assertAuditEntry(1, defaultCustomer.uuid);
+        () -> Schedule.getOrBadRequest(defaultCustomer.getUuid(), schedule.getScheduleUUID()));
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
   public void testDeleteInvalidCustomerUUIDYb() {
     UUID invalidCustomerUUID = UUID.randomUUID();
-    Result r = deleteScheduleYb(defaultSchedule.scheduleUUID, invalidCustomerUUID);
+    Result r = deleteScheduleYb(defaultSchedule.getScheduleUUID(), invalidCustomerUUID);
     assertEquals(FORBIDDEN, r.status());
     String resultString = contentAsString(r);
     assertEquals(resultString, "Unable To Authenticate User");
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
   public void testDeleteInvalidScheduleUUIDYb() {
     UUID invalidScheduleUUID = UUID.randomUUID();
     Result result =
-        assertPlatformException(() -> deleteScheduleYb(invalidScheduleUUID, defaultCustomer.uuid));
+        assertPlatformException(
+            () -> deleteScheduleYb(invalidScheduleUUID, defaultCustomer.getUuid()));
     assertBadRequest(result, "Invalid Schedule UUID: " + invalidScheduleUUID);
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
   public void testDeleteRunningSchedule() {
     Schedule schedule =
         Schedule.create(
-            defaultCustomer.uuid, backupTableParams, TaskType.BackupUniverse, 1000, null);
+            defaultCustomer.getUuid(), backupTableParams, TaskType.BackupUniverse, 1000, null);
     schedule.setRunningState(true);
     schedule.save();
     Result result =
         assertPlatformException(
-            () -> deleteScheduleYb(schedule.scheduleUUID, defaultCustomer.uuid));
+            () -> deleteScheduleYb(schedule.getScheduleUUID(), defaultCustomer.getUuid()));
     assertBadRequest(result, "Cannot delete schedule as it is running.");
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
@@ -447,9 +488,9 @@ public class ScheduleControllerTest extends FakeDBApplication {
     UUID tableUUID = UUID.randomUUID();
     String url =
         "/api/customers/"
-            + defaultCustomer.uuid
+            + defaultCustomer.getUuid()
             + "/universes/"
-            + defaultUniverse.universeUUID
+            + defaultUniverse.getUniverseUUID()
             + "/tables/"
             + tableUUID
             + "/create_backup";
@@ -458,23 +499,22 @@ public class ScheduleControllerTest extends FakeDBApplication {
     bodyJson.put("keyspace", "foo");
     bodyJson.put("tableName", "bar");
     bodyJson.put("actionType", "CREATE");
-    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
     bodyJson.put("cronExpression", "5 * * * *");
     bodyJson.put("isFullBackup", true);
     Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody(
-            "PUT", url, defaultUser.createAuthToken(), bodyJson);
+        doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson);
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(result));
     UUID scheduleUUID = UUID.fromString(resultJson.path("scheduleUUID").asText());
     Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
     assertNotNull(schedule);
     assertEquals(schedule.getCronExpression(), "5 * * * *");
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
     // Schedule using V2 Api
     ObjectNode bodyJson2 = Json.newObject();
-    bodyJson2.put("universeUUID", defaultUniverse.universeUUID.toString());
-    bodyJson2.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson2.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
+    bodyJson2.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
     bodyJson2.put("cronExpression", "0 */2 * * *");
     bodyJson2.put("scheduleName", "schedule-1");
     bodyJson2.put("backupType", "PGSQL_TABLE_TYPE");
@@ -485,7 +525,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
     bodyJson3.put("sortBy", "scheduleUUID");
     bodyJson3.put("offset", 0);
     bodyJson3.set("filter", Json.newObject().set("status", Json.newArray().add("Active")));
-    result = getPagedSchedulesList(defaultCustomer.uuid, bodyJson3);
+    result = getPagedSchedulesList(defaultCustomer.getUuid(), bodyJson3);
     assertOk(result);
     JsonNode schedulesJson = Json.parse(contentAsString(result));
     ArrayNode response = (ArrayNode) schedulesJson.get("entities");
@@ -499,13 +539,13 @@ public class ScheduleControllerTest extends FakeDBApplication {
         ModelFactory.createUniverse(
             "Test-Universe-1",
             UUID.randomUUID(),
-            defaultCustomer.getCustomerId(),
+            defaultCustomer.getId(),
             CloudType.aws,
             null,
             null,
             true);
-    bodyJson2.put("universeUUID", universe.universeUUID.toString());
-    bodyJson2.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson2.put("universeUUID", universe.getUniverseUUID().toString());
+    bodyJson2.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
     bodyJson2.put("cronExpression", "0 */2 * * *");
     bodyJson2.put("scheduleName", "schedule-1");
     bodyJson2.put("backupType", "PGSQL_TABLE_TYPE");
@@ -518,7 +558,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
     bodyJson3.put("sortBy", "scheduleUUID");
     bodyJson3.put("offset", 0);
     bodyJson3.set("filter", Json.newObject().set("status", Json.newArray().add("Active")));
-    Result result = getPagedSchedulesList(defaultCustomer.uuid, bodyJson3);
+    Result result = getPagedSchedulesList(defaultCustomer.getUuid(), bodyJson3);
     assertOk(result);
     JsonNode schedulesJson = Json.parse(contentAsString(result));
     ArrayNode response = (ArrayNode) schedulesJson.get("entities");
@@ -539,15 +579,15 @@ public class ScheduleControllerTest extends FakeDBApplication {
   @Test
   public void testGetPagedSchedulesListFilteredWithUniverseList() {
     ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
-    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
+    bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
     bodyJson.put("cronExpression", "0 */2 * * *");
     bodyJson.put("scheduleName", "schedule-1");
     bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     Result r = createBackupSchedule(bodyJson, null);
     assertOk(r);
-    Universe universe2 = ModelFactory.createUniverse("universe-2", defaultCustomer.getCustomerId());
-    bodyJson.put("universeUUID", universe2.universeUUID.toString());
+    Universe universe2 = ModelFactory.createUniverse("universe-2", defaultCustomer.getId());
+    bodyJson.put("universeUUID", universe2.getUniverseUUID().toString());
     r = createBackupSchedule(bodyJson, null);
     assertOk(r);
     ObjectNode bodyJson2 = Json.newObject();
@@ -557,28 +597,29 @@ public class ScheduleControllerTest extends FakeDBApplication {
     ObjectNode filters = Json.newObject();
     filters.set("status", Json.newArray().add("Active"));
     bodyJson2.set("filter", filters);
-    Result result = getPagedSchedulesList(defaultCustomer.uuid, bodyJson2);
+    Result result = getPagedSchedulesList(defaultCustomer.getUuid(), bodyJson2);
     assertOk(result);
     JsonNode schedulesJson = Json.parse(contentAsString(result));
     ArrayNode response = (ArrayNode) schedulesJson.get("entities");
     assertEquals(3, response.size());
-    result = getPagedSchedulesList(defaultCustomer.uuid, bodyJson2);
+    result = getPagedSchedulesList(defaultCustomer.getUuid(), bodyJson2);
     assertOk(result);
-    filters.set("universeUUIDList", Json.newArray().add(defaultUniverse.universeUUID.toString()));
+    filters.set(
+        "universeUUIDList", Json.newArray().add(defaultUniverse.getUniverseUUID().toString()));
     bodyJson2.set("filter", filters);
-    result = getPagedSchedulesList(defaultCustomer.uuid, bodyJson2);
+    result = getPagedSchedulesList(defaultCustomer.getUuid(), bodyJson2);
     schedulesJson = Json.parse(contentAsString(result));
     response = (ArrayNode) schedulesJson.get("entities");
     assertEquals(2, response.size());
-    filters.set("universeUUIDList", Json.newArray().add(universe2.universeUUID.toString()));
+    filters.set("universeUUIDList", Json.newArray().add(universe2.getUniverseUUID().toString()));
     bodyJson2.set("filter", filters);
-    result = getPagedSchedulesList(defaultCustomer.uuid, bodyJson2);
+    result = getPagedSchedulesList(defaultCustomer.getUuid(), bodyJson2);
     schedulesJson = Json.parse(contentAsString(result));
     response = (ArrayNode) schedulesJson.get("entities");
     assertEquals(1, response.size());
     filters.set("universeUUIDList", Json.newArray().add(UUID.randomUUID().toString()));
     bodyJson2.set("filter", filters);
-    result = getPagedSchedulesList(defaultCustomer.uuid, bodyJson2);
+    result = getPagedSchedulesList(defaultCustomer.getUuid(), bodyJson2);
     schedulesJson = Json.parse(contentAsString(result));
     response = (ArrayNode) schedulesJson.get("entities");
     assertEquals(0, response.size());

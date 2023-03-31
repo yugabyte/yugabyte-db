@@ -267,7 +267,7 @@ public class YbcBackupUtil {
         configService.getOrBadRequest(tableParams.customerUuid, tableParams.storageConfigUUID);
     CustomerConfigStorageData configData = (CustomerConfigStorageData) config.getDataObject();
     Map<String, String> regionLocationMap =
-        StorageUtil.getStorageUtil(config.name).getRegionLocationsMap(configData);
+        StorageUtil.getStorageUtil(config.getName()).getRegionLocationsMap(configData);
     List<BackupUtil.RegionLocations> regionLocations = new ArrayList<>();
     regionMap.forEach(
         (r, bL) -> {
@@ -277,7 +277,7 @@ public class YbcBackupUtil {
               BackupUtil.getExactRegionLocation(
                   tableParams.storageLocation,
                   regionLocationMap.get(r),
-                  config.name.equals("NFS")
+                  config.getName().equals("NFS")
                       ? ((CustomerConfigStorageNFSData) configData).nfsBucket
                       : "");
           regionLocations.add(rL);
@@ -488,7 +488,7 @@ public class YbcBackupUtil {
       CustomerConfig config,
       String commonSuffix,
       Map<String, String> keyspacePreviousLocationsMap) {
-    String configType = config.name;
+    String configType = config.getName();
     CustomerConfigData configData = config.getDataObject();
     CloudStoreSpec defaultSpec = null;
     CloudStoreConfig.Builder cloudStoreConfigBuilder = CloudStoreConfig.newBuilder();
@@ -501,7 +501,7 @@ public class YbcBackupUtil {
             configData);
     cloudStoreConfigBuilder.setDefaultSpec(defaultSpec);
     Map<String, String> regionLocationMap =
-        StorageUtil.getStorageUtil(config.name).getRegionLocationsMap(configData);
+        StorageUtil.getStorageUtil(config.getName()).getRegionLocationsMap(configData);
     Map<String, CloudStoreSpec> regionSpecMap = new HashMap<>();
     if (MapUtils.isNotEmpty(regionLocationMap)) {
       regionLocationMap.forEach(
@@ -522,7 +522,7 @@ public class YbcBackupUtil {
       CustomerConfig config, YbcBackupResponse successMarker) {
     CustomerConfigData configData = config.getDataObject();
 
-    StorageUtil storageUtil = StorageUtil.getStorageUtil(config.name);
+    StorageUtil storageUtil = StorageUtil.getStorageUtil(config.getName());
     YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation defaultBucketLocation =
         successMarker.responseCloudStoreSpec.defaultLocation;
     CloudStoreSpec defaultSpec =
@@ -536,7 +536,7 @@ public class YbcBackupUtil {
         CloudStoreConfig.newBuilder().setDefaultSpec(defaultSpec);
 
     Map<String, String> regionLocationMap =
-        StorageUtil.getStorageUtil(config.name).getRegionLocationsMap(configData);
+        StorageUtil.getStorageUtil(config.getName()).getRegionLocationsMap(configData);
     Map<String, CloudStoreSpec> regionSpecMap = new HashMap<>();
     if (MapUtils.isNotEmpty(successMarker.responseCloudStoreSpec.regionLocations)) {
       successMarker.responseCloudStoreSpec.regionLocations.forEach(
@@ -557,7 +557,7 @@ public class YbcBackupUtil {
 
   public CloudStoreConfig createDsmConfig(CustomerConfig config, String defaultBackupLocation) {
     CustomerConfigData configData = config.getDataObject();
-    StorageUtil storageUtil = StorageUtil.getStorageUtil(config.name);
+    StorageUtil storageUtil = StorageUtil.getStorageUtil(config.getName());
     CloudStoreSpec defaultSpec =
         storageUtil.createRestoreCloudStoreSpec(defaultBackupLocation, "", configData, true);
 
@@ -661,7 +661,7 @@ public class YbcBackupUtil {
         BackupServiceTaskExtendedArgs.newBuilder();
     try {
       ObjectNode universeKeyHistory =
-          encryptionAtRestManager.backupUniverseKeyHistory(tableParams.universeUUID);
+          encryptionAtRestManager.backupUniverseKeyHistory(tableParams.getUniverseUUID());
       if (universeKeyHistory != null) {
         ObjectMapper mapper = new ObjectMapper();
         String backupKeys = mapper.writeValueAsString(universeKeyHistory);

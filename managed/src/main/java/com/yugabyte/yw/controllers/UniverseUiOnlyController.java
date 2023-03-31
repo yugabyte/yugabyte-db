@@ -74,9 +74,9 @@ public class UniverseUiOnlyController extends AuthenticatedController {
     // Verify the customer with this universe is present.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     LOG.info("Finding Universe with name {}.", name);
-    Optional<Universe> universe = Universe.maybeGetUniverseByName(customer.getCustomerId(), name);
+    Optional<Universe> universe = Universe.maybeGetUniverseByName(customer.getId(), name);
     if (universe.isPresent()) {
-      return PlatformResults.withData(Collections.singletonList(universe.get().universeUUID));
+      return PlatformResults.withData(Collections.singletonList(universe.get().getUniverseUUID()));
     }
     return PlatformResults.withData(Collections.emptyList());
   }
@@ -101,7 +101,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.Universe,
-            Objects.toString(taskParams.universeUUID, null),
+            Objects.toString(taskParams.getUniverseUUID(), null),
             Audit.ActionType.Configure,
             request().body().asJson());
     return PlatformResults.withData(taskParams);
@@ -133,7 +133,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.Universe,
-            Objects.toString(taskParams.universeUUID, null),
+            Objects.toString(taskParams.getUniverseUUID(), null),
             Audit.ActionType.UpdateOptions,
             request().body().asJson());
     return PlatformResults.withData(options);
@@ -276,7 +276,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             Audit.ActionType.Upgrade,
             request().body().asJson(),
             taskUUID);
-    return new YBPTask(taskUUID, universe.universeUUID).asResult();
+    return new YBPTask(taskUUID, universe.getUniverseUUID()).asResult();
   }
 
   @ApiOperation(
@@ -307,7 +307,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             Audit.ActionType.UpdateDiskSize,
             request().body().asJson(),
             taskUUID);
-    return new YBPTask(taskUUID, universe.universeUUID).asResult();
+    return new YBPTask(taskUUID, universe.getUniverseUUID()).asResult();
   }
 
   /**
@@ -340,6 +340,6 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             Audit.ActionType.TlsConfigUpdate,
             request().body().asJson(),
             taskUUID);
-    return new YBPTask(taskUUID, universe.universeUUID).asResult();
+    return new YBPTask(taskUUID, universe.getUniverseUUID()).asResult();
   }
 }

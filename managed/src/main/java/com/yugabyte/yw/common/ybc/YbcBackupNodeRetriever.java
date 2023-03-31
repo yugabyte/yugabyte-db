@@ -3,19 +3,17 @@
 package com.yugabyte.yw.common.ybc;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.forms.BackupRequestParams.ParallelBackupState;
 import com.yugabyte.yw.models.Universe;
-
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.stream.Collectors;
-
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import play.api.Play;
 
 @Slf4j
 public class YbcBackupNodeRetriever {
@@ -32,7 +30,7 @@ public class YbcBackupNodeRetriever {
   public YbcBackupNodeRetriever(UUID universeUUID, int parallelism) {
     this.universeTserverIPs = new LinkedBlockingQueue<>(parallelism);
     this.universeUUID = universeUUID;
-    this.ybcManager = Play.current().injector().instanceOf(YbcManager.class);
+    this.ybcManager = StaticInjectorHolder.injector().instanceOf(YbcManager.class);
   }
 
   public void initializeNodePoolForBackups(Map<String, ParallelBackupState> backupDBStates) {

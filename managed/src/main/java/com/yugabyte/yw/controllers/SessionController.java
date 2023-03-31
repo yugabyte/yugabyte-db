@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomWsClientFactory;
@@ -67,6 +68,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.format.DateTimeParseException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -84,7 +86,6 @@ import org.apache.commons.io.input.ReversedLinesFileReader;
 import org.pac4j.play.java.Secure;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.Configuration;
 import play.Environment;
 import play.data.Form;
 import play.libs.Json;
@@ -105,7 +106,7 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private ValidatingFormFactory formFactory;
 
-  @Inject private Configuration appConfig;
+  @Inject private Config appConfig;
 
   @Inject private ConfigHelper configHelper;
 
@@ -172,14 +173,14 @@ public class SessionController extends AbstractPlatformController {
   @With(TokenAuthenticator.class)
   public Result getSessionInfo() {
     Users user = getCurrentUser();
-    Customer cust = Customer.get(user.customerUUID);
+    Customer cust = Customer.get(user.getCustomerUUID());
     Cookie authCookie = request().cookie(AUTH_TOKEN);
     SessionInfo sessionInfo =
         new SessionInfo(
             authCookie == null ? null : authCookie.value(),
             user.getApiToken(),
-            cust.uuid,
-            user.uuid);
+            cust.getUuid(),
+            user.getUuid());
     return withData(sessionInfo);
   }
 
@@ -207,8 +208,7 @@ public class SessionController extends AbstractPlatformController {
   @ApiOperation(value = "getLogs", response = LogData.class)
   @With(TokenAuthenticator.class)
   public Result getLogs(Integer maxLines) {
-    String appHomeDir = appConfig.getString("application.home", ".");
-    String logDir = appConfig.getString("log.override.path", String.format("%s/logs", appHomeDir));
+    String logDir = appConfig.getString("log.override.path");
     File file = new File(String.format("%s/application.log", logDir));
     // TODO(bogdan): This is not really pagination friendly as it re-reads everything all the time.
     // TODO(bogdan): Need to figure out if there's a rotation-friendly log-reader..
@@ -299,24 +299,27 @@ public class SessionController extends AbstractPlatformController {
     Users user =
         loginHandler.login(formFactory.getFormDataOrBadRequest(CustomerLoginFormData.class).get());
 
-    Customer cust = Customer.get(user.customerUUID);
+    Customer cust = Customer.get(user.getCustomerUUID());
 
     String authToken = user.createAuthToken();
-    SessionInfo sessionInfo = new SessionInfo(authToken, null, cust.uuid, user.uuid);
+    SessionInfo sessionInfo = new SessionInfo(authToken, null, cust.getUuid(), user.getUuid());
     response()
         .setCookie(
             Http.Cookie.builder(AUTH_TOKEN, authToken)
                 .withSecure(ctx().request().secure())
+                .withHttpOnly(false)
                 .build());
     response()
         .setCookie(
-            Http.Cookie.builder("customerId", cust.uuid.toString())
+            Http.Cookie.builder("customerId", cust.getUuid().toString())
                 .withSecure(ctx().request().secure())
+                .withHttpOnly(false)
                 .build());
     response()
         .setCookie(
-            Http.Cookie.builder("userId", user.uuid.toString())
+            Http.Cookie.builder("userId", user.getUuid().toString())
                 .withSecure(ctx().request().secure())
+                .withHttpOnly(false)
                 .build());
     ctx().args.put("isAudited", true);
     Audit.create(
@@ -324,7 +327,7 @@ public class SessionController extends AbstractPlatformController {
         request().path(),
         request().method(),
         Audit.TargetType.User,
-        user.uuid.toString(),
+        user.getUuid().toString(),
         Audit.ActionType.Login,
         null,
         null,
@@ -343,16 +346,17 @@ public class SessionController extends AbstractPlatformController {
   public Result apiLogin() {
     Users user =
         loginHandler.login(formFactory.getFormDataOrBadRequest(CustomerLoginFormData.class).get());
-    Customer cust = Customer.get(user.customerUUID);
+    Customer cust = Customer.get(user.getCustomerUUID());
 
-    SessionInfo sessionInfo = new SessionInfo(null, user.getApiToken(), cust.uuid, user.uuid);
+    SessionInfo sessionInfo =
+        new SessionInfo(null, user.getApiToken(), cust.getUuid(), user.getUuid());
     ctx().args.put("isAudited", true);
     Audit.create(
         user,
         request().path(),
         request().method(),
         Audit.TargetType.User,
-        user.uuid.toString(),
+        user.getUuid().toString(),
         ActionType.ApiLogin,
         null,
         null,
@@ -384,7 +388,7 @@ public class SessionController extends AbstractPlatformController {
         request().path(),
         request().method(),
         Audit.TargetType.User,
-        user.uuid.toString(),
+        user.getUuid().toString(),
         Audit.ActionType.Login,
         null,
         null,
@@ -417,11 +421,13 @@ public class SessionController extends AbstractPlatformController {
         apiToken = user.upsertApiToken();
       }
 
-      SessionInfo sessionInfo = new SessionInfo(null, apiToken, user.customerUUID, user.uuid);
+      SessionInfo sessionInfo =
+          new SessionInfo(null, apiToken, user.getCustomerUUID(), user.getUuid());
       response()
           .setCookie(
               Http.Cookie.builder(API_TOKEN, apiToken)
                   .withSecure(ctx().request().secure())
+                  .withHttpOnly(false)
                   .build());
       ctx().args.put("isAudited", true);
       Audit.create(
@@ -429,7 +435,7 @@ public class SessionController extends AbstractPlatformController {
           request().path(),
           request().method(),
           Audit.TargetType.User,
-          user.uuid.toString(),
+          user.getUuid().toString(),
           Audit.ActionType.Login,
           null,
           null,
@@ -490,12 +496,13 @@ public class SessionController extends AbstractPlatformController {
     }
 
     String apiToken = user.upsertApiToken();
-    SessionInfo sessionInfo = new SessionInfo(null, apiToken, customerUUID, user.uuid);
+    SessionInfo sessionInfo = new SessionInfo(null, apiToken, customerUUID, user.getUuid());
     response()
         .setCookie(
             Http.Cookie.builder(API_TOKEN, apiToken)
                 .withSecure(ctx().request().secure())
-                .withMaxAge(FOREVER)
+                .withMaxAge(Duration.ofHours(FOREVER))
+                .withHttpOnly(false)
                 .build());
     auditService()
         .createAuditEntryWithReqBody(
@@ -522,7 +529,7 @@ public class SessionController extends AbstractPlatformController {
   public Result register(Boolean generateApiToken) {
     CustomerRegisterFormData data =
         formFactory.getFormDataOrBadRequest(CustomerRegisterFormData.class).get();
-    boolean multiTenant = appConfig.getBoolean("yb.multiTenant", false);
+    boolean multiTenant = appConfig.getBoolean("yb.multiTenant");
     boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     int customerCount = Customer.getAll().size();
     if (!multiTenant && customerCount >= 1) {
@@ -563,21 +570,24 @@ public class SessionController extends AbstractPlatformController {
     }
     passwordPolicyService.checkPasswordPolicy(cust.getUuid(), data.getPassword());
 
-    alertDestinationService.createDefaultDestination(cust.uuid);
+    alertDestinationService.createDefaultDestination(cust.getUuid());
     alertConfigurationService.createDefaultConfigs(cust);
 
-    Users user = Users.createPrimary(data.getEmail(), data.getPassword(), role, cust.uuid);
+    Users user = Users.createPrimary(data.getEmail(), data.getPassword(), role, cust.getUuid());
     String authToken = user.createAuthToken();
     String apiToken = generateApiToken ? user.upsertApiToken() : null;
-    SessionInfo sessionInfo = new SessionInfo(authToken, apiToken, user.customerUUID, user.uuid);
+    SessionInfo sessionInfo =
+        new SessionInfo(authToken, apiToken, user.getCustomerUUID(), user.getUuid());
     response()
         .setCookie(
             Http.Cookie.builder(AUTH_TOKEN, sessionInfo.authToken)
                 .withSecure(ctx().request().secure())
+                .withHttpOnly(false)
                 .build());
     // When there is no authenticated user in context; we just pretend that the user
     // created himself for auditing purpose.
-    ctx().args.putIfAbsent("user", userService.getUserWithFeatures(cust, user));
+    RequestContext.putIfAbsent(
+        TokenAuthenticator.USER, userService.getUserWithFeatures(cust, user));
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -709,7 +719,7 @@ public class SessionController extends AbstractPlatformController {
     if (alertingConfig == null) {
       return Collections.emptyList();
     }
-    AlertingData alertingData = Json.fromJson(alertingConfig.data, AlertingData.class);
+    AlertingData alertingData = Json.fromJson(alertingConfig.getData(), AlertingData.class);
     if (StringUtils.isEmpty(alertingData.alertingEmail)) {
       return Collections.emptyList();
     }
@@ -728,7 +738,7 @@ public class SessionController extends AbstractPlatformController {
   }
 
   private Users getCurrentUser() {
-    UserWithFeatures userWithFeatures = (UserWithFeatures) Http.Context.current().args.get("user");
+    UserWithFeatures userWithFeatures = RequestContext.get(TokenAuthenticator.USER);
     return userWithFeatures.getUser();
   }
 }

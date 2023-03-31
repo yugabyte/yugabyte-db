@@ -28,7 +28,6 @@ import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
@@ -39,9 +38,7 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.audit.AuditService;
-import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.controllers.handlers.HashedTimestampColumnFinder;
 import com.yugabyte.yw.controllers.handlers.UniversePerfHandler;
@@ -163,8 +160,8 @@ public class UniversePerfControllerTest extends FakeDBApplication {
         .thenReturn(22);
 
     customer = ModelFactory.testCustomer();
-    universe = createUniverse(customer.getCustomerId());
-    universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
+    universe = createUniverse(customer.getId());
+    universe = Universe.saveDetails(universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
   }
 
   @Test
@@ -176,7 +173,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
 
     Result queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
-            customer.uuid, universe.universeUUID);
+            customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(queryDistributionSuggestions));
     assertEquals(OK, queryDistributionSuggestions.status());
     assertTrue(json.isObject());
@@ -205,7 +202,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
 
     Result queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
-            customer.uuid, universe.universeUUID);
+            customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(queryDistributionSuggestions));
     assertEquals(OK, queryDistributionSuggestions.status());
     assertTrue(json.isObject());
@@ -245,7 +242,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
 
     Result queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
-            customer.uuid, universe.universeUUID);
+            customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(queryDistributionSuggestions));
     assertEquals(OK, queryDistributionSuggestions.status());
     assertTrue(json.isObject());
@@ -286,7 +283,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
         .thenReturn(shellResponses.get(3));
     queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
-            customer.uuid, universe.universeUUID);
+            customer.getUuid(), universe.getUniverseUUID());
     json = Json.parse(contentAsString(queryDistributionSuggestions));
     assertEquals(OK, queryDistributionSuggestions.status());
     assertTrue(json.isObject());
@@ -308,7 +305,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
 
     Result queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
-            customer.uuid, universe.universeUUID);
+            customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(queryDistributionSuggestions));
     assertEquals(OK, queryDistributionSuggestions.status());
     assertTrue(json.isObject());
@@ -352,7 +349,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
 
     Result queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
-            customer.uuid, universe.universeUUID);
+            customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(queryDistributionSuggestions));
     assertEquals(OK, queryDistributionSuggestions.status());
     assertTrue(json.isObject());
@@ -399,7 +396,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
 
     Result queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
-            customer.uuid, universe.universeUUID);
+            customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(queryDistributionSuggestions));
     assertEquals(OK, queryDistributionSuggestions.status());
     assertTrue(json.isObject());
@@ -442,7 +439,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
         .thenReturn(shellResponsesHashTimestamp.get(0), shellResponsesHashTimestamp.get(1));
 
     Result hashedTimestampResponse =
-        universePerfController.getRangeHash(customer.uuid, universe.universeUUID);
+        universePerfController.getRangeHash(customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(hashedTimestampResponse));
 
     assertEquals(OK, hashedTimestampResponse.status());
@@ -457,7 +454,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
         .thenReturn(shellResponsesHashTimestamp.get(0), shellResponsesHashTimestamp.get(2));
 
     Result hashedTimestampResponse =
-        universePerfController.getRangeHash(customer.uuid, universe.universeUUID);
+        universePerfController.getRangeHash(customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(hashedTimestampResponse));
 
     assertEquals(OK, hashedTimestampResponse.status());
@@ -482,7 +479,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
             shellResponsesHashTimestamp.get(3));
 
     Result hashedTimestampResponse =
-        universePerfController.getRangeHash(customer.uuid, universe.universeUUID);
+        universePerfController.getRangeHash(customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(hashedTimestampResponse));
 
     assertEquals(OK, hashedTimestampResponse.status());
@@ -519,7 +516,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
             shellResponsesHashTimestamp.get(1));
 
     Result hashedTimestampResponse =
-        universePerfController.getRangeHash(customer.uuid, universe.universeUUID);
+        universePerfController.getRangeHash(customer.getUuid(), universe.getUniverseUUID());
     JsonNode json = Json.parse(contentAsString(hashedTimestampResponse));
 
     assertEquals(OK, hashedTimestampResponse.status());
@@ -543,7 +540,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
         .thenReturn(executorService);
 
     Result unusedIndexResponse =
-        universePerfController.getUnusedIndexes(customer.uuid, universe.universeUUID);
+        universePerfController.getUnusedIndexes(customer.getUuid(), universe.getUniverseUUID());
 
     JsonNode json = Json.parse(contentAsString(unusedIndexResponse));
     assertEquals(OK, unusedIndexResponse.status());
@@ -561,7 +558,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
     // Seems like there are 3 nodes, and shellResponsesUnusedIndex.get(2) just gets called again for
     // the two nodes following the first because it is the last parameter in thenReturn.
     Result unusedIndexResponse =
-        universePerfController.getUnusedIndexes(customer.uuid, universe.universeUUID);
+        universePerfController.getUnusedIndexes(customer.getUuid(), universe.getUniverseUUID());
 
     JsonNode json = Json.parse(contentAsString(unusedIndexResponse));
     assertEquals(OK, unusedIndexResponse.status());
@@ -591,7 +588,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
     when(mockPlatformExecutorFactory.createFixedExecutor(anyString(), anyInt(), any()))
         .thenReturn(executorService, Executors.newFixedThreadPool(1));
     Result unusedIndexResponse =
-        universePerfController.getUnusedIndexes(customer.uuid, universe.universeUUID);
+        universePerfController.getUnusedIndexes(customer.getUuid(), universe.getUniverseUUID());
 
     JsonNode json = Json.parse(contentAsString(unusedIndexResponse));
     assertEquals(OK, unusedIndexResponse.status());
@@ -630,7 +627,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
     when(mockPlatformExecutorFactory.createFixedExecutor(anyString(), anyInt(), any()))
         .thenReturn(executorService);
     Result unusedIndexResponse =
-        universePerfController.getUnusedIndexes(customer.uuid, universe.universeUUID);
+        universePerfController.getUnusedIndexes(customer.getUuid(), universe.getUniverseUUID());
 
     JsonNode json = Json.parse(contentAsString(unusedIndexResponse));
     assertEquals(OK, unusedIndexResponse.status());

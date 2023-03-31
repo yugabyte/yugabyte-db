@@ -105,9 +105,9 @@ public class KubernetesOverridesController extends AuthenticatedController {
         String ybSoftwareVersion = cluster.userIntent.ybSoftwareVersion;
         PlacementInfo pi = cluster.placementInfo;
         Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-        for (Region r : provider.regions) {
-          for (AvailabilityZone az : r.zones) {
-            providersAZSet.add(az.code);
+        for (Region r : provider.getRegions()) {
+          for (AvailabilityZone az : r.getZones()) {
+            providersAZSet.add(az.getCode());
           }
         }
         KubernetesPlacement placement =
@@ -115,7 +115,7 @@ public class KubernetesOverridesController extends AuthenticatedController {
         for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
           UUID azUUID = entry.getKey();
           boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
-          String azName = AvailabilityZone.getOrBadRequest(azUUID).code;
+          String azName = AvailabilityZone.getOrBadRequest(azUUID).getCode();
           String azCode = isMultiAz ? azName : null;
           placementAZSet.add(azName);
           Map<String, String> config = entry.getValue();

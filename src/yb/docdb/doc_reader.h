@@ -125,7 +125,7 @@ class DocDBTableReader {
   const SchemaPackingStorage& schema_packing_storage_;
 
   std::vector<KeyBytes> encoded_projection_;
-  DocHybridTime table_tombstone_time_ = DocHybridTime::kMin;
+  EncodedDocHybridTime table_tombstone_time_{EncodedDocHybridTime::kMin};
   Expiration table_expiration_;
 };
 

@@ -26,6 +26,9 @@ public class BundleDetails {
     @EnumValue("ErrorFiles")
     ErrorFiles(ComponentLevel.NodeLevel),
 
+    @EnumValue("CoreFiles")
+    CoreFiles(ComponentLevel.NodeLevel),
+
     @EnumValue("GFlags")
     GFlags(ComponentLevel.NodeLevel),
 

@@ -271,7 +271,7 @@ class K8sInfoComponent implements SupportBundleComponent {
     for (Map.Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
       UUID azUuid = entry.getKey();
       Map<String, String> azConfig = entry.getValue();
-      String azName = AvailabilityZone.getOrBadRequest(azUuid).name;
+      String azName = AvailabilityZone.getOrBadRequest(azUuid).getName();
       String kubernetesClusterName =
           kubernetesManagerFactory.getManager().getCurrentContext(azConfig);
       String namespace =
@@ -359,7 +359,7 @@ class K8sInfoComponent implements SupportBundleComponent {
             supportBundleUtil.logK8sError(
                 String.format(
                     "Error when getting kubectl version on universe (%s, %s) : ",
-                    universe.universeUUID.toString(), universe.name),
+                    universe.getUniverseUUID().toString(), universe.getName()),
                 e,
                 localFilePath);
           }
@@ -377,8 +377,8 @@ class K8sInfoComponent implements SupportBundleComponent {
               kubernetesCluster.config,
               serviceAccountName,
               serviceAccountDir,
-              universe.universeUUID,
-              universe.name);
+              universe.getUniverseUUID(),
+              universe.getName());
           log.debug("Finished getting service account permissions.");
 
           runCommandsOnDbNamespaces(
@@ -391,7 +391,7 @@ class K8sInfoComponent implements SupportBundleComponent {
           // Get the storage class info for that cluster
           Set<String> allStorageClassNames =
               supportBundleUtil.getAllStorageClassNames(
-                  universe.name,
+                  universe.getName(),
                   kubernetesManager,
                   kubernetesCluster,
                   isMultiAz,
@@ -418,7 +418,7 @@ class K8sInfoComponent implements SupportBundleComponent {
                   String.format(
                       "Error when getting storageclass info for "
                           + "storageclass '%s' on universe (%s, %s) : ",
-                      storageClassName, universe.universeUUID.toString(), universe.name),
+                      storageClassName, universe.getUniverseUUID().toString(), universe.getName()),
                   e,
                   localFilePath);
             }
@@ -430,7 +430,7 @@ class K8sInfoComponent implements SupportBundleComponent {
       log.error(
           String.format(
               "Error when downloading K8sInfoComponent on universe (%s, %s) : ",
-              universe.universeUUID.toString(), universe.name),
+              universe.getUniverseUUID().toString(), universe.getName()),
           e);
     }
   }

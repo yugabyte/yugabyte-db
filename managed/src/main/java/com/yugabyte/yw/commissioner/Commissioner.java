@@ -248,7 +248,7 @@ public class Commissioner {
     responseJson.put("retryable", false);
     if (isTaskRetryable(taskInfo.getTaskType())
         && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
-      if (task.getTarget() == CustomerTask.TargetType.Provider) {
+      if (task.getTargetType() == CustomerTask.TargetType.Provider) {
         CustomerTask lastTask =
             lastTaskByTarget.computeIfAbsent(
                 task.getTargetUUID(), tId -> CustomerTask.getLastTaskByTargetUuid(tId));
@@ -287,7 +287,7 @@ public class Commissioner {
   public JsonNode getTaskDetails(UUID taskUUID) {
     TaskInfo taskInfo = TaskInfo.get(taskUUID);
     if (taskInfo != null) {
-      return taskInfo.getTaskDetails();
+      return taskInfo.getDetails();
     } else {
       // TODO: push this down to TaskInfo
       throw new PlatformServiceException(
@@ -352,7 +352,7 @@ public class Commissioner {
           taskInfo -> {
             if (taskInfo.getPosition() >= subTaskPausePosition) {
               LOG.debug("Pausing task {} at position {}", taskInfo, taskInfo.getPosition());
-              final UUID subTaskUUID = taskInfo.getParentUUID();
+              final UUID subTaskUUID = taskInfo.getParentUuid();
               try {
                 // Insert if absent and get the latch.
                 pauseLatches.computeIfAbsent(subTaskUUID, k -> new CountDownLatch(1)).await();

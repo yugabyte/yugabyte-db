@@ -26,7 +26,8 @@ namespace docdb {
 class LocalWaitingTxnRegistry : public WaitingTxnRegistry {
  public:
   explicit LocalWaitingTxnRegistry(
-      const std::shared_future<client::YBClient*>& client_future, const server::ClockPtr& clock);
+      const std::shared_future<client::YBClient*>& client_future, const server::ClockPtr& clock,
+      const std::string& tserver_uuid, ThreadPool* thread_pool);
 
   ~LocalWaitingTxnRegistry();
 

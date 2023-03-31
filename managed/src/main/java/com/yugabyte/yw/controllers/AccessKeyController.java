@@ -6,7 +6,6 @@ import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.withMessage;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.handlers.AccessKeyHandler;
 import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -70,7 +69,7 @@ public class AccessKeyController extends AuthenticatedController {
     List<UUID> providerUUIDs =
         Provider.getAll(customerUUID)
             .stream()
-            .map(provider -> provider.uuid)
+            .map(provider -> provider.getUuid())
             .collect(Collectors.toList());
     List<AccessKey> accessKeys = AccessKey.getByProviderUuids(providerUUIDs);
     accessKeys.forEach(AccessKey::mergeProviderDetails);
@@ -102,7 +101,7 @@ public class AccessKeyController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.AccessKey,
-            Objects.toString(accessKey.idKey, null),
+            Objects.toString(accessKey.getIdKey(), null),
             Audit.ActionType.Create,
             request().body().asJson());
     return PlatformResults.withData(accessKey);
@@ -133,7 +132,7 @@ public class AccessKeyController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.AccessKey,
-            Objects.toString(newAccessKey.idKey, null),
+            Objects.toString(newAccessKey.getIdKey(), null),
             Audit.ActionType.Edit,
             request().body().asJson());
     return PlatformResults.withData(newAccessKey);
@@ -155,7 +154,7 @@ public class AccessKeyController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.AccessKey,
-            Objects.toString(accessKey.idKey, null),
+            Objects.toString(accessKey.getIdKey(), null),
             Audit.ActionType.Delete);
     return withMessage("Deleted KeyCode: " + keyCode);
   }

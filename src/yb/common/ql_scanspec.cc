@@ -20,14 +20,23 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
+#include "yb/docdb/key_bytes.h"
+
 namespace yb {
 
 using std::vector;
 
 //-------------------------------------- QL scan range --------------------------------------
-QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition)
-    : schema_(schema) {
-  Init(condition);
+QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition) {
+  Init(schema, condition);
+}
+
+QLScanRange::QLScanRange(const Schema& schema, const PgsqlConditionPB& condition) {
+  Init(schema, condition);
+}
+
+QLScanRange::QLScanRange(const Schema& schema, const LWPgsqlConditionPB& condition) {
+  Init(schema, condition);
 }
 
 template <class Value>
@@ -102,16 +111,15 @@ auto GetColumnValue(const Col& col) {
 }
 
 template <class Cond>
-void QLScanRange::Init(const Cond& condition) {
-
+void QLScanRange::Init(const Schema& schema, const Cond& condition) {
   // Initialize the lower/upper bounds of each range column to null to mean it is unbounded.
-  ranges_.reserve(schema_.num_dockey_components());
-  if (schema_.has_yb_hash_code()) {
+  ranges_.reserve(schema.num_dockey_components());
+  if (schema.has_yb_hash_code()) {
     ranges_.emplace(kYbHashCodeColId, QLRange());
   }
 
-  for (size_t i = 0; i < schema_.num_key_columns(); i++) {
-    ranges_.emplace(schema_.column_id(i), QLRange());
+  for (size_t i = 0; i < schema.num_key_columns(); i++) {
+    ranges_.emplace(schema.column_id(i), QLRange());
   }
 
   // Check if there are range and hash columns referenced in the operands.
@@ -122,16 +130,16 @@ void QLScanRange::Init(const Cond& condition) {
   for (const auto& operand : operands) {
     if (operand.expr_case() == ExprCase::kColumnId) {
       auto id = operand.column_id();
-      has_range_column |= schema_.is_range_column(ColumnId(id));
-      has_hash_column |= (id == kYbHashCodeColId || schema_.is_hash_key_column(ColumnId(id)));
+      has_range_column |= schema.is_range_column(ColumnId(id));
+      has_hash_column |= (id == kYbHashCodeColId || schema.is_hash_key_column(ColumnId(id)));
 
     } else if (operand.expr_case() == ExprCase::kTuple) {
       for (auto const& elem : operand.tuple().elems()) {
         DCHECK(elem.has_column_id());
         auto id = elem.column_id();
 
-        has_range_column |= schema_.is_range_column(ColumnId(id));
-        has_hash_column |= (id == kYbHashCodeColId || schema_.is_hash_key_column(ColumnId(id)));
+        has_range_column |= schema.is_range_column(ColumnId(id));
+        has_hash_column |= (id == kYbHashCodeColId || schema.is_hash_key_column(ColumnId(id)));
       }
     }
 
@@ -332,7 +340,7 @@ void QLScanRange::Init(const Cond& condition) {
         if (column_value.column_ids.size() > 1) {
           for (const auto& col_id : column_value.column_ids) {
             if (col_id.ToUint64() == kYbHashCodeColId ||
-                schema_.is_hash_key_column(col_id)) {
+                schema.is_hash_key_column(col_id)) {
               has_in_hash_options_ = true;
               break;
             }
@@ -347,7 +355,7 @@ void QLScanRange::Init(const Cond& condition) {
       CHECK_GT(operands.size(), 0);
       for (const auto& operand : operands) {
         CHECK_EQ(operand.expr_case(), ExprCase::kCondition);
-        *this &= QLScanRange(schema_, operand.condition());
+        *this &= QLScanRange(schema, operand.condition());
       }
       return;
     }
@@ -355,14 +363,14 @@ void QLScanRange::Init(const Cond& condition) {
       CHECK_GT(operands.size(), 0);
       for (const auto& operand : operands) {
         CHECK_EQ(operand.expr_case(), ExprCase::kCondition);
-        *this |= QLScanRange(schema_, operand.condition());
+        *this |= QLScanRange(schema, operand.condition());
       }
       return;
     }
     case QL_OP_NOT: {
       CHECK_EQ(operands.size(), 1);
       CHECK_EQ(operands.begin()->expr_case(), ExprCase::kCondition);
-      *this = std::move(~QLScanRange(schema_, operands.begin()->condition()));
+      *this = std::move(~QLScanRange(schema, operands.begin()->condition()));
       return;
     }
 
@@ -387,16 +395,6 @@ void QLScanRange::Init(const Cond& condition) {
   }
 
   LOG(FATAL) << "Internal error: illegal or unknown operator " << condition.op();
-}
-
-QLScanRange::QLScanRange(const Schema& schema, const PgsqlConditionPB& condition)
-    : schema_(schema) {
-  Init(condition);
-}
-
-QLScanRange::QLScanRange(const Schema& schema, const LWPgsqlConditionPB& condition)
-    : schema_(schema) {
-  Init(condition);
 }
 
 QLScanRange::QLBound::QLBound(const QLValuePB &value, bool is_inclusive, bool is_lower_bound)
@@ -526,19 +524,34 @@ QLScanRange& QLScanRange::operator=(QLScanRange&& other) {
   return *this;
 }
 
+//-------------------------------------- YQL scan spec ---------------------------------------
+Result<KeyBytes> YQLScanSpec::LowerBound() const { return Bound(/* lower_bound = */ true); }
+
+Result<KeyBytes> YQLScanSpec::UpperBound() const { return Bound(/* lower_bound = */ false); }
+
 //-------------------------------------- QL scan spec ---------------------------------------
 
-QLScanSpec::QLScanSpec(const Schema& schema,
-                       QLExprExecutorPtr executor)
-    : QLScanSpec(schema, nullptr, nullptr, true, std::move(executor)) {
-}
+QLScanSpec::QLScanSpec(
+    const Schema& schema, bool is_forward_scan, rocksdb::QueryId query_id,
+    std::unique_ptr<const QLScanRange> range_bounds, size_t prefix_length,
+    QLExprExecutorPtr executor)
+    : QLScanSpec(
+          schema, is_forward_scan, query_id, std::move(range_bounds), prefix_length, nullptr,
+          nullptr, std::move(executor)) {}
 
-QLScanSpec::QLScanSpec(const Schema& schema,
-                       const QLConditionPB* condition,
-                       const QLConditionPB* if_condition,
-                       const bool is_forward_scan,
-                       QLExprExecutorPtr executor)
-    : YQLScanSpec(YQL_CLIENT_CQL, schema, is_forward_scan),
+QLScanSpec::QLScanSpec(
+    const Schema& schema,
+    bool is_forward_scan,
+    rocksdb::QueryId query_id,
+    std::unique_ptr<const QLScanRange>
+        range_bounds,
+    size_t prefix_length,
+    const QLConditionPB* condition,
+    const QLConditionPB* if_condition,
+    QLExprExecutorPtr executor)
+    : YQLScanSpec(
+          YQL_CLIENT_CQL, schema, is_forward_scan, query_id, std::move(range_bounds),
+          prefix_length),
       condition_(condition),
       if_condition_(if_condition),
       executor_(std::move(executor)) {
@@ -563,11 +576,18 @@ Status QLScanSpec::Match(const QLTableRow& table_row, bool* match) const {
 
 //-------------------------------------- QL scan spec ---------------------------------------
 // Pgsql scan specification.
-PgsqlScanSpec::PgsqlScanSpec(const Schema& schema,
-                             bool is_forward_scan,
-                             const PgsqlExpressionPB *where_expr,
-                             QLExprExecutor::SharedPtr executor)
-    : YQLScanSpec(YQL_CLIENT_PGSQL, schema, is_forward_scan),
+PgsqlScanSpec::PgsqlScanSpec(
+    const Schema& schema,
+    bool is_forward_scan,
+    rocksdb::QueryId query_id,
+    std::unique_ptr<const QLScanRange>
+        range_bounds,
+    size_t prefix_length,
+    const PgsqlExpressionPB* where_expr,
+    QLExprExecutor::SharedPtr executor)
+    : YQLScanSpec(
+          YQL_CLIENT_PGSQL, schema, is_forward_scan, query_id, std::move(range_bounds),
+          prefix_length),
       where_expr_(where_expr),
       executor_(executor) {
   if (executor_ == nullptr) {

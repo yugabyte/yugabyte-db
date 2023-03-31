@@ -141,12 +141,12 @@ public class NodeInstanceController extends AuthenticatedController {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
       // Get AZ uuid
-      Map<String, String> azConfig = AvailabilityZone.getByCode(provider, azName).config;
+      Map<String, String> azConfig = AvailabilityZone.getByCode(provider, azName).getConfig();
       String helmReleaseName =
           KubernetesUtil.getHelmReleaseName(
               isMultiAz,
               universe.getUniverseDetails().nodePrefix,
-              universe.name,
+              universe.getName(),
               azName,
               isReadOnlyCluster,
               universe.getUniverseDetails().useNewHelmNamingStyle);
@@ -164,7 +164,7 @@ public class NodeInstanceController extends AuthenticatedController {
       log.error(
           String.format(
               "Exception in getting helm values for universe: %s with node: %s exception: %s",
-              universe.universeUUID, nodeName, e.getMessage()),
+              universe.getUniverseUUID(), nodeName, e.getMessage()),
           e);
       // Swallow the exception so that user can see other node details.
       return "";
@@ -422,7 +422,7 @@ public class NodeInstanceController extends AuthenticatedController {
         String errMsg =
             String.format(
                 "The certificate %s needs info. Update the cert" + " and retry.",
-                CertificateInfo.get(taskParams.rootCA).label);
+                CertificateInfo.get(taskParams.rootCA).getLabel());
         log.error(errMsg);
         throw new PlatformServiceException(BAD_REQUEST, errMsg);
       }
@@ -438,14 +438,14 @@ public class NodeInstanceController extends AuthenticatedController {
         "{} Node {} in universe={}: name={} at version={}.",
         nodeAction.toString(false),
         nodeName,
-        universe.universeUUID,
-        universe.name,
-        universe.version);
+        universe.getUniverseUUID(),
+        universe.getName(),
+        universe.getVersion());
 
     UUID taskUUID = commissioner.submit(nodeAction.getCommissionerTask(), taskParams);
     CustomerTask.create(
         customer,
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Node,
         nodeAction.getCustomerTask(),
@@ -453,8 +453,8 @@ public class NodeInstanceController extends AuthenticatedController {
     log.info(
         "Saved task uuid {} in customer tasks table for universe {} : {} for node {}",
         taskUUID,
-        universe.universeUUID,
-        universe.name,
+        universe.getUniverseUUID(),
+        universe.getName(),
         nodeName);
     auditService()
         .createAuditEntryWithReqBody(
@@ -468,7 +468,7 @@ public class NodeInstanceController extends AuthenticatedController {
   }
 
   private NodeInstance findNodeOrThrow(Provider provider, String instanceIP) {
-    List<NodeInstance> nodesInProvider = NodeInstance.listByProvider(provider.uuid);
+    List<NodeInstance> nodesInProvider = NodeInstance.listByProvider(provider.getUuid());
     // TODO: Need to convert routes to use UUID instead of instances' IP address
     // See: https://github.com/yugabyte/yugabyte-db/issues/7936
     return nodesInProvider

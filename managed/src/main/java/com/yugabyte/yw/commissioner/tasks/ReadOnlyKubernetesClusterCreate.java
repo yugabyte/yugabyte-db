@@ -36,7 +36,7 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
 
   @Override
   public void run() {
-    log.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
+    log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
     try {
       verifyParams(UniverseOpType.CREATE);
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
@@ -83,17 +83,17 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
               primaryPI,
               primaryPlacement.masters,
               taskParams().nodePrefix,
-              universe.name,
+              universe.getName(),
               primaryProvider,
               taskParams().communicationPorts.masterRpcPort,
               taskParams().useNewHelmNamingStyle);
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
-      createPodsTask(universe.name, placement, masterAddresses, true);
+      createPodsTask(universe.getName(), placement, masterAddresses, true);
 
       // Following method assumes primary cluster.
       createSingleKubernetesExecutorTask(
-          universe.name, KubernetesCommandExecutor.CommandType.POD_INFO, pi, true);
+          universe.getName(), KubernetesCommandExecutor.CommandType.POD_INFO, pi, true);
 
       Set<NodeDetails> tserversAdded =
           getPodsToAdd(placement.tservers, null, ServerType.TSERVER, isMultiAz, true);

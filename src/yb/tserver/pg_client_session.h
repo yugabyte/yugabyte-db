@@ -22,8 +22,8 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
+#include <optional>
 
-#include <boost/optional.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/range/iterator_range.hpp>
 
@@ -38,14 +38,17 @@
 
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/tserver_shared_mem.h"
+#include "yb/tserver/xcluster_context.h"
 
+#include "yb/util/coding_consts.h"
 #include "yb/util/locks.h"
+#include "yb/util/thread.h"
 
 DECLARE_bool(TEST_enable_db_catalog_version_mode);
 
 namespace yb {
 class ConsistentReadPoint;
-class XClusterSafeTimeMap;
 
 namespace tserver {
 
@@ -92,16 +95,17 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   using UsedReadTimePtr = std::weak_ptr<UsedReadTime>;
 
   PgClientSession(
-      uint64_t id,
-      client::YBClient* client, const scoped_refptr<ClockBase>& clock,
+      uint64_t id, client::YBClient* client, const scoped_refptr<ClockBase>& clock,
       std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
-      PgTableCache* table_cache, const XClusterSafeTimeMap* xcluster_safe_time_map,
-      std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter,
-      PgResponseCache* response_cache, PgSequenceCache* sequence_cache);
+      PgTableCache* table_cache, const std::optional<XClusterContext>& xcluster_context,
+      PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
+      PgSequenceCache* sequence_cache);
 
   uint64_t id() const;
 
   Status Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context);
+
+  std::shared_ptr<CountDownLatch> ProcessSharedRequest(size_t size, SharedExchange* exchange);
 
   #define PG_CLIENT_SESSION_METHOD_DECLARE(r, data, method) \
   Status method( \
@@ -162,19 +166,22 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
     return Status::OK();
   }
 
+  template <class DataPtr>
+  Status DoPerform(const DataPtr& data, CoarseTimePoint deadline, rpc::RpcContext* context);
+
   const uint64_t id_;
   client::YBClient& client_;
   scoped_refptr<ClockBase> clock_;
   const TransactionPoolProvider& transaction_pool_provider_;
   PgTableCache& table_cache_;
-  const XClusterSafeTimeMap* xcluster_safe_time_map_;
-  std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter_;
+  const std::optional<XClusterContext> xcluster_context_;
+  PgMutationCounter* pg_node_level_mutation_counter_;
   PgResponseCache& response_cache_;
   PgSequenceCache& sequence_cache_;
 
   std::array<SessionData, kPgClientSessionKindMapSize> sessions_;
   uint64_t txn_serial_no_ = 0;
-  boost::optional<uint64_t> saved_priority_;
+  std::optional<uint64_t> saved_priority_;
   TransactionMetadata ddl_txn_metadata_;
   UsedReadTime plain_session_used_read_time_;
 };

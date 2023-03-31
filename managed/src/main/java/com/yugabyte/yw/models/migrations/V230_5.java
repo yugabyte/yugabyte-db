@@ -23,6 +23,9 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.Table;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -32,28 +35,32 @@ import play.libs.Json;
 public class V230_5 {
 
   @Entity
+  @Getter
+  @Setter
   @Table(name = "customer")
   public static class TmpCustomer extends Model {
 
-    @Id public UUID uuid;
+    @Id private UUID uuid;
 
     public static final Finder<UUID, TmpCustomer> find =
         new Finder<UUID, TmpCustomer>(TmpCustomer.class) {};
   }
 
   @Entity
+  @Getter
+  @Setter
   @Table(name = "provider")
   public static class TmpProvider extends Model {
 
-    @Id public UUID uuid;
+    @Id private UUID uuid;
 
     @Column(name = "customer_uuid", nullable = false)
-    public UUID customerUUID;
+    private UUID customerUUID;
 
     @Column(nullable = false, columnDefinition = "TEXT")
     @Encrypted
     @DbJson
-    public TmpProviderDetails details = new TmpProviderDetails();
+    private TmpProviderDetails details = new TmpProviderDetails();
 
     public static final Finder<UUID, TmpProvider> find =
         new Finder<UUID, TmpProvider>(TmpProvider.class) {};
@@ -74,5 +81,6 @@ public class V230_5 {
     }
   }
 
+  @EqualsAndHashCode(callSuper = true)
   public static class TmpProviderDetails extends MigratedKeyInfoFields {}
 }

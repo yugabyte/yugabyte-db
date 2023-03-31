@@ -34,6 +34,9 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
 
   docdb::HistoryRetentionDirective GetRetentionDirective() override;
 
+  // Returns history cutoff without updating committed_history_cutoff_.
+  HybridTime ProposedHistoryCutoff() override;
+
   // Tries to update history cutoff to proposed value, not allowing it to decrease.
   // Returns new committed history cutoff value.
   HybridTime UpdateCommittedHistoryCutoff(HybridTime new_value);
@@ -59,6 +62,9 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
   // Check proposed history cutoff against other restrictions (for instance min reading timestamp),
   // and returns most close value that satisfies them.
   HybridTime SanitizeHistoryCutoff(HybridTime proposed_history_cutoff) REQUIRES(mutex_);
+
+  // Helper function to get the history directive with or without committed history update.
+  docdb::HistoryRetentionDirective DoGetRetentionDirective(bool update_committed_history);
 
   const std::string& LogPrefix() const {
     return log_prefix_;

@@ -126,6 +126,12 @@ yb_deduplicate_arguments(POSTGRES_FINAL_EXE_LD_FLAGS)
 
 set(PG_EXE_LD_FLAGS_AFTER_YB_LIBS "")
 if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
+  # We link with tcmalloc statically, but tcmalloc depends on some other shared libraries being
+  # present on the linker command line.
+  #
+  # The libraries we add here should be kept consistent with the libraries added in
+  # the add_executable wrapper in YugabyteFunctions.cmake.
+  #
   # We don't add libtcmalloc and libprofiler to POSTGRES_FINAL_EXE_LD_FLAGS because when building
   # with GCC we use the standard ld linker, which cares about the order of libraries when using
   # static libraries. Symbols from libtcmalloc and libprofiler are needed by e.g. libyb_util, so
@@ -181,7 +187,11 @@ add_custom_target(configure_postgres ALL COMMAND ${build_postgres_args} --step c
 add_custom_target(
     postgres ALL
     COMMAND ${build_postgres_args} --step make
-    BYPRODUCTS "${LIBPQ_SHARED_LIB}" "${YB_PGBACKEND_SHARED_LIB}")
+    BYPRODUCTS
+      "${LIBPQ_SHARED_LIB}"
+      "${YB_PGBACKEND_SHARED_LIB}"
+      "${PG_COMMON_STATIC_LIB}"
+      "${PG_PORT_STATIC_LIB}")
 
 add_dependencies(postgres configure_postgres)
 

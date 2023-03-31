@@ -121,6 +121,7 @@ public class EmailHelper {
         props.put("mail.smtp.auth", "false");
       }
       props.put("mail.smtp.starttls.enable", String.valueOf(smtpData.useTLS));
+      props.put("mail.smtp.ssl.protocols", "TLSv1.3 TLSv1.2 TLSv1.1 TLSv1");
       String smtpServer =
           StringUtils.isEmpty(smtpData.smtpServer)
               ? runtimeConfig.getString("yb.health.default_smtp_server")
@@ -193,9 +194,9 @@ public class EmailHelper {
     Customer customer = Customer.get(customerUUID);
     List<String> destinations = new ArrayList<>();
     String ybEmail = getYbEmail(customer);
-    CustomerConfig config = CustomerConfig.getAlertConfig(customer.uuid);
+    CustomerConfig config = CustomerConfig.getAlertConfig(customer.getUuid());
     if (config != null) {
-      AlertingData alertingData = Json.fromJson(config.data, AlertingData.class);
+      AlertingData alertingData = Json.fromJson(config.getData(), AlertingData.class);
       if (alertingData.sendAlertsToYb && !StringUtils.isEmpty(ybEmail)) {
         destinations.add(ybEmail);
       }
@@ -225,7 +226,7 @@ public class EmailHelper {
     if (smtpConfig == null) {
       return null;
     }
-    SmtpData smtpData = Json.fromJson(smtpConfig.data, SmtpData.class);
+    SmtpData smtpData = Json.fromJson(smtpConfig.getData(), SmtpData.class);
     if (StringUtils.isEmpty(smtpData.emailFrom)) {
       smtpData.emailFrom = getYbEmail(customer);
     }

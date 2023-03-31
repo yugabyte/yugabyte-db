@@ -510,11 +510,10 @@ select string_agg(a,'AB') from (values(null),(null),('bbbb'),('cccc')) g(a);
 select string_agg(a,',') from (values(null),(null)) g(a);
 
 -- check some implicit casting cases, as per bug #5564
--- TODO(jayden): Enable below once we have yb_pg_varchar test which creates this table.
 select string_agg(distinct f1, ',' order by f1) from varchar_tbl;  -- ok
--- select string_agg(distinct f1::text, ',' order by f1) from varchar_tbl;  -- not ok
--- select string_agg(distinct f1, ',' order by f1::text) from varchar_tbl;  -- not ok
--- select string_agg(distinct f1::text, ',' order by f1::text) from varchar_tbl;  -- ok
+select string_agg(distinct f1::text, ',' order by f1) from varchar_tbl;  -- not ok
+select string_agg(distinct f1, ',' order by f1::text) from varchar_tbl;  -- not ok
+select string_agg(distinct f1::text, ',' order by f1::text) from varchar_tbl;  -- ok
 
 -- string_agg bytea tests
 -- TODO(jayden): Below test relies on retrieval ordering, thus is non-deterministic.

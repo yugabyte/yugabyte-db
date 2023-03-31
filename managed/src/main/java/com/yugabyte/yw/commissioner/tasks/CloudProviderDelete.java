@@ -1,18 +1,11 @@
 package com.yugabyte.yw.commissioner.tasks;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-
-import java.io.File;
-import java.util.UUID;
-import javax.inject.Inject;
-
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.common.AccessManager;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
@@ -20,7 +13,9 @@ import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
-
+import java.io.File;
+import java.util.UUID;
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -57,21 +52,22 @@ public class CloudProviderDelete extends AbstractTaskBase {
     UUID providerUUID = taskParams().providerUUID;
     log.info("Trying to delete provider with UUID {}", providerUUID);
     Customer customer = taskParams().customer;
-    Provider provider = Provider.getOrBadRequest(customer.uuid, providerUUID);
+    Provider provider = Provider.getOrBadRequest(customer.getUuid(), providerUUID);
 
-    if (customer.getUniversesForProvider(provider.uuid).size() > 0) {
+    if (customer.getUniversesForProvider(provider.getUuid()).size() > 0) {
       throw new IllegalStateException("Cannot delete Provider with Universes");
     }
 
     // Clear the key files in the DB.
-    String keyFileBasePath = accessManager.getOrCreateKeyFilePath(provider.uuid);
+    String keyFileBasePath = accessManager.getOrCreateKeyFilePath(provider.getUuid());
     // We would delete only the files for k8s provider
     // others are already taken care off during access key deletion.
-    FileData.deleteFiles(keyFileBasePath, provider.code.equals(CloudType.kubernetes.toString()));
+    FileData.deleteFiles(
+        keyFileBasePath, provider.getCode().equals(CloudType.kubernetes.toString()));
 
     // Clear Access Key related metadata
-    for (AccessKey accessKey : AccessKey.getAll(provider.uuid)) {
-      final String provisionInstanceScript = provider.details.provisionInstanceScript;
+    for (AccessKey accessKey : AccessKey.getAll(provider.getUuid())) {
+      final String provisionInstanceScript = provider.getDetails().provisionInstanceScript;
       if (!provisionInstanceScript.isEmpty()) {
         new File(provisionInstanceScript).delete();
       }
@@ -83,7 +79,7 @@ public class CloudProviderDelete extends AbstractTaskBase {
     // Clear Node instance for the provider.
     NodeInstance.deleteByProvider(providerUUID);
     // Delete the instance types for the provider.
-    InstanceType.deleteInstanceTypesForProvider(provider, config, configHelper);
+    InstanceType.deleteInstanceTypesForProvider(provider, config);
 
     // Delete the provider.
     provider.delete();

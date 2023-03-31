@@ -470,7 +470,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     AlertDefinitionFilter definitionFilter =
         AlertDefinitionFilter.builder()
-            .label(KnownAlertLabels.SOURCE_UUID, universe.universeUUID.toString())
+            .label(KnownAlertLabels.SOURCE_UUID, universe.getUniverseUUID().toString())
             .build();
 
     List<AlertDefinition> universeDefinitions = alertDefinitionService.list(definitionFilter);
@@ -496,7 +496,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     AlertDefinitionFilter definitionFilter =
         AlertDefinitionFilter.builder()
-            .label(KnownAlertLabels.SOURCE_UUID, universe.universeUUID.toString())
+            .label(KnownAlertLabels.SOURCE_UUID, universe.getUniverseUUID().toString())
             .build();
 
     List<AlertDefinition> universeDefinitions = alertDefinitionService.list(definitionFilter);
@@ -551,8 +551,8 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     assertThat(universeDefinitions, hasSize(3));
 
-    Universe universe3 = ModelFactory.createUniverse("one more", customer.getCustomerId());
-    Universe universe4 = ModelFactory.createUniverse("another more", customer.getCustomerId());
+    Universe universe3 = ModelFactory.createUniverse("one more", customer.getId());
+    Universe universe4 = ModelFactory.createUniverse("another more", customer.getId());
 
     ExecutorService executor = Executors.newFixedThreadPool(2);
     List<Future<Void>> futures = new ArrayList<>();
@@ -585,11 +585,11 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationCreate(
         configuration -> configuration.setCustomerUUID(null),
-        "errorJson: {\"customerUUID\":[\"may not be null\"]}");
+        "errorJson: {\"customerUUID\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setName(null),
-        "errorJson: {\"name\":[\"may not be null\"]}");
+        "errorJson: {\"name\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setName(StringUtils.repeat("a", 1001)),
@@ -597,11 +597,11 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationCreate(
         configuration -> configuration.setTargetType(null),
-        "errorJson: {\"targetType\":[\"may not be null\"]}");
+        "errorJson: {\"targetType\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setTarget(null),
-        "errorJson: {\"target\":[\"may not be null\"]}");
+        "errorJson: {\"target\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration ->
@@ -630,7 +630,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationCreate(
         configuration -> configuration.setTemplate(null),
-        "errorJson: {\"template\":[\"may not be null\"]}");
+        "errorJson: {\"template\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setTemplate(ALERT_CONFIG_WRITING_FAILED),
@@ -638,7 +638,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationCreate(
         configuration -> configuration.setThresholds(null),
-        "errorJson: {\"thresholds\":[\"may not be null\"]}");
+        "errorJson: {\"thresholds\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setDestinationUUID(randomUUID),
@@ -654,7 +654,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationCreate(
         configuration -> configuration.setThresholdUnit(null),
-        "errorJson: {\"thresholdUnit\":[\"may not be null\"]}");
+        "errorJson: {\"thresholdUnit\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setThresholdUnit(Unit.STATUS),
@@ -662,11 +662,11 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationCreate(
         configuration -> configuration.getThresholds().get(Severity.SEVERE).setCondition(null),
-        "errorJson: {\"thresholds[SEVERE].condition\":[\"may not be null\"]}");
+        "errorJson: {\"thresholds[SEVERE].condition\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.getThresholds().get(Severity.SEVERE).setThreshold(null),
-        "errorJson: {\"thresholds[SEVERE].threshold\":[\"may not be null\"]}");
+        "errorJson: {\"thresholds[SEVERE].threshold\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.getThresholds().get(Severity.SEVERE).setThreshold(-100D),
@@ -743,7 +743,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
   private void assertTestConfiguration(AlertConfiguration configuration) {
     AlertTemplate template = MEMORY_CONSUMPTION;
-    assertThat(configuration.getCustomerUUID(), equalTo(customer.uuid));
+    assertThat(configuration.getCustomerUUID(), equalTo(customer.getUuid()));
     assertThat(configuration.getName(), equalTo(template.getName()));
     assertThat(configuration.getDescription(), equalTo(template.getDescription()));
     assertThat(configuration.getTemplate(), equalTo(template));

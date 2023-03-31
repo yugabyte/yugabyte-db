@@ -3976,6 +3976,17 @@ TEST_P(DocDBTestWrapper, DISABLED_DumpDB) {
   LOG(INFO) << "TXN meta: " << txn_meta << ", rev key: " << rev_key << ", intents: " << intent;
 }
 
+void ScanForwardWithMetricCheck(
+    rocksdb::Iterator* iter, const rocksdb::Statistics* regular_db_statistics,
+    const Slice& upperbound, rocksdb::KeyFilterCallback* key_filter_callback,
+    rocksdb::ScanCallback* scan_callback, uint64_t expected_number_of_keys_visited) {
+  auto initial_stats = regular_db_statistics->getTickerCount(rocksdb::NUMBER_DB_NEXT);
+  ASSERT_TRUE(iter->ScanForward(upperbound, key_filter_callback, scan_callback));
+  ASSERT_EQ(
+      expected_number_of_keys_visited,
+      regular_db_statistics->getTickerCount(rocksdb::NUMBER_DB_NEXT) - initial_stats);
+}
+
 TEST_P(DocDBTestWrapper, SetHybridTimeFilter) {
   auto dwb = MakeDocWriteBatch();
   for (int i = 1; i <= 4; ++i) {
@@ -4024,7 +4035,9 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilter) {
       return true;
     };
     if (j == 0) {
-      ASSERT_TRUE(iter->ScanForward(Slice(), /*key_filter_callback=*/ nullptr, &scan_callback));
+      ScanForwardWithMetricCheck(
+          iter.get(), regular_db_options_.statistics.get(), Slice(),
+          /*key_filter_callback=*/nullptr, &scan_callback, 4);
     } else {
       int kf_calls = 0;
       rocksdb::KeyFilterCallback kf_callback = [&kf_calls](
@@ -4033,7 +4046,9 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilter) {
         kf_calls++;
         return rocksdb::KeyFilterCallbackResult{.skip_key = false, .cache_key = false};
       };
-      ASSERT_TRUE(iter->ScanForward(Slice(), &kf_callback, &scan_callback));
+      ScanForwardWithMetricCheck(
+          iter.get(), regular_db_options_.statistics.get(), Slice(), &kf_callback, &scan_callback,
+          4);
       ASSERT_EQ(2, kf_calls);
     }
     ASSERT_EQ(2, scanned_keys);
@@ -4132,14 +4147,17 @@ TEST_P(DocDBTestWrapper, IteratorScanForwardUpperbound) {
         scanned_keys = 0;
 
         auto encoded_doc_key = DocKey(KeyEntryValues(Format("row$0", i), 11111 * i)).Encode();
-        ASSERT_TRUE(
-            iter->ScanForward(encoded_doc_key, /*key_filter_callback=*/ nullptr, &scan_callback));
+        ScanForwardWithMetricCheck(
+            iter.get(), regular_db_options_.statistics.get(), encoded_doc_key,
+            /*key_filter_callback=*/nullptr, &scan_callback, i - 1);
         ASSERT_EQ(i - 1, scanned_keys);
 
         ASSERT_TRUE(iter->Valid());
         ASSERT_EQ(encoded_doc_key.AsSlice(), iter->key().Prefix(encoded_doc_key.size()));
 
-        ASSERT_TRUE(iter->ScanForward(Slice(), /*key_filter_callback=*/ nullptr, &scan_callback));
+        ScanForwardWithMetricCheck(
+            iter.get(), regular_db_options_.statistics.get(), Slice(),
+            /*key_filter_callback=*/nullptr, &scan_callback, kNumKeys - i + 1);
         ASSERT_EQ(kNumKeys, scanned_keys);
 
         ASSERT_FALSE(iter->Valid());
@@ -4243,6 +4261,64 @@ TEST_P(DocDBTestWrapper, InterleavedRecordsScanForward) {
       SubDocKey(DocKey([], ["row9", 99999]), [ColumnId(10); HT{ physical: 90000 }]) -> 19
       SubDocKey(DocKey([], ["row9", 99999]), [ColumnId(10); HT{ physical: 45000 }]) -> 29
       SubDocKey(DocKey([], ["row9", 99999]), [ColumnId(10); HT{ physical: 9000 }]) -> 9
+  )#");
+}
+
+TEST_P(DocDBTestWrapper, ScanForwardWithDuplicateKeys) {
+  constexpr int kNumKeys = 9;
+  auto dwb = MakeDocWriteBatch();
+  for (int i = 1; i <= kNumKeys; ++i) {
+    ASSERT_OK(WriteSimple(i));
+  }
+
+  ValidateScanForwardAndRegularIterator(doc_db());
+
+  // Move first kNumKeys records to SST file.
+  ASSERT_OK(FlushRocksDbAndWait());
+
+  // Add same records again in memtable.
+  for (int i = 1; i <= kNumKeys; ++i) {
+    ASSERT_OK(WriteSimple(i));
+  }
+
+  // Validate that ScanForward API scans all keys.
+  rocksdb::ReadOptions read_opts;
+  read_opts.query_id = rocksdb::kDefaultQueryId;
+  unique_ptr<rocksdb::Iterator> iter(doc_db().regular->NewIterator(read_opts));
+  iter->SeekToFirst();
+  size_t scanned_keys = 0;
+  rocksdb::ScanCallback scan_callback = [&scanned_keys](
+                                            const Slice& key, const Slice& value) -> bool {
+    scanned_keys++;
+    return true;
+  };
+
+  ScanForwardWithMetricCheck(
+          iter.get(), regular_db_options_.statistics.get(), Slice(),
+          /*key_filter_callback=*/nullptr, &scan_callback, kNumKeys * 2);
+
+  ASSERT_EQ(kNumKeys * 2, scanned_keys);
+
+  // DocDB debug dump to str uses ScanForward API therefore we see duplicate keys in below output.
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+    SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+    SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+    SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
+    SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
+    SubDocKey(DocKey([], ["row3", 33333]), [ColumnId(10); HT{ physical: 3000 }]) -> 3
+    SubDocKey(DocKey([], ["row3", 33333]), [ColumnId(10); HT{ physical: 3000 }]) -> 3
+    SubDocKey(DocKey([], ["row4", 44444]), [ColumnId(10); HT{ physical: 4000 }]) -> 4
+    SubDocKey(DocKey([], ["row4", 44444]), [ColumnId(10); HT{ physical: 4000 }]) -> 4
+    SubDocKey(DocKey([], ["row5", 55555]), [ColumnId(10); HT{ physical: 5000 }]) -> 5
+    SubDocKey(DocKey([], ["row5", 55555]), [ColumnId(10); HT{ physical: 5000 }]) -> 5
+    SubDocKey(DocKey([], ["row6", 66666]), [ColumnId(10); HT{ physical: 6000 }]) -> 6
+    SubDocKey(DocKey([], ["row6", 66666]), [ColumnId(10); HT{ physical: 6000 }]) -> 6
+    SubDocKey(DocKey([], ["row7", 77777]), [ColumnId(10); HT{ physical: 7000 }]) -> 7
+    SubDocKey(DocKey([], ["row7", 77777]), [ColumnId(10); HT{ physical: 7000 }]) -> 7
+    SubDocKey(DocKey([], ["row8", 88888]), [ColumnId(10); HT{ physical: 8000 }]) -> 8
+    SubDocKey(DocKey([], ["row8", 88888]), [ColumnId(10); HT{ physical: 8000 }]) -> 8
+    SubDocKey(DocKey([], ["row9", 99999]), [ColumnId(10); HT{ physical: 9000 }]) -> 9
+    SubDocKey(DocKey([], ["row9", 99999]), [ColumnId(10); HT{ physical: 9000 }]) -> 9
   )#");
 }
 

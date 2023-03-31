@@ -39,20 +39,20 @@ public class ManageAlertDefinitions extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ")";
+    return super.getName() + "(" + taskParams().getUniverseUUID() + ")";
   }
 
   @Override
   public void run() {
     try {
       log.info("Running {}", getName());
-      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-      Customer customer = Customer.get(universe.customerId);
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+      Customer customer = Customer.get(universe.getCustomerId());
 
       AlertDefinitionFilter filter =
           AlertDefinitionFilter.builder()
               .customerUuid(customer.getUuid())
-              .label(KnownAlertLabels.UNIVERSE_UUID, universe.universeUUID.toString())
+              .label(KnownAlertLabels.UNIVERSE_UUID, universe.getUniverseUUID().toString())
               .build();
 
       List<AlertDefinition> definitions =

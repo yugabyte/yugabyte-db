@@ -51,7 +51,8 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
       currentNode = universe.getNode(taskParams().nodeName);
 
       if (currentNode == null) {
-        String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
+        String msg =
+            "No node " + taskParams().nodeName + " found in universe " + universe.getName();
         log.error(msg);
         throw new RuntimeException(msg);
       }

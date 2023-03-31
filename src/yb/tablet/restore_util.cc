@@ -48,12 +48,13 @@ Result<bool> FetchState::Update() {
   }
 
   rest_of_key.remove_prefix(prefix_.size());
+  const auto key_write_time = VERIFY_RESULT(key_.write_time.Decode());
   for (auto i = key_write_stack_.begin(); i != key_write_stack_.end(); ++i) {
     if (!rest_of_key.starts_with(i->key.AsSlice())) {
       key_write_stack_.erase(i, key_write_stack_.end());
       break;
     }
-    if (i->time > key_.write_time) {
+    if (i->time > key_write_time) {
       // This key-value entry is outdated and we should pick the next one.
       return false;
     }
@@ -73,7 +74,7 @@ Result<bool> FetchState::Update() {
       .key = KeyBuffer(rest_of_key.Prefix(doc_key_size)),
       // If doc key does not have its own write time, then we use min time to avoid ignoring
       // updates for other columns.
-      .time = doc_key_size == rest_of_key.size() ? key_.write_time : DocHybridTime::kMin,
+      .time = doc_key_size == rest_of_key.size() ? key_write_time : DocHybridTime::kMin,
     });
     rest_of_key.remove_prefix(doc_key_size);
   }
@@ -84,7 +85,7 @@ Result<bool> FetchState::Update() {
     // Since complete subkey cannot be prefix of another subkey.
     key_write_stack_.push_back(KeyWriteEntry {
       .key = KeyBuffer(rest_of_key),
-      .time = key_.write_time,
+      .time = key_write_time,
     });
   }
 
@@ -263,4 +264,35 @@ void WriteToRocksDB(
   tablet->WriteToRocksDB(
       &frontiers, &rocksdb_write_batch, docdb::StorageDbType::kRegular);
 }
+
+int64_t GetValue(const docdb::Value& value, int64_t* type) {
+  return value.primitive_value().GetInt64();
+}
+
+bool GetValue(const docdb::Value& value, bool* type) {
+  return value.primitive_value().GetBoolean();
+}
+
+Result<std::optional<int64_t>> GetInt64ColumnValue(
+    const docdb::SubDocKey& sub_doc_key, const Slice& value,
+    tablet::TableInfo* table_info, const std::string& column_name) {
+  // Packed row case.
+  if (sub_doc_key.subkeys().empty()) {
+    return VERIFY_RESULT(GetColumnValuePacked<int64_t>(table_info, value, column_name));
+  }
+  return VERIFY_RESULT(GetColumnValueNotPacked<int64_t>(
+      table_info, value, column_name, sub_doc_key));
+}
+
+Result<std::optional<bool>> GetBoolColumnValue(
+    const docdb::SubDocKey& sub_doc_key, const Slice& value,
+    tablet::TableInfo* table_info, const std::string& column_name) {
+  // Packed row case.
+  if (sub_doc_key.subkeys().empty()) {
+    return VERIFY_RESULT(GetColumnValuePacked<bool>(table_info, value, column_name));
+  }
+  return VERIFY_RESULT(GetColumnValueNotPacked<bool>(
+      table_info, value, column_name, sub_doc_key));
+}
+
 } // namespace yb

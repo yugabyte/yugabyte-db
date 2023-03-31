@@ -20,21 +20,15 @@ import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
-import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.AlertConfigFormData;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
-import com.yugabyte.yw.forms.ToggleTlsParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UpgradeParams;
-import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
-import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -46,6 +40,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+@Singleton
 public class UniverseActionsHandler {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseActionsHandler.class);
 
@@ -70,12 +65,12 @@ public class UniverseActionsHandler {
       Customer customer, Universe universe, EncryptionAtRestKeyParams taskParams) {
     try {
       TaskType taskType = TaskType.SetUniverseKey;
-      taskParams.expectedUniverseVersion = universe.version;
+      taskParams.expectedUniverseVersion = universe.getVersion();
       UUID taskUUID = commissioner.submit(taskType, taskParams);
       LOG.info(
           "Submitted set universe key for {}:{}, task uuid = {}.",
-          universe.universeUUID,
-          universe.name,
+          universe.getUniverseUUID(),
+          universe.getName(),
           taskUUID);
 
       CustomerTask.TaskType customerTaskType = null;
@@ -98,18 +93,18 @@ public class UniverseActionsHandler {
       // Add this task uuid to the user universe.
       CustomerTask.create(
           customer,
-          universe.universeUUID,
+          universe.getUniverseUUID(),
           taskUUID,
           CustomerTask.TargetType.Universe,
           customerTaskType,
-          universe.name);
+          universe.getName());
       LOG.info(
           "Saved task uuid "
               + taskUUID
               + " in customer tasks table for universe "
-              + universe.universeUUID
+              + universe.getUniverseUUID()
               + ":"
-              + universe.name);
+              + universe.getName());
       return taskUUID;
     } catch (RuntimeException e) {
       String errMsg =
@@ -156,12 +151,14 @@ public class UniverseActionsHandler {
       LOG.info(
           String.format(
               "Will disable alerts for universe %s until unix time %d [ %s ].",
-              universe.universeUUID, disabledUntilSecs, Util.unixTimeToString(disabledUntilSecs)));
+              universe.getUniverseUUID(),
+              disabledUntilSecs,
+              Util.unixTimeToString(disabledUntilSecs)));
     } else {
       LOG.info(
           String.format(
               "Will enable alerts for universe %s [unix time  = %d].",
-              universe.universeUUID, disabledUntilSecs));
+              universe.getUniverseUUID(), disabledUntilSecs));
     }
     config.put(Universe.DISABLE_ALERTS_UNTIL, Long.toString(disabledUntilSecs));
     universe.updateConfig(config);
@@ -171,41 +168,47 @@ public class UniverseActionsHandler {
   public UUID pause(Customer customer, Universe universe) {
     LOG.info(
         "Pause universe, customer uuid: {}, universe: {} [ {} ] ",
-        customer.uuid,
-        universe.name,
-        universe.universeUUID);
+        customer.getUuid(),
+        universe.getName(),
+        universe.getUniverseUUID());
 
     // Create the Commissioner task to pause the universe.
     PauseUniverse.Params taskParams = new PauseUniverse.Params();
-    taskParams.universeUUID = universe.universeUUID;
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
     // There is no staleness of a pause request. Perform it even if the universe has changed.
     taskParams.expectedUniverseVersion = -1;
-    taskParams.customerUUID = customer.uuid;
+    taskParams.customerUUID = customer.getUuid();
     // Submit the task to pause the universe.
     TaskType taskType = TaskType.PauseUniverse;
 
     UUID taskUUID = commissioner.submit(taskType, taskParams);
-    LOG.info("Submitted pause universe for " + universe.universeUUID + ", task uuid = " + taskUUID);
+    LOG.info(
+        "Submitted pause universe for " + universe.getUniverseUUID() + ", task uuid = " + taskUUID);
 
     // Add this task uuid to the user universe.
     CustomerTask.create(
         customer,
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.Pause,
-        universe.name);
+        universe.getName());
 
-    LOG.info("Paused universe " + universe.universeUUID + " for customer [" + customer.name + "]");
+    LOG.info(
+        "Paused universe "
+            + universe.getUniverseUUID()
+            + " for customer ["
+            + customer.getName()
+            + "]");
     return taskUUID;
   }
 
   public UUID resume(Customer customer, Universe universe) throws IOException {
     LOG.info(
         "Resume universe, customer uuid: {}, universe: {} [ {} ] ",
-        customer.uuid,
-        universe.name,
-        universe.universeUUID);
+        customer.getUuid(),
+        universe.getName(),
+        universe.getUniverseUUID());
 
     // Create the Commissioner task to resume the universe.
     // TODO: this is better done using copy constructors
@@ -225,25 +228,35 @@ public class UniverseActionsHandler {
 
     UUID taskUUID = commissioner.submit(taskType, taskParams);
     LOG.info(
-        "Submitted resume universe for " + universe.universeUUID + ", task uuid = " + taskUUID);
+        "Submitted resume universe for "
+            + universe.getUniverseUUID()
+            + ", task uuid = "
+            + taskUUID);
 
     // Add this task uuid to the user universe.
     CustomerTask.create(
         customer,
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.Resume,
-        universe.name);
+        universe.getName());
 
-    LOG.info("Resumed universe " + universe.universeUUID + " for customer [" + customer.name + "]");
+    LOG.info(
+        "Resumed universe "
+            + universe.getUniverseUUID()
+            + " for customer ["
+            + customer.getName()
+            + "]");
     return taskUUID;
   }
 
   public UUID updateLoadBalancerConfig(
       Customer customer, Universe universe, UniverseDefinitionTaskParams taskParams) {
     LOG.info(
-        "Update load balancer config, universe: {} [ {} ] ", universe.name, universe.universeUUID);
+        "Update load balancer config, universe: {} [ {} ] ",
+        universe.getName(),
+        universe.getUniverseUUID());
     // Set existing LB config
     taskParams.setExistingLBs(universe.getUniverseDetails().clusters);
     // Task to update LB config
@@ -251,22 +264,22 @@ public class UniverseActionsHandler {
     UUID taskUUID = commissioner.submit(taskType, taskParams);
     LOG.info(
         "Submitted update load balancer config for {} : {}, task uuid = {}.",
-        universe.universeUUID,
-        universe.name,
+        universe.getUniverseUUID(),
+        universe.getName(),
         taskUUID);
 
     CustomerTask.create(
         customer,
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.UpdateLoadBalancerConfig,
-        universe.name);
+        universe.getName());
     LOG.info(
         "Saved task uuid {} in customer tasks table for universe {} : {}.",
         taskUUID,
-        universe.universeUUID,
-        universe.name);
+        universe.getUniverseUUID(),
+        universe.getName());
     return taskUUID;
   }
 }

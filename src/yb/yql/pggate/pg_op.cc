@@ -18,7 +18,6 @@
 
 #include "yb/common/partition.h"
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/ql_scanspec.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 

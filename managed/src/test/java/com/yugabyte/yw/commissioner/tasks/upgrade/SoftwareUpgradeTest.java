@@ -291,7 +291,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
-    assertEquals(2, defaultUniverse.version);
+    assertEquals(2, defaultUniverse.getVersion());
     // In case of an exception, only RunHooks task should be queued.
     assertEquals(3, taskInfo.getSubTasks().size());
   }
@@ -304,7 +304,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
-    assertEquals(2, defaultUniverse.version);
+    assertEquals(2, defaultUniverse.getVersion());
     // In case of an exception, only RunHooks tasks should be queued.
     assertEquals(3, taskInfo.getSubTasks().size());
   }
@@ -316,7 +316,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = "2.17.0.0-b1";
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
-    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.version);
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(71)).nodeCommand(any(), any());
     verify(mockNodeUniverseManager, times(5)).runCommand(any(), any(), anyList(), any());
 
@@ -356,7 +356,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     taskParams.ybSoftwareVersion = "2.17.0.0-b1";
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     taskParams.upgradeSystemCatalog = false;
-    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.version);
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(71)).nodeCommand(any(), any());
     verify(mockNodeUniverseManager, times(5)).runCommand(any(), any(), anyList(), any());
 
@@ -399,9 +399,9 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     userIntent.replicationFactor = 3;
     userIntent.ybSoftwareVersion = "old-version";
     userIntent.accessKeyCode = "demo-access";
-    userIntent.regionList = ImmutableList.of(region.uuid);
+    userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.enableYSQL = enableYSQL;
-    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.provider = defaultProvider.getUuid().toString();
 
     PlacementInfo pi = new PlacementInfo();
     AvailabilityZone az4 = AvailabilityZone.createOrThrow(region, "az-4", "AZ 4", "subnet-1");
@@ -409,19 +409,19 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     AvailabilityZone az6 = AvailabilityZone.createOrThrow(region, "az-6", "AZ 6", "subnet-3");
 
     // Currently read replica zones are always affinitized.
-    PlacementInfoUtil.addPlacementZone(az4.uuid, pi, 1, 1, false);
-    PlacementInfoUtil.addPlacementZone(az5.uuid, pi, 1, 1, true);
-    PlacementInfoUtil.addPlacementZone(az6.uuid, pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az4.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az5.getUuid(), pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az6.getUuid(), pi, 1, 1, false);
 
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = "2.17.0.0-b1";
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
-    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.version);
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(95)).nodeCommand(any(), any());
     verify(mockNodeUniverseManager, times(8)).runCommand(any(), any(), anyList(), any());
 
@@ -474,7 +474,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     taskParams.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
 
-    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.version);
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     ArgumentCaptor<NodeTaskParams> commandParams = ArgumentCaptor.forClass(NodeTaskParams.class);
     verify(mockNodeManager, times(51)).nodeCommand(any(), commandParams.capture());
     verify(mockNodeUniverseManager, times(5)).runCommand(any(), any(), anyList(), any());
@@ -525,18 +525,18 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     userIntent.replicationFactor = 3;
     userIntent.ybSoftwareVersion = "old-version";
     userIntent.accessKeyCode = "demo-access";
-    userIntent.regionList = ImmutableList.of(region.uuid);
+    userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.enableYSQL = enableYSQL;
-    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.provider = defaultProvider.getUuid().toString();
 
     PlacementInfo pi = new PlacementInfo();
-    PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 2, false);
-    PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, true);
-    PlacementInfoUtil.addPlacementZone(az3.uuid, pi, 1, 2, false);
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 2, false);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi, 1, 2, false);
 
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(
                 userIntent, "host", true /* setMasters */, false /* updateInProgress */, pi));
   }

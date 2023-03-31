@@ -15,6 +15,8 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.controllers.RequestContext;
+import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -22,8 +24,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
@@ -75,7 +77,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
-import play.mvc.Http.Context;
 
 public class Util {
   public static final Logger LOG = LoggerFactory.getLogger(Util.class);
@@ -209,7 +210,7 @@ public class Util {
     if (c == null) {
       throw new RuntimeException("Invalid Customer Id: " + custId);
     }
-    return String.format("yb-%s-%s", c.code, univName);
+    return String.format("yb-%s-%s", c.getCode(), univName);
   }
 
   /**
@@ -417,11 +418,11 @@ public class Util {
 
     public UniverseDetailSubset(Universe universe) {
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-      uuid = universe.universeUUID;
-      name = universe.name;
+      uuid = universe.getUniverseUUID();
+      name = universe.getName();
       updateInProgress = universeDetails.updateInProgress;
       updateSucceeded = universeDetails.updateSucceeded;
-      creationDate = universe.creationDate.getTime();
+      creationDate = universe.getCreationDate().getTime();
       universePaused = universeDetails.universePaused;
     }
   }
@@ -714,7 +715,7 @@ public class Util {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     if (userIntent.providerType == Common.CloudType.onprem) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
-      return provider.details.skipProvisioning;
+      return provider.getDetails().skipProvisioning;
     }
     return false;
   }
@@ -886,15 +887,12 @@ public class Util {
     }
   }
 
-  public static String maybeGetEmailFromContext(Context context) {
-    String userEmail =
-        Optional.ofNullable(context)
-            .map(context1 -> (UserWithFeatures) context1.args.get("user"))
-            .map(UserWithFeatures::getUser)
-            .map(Users::getEmail)
-            .map(Object::toString)
-            .orElse("Unknown");
-    return userEmail;
+  public static String maybeGetEmailFromContext() {
+    return Optional.ofNullable(RequestContext.getIfPresent(TokenAuthenticator.USER))
+        .map(UserWithFeatures::getUser)
+        .map(Users::getEmail)
+        .map(Object::toString)
+        .orElse("Unknown");
   }
 
   public static Universe lockUniverse(Universe universe) {
@@ -905,7 +903,7 @@ public class Util {
           universeDetails.updateSucceeded = false;
           u.setUniverseDetails(universeDetails);
         };
-    return Universe.saveDetails(universe.universeUUID, updater, false);
+    return Universe.saveDetails(universe.getUniverseUUID(), updater, false);
   }
 
   public static Universe unlockUniverse(Universe universe) {
@@ -916,7 +914,7 @@ public class Util {
           universeDetails.updateSucceeded = true;
           u.setUniverseDetails(universeDetails);
         };
-    return Universe.saveDetails(universe.universeUUID, updater, false);
+    return Universe.saveDetails(universe.getUniverseUUID(), updater, false);
   }
 
   public static boolean isAddressReachable(String host, int port) {

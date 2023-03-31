@@ -78,6 +78,7 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -135,9 +136,8 @@ public class AWSCloudImpl implements CloudAPI {
   }
 
   private AWSCredentialsProvider getCredsOrFallbackToDefault(Provider provider) {
-    String accessKeyId = provider.getProviderDetails().getCloudInfo().getAws().awsAccessKeyID;
-    String secretAccessKey =
-        provider.getProviderDetails().getCloudInfo().getAws().awsAccessKeySecret;
+    String accessKeyId = provider.getDetails().getCloudInfo().getAws().awsAccessKeyID;
+    String secretAccessKey = provider.getDetails().getCloudInfo().getAws().awsAccessKeySecret;
     if (checkKeysExists(provider)) {
       return new AWSStaticCredentialsProvider(
           new BasicAWSCredentials(accessKeyId, secretAccessKey));
@@ -172,7 +172,7 @@ public class AWSCloudImpl implements CloudAPI {
                 regionAZListEntry -> {
                   Filter locationFilter =
                       new Filter().withName("location").withValues(regionAZListEntry.getValue());
-                  return getEC2Client(provider, regionAZListEntry.getKey().code)
+                  return getEC2Client(provider, regionAZListEntry.getKey().getCode())
                       .describeInstanceTypeOfferings(
                           new DescribeInstanceTypeOfferingsRequest()
                               .withLocationType(LocationType.AvailabilityZone)
@@ -199,23 +199,12 @@ public class AWSCloudImpl implements CloudAPI {
   public boolean isValidCredsKms(ObjectNode config, UUID customerUUID) {
     try {
       if (config.has(AwsKmsAuthConfigField.CMK_ID.fieldName)) {
-        String cmkId = config.get(AwsKmsAuthConfigField.CMK_ID.fieldName).asText();
-        AWSKMS kmsClient = AwsEARServiceUtil.getKMSClient(null, config);
-
-        // Test if key exists
-        DescribeKeyResult describeKeyResult = AwsEARServiceUtil.describeKey(config, cmkId);
-
-        // Test if GenerateDataKeyWithoutPlaintext permission exists
-        byte[] randomEncryptedBytes =
-            AwsEARServiceUtil.generateDataKey(null, config, cmkId, "AES", 256);
-
-        // Test if Decrypt permission exists
-        byte[] decryptedBytes =
-            AwsEARServiceUtil.decryptUniverseKey(null, randomEncryptedBytes, config);
-
-        if (decryptedBytes != null && decryptedBytes.length > 0) {
+        try {
+          KeyProvider.AWS.getServiceInstance().refreshKmsWithService(null, config);
+          LOG.info("Validated AWS KMS creds for customer '{}'", customerUUID);
           return true;
-        } else {
+        } catch (Exception e) {
+          LOG.error("Cannot validate AWS KMS creds.", e);
           return false;
         }
       } else {
@@ -685,7 +674,7 @@ public class AWSCloudImpl implements CloudAPI {
 
   public GetCallerIdentityResult getStsClientOrBadRequest(Provider provider, Region region) {
     try {
-      AWSSecurityTokenService stsClient = getStsClient(provider, region.code);
+      AWSSecurityTokenService stsClient = getStsClient(provider, region.getCode());
       return stsClient.getCallerIdentity(new GetCallerIdentityRequest());
     } catch (SdkClientException e) {
       LOG.error("AWS Provider validation failed: ", e);
@@ -723,7 +712,7 @@ public class AWSCloudImpl implements CloudAPI {
   public GetHostedZoneResult getHostedZoneOrBadRequest(
       Provider provider, Region region, String hostedZoneId) {
     try {
-      AmazonRoute53 route53Client = getRoute53Client(provider, region.code);
+      AmazonRoute53 route53Client = getRoute53Client(provider, region.getCode());
       GetHostedZoneRequest request = new GetHostedZoneRequest().withId(hostedZoneId);
       return route53Client.getHostedZone(request);
     } catch (AmazonServiceException e) {
@@ -735,7 +724,7 @@ public class AWSCloudImpl implements CloudAPI {
 
   public Image describeImageOrBadRequest(Provider provider, Region region, String imageId) {
     try {
-      AmazonEC2 ec2Client = getEC2Client(provider, region.code);
+      AmazonEC2 ec2Client = getEC2Client(provider, region.getCode());
       DescribeImagesRequest request = new DescribeImagesRequest().withImageIds(imageId);
       DescribeImagesResult result = ec2Client.describeImages(request);
       return result.getImages().get(0);
@@ -748,7 +737,7 @@ public class AWSCloudImpl implements CloudAPI {
 
   public SecurityGroup describeSecurityGroupsOrBadRequest(Provider provider, Region region) {
     try {
-      AmazonEC2 ec2Client = getEC2Client(provider, region.code);
+      AmazonEC2 ec2Client = getEC2Client(provider, region.getCode());
       DescribeSecurityGroupsRequest request =
           new DescribeSecurityGroupsRequest().withGroupIds(region.getSecurityGroupId());
       DescribeSecurityGroupsResult result = ec2Client.describeSecurityGroups(request);
@@ -762,7 +751,7 @@ public class AWSCloudImpl implements CloudAPI {
 
   public Vpc describeVpcOrBadRequest(Provider provider, Region region) {
     try {
-      AmazonEC2 ec2Client = getEC2Client(provider, region.code);
+      AmazonEC2 ec2Client = getEC2Client(provider, region.getCode());
       DescribeVpcsRequest request = new DescribeVpcsRequest().withVpcIds(region.getVnetName());
       DescribeVpcsResult result = ec2Client.describeVpcs(request);
       return result.getVpcs().get(0);
@@ -775,11 +764,15 @@ public class AWSCloudImpl implements CloudAPI {
 
   public List<Subnet> describeSubnetsOrBadRequest(Provider provider, Region region) {
     try {
-      AmazonEC2 ec2Client = getEC2Client(provider, region.code);
+      AmazonEC2 ec2Client = getEC2Client(provider, region.getCode());
       DescribeSubnetsRequest request =
           new DescribeSubnetsRequest()
               .withSubnetIds(
-                  region.zones.stream().map(zone -> zone.subnet).collect(Collectors.toList()));
+                  region
+                      .getZones()
+                      .stream()
+                      .map(zone -> zone.getSubnet())
+                      .collect(Collectors.toList()));
       DescribeSubnetsResult result = ec2Client.describeSubnets(request);
       return result.getSubnets();
     } catch (AmazonServiceException e) {
@@ -790,7 +783,7 @@ public class AWSCloudImpl implements CloudAPI {
   }
 
   public boolean checkKeysExists(Provider provider) {
-    AWSCloudInfo cloudInfo = provider.getProviderDetails().getCloudInfo().getAws();
+    AWSCloudInfo cloudInfo = provider.getDetails().getCloudInfo().getAws();
     return !StringUtils.isEmpty(cloudInfo.awsAccessKeyID)
         && !StringUtils.isEmpty(cloudInfo.awsAccessKeySecret);
   }

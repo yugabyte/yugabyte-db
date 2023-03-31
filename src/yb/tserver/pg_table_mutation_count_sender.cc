@@ -13,17 +13,20 @@
 
 #include "yb/tserver/pg_table_mutation_count_sender.h"
 
+#include <chrono>
+
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
 #include "yb/util/unique_lock.h"
 
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
-using namespace std::literals;
+using namespace std::chrono_literals;
 
 DEFINE_RUNTIME_uint64(ysql_table_mutation_count_aggregate_interval_ms, 5 * 1000,
                       "Interval at which the table mutation counts are sent to the auto analyze "
@@ -34,18 +37,16 @@ namespace yb {
 namespace tserver {
 
 TableMutationCountSender::TableMutationCountSender(TabletServer* server)
-    : server_(server) {
+    : server_(*server) {
 }
 
 TableMutationCountSender::~TableMutationCountSender() {
-  DCHECK(!should_run_) << "Stop should be called before destruction";
+  DCHECK(!thread_) << "Stop should be called before destruction";
 }
 
 Status TableMutationCountSender::Start() {
-  RSTATUS_DCHECK(thread_ == nullptr, InternalError, "Table mutation sender thread already exists");
+  RSTATUS_DCHECK(thread_, InternalError, "Table mutation sender thread already exists");
 
-  std::lock_guard lock(mutex_);
-  should_run_ = true;
   VLOG(1) << "Initializing table mutation count sender thread";
   return yb::Thread::Create("pg_table_mutation_count_sender", "table_mutation_count_send",
       &TableMutationCountSender::RunThread, this, &thread_);
@@ -58,57 +59,52 @@ Status TableMutationCountSender::Stop() {
 
   {
     std::lock_guard lock(mutex_);
-    should_run_ = false;
+    stopped_ = true;
     cond_.notify_one();
   }
 
-  RETURN_NOT_OK(ThreadJoiner(thread_.get()).Join());
-  thread_ = nullptr;
-  return Status::OK();
+  decltype(thread_) thread;
+  thread.swap(thread_);
+  return ThreadJoiner(thread.get()).Join();
 }
 
 Status TableMutationCountSender::DoSendMutationCounts() {
   // Send mutations to the auto analyze stateful service that aggregates mutations from all nodes
   // and triggers ANALYZE as necessary.
 
-  auto mutation_counts = server_->GetPgNodeLevelMutationCounter()->GetAndClear();
+  auto mutation_counts = server_.GetPgNodeLevelMutationCounter().GetAndClear();
   if (mutation_counts.size() == 0) {
     return Status::OK();
   }
 
-  if (client_ == NULL) {
-    client_ = std::make_unique<client::PgAutoAnalyzeServiceClient>();
-    auto s = client_->Init(server_);
-    if (!s.ok()) {
-      client_ = nullptr;
-      return s;
-    }
+  if (!client_) {
+    auto client = std::make_unique<client::PgAutoAnalyzeServiceClient>();
+    RETURN_NOT_OK(client->Init(&server_));
+    client_.swap(client);
   }
 
   stateful_service::IncreaseMutationCountersRequestPB req;
   stateful_service::IncreaseMutationCountersResponsePB resp;
 
-  for (auto& [table_id, mutation_count] : mutation_counts) {
-    req.add_table_mutation_counts();
+  for (const auto& [table_id, mutation_count] : mutation_counts) {
     auto table_mutation_count = req.add_table_mutation_counts();
     table_mutation_count->set_table_id(table_id);
     table_mutation_count->set_mutation_count(mutation_count);
   }
 
-  const Status s =
-      client_->IncreaseMutationCounters(
-          CoarseMonoClock::Now() + FLAGS_yb_client_admin_operation_timeout_sec * 1s, req, &resp);
-  if (!s.ok()) {
+  const auto status = client_->IncreaseMutationCounters(
+      CoarseMonoClock::Now() + FLAGS_yb_client_admin_operation_timeout_sec * 1s, req, &resp);
+  if (!status.ok()) {
     // It is possible that cluster-level mutation counters were updated but the response failed for
     // some other reason. In this case, unless we are certain that the cluster-level mutation
     // counters weren't updated, we avoid retrying to avoid double counting (i.e., we prefer
     // avoiding over-aggresive auto ANALYZE).
-    if (s.IsTryAgain()) {
-      for (auto& [table_id, mutation_count] : mutation_counts) {
-        server_->GetPgNodeLevelMutationCounter()->Increase(table_id, mutation_count);
+    if (status.IsTryAgain()) {
+      for (const auto& [table_id, mutation_count] : mutation_counts) {
+        server_.GetPgNodeLevelMutationCounter().Increase(table_id, mutation_count);
       }
     }
-    return s;
+    return status;
   }
 
   // TODO: Handle per-table errors. Same as above, retry later if we are certain that the
@@ -119,16 +115,16 @@ Status TableMutationCountSender::DoSendMutationCounts() {
 
 void TableMutationCountSender::RunThread() {
   while (true) {
-    auto deadline =
-        CoarseMonoClock::now() + FLAGS_ysql_table_mutation_count_aggregate_interval_ms * 1ms;
-    UNIQUE_LOCK(lock, mutex_);
-    cond_.wait_until(GetLockForCondition(&lock), deadline);
+    {
+      UniqueLock lock(mutex_);
+      cond_.wait_for(GetLockForCondition(&lock),
+                     FLAGS_ysql_table_mutation_count_aggregate_interval_ms * 1ms);
 
-    if (!should_run_) {
-      VLOG(1) << "Table mutation count sender thread is finished";
-      return;
+      if (stopped_) {
+        VLOG(1) << "Table mutation count sender thread has finished";
+        return;
+      }
     }
-
     WARN_NOT_OK(DoSendMutationCounts(), "Failed to send table mutation counts");
   }
 }

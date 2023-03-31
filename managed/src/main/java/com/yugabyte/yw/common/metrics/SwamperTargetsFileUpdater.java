@@ -94,7 +94,7 @@ public class SwamperTargetsFileUpdater {
   private void syncUniverse(Universe universe) {
     try {
       swamperHelper.writeUniverseTargetJson(universe);
-      universe.updateSwamperConfigWritten(true);
+      universe.setSwamperConfigWritten(true);
       universe.save();
       SWAMPER_TARGET_FILE_UPDATED_UNIVERSES_COUNTER.inc();
     } catch (Exception e) {

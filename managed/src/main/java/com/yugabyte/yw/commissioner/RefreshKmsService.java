@@ -42,15 +42,16 @@ public class RefreshKmsService {
   }
 
   private void refreshAllKmsConfigs(Customer customer) {
-    List<KmsConfig> kmsConfigs = KmsConfig.listKMSConfigs(customer.uuid);
+    List<KmsConfig> kmsConfigs = KmsConfig.listKMSConfigs(customer.getUuid());
     for (KmsConfig kmsConfig : kmsConfigs) {
       try {
         encryptionAtRestManager
-            .getServiceInstance(kmsConfig.keyProvider.name())
-            .refreshService(kmsConfig.configUUID);
+            .getServiceInstance(kmsConfig.getKeyProvider().name())
+            .refreshKms(kmsConfig.getConfigUUID());
       } catch (Exception e) {
         log.error(
-            String.format("Error running KMS Refresh Service on KMS config '%s'.", kmsConfig.name),
+            String.format(
+                "Error running KMS Refresh Service on KMS config '%s'.", kmsConfig.getName()),
             e);
       }
     }

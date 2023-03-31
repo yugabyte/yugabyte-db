@@ -72,7 +72,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
 
   private CloudBootstrap.Params getBaseTaskParams() {
     CloudBootstrap.Params taskParams = new CloudBootstrap.Params();
-    taskParams.providerUUID = defaultProvider.uuid;
+    taskParams.providerUUID = defaultProvider.getUuid();
     taskParams.hostVpcRegion = HOST_VPC_REGION;
     taskParams.hostVpcId = HOST_VPC_ID;
     taskParams.destVpcId = DEST_VPC_ID;
@@ -170,7 +170,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       throws InterruptedException {
     Provider provider = Provider.get(taskParams.providerUUID);
     // Mock region metadata.
-    mockRegionMetadata(Common.CloudType.valueOf(provider.code));
+    mockRegionMetadata(Common.CloudType.valueOf(provider.getCode()));
     // TODO(bogdan): we don't really care about the output now..
     when(mockNetworkManager.bootstrap(any(), any(), anyString())).thenReturn(Json.parse("{}"));
     when(mockCloudQueryHelper.getZones(any(UUID.class), anyString())).thenReturn(zoneInfo);
@@ -182,24 +182,24 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       String arch = armArchitecture ? "aarch64" : "x86_64";
       when(mockCloudQueryHelper.getImageArchitecture(any(Region.class))).thenReturn(arch);
     }
-    taskParams.providerUUID = provider.uuid;
+    taskParams.providerUUID = provider.getUuid();
 
     UUID taskUUID = submitTask(taskParams);
     TaskInfo taskInfo = waitForTask(taskUUID);
     assertEquals(Success, taskInfo.getTaskState());
     if (expectedProviderCode.equals("aws")) {
       verify(mockAWSInitializer, times(isAddRegion ? 2 : 1))
-          .initialize(defaultCustomer.uuid, provider.uuid);
+          .initialize(defaultCustomer.getUuid(), provider.getUuid());
     } else if (expectedProviderCode.equals("gcp")) {
       verify(mockGCPInitializer, times(isAddRegion ? 2 : 1))
-          .initialize(defaultCustomer.uuid, provider.uuid);
+          .initialize(defaultCustomer.getUuid(), provider.getUuid());
     } else {
       fail("Only support AWS and GCP for now.");
     }
     // TODO(bogdan): do we want a different handling here?
     String customPayload = Json.stringify(Json.toJson(taskParams));
     verify(mockNetworkManager, times(isAddRegion ? 0 : 1))
-        .bootstrap(null, provider.uuid, customPayload);
+        .bootstrap(null, provider.getUuid(), customPayload);
     assertEquals(taskParams.perRegionMetadata.size(), expectedRegions.size());
     // Check per-region settings.
     for (Map.Entry<String, CloudBootstrap.Params.PerRegionMetadata> entry :
@@ -215,7 +215,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
         // TODO: might need to add port here.
         verify(mockAccessManager, times(1))
             .saveAndAddKey(
-                eq(r.uuid),
+                eq(r.getUuid()),
                 eq(taskParams.sshPrivateKeyContent),
                 eq(taskParams.keyPairName),
                 any(KeyType.class),
@@ -236,7 +236,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
 
         verify(mockAccessManager, times(1))
             .addKey(
-                eq(r.uuid),
+                eq(r.getUuid()),
                 eq(expectedAccessKeyCode),
                 any(),
                 eq(taskParams.sshUser),
@@ -248,32 +248,32 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
                 eq(taskParams.showSetUpChrony));
       }
       // Check AZ info.
-      List<AvailabilityZone> zones = r.zones;
+      List<AvailabilityZone> zones = r.getZones();
       assertNotNull(zones);
       if (customAzMapping) {
         if (expectedProviderCode.equals("aws")) {
           assertEquals(metadata.azToSubnetIds.size(), zones.size());
           for (AvailabilityZone zone : zones) {
-            String subnet = metadata.azToSubnetIds.get(zone.code);
-            String subnetDb = zone.subnet;
+            String subnet = metadata.azToSubnetIds.get(zone.getCode());
+            String subnetDb = zone.getSubnet();
             assertNotNull(subnetDb);
             assertEquals(subnet, subnetDb);
             if (hasSecondarySubnet) {
-              String secondarySubnet = metadata.azToSecondarySubnetIds.get(zone.code);
-              String secondarySubnetDb = zone.secondarySubnet;
+              String secondarySubnet = metadata.azToSecondarySubnetIds.get(zone.getCode());
+              String secondarySubnetDb = zone.getSecondarySubnet();
               assertNotNull(secondarySubnetDb);
               assertEquals(secondarySubnet, secondarySubnetDb);
             } else {
-              assertNull(zone.secondarySubnet);
+              assertNull(zone.getSecondarySubnet());
             }
           }
         } else if (expectedProviderCode.equals("gcp")) {
           for (AvailabilityZone zone : zones) {
-            assertEquals(metadata.subnetId, zone.subnet);
+            assertEquals(metadata.subnetId, zone.getSubnet());
             if (hasSecondarySubnet) {
-              assertEquals(metadata.secondarySubnetId, zone.secondarySubnet);
+              assertEquals(metadata.secondarySubnetId, zone.getSecondarySubnet());
             } else {
-              assertNull(zone.secondarySubnet);
+              assertNull(zone.getSecondarySubnet());
             }
           }
         }
@@ -487,7 +487,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     JsonNode zoneInfo =
         Json.parse("{\"us-west1\": {\"zones\": [\"zone-1\"], \"subnetworks\": [\"subnet-0\"]}}");
     CloudBootstrap.Params taskParams = getBaseTaskParams();
-    taskParams.providerUUID = gcpProvider.uuid;
+    taskParams.providerUUID = gcpProvider.getUuid();
     taskParams.perRegionMetadata.put("us-west1", new CloudBootstrap.Params.PerRegionMetadata());
     validateCloudBootstrapSuccess(
         taskParams, zoneInfo, ImmutableList.of("us-west1"), "gcp", false, false, false, false);
@@ -501,7 +501,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     CloudBootstrap.Params.PerRegionMetadata westRegion =
         new CloudBootstrap.Params.PerRegionMetadata();
     westRegion.subnetId = "us-west1";
-    taskParams.providerUUID = gcpProvider.uuid;
+    taskParams.providerUUID = gcpProvider.getUuid();
     taskParams.perRegionMetadata.put("us-west1", westRegion);
     validateCloudBootstrapSuccess(
         taskParams, zoneInfo, ImmutableList.of("us-west1"), "gcp", false, true, false, false);
@@ -516,7 +516,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
         new CloudBootstrap.Params.PerRegionMetadata();
     westRegion.subnetId = "us-west1-subnet1";
     westRegion.secondarySubnetId = "us-west1-subnet2";
-    taskParams.providerUUID = gcpProvider.uuid;
+    taskParams.providerUUID = gcpProvider.getUuid();
     taskParams.perRegionMetadata.put("us-west1", westRegion);
     validateCloudBootstrapSuccess(
         taskParams, zoneInfo, ImmutableList.of("us-west1"), "gcp", false, true, false, false, true);
@@ -531,7 +531,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
         new CloudBootstrap.Params.PerRegionMetadata();
     westRegion.subnetId = "us-west1-subnet1";
     westRegion.secondarySubnetId = "us-west1-subnet2";
-    taskParams.providerUUID = gcpProvider.uuid;
+    taskParams.providerUUID = gcpProvider.getUuid();
     taskParams.perRegionMetadata.put("us-west1", westRegion);
     validateCloudBootstrapSuccess(
         taskParams, zoneInfo, ImmutableList.of("us-west1"), "gcp", false, true, false, false, true);
@@ -539,7 +539,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     // Since the above was a success, there must now be an AccessKey created for the provider.
     // Create it so that it exists for the next call.
     String accessKeyCode = AccessKey.getDefaultKeyCode(gcpProvider);
-    AccessKey.create(gcpProvider.uuid, accessKeyCode, new KeyInfo());
+    AccessKey.create(gcpProvider.getUuid(), accessKeyCode, new KeyInfo());
 
     // Add new region
     zoneInfo =
@@ -549,7 +549,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
         new CloudBootstrap.Params.PerRegionMetadata();
     eastRegion.subnetId = "us-east1-subnet1";
     eastRegion.secondarySubnetId = "us-east1-subnet2";
-    taskParams.providerUUID = gcpProvider.uuid;
+    taskParams.providerUUID = gcpProvider.getUuid();
     taskParams.skipBootstrapRegion = true;
     taskParams.perRegionMetadata.put("us-east1", eastRegion);
     validateCloudBootstrapSuccess(
@@ -611,11 +611,11 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     String instanceTemplate = "TestInstanceTemplate";
     perRegionMetadata.instanceTemplate = instanceTemplate;
     taskParams.perRegionMetadata.put(region, perRegionMetadata);
-    taskParams.providerUUID = gcpProvider.uuid;
+    taskParams.providerUUID = gcpProvider.getUuid();
     validateCloudBootstrapSuccess(
         taskParams, zoneInfo, ImmutableList.of(region), "gcp", false, false, false, false);
     Provider provider = Provider.get(taskParams.providerUUID);
-    GCPRegionCloudInfo g = CloudInfoInterface.get(provider.regions.get(0));
+    GCPRegionCloudInfo g = CloudInfoInterface.get(provider.getRegions().get(0));
     assertEquals(instanceTemplate, g.getInstanceTemplate());
   }
 

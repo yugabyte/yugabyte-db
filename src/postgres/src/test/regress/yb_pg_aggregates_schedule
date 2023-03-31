@@ -4,6 +4,7 @@
 # This includes tests for Aggregates Functions
 ####################################################################################################
 # Dependencies for `yb_pg_aggregates`
+test: yb_pg_varchar
 test: yb_pg_int4
 test: yb_pg_int8
 

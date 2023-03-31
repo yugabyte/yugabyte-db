@@ -465,7 +465,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
     if (VERIFY_RESULT(iterator.HasNext())) {
       RETURN_NOT_OK(iterator.NextRow(table_row));
     }
-    data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
+    data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
   }
   if (pk_doc_key_) {
     DocQLScanSpec spec(*non_static_projection, *pk_doc_key_, request_.query_id());
@@ -487,7 +487,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
       // columns in the map to indicate the row does not exist.
       table_row->Clear();
     }
-    data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
+    data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
   }
 
   return Status::OK();
@@ -1190,7 +1190,7 @@ Status QLWriteOperation::ApplyDelete(
         }
       }
     }
-    data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
+    data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
   } else {
     // Otherwise, delete the referenced row (all columns).
     RETURN_NOT_OK(DeleteRow(DocPath(encoded_pk_doc_key_.as_slice()), data.doc_write_batch,
@@ -1793,7 +1793,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
       iter.get(), resultset, row_count_limit, num_rows_skipped, read_time));
 
   // SetPagingStateIfNecessary could perform read, so we assign restart_read_ht after it.
-  *restart_read_ht = iter->RestartReadHt();
+  *restart_read_ht = VERIFY_RESULT(iter->RestartReadHt());
 
   return Status::OK();
 }

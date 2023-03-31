@@ -33,10 +33,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AbstractInitializer;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
-import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
@@ -64,7 +64,7 @@ public class AWSInitializer extends AbstractInitializer {
 
   @Inject Environment environment;
 
-  @Inject ConfigHelper configHelper;
+  @Inject Config config;
 
   /**
    * Entry point to initialize AWS. This will create the various InstanceTypes and their
@@ -81,17 +81,17 @@ public class AWSInitializer extends AbstractInitializer {
     LOG.info("Initializing AWS instance type and pricing info.");
     LOG.info("This operation may take a few minutes...");
     // Get the price Json object stored locally at conf/aws_pricing.
-    for (Region region : provider.regions) {
+    for (Region region : provider.getRegions()) {
       JsonNode regionJson = null;
 
-      String pricingFileName = "aws_pricing/" + region.code + ".tar.gz";
+      String pricingFileName = "aws_pricing/" + region.getCode() + ".tar.gz";
       try (InputStream pricingStream = environment.resourceAsStream(pricingFileName);
           GzipCompressorInputStream gzipStream = new GzipCompressorInputStream(pricingStream);
           TarArchiveInputStream regionStream = new TarArchiveInputStream(gzipStream)) {
         TarArchiveEntry currentEntry;
         boolean pricingFileFound = false;
         while ((currentEntry = regionStream.getNextTarEntry()) != null) {
-          if (currentEntry.getName().equals(region.code)) {
+          if (currentEntry.getName().equals(region.getCode())) {
             pricingFileFound = true;
             break;
           } else {
@@ -106,10 +106,13 @@ public class AWSInitializer extends AbstractInitializer {
         ObjectMapper mapper = new ObjectMapper();
         regionJson = mapper.readTree(regionStream);
       } catch (IOException e) {
-        LOG.error("Failed to parse region metadata from region {}", region.code);
+        LOG.error("Failed to parse region metadata from region {}", region.getCode());
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR,
-            "Failed to parse region metadata from region " + region.code + ". " + e.getMessage());
+            "Failed to parse region metadata from region "
+                + region.getCode()
+                + ". "
+                + e.getMessage());
       }
 
       // The products sub-document has the list of EC2 products along with the SKU, its format is:
@@ -135,7 +138,7 @@ public class AWSInitializer extends AbstractInitializer {
 
       // Create the instance types.
       storeInstanceTypeInfoToDB(context);
-      LOG.info("Successfully stored pricing info for region {}", region.code);
+      LOG.info("Successfully stored pricing info for region {}", region.getCode());
     }
     LOG.info("Successfully finished parsing pricing info.");
   }
@@ -174,7 +177,7 @@ public class AWSInitializer extends AbstractInitializer {
           Region.find
               .query()
               .where()
-              .eq("provider_uuid", context.getProvider().uuid)
+              .eq("provider_uuid", context.getProvider().getUuid())
               .eq("name", regionJson.textValue())
               .findOne();
       if (region == null) {
@@ -262,7 +265,8 @@ public class AWSInitializer extends AbstractInitializer {
     priceDetails.effectiveDate = product.get("effectiveDate").textValue();
 
     // Save to db
-    PriceComponent.upsert(context.getProvider().uuid, region.code, componentCode, priceDetails);
+    PriceComponent.upsert(
+        context.getProvider().getUuid(), region.getCode(), componentCode, priceDetails);
   }
 
   /**
@@ -354,7 +358,7 @@ public class AWSInitializer extends AbstractInitializer {
         Region.find
             .query()
             .where()
-            .eq("provider_uuid", context.getProvider().uuid)
+            .eq("provider_uuid", context.getProvider().getUuid())
             .eq("name", regionName)
             .findOne();
     if (region == null) {
@@ -388,7 +392,8 @@ public class AWSInitializer extends AbstractInitializer {
 
     // Save to db
     if (Double.parseDouble(pricePerUnit) != 0.0) {
-      PriceComponent.upsert(context.getProvider().uuid, region.code, instanceCode, priceDetails);
+      PriceComponent.upsert(
+          context.getProvider().getUuid(), region.getCode(), instanceCode, priceDetails);
     }
   }
 
@@ -509,7 +514,7 @@ public class AWSInitializer extends AbstractInitializer {
     LOG.info("Storing AWS instance type and pricing info in Yugaware DB");
     Provider provider = context.getProvider();
     // First reset all the JSON details of all entries in the table, as we are about to refresh it.
-    InstanceType.resetInstanceTypeDetailsForProvider(provider.uuid);
+    InstanceType.resetInstanceTypeDetailsForProvider(provider.getUuid());
     String instanceTypeCode;
 
     for (Map<String, String> productAttrs : context.getAvailableInstances()) {
@@ -576,7 +581,7 @@ public class AWSInitializer extends AbstractInitializer {
       if (enableVerboseLogging) {
         LOG.info(
             "Instance type entry ({}, {}): {} cores, {} GB RAM, {} x {} GB {}",
-            provider.code,
+            provider.getCode(),
             instanceTypeCode,
             numCores,
             memSizeGB,
@@ -586,11 +591,11 @@ public class AWSInitializer extends AbstractInitializer {
       }
 
       // Create the instance type model. If one already exists, overwrite it.
-      InstanceType instanceType = InstanceType.get(provider.uuid, instanceTypeCode);
+      InstanceType instanceType = InstanceType.get(provider.getUuid(), instanceTypeCode);
       if (instanceType == null) {
         instanceType = new InstanceType();
       }
-      InstanceTypeDetails details = instanceType.instanceTypeDetails;
+      InstanceTypeDetails details = instanceType.getInstanceTypeDetails();
       if (details == null) {
         details = new InstanceTypeDetails();
       }
@@ -601,15 +606,15 @@ public class AWSInitializer extends AbstractInitializer {
         details.tenancy = PublicCloudConstants.Tenancy.Shared;
       }
       // Update the object.
-      InstanceType.upsert(provider.uuid, instanceTypeCode, numCores, memSizeGB, details);
+      InstanceType.upsert(provider.getUuid(), instanceTypeCode, numCores, memSizeGB, details);
       if (enableVerboseLogging) {
-        instanceType = InstanceType.get(provider.uuid, instanceTypeCode);
+        instanceType = InstanceType.get(provider.getUuid(), instanceTypeCode);
         LOG.debug(
             "Saved {}:{} ({} cores, {}GB) with details {}",
-            provider.uuid,
+            provider.getUuid(),
             instanceTypeCode,
-            instanceType.numCores,
-            instanceType.memSizeGB,
+            instanceType.getNumCores(),
+            instanceType.getMemSizeGB(),
             Json.stringify(Json.toJson(details)));
       }
     }
@@ -632,8 +637,7 @@ public class AWSInitializer extends AbstractInitializer {
   }
 
   private boolean isInstanceTypeSupported(Map<String, String> productAttributes) {
-    return configHelper
-        .getAWSInstancePrefixesSupported()
+    return InstanceType.getAWSInstancePrefixesSupported(config)
         .stream()
         .anyMatch(productAttributes.getOrDefault("instanceType", "")::startsWith);
   }

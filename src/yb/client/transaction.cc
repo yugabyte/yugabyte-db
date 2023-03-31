@@ -16,6 +16,7 @@
 #include "yb/client/transaction.h"
 
 #include <atomic>
+#include <unordered_map>
 #include <unordered_set>
 #include <boost/atomic.hpp>
 
@@ -194,7 +195,7 @@ Status YBSubTransaction::RollbackToSubTransaction(SubTransactionId id) {
   return sub_txn_.aborted.SetRange(id, highest_subtransaction_id_);
 }
 
-const SubTransactionMetadata& YBSubTransaction::get() { return sub_txn_; }
+const SubTransactionMetadata& YBSubTransaction::get() const { return sub_txn_; }
 
 class YBTransaction::Impl final : public internal::TxnBatcherIf {
  public:
@@ -1003,26 +1004,24 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   void IncreaseMutationCounts(
-      SubTransactionId subtxn_id, const TableId& table_id, uint64 mutation_count) {
-    if (subtxn_table_mutation_counter_map_[subtxn_id].contains(table_id)) {
-      subtxn_table_mutation_counter_map_[subtxn_id][table_id] += mutation_count;
-    } else {
-      subtxn_table_mutation_counter_map_[subtxn_id].insert({table_id, mutation_count});
+      SubTransactionId subtxn_id, const TableId& table_id, uint64_t mutation_count) {
+    auto it = subtxn_table_mutation_counter_map_.find(subtxn_id);
+    if (it != subtxn_table_mutation_counter_map_.end()) {
+      it->second[table_id] += mutation_count;
+      return;
     }
+    subtxn_table_mutation_counter_map_[subtxn_id].insert({table_id, mutation_count});
   }
 
-  const std::map<TableId, uint64> GetTableMutationCounts() {
+  std::unordered_map<TableId, uint64_t> GetTableMutationCounts() const {
     auto& aborted_sub_txn_set = subtransaction_.get().aborted;
-    std::map<TableId, uint64> table_mutation_counts;
+    std::unordered_map<TableId, uint64_t> table_mutation_counts;
     for (const auto& [sub_txn_id, table_mutation_cnt_map] : subtxn_table_mutation_counter_map_) {
       if (aborted_sub_txn_set.Test(sub_txn_id)) {
         continue;
       }
 
       for (const auto& [table_id, mutation_count] : table_mutation_cnt_map) {
-        if (table_mutation_counts.find(table_id) == table_mutation_counts.end()) {
-          table_mutation_counts[table_id] = 0;
-        }
         table_mutation_counts[table_id] += mutation_count;
       }
     }
@@ -2072,7 +2071,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // commit, this helps count the total mutations per table which is aggregated to the node level
   // mutation counter that is in turn sent to the auto analyze service that maintains the cluster
   // level mutations (see PgMutationCounter).
-  std::map<SubTransactionId, std::map<TableId, uint64>> subtxn_table_mutation_counter_map_;
+  std::unordered_map<SubTransactionId, std::unordered_map<TableId, uint64_t>>
+      subtxn_table_mutation_counter_map_;
 
   std::atomic<bool> requested_status_tablet_{false};
   internal::RemoteTabletPtr status_tablet_ GUARDED_BY(mutex_);
@@ -2302,11 +2302,11 @@ bool YBTransaction::HasSubTransaction(SubTransactionId id) {
 }
 
 void YBTransaction::IncreaseMutationCounts(
-    SubTransactionId subtxn_id, const TableId& table_id, uint64 mutation_count) {
+    SubTransactionId subtxn_id, const TableId& table_id, uint64_t mutation_count) {
   return impl_->IncreaseMutationCounts(subtxn_id, table_id, mutation_count);
 }
 
-const std::map<TableId, uint64> YBTransaction::GetTableMutationCounts() const {
+std::unordered_map<TableId, uint64_t> YBTransaction::GetTableMutationCounts() const {
   return impl_->GetTableMutationCounts();
 }
 

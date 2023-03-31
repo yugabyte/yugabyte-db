@@ -43,7 +43,7 @@ public class XClusterConfigSetStatus extends XClusterConfigTaskBase {
 
     try {
       // Save the desired status in the DB.
-      xClusterConfig.setStatus(taskParams().desiredStatus);
+      xClusterConfig.updateStatus(taskParams().desiredStatus);
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);

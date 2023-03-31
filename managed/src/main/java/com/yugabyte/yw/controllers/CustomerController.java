@@ -115,7 +115,7 @@ public class CustomerController extends AuthenticatedController {
           .forEach(
               c ->
                   c.setTransientUniverseUUIDs(
-                      allUniverseUuids.getOrDefault(c.getCustomerId(), Collections.emptySet())));
+                      allUniverseUuids.getOrDefault(c.getId(), Collections.emptySet())));
     }
     return PlatformResults.withData(customers);
   }
@@ -144,7 +144,7 @@ public class CustomerController extends AuthenticatedController {
     responseJson.put(
         "callhomeLevel", CustomerConfig.getOrCreateCallhomeLevel(customerUUID).toString());
 
-    UserWithFeatures user = (UserWithFeatures) ctx().args.get("user");
+    UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
     if (customer.getFeatures().size() != 0 && user.getFeatures().size() != 0) {
       JsonNode featureSet = user.getFeatures();
       CommonUtils.deepMerge(featureSet, customer.getFeatures());
@@ -176,7 +176,7 @@ public class CustomerController extends AuthenticatedController {
     AlertingFormData alertingFormData = formData.get();
 
     if (alertingFormData.name != null) {
-      customer.name = alertingFormData.name;
+      customer.setName(alertingFormData.name);
       customer.save();
     }
 

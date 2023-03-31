@@ -183,7 +183,7 @@ public class TablesController extends AuthenticatedController {
     // Which means all the log statements above and below are basically logging null?
     CustomerTask.create(
         customer,
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Table,
         CustomerTask.TaskType.Create,
@@ -212,7 +212,7 @@ public class TablesController extends AuthenticatedController {
       response = Object.class,
       responseContainer = "Map")
   public Result alter(UUID cUUID, UUID uniUUID, UUID tableUUID) {
-    return play.mvc.Results.TODO;
+    return TODO(request());
   }
 
   @ApiOperation(value = "Drop a YugabyteDB table", nickname = "dropTable", response = YBPTask.class)
@@ -238,7 +238,7 @@ public class TablesController extends AuthenticatedController {
     }
     ybService.closeClient(client, masterAddresses);
     DeleteTableFromUniverse.Params taskParams = new DeleteTableFromUniverse.Params();
-    taskParams.universeUUID = universeUUID;
+    taskParams.setUniverseUUID(universeUUID);
     taskParams.expectedUniverseVersion = -1;
     taskParams.tableUUID = tableUUID;
     taskParams.tableName = schemaResponse.getTableName();
@@ -616,7 +616,7 @@ public class TablesController extends AuthenticatedController {
               universeUUID.toString()));
     }
 
-    taskParams.universeUUID = universeUUID;
+    taskParams.setUniverseUUID(universeUUID);
     taskParams.customerUUID = customerUUID;
 
     validateTables(
@@ -645,15 +645,16 @@ public class TablesController extends AuthenticatedController {
       return PlatformResults.withData(schedule);
     } else {
       UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, taskParams);
-      LOG.info("Submitted task to universe {}, task uuid = {}.", universe.name, taskUUID);
+      LOG.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
       CustomerTask.create(
           customer,
-          taskParams.universeUUID,
+          taskParams.getUniverseUUID(),
           taskUUID,
           CustomerTask.TargetType.Backup,
           CustomerTask.TaskType.Create,
-          universe.name);
-      LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.name);
+          universe.getName());
+      LOG.info(
+          "Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.getName());
       auditService()
           .createAuditEntryWithReqBody(
               ctx(),
@@ -703,7 +704,7 @@ public class TablesController extends AuthenticatedController {
               universeUUID.toString()));
     }
 
-    taskParams.universeUUID = universeUUID;
+    taskParams.setUniverseUUID(universeUUID);
     taskParams.tableUUID = tableUUID;
     taskParams.customerUuid = customerUUID;
 
@@ -738,7 +739,7 @@ public class TablesController extends AuthenticatedController {
           taskUUID);
       CustomerTask.create(
           customer,
-          taskParams.universeUUID,
+          taskParams.getUniverseUUID(),
           taskUUID,
           CustomerTask.TargetType.Backup,
           CustomerTask.TaskType.Create,
@@ -807,7 +808,7 @@ public class TablesController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Invalid S3 Bucket provided: " + taskParams.s3Bucket);
     }
-    taskParams.universeUUID = universeUUID;
+    taskParams.setUniverseUUID(universeUUID);
 
     UUID taskUUID = commissioner.submit(TaskType.ImportIntoTable, taskParams);
     LOG.info(
@@ -818,7 +819,7 @@ public class TablesController extends AuthenticatedController {
 
     CustomerTask.create(
         customer,
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Table,
         CustomerTask.TaskType.BulkImportData,
@@ -870,7 +871,7 @@ public class TablesController extends AuthenticatedController {
         throw new PlatformServiceException(
             BAD_REQUEST,
             "No tables to backup inside specified Universe "
-                + universe.universeUUID.toString()
+                + universe.getUniverseUUID().toString()
                 + " and Table Type "
                 + tableType.name());
       }
@@ -1063,26 +1064,26 @@ public class TablesController extends AuthenticatedController {
     TableSpaceUtil.validateTablespaces(tablespacesInfo, universe);
 
     CreateTableSpaces.Params taskParams = new CreateTableSpaces.Params();
-    taskParams.universeUUID = universeUUID;
+    taskParams.setUniverseUUID(universeUUID);
     taskParams.tablespaceInfos = tablespacesInfo.tablespaceInfos;
-    taskParams.expectedUniverseVersion = universe.version;
+    taskParams.expectedUniverseVersion = universe.getVersion();
 
     UUID taskUUID = commissioner.submit(TaskType.CreateTableSpacesInUniverse, taskParams);
     LOG.info("Submitted create tablespaces task, uuid = {}.", taskUUID);
 
     CustomerTask.create(
         customer,
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.CreateTableSpaces,
-        universe.name);
+        universe.getName());
 
     LOG.info(
         "Saved task uuid {} in customer tasks table for universe {}:{}.",
         taskUUID,
         universeUUID,
-        universe.name);
+        universe.getName());
 
     auditService()
         .createAuditEntryWithReqBody(

@@ -32,6 +32,7 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/rpc/lightweight_message.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/sidecars.h"
 
@@ -45,6 +46,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -343,18 +345,39 @@ Result<PgClientSessionOperations> PrepareOperations(
   return result;
 }
 
+std::byte* WriteVarint32ToArray(uint32_t value, std::byte* out) {
+  return pointer_cast<std::byte*>(google::protobuf::io::CodedOutputStream::WriteVarint32ToArray(
+      value, pointer_cast<uint8_t*>(out)));
+}
+
+std::byte* SerializeWithCachedSizesToArray(
+    const google::protobuf::MessageLite& msg, std::byte* out) {
+  return pointer_cast<std::byte*>(msg.SerializeWithCachedSizesToArray(pointer_cast<uint8_t*>(out)));
+}
+
 struct PerformData {
   uint64_t session_id;
-  PgPerformResponsePB* resp;
-  rpc::RpcContext context;
+  PgTableCache& table_cache;
+
+  PgPerformRequestPB& req;
+  PgPerformResponsePB& resp;
+  rpc::Sidecars& sidecars;
+
   PgClientSessionOperations ops;
   client::YBTransactionPtr transaction;
-  std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter;
+  PgMutationCounter* pg_node_level_mutation_counter;
   SubTransactionId subtxn_id;
-  PgTableCache* table_cache;
   PgClientSession::UsedReadTimePtr used_read_time;
   PgResponseCache::Setter cache_setter;
   HybridTime used_in_txn_limit;
+
+  PerformData(uint64_t session_id_, PgTableCache* table_cache_, PgPerformRequestPB* req_,
+              PgPerformResponsePB* resp_, rpc::Sidecars* sidecars_)
+      : session_id(session_id_), table_cache(*table_cache_), req(*req_), resp(*resp_),
+        sidecars(*sidecars_) {}
+
+  virtual ~PerformData() = default;
+  virtual void SendResponse() = 0;
 
   void FlushDone(client::FlushStatus* flush_status) {
     auto status = CombineErrorsToStatus(flush_status->errors, flush_status->status);
@@ -362,31 +385,30 @@ struct PerformData {
       status = ProcessResponse();
     }
     if (!status.ok()) {
-      StatusToPB(status, resp->mutable_status());
+      StatusToPB(status, resp.mutable_status());
     }
     if (cache_setter) {
-      cache_setter({status.ok(), *resp, ExtractRowsSidecar(*resp, context.sidecars())});
+      cache_setter({status.ok(), resp, ExtractRowsSidecar(resp, sidecars)});
     }
-    context.RespondSuccess();
+    SendResponse();
   }
 
  private:
   Status ProcessResponse() {
     int idx = 0;
     for (const auto& op : ops) {
-      const auto status = HandleResponse(session_id, *op, resp, used_read_time);
+      const auto status = HandleResponse(session_id, *op, &resp, used_read_time);
       if (!status.ok()) {
         if (PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH) {
-          table_cache->Invalidate(op->table()->id());
+          table_cache.Invalidate(op->table()->id());
         }
         VLOG(2) << SessionLogPrefix(session_id) << "Failed op " << idx << ": " << status;
         return status.CloneAndAddErrorCode(OpIndex(idx));
       }
       // In case of write operation, increase mutation counter
-      if (op->type() == client::YBOperation::Type::PGSQL_WRITE &&
-          GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
+      if (!op->read_only() && GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
           pg_node_level_mutation_counter) {
-        const TableId& table_id = down_cast<const client::YBPgsqlWriteOp&>(*op).table()->id();
+        const auto& table_id = down_cast<const client::YBPgsqlWriteOp&>(*op).table()->id();
 
         VLOG(4) << SessionLogPrefix(session_id) << "Increasing "
                 << (transaction ? "transaction's mutation counters"
@@ -397,7 +419,7 @@ struct PerformData {
         // level aggregate. Otherwise increase the transaction level aggregate.
         if (!transaction) {
           pg_node_level_mutation_counter->Increase(table_id, 1);
-        } else if (transaction) {
+        } else {
           transaction->IncreaseMutationCounts(subtxn_id, table_id, 1);
         }
       }
@@ -405,11 +427,11 @@ struct PerformData {
           op->type() == client::YBOperation::Type::PGSQL_READ &&
           down_cast<const client::YBPgsqlReadOp&>(*op).request().is_for_backfill()) {
         // After backfill table schema version is updated, so we reset cache in advance.
-        table_cache->Invalidate(op->table()->id());
+        table_cache.Invalidate(op->table()->id());
       }
       ++idx;
     }
-    auto& responses = *resp->mutable_responses();
+    auto& responses = *resp.mutable_responses();
     responses.Reserve(narrow_cast<int>(ops.size()));
     for (const auto& op : ops) {
       auto& op_resp = *responses.Add();
@@ -417,18 +439,62 @@ struct PerformData {
       if (op->has_sidecar()) {
         op_resp.set_rows_data_sidecar(narrow_cast<int>(op->sidecar_index()));
       }
-      if (resp->has_catalog_read_time() && op_resp.has_paging_state()) {
+      if (resp.has_catalog_read_time() && op_resp.has_paging_state()) {
         // Prevent further paging reads from read restart errors.
         // See the ProcessUsedReadTime(...) function for details.
-        *op_resp.mutable_paging_state()->mutable_read_time() = resp->catalog_read_time();
+        *op_resp.mutable_paging_state()->mutable_read_time() = resp.catalog_read_time();
       }
       op_resp.set_partition_list_version(op->table()->GetPartitionListVersion());
     }
     if (used_in_txn_limit) {
-      resp->set_used_in_txn_limit_ht(used_in_txn_limit.ToUint64());
+      resp.set_used_in_txn_limit_ht(used_in_txn_limit.ToUint64());
     }
 
     return Status::OK();
+  }
+};
+
+struct SharedExchangeQueryParams {
+  PgPerformRequestPB exchange_req;
+  PgPerformResponsePB exchange_resp;
+  rpc::Sidecars exchange_sidecars;
+};
+
+struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformData {
+  SharedExchange* exchange;
+
+  CountDownLatch latch{1};
+
+  SharedExchangeQuery(uint64_t session_id_, PgTableCache* table_cache_, SharedExchange* exchange_)
+      : PerformData(session_id_, table_cache_, &exchange_req, &exchange_resp, &exchange_sidecars),
+        exchange(exchange_) {
+  }
+
+  Status Init(size_t size) {
+    return pb_util::ParseFromArray(&req, to_uchar_ptr(exchange->Obtain(size)), size);
+  }
+
+  void Wait() {
+    latch.Wait();
+  }
+
+  void SendResponse() override {
+    rpc::ResponseHeader header;
+    header.set_call_id(42);
+    auto resp_size = resp.ByteSizeLong();
+    sidecars.MoveOffsetsTo(resp_size, header.mutable_sidecar_offsets());
+    auto header_size = header.ByteSizeLong();
+    auto* start = exchange->Obtain(
+        header_size + resp_size + sidecars.size() + kMaxVarint32Length * 2);
+    auto* out = start;
+    out = WriteVarint32ToArray(narrow_cast<uint32_t>(header_size), out);
+    out = SerializeWithCachedSizesToArray(header, out);
+    out = WriteVarint32ToArray(narrow_cast<uint32_t>(resp_size + sidecars.size()), out);
+    out = SerializeWithCachedSizesToArray(resp, out);
+    sidecars.CopyTo(out);
+    out += sidecars.size();
+    exchange->Respond(out - start);
+    latch.CountDown();
   }
 };
 
@@ -453,15 +519,15 @@ HybridTime GetInTxnLimit(const PgPerformOptionsPB& options, ClockBase* clock) {
 PgClientSession::PgClientSession(
     uint64_t id, client::YBClient* client, const scoped_refptr<ClockBase>& clock,
     std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
-    PgTableCache* table_cache, const XClusterSafeTimeMap* xcluster_safe_time_map,
-    std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter,
-    PgResponseCache* response_cache, PgSequenceCache* sequence_cache)
+    PgTableCache* table_cache, const std::optional<XClusterContext>& xcluster_context,
+    PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
+    PgSequenceCache* sequence_cache)
     : id_(id),
       client_(*client),
       clock_(clock),
       transaction_pool_provider_(transaction_pool_provider.get()),
       table_cache_(*table_cache),
-      xcluster_safe_time_map_(xcluster_safe_time_map),
+      xcluster_context_(xcluster_context),
       pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
       response_cache_(*response_cache),
       sequence_cache_(*sequence_cache) {}
@@ -747,7 +813,7 @@ Status PgClientSession::SetActiveSubTransaction(
 Status PgClientSession::FinishTransaction(
     const PgFinishTransactionRequestPB& req, PgFinishTransactionResponsePB* resp,
     rpc::RpcContext* context) {
-  saved_priority_ = boost::none;
+  saved_priority_ = std::nullopt;
   auto kind = req.ddl_mode() ? PgClientSessionKind::kDdl : PgClientSessionKind::kPlain;
   auto& txn = Transaction(kind);
   if (!txn) {
@@ -777,10 +843,10 @@ Status PgClientSession::FinishTransaction(
     } else if (GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
                pg_node_level_mutation_counter_) {
       // Gather # of mutated rows for each table (count only the committed sub-transactions).
-      const auto& table_mutations = txn_value->GetTableMutationCounts();
+      auto table_mutations = txn_value->GetTableMutationCounts();
       VLOG_WITH_PREFIX(4) << "Incrementing global mutation count using table to mutations map: "
                           << AsString(table_mutations) << " for txn: " << txn_value->id();
-      for(auto& [table_id, mutation_count] : table_mutations) {
+      for(const auto& [table_id, mutation_count] : table_mutations) {
         pg_node_level_mutation_counter_->Increase(table_id, mutation_count);
       }
     }
@@ -800,62 +866,94 @@ Status PgClientSession::FinishTransaction(
   return Status::OK();
 }
 
+struct RpcPerformQuery : public PerformData {
+  rpc::RpcContext context;
+
+  RpcPerformQuery(
+      uint64_t session_id_, PgTableCache* table_cache_, PgPerformRequestPB* req,
+      PgPerformResponsePB* resp, rpc::RpcContext* context_)
+      : PerformData(session_id_, table_cache_, req, resp, &context_->sidecars()),
+        context(std::move(*context_)) {}
+
+  void SendResponse() override {
+    context.RespondSuccess();
+  }
+};
+
 Status PgClientSession::Perform(
     PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
-  VLOG_WITH_PREFIX(5) << "Perform req=" << req->ShortDebugString();
-  PgResponseCache::Setter setter;
-  auto& options = *req->mutable_options();
+  auto data = std::make_shared<RpcPerformQuery>(id_, &table_cache_, req, resp, context);
+  auto status = DoPerform(data, data->context.GetClientDeadline(), &data->context);
+  if (!status.ok()) {
+    *context = std::move(data->context);
+    return status;
+  }
+  return Status::OK();
+}
+
+template <class DataPtr>
+Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
+                                  rpc::RpcContext* context) {
+  auto& options = *data->req.mutable_options();
+  if (!options.ddl_mode() && xcluster_context_ && xcluster_context_->is_xcluster_read_only_mode()) {
+    for (const auto& op : data->req.ops()) {
+      if (op.has_write()) {
+        return STATUS(
+            InvalidArgument, "Data modification by DML is forbidden with STANDBY xCluster role");
+      }
+    }
+  }
   if (options.has_caching_info()) {
-    setter = VERIFY_RESULT(response_cache_.Get(options.mutable_caching_info(), resp, context));
-    if (!setter) {
+    data->cache_setter = VERIFY_RESULT(response_cache_.Get(
+        options.mutable_caching_info(), &data->resp, &data->sidecars, deadline));
+    if (!data->cache_setter) {
+      data->SendResponse();
       return Status::OK();
     }
   }
 
   const auto in_txn_limit = GetInTxnLimit(options, clock_.get());
   VLOG_WITH_PREFIX(5) << "using in_txn_limit_ht: " << in_txn_limit;
-  auto session_info = VERIFY_RESULT(SetupSession(*req, context->GetClientDeadline(), in_txn_limit));
+  auto session_info = VERIFY_RESULT(SetupSession(data->req, deadline, in_txn_limit));
   auto* session = session_info.first.session.get();
-  auto transaction = session_info.first.transaction;
+  auto& transaction = session_info.first.transaction;
 
-  if (options.trace_requested()) {
-    context->EnsureTraceCreated();
-    if (transaction) {
-      transaction->EnsureTraceCreated();
-      context->trace()->AddChildTrace(transaction->trace());
-      transaction->trace()->set_must_print(true);
-    } else {
-      context->trace()->set_must_print(true);
+  if (context) {
+    if (options.trace_requested()) {
+      context->EnsureTraceCreated();
+      if (transaction) {
+        transaction->EnsureTraceCreated();
+        context->trace()->AddChildTrace(transaction->trace());
+        transaction->trace()->set_must_print(true);
+      } else {
+        context->trace()->set_must_print(true);
+      }
     }
+    ADOPT_TRACE(context->trace());
   }
-  ADOPT_TRACE(context->trace());
 
-  auto ops = VERIFY_RESULT(PrepareOperations(req, session, &context->sidecars(), &table_cache_));
-  auto ops_count = ops.size();
-  auto data = std::make_shared<PerformData>(PerformData {
-    .session_id = id_,
-    .resp = resp,
-    .context = std::move(*context),
-    .ops = std::move(ops),
-    .transaction = transaction,
-    .pg_node_level_mutation_counter = pg_node_level_mutation_counter_,
-    .subtxn_id = options.active_sub_transaction_id(),
-    .table_cache = &table_cache_,
-    .used_read_time = session_info.second,
-    .cache_setter = std::move(setter),
-    .used_in_txn_limit = in_txn_limit
-  });
+  data->used_read_time = session_info.second;
+  data->used_in_txn_limit = in_txn_limit;
+  data->transaction = std::move(transaction);
+  data->pg_node_level_mutation_counter = pg_node_level_mutation_counter_;
+  data->subtxn_id = options.active_sub_transaction_id();
 
-  session->FlushAsync([this, data, transaction, ops_count](client::FlushStatus* flush_status) {
+  data->ops = VERIFY_RESULT(PrepareOperations(
+      &data->req, session, &data->sidecars, &table_cache_));
+
+  session->FlushAsync([this, data](client::FlushStatus* flush_status) {
     data->FlushDone(flush_status);
-    if (transaction) {
-      VLOG_WITH_PREFIX(2) << "FlushAsync of " << ops_count << " ops completed with transaction id "
-                          << transaction->id();
+    const auto ops_count = data->ops.size();
+    if (data->transaction) {
+      VLOG_WITH_PREFIX(2)
+          << "FlushAsync of " << ops_count << " ops completed with transaction id "
+          << data->transaction->id();
     } else {
-      VLOG_WITH_PREFIX(2) << "FlushAsync of " << ops_count << " ops completed for non-distributed "
-                          << "transaction";
+      VLOG_WITH_PREFIX(2)
+          << "FlushAsync of " << ops_count << " ops completed for non-distributed transaction";
     }
   });
+
   return Status::OK();
 }
 
@@ -888,12 +986,13 @@ void PgClientSession::ProcessReadTimeManipulation(ReadTimeManipulation manipulat
 Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
     const PgPerformOptionsPB& options, ConsistentReadPoint* read_point) {
   // Early exit if namespace not provided or atomic reads not enabled
-  if (options.namespace_id().empty() || xcluster_safe_time_map_ == nullptr ||
+  if (options.namespace_id().empty() || !xcluster_context_ ||
       !options.use_xcluster_database_consistency()) {
     return Status::OK();
   }
 
-  auto safe_time = VERIFY_RESULT(xcluster_safe_time_map_->GetSafeTime(options.namespace_id()));
+  auto safe_time =
+      VERIFY_RESULT(xcluster_context_->safe_time_map().GetSafeTime(options.namespace_id()));
   if (!safe_time) {
     // No xCluster safe time for this namespace.
     return Status::OK();
@@ -1067,7 +1166,7 @@ Status PgClientSession::BeginTransactionIfNecessary(
 
   if (saved_priority_) {
     priority = *saved_priority_;
-    saved_priority_ = boost::none;
+    saved_priority_ = std::nullopt;
   }
   txn->SetPriority(priority);
   session->SetTransaction(txn);
@@ -1461,6 +1560,24 @@ Status PgClientSession::CheckPlainSessionReadTime() {
         << "Update read time from used read time: " << session->read_point()->GetReadTime();
   }
   return Status::OK();
+}
+
+std::shared_ptr<CountDownLatch> PgClientSession::ProcessSharedRequest(
+    size_t size, SharedExchange* exchange) {
+  // TODO(shared_mem) Use the same timeout as RPC scenario.
+  const auto kTimeout = std::chrono::seconds(60);
+  auto deadline = CoarseMonoClock::now() + kTimeout;
+  auto data = std::make_shared<SharedExchangeQuery>(id_, &table_cache_, exchange);
+  auto status = data->Init(size);
+  if (status.ok()) {
+    status = DoPerform(data, deadline, nullptr);
+  }
+  if (!status.ok()) {
+    StatusToPB(status, data->resp.mutable_status());
+    data->SendResponse();
+    return nullptr;
+  }
+  return rpc::SharedField(data, &data->latch);
 }
 
 }  // namespace tserver

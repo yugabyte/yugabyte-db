@@ -49,7 +49,7 @@ public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
               /* isMasterChanged */ true,
               /* isTServerChanged */ true,
               universe.isYbcEnabled(),
-              universe.getUniverseDetails().ybcSoftwareVersion);
+              universe.getUniverseDetails().getYbcSoftwareVersion());
         });
   }
 
@@ -57,7 +57,7 @@ public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateAndPersistKubernetesOverrides");
     UpdateAndPersistKubernetesOverrides.Params params =
         new UpdateAndPersistKubernetesOverrides.Params();
-    params.universeUUID = taskParams().universeUUID;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
     params.universeOverrides = taskParams().universeOverrides;
     params.azOverrides = taskParams().azOverrides;
     UpdateAndPersistKubernetesOverrides task =

@@ -169,7 +169,7 @@ public class AwsEARServiceTest extends FakeDBApplication {
     KmsConfig fakeKmsConfig =
         KmsConfig.createKMSConfig(
             testCustomerUUID, testKeyProvider, fakeAuthConfig, fakeAuthConfig.get("name").asText());
-    ObjectNode retrievedKeyMetadata = awsEARService.getKeyMetadata(fakeKmsConfig.configUUID);
+    ObjectNode retrievedKeyMetadata = awsEARService.getKeyMetadata(fakeKmsConfig.getConfigUUID());
     assertEquals(expectedKeyMetadata, retrievedKeyMetadata);
   }
 }

@@ -100,11 +100,11 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
-#include "pg_yb_utils.h"
 #include "access/yb_scan.h"
-#include "catalog/yb_catalog_version.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
+#include "catalog/yb_catalog_version.h"
+#include "pg_yb_utils.h"
 
 #define RELCACHE_INIT_FILEMAGIC		0x573266	/* version ID value */
 
@@ -5022,12 +5022,16 @@ RelationCacheInitializePhase2(void)
 		if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 		{
 			formrdesc("pg_yb_profile", YbProfileRelation_Rowtype_Id, true,
-					true, Natts_pg_yb_profile, Desc_pg_yb_profile);
-			formrdesc("pg_yb_role_profile", YbRoleProfileRelation_Rowtype_Id, true,
-					true, Natts_pg_yb_role_profile, Desc_pg_yb_role_profile);
+					  true, Natts_pg_yb_profile, Desc_pg_yb_profile);
+			formrdesc("pg_yb_role_profile", YbRoleProfileRelation_Rowtype_Id,
+					  true, true, Natts_pg_yb_role_profile,
+					  Desc_pg_yb_role_profile);
 		}
 
-#define NUM_CRITICAL_SHARED_RELS    (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist ? 7 : 5)   /* fix if you change list above */
+#define NUM_CRITICAL_SHARED_RELS	(*YBCGetGFlags()->ysql_enable_profile && \
+									 YbLoginProfileCatalogsExist \
+									 ? 7 \
+									 : 5)	/* fix if you change list above */
 	}
 
 	MemoryContextSwitchTo(oldcxt);

@@ -40,36 +40,33 @@
 namespace yb {
 namespace tserver {
 
-  void PgMutationCounter::Increase(const TableId& table_id, uint64 mutation_count) {
-    VLOG_WITH_FUNC(4) << "table_id: " << table_id << " mutation_count: " << mutation_count;
-    {
-      // The mutex_ is used for only guarding membership changes to the map. A shared lock is needed
-      // when checking for membership and an exclusive lock is needed if updating membership i.e.,
-      // adding/ removing a key from the map.
-      //
-      // Incrementing the counters doesn't need a mutex because we use atomic for the counter.
-      SharedLock shared_lock(mutex_);
-      if (table_mutation_counts_.contains(table_id)) {
-        table_mutation_counts_[table_id] += mutation_count;
-        return;
-      }
+void PgMutationCounter::Increase(const TableId& table_id, uint64 mutation_count) {
+  VLOG_WITH_FUNC(4) << "table_id: " << table_id << " mutation_count: " << mutation_count;
+  {
+    // The mutex_ is used for only guarding membership changes to the map. A shared lock is needed
+    // when checking for membership and an exclusive lock is needed if updating membership i.e.,
+    // adding/ removing a key from the map.
+    //
+    // Incrementing the counters doesn't need a mutex because we use atomic for the counter.
+    SharedLock shared_lock(mutex_);
+    auto it = table_mutation_counts_.find(table_id);
+    if (it != table_mutation_counts_.end()) {
+      it->second += mutation_count;
+      return;
     }
+  }
 
-    std::lock_guard lock(mutex_);
-    if (table_mutation_counts_.contains(table_id)) {
-      table_mutation_counts_[table_id] += mutation_count;
-    } else {
-      table_mutation_counts_[table_id] = mutation_count;
-    }
+  std::lock_guard lock(mutex_);
+  table_mutation_counts_[table_id] += mutation_count;
 }
 
-  std::unordered_map<TableId, std::atomic<uint64>> PgMutationCounter::GetAndClear() {
-    std::lock_guard lock(mutex_);
-    VLOG_WITH_FUNC(4) << "Getting and clearing global table mutation counter";
-    decltype(table_mutation_counts_) result;
-    table_mutation_counts_.swap(result);
-    return result;
-  }
+TableMutationCounts PgMutationCounter::GetAndClear() {
+  VLOG_WITH_FUNC(4) << "Getting and clearing global table mutation counter";
+  decltype(table_mutation_counts_) result;
+  std::lock_guard lock(mutex_);
+  table_mutation_counts_.swap(result);
+  return result;
+}
 
 }  // namespace tserver
 }  // namespace yb

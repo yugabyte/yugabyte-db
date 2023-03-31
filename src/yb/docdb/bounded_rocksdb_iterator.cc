@@ -87,5 +87,9 @@ Status BoundedRocksDbIterator::status() const {
   return iterator_->status();
 }
 
+void BoundedRocksDbIterator::UseFastNext(bool value) {
+  iterator_->UseFastNext(value);
+}
+
 }  // namespace docdb
 }  // namespace yb

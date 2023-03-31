@@ -49,6 +49,8 @@ import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import javax.persistence.Transient;
+import lombok.Getter;
+import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -56,9 +58,12 @@ import play.libs.Json;
 
 @ApiModel(description = "SSL certificate used by the universe")
 @Entity
+@Getter
+@Setter
 public class CertificateInfo extends Model {
 
   @Inject static RuntimeConfGetter confGetter;
+
   /**
    * This is the custom certificatePath information certificates received in param are converted to
    * certs and dumped in file This contains information of file path for respective certs
@@ -82,24 +87,24 @@ public class CertificateInfo extends Model {
   @Constraints.Required
   @Id
   @Column(nullable = false, unique = true)
-  public UUID uuid;
+  private UUID uuid;
 
   @ApiModelProperty(
       value = "Customer UUID of the backup which it belongs to",
       accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false)
-  public UUID customerUUID;
+  private UUID customerUUID;
 
   @ApiModelProperty(
       value = "Certificate label",
       example = "yb-admin-example",
       accessMode = READ_WRITE)
   @Column(unique = true)
-  public String label;
+  private String label;
 
   @Column(nullable = false)
-  public Date startDate;
+  private Date startDate;
 
   @ApiModelProperty(
       value = "The certificate's creation date. Deprecated: use stateDateIso instead",
@@ -115,10 +120,6 @@ public class CertificateInfo extends Model {
     return null;
   }
 
-  public void setStartDate(Date startDate) {
-    this.startDate = startDate;
-  }
-
   @ApiModelProperty(
       value = "The certificate's creation date",
       accessMode = READ_WRITE,
@@ -130,11 +131,11 @@ public class CertificateInfo extends Model {
   }
 
   public void setStartDateIso(Date startDate) {
-    this.startDate = startDate;
+    this.setStartDate(startDate);
   }
 
   @Column(nullable = false)
-  public Date expiryDate;
+  private Date expiryDate;
 
   @ApiModelProperty(
       value = "The certificate's expiry date. Deprecated: Use expirtyDateIso instead",
@@ -151,10 +152,6 @@ public class CertificateInfo extends Model {
     return null;
   }
 
-  public void setExpiryDate(Date expiryDate) {
-    this.expiryDate = expiryDate;
-  }
-
   @ApiModelProperty(
       value = "The certificate's expiry date",
       accessMode = READ_WRITE,
@@ -165,16 +162,12 @@ public class CertificateInfo extends Model {
     return expiryDate;
   }
 
-  public void setExpiryDateIso(Date expiryDate) {
-    this.expiryDate = expiryDate;
-  }
-
   @ApiModelProperty(
       value = "Private key path",
       example = "/opt/yugaware/.../example.key.pem",
       accessMode = READ_WRITE)
   @Column(nullable = true)
-  public String privateKey;
+  private String privateKey;
 
   @ApiModelProperty(
       value = "Certificate path",
@@ -182,7 +175,7 @@ public class CertificateInfo extends Model {
       accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false)
-  public String certificate;
+  private String certificate;
 
   @ApiModelProperty(
       value = "Type of the certificate",
@@ -191,15 +184,15 @@ public class CertificateInfo extends Model {
   @Constraints.Required
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
-  public CertConfigType certType;
+  private CertConfigType certType;
 
   @ApiModelProperty(value = "The certificate file's checksum", accessMode = READ_ONLY)
   @Column(nullable = true)
-  public String checksum;
+  private String checksum;
 
-  public void setChecksum() throws IOException, NoSuchAlgorithmException {
-    if (this.certificate != null) {
-      this.checksum = FileUtils.getFileChecksum(this.certificate);
+  public void updateChecksum() throws IOException, NoSuchAlgorithmException {
+    if (this.getCertificate() != null) {
+      this.setChecksum(FileUtils.getFileChecksum(this.getCertificate()));
       this.save();
     }
   }
@@ -208,31 +201,31 @@ public class CertificateInfo extends Model {
   @Column(columnDefinition = "TEXT", nullable = true)
   @DbJson
   // @JsonIgnore
-  public JsonNode customCertInfo;
+  private JsonNode customCertInfo;
 
   public CertificateParams.CustomCertInfo getCustomCertPathParams() {
-    if (this.certType != CertConfigType.CustomCertHostPath) {
+    if (this.getCertType() != CertConfigType.CustomCertHostPath) {
       return null;
     }
-    if (this.customCertInfo != null) {
-      return Json.fromJson(this.customCertInfo, CertificateParams.CustomCertInfo.class);
+    if (this.getCustomCertInfo() != null) {
+      return Json.fromJson(this.getCustomCertInfo(), CertificateParams.CustomCertInfo.class);
     }
     return null;
   }
 
-  public void setCustomCertPathParams(
+  public void updateCustomCertPathParams(
       CertificateParams.CustomCertInfo certInfo, UUID certUUID, UUID cudtomerUUID) {
-    this.checkEditable(certUUID, customerUUID);
-    this.customCertInfo = Json.toJson(certInfo);
+    this.checkEditable(certUUID, getCustomerUUID());
+    this.setCustomCertInfo(Json.toJson(certInfo));
     this.save();
   }
 
   public CustomServerCertInfo getCustomServerCertInfo() {
-    if (this.certType != CertConfigType.CustomServerCert) {
+    if (this.getCertType() != CertConfigType.CustomServerCert) {
       return null;
     }
-    if (this.customCertInfo != null) {
-      return Json.fromJson(this.customCertInfo, CustomServerCertInfo.class);
+    if (this.getCustomCertInfo() != null) {
+      return Json.fromJson(this.getCustomCertInfo(), CustomServerCertInfo.class);
     }
     return null;
   }
@@ -243,10 +236,10 @@ public class CertificateInfo extends Model {
    * @return
    */
   public HashicorpVaultConfigParams getCustomHCPKICertInfo() {
-    if (this.certType != CertConfigType.HashicorpVault) {
+    if (this.getCertType() != CertConfigType.HashicorpVault) {
       return null;
     }
-    if (this.customCertInfo == null) {
+    if (this.getCustomCertInfo() == null) {
       return null;
     }
 
@@ -257,16 +250,16 @@ public class CertificateInfo extends Model {
 
   @JsonIgnore
   public HashicorpVaultConfigParams getCustomHCPKICertInfoInternal() {
-    if (this.certType != CertConfigType.HashicorpVault) {
+    if (this.getCertType() != CertConfigType.HashicorpVault) {
       return null;
     }
-    if (this.customCertInfo == null) {
+    if (this.getCustomCertInfo() == null) {
       return null;
     }
 
-    HashicorpVaultConfigParams params = new HashicorpVaultConfigParams(this.customCertInfo);
+    HashicorpVaultConfigParams params = new HashicorpVaultConfigParams(this.getCustomCertInfo());
     String token =
-        EncryptionInTransitUtil.unmaskCertConfigData(this.customerUUID, params.vaultToken);
+        EncryptionInTransitUtil.unmaskCertConfigData(this.getCustomerUUID(), params.vaultToken);
     if (token != null) params.vaultToken = token;
 
     return params;
@@ -285,15 +278,15 @@ public class CertificateInfo extends Model {
       CertConfigType certType)
       throws IOException, NoSuchAlgorithmException {
     CertificateInfo cert = new CertificateInfo();
-    cert.uuid = uuid;
-    cert.customerUUID = customerUUID;
-    cert.label = label;
-    cert.startDate = startDate;
-    cert.expiryDate = expiryDate;
-    cert.privateKey = privateKey;
-    cert.certificate = certificate;
-    cert.certType = certType;
-    cert.checksum = FileUtils.getFileChecksum(certificate);
+    cert.setUuid(uuid);
+    cert.setCustomerUUID(customerUUID);
+    cert.setLabel(label);
+    cert.setStartDate(startDate);
+    cert.setExpiryDate(expiryDate);
+    cert.setPrivateKey(privateKey);
+    cert.setCertificate(certificate);
+    cert.setCertType(certType);
+    cert.setChecksum(FileUtils.getFileChecksum(certificate));
     cert.save();
     return cert;
   }
@@ -308,15 +301,15 @@ public class CertificateInfo extends Model {
       CertificateParams.CustomCertInfo customCertInfo)
       throws IOException, NoSuchAlgorithmException {
     CertificateInfo cert = new CertificateInfo();
-    cert.uuid = uuid;
-    cert.customerUUID = customerUUID;
-    cert.label = label;
-    cert.startDate = startDate;
-    cert.expiryDate = expiryDate;
-    cert.certificate = certificate;
-    cert.certType = CertConfigType.CustomCertHostPath;
-    cert.customCertInfo = Json.toJson(customCertInfo);
-    cert.checksum = FileUtils.getFileChecksum(certificate);
+    cert.setUuid(uuid);
+    cert.setCustomerUUID(customerUUID);
+    cert.setLabel(label);
+    cert.setStartDate(startDate);
+    cert.setExpiryDate(expiryDate);
+    cert.setCertificate(certificate);
+    cert.setCertType(CertConfigType.CustomCertHostPath);
+    cert.setCustomCertInfo(Json.toJson(customCertInfo));
+    cert.setChecksum(FileUtils.getFileChecksum(certificate));
     cert.save();
     return cert;
   }
@@ -331,15 +324,15 @@ public class CertificateInfo extends Model {
       CustomServerCertInfo customServerCertInfo)
       throws IOException, NoSuchAlgorithmException {
     CertificateInfo cert = new CertificateInfo();
-    cert.uuid = uuid;
-    cert.customerUUID = customerUUID;
-    cert.label = label;
-    cert.startDate = startDate;
-    cert.expiryDate = expiryDate;
-    cert.certificate = certificate;
-    cert.certType = CertConfigType.CustomServerCert;
-    cert.customCertInfo = Json.toJson(customServerCertInfo);
-    cert.checksum = FileUtils.getFileChecksum(certificate);
+    cert.setUuid(uuid);
+    cert.setCustomerUUID(customerUUID);
+    cert.setLabel(label);
+    cert.setStartDate(startDate);
+    cert.setExpiryDate(expiryDate);
+    cert.setCertificate(certificate);
+    cert.setCertType(CertConfigType.CustomServerCert);
+    cert.setCustomCertInfo(Json.toJson(customServerCertInfo));
+    cert.setChecksum(FileUtils.getFileChecksum(certificate));
     cert.save();
     return cert;
   }
@@ -354,16 +347,16 @@ public class CertificateInfo extends Model {
       HashicorpVaultConfigParams params)
       throws IOException, NoSuchAlgorithmException {
     CertificateInfo cert = new CertificateInfo();
-    cert.uuid = uuid;
-    cert.customerUUID = customerUUID;
-    cert.label = label;
-    cert.startDate = startDate;
-    cert.expiryDate = expiryDate;
-    cert.certificate = certificate;
-    cert.certType = CertConfigType.HashicorpVault;
+    cert.setUuid(uuid);
+    cert.setCustomerUUID(customerUUID);
+    cert.setLabel(label);
+    cert.setStartDate(startDate);
+    cert.setExpiryDate(expiryDate);
+    cert.setCertificate(certificate);
+    cert.setCertType(CertConfigType.HashicorpVault);
     JsonNode node = params.toJsonNode();
-    if (node != null) cert.customCertInfo = node;
-    cert.checksum = FileUtils.getFileChecksum(certificate);
+    if (node != null) cert.setCustomCertInfo(node);
+    cert.setChecksum(FileUtils.getFileChecksum(certificate));
     cert.save();
     return cert;
   }
@@ -372,16 +365,16 @@ public class CertificateInfo extends Model {
       CertificateInfo certificateInfo, String label, String certFilePath)
       throws IOException, NoSuchAlgorithmException {
     CertificateInfo copy = new CertificateInfo();
-    copy.uuid = UUID.randomUUID();
-    copy.customerUUID = certificateInfo.customerUUID;
-    copy.label = label;
-    copy.startDate = certificateInfo.startDate;
-    copy.expiryDate = certificateInfo.expiryDate;
-    copy.privateKey = certificateInfo.privateKey;
-    copy.certificate = certFilePath;
-    copy.certType = certificateInfo.certType;
-    copy.checksum = FileUtils.getFileChecksum(certFilePath);
-    copy.customCertInfo = certificateInfo.customCertInfo;
+    copy.setUuid(UUID.randomUUID());
+    copy.setCustomerUUID(certificateInfo.getCustomerUUID());
+    copy.setLabel(label);
+    copy.setStartDate(certificateInfo.getStartDate());
+    copy.setExpiryDate(certificateInfo.getExpiryDate());
+    copy.setPrivateKey(certificateInfo.getPrivateKey());
+    copy.setCertificate(certFilePath);
+    copy.setCertType(certificateInfo.getCertType());
+    copy.setChecksum(FileUtils.getFileChecksum(certFilePath));
+    copy.setCustomCertInfo(certificateInfo.getCustomCertInfo());
     copy.save();
     return copy;
   }
@@ -390,23 +383,23 @@ public class CertificateInfo extends Model {
       Date sDate, Date eDate, String certPath, HashicorpVaultConfigParams params)
       throws IOException, NoSuchAlgorithmException {
 
-    LOG.info("Updating uuid: {} with Path:{}", uuid.toString(), certPath);
+    LOG.info("Updating uuid: {} with Path:{}", getUuid().toString(), certPath);
 
-    if (sDate != null) startDate = sDate;
-    if (eDate != null) expiryDate = eDate;
+    if (sDate != null) setStartDate(sDate);
+    if (eDate != null) setExpiryDate(eDate);
 
-    certificate = certPath;
+    setCertificate(certPath);
 
     JsonNode node = params.toJsonNode();
-    if (node != null) customCertInfo = node;
+    if (node != null) setCustomCertInfo(node);
 
-    checksum = FileUtils.getFileChecksum(certificate);
+    setChecksum(FileUtils.getFileChecksum(getCertificate()));
     save();
     return this;
   }
 
   public static boolean isTemporary(CertificateInfo certificateInfo) {
-    return certificateInfo.certificate.endsWith("ca.multi.root.crt");
+    return certificateInfo.getCertificate().endsWith("ca.multi.root.crt");
   }
 
   private static final Finder<UUID, CertificateInfo> find =
@@ -431,7 +424,7 @@ public class CertificateInfo extends Model {
     if (certificateInfo == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Cert ID: " + certUUID);
     }
-    if (!certificateInfo.customerUUID.equals(customerUUID)) {
+    if (!certificateInfo.getCustomerUUID().equals(customerUUID)) {
       throw new PlatformServiceException(BAD_REQUEST, "Certificate doesn't belong to customer");
     }
     return certificateInfo;
@@ -497,8 +490,8 @@ public class CertificateInfo extends Model {
     if (certificate == null) {
       return false;
     }
-    if (certificate.certType == CertConfigType.CustomCertHostPath
-        && certificate.customCertInfo == null) {
+    if (certificate.getCertType() == CertConfigType.CustomCertHostPath
+        && certificate.getCustomCertInfo() == null) {
       return false;
     }
     return true;
@@ -513,17 +506,18 @@ public class CertificateInfo extends Model {
   // Returns if there is an in use reference to the object.
   public boolean getInUse() {
     if (inUse == null) {
-      return Universe.existsCertificate(this.uuid, this.customerUUID);
+      return Universe.existsCertificate(this.getUuid(), this.getCustomerUUID());
     } else {
       return inUse;
     }
   }
 
-  public void setInUse(boolean inUse) {
-    this.inUse = inUse;
-  }
-
   @VisibleForTesting @Transient List<UniverseDetailSubset> universeDetailSubsets = null;
+
+  @JsonIgnore
+  public List<UniverseDetailSubset> getUniverseDetailsSubsets() {
+    return universeDetailSubsets;
+  }
 
   @ApiModelProperty(
       value = "Associated universe details for the certificate",
@@ -531,7 +525,8 @@ public class CertificateInfo extends Model {
   @JsonProperty
   public List<UniverseDetailSubset> getUniverseDetails() {
     if (universeDetailSubsets == null) {
-      Set<Universe> universes = Universe.universeDetailsIfCertsExists(this.uuid, this.customerUUID);
+      Set<Universe> universes =
+          Universe.universeDetailsIfCertsExists(this.getUuid(), this.getCustomerUUID());
       return Util.getUniverseDetails(universes);
     } else {
       return universeDetailSubsets;
@@ -547,7 +542,7 @@ public class CertificateInfo extends Model {
       UUID customerUUID, List<CertificateInfo> certificateInfoList) {
     Set<Universe> universes = Customer.get(customerUUID).getUniverses();
     Set<UUID> certificateInfoSet =
-        certificateInfoList.stream().map(e -> e.uuid).collect(Collectors.toSet());
+        certificateInfoList.stream().map(e -> e.getUuid()).collect(Collectors.toSet());
 
     Map<UUID, Set<Universe>> certificateUniverseMap = new HashMap<>();
     universes.forEach(
@@ -559,7 +554,7 @@ public class CertificateInfo extends Model {
               certificateUniverseMap.putIfAbsent(rootCA, new HashSet<>());
               certificateUniverseMap.get(rootCA).add(universe);
             } else {
-              LOG.error("Universe: {} has unknown rootCA: {}", universe.universeUUID, rootCA);
+              LOG.error("Universe: {} has unknown rootCA: {}", universe.getUniverseUUID(), rootCA);
             }
           }
           if (clientRootCA != null && !clientRootCA.equals(rootCA)) {
@@ -567,17 +562,18 @@ public class CertificateInfo extends Model {
               certificateUniverseMap.putIfAbsent(clientRootCA, new HashSet<>());
               certificateUniverseMap.get(clientRootCA).add(universe);
             } else {
-              LOG.error("Universe: {} has unknown clientRootCA: {}", universe.universeUUID, rootCA);
+              LOG.error(
+                  "Universe: {} has unknown clientRootCA: {}", universe.getUniverseUUID(), rootCA);
             }
           }
         });
 
     certificateInfoList.forEach(
         certificateInfo -> {
-          if (certificateUniverseMap.containsKey(certificateInfo.uuid)) {
+          if (certificateUniverseMap.containsKey(certificateInfo.getUuid())) {
             certificateInfo.setInUse(true);
             certificateInfo.setUniverseDetails(
-                Util.getUniverseDetails(certificateUniverseMap.get(certificateInfo.uuid)));
+                Util.getUniverseDetails(certificateUniverseMap.get(certificateInfo.getUuid())));
           } else {
             certificateInfo.setInUse(false);
             certificateInfo.setUniverseDetails(new ArrayList<>());
@@ -601,10 +597,10 @@ public class CertificateInfo extends Model {
 
   public void checkEditable(UUID certUUID, UUID customerUUID) {
     CertificateInfo certInfo = getOrBadRequest(certUUID, customerUUID);
-    if (certInfo.certType == CertConfigType.SelfSigned) {
+    if (certInfo.getCertType() == CertConfigType.SelfSigned) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot edit self-signed cert.");
     }
-    if (!(certInfo.customCertInfo == null || certInfo.customCertInfo.isNull())) {
+    if (!(certInfo.getCustomCertInfo() == null || certInfo.getCustomCertInfo().isNull())) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot edit pre-customized cert. Create a new one.");
     }
@@ -618,7 +614,8 @@ public class CertificateInfo extends Model {
     if (EncryptionInTransitUtil.isRootCARequired(universeDetails)) {
       rootCA = universeDetails.rootCA;
       if (rootCA == null) {
-        throw new RuntimeException("No valid RootCA found for " + universeDetails.universeUUID);
+        throw new RuntimeException(
+            "No valid RootCA found for " + universeDetails.getUniverseUUID());
       }
       certificateInfoList.add(CertificateInfo.get(rootCA));
     }
@@ -627,7 +624,7 @@ public class CertificateInfo extends Model {
       clientRootCA = universeDetails.getClientRootCA();
       if (clientRootCA == null) {
         throw new RuntimeException(
-            "No valid clientRootCA found for " + universeDetails.universeUUID);
+            "No valid clientRootCA found for " + universeDetails.getUniverseUUID());
       }
 
       // check against the root to see if need to export

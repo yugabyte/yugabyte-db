@@ -12,6 +12,8 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
@@ -43,12 +45,16 @@ public class InternalHAController extends Controller {
 
   private final PlatformReplicationManager replicationManager;
   private final ValidatingFormFactory formFactory;
+  private final ConfigHelper configHelper;
 
   @Inject
   InternalHAController(
-      PlatformReplicationManager replicationManager, ValidatingFormFactory formFactory) {
+      PlatformReplicationManager replicationManager,
+      ValidatingFormFactory formFactory,
+      ConfigHelper configHelper) {
     this.replicationManager = replicationManager;
     this.formFactory = formFactory;
+    this.configHelper = configHelper;
   }
 
   private String getClusterKey() {
@@ -197,11 +203,19 @@ public class InternalHAController extends Controller {
         return ApiResponse.error(BAD_REQUEST, "Rejecting demote request from stale leader");
       } else if (localLastFailover == null || localLastFailover.before(requestLastFailover)) {
         // Otherwise, update the last failover timestamp and proceed with demotion request.
-        config.get().setLastFailover(requestLastFailover);
+        config.get().updateLastFailover(requestLastFailover);
       }
 
       // Demote the local instance.
       replicationManager.demoteLocalInstance(localInstance.get(), formData.leader_address);
+
+      String version =
+          configHelper
+              .getConfig(ConfigType.YugawareMetadata)
+              .getOrDefault("version", "UNKNOWN")
+              .toString();
+
+      localInstance.get().setYbaVersion(version);
 
       return PlatformResults.withData(localInstance);
     } catch (Exception e) {

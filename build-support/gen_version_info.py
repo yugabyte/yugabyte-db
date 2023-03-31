@@ -40,10 +40,10 @@ import argparse
 import os
 import re
 import pwd
+import shlex
 import subprocess
 import sys
 import time
-import pipes
 import socket
 from time import strftime, localtime
 
@@ -56,7 +56,7 @@ from yb.common_util import get_yb_src_root_from_build_root  # noqa
 def is_git_repo_clean(git_repo_dir):
     return subprocess.call(
         "cd {} && git diff --quiet && git diff --cached --quiet".format(
-            pipes.quote(git_repo_dir)),
+            shlex.quote(git_repo_dir)),
         shell=True) == 0
 
 
@@ -67,7 +67,7 @@ def boolean_to_json_str(bool_flag):
 def get_git_sha1(git_repo_dir):
     try:
         sha1 = subprocess.check_output(
-            'cd {} && git rev-parse HEAD'.format(pipes.quote(git_repo_dir)), shell=True
+            'cd {} && git rev-parse HEAD'.format(shlex.quote(git_repo_dir)), shell=True
         ).decode('utf-8').strip()
 
         if re.match(r'^[0-9a-f]{40}$', sha1):

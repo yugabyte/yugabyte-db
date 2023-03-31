@@ -22,8 +22,9 @@ import { NTPConfigField } from '../../components/NTPConfigField';
 import { RegionList } from '../../components/RegionList';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import {
-  ASYNC_ERROR,
   DEFAULT_SSH_PORT,
+  KeyPairManagement,
+  KEY_PAIR_MANAGEMENT_OPTIONS,
   NTPSetupType,
   ProviderCode,
   VPCSetupType,
@@ -34,7 +35,6 @@ import {
   addItem,
   deleteItem,
   editItem,
-  handleFormServerError,
   generateLowerCaseAlphanumericId,
   readFileAsText
 } from '../utils';
@@ -77,8 +77,6 @@ interface GCPProviderCreateFormFieldValues {
   sshUser: string;
   vpcSetupType: VPCSetupType;
   ybFirewallTags: string;
-
-  [ASYNC_ERROR]: string;
 }
 
 const ProviderCredentialType = {
@@ -86,23 +84,6 @@ const ProviderCredentialType = {
   SPECIFIED_SERVICE_ACCOUNT: 'specifiedServiceAccount'
 } as const;
 type ProviderCredentialType = typeof ProviderCredentialType[keyof typeof ProviderCredentialType];
-
-const KeyPairManagement = {
-  YBA_MANAGED: 'ybaManaged',
-  CUSTOM_KEY_PAIR: 'customKeyPair'
-} as const;
-type KeyPairManagement = typeof KeyPairManagement[keyof typeof KeyPairManagement];
-
-const KEY_PAIR_MANAGEMENT_OPTIONS: OptionProps[] = [
-  {
-    value: KeyPairManagement.YBA_MANAGED,
-    label: 'Use YugabyteDB Anywhere to manage key pairs'
-  },
-  {
-    value: KeyPairManagement.CUSTOM_KEY_PAIR,
-    label: 'Provide custom key pair information'
-  }
-];
 
 const YB_VPC_NAME_BASE = 'yb-gcp-network';
 
@@ -126,11 +107,11 @@ const VALIDATION_SCHEMA = object().shape({
 
   // Specified ssh keys
   sshKeypairName: string().when('sshKeypairManagement', {
-    is: KeyPairManagement.CUSTOM_KEY_PAIR,
+    is: KeyPairManagement.SELF_MANAGED,
     then: string().required('SSH keypair name is required.')
   }),
   sshPrivateKeyContent: mixed().when('sshKeypairManagement', {
-    is: KeyPairManagement.CUSTOM_KEY_PAIR,
+    is: KeyPairManagement.SELF_MANAGED,
     then: mixed().required('SSH private key is required.')
   }),
   ntpServers: array().when('ntpSetupType', {
@@ -181,8 +162,6 @@ export const GCPProviderCreateForm = ({
   }
 
   const onFormSubmit: SubmitHandler<GCPProviderCreateFormFieldValues> = async (formValues) => {
-    formMethods.clearErrors(ASYNC_ERROR);
-
     if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
       formMethods.setError('ntpServers', {
         type: 'min',
@@ -242,7 +221,7 @@ export const GCPProviderCreateForm = ({
     const providerPayload: YBProviderMutation = {
       code: ProviderCode.GCP,
       name: formValues.providerName,
-      ...(formValues.sshKeypairManagement === KeyPairManagement.CUSTOM_KEY_PAIR && {
+      ...(formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
         ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
         ...(formValues.sshPrivateKeyContent && {
           sshPrivateKeyContent: (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
@@ -281,11 +260,11 @@ export const GCPProviderCreateForm = ({
         )
       }))
     };
-    await createInfraProvider(providerPayload, {
-      mutateOptions: {
-        onError: (error) => handleFormServerError(error, ASYNC_ERROR, formMethods.setError)
-      }
-    });
+    try {
+      await createInfraProvider(providerPayload);
+    } catch (_) {
+      // Request errors are handled by the onError callback
+    }
   };
 
   const showAddRegionFormModal = () => {
@@ -471,7 +450,7 @@ export const GCPProviderCreateForm = ({
                   orientation={RadioGroupOrientation.HORIZONTAL}
                 />
               </FormField>
-              {keyPairManagement === KeyPairManagement.CUSTOM_KEY_PAIR && (
+              {keyPairManagement === KeyPairManagement.SELF_MANAGED && (
                 <>
                   <FormField>
                     <FieldLabel>SSH Keypair Name</FieldLabel>

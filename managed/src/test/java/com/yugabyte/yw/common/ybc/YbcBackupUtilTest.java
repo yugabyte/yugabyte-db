@@ -14,7 +14,6 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.BackupUtil.RegionLocations;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
-import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec;
@@ -24,7 +23,6 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.models.helpers.ColumnDetails.YQLDataType;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -241,7 +239,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
               ybcBackupUtil.parseYbcBackupResponse(success);
             });
     assertEquals(
-        "errorJson: {\"responseCloudStoreSpec.defaultLocation\":\"may not be null\"}",
+        "errorJson: {\"responseCloudStoreSpec.defaultLocation\":\"must not be null\"}",
         e.getMessage());
   }
 
@@ -252,9 +250,10 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     YbcBackupResponse ybcBackupResponse = ybcBackupUtil.parseYbcBackupResponse(success);
     CustomerConfig storageConfig = null;
     if (regions) {
-      storageConfig = CustomerConfig.createWithFormData(testCustomer.uuid, s3FormData_regions);
+      storageConfig = CustomerConfig.createWithFormData(testCustomer.getUuid(), s3FormData_regions);
     } else {
-      storageConfig = CustomerConfig.createWithFormData(testCustomer.uuid, s3FormData_noRegions);
+      storageConfig =
+          CustomerConfig.createWithFormData(testCustomer.getUuid(), s3FormData_noRegions);
     }
     String commonDir = "foo/keyspace-bar";
     when(mockAWSUtil.createCloudStoreSpec(anyString(), anyString(), nullable(String.class), any()))
@@ -279,7 +278,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     String success = TestUtils.readResource(dataFile);
     YbcBackupResponse ybcBackupResponse = ybcBackupUtil.parseYbcBackupResponse(success);
     CustomerConfig storageConfig =
-        CustomerConfig.createWithFormData(testCustomer.uuid, s3FormData_noRegions);
+        CustomerConfig.createWithFormData(testCustomer.getUuid(), s3FormData_noRegions);
     String commonDir = "foo/keyspace-bar";
     when(mockAWSUtil.createCloudStoreSpec(anyString(), anyString(), nullable(String.class), any()))
         .thenCallRealMethod();
@@ -301,7 +300,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     String success = TestUtils.readResource(dataFile);
     YbcBackupResponse ybcBackupResponse = ybcBackupUtil.parseYbcBackupResponse(success);
     CustomerConfig storageConfig =
-        CustomerConfig.createWithFormData(testCustomer.uuid, s3FormData_noRegions);
+        CustomerConfig.createWithFormData(testCustomer.getUuid(), s3FormData_noRegions);
     String commonDir = "wrong-foo/keyspace-bar";
     when(mockAWSUtil.createCloudStoreSpec(anyString(), anyString(), nullable(String.class), any()))
         .thenCallRealMethod();
@@ -353,21 +352,22 @@ public class YbcBackupUtilTest extends FakeDBApplication {
 
   @Test
   public void testExtractRegionsFromMetadata() {
-    CustomerConfig storageConfig = CustomerConfig.createWithFormData(testCustomer.uuid, s3FormData);
-    when(configService.getOrBadRequest(testCustomer.uuid, storageConfig.configUUID))
+    CustomerConfig storageConfig =
+        CustomerConfig.createWithFormData(testCustomer.getUuid(), s3FormData);
+    when(configService.getOrBadRequest(testCustomer.getUuid(), storageConfig.getConfigUUID()))
         .thenReturn(storageConfig);
     BackupTableParams tableParams = new BackupTableParams();
-    tableParams.universeUUID = UUID.randomUUID();
-    tableParams.customerUuid = testCustomer.uuid;
-    tableParams.storageConfigUUID = storageConfig.configUUID;
+    tableParams.setUniverseUUID(UUID.randomUUID());
+    tableParams.customerUuid = testCustomer.getUuid();
+    tableParams.storageConfigUUID = storageConfig.getConfigUUID();
     tableParams.storageLocation =
-        "s3://foo/univ-" + tableParams.universeUUID + "/ybc_backup-timestamp/keyspace-bar";
+        "s3://foo/univ-" + tableParams.getUniverseUUID() + "/ybc_backup-timestamp/keyspace-bar";
     BucketLocation bL1 = new BucketLocation();
     bL1.bucket = "region-1";
-    bL1.cloudDir = "univ-" + tableParams.universeUUID + "/ybc_backup-timestamp/keyspace-bar";
+    bL1.cloudDir = "univ-" + tableParams.getUniverseUUID() + "/ybc_backup-timestamp/keyspace-bar";
     BucketLocation bL2 = new BucketLocation();
     bL2.bucket = "region-2";
-    bL2.cloudDir = "univ-" + tableParams.universeUUID + "/ybc_backup-timestamp/keyspace-bar";
+    bL2.cloudDir = "univ-" + tableParams.getUniverseUUID() + "/ybc_backup-timestamp/keyspace-bar";
     Map<String, BucketLocation> regionMap =
         new HashMap<String, BucketLocation>() {
           {
@@ -379,9 +379,13 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     List<BackupUtil.RegionLocations> regionLocations =
         ybcBackupUtil.extractRegionLocationFromMetadata(regionMap, tableParams);
     String expectedLoc1 =
-        "s3://region-1/univ-" + tableParams.universeUUID + "/ybc_backup-timestamp/keyspace-bar";
+        "s3://region-1/univ-"
+            + tableParams.getUniverseUUID()
+            + "/ybc_backup-timestamp/keyspace-bar";
     String expectedLoc2 =
-        "s3://region-2/univ-" + tableParams.universeUUID + "/ybc_backup-timestamp/keyspace-bar";
+        "s3://region-2/univ-"
+            + tableParams.getUniverseUUID()
+            + "/ybc_backup-timestamp/keyspace-bar";
     Map<String, String> regionLocationMap = new HashMap<>();
     regionLocations.stream().forEach(rL -> regionLocationMap.put(rL.REGION, rL.LOCATION));
     assertEquals(regionLocationMap.get("us-west1"), expectedLoc1);
@@ -393,11 +397,11 @@ public class YbcBackupUtilTest extends FakeDBApplication {
   public void testGetExtendedBackupArgs(String filePath) throws Exception {
     BackupTableParams tableParams = new BackupTableParams();
     tableParams.useTablespaces = true;
-    tableParams.universeUUID = UUID.randomUUID();
+    tableParams.setUniverseUUID(UUID.randomUUID());
     String backupKeys = TestUtils.readResource(filePath);
     ObjectMapper mapper = new ObjectMapper();
     ObjectNode keysNode = mapper.readValue(backupKeys, ObjectNode.class);
-    when(encryptionAtRestManager.backupUniverseKeyHistory(tableParams.universeUUID))
+    when(encryptionAtRestManager.backupUniverseKeyHistory(tableParams.getUniverseUUID()))
         .thenReturn(keysNode);
     String keys = mapper.writeValueAsString(keysNode);
     BackupServiceTaskExtendedArgs extArgs = ybcBackupUtil.getExtendedArgsForBackup(tableParams);
@@ -407,7 +411,8 @@ public class YbcBackupUtilTest extends FakeDBApplication {
 
   @Test
   public void testCreateBackupConfig() {
-    CustomerConfig storageConfig = CustomerConfig.createWithFormData(testCustomer.uuid, s3FormData);
+    CustomerConfig storageConfig =
+        CustomerConfig.createWithFormData(testCustomer.getUuid(), s3FormData);
     UUID uniUUID = UUID.randomUUID();
     String commonDir = "univ-" + uniUUID + "/backup-timestamp/keyspace-foo";
     when(mockAWSUtil.createCloudStoreSpec(anyString(), anyString(), nullable(String.class), any()))
@@ -523,7 +528,8 @@ public class YbcBackupUtilTest extends FakeDBApplication {
         .getTableListFromSuccessMarker(response, TableType.YQL_TABLE_TYPE);
     when(backupUtil.getTableInfosOrEmpty(any())).thenReturn(ybClientTableList);
     assertTrue(
-        ybcBackupUtil.validateYCQLTableListOverwrites(response, universe.universeUUID, keyspace));
+        ybcBackupUtil.validateYCQLTableListOverwrites(
+            response, universe.getUniverseUUID(), keyspace));
   }
 
   @Test
@@ -566,6 +572,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
         .getTableListFromSuccessMarker(response, TableType.YQL_TABLE_TYPE);
     when(backupUtil.getTableInfosOrEmpty(any())).thenReturn(ybClientTableList);
     assertFalse(
-        ybcBackupUtil.validateYCQLTableListOverwrites(response, universe.universeUUID, keyspace));
+        ybcBackupUtil.validateYCQLTableListOverwrites(
+            response, universe.getUniverseUUID(), keyspace));
   }
 }

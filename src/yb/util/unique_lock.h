@@ -25,6 +25,7 @@ namespace yb {
 // Thread annotations enabled, using a UniqueLock wrapper class around std::unique_lock.
 // ------------------------------------------------------------------------------------------------
 
+// TODO: Remove this macro and instead use the UniqueLock class directly for consistency (#16553).
 #define UNIQUE_LOCK(lock_name, mutex) ::yb::UniqueLock<decltype(mutex)> lock_name(mutex);
 
 // A wrapper unique_lock that supports thread annotations.

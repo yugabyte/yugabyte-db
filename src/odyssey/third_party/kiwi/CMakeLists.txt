@@ -2,15 +2,20 @@ cmake_minimum_required(VERSION 2.8)
 
 project(kiwi C)
 
+add_compile_options(${OD_EXTRA_COMPILER_FLAGS})
+
 set(CLANGCOMPILERSTANDART gnu11)
 
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "")
     set(CMAKE_BUILD_TYPE "Debug")
 endif()
-if ("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
-    set(CMAKE_C_FLAGS "-std=${CLANGCOMPILERSTANDART} -Wall -Wextra -fPIC -g -O2 -pedantic ")
-elseif("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
-    set(CMAKE_C_FLAGS "-std=${CLANGCOMPILERSTANDART} -Wall -Wextra -fPIC -g -O0 -pedantic ")
+
+string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE)
+
+if ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=${CLANGCOMPILERSTANDART} -Wall -Wextra -fPIC -g -O2 -pedantic ")
+elseif("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=${CLANGCOMPILERSTANDART} -Wall -Wextra -fPIC -g -O0 -pedantic ")
 endif()
 
 include_directories("${PROJECT_SOURCE_DIR}/")

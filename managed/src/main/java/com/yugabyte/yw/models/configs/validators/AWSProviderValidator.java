@@ -48,8 +48,8 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     checkMissingKeys(provider);
 
     // validate access
-    if (provider.regions != null && !provider.regions.isEmpty()) {
-      for (Region region : provider.regions) {
+    if (provider.getRegions() != null && !provider.getRegions().isEmpty()) {
+      for (Region region : provider.getRegions()) {
         try {
           awsCloudImpl.getStsClientOrBadRequest(provider, region);
         } catch (PlatformServiceException e) {
@@ -67,8 +67,8 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
 
     // validate SSH private key content
     try {
-      if (provider.allAccessKeys != null && provider.allAccessKeys.size() > 0) {
-        for (AccessKey accessKey : provider.allAccessKeys) {
+      if (provider.getAllAccessKeys() != null && provider.getAllAccessKeys().size() > 0) {
+        for (AccessKey accessKey : provider.getAllAccessKeys()) {
           String privateKeyContent = accessKey.getKeyInfo().sshPrivateKeyContent;
           if (!awsCloudImpl.getPrivateKeyAlgoOrBadRequest(privateKeyContent).equals("RSA")) {
             throw new PlatformServiceException(BAD_REQUEST, "Please provide a valid RSA key");
@@ -83,19 +83,19 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     }
 
     // validate NTP Servers
-    if (provider.details != null && provider.details.ntpServers != null) {
-      validateNTPServers(provider.details.ntpServers);
+    if (provider.getDetails() != null && provider.getDetails().ntpServers != null) {
+      validateNTPServers(provider.getDetails().ntpServers);
     }
 
-    if (provider.getProviderDetails().sshPort == null) {
+    if (provider.getDetails().sshPort == null) {
       throwBeanProviderValidatorError("SSH_PORT", "Please provide a valid ssh port value");
     }
 
     // validate hosted zone id
-    if (provider.regions != null && !provider.regions.isEmpty()) {
-      for (Region region : provider.regions) {
+    if (provider.getRegions() != null && !provider.getRegions().isEmpty()) {
+      for (Region region : provider.getRegions()) {
         try {
-          String hostedZoneId = provider.details.cloudInfo.aws.awsHostedZoneId;
+          String hostedZoneId = provider.getDetails().cloudInfo.aws.awsHostedZoneId;
           if (!StringUtils.isEmpty(hostedZoneId)) {
             awsCloudImpl.getHostedZoneOrBadRequest(provider, region, hostedZoneId);
           }
@@ -109,8 +109,8 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     }
 
     // validate Region and its details
-    if (provider.regions != null && !provider.regions.isEmpty()) {
-      for (Region region : provider.regions) {
+    if (provider.getRegions() != null && !provider.getRegions().isEmpty()) {
+      for (Region region : provider.getRegions()) {
         validateAMI(provider, region);
         validateVpc(provider, region);
         validateSgAndPort(provider, region);
@@ -121,9 +121,9 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
   }
 
   private void dryRun(Provider provider, Region region) {
-    String fieldDetails = "REGION." + region.code + ".DRY_RUN";
+    String fieldDetails = "REGION." + region.getCode() + ".DRY_RUN";
     try {
-      awsCloudImpl.dryRunDescribeInstanceOrBadRequest(provider, region.code);
+      awsCloudImpl.dryRunDescribeInstanceOrBadRequest(provider, region.getCode());
     } catch (PlatformServiceException e) {
       if (e.getHttpStatus() == BAD_REQUEST) {
         throwBeanProviderValidatorError(fieldDetails, e.getMessage());
@@ -134,7 +134,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
 
   private void validateAMI(Provider provider, Region region) {
     String imageId = region.getYbImage();
-    String fieldDetails = "REGION." + region.code + "." + "IMAGE";
+    String fieldDetails = "REGION." + region.getCode() + "." + "IMAGE";
     try {
       if (!StringUtils.isEmpty(imageId)) {
         Image image = awsCloudImpl.describeImageOrBadRequest(provider, region, imageId);
@@ -170,7 +170,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
   }
 
   private void validateVpc(Provider provider, Region region) {
-    String fieldDetails = "REGION." + region.code + ".VPC";
+    String fieldDetails = "REGION." + region.getCode() + ".VPC";
     try {
       if (!StringUtils.isEmpty(region.getVnetName())) {
         awsCloudImpl.describeVpcOrBadRequest(provider, region);
@@ -184,7 +184,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
   }
 
   private void validateSgAndPort(Provider provider, Region region) {
-    String fieldDetails = "REGION." + region.code + ".SECURITY_GROUP";
+    String fieldDetails = "REGION." + region.getCode() + ".SECURITY_GROUP";
 
     try {
       if (!StringUtils.isEmpty(region.getSecurityGroupId())) {
@@ -199,7 +199,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
               BAD_REQUEST,
               region.getSecurityGroupId() + " is not attached to vpc: " + region.getVnetName());
         }
-        Integer sshPort = provider.getProviderDetails().sshPort;
+        Integer sshPort = provider.getDetails().getSshPort();
         boolean portOpen = false;
         if (!CollectionUtils.isNullOrEmpty(securityGroup.getIpPermissions())) {
           for (IpPermission ipPermission : securityGroup.getIpPermissions()) {
@@ -229,7 +229,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
   }
 
   private void validateSubnets(Provider provider, Region region) {
-    String fieldDetails = "REGION." + region.code + ".SUBNETS";
+    String fieldDetails = "REGION." + region.getCode() + ".SUBNETS";
     String regionVnetName = region.getVnetName();
     try {
       if (!StringUtils.isEmpty(region.getSecurityGroupId())) {
@@ -237,7 +237,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
         Set<String> cidrBlocks = new HashSet<>();
         for (Subnet subnet : subnets) {
           AvailabilityZone az = getAzBySubnetFromRegion(region, subnet.getSubnetId());
-          if (!az.code.equals(subnet.getAvailabilityZone())) {
+          if (!az.getCode().equals(subnet.getAvailabilityZone())) {
             throw new PlatformServiceException(
                 BAD_REQUEST, "Invalid AZ code for subnet: " + subnet.getSubnetId());
           }
@@ -261,7 +261,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
   }
 
   private void checkMissingKeys(Provider provider) {
-    AWSCloudInfo cloudInfo = provider.getProviderDetails().getCloudInfo().getAws();
+    AWSCloudInfo cloudInfo = provider.getDetails().getCloudInfo().getAws();
     String accessKey = cloudInfo.awsAccessKeyID;
     String accessKeySecret = cloudInfo.awsAccessKeySecret;
     if ((StringUtils.isEmpty(accessKey) && !StringUtils.isEmpty(accessKeySecret))
@@ -272,9 +272,9 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
 
   private AvailabilityZone getAzBySubnetFromRegion(Region region, String subnet) {
     return region
-        .zones
+        .getZones()
         .stream()
-        .filter(zone -> zone.subnet.equals(subnet))
+        .filter(zone -> zone.getSubnet().equals(subnet))
         .findFirst()
         .orElseThrow(
             () ->

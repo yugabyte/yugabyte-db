@@ -121,7 +121,9 @@ public class PlacementInfoUtil {
     NodeDetails node =
         nodes.stream().filter(n -> n.isInPlacement(placementUuid)).findFirst().orElse(null);
 
-    return (node == null) ? null : AvailabilityZone.get(node.azUuid).region.provider.uuid;
+    return (node == null)
+        ? null
+        : AvailabilityZone.get(node.azUuid).getRegion().getProvider().getUuid();
   }
 
   /**
@@ -188,7 +190,8 @@ public class PlacementInfoUtil {
       zones =
           zones
               .stream()
-              .filter(az -> NodeInstance.listByZone(az.uuid, userIntent.instanceType).size() > 0)
+              .filter(
+                  az -> NodeInstance.listByZone(az.getUuid(), userIntent.instanceType).size() > 0)
               .collect(Collectors.toList());
     }
     return zones;
@@ -264,13 +267,13 @@ public class PlacementInfoUtil {
   }
 
   public static Universe getUniverseForParams(UniverseDefinitionTaskParams taskParams) {
-    if (taskParams.universeUUID != null) {
-      return Universe.maybeGet(taskParams.universeUUID)
+    if (taskParams.getUniverseUUID() != null) {
+      return Universe.maybeGet(taskParams.getUniverseUUID())
           .orElseGet(
               () -> {
                 LOG.info(
                     "Universe with UUID {} not found, configuring new universe.",
-                    taskParams.universeUUID);
+                    taskParams.getUniverseUUID());
                 return null;
               });
     }
@@ -305,8 +308,8 @@ public class PlacementInfoUtil {
       taskParams.nodeDetailsSet = new HashSet<>();
     }
 
-    if (taskParams.universeUUID == null) {
-      taskParams.universeUUID = UUID.randomUUID();
+    if (taskParams.getUniverseUUID() == null) {
+      taskParams.setUniverseUUID(UUID.randomUUID());
     }
     Cluster cluster = taskParams.getClusterByUuid(placementUuid);
     Cluster oldCluster = universe == null ? null : universe.getCluster(placementUuid);
@@ -545,7 +548,7 @@ public class PlacementInfoUtil {
         .map(
             n ->
                 azMap.computeIfAbsent(n.azUuid, azUuid -> AvailabilityZone.getOrBadRequest(azUuid)))
-        .map(az -> az.region.uuid)
+        .map(az -> az.getRegion().getUuid())
         .collect(Collectors.toSet());
   }
 
@@ -576,7 +579,7 @@ public class PlacementInfoUtil {
                               + "(%d is free and %d currently occupied)",
                           az.numNodesInAZ,
                           userIntent.instanceType,
-                          availabilityZone.name,
+                          availabilityZone.getName(),
                           available,
                           occupied + willBeFreed));
                 }
@@ -639,7 +642,7 @@ public class PlacementInfoUtil {
               .regionList
               .stream()
               .flatMap(regionUUID -> getAvailabilityZonesByRegion(regionUUID, userIntent).stream())
-              .map(zone -> zone.uuid)
+              .map(zone -> zone.getUuid())
               .filter(zoneUUID -> !placementAZMap.containsKey(zoneUUID))
               .forEach(
                   zoneUUID -> {
@@ -682,7 +685,7 @@ public class PlacementInfoUtil {
                 + " for "
                 + cluster.clusterType
                 + " cluster in universe "
-                + universe.universeUUID);
+                + universe.getUniverseUUID());
       }
       verifyEditParams(oldCluster, cluster);
     }
@@ -690,8 +693,8 @@ public class PlacementInfoUtil {
     if (taskParams.nodeDetailsSet == null) {
       taskParams.nodeDetailsSet = new HashSet<>();
     }
-    if (taskParams.universeUUID == null) {
-      taskParams.universeUUID = UUID.randomUUID();
+    if (taskParams.getUniverseUUID() == null) {
+      taskParams.setUniverseUUID(UUID.randomUUID());
     }
     if (cluster.placementInfo != null && CollectionUtils.isEmpty(cluster.placementInfo.cloudList)) {
       // Erasing empty placement.
@@ -2007,7 +2010,7 @@ public class PlacementInfoUtil {
 
   // Check if there are multiple zones for deployment in the provider config.
   public static boolean isMultiAZ(Provider provider) {
-    List<Region> regionList = Region.getByProvider(provider.uuid);
+    List<Region> regionList = Region.getByProvider(provider.getUuid());
     if (regionList.size() > 1) {
       return true;
     }
@@ -2017,7 +2020,7 @@ public class PlacementInfoUtil {
       throw new RuntimeException("No Regions found");
     }
 
-    List<AvailabilityZone> azList = AvailabilityZone.getAZsForRegion(region.uuid);
+    List<AvailabilityZone> azList = AvailabilityZone.getAZsForRegion(region.getUuid());
 
     return azList.size() > 1;
   }
@@ -2118,14 +2121,15 @@ public class PlacementInfoUtil {
               .stream()
               .filter(
                   az -> {
-                    boolean res = availableNodeTracker.getAvailableForZone(az.uuid) > 0;
+                    boolean res = availableNodeTracker.getAvailableForZone(az.getUuid()) > 0;
                     if (!res) {
                       LOG.debug(
-                          "Skipping {} as no available nodes", AvailabilityZone.get(az.uuid).name);
+                          "Skipping {} as no available nodes",
+                          AvailabilityZone.get(az.getUuid()).getName());
                     }
                     return res;
                   })
-              .filter(az -> !skipZones.contains(az.uuid))
+              .filter(az -> !skipZones.contains(az.getUuid()))
               .collect(Collectors.toList());
       if (!zones.isEmpty()) {
         // TODO: sort zones by instance type
@@ -2174,7 +2178,7 @@ public class PlacementInfoUtil {
     PlacementInfo placementInfo = new PlacementInfo();
 
     for (int i = 0; i < Math.min(numZones, allAzsInRegions.size()); i++) {
-      UUID zoneId = allAzsInRegions.get(i).uuid;
+      UUID zoneId = allAzsInRegions.get(i).getUuid();
       addPlacementZone(zoneId, placementInfo);
       availableNodeTracker.acquire(zoneId);
     }
@@ -2209,28 +2213,28 @@ public class PlacementInfoUtil {
       UUID zone, PlacementInfo placementInfo, int rf, int numNodes, boolean isAffinitized) {
     // Get the zone, region and cloud.
     AvailabilityZone az = AvailabilityZone.get(zone);
-    Region region = az.region;
-    Provider cloud = region.provider;
+    Region region = az.getRegion();
+    Provider cloud = region.getProvider();
     LOG.trace(
         "provider {} ({}), region {} ({}), zone {} ({})",
-        cloud.code,
-        cloud.uuid,
-        region.code,
-        region.uuid,
-        az.code,
-        az.uuid);
+        cloud.getCode(),
+        cloud.getUuid(),
+        region.getCode(),
+        region.getUuid(),
+        az.getCode(),
+        az.getUuid());
     // Find the placement cloud if it already exists, or create a new one if one does not exist.
     PlacementCloud placementCloud =
         placementInfo
             .cloudList
             .stream()
-            .filter(p -> p.uuid.equals(cloud.uuid))
+            .filter(p -> p.uuid.equals(cloud.getUuid()))
             .findFirst()
             .orElseGet(
                 () -> {
                   PlacementCloud newPlacementCloud = new PlacementCloud();
-                  newPlacementCloud.uuid = cloud.uuid;
-                  newPlacementCloud.code = cloud.code;
+                  newPlacementCloud.uuid = cloud.getUuid();
+                  newPlacementCloud.code = cloud.getCode();
                   placementInfo.cloudList.add(newPlacementCloud);
 
                   return newPlacementCloud;
@@ -2241,14 +2245,14 @@ public class PlacementInfoUtil {
         placementCloud
             .regionList
             .stream()
-            .filter(p -> p.uuid.equals(region.uuid))
+            .filter(p -> p.uuid.equals(region.getUuid()))
             .findFirst()
             .orElseGet(
                 () -> {
                   PlacementRegion newPlacementRegion = new PlacementRegion();
-                  newPlacementRegion.uuid = region.uuid;
-                  newPlacementRegion.code = region.code;
-                  newPlacementRegion.name = region.name;
+                  newPlacementRegion.uuid = region.getUuid();
+                  newPlacementRegion.code = region.getCode();
+                  newPlacementRegion.name = region.getName();
                   placementCloud.regionList.add(newPlacementRegion);
 
                   return newPlacementRegion;
@@ -2259,16 +2263,16 @@ public class PlacementInfoUtil {
         placementRegion
             .azList
             .stream()
-            .filter(p -> p.uuid.equals(az.uuid))
+            .filter(p -> p.uuid.equals(az.getUuid()))
             .findFirst()
             .orElseGet(
                 () -> {
                   PlacementAZ newPlacementAZ = new PlacementAZ();
-                  newPlacementAZ.uuid = az.uuid;
-                  newPlacementAZ.name = az.name;
+                  newPlacementAZ.uuid = az.getUuid();
+                  newPlacementAZ.name = az.getName();
                   newPlacementAZ.replicationFactor = 0;
-                  newPlacementAZ.subnet = az.subnet;
-                  newPlacementAZ.secondarySubnet = az.secondarySubnet;
+                  newPlacementAZ.subnet = az.getSubnet();
+                  newPlacementAZ.secondarySubnet = az.getSecondarySubnet();
                   newPlacementAZ.isAffinitized = isAffinitized;
                   placementRegion.azList.add(newPlacementAZ);
 
@@ -2276,9 +2280,9 @@ public class PlacementInfoUtil {
                 });
 
     placementAZ.replicationFactor += rf;
-    LOG.info("Incrementing RF for {} to: {}", az.name, placementAZ.replicationFactor);
+    LOG.info("Incrementing RF for {} to: {}", az.getName(), placementAZ.replicationFactor);
     placementAZ.numNodesInAZ += numNodes;
-    LOG.info("Number of nodes in {}: {}", az.name, placementAZ.numNodesInAZ);
+    LOG.info("Number of nodes in {}: {}", az.getName(), placementAZ.numNodesInAZ);
     return placementAZ;
   }
 
@@ -2365,18 +2369,18 @@ public class PlacementInfoUtil {
     if (region == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid default region UUID");
     }
-    return region.code;
+    return region.getCode();
   }
 
   public static String getAZNameFromUUID(Provider provider, UUID azUUID) {
-    for (Region r : provider.regions) {
-      for (AvailabilityZone az : r.zones) {
-        if (az.uuid.equals(azUUID)) {
-          return az.name;
+    for (Region r : provider.getRegions()) {
+      for (AvailabilityZone az : r.getZones()) {
+        if (az.getUuid().equals(azUUID)) {
+          return az.getName();
         }
       }
     }
     throw new IllegalArgumentException(
-        String.format("Provider %s doesn't have AZ with UUID %s", provider.name, azUUID));
+        String.format("Provider %s doesn't have AZ with UUID %s", provider.getName(), azUUID));
   }
 }

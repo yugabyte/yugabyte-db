@@ -53,7 +53,8 @@ public class UpdateAndPersistKubernetesOverrides extends UniverseTaskBase {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
               // If this universe is not being updated, fail the request.
               if (!universeDetails.updateInProgress) {
-                String msg = "UserUniverse " + taskParams().universeUUID + " is not being updated.";
+                String msg =
+                    "UserUniverse " + taskParams().getUniverseUUID() + " is not being updated.";
                 log.error(msg);
                 throw new RuntimeException(msg);
               }

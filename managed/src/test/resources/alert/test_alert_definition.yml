@@ -20,7 +20,7 @@ groups:
           universe_uuid: <universe_uuid>
           source_uuid: <universe_uuid>
           source_type: universe
-          node_prefix: Test Universe
+          node_prefix: yb-tc-Test Universe
           universe_name: Test Universe
           source_name: Test Universe
         annotations:

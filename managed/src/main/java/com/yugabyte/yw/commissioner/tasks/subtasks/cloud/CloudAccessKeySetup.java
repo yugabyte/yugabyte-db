@@ -21,17 +21,20 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import javax.inject.Inject;
-import play.api.Play;
 
 public class CloudAccessKeySetup extends CloudTaskBase {
 
-  private TemplateManager templateManager;
+  private final TemplateManager templateManager;
+  private final AccessManager accessManager;
 
   @Inject
   protected CloudAccessKeySetup(
-      BaseTaskDependencies baseTaskDependencies, TemplateManager templateManager) {
+      BaseTaskDependencies baseTaskDependencies,
+      TemplateManager templateManager,
+      AccessManager accessManager) {
     super(baseTaskDependencies);
     this.templateManager = templateManager;
+    this.accessManager = accessManager;
   }
 
   public static class Params extends CloudBootstrap.Params {
@@ -51,7 +54,6 @@ public class CloudAccessKeySetup extends CloudTaskBase {
     if (region == null) {
       throw new RuntimeException("Region " + regionCode + " not setup.");
     }
-    AccessManager accessManager = Play.current().injector().instanceOf(AccessManager.class);
     String accessKeyCode =
         Strings.isNullOrEmpty(taskParams().keyPairName)
             ? AccessKey.getDefaultKeyCode(provider)
@@ -59,7 +61,7 @@ public class CloudAccessKeySetup extends CloudTaskBase {
 
     if (!Strings.isNullOrEmpty(taskParams().sshPrivateKeyContent)) {
       accessManager.saveAndAddKey(
-          region.uuid,
+          region.getUuid(),
           taskParams().sshPrivateKeyContent,
           accessKeyCode,
           AccessManager.KeyType.PRIVATE,
@@ -77,7 +79,7 @@ public class CloudAccessKeySetup extends CloudTaskBase {
       // sets it, the key will be added.
       if (!taskParams().skipKeyPairValidate) {
         accessManager.addKey(
-            region.uuid,
+            region.getUuid(),
             accessKeyCode,
             null,
             taskParams().sshUser,
@@ -93,16 +95,16 @@ public class CloudAccessKeySetup extends CloudTaskBase {
     if (provider.getCloudCode().equals(Common.CloudType.onprem)) {
       // In case of onprem provider, we add a couple of additional attributes like passwordlessSudo
       // and create a pre-provision script
-      AccessKey accessKey = AccessKey.getOrBadRequest(provider.uuid, accessKeyCode);
+      AccessKey accessKey = AccessKey.getOrBadRequest(provider.getUuid(), accessKeyCode);
       templateManager.createProvisionTemplate(
           accessKey,
-          provider.details.airGapInstall,
-          provider.details.passwordlessSudoAccess,
-          provider.details.installNodeExporter,
-          provider.details.nodeExporterPort,
-          provider.details.nodeExporterUser,
-          provider.details.setUpChrony,
-          provider.details.ntpServers);
+          provider.getDetails().airGapInstall,
+          provider.getDetails().passwordlessSudoAccess,
+          provider.getDetails().installNodeExporter,
+          provider.getDetails().nodeExporterPort,
+          provider.getDetails().nodeExporterUser,
+          provider.getDetails().setUpChrony,
+          provider.getDetails().ntpServers);
     }
   }
 }

@@ -3,23 +3,18 @@
 package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
-
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
-import play.api.Play;
-
-import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 public interface StorageUtil {
 
@@ -85,13 +80,13 @@ public interface StorageUtil {
   public static <T extends StorageUtil> T getStorageUtil(String configType) {
     switch (configType) {
       case Util.S3:
-        return (T) Play.current().injector().instanceOf(AWSUtil.class);
+        return (T) StaticInjectorHolder.injector().instanceOf(AWSUtil.class);
       case Util.GCS:
-        return (T) Play.current().injector().instanceOf(GCPUtil.class);
+        return (T) StaticInjectorHolder.injector().instanceOf(GCPUtil.class);
       case Util.AZ:
-        return (T) Play.current().injector().instanceOf(AZUtil.class);
+        return (T) StaticInjectorHolder.injector().instanceOf(AZUtil.class);
       case Util.NFS:
-        return (T) Play.current().injector().instanceOf(NFSUtil.class);
+        return (T) StaticInjectorHolder.injector().instanceOf(NFSUtil.class);
       default:
         throw new PlatformServiceException(BAD_REQUEST, "Unsupported storage type");
     }

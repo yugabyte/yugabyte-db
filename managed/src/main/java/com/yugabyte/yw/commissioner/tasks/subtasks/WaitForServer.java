@@ -30,7 +30,7 @@ public class WaitForServer extends ServerSubTaskBase {
 
   private final YsqlQueryExecutor ysqlQueryExecutor;
 
-  private final long POSTGRES_STATUS_RETRY_SLEEP_TIME_MILLIS = 60000;
+  private final Duration POSTGRES_STATUS_RETRY_WAIT_TIME = Duration.ofSeconds(30);
 
   @Inject
   protected WaitForServer(
@@ -65,20 +65,15 @@ public class WaitForServer extends ServerSubTaskBase {
         // Check for master UUID retries until timeout.
         ret = client.waitForMaster(hp, taskParams().serverWaitTimeoutMs);
       } else if (taskParams().serverType.equals(ServerType.YSQLSERVER)) {
-        Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+        Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
         NodeDetails node = universe.getNode(taskParams().nodeName);
+        Duration waitTimeout = Duration.ofMillis(taskParams().serverWaitTimeoutMs);
         Stopwatch stopwatch = Stopwatch.createStarted();
         while (true) {
           log.info("Check if postgres server is healthy on node {}", node.nodeName);
           ret = checkPostgresStatus(universe);
-          if (ret
-              || stopwatch.elapsed().compareTo(Duration.ofMillis(taskParams().serverWaitTimeoutMs))
-                  > 0) break;
-          try {
-            Thread.sleep(POSTGRES_STATUS_RETRY_SLEEP_TIME_MILLIS);
-          } catch (InterruptedException ex) {
-            throw new RuntimeException(ex);
-          }
+          if (ret || stopwatch.elapsed().compareTo(waitTimeout) > 0) break;
+          waitFor(POSTGRES_STATUS_RETRY_WAIT_TIME);
         }
       } else {
         ret = client.waitForServer(hp, taskParams().serverWaitTimeoutMs);

@@ -41,6 +41,7 @@ namespace docdb {
 
 class IntentAwareIterator;
 class ScanChoices;
+struct FetchKeyResult;
 
 // An SQL-mapped-to-document-DB iterator.
 class DocRowwiseIterator : public YQLRowwiseIteratorIf {
@@ -79,8 +80,7 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // Init scan iterator.
   void Init(TableType table_type, const Slice& sub_doc_key = Slice());
   // Init QL read scan.
-  Status Init(const QLScanSpec& spec);
-  Status Init(const PgsqlScanSpec& spec);
+  Status Init(const YQLScanSpec& spec);
 
   // This must always be called before NextRow. The implementation actually finds the
   // first row to scan, and NextRow expects the RocksDB iterator to already be properly
@@ -108,7 +108,7 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // Skip the current row.
   void SkipRow() override;
 
-  HybridTime RestartReadHt() override;
+  Result<HybridTime> RestartReadHt() override;
 
   HybridTime TEST_MaxSeenHt() override;
 
@@ -137,13 +137,6 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   void ConfigureForYsql();
   void InitResult();
 
-  void InitScanChoices(
-      const DocQLScanSpec& doc_spec, const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key);
-
-  void InitScanChoices(
-      const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
-      const KeyBytes& upper_doc_key);
-
   // For reverse scans, moves the iterator to the first kv-pair of the previous row after having
   // constructed the current row. For forward scans nothing is necessary because GetSubDocument
   // ensures that the iterator will be positioned on the first kv-pair of the next row.
@@ -159,7 +152,17 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
 
   bool is_initialized_ = false;
 
+  // Increments statistics for total keys found, obsolete keys (past cutoff or no) if applicable.
+  //
+  // Obsolete keys include keys that are tombstoned, TTL expired, and read-time filtered.
+  // If an obsolete key has a write time before the current history cutoff, records
+  // a separate statistic in addition as they can be cleaned in a compaction.
+  void IncrementKeyFoundStats(const bool obsolete, const EncodedDocHybridTime& write_time);
+
+  void Done();
+
   const std::unique_ptr<Schema> projection_owner_;
+
   // Used to maintain ownership of projection_.
   // Separate field is used since ownership could be optional.
   const Schema& projection_;
@@ -182,7 +185,7 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // A copy of the bound key of the end of the scan range (if any). We stop scan if iterator
   // reaches this point. This is exclusive bound for forward scans and inclusive bound for
   // reverse scans.
-  bool has_bound_key_;
+  bool has_bound_key_ = false;
   KeyBytes bound_key_;
 
   std::unique_ptr<ScanChoices> scan_choices_;
@@ -193,7 +196,7 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   ScopedRWOperation pending_op_;
 
   // Indicates whether we've already finished iterating.
-  bool done_;
+  bool done_ = false;
 
   // Reference to object owned by Schema (DocReadContext schema object) for easier access.
   // This is only set when DocKey offsets are present in schema.
@@ -239,6 +242,15 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   bool ignore_ttl_ = false;
 
   bool debug_dump_ = false;
+
+  // History cutoff is derived from the retention policy (if present) for statistics
+  // collection.
+  // If no retention policy is present, an "invalid" history cutoff will be used by default
+  // (i.e. all write times will be before the cutoff).
+  EncodedDocHybridTime history_cutoff_;
+  size_t keys_found_ = 0;
+  size_t obsolete_keys_found_ = 0;
+  size_t obsolete_keys_found_past_cutoff_ = 0;
 };
 
 }  // namespace docdb

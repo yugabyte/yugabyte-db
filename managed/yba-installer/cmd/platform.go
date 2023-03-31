@@ -133,7 +133,7 @@ func (plat Platform) createNecessaryDirectories() {
 
 func (plat Platform) untarDevopsAndYugawarePackages() {
 
-	log.Info("Extracting devops and yugaware pacakges.")
+	log.Info("Extracting devops and yugaware packages.")
 
 	packageFolderPath := plat.yugabyteDir()
 

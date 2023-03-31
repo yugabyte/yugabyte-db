@@ -100,7 +100,7 @@ public class PerfAdvisorScheduler {
       Map<Long, Customer> customerMap =
           Customer.getAll()
               .stream()
-              .collect(Collectors.toMap(Customer::getCustomerId, Function.identity()));
+              .collect(Collectors.toMap(Customer::getId, Function.identity()));
       Set<UUID> uuidList = Universe.getAllUUIDs();
       for (List<UUID> batch : Iterables.partition(uuidList, defaultUniBatchSize)) {
         this.batchRun(batch, customerMap);
@@ -112,7 +112,7 @@ public class PerfAdvisorScheduler {
 
   private void batchRun(List<UUID> univUuidSet, Map<Long, Customer> customerMap) {
     for (Universe universe : Universe.getAllWithoutResources(univUuidSet)) {
-      run(customerMap.get(universe.customerId), universe, true);
+      run(customerMap.get(universe.getCustomerId()), universe, true);
     }
   }
 
@@ -121,7 +121,7 @@ public class PerfAdvisorScheduler {
     if (universe.getUniverseDetails().updateInProgress) {
       return RunResult.builder().failureReason("Universe update in progress").build();
     }
-    if (universesLock.containsKey(universe.universeUUID)) {
+    if (universesLock.containsKey(universe.getUniverseUUID())) {
       return RunResult.builder().failureReason("Perf advisor run in progress").build();
     }
 
@@ -160,14 +160,14 @@ public class PerfAdvisorScheduler {
     if (universeNodeConfigList.isEmpty()) {
       log.warn(
           String.format(
-              "Universe %s node config list is empty! Skipping..", universe.universeUUID));
+              "Universe %s node config list is empty! Skipping..", universe.getUniverseUUID()));
       return RunResult.builder().failureReason("No Live nodes found").build();
     }
 
     RunResult.RunResultBuilder result =
         RunResult.builder().failureReason("Perf advisor run in progress");
     universesLock.computeIfAbsent(
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         (k) -> {
           UniversePerfAdvisorRun run =
               UniversePerfAdvisorRun.create(
@@ -235,7 +235,7 @@ public class PerfAdvisorScheduler {
       UniverseConfig uConfig =
           new UniverseConfig(
               customer.getUuid(),
-              universe.universeUUID,
+              universe.getUniverseUUID(),
               universeNodeConfigList,
               scriptConfig,
               provider.getYbHome() + "/bin",
@@ -246,7 +246,7 @@ public class PerfAdvisorScheduler {
       log.error("Failed to run perf advisor for universe " + universe.getUniverseUUID(), e);
       run.setEndTime(new Date()).setState(State.FAILED).save();
     } finally {
-      universesLock.remove(universe.universeUUID);
+      universesLock.remove(universe.getUniverseUUID());
     }
   }
 

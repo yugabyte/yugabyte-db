@@ -11,6 +11,8 @@
 
 package com.yugabyte.yw.common.kms.util;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
@@ -42,6 +44,7 @@ import com.google.cloud.kms.v1.CryptoKey.CryptoKeyPurpose;
 import com.google.cloud.kms.v1.CryptoKeyVersion.CryptoKeyVersionAlgorithm;
 import com.google.cloud.kms.v1.CryptoKeyVersion.CryptoKeyVersionState;
 import com.google.protobuf.ByteString;
+import com.yugabyte.yw.common.PlatformServiceException;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -49,6 +52,7 @@ import java.security.GeneralSecurityException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Random;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -492,6 +496,25 @@ public class GcpEARServiceUtil {
   }
 
   /**
+   * Tests both the encrypt and decrypt operations with fake data. Mostly used for testing the
+   * permissions.
+   *
+   * @param authConfig the gcp auth config object
+   * @throws RuntimeException if wrap and unwrap operations don't give same output as original
+   */
+  public void testWrapAndUnwrapKey(ObjectNode authConfig) throws RuntimeException {
+    byte[] fakeKeyBytes = new byte[32];
+    new Random().nextBytes(fakeKeyBytes);
+    byte[] wrappedKey = encryptBytes(authConfig, fakeKeyBytes);
+    byte[] unwrappedKey = decryptBytes(authConfig, wrappedKey);
+    if (!Arrays.equals(fakeKeyBytes, unwrappedKey)) {
+      String errMsg = "Wrap and unwrap operations gave different key in GCP KMS.";
+      log.error(errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+  }
+
+  /**
    * Validates the given crypto key settings. Checks if it exists, has a rotation period, verifies
    * the purpose, and if it is enabled.
    *
@@ -500,21 +523,21 @@ public class GcpEARServiceUtil {
    */
   public boolean validateCryptoKeySettings(ObjectNode authConfig) {
     if (!checkCryptoKeyExists(authConfig)) {
-      log.info("Crypto key doesn't exist while validating crypto key settings.");
+      log.error("Crypto key doesn't exist while validating crypto key settings.");
       return false;
     }
     CryptoKey cryptoKey = getCryptoKey(authConfig);
     if (cryptoKey.hasRotationPeriod()) {
-      log.info("Crypto key has a rotation period. Please set it to manual rotation (never).");
+      log.error("Crypto key has a rotation period. Please set it to manual rotation (never).");
       return false;
     }
     if (cryptoKey.getPurpose() != CryptoKeyPurpose.ENCRYPT_DECRYPT) {
-      log.info("Crypto key purpose is not 'ENCRYPT_DECRYPT'. Please set correctly.");
+      log.error("Crypto key purpose is not 'ENCRYPT_DECRYPT'. Please set correctly.");
       return false;
     }
     CryptoKeyVersion cryptoKeyVersion = cryptoKey.getPrimary();
     if (cryptoKeyVersion.getState() != CryptoKeyVersionState.ENABLED) {
-      log.info("Primary crypto key version is not enabled. Please enable it.");
+      log.error("Primary crypto key version is not enabled. Please enable it.");
       return false;
     }
     return true;

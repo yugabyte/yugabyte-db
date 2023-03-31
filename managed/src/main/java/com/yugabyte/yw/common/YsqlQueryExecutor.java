@@ -226,7 +226,7 @@ public class YsqlQueryExecutor {
     // trim the username to make sure it does not contain spaces
     data.username = data.username.trim();
 
-    LOG.info("Removing user='{}' for universe='{}'", data.username, universe.name);
+    LOG.info("Removing user='{}' for universe='{}'", data.username, universe.getName());
     if (NON_DELETABLE_USERS.contains(data.username)) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST,
@@ -237,13 +237,14 @@ public class YsqlQueryExecutor {
 
     try {
       runUserDbCommands(query, data.dbName, universe);
-      LOG.info("Dropped user '{}' for universe '{}'", data.username, universe.name);
+      LOG.info("Dropped user '{}' for universe '{}'", data.username, universe.getName());
     } catch (PlatformServiceException e) {
       if (e.getHttpStatus() == Http.Status.BAD_REQUEST
           && e.getMessage().contains("does not exist")) {
-        LOG.warn("User '{}' does not exist for universe '{}'", data.username, universe.name);
+        LOG.warn("User '{}' does not exist for universe '{}'", data.username, universe.getName());
       } else {
-        LOG.error("Error dropping user '{}' for universe '{}'", data.username, universe.name, e);
+        LOG.error(
+            "Error dropping user '{}' for universe '{}'", data.username, universe.getName(), e);
         throw e;
       }
     }
@@ -260,7 +261,7 @@ public class YsqlQueryExecutor {
     // trim the username to make sure it does not contain spaces
     data.username = data.username.trim();
 
-    LOG.info("Creating restricted user='{}' for universe='{}'", data.username, universe.name);
+    LOG.info("Creating restricted user='{}' for universe='{}'", data.username, universe.getName());
 
     StringBuilder createUserWithPrivileges = new StringBuilder();
 
@@ -295,7 +296,7 @@ public class YsqlQueryExecutor {
         "Dropped unrequired roles and assigned permissions to the restricted user='{}' for"
             + " universe='{}'",
         data.username,
-        universe.name);
+        universe.getName());
   }
 
   public void createUser(Universe universe, DatabaseUserFormData data) {

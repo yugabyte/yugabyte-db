@@ -50,8 +50,6 @@ public class TemplateManagerTest extends FakeDBApplication {
 
   @Mock ShellProcessHandler shellProcessHandler;
 
-  @Mock play.Configuration mockAppConfig;
-
   @Mock RuntimeConfigFactory runtimeConfigFactory;
 
   @Mock Config mockConfig;
@@ -59,15 +57,15 @@ public class TemplateManagerTest extends FakeDBApplication {
   @InjectMocks TemplateManager templateManager;
 
   private AccessKey setupTestAccessKey() {
-    testProvider.details.sshUser = "centos";
-    testProvider.details.sshPort = 3333;
+    testProvider.getDetails().sshUser = "centos";
+    testProvider.getDetails().sshPort = 3333;
     testProvider.save();
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.privateKey = "/path/to/pk.pem";
     keyInfo.vaultFile = "/path/to/vault";
     keyInfo.vaultPasswordFile = "/path/to/vaultpassword";
     keyInfo.privateKey = "/path/to/pemfile";
-    return AccessKey.create(testProvider.uuid, KEY_CODE, keyInfo);
+    return AccessKey.create(testProvider.getUuid(), KEY_CODE, keyInfo);
   }
 
   private List<String> getExpectedCommmand(KeyInfo keyInfo) {
@@ -79,9 +77,9 @@ public class TemplateManagerTest extends FakeDBApplication {
     cmd.add("--name");
     cmd.add(PROVISION_SCRIPT);
     cmd.add("--destination");
-    cmd.add(YB_STORAGE_PATH_VALUE + "/provision/" + testProvider.uuid);
+    cmd.add(YB_STORAGE_PATH_VALUE + "/provision/" + testProvider.getUuid());
     cmd.add("--ssh_user");
-    cmd.add(testProvider.details.sshUser);
+    cmd.add(testProvider.getDetails().sshUser);
     cmd.add("--vars_file");
     cmd.add(keyInfo.vaultFile);
     cmd.add("--vault_password_file");
@@ -91,7 +89,7 @@ public class TemplateManagerTest extends FakeDBApplication {
     cmd.add("--local_package_path");
     cmd.add(YB_THIRDPARTY_VALUE);
     cmd.add("--custom_ssh_port");
-    cmd.add(testProvider.details.sshPort.toString());
+    cmd.add(testProvider.getDetails().sshPort.toString());
     return cmd;
   }
 
@@ -101,8 +99,8 @@ public class TemplateManagerTest extends FakeDBApplication {
   public void setUp() {
     testCustomer = ModelFactory.testCustomer();
     testProvider = ModelFactory.onpremProvider(testCustomer);
-    when(mockAppConfig.getString(YB_STORAGE_PATH_KEY)).thenReturn(YB_STORAGE_PATH_VALUE);
-    when(mockAppConfig.getString(YB_THIRDPARTY_KEY)).thenReturn(YB_THIRDPARTY_VALUE);
+    when(mockConfig.getString(YB_STORAGE_PATH_KEY)).thenReturn(YB_STORAGE_PATH_VALUE);
+    when(mockConfig.getString(YB_THIRDPARTY_KEY)).thenReturn(YB_THIRDPARTY_VALUE);
     when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
   }
 
@@ -118,18 +116,18 @@ public class TemplateManagerTest extends FakeDBApplication {
       boolean installNodeExporter,
       boolean setUpChrony) {
     testProvider.refresh();
-    assertEquals(airGapInstall, testProvider.details.airGapInstall);
-    assertEquals(passwordlessSudo, testProvider.details.passwordlessSudoAccess);
-    assertEquals(installNodeExporter, testProvider.details.installNodeExporter);
-    assertEquals(setUpChrony, testProvider.details.setUpChrony);
+    assertEquals(airGapInstall, testProvider.getDetails().airGapInstall);
+    assertEquals(passwordlessSudo, testProvider.getDetails().passwordlessSudoAccess);
+    assertEquals(installNodeExporter, testProvider.getDetails().installNodeExporter);
+    assertEquals(setUpChrony, testProvider.getDetails().setUpChrony);
     if (airGapInstall || passwordlessSudo) {
       String expectedProvisionScript =
           String.format(
               "%s/provision/%s/%s",
               YB_STORAGE_PATH_VALUE, accessKey.getProviderUUID(), PROVISION_SCRIPT);
-      assertEquals(expectedProvisionScript, testProvider.details.provisionInstanceScript);
+      assertEquals(expectedProvisionScript, testProvider.getDetails().provisionInstanceScript);
     } else {
-      assertNull(testProvider.details.provisionInstanceScript);
+      assertNull(testProvider.getDetails().provisionInstanceScript);
     }
   }
 

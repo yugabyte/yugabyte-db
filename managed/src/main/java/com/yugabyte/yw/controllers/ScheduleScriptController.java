@@ -22,8 +22,8 @@ import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.ExternalScriptHelper;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.ExternalScriptHelper.ExternalScriptConfObject;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
 import java.io.File;
 import java.io.IOException;
@@ -31,7 +31,6 @@ import java.nio.file.Files;
 import java.util.Objects;
 import java.util.UUID;
 import org.apache.commons.lang3.math.NumberUtils;
-import play.mvc.Http;
 import play.mvc.Http.MultipartFormData;
 import play.mvc.Result;
 
@@ -57,8 +56,8 @@ public class ScheduleScriptController extends AuthenticatedController {
     taskParams.timeLimitMins = Long.toString(timeLimitMins);
     taskParams.platformUrl = request().host();
     taskParams.universeUUID = universeUUID;
-    UserWithFeatures user = (UserWithFeatures) Http.Context.current().args.get("user");
-    taskParams.userUUID = user.getUser().uuid;
+    UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
+    taskParams.userUUID = user.getUser().getUuid();
 
     // Using RuntimeConfig to save the script params because this isn't intended to be that commonly
     // used. If we start using it more commonly, we should migrate to a separate db table for these
@@ -86,7 +85,7 @@ public class ScheduleScriptController extends AuthenticatedController {
     try {
       ExternalScriptConfObject runtimeConfigObject =
           new ExternalScriptConfObject(
-              scriptContent, scriptParam, schedule.scheduleUUID.toString());
+              scriptContent, scriptParam, schedule.getScheduleUUID().toString());
       String json = mapper.writeValueAsString(runtimeConfigObject);
       config.setValue(ExternalScriptHelper.EXT_SCRIPT_RUNTIME_CONFIG_PATH, json);
     } catch (Exception e) {
@@ -98,7 +97,7 @@ public class ScheduleScriptController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.ScheduledScript,
-            Objects.toString(schedule.scheduleUUID, null),
+            Objects.toString(schedule.getScheduleUUID(), null),
             Audit.ActionType.ExternalScriptSchedule);
     return PlatformResults.withData(schedule);
   }
@@ -135,7 +134,7 @@ public class ScheduleScriptController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.ScheduledScript,
-            Objects.toString(schedule.scheduleUUID, null),
+            Objects.toString(schedule.getScheduleUUID(), null),
             Audit.ActionType.StopScheduledScript);
     return PlatformResults.withData(schedule);
   }
@@ -156,8 +155,8 @@ public class ScheduleScriptController extends AuthenticatedController {
     taskParams.timeLimitMins = Long.toString(timeLimitMins);
     taskParams.platformUrl = request().host();
     taskParams.universeUUID = universeUUID;
-    UserWithFeatures user = (UserWithFeatures) Http.Context.current().args.get("user");
-    taskParams.userUUID = user.getUser().uuid;
+    UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
+    taskParams.userUUID = user.getUser().getUuid();
 
     Universe universe = Universe.getOrBadRequest(universeUUID);
     RuntimeConfig<Universe> config = sConfigFactory.forUniverse(universe);
@@ -184,7 +183,7 @@ public class ScheduleScriptController extends AuthenticatedController {
     try {
       ExternalScriptConfObject runtimeConfigObject =
           new ExternalScriptConfObject(
-              scriptContent, scriptParam, schedule.scheduleUUID.toString());
+              scriptContent, scriptParam, schedule.getScheduleUUID().toString());
       String json = mapper.writeValueAsString(runtimeConfigObject);
       config.setValue(ExternalScriptHelper.EXT_SCRIPT_RUNTIME_CONFIG_PATH, json);
     } catch (Exception e) {
@@ -195,7 +194,7 @@ public class ScheduleScriptController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.ScheduledScript,
-            Objects.toString(schedule.scheduleUUID, null),
+            Objects.toString(schedule.getScheduleUUID(), null),
             Audit.ActionType.UpdateScheduledScript);
     return PlatformResults.withData(schedule);
   }

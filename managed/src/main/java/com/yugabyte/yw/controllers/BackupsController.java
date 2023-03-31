@@ -242,7 +242,7 @@ public class BackupsController extends AuthenticatedController {
     BackupRequestParams taskParams = parseJsonAndValidate(BackupRequestParams.class);
 
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
     taskParams.customerUUID = customerUUID;
 
     if (universe
@@ -257,7 +257,7 @@ public class BackupsController extends AuthenticatedController {
           CONFLICT,
           String.format(
               "Cannot run Backup task since the universe %s is currently in a locked state.",
-              taskParams.universeUUID.toString()));
+              taskParams.getUniverseUUID().toString()));
     }
 
     if ((universe.getLiveTServersInPrimaryCluster().size() < taskParams.parallelDBBackups)
@@ -265,7 +265,8 @@ public class BackupsController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "invalid parallel backups value provided for universe %s", universe.universeUUID));
+              "invalid parallel backups value provided for universe %s",
+              universe.getUniverseUUID()));
     }
 
     if (taskParams.keyspaceTableList != null) {
@@ -312,15 +313,15 @@ public class BackupsController extends AuthenticatedController {
     }
 
     UUID taskUUID = commissioner.submit(TaskType.CreateBackup, taskParams);
-    LOG.info("Submitted task to universe {}, task uuid = {}.", universe.name, taskUUID);
+    LOG.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
     CustomerTask.create(
         customer,
-        taskParams.universeUUID,
+        taskParams.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Backup,
         CustomerTask.TaskType.Create,
-        universe.name);
-    LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.name);
+        universe.getName());
+    LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.getName());
     auditService().createAuditEntry(ctx(), request(), Json.toJson(taskParams), taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
@@ -348,7 +349,7 @@ public class BackupsController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "Provide a name for the schedule");
     } else {
       if (Schedule.getScheduleByUniverseWithName(
-              taskParams.scheduleName, taskParams.universeUUID, customerUUID)
+              taskParams.scheduleName, taskParams.getUniverseUUID(), customerUUID)
           != null) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Schedule with name " + taskParams.scheduleName + " already exist");
@@ -378,7 +379,7 @@ public class BackupsController extends AuthenticatedController {
     }
     backupUtil.validateStorageConfig(customerConfig);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
     taskParams.customerUUID = customerUUID;
 
     if (taskParams.keyspaceTableList != null) {
@@ -416,7 +417,7 @@ public class BackupsController extends AuthenticatedController {
     Schedule schedule =
         Schedule.create(
             customerUUID,
-            taskParams.universeUUID,
+            taskParams.getUniverseUUID(),
             taskParams,
             TaskType.CreateBackup,
             taskParams.schedulingFrequency,
@@ -457,7 +458,7 @@ public class BackupsController extends AuthenticatedController {
 
     taskParams.customerUUID = customerUUID;
     taskParams.prefixUUID = UUID.randomUUID();
-    UUID universeUUID = taskParams.universeUUID;
+    UUID universeUUID = taskParams.getUniverseUUID();
     Universe universe = Universe.getOrBadRequest(universeUUID);
     if (CollectionUtils.isEmpty(taskParams.backupStorageInfoList)) {
       throw new PlatformServiceException(BAD_REQUEST, "Backup information not provided");
@@ -480,7 +481,7 @@ public class BackupsController extends AuthenticatedController {
     CustomerConfigStorageData configData =
         (CustomerConfigStorageData) customerConfig.getDataObject();
 
-    StorageUtil storageUtil = StorageUtil.getStorageUtil(customerConfig.name);
+    StorageUtil storageUtil = StorageUtil.getStorageUtil(customerConfig.getName());
     Map<String, String> locationMap = new HashMap<>();
     for (BackupStorageInfo storageInfo : taskParams.backupStorageInfoList) {
       locationMap.put(YbcBackupUtil.DEFAULT_REGION_STRING, storageInfo.storageLocation);
@@ -498,7 +499,7 @@ public class BackupsController extends AuthenticatedController {
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.Restore,
-        universe.name);
+        universe.getName());
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -544,7 +545,7 @@ public class BackupsController extends AuthenticatedController {
       }
     }
 
-    taskParams.universeUUID = universeUUID;
+    taskParams.setUniverseUUID(universeUUID);
     taskParams.customerUuid = customerUUID;
 
     // Change the BackupTableParams in list to be "RESTORE" action type
@@ -558,7 +559,7 @@ public class BackupsController extends AuthenticatedController {
         subParams.tableUUID = null;
         subParams.setTableName(null);
         subParams.setKeyspace(null);
-        subParams.universeUUID = universeUUID;
+        subParams.setUniverseUUID(universeUUID);
         subParams.parallelism = taskParams.parallelism;
       }
     }
@@ -573,7 +574,7 @@ public class BackupsController extends AuthenticatedController {
     LOG.info(
         "Submitted task to RESTORE table backup to {} with config {} from {}, task uuid = {}.",
         taskParams.getKeyspace(),
-        storageConfig.configName,
+        storageConfig.getConfigName(),
         taskParams.storageLocation,
         taskUUID);
     if (taskParams.getKeyspace() != null) {
@@ -599,18 +600,18 @@ public class BackupsController extends AuthenticatedController {
           taskUUID,
           CustomerTask.TargetType.Backup,
           CustomerTask.TaskType.Restore,
-          universe.name);
+          universe.getName());
       if (taskParams.backupList != null) {
         LOG.info(
             "Saved task uuid {} in customer tasks table for universe backup {}",
             taskUUID,
-            universe.name);
+            universe.getName());
       } else {
         LOG.info(
             "Saved task uuid {} in customer tasks table for restore identical "
                 + "keyspace & tables in universe {}",
             taskUUID,
-            universe.name);
+            universe.getName());
       }
     }
     auditService()
@@ -638,8 +639,8 @@ public class BackupsController extends AuthenticatedController {
         LOG.info(
             "Can not delete {} backup as it is not present in the database.", backupUUID.asText());
       } else {
-        if (backup.state != Backup.BackupState.Completed
-            && backup.state != Backup.BackupState.Failed) {
+        if (backup.getState() != Backup.BackupState.Completed
+            && backup.getState() != Backup.BackupState.Failed) {
           LOG.info("Can not delete {} backup as it is still in progress", uuid);
         } else {
           if (taskManager.isDuplicateDeleteBackupTask(customerUUID, uuid)) {
@@ -654,7 +655,7 @@ public class BackupsController extends AuthenticatedController {
           LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, uuid);
           CustomerTask.create(
               customer,
-              backup.getBackupInfo().universeUUID,
+              backup.getBackupInfo().getUniverseUUID(),
               taskUUID,
               CustomerTask.TargetType.Backup,
               CustomerTask.TaskType.Delete,
@@ -664,7 +665,7 @@ public class BackupsController extends AuthenticatedController {
               .createAuditEntryWithReqBody(
                   ctx(),
                   Audit.TargetType.Backup,
-                  Objects.toString(backup.backupUUID, null),
+                  Objects.toString(backup.getBackupUUID(), null),
                   Audit.ActionType.Delete,
                   Json.toJson(formData),
                   taskUUID);
@@ -695,20 +696,25 @@ public class BackupsController extends AuthenticatedController {
       if (backup == null) {
         LOG.error("Can not delete {} backup as it is not present in the database.", backupUUID);
       } else {
-        if (Backup.IN_PROGRESS_STATES.contains(backup.state)) {
+        if (Backup.IN_PROGRESS_STATES.contains(backup.getState())) {
           LOG.error(
-              "Backup {} is in the state {}. Deletion is not allowed", backupUUID, backup.state);
+              "Backup {} is in the state {}. Deletion is not allowed",
+              backupUUID,
+              backup.getState());
         } else {
           UUID storageConfigUUID = deleteBackupInfo.storageConfigUUID;
           if (storageConfigUUID == null) {
             // Pick default backup storage config to delete the backup if not provided.
             storageConfigUUID = backup.getBackupInfo().storageConfigUUID;
           }
-          if (backup.isIncrementalBackup() && backup.state.equals(BackupState.Completed)) {
+          if (backup.isIncrementalBackup() && backup.getState().equals(BackupState.Completed)) {
             // Currently, we don't allow users to delete successful standalone incremental backups.
             // They can only delete the full backup, along which all the incremental backups
             // will also be deleted.
-            LOG.error("Cannot delete backup {} as it in {} state", backup.backupUUID, backup.state);
+            LOG.error(
+                "Cannot delete backup {} as it in {} state",
+                backup.getBackupUUID(),
+                backup.getState());
             continue;
           }
           BackupTableParams params = backup.getBackupInfo();
@@ -720,12 +726,12 @@ public class BackupsController extends AuthenticatedController {
           UUID taskUUID = commissioner.submit(TaskType.DeleteBackupYb, taskParams);
           LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, backupUUID);
           String target =
-              !StringUtils.isEmpty(backup.universeName)
-                  ? backup.universeName
-                  : String.format("univ-%s", backup.universeUUID.toString());
+              !StringUtils.isEmpty(backup.getUniverseName())
+                  ? backup.getUniverseName()
+                  : String.format("univ-%s", backup.getUniverseUUID().toString());
           CustomerTask.create(
               customer,
-              backup.universeUUID,
+              backup.getUniverseUUID(),
               taskUUID,
               CustomerTask.TargetType.Backup,
               CustomerTask.TaskType.Delete,
@@ -735,7 +741,7 @@ public class BackupsController extends AuthenticatedController {
               .createAuditEntryWithReqBody(
                   ctx(),
                   Audit.TargetType.Backup,
-                  Objects.toString(backup.backupUUID, null),
+                  Objects.toString(backup.getBackupUUID(), null),
                   Audit.ActionType.Delete,
                   request().body().asJson(),
                   taskUUID);
@@ -763,7 +769,7 @@ public class BackupsController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     Process process = Util.getProcessOrBadRequest(backupUUID);
     Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
-    if (backup.state != Backup.BackupState.InProgress) {
+    if (backup.getState() != Backup.BackupState.InProgress) {
       LOG.info("The backup {} you are trying to stop is not in progress.", backupUUID);
       throw new PlatformServiceException(
           BAD_REQUEST, "The backup you are trying to stop is not in process.");
@@ -777,7 +783,7 @@ public class BackupsController extends AuthenticatedController {
     }
     Util.removeProcess(backupUUID);
     try {
-      waitForTask(backup.taskUUID);
+      waitForTask(backup.getTaskUUID());
     } catch (InterruptedException e) {
       LOG.info("Error while waiting for the backup task to get finished.");
     }
@@ -786,7 +792,7 @@ public class BackupsController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.Backup,
-            Objects.toString(backup.backupUUID, null),
+            Objects.toString(backup.getBackupUUID(), null),
             Audit.ActionType.Stop);
     return YBPSuccess.withMessage("Successfully stopped the backup process.");
   }
@@ -812,14 +818,14 @@ public class BackupsController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Please provide either a non negative expiry time or storage config to edit backup");
-    } else if (Backup.IN_PROGRESS_STATES.contains(backup.state)) {
+    } else if (Backup.IN_PROGRESS_STATES.contains(backup.getState())) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot edit a backup that is in progress state");
     } else if (taskParams.timeBeforeDeleteFromPresentInMillis > 0L
         && taskParams.expiryTimeUnit == null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Please provide a time unit for backup expiry");
-    } else if (!backup.backupUUID.equals(backup.baseBackupUUID)) {
+    } else if (!backup.getBackupUUID().equals(backup.getBaseBackupUUID())) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot edit an incremental backup");
     }
 
@@ -843,7 +849,7 @@ public class BackupsController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.Backup,
-            Objects.toString(backup.backupUUID, null),
+            Objects.toString(backup.getBackupUUID(), null),
             Audit.ActionType.Edit,
             request().body().asJson());
     return PlatformResults.withData(backup);
@@ -870,7 +876,7 @@ public class BackupsController extends AuthenticatedController {
             Customer.get(customerUUID).getFeatures(), "universes.details.backups.storageLocation");
     boolean isStorageLocMasked = custStorageLoc != null && custStorageLoc.asText().equals("hidden");
     if (!isStorageLocMasked) {
-      UserWithFeatures user = (UserWithFeatures) ctx().args.get("user");
+      UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
       JsonNode userStorageLoc =
           CommonUtils.getNodeProperty(
               user.getFeatures(), "universes.details.backups.storageLocation");
@@ -883,17 +889,17 @@ public class BackupsController extends AuthenticatedController {
   private void updateBackupStorageConfig(
       UUID customerUUID, UUID backupUUID, EditBackupParams taskParams) {
     Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
-    CustomerConfig existingConfig = CustomerConfig.get(customerUUID, backup.storageConfigUUID);
+    CustomerConfig existingConfig = CustomerConfig.get(customerUUID, backup.getStorageConfigUUID());
     if (existingConfig != null && existingConfig.getState().equals(ConfigState.Active)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Active storage config is already assigned to the backup");
     }
     CustomerConfig newConfig =
         customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
-    if (!newConfig.type.equals(ConfigType.STORAGE)) {
+    if (!newConfig.getType().equals(ConfigType.STORAGE)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Cannot assign " + newConfig.type + " type config in place of Storage Config");
+          "Cannot assign " + newConfig.getType() + " type config in place of Storage Config");
     }
 
     if (!newConfig.getState().equals(ConfigState.Active)) {
@@ -902,11 +908,11 @@ public class BackupsController extends AuthenticatedController {
     }
     StorageConfigType backupConfigType = backup.getBackupInfo().storageConfigType;
     if (backupConfigType != null
-        && !backupConfigType.equals(StorageConfigType.valueOf(newConfig.name))) {
+        && !backupConfigType.equals(StorageConfigType.valueOf(newConfig.getName()))) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Cannot assign "
-              + newConfig.name
+              + newConfig.getName()
               + " type config to the backup stored in "
               + backupConfigType);
     }

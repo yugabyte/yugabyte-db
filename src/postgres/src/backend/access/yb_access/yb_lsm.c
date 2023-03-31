@@ -447,6 +447,9 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 
 	YbScanDesc ybscan = (YbScanDesc) scan->opaque;
 	ybscan->exec_params = scan->yb_exec_params;
+	if (ybscan->exec_params)
+		ybscan->exec_params->work_mem = work_mem;
+
 	if (!ybscan->exec_params) {
 		ereport(DEBUG1, (errmsg("null exec_params")));
 	}

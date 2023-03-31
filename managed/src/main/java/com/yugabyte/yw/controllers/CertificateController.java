@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Strings;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -44,7 +45,7 @@ public class CertificateController extends AuthenticatedController {
 
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
-  @Inject private play.Configuration appConfig;
+  @Inject private Config appConfig;
 
   @ApiOperation(value = "Restore a certificate from backup", response = UUID.class)
   @ApiImplicitParams(
@@ -244,7 +245,7 @@ public class CertificateController extends AuthenticatedController {
     try {
       CertificateInfo info = CertificateInfo.get(rootCA);
 
-      if (info.certType == CertConfigType.HashicorpVault) {
+      if (info.getCertType() == CertConfigType.HashicorpVault) {
         EncryptionInTransitUtil.fetchLatestCAForHashicorpPKI(
             info, runtimeConfigFactory.staticApplicationConf());
       }
@@ -286,7 +287,7 @@ public class CertificateController extends AuthenticatedController {
       nickname = "getCertificate")
   public Result get(UUID customerUUID, String label) {
     CertificateInfo cert = CertificateInfo.getOrBadRequest(label);
-    return PlatformResults.withData(cert.uuid);
+    return PlatformResults.withData(cert.getUuid());
   }
 
   @ApiOperation(
@@ -314,7 +315,7 @@ public class CertificateController extends AuthenticatedController {
     CertificateInfo info = CertificateInfo.get(reqCertUUID);
 
     if (certType != CertConfigType.HashicorpVault
-        || info.certType != CertConfigType.HashicorpVault) {
+        || info.getCertType() != CertConfigType.HashicorpVault) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Certificate Config does not support Edit option");
     } else {
@@ -339,7 +340,7 @@ public class CertificateController extends AuthenticatedController {
       }
 
       EncryptionInTransitUtil.editEITHashicorpConfig(
-          info.uuid,
+          info.getUuid(),
           customerUUID,
           runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
           formParams);
@@ -357,12 +358,12 @@ public class CertificateController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     CertificateInfo certificate = CertificateInfo.getOrBadRequest(rootCA, customerUUID);
     CertificateParams.CustomCertInfo customCertInfo = formData.get().customCertInfo;
-    certificate.setCustomCertPathParams(customCertInfo, rootCA, customerUUID);
+    certificate.updateCustomCertPathParams(customCertInfo, rootCA, customerUUID);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.Certificate,
-            Objects.toString(certificate.uuid, null),
+            Objects.toString(certificate.getUuid(), null),
             Audit.ActionType.UpdateEmptyCustomerCertificate);
     return PlatformResults.withData(certificate);
   }

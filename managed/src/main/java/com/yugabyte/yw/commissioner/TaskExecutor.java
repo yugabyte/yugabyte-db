@@ -456,7 +456,7 @@ public class TaskExecutor {
     // Create a new task info object.
     TaskInfo taskInfo = new TaskInfo(taskType);
     // Set the task details.
-    taskInfo.setTaskDetails(RedactingService.filterSecretFields(task.getTaskDetails()));
+    taskInfo.setDetails(RedactingService.filterSecretFields(task.getTaskDetails()));
     // Set the owner info.
     taskInfo.setOwner(taskOwner);
     return taskInfo;
@@ -757,7 +757,7 @@ public class TaskExecutor {
       this.taskScheduledTime = Instant.now();
 
       Duration duration = Duration.ZERO;
-      JsonNode jsonNode = taskInfo.getTaskDetails();
+      JsonNode jsonNode = taskInfo.getDetails();
       if (jsonNode != null && !jsonNode.isNull()) {
         JsonNode timeLimitJsonNode = jsonNode.get("timeLimitMins");
         if (timeLimitJsonNode != null && !timeLimitJsonNode.isNull()) {
@@ -859,7 +859,7 @@ public class TaskExecutor {
     // other DB updates.
     public synchronized void setTaskDetails(JsonNode taskDetails) {
       taskInfo.refresh();
-      taskInfo.setTaskDetails(taskDetails);
+      taskInfo.setDetails(taskDetails);
       taskInfo.update();
     }
 
@@ -912,7 +912,7 @@ public class TaskExecutor {
           TaskInfo.ERROR_STATES.contains(state),
           "Task state must be one of " + TaskInfo.ERROR_STATES);
       taskInfo.refresh();
-      ObjectNode taskDetails = CommonUtils.maskConfig(taskInfo.getTaskDetails().deepCopy());
+      ObjectNode taskDetails = CommonUtils.maskConfig(taskInfo.getDetails().deepCopy());
       String errorString;
       if (state == TaskInfo.State.Aborted && isShutdown.get()) {
         errorString = "Platform shutdown";
@@ -944,7 +944,7 @@ public class TaskExecutor {
       ObjectNode details = taskDetails.deepCopy();
       details.put("errorString", errorString);
       taskInfo.setTaskState(state);
-      taskInfo.setTaskDetails(details);
+      taskInfo.setDetails(details);
       taskInfo.update();
     }
 
@@ -1033,7 +1033,7 @@ public class TaskExecutor {
         // In case, it is a scheduled task, update state of the task.
         ScheduleTask scheduleTask = ScheduleTask.fetchByTaskUUID(taskUUID);
         if (scheduleTask != null) {
-          scheduleTask.setCompletedTime();
+          scheduleTask.markCompleted();
         }
         // Run a one-off Platform HA sync every time a task finishes.
         replicationManager.oneOffSync();

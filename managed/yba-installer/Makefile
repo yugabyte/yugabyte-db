@@ -67,8 +67,8 @@ ${PREREQS_DIR}/${JDK_BINARY_NAME}:
 yba-ctl: test ${BIN_DIR}/${BIN_NAME}
 ${BIN_DIR}/${BIN_NAME}:
 	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} go build -a -o $@ -tags ${BUILD_TAGS} -ldflags=" \
-		-X 'components.ybactl.Version=${VERSION}' \
-		-X 'components.ybactl.BuildID=${BUILD_ID}'"
+	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/components/ybactl.Version=${VERSION}' \
+	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/components/ybactl.BuildID=${BUILD_ID}'"
 
 
 package: ${PACKAGE_NAME}
