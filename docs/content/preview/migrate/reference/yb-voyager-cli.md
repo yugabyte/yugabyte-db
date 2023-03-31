@@ -526,6 +526,8 @@ yb-voyager import data file .... \
 --data-dir s3://voyager-data
 ```
 
+Refer to [Configuring the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html) for more details.
+
 ### --file-table-map
 
 Comma-separated mapping between the files in [data-dir](#data-dir) to the corresponding table in the database.
