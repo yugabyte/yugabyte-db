@@ -21,6 +21,7 @@ import time
 import datetime
 
 from pprint import pprint
+from ybops.cloud.common.cloud import InstanceState
 from ybops.common.exceptions import YBOpsRuntimeError, YBOpsRecoverableError
 from ybops.utils import get_path_from_yb, \
     generate_random_password, validate_cron_status, \
@@ -665,6 +666,16 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         self.update_ansible_vars_with_args(args)
         create_output = self.run_ansible_create(args)
         host_info = self.cloud.get_host_info(args)
+        normalized_state = self.cloud.normalize_instance_state(host_info.get("instance_state"))
+        logging.info("Host {} is in normalized state {}({})."
+                     .format(args.search_pattern, normalized_state,
+                             host_info.get("instance_state")))
+        # Onprem nodes report unknown state.
+        if normalized_state not in (InstanceState.UNKNOWN, InstanceState.STARTING,
+                                    InstanceState.RUNNING):
+            raise YBOpsRecoverableError("Host {} is in invalid state {}."
+                                        .format(args.search_pattern,
+                                                host_info.get("instance_state")))
         # Set the host and default port.
         self.extra_vars.update(
             self.get_server_host_port(host_info, args.custom_ssh_port, default_port=True))
@@ -1907,6 +1918,16 @@ class WaitForConnection(AbstractInstancesMethod):
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
+        normalized_state = self.cloud.normalize_instance_state(host_info.get("instance_state"))
+        logging.info("Host {} is in normalized state {}({})."
+                     .format(args.search_pattern, normalized_state,
+                             host_info.get("instance_state")))
+        # Onprem nodes report unknown state.
+        if normalized_state not in (InstanceState.UNKNOWN, InstanceState.STARTING,
+                                    InstanceState.RUNNING):
+            raise YBOpsRecoverableError("Host {} is in invalid state {}."
+                                        .format(args.search_pattern,
+                                                host_info.get("instance_state")))
         # Update the ansible args (particularly connection params).
         self.update_ansible_vars_with_args(args)
         # Set the host and default port.
