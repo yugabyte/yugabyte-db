@@ -59,7 +59,7 @@ You can manage the following resources using ybm:
 | :--- | :--- |
 | [backup](managed-cli-backup/) | create, delete, list, restore |
 | [cluster](managed-cli-cluster/) | create, delete, list, describe, update, pause, resume, cert download |
-| [cluster network](managed-cli-network/) | allow-list assign, allow-list unassign, endpoint list, endpoint describe, endpoint create, endpoint update, endpoint delete |
+| [cluster network](managed-cli-network/) | allow-list assign, allow-list unassign, endpoint list,</br>endpoint describe, endpoint create, endpoint update, endpoint delete |
 | [cluster read-replica](managed-cli-read-replica/) | create, delete, list, update |
 | [network-allow-list](managed-cli-network-allow-list/) | create, delete, list |
 | [vpc](managed-cli-vpc/) | create, delete, list |
