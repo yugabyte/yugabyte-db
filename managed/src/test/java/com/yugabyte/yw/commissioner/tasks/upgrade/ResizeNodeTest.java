@@ -786,7 +786,11 @@ public class ResizeNodeTest extends UpgradeTaskTest {
                       });
               PlacementInfoUtil.SelectMastersResult selectMastersResult =
                   PlacementInfoUtil.selectMasters(
-                      masterLeader, universe.getNodes(), null, true, userIntent);
+                      masterLeader,
+                      universe.getNodes(),
+                      null,
+                      true,
+                      universe.getUniverseDetails().clusters);
               AtomicInteger nodeIdx = new AtomicInteger(universe.getNodes().size());
               AtomicInteger cnt = new AtomicInteger();
               selectMastersResult.addedMasters.forEach(
