@@ -48,7 +48,7 @@ To connect to your cluster from your computer, you need an IP allow list with yo
 
 ```sh
 ybm network-allow-list create \
-  --ip-addr <your IP address> \
+  --ip-addr $(curl ifconfig.me) \
   --name my-computer
 ```
 
