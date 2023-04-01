@@ -14,19 +14,17 @@ type: docs
 
 The following tutorial shows how you can use ybm CLI to create clusters in YugabyteDB Managed.
 
+## Prerequisites
+
 This guide assumes you have already done the following:
 
 - Created and saved an [API key](../managed-apikeys/).
 - [Installed ybm CLI](../managed-cli/managed-cli-overview/#install-ybm).
 - [Configured ybm CLI](../managed-cli/managed-cli-overview/#configure-ybm) with your API key.
 
-{{< note title="Note" >}}
+To create VPCs and dedicated clusters, you also need to add a [billing profile](../../cloud-admin/cloud-billing-profile/) and payment method, or you can [request a free trial](../../managed-freetrial/).
 
-You can only create one Sandbox cluster per account.
-
-Before you can create dedicated clusters in YugabyteDB Managed, you need to add a [billing profile](../../cloud-admin/cloud-billing-profile/) and payment method, or you can [request a free trial](../../managed-freetrial/).
-
-{{< /note >}}
+Note that you can only create one Sandbox cluster per account.
 
 ## Create a sandbox cluster
 
@@ -34,7 +32,7 @@ To create your free [sandbox](../../cloud-basics/create-clusters/create-clusters
 
 ```sh
 ybm cluster create \
-  --cluster-name my-sandbox
+  --cluster-name my-sandbox \
   --credentials username=admin,password=password-123 \
   --cluster-tier Sandbox \
   --wait
@@ -50,9 +48,15 @@ my-sandbox   Sandbox   2.17.1.0-b439   ACTIVE    💚        us-west-2   1      
 
 ## Connect to your cluster
 
+To [connect to your database](../../cloud-connect/) from your desktop or an application, you need the following:
+
+- your device added to the cluster IP allow list
+- the cluster TLS certificate
+- the host address of the cluster
+
 ### Create and assign an IP allow list
 
-To connect to your cluster from your computer, you need an IP allow list with your computer's IP address. Create one as follows:
+To connect to your cluster from your computer, you need an [IP allow list](../../cloud-secure-clusters/add-connections/) with your computer's IP address. Create one as follows:
 
 ```sh
 ybm network-allow-list create \
@@ -91,7 +95,7 @@ my-computer                                       173.206.17.104/32   my-sandbox
 
 ### Download the cluster certificate
 
-To connect to a cluster in YugabyteDB Managed using a shell, you need the cluster certificate. Download the certificate using the following command:
+To connect to a cluster in YugabyteDB Managed using a shell, you need the [cluster certificate](../../cloud-secure-clusters/cloud-authentication/). Download the certificate using the following command:
 
 ```sh
 ybm cluster cert download --out $HOME/root.crt
@@ -108,7 +112,7 @@ ybm cluster describe --cluster-name my-sandbox
 ```output
 General
 Name         ID                                     Version         State     Health
-my-sandbox   035f24da-3972-41c0-b12f-ef20224a3169   2.17.1.0-b439   ACTIVE    💚
+my-sandbox   035f24da-3000-41c0-b12f-ef20004a3000   2.17.1.0-b439   ACTIVE    💚
 
 Provider   Tier      Fault Tolerance   Nodes     Total Res.(Vcpu/Mem/Disk)
 AWS        Sandbox   NONE              1         2 / 4GB / 10GB
@@ -121,12 +125,12 @@ us-west-2   1         2           4GB        10GB
 
 Endpoints
 Region      Accessibility   State     Host
-us-west-2   PUBLIC          ACTIVE    us-west-2.035f24da-3972-41c0-b12f-ef20224a3169.aws.ybdb.io
+us-west-2   PUBLIC          ACTIVE    us-west-2.000f20da-3000-40c0-b10f-ef20004a3000.aws.ybdb.io
 
 
 Network AllowList
 Name          Description   Allow List
-my-computer                 173.206.17.104/32
+my-computer                 173.200.10.100/32
 
 
 Nodes
@@ -154,6 +158,12 @@ ybm cluster create \
   --database-version Preview \
   --cluster-name my-single-region \
   --wait
+```
+
+```output
+The cluster my-single-region has been created
+Name               Tier        Version        State     Health    Regions          Nodes     Total Res.(Vcpu/Mem/Disk)
+my-single-region   Dedicated   2.17.2.0-b216  ACTIVE    💚        ap-northeast-1   3         12 / 48GB / 600GB
 ```
 
 ## Create a VPC and multi-region dedicated cluster
@@ -196,4 +206,10 @@ ybm cluster create \
   --fault-tolerance REGION \
   --database-version Stable \
   --wait
+```
+
+```output
+The cluster my-multi-region has been created
+Name              Tier        Version        State     Health    Regions          Nodes     Total Res.(Vcpu/Mem/Disk)
+my-multi-region   Dedicated   2.14.7.0-b51   ACTIVE    💚        us-central1,+2   3         6 / 24GB / 600GB
 ```
