@@ -447,7 +447,10 @@ func (plat Platform) Upgrade() error {
 	plat.deleteNodeAgentPackages()
 	plat.copyNodeAgentPackages()
 	plat.renameAndCreateSymlinks()
-
+	pemErr := createPemFormatKeyAndCert()
+	if pemErr != nil {
+		return pemErr
+	}
 	//Create the platform.log file so that we can start platform as
 	//a background process for non-root.
 	common.Create(common.GetSoftwareRoot() + "/yb-platform/yugaware/bin/platform.log")
